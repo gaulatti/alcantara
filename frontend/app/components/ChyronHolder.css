@@ -30,6 +30,7 @@
     color: #000000;
     line-height: 85px;
     letter-spacing: 0.01em;
+    text-transform: uppercase;
 }
 
 /* Animation for sliding in from bottom */
