@@ -11,9 +11,9 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <div className='flex items-center gap-4 mb-4'>
-              <img src='/logo.svg' alt='alcantara' className='h-8 w-auto fill-current opacity-90 dark:invert' />
+              <img src='/logo.svg' alt='gaulatti' className='h-8 w-auto fill-current opacity-90 dark:invert' />
               <div className='h-8 w-[1px] bg-gradient-to-b from-sunset/0 via-sunset to-sunset/0'></div>
-              <span className='text-xl font-bold tracking-tight text-text-primary dark:text-white'>alcantara</span>
+              <span className='text-xl font-bold tracking-tight text-text-primary dark:text-white'>alc&aacute;ntara</span>
             </div>
             <p className='text-sm text-text-secondary dark:text-text-secondary'>Advanced broadcast control.</p>
           </div>

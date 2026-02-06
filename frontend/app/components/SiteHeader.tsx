@@ -13,9 +13,9 @@ export default function Header() {
         <nav className='flex items-center justify-between h-20'>
           {/* Logo */}
           <Link to='/' className='group transition-all duration-400 flex items-center gap-4'>
-            <img src='/logo.svg' alt='alcantara' className='h-8 w-auto opacity-90 group-hover:opacity-100 transition-opacity duration-400 dark:invert' />
+            <img src='/logo.svg' alt='gaulatti' className='h-8 w-auto opacity-90 group-hover:opacity-100 transition-opacity duration-400 dark:invert' />
             <div className='h-8 w-[1px] bg-gradient-to-b from-sunset/0 via-sunset to-sunset/0'></div>
-            <span className='text-xl font-bold tracking-tight text-text-primary dark:text-white'>alcantara</span>
+            <span className='text-xl font-bold tracking-tight text-text-primary dark:text-white'>alc&aacute;ntara</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -32,10 +32,13 @@ export default function Header() {
             <Link to='/program' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
               Program
             </Link>
-             <Link to='/preview' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
+            <Link to='/preview' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
               Preview
             </Link>
-            <Link to='/layout-demo' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
+            <Link
+              to='/layout-demo'
+              className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'
+            >
               Layouts
             </Link>
           </div>
@@ -80,24 +83,44 @@ export default function Header() {
         }`}
       >
         <div className='container mx-auto px-4 py-6 flex flex-col space-y-4'>
-            <Link to='/' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
-              Home
-            </Link>
-            <Link to='/broadcast' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
-              Broadcast
-            </Link>
-            <Link to='/control' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
-              Control
-            </Link>
-             <Link to='/program' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
-              Program
-            </Link>
-            <Link to='/preview' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
-              Preview
-            </Link>
-             <Link to='/layout-demo' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
-              Layouts
-            </Link>
+          <Link to='/' className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors' onClick={() => setMobileMenuOpen(false)}>
+            Home
+          </Link>
+          <Link
+            to='/broadcast'
+            className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Broadcast
+          </Link>
+          <Link
+            to='/control'
+            className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Control
+          </Link>
+          <Link
+            to='/program'
+            className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Program
+          </Link>
+          <Link
+            to='/preview'
+            className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Preview
+          </Link>
+          <Link
+            to='/layout-demo'
+            className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Layouts
+          </Link>
         </div>
       </div>
     </header>
