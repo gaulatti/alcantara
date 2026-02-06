@@ -1,0 +1,50 @@
+/* Fixed 1920x1080 TV Layout - No Responsive Units */
+.qr-widget {
+    position: absolute;
+    left: 38px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #FFFFFF;
+    padding: 16px;
+    border-radius: 8px;
+    z-index: 999;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.qr-image {
+    width: 180px;
+    height: 180px;
+    display: block;
+}
+
+.qr-placeholder {
+    width: 180px;
+    height: 180px;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #000000;
+    position: relative;
+}
+
+.qr-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 80%;
+    height: 80%;
+}
+
+.qr-cell {
+    background: #000000;
+    border-radius: 2px;
+}
+
+.qr-cell:nth-child(2),
+.qr-cell:nth-child(4),
+.qr-cell:nth-child(6),
+.qr-cell:nth-child(8) {
+    background: #FFFFFF;
+    border: 2px solid #000000;
+}

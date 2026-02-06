@@ -1,0 +1,44 @@
+/* Fixed 1920x1080 TV Layout - No Responsive Units */
+.chyron-holder {
+    position: fixed;
+    top: 915px;
+    left: 100px;
+    width: 1720px;
+    height: 85px;
+    background: #FFFFFF;
+    z-index: 1001;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    clip-path: polygon(40px 0, 100% 0, 100% 100%, 0 100%, 0 40px, 40px 0);
+}
+
+.chyron-holder.chyron-visible {
+    transform: translateY(0);
+}
+
+.chyron-content {
+    padding: 0 77px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chyron-text {
+    font-family: 'Funnel Display', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 40px;
+    font-weight: 600;
+    color: #000000;
+    line-height: 85px;
+    letter-spacing: 0.01em;
+}
+
+/* Animation for sliding in from bottom */
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
