@@ -1,10 +1,10 @@
 /* Fixed 1920x1080 TV Layout - No Responsive Units */
 .qr-widget {
-    position: absolute;
-    left: 38px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: #FFFFFF;
+    position: fixed;
+    left: 140px;
+    top: 683px;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
     padding: 16px;
     border-radius: 8px;
     z-index: 999;
@@ -15,16 +15,17 @@
     width: 180px;
     height: 180px;
     display: block;
+    filter: invert(1);
 }
 
 .qr-placeholder {
     width: 180px;
     height: 180px;
-    background: #FFFFFF;
+    background: #000000;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid #000000;
+    border: 2px solid #FFFFFF;
     position: relative;
 }
 
@@ -37,7 +38,7 @@
 }
 
 .qr-cell {
-    background: #000000;
+    background: #FFFFFF;
     border-radius: 2px;
 }
 
@@ -45,6 +46,6 @@
 .qr-cell:nth-child(4),
 .qr-cell:nth-child(6),
 .qr-cell:nth-child(8) {
-    background: #FFFFFF;
-    border: 2px solid #000000;
+    background: #000000;
+    border: 2px solid #FFFFFF;
 }
