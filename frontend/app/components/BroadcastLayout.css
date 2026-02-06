@@ -1,0 +1,24 @@
+/* Fixed 1920x1080 TV Layout - No Responsive Units */
+.broadcast-layout {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    background: #000000;
+    overflow: hidden;
+}
+
+.broadcast-content {
+    position: absolute;
+    top: 54px;
+    /* Height of header */
+    left: 0;
+    right: 0;
+    bottom: 92px;
+    /* Height of ticker */
+    overflow: auto;
+    padding: 32px;
+    padding-left: 270px;
+    /* Space for QR code (38 + 180 + 16 + 16 + 20) */
+    padding-right: 150px;
+    /* Space for logo and live indicator */
+}

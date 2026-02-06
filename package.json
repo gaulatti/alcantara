@@ -1,0 +1,14 @@
+{
+  "name": "alcantara",
+  "version": "1.0.0",
+  "description": "TV broadcast overlay control system",
+  "private": true,
+  "scripts": {
+    "dev": "./launch.sh",
+    "frontend": "cd frontend && pnpm dev",
+    "backend": "cd backend && pnpm start:dev"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+}
