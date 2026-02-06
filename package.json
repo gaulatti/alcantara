@@ -1,5 +1,5 @@
 {
-  "name": "alcantara",
+  "name": "@gaulatti/alcantara",
   "version": "1.0.0",
   "description": "TV broadcast overlay control system",
   "private": true,

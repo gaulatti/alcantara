@@ -1,4 +1,4 @@
-# Alcantara - TV Broadcast Overlay Control System
+# Alcántara - TV Broadcast Overlay Control System
 
 A professional TV broadcast overlay control system built with a modern tech stack.
 
@@ -34,6 +34,7 @@ alcantara/
 ## Features
 
 ### Program Page (`/program`)
+
 - Fixed 1920x1080 Full HD resolution (hardcoded, not responsive)
 - Real-time updates via SSE
 - Auto-reconnecting SSE client
@@ -43,6 +44,7 @@ alcantara/
   - Corner Bug
 
 ### Control Page (`/control`)
+
 - Scene selection and activation
 - Real-time chyron text updates
 - Create new scenes and layouts
@@ -51,17 +53,21 @@ alcantara/
 ### Database Schema
 
 **Layouts**: Define reusable component types
+
 - id, name, componentType, settings (JSON)
 
 **Scenes**: Specific configurations using layouts
+
 - id, name, layoutId, chyronText, metadata (JSON)
 
 **ProgramState**: Current active scene (singleton)
+
 - id, activeSceneId, updatedAt
 
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js (v18+)
 - pnpm
 - tmux (optional, for easy launching)
@@ -76,6 +82,7 @@ pnpm install
 ### Development
 
 #### Option 1: Using tmux (recommended)
+
 ```bash
 ./launch.sh
 ```
@@ -83,6 +90,7 @@ pnpm install
 This launches both frontend and backend in split tmux windows.
 
 #### Option 2: Manual launch
+
 ```bash
 # Terminal 1 - Backend
 cd backend
@@ -103,16 +111,19 @@ pnpm dev
 ### API Endpoints
 
 #### Layouts
+
 - `GET /layouts` - List all layouts
 - `POST /layouts` - Create a layout
 
 #### Scenes
+
 - `GET /scenes` - List all scenes
 - `GET /scenes/:id` - Get a scene
 - `POST /scenes` - Create a scene
 - `PUT /scenes/:id/chyron` - Update chyron text
 
 #### Program
+
 - `GET /program/state` - Get current program state
 - `POST /program/activate` - Activate a scene
 - `GET /program/events` (SSE) - Subscribe to program updates
