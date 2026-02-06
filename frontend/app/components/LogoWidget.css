@@ -9,9 +9,72 @@
     z-index: 999;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     clip-path: polygon(50px 0, 100% 0, 100% calc(100% - 50px), calc(100% - 50px) 100%, 0 100%, 0 50px, 50px 0);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    transition: background-color 0.8s ease-in-out, width 0.8s ease-in-out, height 0.8s ease-in-out, left 0.8s ease-in-out, top 0.8s ease-in-out, clip-path 0.8s ease-in-out;
+    overflow: hidden;
+    opacity: 1;
+}
+
+.logo-widget.big-mode {
+    width: 480px;
+    height: 100px;
+    left: 1340px;
+    top: 635px;
+    clip-path: polygon(50px 0, 100% 0, 100% calc(100% - 50px), calc(100% - 50px) 100%, 0 100%, 0 50px, 50px 0);
+}
+
+.logo-widget.resizing {
+    width: 480px;
+    height: 100px;
+    left: 1340px;
+    top: 635px;
+    clip-path: polygon(50px 0, 100% 0, 100% calc(100% - 50px), calc(100% - 50px) 100%, 0 100%, 0 50px, 50px 0);
+}
+
+.logo-widget.variant-white {
+    background-color: #FFFFFF;
+    background-image: none;
+}
+
+.logo-widget.variant-white.gradient-active {
+    background-image: linear-gradient(135deg, #FFFFFF, #E0E0E0, #FFFFFF, #E0E0E0);
+    background-size: 400% 400%;
+    animation: gradientShift 3s ease infinite;
+}
+
+.logo-widget.variant-red {
+    background-color: #ff5b5b;
+    background-image: none;
+}
+
+.logo-widget.variant-red.gradient-active {
+    background-image: linear-gradient(135deg, #ff5b5b, #cc4949, #ff5b5b, #cc4949);
+    background-size: 400% 400%;
+    animation: gradientShift 3s ease infinite;
+}
+
+.logo-widget.variant-black {
+    background-color: #000000;
+    background-image: none;
+}
+
+.logo-widget.variant-black.gradient-active {
+    background-image: linear-gradient(135deg, #000000, #333333, #000000, #333333);
+    background-size: 400% 400%;
+    animation: gradientShift 3s ease infinite;
+}
+
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 .logo-widget.top-right {
@@ -34,5 +97,35 @@
     height: 100%;
     object-fit: contain;
     display: block;
-    /* padding: 10px; */
+    padding: 10px;
+    transition: filter 0.5s ease-in-out, opacity 0.5s ease-in-out;
+}
+
+.logo-small {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 160px;
+    height: 100%;
+}
+
+.logo-big {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.fade-in {
+    opacity: 1;
+}
+
+.fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.logo-svg.red-filter {
+    filter: brightness(0) saturate(100%) invert(40%) sepia(95%) saturate(2900%) hue-rotate(340deg) brightness(100%) contrast(101%);
 }
