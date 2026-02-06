@@ -10,7 +10,7 @@ interface LogoWidgetProps {
 export const LogoWidget: React.FC<LogoWidgetProps> = ({ logoUrl, text = 'mr', position = 'bottom-right' }) => {
   return (
     <div className={`logo-widget ${position}`}>
-      {logoUrl ? <img src={logoUrl} alt='Logo' className='logo-image' /> : <div className='logo-text'>{text}</div>}
+      {logoUrl ? <img src={logoUrl} alt='Logo' className='logo-image' /> : <img src='/bug-sm-white.svg' alt='Logo' className='logo-svg' />}
     </div>
   );
 };

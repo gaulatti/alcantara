@@ -31,6 +31,11 @@ export class LayoutsService {
       description: 'Bottom ticker bar with hashtag and URL',
     },
     {
+      type: 'header',
+      name: 'Header',
+      description: 'Top header bar with title and date',
+    },
+    {
       type: 'chyron',
       name: 'Chyron',
       description: 'Animated message overlay above ticker',
@@ -49,6 +54,11 @@ export class LayoutsService {
       type: 'live-indicator',
       name: 'Live Indicator',
       description: 'Animated LIVE/VIVO badge',
+    },
+    {
+      type: 'logo-widget',
+      name: 'Logo Widget',
+      description: 'Corner bug/logo display',
     },
   ];
 

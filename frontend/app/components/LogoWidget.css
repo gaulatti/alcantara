@@ -1,33 +1,38 @@
 /* Fixed 1920x1080 TV Layout - No Responsive Units */
 .logo-widget {
-    position: absolute;
-    right: 38px;
+    position: fixed;
+    left: 1660px;
+    top: 635px;
+    width: 160px;
+    height: 100px;
     background: #FFFFFF;
-    padding: 12px 20px;
-    border-radius: 8px;
     z-index: 999;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    clip-path: polygon(50px 0, 100% 0, 100% calc(100% - 50px), calc(100% - 50px) 100%, 0 100%, 0 50px, 50px 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .logo-widget.top-right {
-    top: 151px;
+    top: 635px;
 }
 
 .logo-widget.bottom-right {
-    bottom: 130px;
+    top: 635px;
 }
 
 .logo-image {
-    height: 56px;
-    width: auto;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
     display: block;
 }
 
-.logo-text {
-    font-family: 'Funnel Display', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 48px;
-    font-weight: 700;
-    color: #FF4444;
-    line-height: 1;
-    letter-spacing: -0.02em;
+.logo-svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    /* padding: 10px; */
 }

@@ -3,7 +3,6 @@ import { Header } from './Header';
 import { ClockWidget } from './ClockWidget';
 import { QRCodeWidget } from './QRCodeWidget';
 import { LiveIndicator } from './LiveIndicator';
-import { LogoWidget } from './LogoWidget';
 import { Ticker } from './Ticker';
 import { ChyronHolder } from './ChyronHolder';
 import './BroadcastLayout.css';
@@ -19,8 +18,6 @@ interface BroadcastLayoutProps {
   chyronDuration?: number;
   qrCodeUrl?: string;
   qrCodeContent?: string;
-  logoUrl?: string;
-  logoText?: string;
   clockIconUrl?: string;
   clockTimezone?: string;
   showLiveIndicator?: boolean;
@@ -38,8 +35,6 @@ export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
   chyronDuration = 5000,
   qrCodeUrl,
   qrCodeContent,
-  logoUrl,
-  logoText,
   clockIconUrl,
   clockTimezone,
   showLiveIndicator = true,
@@ -58,9 +53,6 @@ export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
 
       {/* Live Indicator - Top Right */}
       {showLiveIndicator && <LiveIndicator text={liveText} />}
-
-      {/* Logo - Bottom Right */}
-      <LogoWidget logoUrl={logoUrl} text={logoText} />
 
       {/* Main Content Area */}
       <div className='broadcast-content'>{children}</div>

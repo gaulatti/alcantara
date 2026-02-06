@@ -127,7 +127,6 @@ export default function Program() {
           url={props.url || 'modoradio.cl'}
           chyronText={scene.chyronText || ''}
           showChyron={!!scene.chyronText}
-          logoText={props.logoText || 'mr'}
           qrCodeContent={props.qrCodeContent || 'https://modoradio.cl'}
           clockTimezone={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
           showLiveIndicator={true}
@@ -139,7 +138,7 @@ export default function Program() {
     // Handle multi-component custom layouts
     console.log('Rendering multi-component layout...');
     return (
-      <div className='w-full h-full relative bg-black'>
+      <div className='w-full h-full relative bg-transparent'>
         {components.map((componentType) => {
           const props = metadata[componentType] || {};
           console.log(`Rendering component: ${componentType}`, 'Props:', props);
@@ -166,7 +165,7 @@ export default function Program() {
             case 'live-indicator':
               return <LiveIndicator key={componentType} text={props.text || 'LIVE'} />;
             case 'logo-widget':
-              return <LogoWidget key={componentType} text={props.text || 'Logo'} logoUrl={props.logoUrl} />;
+              return <LogoWidget key={componentType} text={props.text || 'mr'} logoUrl={props.logoUrl} />;
             case 'corner-bug':
               return (
                 <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>
@@ -187,7 +186,7 @@ export default function Program() {
   };
 
   return (
-    <div className='relative overflow-hidden bg-black' style={{ width: '1920px', height: '1080px' }}>
+    <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
       {renderScene()}
     </div>
   );

@@ -27,7 +27,6 @@ export default function Preview() {
             url='modoradio.cl'
             chyronText={chyronText}
             showChyron={showChyron}
-            logoText='mr'
             showLiveIndicator={true}
             liveText='VIVO'
             qrCodeContent='https://modoradio.cl'
