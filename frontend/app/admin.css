@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Encode+Sans:wght@700&family=Libre+Franklin:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* Tailwind v4 dark variant should follow the `.dark` class (applied on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Theme strategy:
+  - `--app-*` variables hold the actual palette values.
+  - Tailwind `@theme` maps `--color-*` tokens to those variables.
+  - Switching themes only changes `--app-*` (no prefers-color-scheme overrides).
+*/
+@theme {
+  --font-sans: 'Libre Franklin', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
+  --font-display: 'Cabinet Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-header: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+
+  /* Letter Spacing */
+  --letter-spacing-refined: -0.02em;
+  --letter-spacing-elegant: 0.05em;
+
+  /* Transition Durations */
+  --transition-duration-400: 400ms;
+  --transition-duration-600: 600ms;
+
+  /* Desert & Sea Color System (mapped to CSS variables) */
+  --color-sand: var(--app-sand);
+  --color-desert: var(--app-desert);
+  --color-terracotta: var(--app-terracotta);
+  --color-dusk: var(--app-dusk);
+  --color-sea: var(--app-sea);
+  --color-deep-sea: var(--app-deep-sea);
+  --color-light-sand: var(--app-light-sand);
+  --color-dark-sand: var(--app-dark-sand);
+  --color-sunset: var(--app-sunset);
+  --color-accent-gold: var(--app-accent-gold);
+  --color-accent-oxblood: var(--app-accent-oxblood);
+  --color-accent-bronze: var(--app-accent-bronze);
+  --color-accent-blue: var(--app-accent-blue);
+  --color-text-primary: var(--app-text-primary);
+  --color-text-secondary: var(--app-text-secondary);
+}
+
+@layer base {
+  :root {
+    /* Light mode (default) */
+    --app-sand: #e6d5b8;
+    --app-desert: #c1814d;
+    --app-terracotta: #a65d57;
+    --app-dusk: #694f5d;
+    --app-sea: #2c5784;
+    --app-deep-sea: #1a374d;
+    --app-light-sand: #f9f6f2;
+    --app-dark-sand: #d4c4a9;
+    --app-sunset: #ff9677;
+    --app-accent-gold: #c6a760;
+    --app-accent-oxblood: #76323f;
+    --app-accent-bronze: #cd7f32;
+    --app-accent-blue: #2c5784;
+    --app-text-primary: #2d2d2d;
+    --app-text-secondary: #595959;
+  }
+
+  html {
+    color-scheme: light;
+    background-color: var(--color-light-sand);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  html.dark {
+    /* Dark mode palette (only active when `.dark` class is present) */
+    --app-light-sand: #0d1821;
+    --app-sand: #1a2332;
+    --app-dark-sand: #243447;
+    --app-desert: #e0ac69;
+    --app-terracotta: #d47b75;
+    --app-sunset: #ff9677;
+    --app-sea: #5ba3f5;
+    --app-deep-sea: #182533;
+    --app-text-primary: #f0f4f8;
+    --app-text-secondary: #b8c5d6;
+    --app-accent-gold: #d4af37;
+    --app-accent-blue: #5ba3f5;
+
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+}
+
+/* Refined Typography */
+h1 {
+  font-family: 'Encode Sans', var(--font-sans);
+}
