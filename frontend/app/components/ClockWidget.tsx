@@ -7,11 +7,7 @@ interface ClockWidgetProps {
   timezone?: string;
 }
 
-export const ClockWidget: React.FC<ClockWidgetProps> = ({ 
-  showIcon = true, 
-  iconUrl,
-  timezone = 'America/Argentina/Buenos_Aires'
-}) => {
+export const ClockWidget: React.FC<ClockWidgetProps> = ({ showIcon = true, iconUrl, timezone = 'America/Argentina/Buenos_Aires' }) => {
   const [time, setTime] = useState('');
 
   useEffect(() => {
