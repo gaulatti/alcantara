@@ -31,6 +31,14 @@
     line-height: 85px;
     letter-spacing: 0.01em;
     text-transform: uppercase;
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.chyron-text.is-changing {
+    opacity: 0;
+    transform: translateY(10px);
 }
 
 /* Animation for sliding in from bottom */

@@ -39,7 +39,7 @@ export const ClockWidget: React.FC<ClockWidgetProps> = ({ showIcon = true, iconU
   return (
     <div className='clock-widget'>
       <div className='clock-time'>{time}</div>
-      {showIcon && <div className='clock-icon'>{iconUrl ? <img src={iconUrl} alt='icon' /> : <div className='default-icon'>🌴</div>}</div>}
+      {showIcon && <div className='clock-icon'>{iconUrl ? <img src={iconUrl} alt='icon' /> : null}</div>}
     </div>
   );
 };
