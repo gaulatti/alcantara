@@ -9,7 +9,7 @@ interface LiveIndicatorProps {
 export const LiveIndicator: React.FC<LiveIndicatorProps> = ({ text = 'VIVO', animate = true }) => {
   return (
     <div className='live-indicator'>
-      <div className={`live-badge ${animate ? 'animate' : ''}`}>{text}</div>
+      <div className={`live-badge ${animate ? 'animate' : ''}`}></div>
     </div>
   );
 };
