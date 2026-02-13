@@ -53,9 +53,9 @@ export class ScenesService {
       include: { layout: true },
     });
 
-    const programState = await this.prisma.programState.findFirst();
-    if (programState?.activeSceneId === id) {
-      this.programService.broadcastUpdate({
+    const programIds = await this.programService.getProgramIdsByActiveScene(id);
+    for (const programId of programIds) {
+      this.programService.broadcastUpdate(programId, {
         type: 'scene_update',
         scene,
       });
@@ -71,9 +71,9 @@ export class ScenesService {
       include: { layout: true },
     });
 
-    const programState = await this.prisma.programState.findFirst();
-    if (programState?.activeSceneId === id) {
-      this.programService.broadcastUpdate({
+    const programIds = await this.programService.getProgramIdsByActiveScene(id);
+    for (const programId of programIds) {
+      this.programService.broadcastUpdate(programId, {
         type: 'chyron_update',
         scene,
       });
@@ -83,21 +83,27 @@ export class ScenesService {
   }
 
   async remove(id: number) {
-    // Check if this scene is currently active
-    const programState = await this.prisma.programState.findFirst();
-    if (programState?.activeSceneId === id) {
-      // Clear the active scene before deleting
-      await this.prisma.programState.update({
-        where: { id: programState.id },
-        data: { activeSceneId: null },
-      });
-      this.programService.broadcastUpdate({
+    const assignedProgramIds =
+      await this.programService.getProgramIdsByAssignedScene(id);
+    const clearedProgramIds = await this.programService.clearActiveScene(id);
+    for (const programId of clearedProgramIds) {
+      this.programService.broadcastUpdate(programId, {
         type: 'scene_cleared',
       });
     }
 
-    return this.prisma.scene.delete({
+    const deleted = await this.prisma.scene.delete({
       where: { id },
     });
+
+    for (const programId of assignedProgramIds) {
+      const state = await this.programService.getState(programId);
+      this.programService.broadcastUpdate(programId, {
+        type: 'program_scenes_changed',
+        state,
+      });
+    }
+
+    return deleted;
   }
 }

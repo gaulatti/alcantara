@@ -23,16 +23,37 @@ interface ComponentType {
   description: string;
 }
 
+interface ProgramSceneEntry {
+  id: number;
+  sceneId: number;
+  position: number;
+  scene: Scene;
+}
+
+interface ProgramState {
+  id: number;
+  programId: string;
+  activeSceneId: number | null;
+  scenes: ProgramSceneEntry[];
+}
+
 export function meta({}: Route.MetaArgs) {
   return [{ title: 'Control Panel - TV Broadcast' }, { name: 'description', content: 'Control panel for TV broadcast overlay system' }];
 }
 
 export default function Control() {
+  const [programIdInput, setProgramIdInput] = useState('main');
+  const [programId, setProgramId] = useState('main');
+  const [programState, setProgramState] = useState<ProgramState | null>(null);
+  const [programs, setPrograms] = useState<ProgramState[]>([]);
+  const activeProgramId = programId.trim() || 'main';
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
-  const [chyronText, setChyronText] = useState('');
+  const [sceneEditorChyronText, setSceneEditorChyronText] = useState('');
+  const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
+  const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
   const [editingLayout, setEditingLayout] = useState<Layout | null>(null);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
@@ -52,7 +73,12 @@ export default function Control() {
     fetchScenes();
     fetchLayouts();
     fetchComponentTypes();
+    fetchPrograms();
   }, []);
+
+  useEffect(() => {
+    fetchProgramState(activeProgramId);
+  }, [activeProgramId]);
 
   useEffect(() => {
     console.log('showLayoutModal changed to:', showLayoutModal);
@@ -88,31 +114,165 @@ export default function Control() {
     }
   };
 
+  const fetchPrograms = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/program');
+      const data = await res.json();
+      setPrograms(data);
+    } catch (err) {
+      console.error('Failed to fetch programs:', err);
+    }
+  };
+
+  const fetchProgramState = async (targetProgramId: string) => {
+    try {
+      const res = await fetch(
+        `http://localhost:3000/program/${encodeURIComponent(targetProgramId)}/state`,
+      );
+      const data = await res.json();
+      setProgramState(data);
+      setSelectedScene(data?.activeSceneId ?? null);
+      fetchPrograms();
+    } catch (err) {
+      console.error('Failed to fetch program state:', err);
+    }
+  };
+
+  const buildComponentPropsForScene = (scene: Scene): Record<string, any> => {
+    let metadata: Record<string, any> = {};
+    try {
+      const parsed = scene.metadata ? JSON.parse(scene.metadata) : {};
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        metadata = parsed;
+      }
+    } catch (err) {
+      console.error('Failed to parse scene metadata for editor:', err);
+    }
+
+    const components = scene.layout.componentType.split(',').filter(Boolean);
+    const combined: Record<string, any> = {};
+
+    for (const componentType of components) {
+      combined[componentType] = {
+        ...getDefaultPropsForComponent(componentType),
+        ...(metadata[componentType] || {})
+      };
+    }
+
+    return combined;
+  };
+
+  const createOrSelectProgram = async () => {
+    const nextProgramId = programIdInput.trim() || 'main';
+
+    try {
+      await fetch('http://localhost:3000/program', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ programId: nextProgramId }),
+      });
+      setProgramId(nextProgramId);
+      setProgramIdInput(nextProgramId);
+    } catch (err) {
+      console.error('Failed to create/select program:', err);
+    }
+  };
+
+  const isSceneAssigned = (sceneId: number) =>
+    !!programState?.scenes.some((programScene) => programScene.sceneId === sceneId);
+
+  const assignSceneToProgram = async (sceneId: number) => {
+    try {
+      await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId }),
+      });
+      await fetchProgramState(activeProgramId);
+    } catch (err) {
+      console.error('Failed to assign scene to program:', err);
+    }
+  };
+
+  const removeSceneFromProgram = async (sceneId: number) => {
+    try {
+      await fetch(
+        `http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes/${sceneId}`,
+        { method: 'DELETE' },
+      );
+      await fetchProgramState(activeProgramId);
+    } catch (err) {
+      console.error('Failed to remove scene from program:', err);
+    }
+  };
+
   const activateScene = async (sceneId: number) => {
     try {
-      await fetch('http://localhost:3000/program/activate', {
+      if (!isSceneAssigned(sceneId)) {
+        await assignSceneToProgram(sceneId);
+      }
+      await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sceneId })
       });
       setSelectedScene(sceneId);
+      await fetchProgramState(activeProgramId);
     } catch (err) {
       console.error('Failed to activate scene:', err);
     }
   };
 
-  const updateChyron = async () => {
+  useEffect(() => {
+    if (!selectedScene) {
+      setSceneEditorChyronText('');
+      setSceneEditorProps({});
+      return;
+    }
+
+    const scene = scenes.find((s) => s.id === selectedScene);
+    if (!scene) {
+      return;
+    }
+
+    setSceneEditorChyronText(scene.chyronText || '');
+    setSceneEditorProps(buildComponentPropsForScene(scene));
+  }, [selectedScene, scenes]);
+
+  const updateSceneEditorProp = (componentType: string, propName: string, value: any) => {
+    setSceneEditorProps((prev) => ({
+      ...prev,
+      [componentType]: {
+        ...prev[componentType],
+        [propName]: value
+      }
+    }));
+  };
+
+  const saveSceneAttributes = async () => {
     if (!selectedScene) return;
 
+    setIsSavingSceneAttributes(true);
     try {
-      await fetch(`http://localhost:3000/scenes/${selectedScene}/chyron`, {
+      const response = await fetch(`http://localhost:3000/scenes/${selectedScene}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chyronText })
+        body: JSON.stringify({
+          chyronText: sceneEditorChyronText,
+          metadata: sceneEditorProps
+        })
       });
-      fetchScenes();
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      await fetchScenes();
+      await fetchProgramState(activeProgramId);
     } catch (err) {
-      console.error('Failed to update chyron:', err);
+      console.error('Failed to update scene attributes:', err);
+    } finally {
+      setIsSavingSceneAttributes(false);
     }
   };
 
@@ -285,6 +445,7 @@ export default function Control() {
         setSelectedScene(null);
       }
       fetchScenes();
+      fetchProgramState(activeProgramId);
     } catch (err) {
       console.error('Failed to delete scene:', err);
     }
@@ -406,14 +567,60 @@ export default function Control() {
       <div className='max-w-7xl mx-auto'>
         <div className='flex justify-between items-center mb-8'>
           <h1 className='text-4xl font-bold'>Control Panel</h1>
-          <a
-            href='/preview'
-            className='bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 font-semibold'
-            target='_blank'
-            rel='noopener noreferrer'
-          >
-            👁️ Preview Components
-          </a>
+          <div className='flex items-center gap-3'>
+            <label htmlFor='programIdInput' className='text-sm font-semibold text-gray-700'>
+              Program ID
+            </label>
+            <input
+              id='programIdInput'
+              value={programIdInput}
+              onChange={(e) => setProgramIdInput(e.target.value)}
+              className='border border-gray-300 rounded px-3 py-2 text-sm w-48'
+              placeholder='main'
+            />
+            <button
+              onClick={createOrSelectProgram}
+              className='bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 text-sm font-semibold'
+            >
+              Create / Select
+            </button>
+            <a
+              href={`/program/${encodeURIComponent(activeProgramId)}`}
+              className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold'
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              Open Program
+            </a>
+            <a
+              href='/preview'
+              className='bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 font-semibold'
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              👁️ Preview Components
+            </a>
+          </div>
+        </div>
+
+        <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
+          <div className='text-sm text-gray-600 mb-2'>Current program: <span className='font-semibold text-gray-900'>{activeProgramId}</span></div>
+          <div className='flex flex-wrap gap-2'>
+            {programs.map((program) => (
+              <button
+                key={program.programId}
+                onClick={() => {
+                  setProgramId(program.programId);
+                  setProgramIdInput(program.programId);
+                }}
+                className={`px-3 py-1 rounded text-sm border ${
+                  program.programId === activeProgramId ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-700'
+                }`}
+              >
+                {program.programId}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Component Types Info */}
@@ -427,6 +634,41 @@ export default function Control() {
                 <div className='text-xs text-gray-500 mt-1'>{ct.description}</div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className='bg-white rounded-lg shadow-lg p-6 mb-8'>
+          <h2 className='text-2xl font-bold mb-4'>Program Scenes</h2>
+          <p className='text-sm text-gray-600 mb-4'>Assign scenes to this program, then activate one at a time.</p>
+          <div className='space-y-2 max-h-64 overflow-y-auto'>
+            {programState?.scenes.length ? (
+              programState.scenes.map((programScene) => (
+                <div key={programScene.id} className='p-3 border rounded flex items-center justify-between'>
+                  <div>
+                    <div className='font-semibold'>
+                      {programScene.position + 1}. {programScene.scene.name}
+                    </div>
+                    <div className='text-sm text-gray-500'>Layout: {programScene.scene.layout.name}</div>
+                  </div>
+                  <div className='flex gap-2'>
+                    <button
+                      onClick={() => activateScene(programScene.sceneId)}
+                      className='px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm'
+                    >
+                      {selectedScene === programScene.sceneId ? 'Active' : 'Activate'}
+                    </button>
+                    <button
+                      onClick={() => removeSceneFromProgram(programScene.sceneId)}
+                      className='px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm'
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className='text-gray-500 text-sm'>No scenes assigned to this program yet.</div>
+            )}
           </div>
         </div>
 
@@ -445,6 +687,7 @@ export default function Control() {
               ) : (
                 scenes.map((scene) => {
                   const components = scene.layout.componentType.split(',').filter(Boolean);
+                  const assigned = isSceneAssigned(scene.id);
                   return (
                     <div
                       key={scene.id}
@@ -467,9 +710,39 @@ export default function Control() {
                               <span className='inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded'>+{components.length - 3} more</span>
                             )}
                           </div>
+                          <div className='text-xs mt-2'>
+                            {assigned ? (
+                              <span className='inline-block px-2 py-1 rounded bg-emerald-100 text-emerald-700'>Assigned to program</span>
+                            ) : (
+                              <span className='inline-block px-2 py-1 rounded bg-gray-100 text-gray-600'>Not assigned</span>
+                            )}
+                          </div>
                           <div className='text-sm text-gray-500 mt-1'>Text: {scene.chyronText || '(none)'}</div>
                         </div>
                         <div className='flex gap-2'>
+                          {assigned ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeSceneFromProgram(scene.id);
+                              }}
+                              className='text-orange-600 hover:text-orange-800 px-2 py-1 rounded hover:bg-orange-50'
+                              title='Remove from program'
+                            >
+                              ➖
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                assignSceneToProgram(scene.id);
+                              }}
+                              className='text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50'
+                              title='Add to program'
+                            >
+                              ➕
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -555,31 +828,45 @@ export default function Control() {
           </div>
         </div>
 
-        {/* Chyron Update Panel */}
+        {/* Scene Attributes Panel */}
         <div className='bg-white rounded-lg shadow-lg p-6 mt-8'>
-          <h2 className='text-2xl font-bold mb-4'>Update Chyron Text</h2>
-          <div className='flex gap-4'>
-            <input
-              type='text'
-              value={chyronText}
-              onChange={(e) => setChyronText(e.target.value)}
-              placeholder='Enter chyron text'
-              className='flex-1 px-4 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-              disabled={!selectedScene}
-              onKeyPress={(e) => e.key === 'Enter' && updateChyron()}
-            />
-            <button
-              onClick={updateChyron}
-              disabled={!selectedScene}
-              className='bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed'
-            >
-              Update
-            </button>
-          </div>
+          <h2 className='text-2xl font-bold mb-4'>Edit Scene Attributes</h2>
           {!selectedScene ? (
-            <p className='text-sm text-gray-500 mt-2'>Click on a scene above to select it, then update its chyron text here</p>
+            <p className='text-sm text-gray-500 mt-2'>Click on a scene above to edit all component attributes for that scene.</p>
           ) : (
-            <p className='text-sm text-blue-600 mt-2'>Updating chyron for: {scenes.find((s) => s.id === selectedScene)?.name}</p>
+            <div className='space-y-4'>
+              <p className='text-sm text-blue-600'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
+              <div>
+                <label className='block text-xs text-gray-600 mb-1'>Scene Chyron Text</label>
+                <input
+                  type='text'
+                  value={sceneEditorChyronText}
+                  onChange={(e) => setSceneEditorChyronText(e.target.value)}
+                  placeholder='Enter chyron text'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500'
+                />
+              </div>
+              <div className='space-y-4 max-h-96 overflow-y-auto border rounded p-4'>
+                {Object.entries(sceneEditorProps).map(([componentType, props]) => {
+                  const compInfo = componentTypes.find((ct) => ct.type === componentType);
+                  return (
+                    <div key={componentType} className='border-b pb-4 last:border-b-0'>
+                      <h4 className='font-semibold text-md mb-2 text-gray-800'>{compInfo?.name || componentType}</h4>
+                      <ComponentPropsFields componentType={componentType} props={props} updateProp={updateSceneEditorProp} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className='flex justify-end'>
+                <button
+                  onClick={saveSceneAttributes}
+                  disabled={isSavingSceneAttributes}
+                  className='bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed'
+                >
+                  {isSavingSceneAttributes ? 'Saving...' : 'Save Scene Attributes'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

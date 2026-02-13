@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
 import { BroadcastLayout, Ticker, ChyronHolder, Header, ClockWidget, QRCodeWidget, LiveIndicator, LogoWidget } from '../components';
 
@@ -26,17 +27,19 @@ interface ProgramState {
 }
 
 export default function Program() {
+  const { id } = useParams();
+  const programId = id ?? 'main';
   const [state, setState] = useState<ProgramState | null>(null);
 
   useEffect(() => {
-    fetch('http://localhost:3000/program/state')
+    fetch(`http://localhost:3000/program/${encodeURIComponent(programId)}/state`)
       .then((res) => res.json())
       .then((data) => setState(data))
       .catch((err) => console.error('Failed to fetch initial state:', err));
-  }, []);
+  }, [programId]);
 
   useSSE({
-    url: 'http://localhost:3000/program/events',
+    url: `http://localhost:3000/program/${encodeURIComponent(programId)}/events`,
     onMessage: (data) => {
       if (data.type === 'scene_change') {
         setState(data.state);
