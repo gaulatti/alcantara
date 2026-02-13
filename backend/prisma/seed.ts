@@ -75,6 +75,7 @@ async function main() {
   // Initialize program state
   const programState = await prisma.programState.create({
     data: {
+      programId: 'main',
       activeSceneId: null,
     },
   });

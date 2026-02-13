@@ -8,5 +8,5 @@ export default [
     route('broadcast', 'routes/broadcast.tsx'),
     route('layout-demo', 'routes/layout-demo.tsx')
   ]),
-  route('program', 'routes/program.tsx')
+  route('program/:id', 'routes/program.tsx')
 ] satisfies RouteConfig;

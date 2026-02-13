@@ -29,7 +29,7 @@ export default function Header() {
             <Link to='/control' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
               Control
             </Link>
-            <Link to='/program' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
+            <Link to='/program/main' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
               Program
             </Link>
             <Link to='/preview' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
@@ -101,7 +101,7 @@ export default function Header() {
             Control
           </Link>
           <Link
-            to='/program'
+            to='/program/main'
             className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
             onClick={() => setMobileMenuOpen(false)}
           >

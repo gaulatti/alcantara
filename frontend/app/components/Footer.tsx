@@ -41,7 +41,7 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to='/program' className='text-sm text-text-secondary dark:text-gray-300 hover:text-text-primary dark:hover:text-white transition-colors'>
+                <Link to='/program/main' className='text-sm text-text-secondary dark:text-gray-300 hover:text-text-primary dark:hover:text-white transition-colors'>
                   Program
                 </Link>
               </li>
