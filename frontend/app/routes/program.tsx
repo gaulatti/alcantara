@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
 import { BroadcastLayout, Ticker, ChyronHolder, Header, ClockWidget, QRCodeWidget, LiveIndicator, LogoWidget } from '../components';
+import RelojClone from '../components/RelojClone';
+import type { GlobalTimeOverride } from '../utils/broadcastTime';
 
 interface Layout {
   id: number;
@@ -26,10 +28,19 @@ interface ProgramState {
   updatedAt: string;
 }
 
+interface BroadcastSettings {
+  id: number;
+  timeOverrideEnabled: boolean;
+  timeOverrideStartTime: string | null;
+  timeOverrideStartedAt: string | null;
+  updatedAt: string;
+}
+
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
   const [state, setState] = useState<ProgramState | null>(null);
+  const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
 
   useEffect(() => {
     fetch(`http://localhost:3000/program/${encodeURIComponent(programId)}/state`)
@@ -37,6 +48,13 @@ export default function Program() {
       .then((data) => setState(data))
       .catch((err) => console.error('Failed to fetch initial state:', err));
   }, [programId]);
+
+  useEffect(() => {
+    fetch('http://localhost:3000/program/broadcast-settings')
+      .then((res) => res.json())
+      .then((data) => setBroadcastSettings(data))
+      .catch((err) => console.error('Failed to fetch broadcast settings:', err));
+  }, []);
 
   useSSE({
     url: `http://localhost:3000/program/${encodeURIComponent(programId)}/events`,
@@ -71,9 +89,21 @@ export default function Program() {
             activeScene: null
           };
         });
+      } else if (data.type === 'broadcast_settings_update') {
+        setBroadcastSettings(data.settings);
       }
     }
   });
+
+  const globalTimeOverride: GlobalTimeOverride | null =
+    broadcastSettings?.timeOverrideEnabled &&
+    !!broadcastSettings.timeOverrideStartTime &&
+    !!broadcastSettings.timeOverrideStartedAt
+      ? {
+          startTime: broadcastSettings.timeOverrideStartTime,
+          startedAt: broadcastSettings.timeOverrideStartedAt
+        }
+      : null;
 
   const renderScene = () => {
     if (!state?.activeScene) {
@@ -133,7 +163,7 @@ export default function Program() {
           qrCodeContent={props.qrCodeContent || 'https://modoradio.cl'}
           clockTimezone={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
           showLiveIndicator={true}
-          liveText={props.liveText || 'VIVO'}
+          timeOverride={globalTimeOverride}
         />
       );
     }
@@ -162,13 +192,28 @@ export default function Program() {
             case 'header':
               return <Header key={componentType} title={props.title || 'Header'} date={props.date || new Date().toLocaleDateString()} />;
             case 'clock-widget':
-              return <ClockWidget key={componentType} iconUrl={props.iconUrl} timezone={props.timezone} />;
+              return (
+                <ClockWidget
+                  key={componentType}
+                  iconUrl={props.iconUrl}
+                  timezone={props.timezone}
+                  timeOverride={globalTimeOverride}
+                />
+              );
             case 'qr-code':
               return <QRCodeWidget key={componentType} content={props.content || 'https://example.com'} />;
             case 'live-indicator':
-              return <LiveIndicator key={componentType} text={props.text || 'LIVE'} />;
+              return <LiveIndicator key={componentType} animate={props.animate ?? true} />;
             case 'logo-widget':
-              return <LogoWidget key={componentType} text={props.text || 'mr'} logoUrl={props.logoUrl} />;
+              return <LogoWidget key={componentType} logoUrl={props.logoUrl} position={props.position} />;
+            case 'reloj-clock':
+              return (
+                <RelojClone
+                  key={componentType}
+                  timezone={props.timezone || 'America/Argentina/Buenos_Aires'}
+                  timeOverride={globalTimeOverride}
+                />
+              );
             case 'corner-bug':
               return (
                 <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>

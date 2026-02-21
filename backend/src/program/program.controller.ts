@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Sse, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Sse, Param, Delete, Put } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ProgramService } from './program.service';
 
@@ -14,6 +14,18 @@ export class ProgramController {
   @Post()
   async createProgram(@Body() data: { programId: string }) {
     return this.programService.createProgram(data.programId);
+  }
+
+  @Get('broadcast-settings')
+  async getBroadcastSettings() {
+    return this.programService.getBroadcastSettings();
+  }
+
+  @Put('broadcast-settings')
+  async updateBroadcastSettings(
+    @Body() data: { enabled: boolean; startTime?: string | null },
+  ) {
+    return this.programService.updateBroadcastSettings(data);
   }
 
   @Get(':programId/state')

@@ -23,9 +23,7 @@ export default function BroadcastLayoutExample() {
       chyronText={chyronText}
       showChyron={showChyron}
       chyronDuration={5000}
-      logoText='mr'
       showLiveIndicator={true}
-      liveText='VIVO'
       qrCodeContent='https://modoradio.cl'
     >
       {/* Main Content Area */}

@@ -53,12 +53,17 @@ export class LayoutsService {
     {
       type: 'live-indicator',
       name: 'Live Indicator',
-      description: 'Animated LIVE/VIVO badge',
+      description: 'Animated SVG live badge',
     },
     {
       type: 'logo-widget',
       name: 'Logo Widget',
-      description: 'Corner bug/logo display',
+      description: 'SVG corner bug/logo display',
+    },
+    {
+      type: 'reloj-clock',
+      name: 'Reloj Clock',
+      description: 'Analog reloj clone component',
     },
   ];
 

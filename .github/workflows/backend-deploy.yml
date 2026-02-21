@@ -1,0 +1,58 @@
+name: Backend Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.DEPLOYMENT_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -f backend/Dockerfile -t ghcr.io/${{ github.repository }}-backend:latest ./backend
+
+      - name: Push Docker image to GHCR
+        run: |
+          docker push ghcr.io/${{ github.repository }}-backend:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy to on-premises host
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            sh -c '
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
+            docker pull ghcr.io/${{ github.repository }}-backend:latest
+
+            docker stop alcantara-backend || true
+            docker rm alcantara-backend || true
+
+            docker run -d --name alcantara-backend \
+            -p ${{ secrets.HTTP_PORT }}:${{ secrets.HTTP_PORT }} \
+            -e PORT="${{ secrets.HTTP_PORT }}" \
+            --restart=always \
+            ghcr.io/${{ github.repository }}-backend:latest
+            '

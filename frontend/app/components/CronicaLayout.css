@@ -1,0 +1,63 @@
+/* Fixed 1920x1080 TV Layout - 4:3 safe area centered */
+.cronica-layout {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    background: #b11212;
+    overflow: hidden;
+}
+
+.cronica-background {
+    position: absolute;
+    inset: 0;
+    background: #b11212;
+    z-index: 0;
+}
+
+.cronica-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.cronica-safe-area {
+    position: relative;
+    width: 1440px;
+    height: 1080px;
+    margin: 0 auto;
+}
+
+.cronica-reiteramos {
+    position: absolute;
+    top: 175px;
+    left: -190px;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-style: italic;
+    font-weight: 900;
+    font-size: 88px;
+    letter-spacing: 1px;
+    color: #ffffff;
+    text-transform: uppercase;
+    text-shadow: 8px 8px 0 #000000;
+}
+
+.cronica-chyron {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1200px;
+    text-align: center;
+}
+
+.cronica-chyron-line {
+    font-family: 'Impact', 'Arial Black', 'Helvetica Neue Condensed Black', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 225px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    line-height: 1.05;
+    color: #ffffff;
+    text-transform: uppercase;
+    text-shadow: 12px 12px 0 #000000;
+}

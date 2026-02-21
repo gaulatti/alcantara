@@ -1,0 +1,125 @@
+.reloj-clone-root {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  background-color: #ff5b5b !important;
+  margin: 0;
+}
+
+.reloj-clone-root .clock {
+  width: 600px !important;
+  height: 600px !important;
+  border: none;
+  position: relative;
+  padding: 20px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  background: white;
+  clip-path: polygon(20% 0%, 100% 0, 100% 20%, 100% 80%, 80% 100%, 0 100%, 0% 80%, 0% 20%);
+}
+
+.reloj-clone-root .clock-face {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: translateX(0px);
+}
+
+.reloj-clone-root .hand {
+  width: 100%;
+  background: black;
+  position: absolute;
+  top: 50%;
+  transform-origin: 50%;
+  transform: rotate(90deg);
+  transition: all 0.05s;
+  transition-timing-function: cubic-bezier(0.1, 2.7, 0.58, 1);
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+  box-shadow: 0 0 10px black;
+}
+
+.reloj-clone-root .hour-hand {
+  height: 150px;
+}
+
+.reloj-clone-root .minute-hand {
+  height: 40px;
+  width: 50%;
+  transform-origin: 100%;
+  background: #3a3a3a;
+}
+
+.reloj-clone-root .second-hand {
+  height: 30px;
+  background: #ff5b5b;
+}
+
+.reloj-clone-root .number {
+  position: absolute;
+  font-size: 44px;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-family: MuseoModerno;
+  display: none;
+}
+
+.reloj-clone-root .number1 {
+  top: 20%;
+  left: 85%;
+}
+
+.reloj-clone-root .number2 {
+  top: 35%;
+  left: 92%;
+}
+
+.reloj-clone-root .number3 {
+  top: 50%;
+  left: 97%;
+}
+
+.reloj-clone-root .number4 {
+  top: 65%;
+  left: 92%;
+}
+
+.reloj-clone-root .number5 {
+  top: 80%;
+  left: 85%;
+}
+
+.reloj-clone-root .number6 {
+  top: 90%;
+  left: 50%;
+}
+
+.reloj-clone-root .number7 {
+  top: 80%;
+  left: 15%;
+}
+
+.reloj-clone-root .number8 {
+  top: 65%;
+  left: 8%;
+}
+
+.reloj-clone-root .number9 {
+  top: 50%;
+  left: 3%;
+}
+
+.reloj-clone-root .number10 {
+  top: 35%;
+  left: 8%;
+}
+
+.reloj-clone-root .number11 {
+  top: 20%;
+  left: 15%;
+}
+
+.reloj-clone-root .number12 {
+  top: 10%;
+  left: 50%;
+}

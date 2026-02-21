@@ -52,3 +52,11 @@ model ProgramScene {
   @@unique([programStateId, sceneId])
   @@unique([programStateId, position])
 }
+
+model BroadcastSettings {
+  id                    Int      @id
+  timeOverrideEnabled   Boolean  @default(false)
+  timeOverrideStartTime String?
+  timeOverrideStartedAt DateTime?
+  updatedAt             DateTime @updatedAt
+}

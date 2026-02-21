@@ -28,7 +28,6 @@ export default function Preview() {
             chyronText={chyronText}
             showChyron={showChyron}
             showLiveIndicator={true}
-            liveText='VIVO'
             qrCodeContent='https://modoradio.cl'
           >
             <div
@@ -162,7 +161,7 @@ export default function Preview() {
       case 'live-indicator':
         return (
           <div style={{ background: '#1a1a1a', minHeight: '100vh', padding: '2rem' }}>
-            <LiveIndicator text='VIVO' />
+            <LiveIndicator />
             <div
               style={{
                 position: 'absolute',

@@ -3,11 +3,10 @@ import './LogoWidget.css';
 
 interface LogoWidgetProps {
   logoUrl?: string;
-  text?: string;
   position?: 'top-right' | 'bottom-right';
 }
 
-export const LogoWidget: React.FC<LogoWidgetProps> = ({ logoUrl, text = 'mr', position = 'bottom-right' }) => {
+export const LogoWidget: React.FC<LogoWidgetProps> = ({ logoUrl, position = 'bottom-right' }) => {
   const [variant, setVariant] = useState<'white' | 'black' | 'red'>('white');
   const [showGradient, setShowGradient] = useState(false);
   const [showBigBug, setShowBigBug] = useState(false);
