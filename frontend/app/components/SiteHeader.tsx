@@ -23,9 +23,6 @@ export default function Header() {
             <Link to='/' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
               Home
             </Link>
-            <Link to='/broadcast' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
-              Broadcast
-            </Link>
             <Link to='/control' className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'>
               Control
             </Link>
@@ -36,7 +33,7 @@ export default function Header() {
               Preview
             </Link>
             <Link
-              to='/layout-demo'
+              to='/layouts'
               className='text-base hover:text-sea dark:hover:text-accent-blue transition-colors duration-400 tracking-refined font-medium'
             >
               Layouts
@@ -87,13 +84,6 @@ export default function Header() {
             Home
           </Link>
           <Link
-            to='/broadcast'
-            className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            Broadcast
-          </Link>
-          <Link
             to='/control'
             className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
             onClick={() => setMobileMenuOpen(false)}
@@ -115,7 +105,7 @@ export default function Header() {
             Preview
           </Link>
           <Link
-            to='/layout-demo'
+            to='/layouts'
             className='text-lg font-medium hover:text-sea dark:hover:text-accent-blue transition-colors'
             onClick={() => setMobileMenuOpen(false)}
           >

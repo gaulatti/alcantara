@@ -6,10 +6,14 @@ import { PrismaService } from '../prisma.service';
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
+  private static readonly RELOJ_PROGRAM_ID = 'reloj';
+  private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
+  private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
+  private static readonly BROADCAST_SETTINGS_ID = 1;
   private eventSubjects = new Map<string, Subject<any>>();
 
   constructor(private prisma: PrismaService) {
-    this.initializeProgramState(ProgramService.DEFAULT_PROGRAM_ID);
+    this.ensureBuiltinPrograms();
   }
 
   private async initializeProgramState(programId: string) {
@@ -18,6 +22,149 @@ export class ProgramService {
       update: {},
       create: { programId, activeSceneId: null },
     });
+  }
+
+  private async ensureBuiltinPrograms() {
+    await this.initializeProgramState(ProgramService.DEFAULT_PROGRAM_ID);
+    await this.ensureRelojProgramConfigured();
+    await this.ensureBroadcastSettings();
+  }
+
+  private async ensureBroadcastSettings() {
+    return this.prisma.broadcastSettings.upsert({
+      where: { id: ProgramService.BROADCAST_SETTINGS_ID },
+      update: {},
+      create: {
+        id: ProgramService.BROADCAST_SETTINGS_ID,
+        timeOverrideEnabled: false,
+      },
+    });
+  }
+
+  async getBroadcastSettings() {
+    return this.ensureBroadcastSettings();
+  }
+
+  private normalizeOverrideTime(startTime: string): string {
+    const normalized = startTime.trim();
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalized);
+    if (!match) {
+      throw new Error('startTime must be in HH:mm format');
+    }
+    return `${match[1]}:${match[2]}`;
+  }
+
+  async updateBroadcastSettings(data: {
+    enabled: boolean;
+    startTime?: string | null;
+  }) {
+    const enabled = Boolean(data.enabled);
+    let startTime: string | null = null;
+    let startedAt: Date | null = null;
+
+    if (enabled) {
+      if (!data.startTime) {
+        throw new Error('startTime is required when enabling time override');
+      }
+      startTime = this.normalizeOverrideTime(data.startTime);
+      startedAt = new Date();
+    }
+
+    const settings = await this.prisma.broadcastSettings.upsert({
+      where: { id: ProgramService.BROADCAST_SETTINGS_ID },
+      update: {
+        timeOverrideEnabled: enabled,
+        timeOverrideStartTime: startTime,
+        timeOverrideStartedAt: startedAt,
+      },
+      create: {
+        id: ProgramService.BROADCAST_SETTINGS_ID,
+        timeOverrideEnabled: enabled,
+        timeOverrideStartTime: startTime,
+        timeOverrideStartedAt: startedAt,
+      },
+    });
+
+    this.broadcastGlobalUpdate({
+      type: 'broadcast_settings_update',
+      settings,
+    });
+
+    return settings;
+  }
+
+  private async ensureRelojProgramConfigured() {
+    const state = await this.prisma.programState.upsert({
+      where: { programId: ProgramService.RELOJ_PROGRAM_ID },
+      update: {},
+      create: { programId: ProgramService.RELOJ_PROGRAM_ID, activeSceneId: null },
+      select: { id: true, activeSceneId: true },
+    });
+
+    const layout = await this.prisma.layout.upsert({
+      where: { name: ProgramService.RELOJ_LAYOUT_NAME },
+      update: {
+        componentType: 'reloj-clock',
+      },
+      create: {
+        name: ProgramService.RELOJ_LAYOUT_NAME,
+        componentType: 'reloj-clock',
+        settings: JSON.stringify({}),
+      },
+      select: { id: true },
+    });
+
+    let scene = await this.prisma.scene.findFirst({
+      where: {
+        name: ProgramService.RELOJ_SCENE_NAME,
+        layoutId: layout.id,
+      },
+      select: { id: true },
+    });
+
+    if (!scene) {
+      scene = await this.prisma.scene.create({
+        data: {
+          name: ProgramService.RELOJ_SCENE_NAME,
+          layoutId: layout.id,
+          chyronText: null,
+          metadata: JSON.stringify({ 'reloj-clock': {} }),
+        },
+        select: { id: true },
+      });
+    }
+
+    const existingAssignment = await this.prisma.programScene.findUnique({
+      where: {
+        programStateId_sceneId: {
+          programStateId: state.id,
+          sceneId: scene.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!existingAssignment) {
+      const maxPosition = await this.prisma.programScene.aggregate({
+        where: { programStateId: state.id },
+        _max: { position: true },
+      });
+
+      await this.prisma.programScene.create({
+        data: {
+          programStateId: state.id,
+          sceneId: scene.id,
+          position: (maxPosition._max.position ?? -1) + 1,
+        },
+      });
+    }
+
+    if (!state.activeSceneId) {
+      await this.prisma.programState.update({
+        where: { id: state.id },
+        data: { activeSceneId: scene.id },
+      });
+    }
   }
 
   private getEventSubject(programId: string) {
@@ -63,6 +210,8 @@ export class ProgramService {
   }
 
   async listPrograms() {
+    await this.ensureBuiltinPrograms();
+
     return this.prisma.programState.findMany({
       orderBy: { programId: 'asc' },
       include: {
@@ -82,6 +231,10 @@ export class ProgramService {
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
+    if (programId === ProgramService.RELOJ_PROGRAM_ID) {
+      await this.ensureRelojProgramConfigured();
+    }
+
     return this.getProgramStateWithScenes(programId);
   }
 
@@ -250,6 +403,12 @@ export class ProgramService {
     data: any,
   ) {
     this.getEventSubject(programId).next(data);
+  }
+
+  private broadcastGlobalUpdate(data: any) {
+    for (const subject of this.eventSubjects.values()) {
+      subject.next(data);
+    }
   }
 
   getEventStream(

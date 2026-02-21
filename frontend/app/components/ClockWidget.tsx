@@ -1,18 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import './ClockWidget.css';
+import type { GlobalTimeOverride } from '../utils/broadcastTime';
+import { formatClockParts, getOverrideClockParts } from '../utils/broadcastTime';
 
 interface ClockWidgetProps {
   showIcon?: boolean;
   iconUrl?: string;
   timezone?: string;
+  timeOverride?: GlobalTimeOverride | null;
 }
 
-export const ClockWidget: React.FC<ClockWidgetProps> = ({ showIcon = true, iconUrl, timezone = 'America/Argentina/Buenos_Aires' }) => {
+export const ClockWidget: React.FC<ClockWidgetProps> = ({
+  showIcon = true,
+  iconUrl,
+  timezone = 'America/Argentina/Buenos_Aires',
+  timeOverride = null,
+}) => {
   const [time, setTime] = useState('');
 
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
+
+      if (timeOverride) {
+        const overrideParts = getOverrideClockParts(timeOverride, now);
+        if (overrideParts) {
+          setTime(formatClockParts(overrideParts));
+          return;
+        }
+      }
+
       try {
         const timeString = now.toLocaleTimeString('es-AR', {
           timeZone: timezone,
@@ -34,7 +51,7 @@ export const ClockWidget: React.FC<ClockWidgetProps> = ({ showIcon = true, iconU
     const interval = setInterval(updateTime, 1000);
 
     return () => clearInterval(interval);
-  }, [timezone]);
+  }, [timezone, timeOverride?.startTime, timeOverride?.startedAt]);
 
   return (
     <div className='clock-widget'>

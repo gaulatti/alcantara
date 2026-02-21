@@ -28,14 +28,6 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link
-                  to='/broadcast'
-                  className='text-sm text-text-secondary dark:text-gray-300 hover:text-text-primary dark:hover:text-white transition-colors'
-                >
-                  Broadcast
-                </Link>
-              </li>
-              <li>
                 <Link to='/control' className='text-sm text-text-secondary dark:text-gray-300 hover:text-text-primary dark:hover:text-white transition-colors'>
                   Control
                 </Link>

@@ -52,8 +52,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   return (
     <div className='min-h-screen flex flex-col'>
-      <Header />
-      <main className='flex-1 flex items-center justify-center bg-light-sand dark:bg-dark-sand pt-20'>
+      <main className='flex-1 flex items-center justify-center bg-light-sand dark:bg-dark-sand p-6'>
         <div className='text-center px-4 max-w-2xl mx-auto'>
           <h1 className='text-6xl font-bold text-text-primary dark:text-text-primary mb-4'>{message}</h1>
           <p className='text-xl text-text-secondary dark:text-text-secondary mb-8'>{details}</p>
@@ -64,7 +63,6 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
           )}
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

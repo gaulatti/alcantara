@@ -6,6 +6,7 @@ import { LiveIndicator } from './LiveIndicator';
 import { Ticker } from './Ticker';
 import { ChyronHolder } from './ChyronHolder';
 import './BroadcastLayout.css';
+import type { GlobalTimeOverride } from '../utils/broadcastTime';
 
 interface BroadcastLayoutProps {
   children?: React.ReactNode;
@@ -21,7 +22,7 @@ interface BroadcastLayoutProps {
   clockIconUrl?: string;
   clockTimezone?: string;
   showLiveIndicator?: boolean;
-  liveText?: string;
+  timeOverride?: GlobalTimeOverride | null;
 }
 
 export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
@@ -38,7 +39,7 @@ export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
   clockIconUrl,
   clockTimezone,
   showLiveIndicator = true,
-  liveText = 'VIVO'
+  timeOverride = null
 }) => {
   return (
     <div className='broadcast-layout'>
@@ -46,13 +47,17 @@ export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
       <Header title={headerTitle} date={headerDate} />
 
       {/* Clock Widget - Top Left */}
-      <ClockWidget iconUrl={clockIconUrl} timezone={clockTimezone} />
+      <ClockWidget
+        iconUrl={clockIconUrl}
+        timezone={clockTimezone}
+        timeOverride={timeOverride}
+      />
 
       {/* QR Code - Middle Left */}
       <QRCodeWidget qrCodeUrl={qrCodeUrl} content={qrCodeContent} />
 
       {/* Live Indicator - Top Right */}
-      {showLiveIndicator && <LiveIndicator text={liveText} />}
+      {showLiveIndicator && <LiveIndicator />}
 
       {/* Main Content Area */}
       <div className='broadcast-content'>{children}</div>

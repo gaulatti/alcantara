@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Route } from './+types/control';
+import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../utils/timezones';
 
 interface Layout {
   id: number;
@@ -37,6 +38,28 @@ interface ProgramState {
   scenes: ProgramSceneEntry[];
 }
 
+interface BroadcastSettings {
+  id: number;
+  timeOverrideEnabled: boolean;
+  timeOverrideStartTime: string | null;
+  timeOverrideStartedAt: string | null;
+  updatedAt: string;
+}
+
+const hasConfigurableSceneAttributes = (componentType: string): boolean => {
+  switch (componentType) {
+    case 'ticker':
+    case 'header':
+    case 'qr-code':
+    case 'broadcast-layout':
+    case 'clock-widget':
+    case 'reloj-clock':
+      return true;
+    default:
+      return false;
+  }
+};
+
 export function meta({}: Route.MetaArgs) {
   return [{ title: 'Control Panel - TV Broadcast' }, { name: 'description', content: 'Control panel for TV broadcast overlay system' }];
 }
@@ -55,12 +78,6 @@ export default function Control() {
   const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
   const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
-  const [editingLayout, setEditingLayout] = useState<Layout | null>(null);
-  const [showLayoutModal, setShowLayoutModal] = useState(false);
-  const [newLayoutName, setNewLayoutName] = useState('');
-  const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
-  const [layoutErrors, setLayoutErrors] = useState({ name: '', components: '' });
-  const [isCreatingLayout, setIsCreatingLayout] = useState(false);
 
   const [showSceneModal, setShowSceneModal] = useState(false);
   const [newSceneName, setNewSceneName] = useState('');
@@ -68,21 +85,22 @@ export default function Control() {
   const [sceneComponentProps, setSceneComponentProps] = useState<Record<string, any>>({});
   const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
   const [isCreatingScene, setIsCreatingScene] = useState(false);
+  const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
+  const [timeOverrideInput, setTimeOverrideInput] = useState('');
+  const [broadcastTimeError, setBroadcastTimeError] = useState('');
+  const [isSavingBroadcastTime, setIsSavingBroadcastTime] = useState(false);
 
   useEffect(() => {
     fetchScenes();
     fetchLayouts();
     fetchComponentTypes();
     fetchPrograms();
+    fetchBroadcastSettings();
   }, []);
 
   useEffect(() => {
     fetchProgramState(activeProgramId);
   }, [activeProgramId]);
-
-  useEffect(() => {
-    console.log('showLayoutModal changed to:', showLayoutModal);
-  }, [showLayoutModal]);
 
   const fetchScenes = async () => {
     try {
@@ -121,6 +139,17 @@ export default function Control() {
       setPrograms(data);
     } catch (err) {
       console.error('Failed to fetch programs:', err);
+    }
+  };
+
+  const fetchBroadcastSettings = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/program/broadcast-settings');
+      const data = await res.json();
+      setBroadcastSettings(data);
+      setTimeOverrideInput(data?.timeOverrideStartTime || '');
+    } catch (err) {
+      console.error('Failed to fetch broadcast settings:', err);
     }
   };
 
@@ -235,8 +264,9 @@ export default function Control() {
       return;
     }
 
-    setSceneEditorChyronText(scene.chyronText || '');
-    setSceneEditorProps(buildComponentPropsForScene(scene));
+    const nextProps = buildComponentPropsForScene(scene);
+    setSceneEditorProps(nextProps);
+    setSceneEditorChyronText(scene.chyronText ?? nextProps.chyron?.text ?? '');
   }, [selectedScene, scenes]);
 
   const updateSceneEditorProp = (componentType: string, propName: string, value: any) => {
@@ -254,12 +284,21 @@ export default function Control() {
 
     setIsSavingSceneAttributes(true);
     try {
+      const nextMetadata: Record<string, any> = { ...sceneEditorProps };
+      if (Object.prototype.hasOwnProperty.call(nextMetadata, 'chyron')) {
+        const currentChyron = nextMetadata.chyron;
+        nextMetadata.chyron = {
+          ...(currentChyron && typeof currentChyron === 'object' ? currentChyron : {}),
+          text: sceneEditorChyronText
+        };
+      }
+
       const response = await fetch(`http://localhost:3000/scenes/${selectedScene}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chyronText: sceneEditorChyronText,
-          metadata: sceneEditorProps
+          metadata: nextMetadata
         })
       });
 
@@ -354,9 +393,9 @@ export default function Control() {
       case 'clock-widget':
         return { showIcon: true, iconUrl: '', timezone: 'America/Argentina/Buenos_Aires' };
       case 'live-indicator':
-        return { text: 'VIVO', animate: true };
+        return { animate: true };
       case 'logo-widget':
-        return { text: 'mr', logoUrl: '', position: 'bottom-right' };
+        return { logoUrl: '', position: 'bottom-right' };
       case 'qr-code':
         return { qrCodeUrl: '', placeholder: true, content: 'https://modoradio.cl' };
       case 'broadcast-layout':
@@ -364,11 +403,11 @@ export default function Control() {
           headerTitle: '',
           hashtag: '#ModoSanremoMR',
           url: 'modoradio.cl',
-          logoText: 'mr',
-          liveText: 'VIVO',
           qrCodeContent: 'https://modoradio.cl',
           clockTimezone: 'America/Argentina/Buenos_Aires'
         };
+      case 'reloj-clock':
+        return { timezone: 'America/Argentina/Buenos_Aires' };
       default:
         return {};
     }
@@ -451,116 +490,68 @@ export default function Control() {
     }
   };
 
-  const openLayoutModal = () => {
-    console.log('Opening layout modal - BEFORE setState');
-    setEditingLayout(null);
-    setNewLayoutName('');
-    setSelectedComponents([]);
-    setLayoutErrors({ name: '', components: '' });
-    setShowLayoutModal(true);
-    console.log('Opening layout modal - AFTER setState');
-    // Use setTimeout to log the state after it updates
-    setTimeout(() => {
-      console.log('Modal should now be visible, showLayoutModal should be true');
-    }, 100);
-  };
-
-  const openEditLayoutModal = (layout: Layout) => {
-    setEditingLayout(layout);
-    setNewLayoutName(layout.name);
-    setSelectedComponents(layout.componentType.split(',').filter(Boolean));
-    setLayoutErrors({ name: '', components: '' });
-    setShowLayoutModal(true);
-  };
-
-  const closeLayoutModal = () => {
-    setShowLayoutModal(false);
-    setEditingLayout(null);
-    setNewLayoutName('');
-    setSelectedComponents([]);
-    setLayoutErrors({ name: '', components: '' });
-  };
-
-  const toggleComponent = (componentType: string) => {
-    console.log('Toggle component:', componentType);
-    setSelectedComponents((prev) => {
-      const newSelection = prev.includes(componentType) ? prev.filter((c) => c !== componentType) : [...prev, componentType];
-      console.log('New selection:', newSelection);
-      return newSelection;
-    });
-  };
-
-  const createLayout = async () => {
-    console.log('Creating/updating layout:', { newLayoutName, selectedComponents, editingLayout });
-    const errors = { name: '', components: '' };
-
-    if (!newLayoutName.trim()) {
-      errors.name = 'Please enter a layout name';
-    }
-
-    if (selectedComponents.length === 0) {
-      errors.components = 'Please select at least one component';
-    }
-
-    if (errors.name || errors.components) {
-      console.log('Validation errors:', errors);
-      setLayoutErrors(errors);
+  const saveBroadcastTimeOverride = async () => {
+    const normalized = timeOverrideInput.trim();
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(normalized)) {
+      setBroadcastTimeError('Use HH:mm format (24h), e.g. 19:55');
       return;
     }
 
-    setIsCreatingLayout(true);
-
+    setIsSavingBroadcastTime(true);
+    setBroadcastTimeError('');
     try {
-      const payload = {
-        name: newLayoutName,
-        componentType: selectedComponents.join(','),
-        settings: { components: selectedComponents }
-      };
-
-      console.log('Sending request with payload:', payload);
-
-      const url = editingLayout ? `http://localhost:3000/layouts/${editingLayout.id}` : 'http://localhost:3000/layouts';
-      const method = editingLayout ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
+      const res = await fetch('http://localhost:3000/program/broadcast-settings', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          enabled: true,
+          startTime: normalized,
+        }),
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Server error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
       }
 
-      const result = await response.json();
-      console.log('Layout saved successfully:', result);
-
-      await fetchLayouts();
-      closeLayoutModal();
+      const updated = await res.json();
+      setBroadcastSettings(updated);
+      setTimeOverrideInput(updated.timeOverrideStartTime || normalized);
     } catch (err) {
-      console.error('Failed to save layout:', err);
-      setLayoutErrors({ ...errors, name: 'Failed to save layout. Please try again.' });
+      console.error('Failed to save broadcast time override:', err);
+      setBroadcastTimeError('Failed to apply time override. Please try again.');
     } finally {
-      setIsCreatingLayout(false);
+      setIsSavingBroadcastTime(false);
     }
   };
 
-  const deleteLayout = async (id: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this layout?')) return;
-
+  const clearBroadcastTimeOverride = async () => {
+    setIsSavingBroadcastTime(true);
+    setBroadcastTimeError('');
     try {
-      await fetch(`http://localhost:3000/layouts/${id}`, {
-        method: 'DELETE'
+      const res = await fetch('http://localhost:3000/program/broadcast-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: false,
+          startTime: null,
+        }),
       });
-      fetchLayouts();
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const updated = await res.json();
+      setBroadcastSettings(updated);
     } catch (err) {
-      console.error('Failed to delete layout:', err);
-      alert('Cannot delete layout - it may be in use by scenes');
+      console.error('Failed to clear broadcast time override:', err);
+      setBroadcastTimeError('Failed to disable time override. Please try again.');
+    } finally {
+      setIsSavingBroadcastTime(false);
     }
   };
+
+  const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
+    ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
+  );
 
   return (
     <div className='min-h-screen bg-gray-100 p-8'>
@@ -600,6 +591,9 @@ export default function Control() {
             >
               👁️ Preview Components
             </a>
+            <a href='/layouts' className='bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm font-semibold'>
+              Manage Layouts
+            </a>
           </div>
         </div>
 
@@ -623,53 +617,55 @@ export default function Control() {
           </div>
         </div>
 
-        {/* Component Types Info */}
-        <div className='bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8'>
-          <h3 className='font-bold text-blue-900 mb-2'>Available Component Types:</h3>
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-            {componentTypes.map((ct) => (
-              <div key={ct.type} className='bg-white rounded p-3'>
-                <div className='font-semibold text-blue-700'>{ct.name}</div>
-                <div className='text-sm text-gray-600'>{ct.type}</div>
-                <div className='text-xs text-gray-500 mt-1'>{ct.description}</div>
+        <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
+          <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
+            <div>
+              <h2 className='text-lg font-bold text-gray-900'>Global Broadcast Time Override</h2>
+              <p className='text-sm text-gray-600'>Applies to all programs and scenes for both clock widgets.</p>
+              <p className='text-xs text-gray-500 mt-1'>
+                {broadcastSettings?.timeOverrideEnabled
+                  ? `Active from ${broadcastSettings.timeOverrideStartTime || '--:--'} (started ${new Date(
+                      broadcastSettings.timeOverrideStartedAt || Date.now()
+                    ).toLocaleString()})`
+                  : 'Disabled (clocks use live timezone time)'}
+              </p>
+            </div>
+            <div className='flex flex-col sm:flex-row items-start sm:items-end gap-2'>
+              <div>
+                <label htmlFor='timeOverride' className='block text-xs text-gray-600 mb-1'>
+                  Start Time (HH:mm)
+                </label>
+                <input
+                  id='timeOverride'
+                  type='text'
+                  value={timeOverrideInput}
+                  onChange={(e) => {
+                    setTimeOverrideInput(e.target.value);
+                    if (broadcastTimeError) {
+                      setBroadcastTimeError('');
+                    }
+                  }}
+                  placeholder='19:55'
+                  className='border border-gray-300 rounded px-3 py-2 text-sm w-28'
+                />
               </div>
-            ))}
+              <button
+                onClick={saveBroadcastTimeOverride}
+                disabled={isSavingBroadcastTime}
+                className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold disabled:bg-blue-400 disabled:cursor-not-allowed'
+              >
+                {isSavingBroadcastTime ? 'Saving...' : 'Apply'}
+              </button>
+              <button
+                onClick={clearBroadcastTimeOverride}
+                disabled={isSavingBroadcastTime || !broadcastSettings?.timeOverrideEnabled}
+                className='bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800 text-sm font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed'
+              >
+                Disable
+              </button>
+            </div>
           </div>
-        </div>
-
-        <div className='bg-white rounded-lg shadow-lg p-6 mb-8'>
-          <h2 className='text-2xl font-bold mb-4'>Program Scenes</h2>
-          <p className='text-sm text-gray-600 mb-4'>Assign scenes to this program, then activate one at a time.</p>
-          <div className='space-y-2 max-h-64 overflow-y-auto'>
-            {programState?.scenes.length ? (
-              programState.scenes.map((programScene) => (
-                <div key={programScene.id} className='p-3 border rounded flex items-center justify-between'>
-                  <div>
-                    <div className='font-semibold'>
-                      {programScene.position + 1}. {programScene.scene.name}
-                    </div>
-                    <div className='text-sm text-gray-500'>Layout: {programScene.scene.layout.name}</div>
-                  </div>
-                  <div className='flex gap-2'>
-                    <button
-                      onClick={() => activateScene(programScene.sceneId)}
-                      className='px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm'
-                    >
-                      {selectedScene === programScene.sceneId ? 'Active' : 'Activate'}
-                    </button>
-                    <button
-                      onClick={() => removeSceneFromProgram(programScene.sceneId)}
-                      className='px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm'
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className='text-gray-500 text-sm'>No scenes assigned to this program yet.</div>
-            )}
-          </div>
+          {broadcastTimeError && <p className='text-red-600 text-sm mt-2'>{broadcastTimeError}</p>}
         </div>
 
         <div className='grid grid-cols-1 md:grid-cols-2 gap-8'>
@@ -681,7 +677,7 @@ export default function Control() {
                 + Create Scene
               </button>
             </div>
-            <div className='space-y-2 max-h-96 overflow-y-auto'>
+            <div className='space-y-2'>
               {scenes.length === 0 ? (
                 <div className='text-gray-500 text-center py-8'>No scenes yet. Create one to get started!</div>
               ) : (
@@ -769,207 +765,51 @@ export default function Control() {
             </div>
           </div>
 
-          {/* Layouts Panel */}
+          {/* Scene Attributes Panel */}
           <div className='bg-white rounded-lg shadow-lg p-6'>
-            <div className='flex justify-between items-center mb-4'>
-              <h2 className='text-2xl font-bold'>Layouts</h2>
-              <button onClick={openLayoutModal} className='bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700'>
-                + Create Layout
-              </button>
-            </div>
-            <div className='space-y-2 max-h-96 overflow-y-auto'>
-              {layouts.length === 0 ? (
-                <div className='text-gray-500 text-center py-8'>No layouts yet. Create one to get started!</div>
-              ) : (
-                layouts.map((layout) => {
-                  const components = layout.componentType.split(',').filter(Boolean);
-                  return (
-                    <div key={layout.id} className='p-4 border rounded'>
-                      <div className='flex justify-between items-start'>
-                        <div className='flex-1'>
-                          <div className='font-bold text-lg'>{layout.name}</div>
-                          <div className='text-sm text-gray-600 mt-1'>Components:</div>
-                          <div className='flex flex-wrap gap-1 mt-1'>
-                            {components.map((component) => {
-                              const ct = componentTypes.find((c) => c.type === component);
-                              return (
-                                <span key={component} className='inline-block bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded' title={ct?.description}>
-                                  {ct?.name || component}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div className='flex gap-2'>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditLayoutModal(layout);
-                            }}
-                            className='text-purple-600 hover:text-purple-800 px-2 py-1 rounded hover:bg-purple-50'
-                            title='Edit layout'
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={(e) => deleteLayout(layout.id, e)}
-                            className='text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50'
-                            title='Delete layout'
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Scene Attributes Panel */}
-        <div className='bg-white rounded-lg shadow-lg p-6 mt-8'>
-          <h2 className='text-2xl font-bold mb-4'>Edit Scene Attributes</h2>
-          {!selectedScene ? (
-            <p className='text-sm text-gray-500 mt-2'>Click on a scene above to edit all component attributes for that scene.</p>
-          ) : (
-            <div className='space-y-4'>
-              <p className='text-sm text-blue-600'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
-              <div>
-                <label className='block text-xs text-gray-600 mb-1'>Scene Chyron Text</label>
-                <input
-                  type='text'
-                  value={sceneEditorChyronText}
-                  onChange={(e) => setSceneEditorChyronText(e.target.value)}
-                  placeholder='Enter chyron text'
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500'
-                />
-              </div>
-              <div className='space-y-4 max-h-96 overflow-y-auto border rounded p-4'>
-                {Object.entries(sceneEditorProps).map(([componentType, props]) => {
-                  const compInfo = componentTypes.find((ct) => ct.type === componentType);
-                  return (
-                    <div key={componentType} className='border-b pb-4 last:border-b-0'>
-                      <h4 className='font-semibold text-md mb-2 text-gray-800'>{compInfo?.name || componentType}</h4>
-                      <ComponentPropsFields componentType={componentType} props={props} updateProp={updateSceneEditorProp} />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className='flex justify-end'>
-                <button
-                  onClick={saveSceneAttributes}
-                  disabled={isSavingSceneAttributes}
-                  className='bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed'
-                >
-                  {isSavingSceneAttributes ? 'Saving...' : 'Save Scene Attributes'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Layout Creation Modal */}
-        {showLayoutModal && (
-          <div
-            className='fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50'
-            onClick={(e) => {
-              // Close modal if clicking on backdrop
-              if (e.target === e.currentTarget) {
-                closeLayoutModal();
-              }
-            }}
-          >
-            <div className='bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto' onClick={(e) => e.stopPropagation()}>
-              <h2 className='text-2xl font-bold mb-4'>{editingLayout ? 'Edit Layout' : 'Create New Layout'}</h2>
-
-              <div className='mb-6'>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>Layout Name</label>
-                <input
-                  type='text'
-                  value={newLayoutName}
-                  onChange={(e) => {
-                    console.log('Input changed:', e.target.value);
-                    setNewLayoutName(e.target.value);
-                    if (layoutErrors.name) {
-                      setLayoutErrors({ ...layoutErrors, name: '' });
-                    }
-                  }}
-                  placeholder='Enter layout name'
-                  className={`w-full px-4 py-2 border rounded focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${
-                    layoutErrors.name ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : ''
-                  }`}
-                  autoFocus
-                />
-                {layoutErrors.name && <p className='text-red-600 text-sm mt-1'>{layoutErrors.name}</p>}
-              </div>
-
-              <div className='mb-6'>
-                <label className='block text-sm font-medium text-gray-700 mb-3'>Select Components</label>
-                <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${layoutErrors.components ? 'border-2 border-red-500 rounded p-2' : ''}`}>
-                  {componentTypes.map((ct) => (
-                    <div
-                      key={ct.type}
-                      className={`border rounded p-3 cursor-pointer transition-all ${
-                        selectedComponents.includes(ct.type) ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-200' : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => {
-                        toggleComponent(ct.type);
-                        if (layoutErrors.components) {
-                          setLayoutErrors({ ...layoutErrors, components: '' });
-                        }
-                      }}
-                    >
-                      <div className='flex items-start gap-3'>
-                        <input
-                          type='checkbox'
-                          checked={selectedComponents.includes(ct.type)}
-                          onChange={() => {
-                            toggleComponent(ct.type);
-                            if (layoutErrors.components) {
-                              setLayoutErrors({ ...layoutErrors, components: '' });
-                            }
-                          }}
-                          className='mt-1 h-4 w-4 text-purple-600 rounded focus:ring-purple-500'
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <div className='flex-1'>
-                          <div className='font-semibold text-gray-900'>{ct.name}</div>
-                          <div className='text-xs text-gray-500 mt-1'>{ct.description}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+            <h2 className='text-2xl font-bold mb-4'>Edit Scene Attributes</h2>
+            {!selectedScene ? (
+              <p className='text-sm text-gray-500 mt-2'>Click on a scene above to edit all component attributes for that scene.</p>
+            ) : (
+              <div className='space-y-4'>
+                <p className='text-sm text-blue-600'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
+                <div>
+                  <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
+                  <input
+                    type='text'
+                    value={sceneEditorChyronText}
+                    onChange={(e) => setSceneEditorChyronText(e.target.value)}
+                    placeholder='Enter chyron text'
+                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500'
+                  />
                 </div>
-                {layoutErrors.components && <p className='text-red-600 text-sm mt-2'>{layoutErrors.components}</p>}
-                {!layoutErrors.components && selectedComponents.length > 0 && (
-                  <div className='mt-3 text-sm text-purple-600'>
-                    Selected: {selectedComponents.length} component{selectedComponents.length !== 1 ? 's' : ''}
-                  </div>
-                )}
+                <div className='space-y-4 border rounded p-4'>
+                  {editableSceneComponentEntries.length === 0 && (
+                    <p className='text-sm text-gray-500'>No configurable component attributes for this scene.</p>
+                  )}
+                  {editableSceneComponentEntries.map(([componentType, props]) => {
+                    const compInfo = componentTypes.find((ct) => ct.type === componentType);
+                    return (
+                      <div key={componentType} className='border-b pb-4 last:border-b-0'>
+                        <h4 className='font-semibold text-md mb-2 text-gray-800'>{compInfo?.name || componentType}</h4>
+                        <ComponentPropsFields componentType={componentType} props={props} updateProp={updateSceneEditorProp} />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className='flex justify-end'>
+                  <button
+                    onClick={saveSceneAttributes}
+                    disabled={isSavingSceneAttributes}
+                    className='bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed'
+                  >
+                    {isSavingSceneAttributes ? 'Saving...' : 'Save Scene Attributes'}
+                  </button>
+                </div>
               </div>
-
-              <div className='flex justify-end gap-3'>
-                <button onClick={closeLayoutModal} type='button' disabled={isCreatingLayout} className='px-4 py-2 border rounded hover:bg-gray-50'>
-                  Cancel
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    console.log('Create Layout button clicked');
-                    createLayout();
-                  }}
-                  type='button'
-                  disabled={isCreatingLayout}
-                  className='bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed'
-                >
-                  {isCreatingLayout ? 'Creating...' : 'Create Layout'}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Scene Creation Modal */}
         {showSceneModal && (
@@ -1007,7 +847,12 @@ export default function Control() {
 
               {/* Layout Selection */}
               <div className='mb-6'>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>Select Layout</label>
+                <div className='flex items-center justify-between mb-2'>
+                  <label className='block text-sm font-medium text-gray-700'>Select Layout</label>
+                  <a href='/layouts' className='text-sm text-purple-600 hover:text-purple-800'>
+                    Manage layouts
+                  </a>
+                </div>
                 <select
                   value={selectedLayoutId || ''}
                   onChange={(e) => {
@@ -1078,6 +923,8 @@ function ComponentPropsFields({
   props: any;
   updateProp: (componentType: string, propName: string, value: any) => void;
 }): JSX.Element {
+  const timezoneOptions = getTimezonesSortedByOffset();
+
   switch (componentType) {
     case 'ticker':
       return (
@@ -1146,25 +993,13 @@ function ComponentPropsFields({
     case 'live-indicator':
       return (
         <div>
-          <label className='block text-xs text-gray-600 mb-1'>Text</label>
-          <input
-            type='text'
-            value={props.text || 'VIVO'}
-            onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-          />
+          <p className='text-xs text-gray-500 italic'>No configurable attributes. This component renders its SVG indicator.</p>
         </div>
       );
     case 'logo-widget':
       return (
         <div>
-          <label className='block text-xs text-gray-600 mb-1'>Logo Text</label>
-          <input
-            type='text'
-            value={props.text || 'mr'}
-            onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-          />
+          <p className='text-xs text-gray-500 italic'>No configurable attributes. This component renders its SVG logo.</p>
         </div>
       );
     case 'qr-code':
@@ -1212,15 +1047,6 @@ function ComponentPropsFields({
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
             />
           </div>
-          <div>
-            <label className='block text-xs text-gray-600 mb-1'>Logo Text</label>
-            <input
-              type='text'
-              value={props.logoText || ''}
-              onChange={(e) => updateProp(componentType, 'logoText', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-            />
-          </div>
           <div className='col-span-2'>
             <label className='block text-xs text-gray-600 mb-1'>QR Code Content</label>
             <input
@@ -1238,18 +1064,11 @@ function ComponentPropsFields({
               onChange={(e) => updateProp(componentType, 'clockTimezone', e.target.value)}
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
             >
-              <option value='America/Argentina/Buenos_Aires'>Buenos Aires (GMT-3)</option>
-              <option value='America/New_York'>New York (GMT-5)</option>
-              <option value='America/Los_Angeles'>Los Angeles (GMT-8)</option>
-              <option value='America/Mexico_City'>Mexico City (GMT-6)</option>
-              <option value='America/Sao_Paulo'>São Paulo (GMT-3)</option>
-              <option value='Europe/London'>London (GMT+0)</option>
-              <option value='Europe/Paris'>Paris (GMT+1)</option>
-              <option value='Europe/Madrid'>Madrid (GMT+1)</option>
-              <option value='Asia/Tokyo'>Tokyo (GMT+9)</option>
-              <option value='Asia/Shanghai'>Shanghai (GMT+8)</option>
-              <option value='Australia/Sydney'>Sydney (GMT+11)</option>
-              <option value='UTC'>UTC</option>
+              {timezoneOptions.map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {getTimezoneOptionLabel(timezone)}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -1263,18 +1082,28 @@ function ComponentPropsFields({
             onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
             className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
           >
-            <option value='America/Argentina/Buenos_Aires'>Buenos Aires (GMT-3)</option>
-            <option value='America/New_York'>New York (GMT-5)</option>
-            <option value='America/Los_Angeles'>Los Angeles (GMT-8)</option>
-            <option value='America/Mexico_City'>Mexico City (GMT-6)</option>
-            <option value='America/Sao_Paulo'>São Paulo (GMT-3)</option>
-            <option value='Europe/London'>London (GMT+0)</option>
-            <option value='Europe/Paris'>Paris (GMT+1)</option>
-            <option value='Europe/Madrid'>Madrid (GMT+1)</option>
-            <option value='Asia/Tokyo'>Tokyo (GMT+9)</option>
-            <option value='Asia/Shanghai'>Shanghai (GMT+8)</option>
-            <option value='Australia/Sydney'>Sydney (GMT+11)</option>
-            <option value='UTC'>UTC</option>
+            {timezoneOptions.map((timezone) => (
+              <option key={timezone} value={timezone}>
+                {getTimezoneOptionLabel(timezone)}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    case 'reloj-clock':
+      return (
+        <div>
+          <label className='block text-xs text-gray-600 mb-1'>Timezone</label>
+          <select
+            value={props.timezone || 'America/Argentina/Buenos_Aires'}
+            onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+          >
+            {timezoneOptions.map((timezone) => (
+              <option key={timezone} value={timezone}>
+                {getTimezoneOptionLabel(timezone)}
+              </option>
+            ))}
           </select>
         </div>
       );
