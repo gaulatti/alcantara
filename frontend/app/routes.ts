@@ -8,5 +8,6 @@ export default [
     route('preview', 'routes/preview.tsx'),
     route('layout-demo', 'routes/layout-demo.tsx')
   ]),
-  route('program/:id', 'routes/program.tsx')
+  route('program/:id', 'routes/program.tsx'),
+  route('overlay', 'routes/overlay.tsx')
 ] satisfies RouteConfig;
