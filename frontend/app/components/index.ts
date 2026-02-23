@@ -6,3 +6,6 @@ export { QRCodeWidget } from './QRCodeWidget';
 export { LiveIndicator } from './LiveIndicator';
 export { LogoWidget } from './LogoWidget';
 export { BroadcastLayout } from './BroadcastLayout';
+export { ToniChyron } from './ToniChyron';
+export { ToniClock } from './ToniClock';
+export { ToniLogo } from './ToniLogo';

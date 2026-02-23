@@ -1,0 +1,63 @@
+/* Fixed 1920x1080 TV Layout - Toni style lower-third chyron */
+.toni-chyron {
+    position: fixed;
+    bottom: 80px;
+    left: 0;
+    width: 1920px;
+    height: 90px;
+    background: rgba(10, 10, 10, 0.92);
+    z-index: 1001;
+    transform: translateY(110%);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+}
+
+.toni-chyron.toni-chyron-visible {
+    transform: translateY(0);
+}
+
+.toni-chyron-accent {
+    width: 8px;
+    background: #b21100;
+    flex-shrink: 0;
+}
+
+.toni-chyron-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 40px;
+    overflow: hidden;
+}
+
+.toni-chyron-text {
+    font-family: 'Libre Franklin', 'Inter', system-ui, sans-serif;
+    font-size: 42px;
+    font-weight: 600;
+    color: #ffffff;
+    white-space: nowrap;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.toni-chyron-text.is-changing {
+    opacity: 0;
+    transform: translateY(8px);
+}
+
+.toni-chyron-text.marquee {
+    animation: toniMarqueeScroll 18s linear infinite;
+}
+
+@keyframes toniMarqueeScroll {
+    0% {
+        transform: translateX(100%);
+    }
+
+    100% {
+        transform: translateX(-100%);
+    }
+}

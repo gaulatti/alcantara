@@ -1,0 +1,29 @@
+/* Fixed 1920x1080 TV Layout - Toni style digital clock */
+.toni-clock {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    background: rgba(10, 10, 10, 0.88);
+    border-left: 4px solid #b21100;
+    padding: 12px 24px;
+}
+
+.toni-clock-time {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 72px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.toni-clock-label {
+    font-family: 'Libre Franklin', system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 400;
+    color: #b21100;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 4px;
+}

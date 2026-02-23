@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
-import { BroadcastLayout, Ticker, ChyronHolder, Header, ClockWidget, QRCodeWidget, LiveIndicator, LogoWidget } from '../components';
+import { BroadcastLayout, Ticker, ChyronHolder, Header, ClockWidget, QRCodeWidget, LiveIndicator, LogoWidget, ToniChyron, ToniClock, ToniLogo } from '../components';
 import RelojClone from '../components/RelojClone';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 
@@ -212,6 +212,33 @@ export default function Program() {
                   key={componentType}
                   timezone={props.timezone || 'America/Argentina/Buenos_Aires'}
                   timeOverride={globalTimeOverride}
+                />
+              );
+            case 'toni-chyron':
+              return (
+                <ToniChyron
+                  key={componentType}
+                  text={scene.chyronText || props.text || ''}
+                  show={true}
+                  useMarquee={props.useMarquee}
+                />
+              );
+            case 'toni-clock':
+              return (
+                <ToniClock
+                  key={componentType}
+                  timezone={props.timezone || 'America/Argentina/Buenos_Aires'}
+                  showSeconds={props.showSeconds !== false}
+                  label={props.label}
+                  timeOverride={globalTimeOverride}
+                />
+              );
+            case 'toni-logo':
+              return (
+                <ToniLogo
+                  key={componentType}
+                  callsign={props.callsign || 'MR'}
+                  subtitle={props.subtitle}
                 />
               );
             case 'corner-bug':
