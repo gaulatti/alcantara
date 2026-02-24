@@ -65,6 +65,26 @@ export class LayoutsService {
       name: 'Reloj Clock',
       description: 'Analog reloj clone component',
     },
+    {
+      type: 'reloj-loop-clock',
+      name: 'Reloj Loop Clock',
+      description: 'Digital clock rotating Madrid, Sanremo, New York, Santiago every 30s',
+    },
+    {
+      type: 'toni-chyron',
+      name: 'Toni Chyron',
+      description: 'Lower-third style chyron with optional marquee behavior',
+    },
+    {
+      type: 'toni-clock',
+      name: 'Toni Clock',
+      description: 'Toni-styled digital clock with optional label and seconds',
+    },
+    {
+      type: 'toni-logo',
+      name: 'Toni Logo',
+      description: 'Toni-styled station logo/callsign block',
+    },
   ];
 
   constructor(private prisma: PrismaService) {}

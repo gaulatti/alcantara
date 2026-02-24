@@ -54,6 +54,8 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'broadcast-layout':
     case 'clock-widget':
     case 'reloj-clock':
+    case 'reloj-loop-clock':
+    case 'toni-chyron':
       return true;
     default:
       return false;
@@ -155,9 +157,7 @@ export default function Control() {
 
   const fetchProgramState = async (targetProgramId: string) => {
     try {
-      const res = await fetch(
-        `http://localhost:3000/program/${encodeURIComponent(targetProgramId)}/state`,
-      );
+      const res = await fetch(`http://localhost:3000/program/${encodeURIComponent(targetProgramId)}/state`);
       const data = await res.json();
       setProgramState(data);
       setSelectedScene(data?.activeSceneId ?? null);
@@ -198,7 +198,7 @@ export default function Control() {
       await fetch('http://localhost:3000/program', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ programId: nextProgramId }),
+        body: JSON.stringify({ programId: nextProgramId })
       });
       setProgramId(nextProgramId);
       setProgramIdInput(nextProgramId);
@@ -207,15 +207,14 @@ export default function Control() {
     }
   };
 
-  const isSceneAssigned = (sceneId: number) =>
-    !!programState?.scenes.some((programScene) => programScene.sceneId === sceneId);
+  const isSceneAssigned = (sceneId: number) => !!programState?.scenes.some((programScene) => programScene.sceneId === sceneId);
 
   const assignSceneToProgram = async (sceneId: number) => {
     try {
       await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId }),
+        body: JSON.stringify({ sceneId })
       });
       await fetchProgramState(activeProgramId);
     } catch (err) {
@@ -225,10 +224,7 @@ export default function Control() {
 
   const removeSceneFromProgram = async (sceneId: number) => {
     try {
-      await fetch(
-        `http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes/${sceneId}`,
-        { method: 'DELETE' },
-      );
+      await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes/${sceneId}`, { method: 'DELETE' });
       await fetchProgramState(activeProgramId);
     } catch (err) {
       console.error('Failed to remove scene from program:', err);
@@ -285,11 +281,14 @@ export default function Control() {
     setIsSavingSceneAttributes(true);
     try {
       const nextMetadata: Record<string, any> = { ...sceneEditorProps };
+      // If toni-chyron is present, derive chyronText from its text prop
+      const toniChyronText = nextMetadata['toni-chyron']?.text;
+      const resolvedChyronText = toniChyronText !== undefined ? toniChyronText : sceneEditorChyronText;
       if (Object.prototype.hasOwnProperty.call(nextMetadata, 'chyron')) {
         const currentChyron = nextMetadata.chyron;
         nextMetadata.chyron = {
           ...(currentChyron && typeof currentChyron === 'object' ? currentChyron : {}),
-          text: sceneEditorChyronText
+          text: resolvedChyronText
         };
       }
 
@@ -297,7 +296,7 @@ export default function Control() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chyronText: sceneEditorChyronText,
+          chyronText: resolvedChyronText,
           metadata: nextMetadata
         })
       });
@@ -408,6 +407,14 @@ export default function Control() {
         };
       case 'reloj-clock':
         return { timezone: 'America/Argentina/Buenos_Aires' };
+      case 'reloj-loop-clock':
+        return { timezone: 'Europe/Madrid' };
+      case 'toni-chyron':
+        return { text: '', useMarquee: false };
+      case 'toni-clock':
+        return {};
+      case 'toni-logo':
+        return {};
       default:
         return {};
     }
@@ -505,8 +512,8 @@ export default function Control() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: true,
-          startTime: normalized,
-        }),
+          startTime: normalized
+        })
       });
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -532,8 +539,8 @@ export default function Control() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: false,
-          startTime: null,
-        }),
+          startTime: null
+        })
       });
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -569,10 +576,7 @@ export default function Control() {
               className='border border-gray-300 rounded px-3 py-2 text-sm w-48'
               placeholder='main'
             />
-            <button
-              onClick={createOrSelectProgram}
-              className='bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 text-sm font-semibold'
-            >
+            <button onClick={createOrSelectProgram} className='bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 text-sm font-semibold'>
               Create / Select
             </button>
             <a
@@ -598,7 +602,9 @@ export default function Control() {
         </div>
 
         <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
-          <div className='text-sm text-gray-600 mb-2'>Current program: <span className='font-semibold text-gray-900'>{activeProgramId}</span></div>
+          <div className='text-sm text-gray-600 mb-2'>
+            Current program: <span className='font-semibold text-gray-900'>{activeProgramId}</span>
+          </div>
           <div className='flex flex-wrap gap-2'>
             {programs.map((program) => (
               <button
@@ -773,20 +779,20 @@ export default function Control() {
             ) : (
               <div className='space-y-4'>
                 <p className='text-sm text-blue-600'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
-                <div>
-                  <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
-                  <input
-                    type='text'
-                    value={sceneEditorChyronText}
-                    onChange={(e) => setSceneEditorChyronText(e.target.value)}
-                    placeholder='Enter chyron text'
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500'
-                  />
-                </div>
+                {!sceneEditorProps['toni-chyron'] && (
+                  <div>
+                    <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
+                    <input
+                      type='text'
+                      value={sceneEditorChyronText}
+                      onChange={(e) => setSceneEditorChyronText(e.target.value)}
+                      placeholder='Enter chyron text'
+                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500'
+                    />
+                  </div>
+                )}
                 <div className='space-y-4 border rounded p-4'>
-                  {editableSceneComponentEntries.length === 0 && (
-                    <p className='text-sm text-gray-500'>No configurable component attributes for this scene.</p>
-                  )}
+                  {editableSceneComponentEntries.length === 0 && <p className='text-sm text-gray-500'>No configurable component attributes for this scene.</p>}
                   {editableSceneComponentEntries.map(([componentType, props]) => {
                     const compInfo = componentTypes.find((ct) => ct.type === componentType);
                     return (
@@ -1107,6 +1113,54 @@ function ComponentPropsFields({
           </select>
         </div>
       );
+    case 'reloj-loop-clock':
+      return (
+        <div className='space-y-2'>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Starting Timezone</label>
+            <select
+              value={props.timezone || 'Europe/Madrid'}
+              onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            >
+              {timezoneOptions.map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {getTimezoneOptionLabel(timezone)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className='text-xs text-gray-500'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>
+        </div>
+      );
+    case 'toni-chyron':
+      return (
+        <div className='space-y-2'>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Text</label>
+            <input
+              type='text'
+              value={props.text || ''}
+              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='Chyron message'
+            />
+          </div>
+          <label className='flex items-center gap-2 text-sm text-gray-700'>
+            <input
+              type='checkbox'
+              checked={Boolean(props.useMarquee)}
+              onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
+              className='h-4 w-4'
+            />
+            Force marquee scrolling
+          </label>
+        </div>
+      );
+    case 'toni-clock':
+      return <p className='text-xs text-gray-500 italic'>Cities cycle automatically: Sanremo, New York, Madrid, Montevideo, Santiago.</p>;
+    case 'toni-logo':
+      return <p className='text-xs text-gray-500 italic'>Logo cycles automatically between station images.</p>;
     default:
       return <div className='text-xs text-gray-500 italic'>Default configuration</div>;
   }

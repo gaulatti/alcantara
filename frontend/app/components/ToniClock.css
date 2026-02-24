@@ -1,29 +1,47 @@
-/* Fixed 1920x1080 TV Layout - Toni style digital clock */
+/* Toni channel clone: WorldClocks placement + typography */
 .toni-clock {
-    display: inline-flex;
+    position: absolute;
+    top: 70px;
+    right: 232px;
+    width: 200px;
+    display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    background: rgba(10, 10, 10, 0.88);
-    border-left: 4px solid #b21100;
-    padding: 12px 24px;
+    gap: 6px;
+}
+
+.toni-clock-time-stack,
+.toni-clock-label-stack {
+    display: grid;
 }
 
 .toni-clock-time {
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    font-size: 72px;
+    grid-area: 1 / 1;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 60px;
     font-weight: 700;
     color: #ffffff;
-    letter-spacing: 0.04em;
+    letter-spacing: -0.02em;
     line-height: 1;
+    text-align: center;
     font-variant-numeric: tabular-nums;
+    opacity: 0;
+    transition: opacity 0.7s ease-in-out;
 }
 
 .toni-clock-label {
-    font-family: 'Libre Franklin', system-ui, sans-serif;
-    font-size: 18px;
-    font-weight: 400;
-    color: #b21100;
-    letter-spacing: 0.12em;
+    grid-area: 1 / 1;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.06em;
+    line-height: 1;
     text-transform: uppercase;
-    margin-top: 4px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.7s ease-in-out;
+}
+
+.toni-clock-slot--active {
+    opacity: 1;
 }
