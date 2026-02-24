@@ -82,10 +82,7 @@ export const ToniChyron: React.FC<ToniChyronProps> = ({ text = '', show = false,
         <div className={`toni-chyron-text ${isChanging ? 'is-changing' : ''} ${scrolling ? 'marquee' : ''}`}>{displayText}</div>
         <div className='toni-chyron-social-stack'>
           {SOCIALS.map((handle, i) => (
-            <div
-              key={handle}
-              className={`toni-chyron-social${i === socialIndex ? ' toni-chyron-social--active' : ''}`}
-            >
+            <div key={handle} className={`toni-chyron-social${i === socialIndex ? ' toni-chyron-social--active' : ''}`}>
               {handle}
             </div>
           ))}
