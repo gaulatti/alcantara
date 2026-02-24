@@ -9,6 +9,9 @@ export class ProgramService {
   private static readonly RELOJ_PROGRAM_ID = 'reloj';
   private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
   private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
+  private static readonly RELOJ_LOOP_PROGRAM_ID = 'reloj-loop';
+  private static readonly RELOJ_LOOP_LAYOUT_NAME = 'Reloj Loop Layout';
+  private static readonly RELOJ_LOOP_SCENE_NAME = 'Reloj Loop Scene';
   private static readonly BROADCAST_SETTINGS_ID = 1;
   private eventSubjects = new Map<string, Subject<any>>();
 
@@ -27,6 +30,7 @@ export class ProgramService {
   private async ensureBuiltinPrograms() {
     await this.initializeProgramState(ProgramService.DEFAULT_PROGRAM_ID);
     await this.ensureRelojProgramConfigured();
+    await this.ensureRelojLoopProgramConfigured();
     await this.ensureBroadcastSettings();
   }
 
@@ -167,6 +171,84 @@ export class ProgramService {
     }
   }
 
+  private async ensureRelojLoopProgramConfigured() {
+    const state = await this.prisma.programState.upsert({
+      where: { programId: ProgramService.RELOJ_LOOP_PROGRAM_ID },
+      update: {},
+      create: { programId: ProgramService.RELOJ_LOOP_PROGRAM_ID, activeSceneId: null },
+      select: { id: true, activeSceneId: true },
+    });
+
+    const layout = await this.prisma.layout.upsert({
+      where: { name: ProgramService.RELOJ_LOOP_LAYOUT_NAME },
+      update: {
+        componentType: 'reloj-loop-clock',
+      },
+      create: {
+        name: ProgramService.RELOJ_LOOP_LAYOUT_NAME,
+        componentType: 'reloj-loop-clock',
+        settings: JSON.stringify({}),
+      },
+      select: { id: true },
+    });
+
+    let scene = await this.prisma.scene.findFirst({
+      where: {
+        name: ProgramService.RELOJ_LOOP_SCENE_NAME,
+        layoutId: layout.id,
+      },
+      select: { id: true },
+    });
+
+    if (!scene) {
+      scene = await this.prisma.scene.create({
+        data: {
+          name: ProgramService.RELOJ_LOOP_SCENE_NAME,
+          layoutId: layout.id,
+          chyronText: null,
+          metadata: JSON.stringify({
+            'reloj-loop-clock': {
+              timezone: 'Europe/Madrid',
+            },
+          }),
+        },
+        select: { id: true },
+      });
+    }
+
+    const existingAssignment = await this.prisma.programScene.findUnique({
+      where: {
+        programStateId_sceneId: {
+          programStateId: state.id,
+          sceneId: scene.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!existingAssignment) {
+      const maxPosition = await this.prisma.programScene.aggregate({
+        where: { programStateId: state.id },
+        _max: { position: true },
+      });
+
+      await this.prisma.programScene.create({
+        data: {
+          programStateId: state.id,
+          sceneId: scene.id,
+          position: (maxPosition._max.position ?? -1) + 1,
+        },
+      });
+    }
+
+    if (!state.activeSceneId) {
+      await this.prisma.programState.update({
+        where: { id: state.id },
+        data: { activeSceneId: scene.id },
+      });
+    }
+  }
+
   private getEventSubject(programId: string) {
     const existing = this.eventSubjects.get(programId);
     if (existing) {
@@ -233,6 +315,8 @@ export class ProgramService {
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
     if (programId === ProgramService.RELOJ_PROGRAM_ID) {
       await this.ensureRelojProgramConfigured();
+    } else if (programId === ProgramService.RELOJ_LOOP_PROGRAM_ID) {
+      await this.ensureRelojLoopProgramConfigured();
     }
 
     return this.getProgramStateWithScenes(programId);

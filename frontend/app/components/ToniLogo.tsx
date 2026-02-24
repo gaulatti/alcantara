@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import './ToniLogo.css';
+
+const LOGOS = ['/fifthbell.png', '/hn.png', '/mi.png'];
+const INTERVAL_MS = 10000;
 
 interface ToniLogoProps {
   callsign?: string;
@@ -7,13 +10,21 @@ interface ToniLogoProps {
 }
 
 export const ToniLogo: React.FC<ToniLogoProps> = ({ callsign = 'MR', subtitle }) => {
+  const a11yLabel = subtitle ? `${callsign} ${subtitle}` : callsign;
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex((prev) => (prev + 1) % LOGOS.length);
+    }, INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className='toni-logo'>
-      <div className='toni-logo-accent' />
-      <div className='toni-logo-body'>
-        <div className='toni-logo-callsign'>{callsign}</div>
-        {subtitle && <div className='toni-logo-subtitle'>{subtitle}</div>}
-      </div>
+      {LOGOS.map((src, i) => (
+        <img key={src} src={src} alt={a11yLabel} className={`toni-logo-image${i === index ? ' toni-logo-image--active' : ''}`} />
+      ))}
     </div>
   );
 };

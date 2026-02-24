@@ -1,63 +1,234 @@
-/* Fixed 1920x1080 TV Layout - Toni style lower-third chyron */
+/* Broadcast TV lower-third — floating pill */
 .toni-chyron {
-    position: fixed;
-    bottom: 80px;
-    left: 0;
-    width: 1920px;
-    height: 90px;
-    background: rgba(10, 10, 10, 0.92);
-    z-index: 1001;
-    transform: translateY(110%);
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: absolute;
+    bottom: 52px;
+    left: 56px;
+    right: 56px;
+    height: 145px;
     display: flex;
     align-items: stretch;
     overflow: hidden;
+    z-index: 1000;
+    border-radius: 10px;
+    box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.75),
+        0 0 0 1px rgba(255, 255, 255, 0.07),
+        0 0 64px rgba(200, 30, 0, 0.3),
+        0 0 120px rgba(200, 30, 0, 0.1);
+    transform: translateY(calc(100% + 52px));
+    transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toni-chyron.toni-chyron-visible {
     transform: translateY(0);
 }
 
-.toni-chyron-accent {
-    width: 8px;
-    background: #b21100;
+/* Left colored category slug — animated red */
+.toni-chyron-slug {
     flex-shrink: 0;
-}
-
-.toni-chyron-content {
-    flex: 1;
+    width: 240px;
+    background: linear-gradient(120deg,
+            #6e0800 0%,
+            #c41200 20%,
+            #ff2200 40%,
+            #e81000 60%,
+            #ff3a1a 80%,
+            #9b0d00 100%);
+    background-size: 300% 100%;
+    animation: slugWave 4s ease-in-out infinite, slugPulse 2.5s ease-in-out infinite;
     display: flex;
     align-items: center;
-    padding: 0 40px;
+    justify-content: center;
+    padding: 0 24px;
+    position: relative;
+}
+
+/* Subtle inner highlight on slug */
+.toni-chyron-slug::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, transparent 55%);
+    pointer-events: none;
+}
+
+@keyframes slugWave {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@keyframes slugPulse {
+
+    0%,
+    100% {
+        box-shadow: inset 0 0 20px rgba(255, 80, 40, 0.15),
+            0 0 24px rgba(220, 20, 0, 0.4);
+    }
+
+    50% {
+        box-shadow: inset 0 0 40px rgba(255, 100, 60, 0.3),
+            0 0 48px rgba(255, 50, 10, 0.7),
+            0 0 80px rgba(220, 20, 0, 0.3);
+    }
+}
+
+.toni-chyron-slug-text {
+    color: #ffffff;
+    font-family: 'Encode Sans', system-ui, sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1;
+    text-shadow:
+        0 1px 6px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(255, 200, 180, 0.3);
+    position: relative;
+    z-index: 1;
+    opacity: 1;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    transform: translateY(0);
+}
+
+.toni-chyron-slug-text--fading {
+    opacity: 0;
+    transform: translateY(4px);
+}
+
+/* Gold accent divider — animated glow sweep */
+.toni-chyron-divider {
+    flex-shrink: 0;
+    width: 4px;
+    background: linear-gradient(180deg,
+            #c8962a 0%,
+            #f5c842 25%,
+            #ffe97a 50%,
+            #f5c842 75%,
+            #c8962a 100%);
+    background-size: 100% 200%;
+    animation: dividerSweep 3s ease-in-out infinite;
+    box-shadow:
+        0 0 8px rgba(245, 200, 66, 0.6),
+        0 0 20px rgba(245, 200, 66, 0.35),
+        0 0 40px rgba(245, 200, 66, 0.15);
+}
+
+@keyframes dividerSweep {
+    0% {
+        background-position: 0% 0%;
+    }
+
+    50% {
+        background-position: 0% 100%;
+    }
+
+    100% {
+        background-position: 0% 0%;
+    }
+}
+
+/* Main text field */
+.toni-chyron-content {
+    flex: 1;
+    background: linear-gradient(90deg, #141418 0%, #1c1c24 60%, #16161c 100%);
+    display: grid;
+    grid-template-rows: 1fr 65px;
+    padding: 0 56px;
     overflow: hidden;
+    position: relative;
+    justify-items: start;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Subtle top highlight edge */
+.toni-chyron-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+    pointer-events: none;
 }
 
 .toni-chyron-text {
-    font-family: 'Libre Franklin', 'Inter', system-ui, sans-serif;
-    font-size: 42px;
-    font-weight: 600;
-    color: #ffffff;
+    color: #f0f0f0;
+    font-size: 52px;
+    font-weight: 700;
+    font-family: 'Encode Sans', system-ui, sans-serif;
+    line-height: 1;
+    letter-spacing: 0.005em;
     white-space: nowrap;
-    transition: opacity 0.3s ease, transform 0.3s ease;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    transition: opacity 0.25s ease, transform 0.25s ease;
     opacity: 1;
     transform: translateY(0);
+    align-self: end;
+    padding-bottom: 2px;
+}
+
+.toni-chyron-social-stack {
+    display: grid;
+    width: 100%;
+    height: 65px;
+    align-self: stretch;
+    overflow: hidden;
+}
+
+.toni-chyron-social {
+    grid-area: 1 / 1;
+    color: rgba(200, 200, 205, 0.75);
+    font-size: 20px;
+    font-weight: 600;
+    font-family: 'Encode Sans', system-ui, sans-serif;
+    height: 65px;
+    line-height: 65px;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+    filter: blur(3px);
+    transition:
+        opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+        filter 0.6s ease;
+}
+
+.toni-chyron-social--active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
 }
 
 .toni-chyron-text.is-changing {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
 }
 
 .toni-chyron-text.marquee {
-    animation: toniMarqueeScroll 18s linear infinite;
+    display: inline-block;
+    min-width: max-content;
+    animation: marqueeFlow 22s linear infinite;
 }
 
-@keyframes toniMarqueeScroll {
-    0% {
-        transform: translateX(100%);
+@keyframes marqueeFlow {
+    from {
+        transform: translateX(1920px);
     }
 
-    100% {
+    to {
         transform: translateX(-100%);
     }
 }

@@ -10,15 +10,9 @@ import { ToniChyron, ToniClock, ToniLogo } from '../components';
 export default function Overlay() {
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
-      {/* Top-left: digital clock */}
-      <div style={{ position: 'absolute', top: '48px', left: '48px' }}>
-        <ToniClock />
-      </div>
-
-      {/* Top-right: callsign logo */}
-      <div style={{ position: 'absolute', top: '48px', right: '48px' }}>
-        <ToniLogo callsign='MR' subtitle='MODORADIO' />
-      </div>
+      {/* Top-right header block (clock + logo), matching Toni positions */}
+      <ToniClock />
+      <ToniLogo callsign='MR' subtitle='MODORADIO' />
 
       {/* Bottom: lower-third chyron */}
       <ToniChyron text='Bienvenidos a Modoradio' show={true} />

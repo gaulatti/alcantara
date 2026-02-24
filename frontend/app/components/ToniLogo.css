@@ -1,39 +1,23 @@
-/* Fixed 1920x1080 TV Layout - Toni style callsign/logo */
+/* Toni channel clone: top-right logo image */
 .toni-logo {
-    display: inline-flex;
-    align-items: stretch;
-    background: rgba(10, 10, 10, 0.92);
-    overflow: hidden;
+    position: absolute;
+    top: 64px;
+    right: 96px;
+    z-index: 50;
+    display: grid;
 }
 
-.toni-logo-accent {
-    width: 6px;
-    background: #b21100;
-    flex-shrink: 0;
+.toni-logo-image {
+    grid-area: 1 / 1;
+    display: block;
+    height: 112px;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+    opacity: 0;
+    transition: opacity 0.8s ease-in-out;
 }
 
-.toni-logo-body {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 14px 28px;
-}
-
-.toni-logo-callsign {
-    font-family: 'EB Garamond', 'Georgia', serif;
-    font-size: 64px;
-    font-weight: 700;
-    color: #ffffff;
-    line-height: 1;
-    letter-spacing: 0.06em;
-}
-
-.toni-logo-subtitle {
-    font-family: 'Libre Franklin', system-ui, sans-serif;
-    font-size: 18px;
-    font-weight: 400;
-    color: #b21100;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-top: 4px;
+.toni-logo-image--active {
+    opacity: 1;
 }

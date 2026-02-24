@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
-import { BroadcastLayout, Ticker, ChyronHolder, Header, ClockWidget, QRCodeWidget, LiveIndicator, LogoWidget, ToniChyron, ToniClock, ToniLogo } from '../components';
+import {
+  BroadcastLayout,
+  Ticker,
+  ChyronHolder,
+  Header,
+  ClockWidget,
+  QRCodeWidget,
+  LiveIndicator,
+  LogoWidget,
+  ToniChyron,
+  ToniClock,
+  ToniLogo
+} from '../components';
 import RelojClone from '../components/RelojClone';
+import RelojLoopClock from '../components/RelojLoopClock';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 
 interface Layout {
@@ -96,9 +109,7 @@ export default function Program() {
   });
 
   const globalTimeOverride: GlobalTimeOverride | null =
-    broadcastSettings?.timeOverrideEnabled &&
-    !!broadcastSettings.timeOverrideStartTime &&
-    !!broadcastSettings.timeOverrideStartedAt
+    broadcastSettings?.timeOverrideEnabled && !!broadcastSettings.timeOverrideStartTime && !!broadcastSettings.timeOverrideStartedAt
       ? {
           startTime: broadcastSettings.timeOverrideStartTime,
           startedAt: broadcastSettings.timeOverrideStartedAt
@@ -192,14 +203,7 @@ export default function Program() {
             case 'header':
               return <Header key={componentType} title={props.title || 'Header'} date={props.date || new Date().toLocaleDateString()} />;
             case 'clock-widget':
-              return (
-                <ClockWidget
-                  key={componentType}
-                  iconUrl={props.iconUrl}
-                  timezone={props.timezone}
-                  timeOverride={globalTimeOverride}
-                />
-              );
+              return <ClockWidget key={componentType} iconUrl={props.iconUrl} timezone={props.timezone} timeOverride={globalTimeOverride} />;
             case 'qr-code':
               return <QRCodeWidget key={componentType} content={props.content || 'https://example.com'} />;
             case 'live-indicator':
@@ -207,40 +211,15 @@ export default function Program() {
             case 'logo-widget':
               return <LogoWidget key={componentType} logoUrl={props.logoUrl} position={props.position} />;
             case 'reloj-clock':
-              return (
-                <RelojClone
-                  key={componentType}
-                  timezone={props.timezone || 'America/Argentina/Buenos_Aires'}
-                  timeOverride={globalTimeOverride}
-                />
-              );
+              return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
+            case 'reloj-loop-clock':
+              return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
             case 'toni-chyron':
-              return (
-                <ToniChyron
-                  key={componentType}
-                  text={scene.chyronText || props.text || ''}
-                  show={true}
-                  useMarquee={props.useMarquee}
-                />
-              );
+              return <ToniChyron key={componentType} text={scene.chyronText || props.text || ''} show={true} useMarquee={props.useMarquee} />;
             case 'toni-clock':
-              return (
-                <ToniClock
-                  key={componentType}
-                  timezone={props.timezone || 'America/Argentina/Buenos_Aires'}
-                  showSeconds={props.showSeconds !== false}
-                  label={props.label}
-                  timeOverride={globalTimeOverride}
-                />
-              );
+              return <ToniClock key={componentType} showSeconds={false} timeOverride={globalTimeOverride} />;
             case 'toni-logo':
-              return (
-                <ToniLogo
-                  key={componentType}
-                  callsign={props.callsign || 'MR'}
-                  subtitle={props.subtitle}
-                />
-              );
+              return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
             case 'corner-bug':
               return (
                 <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>
