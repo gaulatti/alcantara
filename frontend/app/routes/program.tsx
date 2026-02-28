@@ -12,11 +12,19 @@ import {
   LogoWidget,
   ToniChyron,
   ToniClock,
-  ToniLogo
+  ToniLogo,
+  Earone
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
+import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
+import {
+  buildEaroneRealtimeLookup,
+  EARONE_SANREMO_REALTIME_URL,
+  matchEaroneRealtimeEntry,
+  type EaroneRealtimeLookup
+} from '../utils/earoneRealtime';
 
 interface Layout {
   id: number;
@@ -54,6 +62,7 @@ export default function Program() {
   const programId = id ?? 'main';
   const [state, setState] = useState<ProgramState | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
+  const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
 
   useEffect(() => {
     fetch(`http://localhost:3000/program/${encodeURIComponent(programId)}/state`)
@@ -68,6 +77,43 @@ export default function Program() {
       .then((data) => setBroadcastSettings(data))
       .catch((err) => console.error('Failed to fetch broadcast settings:', err));
   }, []);
+
+  useEffect(() => {
+    const componentTypes = state?.activeScene?.layout.componentType.split(',').filter(Boolean) || [];
+    const needsEaroneRealtime = componentTypes.includes('earone');
+
+    if (!needsEaroneRealtime) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadEarone = async () => {
+      try {
+        const res = await fetch(EARONE_SANREMO_REALTIME_URL);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const payload = await res.json();
+        if (!cancelled) {
+          setEaroneLookup(buildEaroneRealtimeLookup(payload));
+        }
+      } catch (err) {
+        console.error('Failed to fetch EarOne realtime data:', err);
+      }
+    };
+
+    void loadEarone();
+    const timer = window.setInterval(() => {
+      void loadEarone();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [state?.activeScene?.id, state?.activeScene?.layout.componentType]);
 
   useSSE({
     url: `http://localhost:3000/program/${encodeURIComponent(programId)}/events`,
@@ -131,6 +177,12 @@ export default function Program() {
     } catch (err) {
       console.error('Failed to parse scene metadata:', err);
     }
+
+    const activeToniLeaf = resolveToniChyronLeaf(metadata['toni-chyron'] || {});
+    const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
+      earoneSongId: activeToniLeaf?.earoneSongId || null,
+      text: activeToniLeaf?.text || null
+    });
 
     console.log('=== RENDERING SCENE ===');
     console.log('Scene:', scene.name);
@@ -215,11 +267,29 @@ export default function Program() {
             case 'reloj-loop-clock':
               return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
             case 'toni-chyron':
-              return <ToniChyron key={componentType} text={scene.chyronText || props.text || ''} show={true} useMarquee={props.useMarquee} />;
+              return (
+                <ToniChyron
+                  key={componentType}
+                  text={props.text || scene.chyronText || ''}
+                  show={true}
+                  useMarquee={props.useMarquee}
+                  contentMode={props.contentMode}
+                  sequence={props.sequence}
+                />
+              );
             case 'toni-clock':
               return <ToniClock key={componentType} showSeconds={false} timeOverride={globalTimeOverride} />;
             case 'toni-logo':
               return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
+            case 'earone':
+              return (
+                <Earone
+                  key={componentType}
+                  label={props.label || 'EARONE'}
+                  rank={props.rank || matchedEaroneEntry?.ranking || activeToniLeaf?.earoneRank}
+                  spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
+                />
+              );
             case 'corner-bug':
               return (
                 <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>

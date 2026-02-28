@@ -85,6 +85,12 @@ export class LayoutsService {
       name: 'Toni Logo',
       description: 'Toni-styled station logo/callsign block',
     },
+    {
+      type: 'earone',
+      name: 'Earone',
+      description:
+        'Compact Toni-styled ranking box for chart position and radio spins',
+    },
   ];
 
   constructor(private prisma: PrismaService) {}

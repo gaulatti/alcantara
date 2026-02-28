@@ -9,3 +9,4 @@ export { BroadcastLayout } from './BroadcastLayout';
 export { ToniChyron } from './ToniChyron';
 export { ToniClock } from './ToniClock';
 export { ToniLogo } from './ToniLogo';
+export { Earone } from './Earone';
