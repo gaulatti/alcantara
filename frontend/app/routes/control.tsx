@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react';
+import { GripVertical } from 'lucide-react';
 import type { Route } from './+types/control';
 import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../utils/timezones';
+import {
+  countSequenceLeafItems,
+  createToniChyronSequence,
+  createToniChyronSequenceItem,
+  getToniChyronContentMode,
+  getToniChyronSequenceSelectedItemId,
+  normalizeToniChyronSequence,
+  type ToniChyronSequence,
+  type ToniChyronSequenceItem
+} from '../utils/toniChyronSequence';
 
 interface Layout {
   id: number;
@@ -46,6 +57,8 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
+type ComponentPropsMap = Record<string, any>;
+
 const hasConfigurableSceneAttributes = (componentType: string): boolean => {
   switch (componentType) {
     case 'ticker':
@@ -56,11 +69,55 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'reloj-clock':
     case 'reloj-loop-clock':
     case 'toni-chyron':
+    case 'earone':
       return true;
     default:
       return false;
   }
 };
+
+function getStoredSceneChyronText(
+  metadata: ComponentPropsMap,
+  fallbackText: string
+): string {
+  const toniProps = metadata['toni-chyron'];
+  if (toniProps && typeof toniProps === 'object' && typeof toniProps.text === 'string') {
+    return toniProps.text;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(metadata, 'chyron')) {
+    const chyronProps = metadata.chyron;
+    if (chyronProps && typeof chyronProps === 'object' && typeof chyronProps.text === 'string') {
+      return chyronProps.text;
+    }
+  }
+
+  return fallbackText;
+}
+
+function getSceneSummaryText(scene: Scene): string {
+  try {
+    const metadata = scene.metadata ? JSON.parse(scene.metadata) : {};
+    const toniProps = metadata?.['toni-chyron'];
+
+    if (toniProps && typeof toniProps === 'object') {
+      const sequence = normalizeToniChyronSequence(toniProps.sequence);
+      const contentMode = getToniChyronContentMode(toniProps.contentMode, sequence);
+
+      if (contentMode === 'sequence' && sequence) {
+        return `Sequence (${countSequenceLeafItems(sequence)} items)`;
+      }
+
+      if (typeof toniProps.text === 'string' && toniProps.text.trim()) {
+        return toniProps.text;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse scene metadata for summary:', err);
+  }
+
+  return scene.chyronText || '(none)';
+}
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: 'Control Panel - TV Broadcast' }, { name: 'description', content: 'Control panel for TV broadcast overlay system' }];
@@ -275,15 +332,20 @@ export default function Control() {
     }));
   };
 
-  const saveSceneAttributes = async () => {
+  const replaceSceneEditorComponentProps = (componentType: string, nextProps: any) => {
+    setSceneEditorProps((prev) => ({
+      ...prev,
+      [componentType]: nextProps
+    }));
+  };
+
+  const persistSceneAttributes = async (nextSceneProps: ComponentPropsMap) => {
     if (!selectedScene) return;
 
     setIsSavingSceneAttributes(true);
     try {
-      const nextMetadata: Record<string, any> = { ...sceneEditorProps };
-      // If toni-chyron is present, derive chyronText from its text prop
-      const toniChyronText = nextMetadata['toni-chyron']?.text;
-      const resolvedChyronText = toniChyronText !== undefined ? toniChyronText : sceneEditorChyronText;
+      const nextMetadata: ComponentPropsMap = { ...nextSceneProps };
+      const resolvedChyronText = getStoredSceneChyronText(nextMetadata, sceneEditorChyronText);
       if (Object.prototype.hasOwnProperty.call(nextMetadata, 'chyron')) {
         const currentChyron = nextMetadata.chyron;
         nextMetadata.chyron = {
@@ -312,6 +374,22 @@ export default function Control() {
     } finally {
       setIsSavingSceneAttributes(false);
     }
+  };
+
+  const saveSceneAttributes = async () => {
+    await persistSceneAttributes(sceneEditorProps);
+  };
+
+  const commitSceneEditorComponentProps = async (
+    componentType: string,
+    nextProps: any
+  ) => {
+    const nextSceneProps = {
+      ...sceneEditorProps,
+      [componentType]: nextProps
+    };
+    setSceneEditorProps(nextSceneProps);
+    await persistSceneAttributes(nextSceneProps);
   };
 
   const openSceneModal = () => {
@@ -344,7 +422,7 @@ export default function Control() {
 
       // If metadata is valid object with component keys, use it
       if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-        setSceneComponentProps(metadata);
+        setSceneComponentProps(buildComponentPropsForScene(scene));
       } else {
         console.warn('Invalid metadata structure, falling back to defaults');
         handleLayoutSelect(scene.layoutId);
@@ -415,6 +493,8 @@ export default function Control() {
         return {};
       case 'toni-logo':
         return {};
+      case 'earone':
+        return { label: 'EARONE', rank: '', spins: '' };
       default:
         return {};
     }
@@ -427,6 +507,13 @@ export default function Control() {
         ...prev[componentType],
         [propName]: value
       }
+    }));
+  };
+
+  const replaceSceneComponentProps = (componentType: string, nextProps: any) => {
+    setSceneComponentProps((prev) => ({
+      ...prev,
+      [componentType]: nextProps
     }));
   };
 
@@ -452,7 +539,7 @@ export default function Control() {
       const payload = {
         name: newSceneName,
         layoutId: selectedLayoutId,
-        chyronText: sceneComponentProps['chyron']?.text || '',
+        chyronText: getStoredSceneChyronText(sceneComponentProps, ''),
         metadata: sceneComponentProps // Send as object, backend will stringify
       };
 
@@ -719,7 +806,7 @@ export default function Control() {
                               <span className='inline-block px-2 py-1 rounded bg-gray-100 text-gray-600'>Not assigned</span>
                             )}
                           </div>
-                          <div className='text-sm text-gray-500 mt-1'>Text: {scene.chyronText || '(none)'}</div>
+                          <div className='text-sm text-gray-500 mt-1'>Text: {getSceneSummaryText(scene)}</div>
                         </div>
                         <div className='flex gap-2'>
                           {assigned ? (
@@ -798,7 +885,13 @@ export default function Control() {
                     return (
                       <div key={componentType} className='border-b pb-4 last:border-b-0'>
                         <h4 className='font-semibold text-md mb-2 text-gray-800'>{compInfo?.name || componentType}</h4>
-                        <ComponentPropsFields componentType={componentType} props={props} updateProp={updateSceneEditorProp} />
+                        <ComponentPropsFields
+                          componentType={componentType}
+                          props={props}
+                          updateProp={updateSceneEditorProp}
+                          replaceProps={replaceSceneEditorComponentProps}
+                          commitProps={commitSceneEditorComponentProps}
+                        />
                       </div>
                     );
                   })}
@@ -891,7 +984,12 @@ export default function Control() {
                       return (
                         <div key={componentType} className='border-b pb-4 last:border-b-0'>
                           <h4 className='font-semibold text-md mb-2 text-gray-800'>{compInfo?.name || componentType}</h4>
-                          <ComponentPropsFields componentType={componentType} props={props} updateProp={updateComponentProp} />
+                          <ComponentPropsFields
+                            componentType={componentType}
+                            props={props}
+                            updateProp={updateComponentProp}
+                            replaceProps={replaceSceneComponentProps}
+                          />
                         </div>
                       );
                     })}
@@ -923,12 +1021,16 @@ export default function Control() {
 function ComponentPropsFields({
   componentType,
   props,
-  updateProp
+  updateProp,
+  replaceProps,
+  commitProps
 }: {
   componentType: string;
   props: any;
   updateProp: (componentType: string, propName: string, value: any) => void;
-}): JSX.Element {
+  replaceProps: (componentType: string, nextProps: any) => void;
+  commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+}) {
   const timezoneOptions = getTimezonesSortedByOffset();
 
   switch (componentType) {
@@ -1135,6 +1237,177 @@ function ComponentPropsFields({
       );
     case 'toni-chyron':
       return (
+        <ToniChyronEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          replaceProps={replaceProps}
+          commitProps={commitProps}
+        />
+      );
+    case 'toni-clock':
+      return <p className='text-xs text-gray-500 italic'>Cities cycle automatically: Sanremo, New York, Madrid, Montevideo, Santiago.</p>;
+    case 'toni-logo':
+      return <p className='text-xs text-gray-500 italic'>Logo cycles automatically between station images.</p>;
+    case 'earone':
+      return (
+        <div className='space-y-2'>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Label</label>
+            <input
+              type='text'
+              value={props.label || 'EARONE'}
+              onChange={(e) => updateProp(componentType, 'label', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='EARONE'
+            />
+          </div>
+          <div className='grid grid-cols-2 gap-3'>
+            <div>
+              <label className='block text-xs text-gray-600 mb-1'>Rank</label>
+              <input
+                type='text'
+                value={props.rank || ''}
+                onChange={(e) => updateProp(componentType, 'rank', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                placeholder='Uses active sequence item'
+              />
+            </div>
+            <div>
+              <label className='block text-xs text-gray-600 mb-1'>Spins Today</label>
+              <input
+                type='text'
+                value={props.spins || ''}
+                onChange={(e) => updateProp(componentType, 'spins', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                placeholder='Uses active sequence item'
+              />
+            </div>
+          </div>
+          <p className='text-xs text-gray-500'>
+            Leave rank/spins blank to follow the active Toni chyron sequence item.
+          </p>
+        </div>
+      );
+    default:
+      return <div className='text-xs text-gray-500 italic'>Default configuration</div>;
+  }
+}
+
+function ToniChyronEditorFields({
+  componentType,
+  props,
+  updateProp,
+  replaceProps,
+  commitProps
+}: {
+  componentType: string;
+  props: any;
+  updateProp: (componentType: string, propName: string, value: any) => void;
+  replaceProps: (componentType: string, nextProps: any) => void;
+  commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+}) {
+  const normalizedSequence = normalizeToniChyronSequence(props.sequence);
+  const contentMode = getToniChyronContentMode(props.contentMode, normalizedSequence);
+
+  const applyProps = (nextProps: any) => {
+    replaceProps(componentType, nextProps);
+  };
+
+  const activateSequence = async (nextSequence: ToniChyronSequence) => {
+    const nextProps = {
+      ...props,
+      contentMode: 'sequence',
+      sequence: nextSequence
+    };
+    replaceProps(componentType, nextProps);
+    if (commitProps) {
+      await commitProps(componentType, nextProps);
+    }
+  };
+
+  return (
+    <div className='space-y-3'>
+      <div className='flex flex-wrap gap-2'>
+        <button
+          type='button'
+          onClick={() =>
+            applyProps({
+              ...props,
+              contentMode: 'text'
+            })
+          }
+          className={`px-3 py-1.5 rounded text-sm font-medium border ${
+            contentMode === 'text'
+              ? 'bg-green-600 text-white border-green-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Direct Text
+        </button>
+        <button
+          type='button'
+          onClick={() =>
+            applyProps({
+              ...props,
+              contentMode: 'sequence',
+              sequence: normalizedSequence ?? createToniChyronSequence('manual')
+            })
+          }
+          className={`px-3 py-1.5 rounded text-sm font-medium border ${
+            contentMode === 'sequence'
+              ? 'bg-green-600 text-white border-green-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Sequence
+        </button>
+      </div>
+
+      {contentMode === 'sequence' ? (
+        <div className='space-y-3'>
+          <p className='text-xs text-gray-500'>
+            Sequence mode lets you preload multiple chyron values and take them live with one tap.
+          </p>
+          <ToniChyronSequenceEditor
+            sequence={normalizedSequence ?? createToniChyronSequence('manual')}
+            onChange={(nextSequence) =>
+              applyProps({
+                ...props,
+                contentMode: 'sequence',
+                sequence: nextSequence
+              })
+            }
+            onTakeSelection={activateSequence}
+          />
+          <details className='rounded border border-dashed border-gray-300 px-3 py-2'>
+            <summary className='cursor-pointer text-xs font-medium text-gray-600'>
+              Fallback direct text
+            </summary>
+            <div className='space-y-2 pt-3'>
+              <div>
+                <label className='block text-xs text-gray-600 mb-1'>Fallback Text</label>
+                <input
+                  type='text'
+                  value={props.text || ''}
+                  onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  placeholder='Used only if the sequence is empty'
+                />
+              </div>
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={Boolean(props.useMarquee)}
+                  onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Fallback marquee
+              </label>
+            </div>
+          </details>
+        </div>
+      ) : (
         <div className='space-y-2'>
           <div>
             <label className='block text-xs text-gray-600 mb-1'>Text</label>
@@ -1156,12 +1429,429 @@ function ComponentPropsFields({
             Force marquee scrolling
           </label>
         </div>
-      );
-    case 'toni-clock':
-      return <p className='text-xs text-gray-500 italic'>Cities cycle automatically: Sanremo, New York, Madrid, Montevideo, Santiago.</p>;
-    case 'toni-logo':
-      return <p className='text-xs text-gray-500 italic'>Logo cycles automatically between station images.</p>;
-    default:
-      return <div className='text-xs text-gray-500 italic'>Default configuration</div>;
-  }
+      )}
+    </div>
+  );
+}
+
+function ToniChyronSequenceEditor({
+  sequence,
+  onChange,
+  onTakeSelection,
+  depth = 0
+}: {
+  sequence: ToniChyronSequence;
+  onChange: (nextSequence: ToniChyronSequence) => void;
+  onTakeSelection?: (nextSequence: ToniChyronSequence) => Promise<void> | void;
+  depth?: number;
+}) {
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const isNested = depth > 0;
+  const effectiveActiveItemId = getToniChyronSequenceSelectedItemId(sequence, nowMs);
+
+  useEffect(() => {
+    if (sequence.mode !== 'autoplay') {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => clearInterval(timer);
+  }, [sequence.mode, sequence.startedAt, sequence.intervalMs, sequence.loop, sequence.items.length]);
+
+  const applySequence = (nextSequence: ToniChyronSequence) => {
+    onChange({
+      ...nextSequence,
+      activeItemId:
+        nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
+          ? nextSequence.activeItemId
+          : nextSequence.items[0]?.id ?? null
+    });
+  };
+
+  const updateItem = (index: number, nextItem: ToniChyronSequenceItem) => {
+    const nextItems = sequence.items.map((item, itemIndex) => (itemIndex === index ? nextItem : item));
+    applySequence({
+      ...sequence,
+      items: nextItems
+    });
+  };
+
+  const addItem = (kind: ToniChyronSequenceItem['kind']) => {
+    const nextItem = createToniChyronSequenceItem(kind);
+    applySequence({
+      ...sequence,
+      items: [...sequence.items, nextItem],
+      activeItemId: sequence.activeItemId ?? nextItem.id,
+      startedAt: Date.now()
+    });
+  };
+
+  const removeItem = (index: number) => {
+    const removedItem = sequence.items[index];
+    if (!removedItem) {
+      return;
+    }
+
+    const nextItems = sequence.items.filter((_, itemIndex) => itemIndex !== index);
+    applySequence({
+      ...sequence,
+      items: nextItems,
+      activeItemId:
+        sequence.activeItemId === removedItem.id ? nextItems[0]?.id ?? null : sequence.activeItemId,
+      startedAt: Date.now()
+    });
+  };
+
+  const activateItem = async (itemId: string) => {
+    const nextSequence = {
+      ...sequence,
+      activeItemId: itemId,
+      startedAt: Date.now()
+    };
+    applySequence(nextSequence);
+    if (onTakeSelection) {
+      await onTakeSelection(nextSequence);
+    }
+  };
+
+  const reorderItems = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= sequence.items.length ||
+      toIndex >= sequence.items.length
+    ) {
+      return;
+    }
+
+    const nextItems = [...sequence.items];
+    const [moved] = nextItems.splice(fromIndex, 1);
+    nextItems.splice(toIndex, 0, moved);
+
+    applySequence({
+      ...sequence,
+      items: nextItems
+    });
+  };
+
+  return (
+    <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
+      <div className='flex flex-wrap items-center gap-2'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>
+          {isNested ? 'Nested Sequence' : 'Sequence'}
+        </span>
+        <button
+          type='button'
+          onClick={() =>
+            applySequence({
+              ...sequence,
+              mode: 'manual',
+              activeItemId:
+                sequence.mode === 'autoplay'
+                  ? effectiveActiveItemId ?? sequence.activeItemId
+                  : sequence.activeItemId,
+              startedAt: Date.now()
+            })
+          }
+          className={`px-2.5 py-1 rounded text-xs font-medium border ${
+            sequence.mode === 'manual'
+              ? 'bg-slate-800 text-white border-slate-800'
+              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          Manual
+        </button>
+        <button
+          type='button'
+          onClick={() =>
+            applySequence({
+              ...sequence,
+              mode: 'autoplay',
+              startedAt: Date.now()
+            })
+          }
+          className={`px-2.5 py-1 rounded text-xs font-medium border ${
+            sequence.mode === 'autoplay'
+              ? 'bg-slate-800 text-white border-slate-800'
+              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          Autoplay
+        </button>
+        {sequence.mode === 'autoplay' && (
+          <>
+            <label className='text-xs text-slate-600'>
+              Interval (ms)
+            </label>
+            <input
+              type='number'
+              min={500}
+              step={500}
+              value={sequence.intervalMs ?? 4000}
+              onChange={(e) =>
+                applySequence({
+                  ...sequence,
+                  intervalMs: Math.max(500, Number(e.target.value) || 4000),
+                  startedAt: Date.now()
+                })
+              }
+              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
+            />
+            <label className='flex items-center gap-1 text-xs text-slate-600'>
+              <input
+                type='checkbox'
+                checked={sequence.loop !== false}
+                onChange={(e) =>
+                  applySequence({
+                    ...sequence,
+                    loop: e.target.checked
+                  })
+                }
+                className='h-3.5 w-3.5'
+              />
+              Loop
+            </label>
+          </>
+        )}
+      </div>
+
+      {sequence.items.length === 0 && (
+        <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>
+      )}
+
+      <div className='space-y-3'>
+        {sequence.items.map((item, index) => {
+          const isActive = item.id === effectiveActiveItemId;
+
+          return (
+            <div
+              key={item.id}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggingIndex !== null) {
+                  reorderItems(draggingIndex, index);
+                }
+                setDraggingIndex(null);
+              }}
+              className={`rounded border p-3 ${
+                isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <div className='flex flex-wrap items-center gap-2'>
+                <span
+                  draggable
+                  onDragStart={() => setDraggingIndex(index)}
+                  onDragEnd={() => setDraggingIndex(null)}
+                  className='cursor-grab select-none rounded border border-dashed border-slate-300 p-2 text-slate-500'
+                  title='Drag to reorder'
+                  aria-label='Drag to reorder'
+                >
+                  <GripVertical size={14} strokeWidth={2} />
+                </span>
+                {item.kind === 'sequence' ? (
+                  <input
+                    type='text'
+                    value={item.label}
+                    onChange={(e) => updateItem(index, { ...item, label: e.target.value })}
+                    className='min-w-0 flex-1 px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                    placeholder='Sequence name'
+                  />
+                ) : (
+                  <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>
+                    Preset Item
+                  </div>
+                )}
+                <select
+                  value={item.kind}
+                  onChange={(e) => {
+                    const nextKind = e.target.value as ToniChyronSequenceItem['kind'];
+                    if (nextKind === item.kind) {
+                      return;
+                    }
+
+                    if (nextKind === 'sequence') {
+                      updateItem(index, {
+                        id: item.id,
+                        label:
+                          item.kind === 'sequence'
+                            ? item.label
+                            : item.text.trim() || 'Nested Sequence',
+                        kind: 'sequence',
+                        sequence: createToniChyronSequence('manual')
+                      });
+                      return;
+                    }
+
+                    updateItem(index, {
+                      id: item.id,
+                      kind: 'preset',
+                      text:
+                        item.kind === 'sequence'
+                          ? item.label
+                          : item.text,
+                      useMarquee: false
+                    });
+                  }}
+                  className='px-2 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                >
+                  <option value='preset'>Preset</option>
+                  <option value='sequence'>Nested</option>
+                </select>
+                <button
+                  type='button'
+                  onClick={() => {
+                    void activateItem(item.id);
+                  }}
+                  className='px-3 py-2 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700'
+                >
+                  Take
+                </button>
+                <button
+                  type='button'
+                  onClick={() => removeItem(index)}
+                  className='px-3 py-2 text-xs font-semibold rounded border border-red-200 text-red-600 hover:bg-red-50'
+                >
+                  Remove
+                </button>
+              </div>
+
+              {item.kind === 'preset' ? (
+                <div className='mt-3 space-y-2'>
+                  <div>
+                    <label className='block text-xs text-gray-600 mb-1'>Text</label>
+                    <input
+                      type='text'
+                      value={item.text}
+                      onChange={(e) =>
+                        updateItem(index, {
+                          ...item,
+                          text: e.target.value
+                        })
+                      }
+                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                      placeholder='Chyron message'
+                    />
+                  </div>
+                  <div className='grid grid-cols-2 gap-3'>
+                    <div className='col-span-2'>
+                      <label className='block text-xs text-gray-600 mb-1'>EarOne Song ID</label>
+                      <input
+                        type='text'
+                        value={item.earoneSongId || ''}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            earoneSongId: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='Matches against song.earoneSongId'
+                      />
+                    </div>
+                    <div>
+                      <label className='block text-xs text-gray-600 mb-1'>Earone Rank</label>
+                      <input
+                        type='text'
+                        value={item.earoneRank || ''}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            earoneRank: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='e.g. 4'
+                      />
+                    </div>
+                    <div>
+                      <label className='block text-xs text-gray-600 mb-1'>Earone Spins</label>
+                      <input
+                        type='text'
+                        value={item.earoneSpins || ''}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            earoneSpins: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='e.g. 124'
+                      />
+                    </div>
+                  </div>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(item.useMarquee)}
+                      onChange={(e) =>
+                        updateItem(index, {
+                          ...item,
+                          useMarquee: e.target.checked
+                        })
+                      }
+                      className='h-4 w-4'
+                    />
+                    Force marquee scrolling
+                  </label>
+                </div>
+              ) : (
+                <div className='mt-3'>
+                  <ToniChyronSequenceEditor
+                    sequence={item.sequence}
+                    depth={depth + 1}
+                    onChange={(nextNestedSequence) =>
+                      updateItem(index, {
+                        ...item,
+                        sequence: nextNestedSequence
+                      })
+                    }
+                    onTakeSelection={async (nextNestedSequence) => {
+                      const nextSequence = {
+                        ...sequence,
+                        items: sequence.items.map((sequenceItem, sequenceIndex) =>
+                          sequenceIndex === index
+                            ? {
+                                ...item,
+                                sequence: nextNestedSequence
+                              }
+                            : sequenceItem
+                        )
+                      };
+                      applySequence(nextSequence);
+                      if (onTakeSelection) {
+                        await onTakeSelection(nextSequence);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className='flex flex-wrap gap-2'>
+        <button
+          type='button'
+          onClick={() => addItem('preset')}
+          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+        >
+          + Preset
+        </button>
+        <button
+          type='button'
+          onClick={() => addItem('sequence')}
+          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+        >
+          + Nested Sequence
+        </button>
+      </div>
+    </div>
+  );
 }

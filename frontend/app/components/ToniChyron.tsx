@@ -1,5 +1,10 @@
 import React from 'react';
 import './ToniChyron.css';
+import {
+  getToniChyronContentMode,
+  normalizeToniChyronSequence,
+  resolveToniChyronContent
+} from '../utils/toniChyronSequence';
 
 const LABELS = ['EN VIVO', 'LIVE'];
 const LABEL_INTERVAL_MS = 4000;
@@ -12,11 +17,33 @@ interface ToniChyronProps {
   show?: boolean;
   useMarquee?: boolean;
   label?: string;
+  contentMode?: 'text' | 'sequence';
+  sequence?: unknown;
 }
 
-export const ToniChyron: React.FC<ToniChyronProps> = ({ text = '', show = false, useMarquee, label }) => {
+export const ToniChyron: React.FC<ToniChyronProps> = ({
+  text = '',
+  show = false,
+  useMarquee,
+  label,
+  contentMode,
+  sequence
+}) => {
   const [visible, setVisible] = React.useState(show);
-  const [displayText, setDisplayText] = React.useState(text);
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  const normalizedSequence = normalizeToniChyronSequence(sequence);
+  const isSequenceMode =
+    getToniChyronContentMode(contentMode, normalizedSequence) === 'sequence';
+  const resolvedContent = resolveToniChyronContent(
+    {
+      text,
+      useMarquee,
+      contentMode,
+      sequence: normalizedSequence
+    },
+    nowMs
+  );
+  const [displayText, setDisplayText] = React.useState(resolvedContent.text);
   const [isChanging, setIsChanging] = React.useState(false);
   const [labelIndex, setLabelIndex] = React.useState(0);
   const [labelFading, setLabelFading] = React.useState(false);
@@ -25,19 +52,31 @@ export const ToniChyron: React.FC<ToniChyronProps> = ({ text = '', show = false,
   const socialIndexRef = React.useRef(0);
 
   React.useEffect(() => {
+    if (!isSequenceMode || !normalizedSequence) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [isSequenceMode, sequence]);
+
+  React.useEffect(() => {
     setVisible(show);
   }, [show]);
 
   React.useEffect(() => {
-    if (text !== displayText) {
+    if (resolvedContent.text !== displayText) {
       setIsChanging(true);
       const timer = setTimeout(() => {
-        setDisplayText(text);
+        setDisplayText(resolvedContent.text);
         setIsChanging(false);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [text, displayText]);
+  }, [resolvedContent.text, displayText]);
 
   // Cycle label only when no external label is forced
   React.useEffect(() => {
@@ -65,11 +104,11 @@ export const ToniChyron: React.FC<ToniChyronProps> = ({ text = '', show = false,
     return () => clearInterval(timer);
   }, []);
 
-  if (!visible || !text) {
+  if (!visible || !resolvedContent.text) {
     return null;
   }
 
-  const scrolling = useMarquee ?? false;
+  const scrolling = resolvedContent.useMarquee;
   const activeLabel = label ?? LABELS[labelIndex];
 
   return (
