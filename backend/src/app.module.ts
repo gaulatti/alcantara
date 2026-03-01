@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { ProgramModule } from './program/program.module';
 import { ScenesModule } from './scenes/scenes.module';
 import { LayoutsModule } from './layouts/layouts.module';
+import { ChartsModule } from './charts/charts.module';
 
 @Module({
-  imports: [ProgramModule, ScenesModule, LayoutsModule],
+  imports: [ProgramModule, ScenesModule, LayoutsModule, ChartsModule],
   controllers: [AppController],
   providers: [AppService],
 })
