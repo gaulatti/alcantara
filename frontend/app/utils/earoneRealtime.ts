@@ -1,32 +1,25 @@
-export const EARONE_SANREMO_REALTIME_URL =
-  'https://api6.xdevel.com/xsocial/earone/public/posts/451e7ddf8b08?clientId=43671f1197420c16e74a872b491ab86674f5d728&itemsLimit=100&anonymousPublicKey=d29cb65024ea0886fa7d5659c05ef5a724b8280e';
+export const BACKEND_SANREMO_REALTIME_URL =
+  'http://localhost:3000/charts/sanremo-realtime';
 
 export interface EaroneRealtimeEntry {
-  earoneSongId: string;
-  ranking: string;
-  radioSpinsToday: string;
+  earoneSongId: string | null;
+  ranking: string | null;
+  radioSpinsToday: string | null;
   artist: string;
   title: string;
   normalizedKey: string;
+  spotifyPlays: string | null;
+  youtubeViews: string | null;
+  youtubeLikes: string | null;
 }
 
 export interface EaroneRealtimeLookup {
   bySongId: Record<string, EaroneRealtimeEntry>;
   byNormalizedText: Record<string, EaroneRealtimeEntry>;
   updatedAt: string | null;
-}
-
-interface EaroneApiSong {
-  curPos?: number;
-  spins?: number;
-  song?: {
-    earoneSongId?: number | string;
-    title?: string;
-    tracks?: Array<{
-      artists?: Array<{
-        name?: string;
-      }>;
-    }>;
+  sources?: {
+    earoneUpdatedAt: string | null;
+    escplusUpdatedAt: string | null;
   };
 }
 
@@ -45,66 +38,44 @@ export function normalizeEaroneMatchKey(value: string): string {
   return normalizeFragment(value);
 }
 
-function buildDisplayKey(artist: string, title: string): string {
-  const normalizedArtist = normalizeFragment(artist);
-  const normalizedTitle = normalizeFragment(title);
-  return [normalizedArtist, normalizedTitle].filter(Boolean).join(' ');
-}
-
-function getArtists(song: EaroneApiSong): string {
-  const artists = song.song?.tracks?.[0]?.artists ?? [];
-  return artists
-    .map((artist) => (typeof artist?.name === 'string' ? artist.name.trim() : ''))
-    .filter(Boolean)
-    .join(' & ');
-}
-
 export function buildEaroneRealtimeLookup(payload: unknown): EaroneRealtimeLookup {
-  const songs = Array.isArray((payload as any)?.result?.postTypeData?.songs)
-    ? (((payload as any).result.postTypeData.songs as EaroneApiSong[]) ?? [])
+  const entries = Array.isArray((payload as any)?.entries)
+    ? (((payload as any).entries as EaroneRealtimeEntry[]) ?? [])
     : [];
 
   const lookup: EaroneRealtimeLookup = {
     bySongId: {},
     byNormalizedText: {},
     updatedAt:
-      typeof (payload as any)?.result?.modifiedOn === 'string'
-        ? (payload as any).result.modifiedOn
-        : null
+      typeof (payload as any)?.updatedAt === 'string'
+        ? (payload as any).updatedAt
+        : null,
+    sources:
+      (payload as any)?.sources &&
+      typeof (payload as any).sources === 'object'
+        ? {
+            earoneUpdatedAt:
+              typeof (payload as any).sources.earoneUpdatedAt === 'string'
+                ? (payload as any).sources.earoneUpdatedAt
+                : null,
+            escplusUpdatedAt:
+              typeof (payload as any).sources.escplusUpdatedAt === 'string'
+                ? (payload as any).sources.escplusUpdatedAt
+                : null
+          }
+        : undefined
   };
 
-  for (const song of songs) {
-    const earoneSongIdValue = song.song?.earoneSongId;
-    const earoneSongId =
-      typeof earoneSongIdValue === 'string' || typeof earoneSongIdValue === 'number'
-        ? String(earoneSongIdValue)
-        : '';
-    const title = typeof song.song?.title === 'string' ? song.song.title.trim() : '';
-    const artist = getArtists(song);
-
-    if (!earoneSongId || !title || !artist) {
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || !entry.normalizedKey || !entry.artist || !entry.title) {
       continue;
     }
 
-    const normalizedKey = buildDisplayKey(artist, title);
-    const entry: EaroneRealtimeEntry = {
-      earoneSongId,
-      ranking:
-        typeof song.curPos === 'number' && Number.isFinite(song.curPos)
-          ? String(song.curPos)
-          : '',
-      radioSpinsToday:
-        typeof song.spins === 'number' && Number.isFinite(song.spins)
-          ? String(song.spins)
-          : '',
-      artist,
-      title,
-      normalizedKey
-    };
-
-    lookup.bySongId[earoneSongId] = entry;
-    if (normalizedKey && !lookup.byNormalizedText[normalizedKey]) {
-      lookup.byNormalizedText[normalizedKey] = entry;
+    if (entry.earoneSongId) {
+      lookup.bySongId[entry.earoneSongId] = entry;
+    }
+    if (entry.normalizedKey && !lookup.byNormalizedText[entry.normalizedKey]) {
+      lookup.byNormalizedText[entry.normalizedKey] = entry;
     }
   }
 

@@ -20,8 +20,8 @@ import RelojLoopClock from '../components/RelojLoopClock';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import {
+  BACKEND_SANREMO_REALTIME_URL,
   buildEaroneRealtimeLookup,
-  EARONE_SANREMO_REALTIME_URL,
   matchEaroneRealtimeEntry,
   type EaroneRealtimeLookup
 } from '../utils/earoneRealtime';
@@ -90,7 +90,7 @@ export default function Program() {
 
     const loadEarone = async () => {
       try {
-        const res = await fetch(EARONE_SANREMO_REALTIME_URL);
+        const res = await fetch(BACKEND_SANREMO_REALTIME_URL);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
