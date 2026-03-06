@@ -36,7 +36,6 @@ jobs:
     needs: build
 
     steps:
-
       - name: Deploy to on-premises host
         uses: appleboy/ssh-action@v1.2.0
         with:
