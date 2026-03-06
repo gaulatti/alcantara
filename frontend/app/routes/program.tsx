@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
 import {
@@ -17,8 +17,15 @@ import {
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
+import {
+  SceneTransitionOverlay
+} from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
+import {
+  getSceneTransitionPreset,
+  type SceneTransitionPreset
+} from '../utils/sceneTransitions';
 import {
   BACKEND_SANREMO_REALTIME_URL,
   buildEaroneRealtimeLookup,
@@ -57,19 +64,50 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
+interface SceneChangeEvent {
+  type: 'scene_change';
+  transitionId?: string | null;
+  state: ProgramState;
+}
+
+interface ActiveTransition {
+  sequence: number;
+  preset: SceneTransitionPreset;
+}
+
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
   const [state, setState] = useState<ProgramState | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
+  const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
+  const transitionTimersRef = useRef<number[]>([]);
+  const transitionSequenceRef = useRef(0);
+
+  const clearTransitionTimers = () => {
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
+  };
 
   useEffect(() => {
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
+    setActiveTransition(null);
+    setState(null);
+
     fetch(`http://localhost:3000/program/${encodeURIComponent(programId)}/state`)
       .then((res) => res.json())
       .then((data) => setState(data))
       .catch((err) => console.error('Failed to fetch initial state:', err));
   }, [programId]);
+
+  useEffect(() => {
+    return () => {
+      transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      transitionTimersRef.current = [];
+    };
+  }, []);
 
   useEffect(() => {
     fetch('http://localhost:3000/program/broadcast-settings')
@@ -119,10 +157,41 @@ export default function Program() {
     url: `http://localhost:3000/program/${encodeURIComponent(programId)}/events`,
     onMessage: (data) => {
       if (data.type === 'scene_change') {
-        setState(data.state);
+        const event = data as SceneChangeEvent;
+        const preset = getSceneTransitionPreset(event.transitionId);
+        const canAnimate =
+          preset.id !== 'cut' &&
+          !!state?.activeScene &&
+          !!event.state.activeScene &&
+          state.activeSceneId !== event.state.activeSceneId;
+
+        clearTransitionTimers();
+
+        if (!canAnimate) {
+          setActiveTransition(null);
+          setState(event.state);
+          return;
+        }
+
+        transitionSequenceRef.current += 1;
+        setActiveTransition({
+          sequence: transitionSequenceRef.current,
+          preset
+        });
+
+        const cutTimer = window.setTimeout(() => {
+          setState(event.state);
+        }, preset.cutPointMs);
+
+        const cleanupTimer = window.setTimeout(() => {
+          setActiveTransition(null);
+          transitionTimersRef.current = [];
+        }, preset.durationMs);
+
+        transitionTimersRef.current = [cutTimer, cleanupTimer];
       } else if (data.type === 'scene_update') {
         setState((prev) => {
-          if (!prev || !prev.activeScene) return prev;
+          if (!prev || !prev.activeScene || prev.activeScene.id !== data.scene.id) return prev;
           return {
             ...prev,
             activeScene: data.scene
@@ -130,7 +199,7 @@ export default function Program() {
         });
       } else if (data.type === 'chyron_update') {
         setState((prev) => {
-          if (!prev || !prev.activeScene) return prev;
+          if (!prev || !prev.activeScene || prev.activeScene.id !== data.scene.id) return prev;
           return {
             ...prev,
             activeScene: {
@@ -140,6 +209,8 @@ export default function Program() {
           };
         });
       } else if (data.type === 'scene_cleared') {
+        clearTransitionTimers();
+        setActiveTransition(null);
         setState((prev) => {
           if (!prev) return prev;
           return {
@@ -162,12 +233,11 @@ export default function Program() {
         }
       : null;
 
-  const renderScene = () => {
-    if (!state?.activeScene) {
+  const renderScene = (scene: Scene | null) => {
+    if (!scene) {
       return <div className='w-full h-full flex items-center justify-center text-white text-4xl'>No Active Scene</div>;
     }
 
-    const scene = state.activeScene;
     const components = scene.layout.componentType.split(',').filter(Boolean);
 
     // Parse metadata
@@ -311,7 +381,8 @@ export default function Program() {
 
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
-      {renderScene()}
+      {renderScene(state?.activeScene ?? null)}
+      {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
     </div>
   );
 }

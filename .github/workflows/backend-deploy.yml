@@ -25,17 +25,18 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -f backend/Dockerfile -t ghcr.io/${{ github.repository }}-backend:latest ./backend
+          docker build -f backend/Dockerfile -t ghcr.io/${{ github.repository }}:latest backend
 
       - name: Push Docker image to GHCR
         run: |
-          docker push ghcr.io/${{ github.repository }}-backend:latest
+          docker push ghcr.io/${{ github.repository }}:latest
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
 
     steps:
+
       - name: Deploy to on-premises host
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -45,14 +46,27 @@ jobs:
           script: |
             sh -c '
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
-            docker pull ghcr.io/${{ github.repository }}-backend:latest
+            docker pull ghcr.io/${{ github.repository }}:latest
 
             docker stop alcantara-backend || true
             docker rm alcantara-backend || true
 
+            LOG_STREAM_UUID=$(uuidgen)
+
             docker run -d --name alcantara-backend \
-            -p ${{ secrets.HTTP_PORT }}:${{ secrets.HTTP_PORT }} \
-            -e PORT="${{ secrets.HTTP_PORT }}" \
+            -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
+            -e HTTP_PORT="${{ vars.HTTP_PORT }}" \
+            -e PORT="${{ vars.HTTP_PORT }}" \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL || vars.DATABASE_URL }}" \
+            -e COGNITO_REGION="${{ vars.COGNITO_REGION || vars.AWS_REGION }}" \
+            -e COGNITO_USER_POOL_ID="${{ vars.COGNITO_USER_POOL_ID || secrets.COGNITO_USER_POOL_ID }}" \
+            -e COGNITO_CLIENT_ID="${{ vars.COGNITO_CLIENT_ID || secrets.COGNITO_CLIENT_ID }}" \
+            -e CONTAINERIZED=true \
             --restart=always \
-            ghcr.io/${{ github.repository }}-backend:latest
+            --log-driver=awslogs \
+            --log-opt awslogs-region=${{ vars.AWS_REGION }} \
+            --log-opt awslogs-group=${{ vars.LOGS_GROUP }} \
+            --log-opt awslogs-stream="$LOG_STREAM_UUID" \
+            -v ~/.aws:/root/.aws:ro \
+            ghcr.io/${{ github.repository }}:latest
             '

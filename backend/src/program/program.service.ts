@@ -408,6 +408,7 @@ export class ProgramService {
   async activateScene(
     sceneId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    transitionId?: string | null,
   ) {
     const state = await this.prisma.programState.upsert({
       where: { programId },
@@ -439,8 +440,14 @@ export class ProgramService {
       },
     });
 
+    const normalizedTransitionId =
+      typeof transitionId === 'string' && transitionId.trim()
+        ? transitionId.trim()
+        : null;
+
     this.broadcastUpdate(programId, {
       type: 'scene_change',
+      transitionId: normalizedTransitionId,
       state: updatedState,
     });
 

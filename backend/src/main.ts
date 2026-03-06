@@ -6,6 +6,12 @@ import {
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const configuredPort = Number.parseInt(
+    process.env.PORT ?? process.env.HTTP_PORT ?? '3000',
+    10,
+  );
+  const port = Number.isNaN(configuredPort) ? 3000 : configuredPort;
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),
@@ -30,6 +36,6 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  await app.listen(3000, '0.0.0.0');
+  await app.listen(port, '0.0.0.0');
 }
 bootstrap();
