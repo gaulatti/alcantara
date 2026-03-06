@@ -1,0 +1,2700 @@
+.scene-transition-overlay {
+  --scene-transition-duration: 1450ms;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5000;
+}
+
+.scene-transition-overlay::before {
+  content: '';
+  position: absolute;
+  inset: -14%;
+  background:
+    radial-gradient(circle at 20% 40%, rgba(255, 80, 36, 0.2) 0%, transparent 36%),
+    radial-gradient(circle at 78% 58%, rgba(255, 200, 92, 0.16) 0%, transparent 34%);
+  opacity: 0;
+  animation: sceneTransitionPulse var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__vignette,
+.scene-transition-overlay__aurora,
+.scene-transition-overlay__equalizer,
+.scene-transition-overlay__beam,
+.scene-transition-overlay__spine,
+.scene-transition-overlay__flash,
+.scene-transition-overlay__reveal,
+.scene-transition-overlay__glint {
+  position: absolute;
+  inset: 0;
+}
+
+.scene-transition-overlay__vignette {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 36%, rgba(8, 8, 14, 0.48) 74%, rgba(5, 5, 8, 0.82) 100%),
+    linear-gradient(180deg, rgba(4, 4, 7, 0.2) 0%, rgba(8, 8, 12, 0.5) 100%);
+  opacity: 0;
+  animation: sceneTransitionVignette var(--scene-transition-duration) cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.scene-transition-overlay__aurora {
+  inset: -12%;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0) 22%, rgba(255, 255, 255, 0.16) 32%, rgba(255, 241, 190, 0.24) 36%, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(115deg, rgba(255, 0, 0, 0) 35%, rgba(255, 80, 32, 0.18) 46%, rgba(255, 210, 92, 0.16) 54%, rgba(255, 0, 0, 0) 64%);
+  transform: translateX(-34%) skewX(-18deg);
+  opacity: 0;
+  animation: sceneTransitionAurora var(--scene-transition-duration) cubic-bezier(0.15, 0.8, 0.2, 1) forwards;
+}
+
+.scene-transition-overlay__equalizer {
+  top: 16%;
+  bottom: 16%;
+  left: -4%;
+  right: -4%;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0 18px,
+      rgba(255, 255, 255, 0.06) 18px 28px,
+      rgba(255, 220, 128, 0.12) 28px 36px,
+      rgba(255, 255, 255, 0) 36px 56px
+    );
+  transform: translateX(-6%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.9) 18%, rgba(0, 0, 0, 0.9) 82%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.9) 18%, rgba(0, 0, 0, 0.9) 82%, transparent 100%);
+  animation: sceneTransitionEqualizer var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__beam {
+  inset: -12% auto -12% auto;
+  width: 36%;
+  border-radius: 18px;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.22) 14%, rgba(255, 235, 180, 0.5) 24%, rgba(255, 80, 24, 0.4) 48%, rgba(88, 8, 0, 0.92) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 24%, rgba(0, 0, 0, 0.12) 100%);
+  box-shadow:
+    0 0 30px rgba(255, 74, 24, 0.22),
+    0 0 56px rgba(255, 190, 88, 0.16);
+}
+
+.scene-transition-overlay__beam::before,
+.scene-transition-overlay__beam::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform: skewX(-16deg);
+}
+
+.scene-transition-overlay__beam::before {
+  left: 8%;
+  width: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76) 0%, rgba(255, 255, 255, 0.12) 100%);
+}
+
+.scene-transition-overlay__beam::after {
+  right: 5%;
+  width: 6px;
+  background: linear-gradient(180deg, rgba(255, 208, 124, 0.8) 0%, rgba(255, 80, 24, 0.2) 100%);
+}
+
+.scene-transition-overlay__beam--far-left {
+  left: -26%;
+  transform: skewX(-18deg) translateX(0);
+  animation: sceneTransitionBeamFarLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__beam--left {
+  left: -20%;
+  transform: skewX(-18deg) translateX(0);
+  animation: sceneTransitionBeamLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__beam--right {
+  right: -22%;
+  transform: skewX(-18deg) translateX(0) scaleX(-1);
+  animation: sceneTransitionBeamRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__beam--far-right {
+  right: -30%;
+  transform: skewX(-18deg) translateX(0) scaleX(-1);
+  animation: sceneTransitionBeamFarRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__spine {
+  left: 50%;
+  right: auto;
+  width: 10%;
+  transform: translateX(-50%) scaleX(0.08);
+  border-radius: 14px;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(110, 12, 0, 0.95) 0%, rgba(255, 138, 54, 0.88) 34%, rgba(255, 244, 198, 0.96) 50%, rgba(255, 138, 54, 0.88) 66%, rgba(110, 12, 0, 0.95) 100%);
+  box-shadow:
+    0 0 30px rgba(255, 108, 44, 0.45),
+    0 0 90px rgba(255, 216, 124, 0.32);
+  animation: sceneTransitionSpine var(--scene-transition-duration) cubic-bezier(0.18, 0.9, 0.25, 1) forwards;
+}
+
+.scene-transition-overlay__flash {
+  inset: -12%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.96) 0%, rgba(255, 245, 214, 0.88) 8%, rgba(255, 204, 112, 0.34) 17%, rgba(255, 92, 24, 0.18) 26%, rgba(255, 255, 255, 0) 40%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 24%, rgba(255, 247, 228, 0.46) 50%, rgba(255, 255, 255, 0) 76%);
+  filter: blur(10px);
+  animation: sceneTransitionFlash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__reveal {
+  inset: -6%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(12, 12, 18, 0.98) 0%, rgba(18, 18, 28, 0.86) 46%, rgba(255, 255, 255, 0) 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 18%);
+}
+
+.scene-transition-overlay__reveal--left {
+  clip-path: polygon(0 0, 46% 0, 68% 100%, 0 100%);
+  transform: translateX(0) skewX(-14deg);
+  animation: sceneTransitionRevealLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__reveal--center {
+  left: 22%;
+  right: 22%;
+  clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+  background:
+    linear-gradient(90deg, rgba(16, 16, 24, 0.94) 0%, rgba(28, 28, 42, 0.62) 44%, rgba(255, 255, 255, 0) 58%),
+    linear-gradient(180deg, rgba(255, 214, 120, 0.15) 0%, rgba(255, 255, 255, 0) 28%);
+  animation: sceneTransitionRevealCenter var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__reveal--right {
+  clip-path: polygon(34% 0, 100% 0, 100% 100%, 12% 100%);
+  transform: translateX(0) skewX(-14deg) scaleX(-1);
+  animation: sceneTransitionRevealRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__glint {
+  left: -18%;
+  right: -18%;
+  height: 16%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0.08) 28%, rgba(255, 245, 220, 0.52) 42%, rgba(255, 255, 255, 0.08) 56%, rgba(255, 255, 255, 0) 68%);
+  filter: blur(6px);
+}
+
+.scene-transition-overlay__glint--top {
+  top: 12%;
+  transform: translateX(-12%) skewX(-18deg);
+  animation: sceneTransitionGlintTop var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__glint--bottom {
+  bottom: 10%;
+  transform: translateX(8%) skewX(-18deg);
+  animation: sceneTransitionGlintBottom var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__veil,
+.scene-transition-overlay__halo,
+.scene-transition-overlay__iris,
+.scene-transition-overlay__sweep,
+.scene-transition-overlay__crescent,
+.scene-transition-overlay__curtain,
+.scene-transition-overlay__strobe,
+.scene-transition-overlay__spark,
+.scene-transition-overlay__alarm-wash,
+.scene-transition-overlay__grid,
+.scene-transition-overlay__scanline,
+.scene-transition-overlay__radar-ring,
+.scene-transition-overlay__radar-sweep,
+.scene-transition-overlay__alert-panel,
+.scene-transition-overlay__data-bar,
+.scene-transition-overlay__news-flash,
+.scene-transition-overlay__studio-wash,
+.scene-transition-overlay__horizon-line,
+.scene-transition-overlay__glass-band,
+.scene-transition-overlay__studio-core,
+.scene-transition-overlay__studio-shutter,
+.scene-transition-overlay__studio-glint,
+.scene-transition-overlay__studio-flare {
+  position: absolute;
+}
+
+.scene-transition-overlay__veil {
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(18, 10, 20, 0) 18%, rgba(18, 10, 20, 0.22) 42%, rgba(6, 4, 8, 0.74) 84%, rgba(2, 2, 4, 0.94) 100%),
+    linear-gradient(180deg, rgba(14, 8, 14, 0.2) 0%, rgba(8, 5, 12, 0.68) 100%);
+  animation: sceneTransitionVeil var(--scene-transition-duration) cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.scene-transition-overlay__halo {
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.2);
+  opacity: 0;
+}
+
+.scene-transition-overlay__halo--outer {
+  width: 1340px;
+  height: 1340px;
+  border: 18px solid rgba(255, 226, 170, 0.22);
+  box-shadow:
+    0 0 28px rgba(255, 224, 160, 0.2),
+    0 0 120px rgba(255, 160, 82, 0.16),
+    inset 0 0 38px rgba(255, 255, 255, 0.06);
+  animation: sceneTransitionHaloOuter var(--scene-transition-duration) cubic-bezier(0.18, 0.92, 0.22, 1) forwards;
+}
+
+.scene-transition-overlay__halo--inner {
+  width: 880px;
+  height: 880px;
+  border: 8px solid rgba(255, 244, 214, 0.42);
+  box-shadow:
+    0 0 20px rgba(255, 245, 214, 0.28),
+    0 0 80px rgba(255, 206, 120, 0.22),
+    inset 0 0 26px rgba(255, 255, 255, 0.1);
+  animation: sceneTransitionHaloInner var(--scene-transition-duration) cubic-bezier(0.18, 0.92, 0.22, 1) forwards;
+}
+
+.scene-transition-overlay__iris {
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.1);
+  opacity: 0;
+}
+
+.scene-transition-overlay__iris--core {
+  width: 1180px;
+  height: 1180px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 248, 232, 0.96) 0%, rgba(255, 228, 168, 0.78) 8%, rgba(120, 12, 0, 0.26) 24%, rgba(12, 8, 18, 0.94) 44%, rgba(5, 4, 10, 1) 70%);
+  box-shadow:
+    0 0 38px rgba(255, 236, 186, 0.2),
+    0 0 120px rgba(255, 104, 48, 0.16);
+  animation: sceneTransitionIrisCore var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__iris--shadow {
+  width: 1480px;
+  height: 1480px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 26%, rgba(4, 4, 8, 0.18) 44%, rgba(2, 2, 6, 0.82) 62%, rgba(0, 0, 0, 0.98) 100%);
+  animation: sceneTransitionIrisShadow var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__sweep {
+  top: -20%;
+  bottom: -20%;
+  width: 32%;
+  opacity: 0;
+  filter: blur(10px);
+}
+
+.scene-transition-overlay__sweep--left {
+  left: -24%;
+  background:
+    linear-gradient(105deg, rgba(255, 255, 255, 0) 26%, rgba(255, 255, 255, 0.18) 38%, rgba(255, 236, 188, 0.5) 48%, rgba(255, 126, 58, 0.18) 58%, rgba(255, 255, 255, 0) 70%);
+  transform: skewX(-22deg) translateX(0);
+  animation: sceneTransitionSweepLeft var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__sweep--right {
+  right: -24%;
+  background:
+    linear-gradient(105deg, rgba(255, 255, 255, 0) 26%, rgba(255, 255, 255, 0.18) 38%, rgba(255, 236, 188, 0.5) 48%, rgba(255, 126, 58, 0.18) 58%, rgba(255, 255, 255, 0) 70%);
+  transform: skewX(22deg) translateX(0);
+  animation: sceneTransitionSweepRight var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__crescent {
+  left: 50%;
+  width: 820px;
+  height: 200px;
+  margin-left: -410px;
+  opacity: 0;
+  filter: blur(8px);
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 250, 236, 0.72) 0%, rgba(255, 220, 148, 0.4) 28%, rgba(255, 126, 58, 0.08) 48%, rgba(255, 255, 255, 0) 68%);
+}
+
+.scene-transition-overlay__crescent--top {
+  top: 18%;
+  animation: sceneTransitionCrescentTop var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__crescent--bottom {
+  bottom: 16%;
+  animation: sceneTransitionCrescentBottom var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__curtain {
+  top: -8%;
+  bottom: -8%;
+  width: 50%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(6, 4, 8, 0.92) 0%, rgba(20, 8, 18, 0.86) 32%, rgba(48, 12, 22, 0.3) 52%, rgba(255, 255, 255, 0) 74%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0 34px,
+      rgba(255, 255, 255, 0.03) 34px 50px,
+      rgba(255, 224, 168, 0.02) 50px 72px
+    );
+}
+
+.scene-transition-overlay__curtain--left {
+  left: -2%;
+  transform: translateX(0);
+  clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  animation: sceneTransitionCurtainLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__curtain--right {
+  right: -2%;
+  transform: translateX(0) scaleX(-1);
+  clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  animation: sceneTransitionCurtainRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__strobe {
+  inset: -12%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 246, 220, 0.72) 9%, rgba(255, 196, 112, 0.22) 18%, rgba(255, 255, 255, 0) 28%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 22%, rgba(255, 255, 255, 0.22) 50%, rgba(255, 255, 255, 0) 78%);
+  filter: blur(12px);
+  animation: sceneTransitionStrobe var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__spark {
+  width: 320px;
+  height: 28px;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 249, 236, 0.08) 18%, rgba(255, 244, 214, 0.86) 50%, rgba(255, 249, 236, 0.08) 82%, rgba(255, 255, 255, 0) 100%);
+  filter: blur(3px);
+}
+
+.scene-transition-overlay__spark--one {
+  top: 34%;
+  left: 18%;
+  transform: rotate(-18deg) scaleX(0.4);
+  animation: sceneTransitionSparkOne var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__spark--two {
+  bottom: 30%;
+  right: 16%;
+  transform: rotate(18deg) scaleX(0.4);
+  animation: sceneTransitionSparkTwo var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__alarm-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 16%),
+    radial-gradient(circle at 50% 50%, rgba(255, 72, 32, 0.12) 0%, rgba(180, 8, 0, 0.18) 22%, rgba(16, 6, 10, 0.88) 60%, rgba(4, 4, 8, 0.96) 100%),
+    linear-gradient(180deg, rgba(20, 6, 8, 0.18) 0%, rgba(8, 4, 10, 0.72) 100%);
+  animation: sceneTransitionAlarmWash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__grid {
+  inset: -4%;
+  opacity: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 74px 74px;
+  mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.92) 42%, transparent 78%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.92) 42%, transparent 78%);
+  animation: sceneTransitionGrid var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__scanline {
+  left: -6%;
+  right: -6%;
+  height: 12%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 242, 220, 0.08) 18%, rgba(255, 255, 255, 0.68) 50%, rgba(255, 242, 220, 0.08) 82%, rgba(255, 255, 255, 0) 100%);
+  filter: blur(6px);
+}
+
+.scene-transition-overlay__scanline--one {
+  top: 24%;
+  animation: sceneTransitionScanlineOne var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__scanline--two {
+  top: 58%;
+  animation: sceneTransitionScanlineTwo var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__radar-ring {
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.4);
+  opacity: 0;
+}
+
+.scene-transition-overlay__radar-ring--outer {
+  width: 1220px;
+  height: 1220px;
+  border: 2px solid rgba(255, 96, 56, 0.22);
+  box-shadow:
+    0 0 32px rgba(255, 70, 34, 0.16),
+    inset 0 0 28px rgba(255, 255, 255, 0.02);
+  animation: sceneTransitionRadarOuter var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__radar-ring--inner {
+  width: 760px;
+  height: 760px;
+  border: 2px solid rgba(255, 220, 186, 0.34);
+  box-shadow:
+    0 0 20px rgba(255, 238, 212, 0.12),
+    0 0 60px rgba(255, 90, 48, 0.14);
+  animation: sceneTransitionRadarInner var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__radar-sweep {
+  left: 50%;
+  top: 50%;
+  width: 1240px;
+  height: 1240px;
+  margin-left: -620px;
+  margin-top: -620px;
+  opacity: 0;
+  border-radius: 999px;
+  background:
+    conic-gradient(
+      from -90deg,
+      rgba(255, 255, 255, 0) 0deg,
+      rgba(255, 255, 255, 0) 282deg,
+      rgba(255, 255, 255, 0.12) 300deg,
+      rgba(255, 124, 72, 0.42) 322deg,
+      rgba(255, 240, 214, 0.84) 336deg,
+      rgba(255, 255, 255, 0) 360deg
+    );
+  filter: blur(4px);
+  animation: sceneTransitionRadarSweep var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__alert-panel {
+  top: -12%;
+  bottom: -12%;
+  width: 32%;
+  opacity: 0;
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(64, 0, 0, 0.96) 0%, rgba(180, 12, 0, 0.78) 42%, rgba(255, 228, 190, 0.26) 52%, rgba(255, 76, 32, 0.18) 58%, rgba(255, 255, 255, 0) 74%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 18%, rgba(0, 0, 0, 0.18) 100%);
+  box-shadow:
+    0 0 24px rgba(255, 76, 32, 0.16),
+    0 0 64px rgba(255, 24, 0, 0.12);
+}
+
+.scene-transition-overlay__alert-panel--left {
+  left: -24%;
+  transform: skewX(-20deg) translateX(0);
+  animation: sceneTransitionAlertLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__alert-panel--center {
+  left: 34%;
+  width: 28%;
+  transform: skewX(-20deg) scaleX(0.2);
+  animation: sceneTransitionAlertCenter var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__alert-panel--right {
+  right: -24%;
+  transform: skewX(-20deg) translateX(0) scaleX(-1);
+  animation: sceneTransitionAlertRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__data-bar {
+  left: 0;
+  right: 0;
+  height: 16%;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0 20px,
+      rgba(255, 255, 255, 0.05) 20px 24px,
+      rgba(255, 214, 176, 0.08) 24px 48px,
+      rgba(255, 255, 255, 0) 48px 72px
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 18%, rgba(8, 8, 12, 0.12) 100%);
+}
+
+.scene-transition-overlay__data-bar--top {
+  top: 0;
+  animation: sceneTransitionDataTop var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__data-bar--bottom {
+  bottom: 0;
+  animation: sceneTransitionDataBottom var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__news-flash {
+  inset: -10%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 248, 234, 0.82) 8%, rgba(255, 200, 158, 0.22) 16%, rgba(255, 255, 255, 0) 26%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 26%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0) 74%);
+  filter: blur(10px);
+  animation: sceneTransitionNewsFlash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__studio-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 18%),
+    linear-gradient(180deg, rgba(214, 232, 255, 0.06) 0%, rgba(52, 102, 168, 0.08) 22%, rgba(10, 20, 34, 0.82) 62%, rgba(4, 10, 18, 0.96) 100%),
+    radial-gradient(circle at 18% 20%, rgba(52, 138, 255, 0.08) 0%, transparent 26%),
+    radial-gradient(circle at 84% 24%, rgba(184, 226, 255, 0.08) 0%, transparent 28%);
+  animation: sceneTransitionStudioWash var(--scene-transition-duration) cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.scene-transition-overlay__horizon-line {
+  left: -8%;
+  right: -8%;
+  height: 4px;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(160, 218, 255, 0.2) 24%, rgba(255, 255, 255, 0.94) 50%, rgba(160, 218, 255, 0.2) 76%, rgba(255, 255, 255, 0) 100%);
+  box-shadow:
+    0 0 12px rgba(160, 218, 255, 0.26),
+    0 0 36px rgba(255, 255, 255, 0.12);
+}
+
+.scene-transition-overlay__horizon-line--top {
+  top: 24%;
+  animation: sceneTransitionHorizonTop var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__horizon-line--bottom {
+  bottom: 22%;
+  animation: sceneTransitionHorizonBottom var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__glass-band {
+  top: -8%;
+  bottom: -8%;
+  opacity: 0;
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0%, rgba(228, 244, 255, 0.22) 12%, rgba(152, 208, 255, 0.34) 30%, rgba(48, 120, 228, 0.16) 54%, rgba(255, 255, 255, 0) 76%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 18%, rgba(0, 0, 0, 0.08) 100%);
+  box-shadow:
+    0 0 28px rgba(88, 178, 255, 0.12),
+    0 0 80px rgba(255, 255, 255, 0.08);
+}
+
+.scene-transition-overlay__glass-band--left {
+  left: -20%;
+  width: 34%;
+  transform: skewX(-18deg) translateX(0);
+  animation: sceneTransitionGlassLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__glass-band--center {
+  left: 38%;
+  width: 24%;
+  transform: skewX(-18deg) scaleX(0.2);
+  animation: sceneTransitionGlassCenter var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__glass-band--right {
+  right: -20%;
+  width: 34%;
+  transform: skewX(-18deg) translateX(0) scaleX(-1);
+  animation: sceneTransitionGlassRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__studio-core {
+  left: 50%;
+  top: 50%;
+  width: 980px;
+  height: 980px;
+  margin-left: -490px;
+  margin-top: -490px;
+  border-radius: 999px;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(224, 244, 255, 0.82) 7%, rgba(156, 212, 255, 0.28) 16%, rgba(12, 26, 48, 0.72) 30%, rgba(4, 10, 22, 0.96) 56%, rgba(4, 8, 16, 0) 72%);
+  box-shadow:
+    0 0 24px rgba(222, 244, 255, 0.12),
+    0 0 80px rgba(120, 196, 255, 0.1);
+  animation: sceneTransitionStudioCore var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__studio-shutter {
+  top: -4%;
+  bottom: -4%;
+  width: 50%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(4, 10, 18, 0.96) 0%, rgba(14, 30, 52, 0.82) 34%, rgba(108, 176, 232, 0.16) 56%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 16%);
+}
+
+.scene-transition-overlay__studio-shutter--left {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  transform: translateX(-12%);
+  animation: sceneTransitionStudioShutterLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__studio-shutter--right {
+  right: 0;
+  clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
+  transform: translateX(12%);
+  animation: sceneTransitionStudioShutterRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__studio-glint {
+  left: -12%;
+  right: -12%;
+  height: 14%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(224, 244, 255, 0.08) 22%, rgba(255, 255, 255, 0.84) 50%, rgba(224, 244, 255, 0.08) 78%, rgba(255, 255, 255, 0) 100%);
+  filter: blur(5px);
+}
+
+.scene-transition-overlay__studio-glint--top {
+  top: 16%;
+  animation: sceneTransitionStudioGlintTop var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__studio-glint--bottom {
+  bottom: 14%;
+  animation: sceneTransitionStudioGlintBottom var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__studio-flare {
+  inset: -10%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(232, 246, 255, 0.72) 8%, rgba(176, 226, 255, 0.18) 16%, rgba(255, 255, 255, 0) 28%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 28%, rgba(255, 255, 255, 0.24) 50%, rgba(255, 255, 255, 0) 72%);
+  filter: blur(11px);
+  animation: sceneTransitionStudioFlare var(--scene-transition-duration) ease-out forwards;
+}
+
+@keyframes sceneTransitionPulse {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 0.34;
+  }
+
+  46% {
+    opacity: 0.82;
+  }
+
+  74% {
+    opacity: 0.18;
+  }
+}
+
+@keyframes sceneTransitionVignette {
+  0% {
+    opacity: 0;
+  }
+
+  22% {
+    opacity: 0.42;
+  }
+
+  48% {
+    opacity: 0.86;
+  }
+
+  72% {
+    opacity: 0.34;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionAurora {
+  0% {
+    opacity: 0;
+    transform: translateX(-34%) skewX(-18deg);
+  }
+
+  28% {
+    opacity: 0.5;
+  }
+
+  52% {
+    opacity: 0.92;
+    transform: translateX(16%) skewX(-18deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(34%) skewX(-18deg);
+  }
+}
+
+@keyframes sceneTransitionEqualizer {
+  0% {
+    opacity: 0;
+    transform: translateX(-8%);
+  }
+
+  24% {
+    opacity: 0.26;
+  }
+
+  48% {
+    opacity: 0.48;
+  }
+
+  80% {
+    opacity: 0.16;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(8%);
+  }
+}
+
+@keyframes sceneTransitionBeamFarLeft {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(-12%);
+  }
+
+  18% {
+    opacity: 0.5;
+  }
+
+  52% {
+    opacity: 0.9;
+    transform: skewX(-18deg) translateX(112%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(188%);
+  }
+}
+
+@keyframes sceneTransitionBeamLeft {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(-8%);
+  }
+
+  16% {
+    opacity: 0.62;
+  }
+
+  50% {
+    opacity: 1;
+    transform: skewX(-18deg) translateX(118%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(198%);
+  }
+}
+
+@keyframes sceneTransitionBeamRight {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(8%) scaleX(-1);
+  }
+
+  16% {
+    opacity: 0.62;
+  }
+
+  50% {
+    opacity: 1;
+    transform: skewX(-18deg) translateX(-110%) scaleX(-1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(-192%) scaleX(-1);
+  }
+}
+
+@keyframes sceneTransitionBeamFarRight {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(12%) scaleX(-1);
+  }
+
+  18% {
+    opacity: 0.5;
+  }
+
+  52% {
+    opacity: 0.9;
+    transform: skewX(-18deg) translateX(-104%) scaleX(-1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(-176%) scaleX(-1);
+  }
+}
+
+@keyframes sceneTransitionSpine {
+  0%,
+  24% {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.08);
+  }
+
+  46% {
+    opacity: 0.98;
+    transform: translateX(-50%) scaleX(1.25);
+  }
+
+  62% {
+    opacity: 0.9;
+    transform: translateX(-50%) scaleX(0.86);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.06);
+  }
+}
+
+@keyframes sceneTransitionFlash {
+  0%,
+  34% {
+    opacity: 0;
+  }
+
+  48% {
+    opacity: 0.88;
+  }
+
+  60% {
+    opacity: 0.34;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionRevealLeft {
+  0%,
+  44% {
+    opacity: 0;
+    transform: translateX(0) skewX(-14deg);
+  }
+
+  56% {
+    opacity: 0.92;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-122%) skewX(-14deg);
+  }
+}
+
+@keyframes sceneTransitionRevealCenter {
+  0%,
+  42% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+
+  56% {
+    opacity: 0.9;
+    transform: scaleX(1.02);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(0.12);
+  }
+}
+
+@keyframes sceneTransitionRevealRight {
+  0%,
+  44% {
+    opacity: 0;
+    transform: translateX(0) skewX(-14deg) scaleX(-1);
+  }
+
+  56% {
+    opacity: 0.92;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(122%) skewX(-14deg) scaleX(-1);
+  }
+}
+
+@keyframes sceneTransitionGlintTop {
+  0%,
+  54% {
+    opacity: 0;
+    transform: translateX(-12%) skewX(-18deg);
+  }
+
+  68% {
+    opacity: 0.68;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(24%) skewX(-18deg);
+  }
+}
+
+@keyframes sceneTransitionGlintBottom {
+  0%,
+  58% {
+    opacity: 0;
+    transform: translateX(8%) skewX(-18deg);
+  }
+
+  74% {
+    opacity: 0.72;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-26%) skewX(-18deg);
+  }
+}
+
+@keyframes sceneTransitionVeil {
+  0% {
+    opacity: 0;
+  }
+
+  22% {
+    opacity: 0.34;
+  }
+
+  48% {
+    opacity: 0.86;
+  }
+
+  82% {
+    opacity: 0.44;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionHaloOuter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.24);
+  }
+
+  26% {
+    opacity: 0.56;
+  }
+
+  52% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.18);
+  }
+}
+
+@keyframes sceneTransitionHaloInner {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.18);
+  }
+
+  34% {
+    opacity: 0.62;
+  }
+
+  54% {
+    opacity: 0.98;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.22);
+  }
+}
+
+@keyframes sceneTransitionIrisCore {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.08);
+  }
+
+  18% {
+    opacity: 0.26;
+  }
+
+  42% {
+    opacity: 0.88;
+    transform: translate(-50%, -50%) scale(0.84);
+  }
+
+  52% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  68% {
+    opacity: 0.96;
+    transform: translate(-50%, -50%) scale(0.82);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.02);
+  }
+}
+
+@keyframes sceneTransitionIrisShadow {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.18);
+  }
+
+  34% {
+    opacity: 0.44;
+  }
+
+  52% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+}
+
+@keyframes sceneTransitionSweepLeft {
+  0% {
+    opacity: 0;
+    transform: skewX(-22deg) translateX(-12%);
+  }
+
+  24% {
+    opacity: 0.44;
+  }
+
+  46% {
+    opacity: 0.88;
+    transform: skewX(-22deg) translateX(146%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-22deg) translateX(214%);
+  }
+}
+
+@keyframes sceneTransitionSweepRight {
+  0% {
+    opacity: 0;
+    transform: skewX(22deg) translateX(12%);
+  }
+
+  24% {
+    opacity: 0.44;
+  }
+
+  46% {
+    opacity: 0.88;
+    transform: skewX(22deg) translateX(-146%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(22deg) translateX(-214%);
+  }
+}
+
+@keyframes sceneTransitionCrescentTop {
+  0%,
+  26% {
+    opacity: 0;
+    transform: translateY(-18px) scaleX(0.7);
+  }
+
+  46% {
+    opacity: 0.76;
+  }
+
+  64% {
+    opacity: 0.54;
+    transform: translateY(8px) scaleX(1.04);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-32px) scaleX(0.6);
+  }
+}
+
+@keyframes sceneTransitionCrescentBottom {
+  0%,
+  28% {
+    opacity: 0;
+    transform: translateY(18px) scaleX(0.7);
+  }
+
+  48% {
+    opacity: 0.76;
+  }
+
+  66% {
+    opacity: 0.54;
+    transform: translateY(-8px) scaleX(1.04);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(32px) scaleX(0.6);
+  }
+}
+
+@keyframes sceneTransitionCurtainLeft {
+  0%,
+  38% {
+    opacity: 0;
+    transform: translateX(-14%);
+  }
+
+  54% {
+    opacity: 0.92;
+    transform: translateX(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-112%);
+  }
+}
+
+@keyframes sceneTransitionCurtainRight {
+  0%,
+  38% {
+    opacity: 0;
+    transform: translateX(14%) scaleX(-1);
+  }
+
+  54% {
+    opacity: 0.92;
+    transform: translateX(0) scaleX(-1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(112%) scaleX(-1);
+  }
+}
+
+@keyframes sceneTransitionStrobe {
+  0%,
+  36% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 0.96;
+  }
+
+  62% {
+    opacity: 0.28;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionSparkOne {
+  0%,
+  58% {
+    opacity: 0;
+    transform: rotate(-18deg) scaleX(0.4);
+  }
+
+  70% {
+    opacity: 0.88;
+  }
+
+  100% {
+    opacity: 0;
+    transform: rotate(-18deg) scaleX(1.24);
+  }
+}
+
+@keyframes sceneTransitionSparkTwo {
+  0%,
+  62% {
+    opacity: 0;
+    transform: rotate(18deg) scaleX(0.4);
+  }
+
+  74% {
+    opacity: 0.88;
+  }
+
+  100% {
+    opacity: 0;
+    transform: rotate(18deg) scaleX(1.24);
+  }
+}
+
+@keyframes sceneTransitionAlarmWash {
+  0% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 0.42;
+  }
+
+  48% {
+    opacity: 0.88;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionGrid {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  26% {
+    opacity: 0.26;
+  }
+
+  48% {
+    opacity: 0.54;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes sceneTransitionScanlineOne {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateY(-60px);
+  }
+
+  30% {
+    opacity: 0.72;
+  }
+
+  52% {
+    opacity: 0.34;
+    transform: translateY(260px);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(420px);
+  }
+}
+
+@keyframes sceneTransitionScanlineTwo {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateY(-40px);
+  }
+
+  40% {
+    opacity: 0.76;
+  }
+
+  58% {
+    opacity: 0.3;
+    transform: translateY(180px);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(320px);
+  }
+}
+
+@keyframes sceneTransitionRadarOuter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.42);
+  }
+
+  28% {
+    opacity: 0.24;
+  }
+
+  50% {
+    opacity: 0.56;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.12);
+  }
+}
+
+@keyframes sceneTransitionRadarInner {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+
+  34% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 0.82;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.16);
+  }
+}
+
+@keyframes sceneTransitionRadarSweep {
+  0% {
+    opacity: 0;
+    transform: rotate(-48deg);
+  }
+
+  22% {
+    opacity: 0.56;
+  }
+
+  50% {
+    opacity: 0.96;
+    transform: rotate(86deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: rotate(228deg);
+  }
+}
+
+@keyframes sceneTransitionAlertLeft {
+  0% {
+    opacity: 0;
+    transform: skewX(-20deg) translateX(-12%);
+  }
+
+  18% {
+    opacity: 0.54;
+  }
+
+  46% {
+    opacity: 0.98;
+    transform: skewX(-20deg) translateX(144%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-20deg) translateX(216%);
+  }
+}
+
+@keyframes sceneTransitionAlertCenter {
+  0%,
+  16% {
+    opacity: 0;
+    transform: skewX(-20deg) scaleX(0.14);
+  }
+
+  38% {
+    opacity: 0.84;
+  }
+
+  50% {
+    opacity: 1;
+    transform: skewX(-20deg) scaleX(1.18);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-20deg) scaleX(0.08);
+  }
+}
+
+@keyframes sceneTransitionAlertRight {
+  0% {
+    opacity: 0;
+    transform: skewX(-20deg) translateX(12%) scaleX(-1);
+  }
+
+  18% {
+    opacity: 0.54;
+  }
+
+  46% {
+    opacity: 0.98;
+    transform: skewX(-20deg) translateX(-144%) scaleX(-1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-20deg) translateX(-216%) scaleX(-1);
+  }
+}
+
+@keyframes sceneTransitionDataTop {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(-28px);
+  }
+
+  28% {
+    opacity: 0.46;
+  }
+
+  52% {
+    opacity: 0.78;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-32px);
+  }
+}
+
+@keyframes sceneTransitionDataBottom {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  28% {
+    opacity: 0.46;
+  }
+
+  52% {
+    opacity: 0.78;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+}
+
+@keyframes sceneTransitionNewsFlash {
+  0%,
+  34% {
+    opacity: 0;
+  }
+
+  48% {
+    opacity: 0.98;
+  }
+
+  60% {
+    opacity: 0.22;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionStudioWash {
+  0% {
+    opacity: 0;
+  }
+
+  22% {
+    opacity: 0.34;
+  }
+
+  48% {
+    opacity: 0.82;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sceneTransitionHorizonTop {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateX(-8%);
+  }
+
+  32% {
+    opacity: 0.78;
+  }
+
+  52% {
+    opacity: 0.48;
+    transform: translateX(8%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(20%);
+  }
+}
+
+@keyframes sceneTransitionHorizonBottom {
+  0%,
+  16% {
+    opacity: 0;
+    transform: translateX(8%);
+  }
+
+  36% {
+    opacity: 0.78;
+  }
+
+  54% {
+    opacity: 0.48;
+    transform: translateX(-8%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-20%);
+  }
+}
+
+@keyframes sceneTransitionGlassLeft {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(-12%);
+  }
+
+  20% {
+    opacity: 0.5;
+  }
+
+  48% {
+    opacity: 0.96;
+    transform: skewX(-18deg) translateX(136%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(212%);
+  }
+}
+
+@keyframes sceneTransitionGlassCenter {
+  0%,
+  16% {
+    opacity: 0;
+    transform: skewX(-18deg) scaleX(0.14);
+  }
+
+  40% {
+    opacity: 0.82;
+  }
+
+  52% {
+    opacity: 0.98;
+    transform: skewX(-18deg) scaleX(1.1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) scaleX(0.1);
+  }
+}
+
+@keyframes sceneTransitionGlassRight {
+  0% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(12%) scaleX(-1);
+  }
+
+  20% {
+    opacity: 0.5;
+  }
+
+  48% {
+    opacity: 0.96;
+    transform: skewX(-18deg) translateX(-136%) scaleX(-1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: skewX(-18deg) translateX(-212%) scaleX(-1);
+  }
+}
+
+@keyframes sceneTransitionStudioCore {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+
+  26% {
+    opacity: 0.42;
+  }
+
+  48% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.12);
+  }
+}
+
+@keyframes sceneTransitionStudioShutterLeft {
+  0%,
+  36% {
+    opacity: 0;
+    transform: translateX(-10%);
+  }
+
+  52% {
+    opacity: 0.92;
+    transform: translateX(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-112%);
+  }
+}
+
+@keyframes sceneTransitionStudioShutterRight {
+  0%,
+  36% {
+    opacity: 0;
+    transform: translateX(10%);
+  }
+
+  52% {
+    opacity: 0.92;
+    transform: translateX(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(112%);
+  }
+}
+
+@keyframes sceneTransitionStudioGlintTop {
+  0%,
+  54% {
+    opacity: 0;
+    transform: translateX(-16%);
+  }
+
+  70% {
+    opacity: 0.74;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(18%);
+  }
+}
+
+@keyframes sceneTransitionStudioGlintBottom {
+  0%,
+  58% {
+    opacity: 0;
+    transform: translateX(16%);
+  }
+
+  74% {
+    opacity: 0.74;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-18%);
+  }
+}
+
+@keyframes sceneTransitionStudioFlare {
+  0%,
+  38% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 0.96;
+  }
+
+  62% {
+    opacity: 0.24;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.scene-transition-overlay__election-wash,
+.scene-transition-overlay__election-grid,
+.scene-transition-overlay__election-column,
+.scene-transition-overlay__election-beam,
+.scene-transition-overlay__election-slate,
+.scene-transition-overlay__election-flash,
+.scene-transition-overlay__solid,
+.scene-transition-overlay__vector,
+.scene-transition-overlay__sheen,
+.scene-transition-overlay__grain,
+.scene-transition-overlay__market-wash,
+.scene-transition-overlay__market-ticker,
+.scene-transition-overlay__market-chart,
+.scene-transition-overlay__market-pulse-line,
+.scene-transition-overlay__market-spike,
+.scene-transition-overlay__market-core,
+.scene-transition-overlay__world-wash,
+.scene-transition-overlay__world-orbit,
+.scene-transition-overlay__world-latitude,
+.scene-transition-overlay__world-meridian,
+.scene-transition-overlay__world-scan,
+.scene-transition-overlay__world-panel,
+.scene-transition-overlay__world-flare,
+.scene-transition-overlay__festival-wash,
+.scene-transition-overlay__festival-strip,
+.scene-transition-overlay__festival-lamp,
+.scene-transition-overlay__festival-curtain,
+.scene-transition-overlay__festival-flash,
+.scene-transition-overlay__festival-sparkle,
+.scene-transition-overlay__hit-wash,
+.scene-transition-overlay__hit-marquee,
+.scene-transition-overlay__hit-bar,
+.scene-transition-overlay__hit-pop,
+.scene-transition-overlay__hit-shine,
+.scene-transition-overlay__hit-flash {
+  position: absolute;
+}
+
+.scene-transition-overlay__vector {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.scene-transition-overlay__vector--election,
+.scene-transition-overlay__vector--market,
+.scene-transition-overlay__vector--world,
+.scene-transition-overlay__vector--festival,
+.scene-transition-overlay__vector--hit {
+  animation: sceneTransitionVectorFloat var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__solid {
+  opacity: 0;
+  z-index: 4;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.24),
+    0 0 38px rgba(255, 255, 255, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  backdrop-filter: blur(18px) saturate(1.35);
+}
+
+.scene-transition-overlay__solid::before,
+.scene-transition-overlay__solid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-transition-overlay__solid::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.04) 16%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(105deg, rgba(255, 255, 255, 0) 20%, rgba(255, 255, 255, 0.08) 44%, rgba(255, 255, 255, 0) 66%);
+  mix-blend-mode: screen;
+}
+
+.scene-transition-overlay__solid::after {
+  background:
+    radial-gradient(circle at 50% 120%, rgba(0, 0, 0, 0.22) 0%, rgba(0, 0, 0, 0) 54%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.12) 100%);
+}
+
+.scene-transition-overlay__solid--election-left,
+.scene-transition-overlay__solid--election-right {
+  top: 12%;
+  bottom: 12%;
+  width: 18%;
+  background:
+    linear-gradient(180deg, rgba(30, 68, 126, 0.22) 0%, rgba(10, 28, 58, 0.18) 100%),
+    linear-gradient(180deg, rgba(12, 24, 48, 0.56) 0%, rgba(8, 16, 30, 0.68) 100%);
+}
+
+.scene-transition-overlay__solid--election-left {
+  left: -2%;
+  clip-path: polygon(0 0, 100% 0, 78% 100%, 0 100%);
+  animation: sceneTransitionSolidElectionLeft 1480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--election-right {
+  right: -2%;
+  clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%);
+  animation: sceneTransitionSolidElectionRight 1480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--election-center {
+  left: 50%;
+  top: 12%;
+  bottom: 12%;
+  width: 240px;
+  margin-left: -120px;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(120, 192, 255, 0.18) 0%, rgba(255, 255, 255, 0.04) 18%, rgba(255, 255, 255, 0) 36%),
+    linear-gradient(180deg, rgba(34, 102, 194, 0.34) 0%, rgba(14, 42, 94, 0.52) 100%);
+  animation: sceneTransitionSolidElectionCenter 1480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--market-top,
+.scene-transition-overlay__solid--market-bottom {
+  left: 6%;
+  right: 6%;
+  height: 90px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(180, 255, 218, 0.08) 0%, rgba(255, 255, 255, 0.06) 22%, rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0.06) 78%, rgba(180, 255, 218, 0.08) 100%),
+    linear-gradient(90deg, rgba(10, 42, 32, 0.58) 0%, rgba(18, 82, 58, 0.5) 50%, rgba(10, 42, 32, 0.58) 100%);
+}
+
+.scene-transition-overlay__solid--market-top {
+  top: 8%;
+  animation: sceneTransitionSolidMarketTop 1380ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--market-bottom {
+  bottom: 8%;
+  animation: sceneTransitionSolidMarketBottom 1380ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--market-core {
+  left: 50%;
+  top: 50%;
+  width: 620px;
+  height: 220px;
+  margin-left: -310px;
+  margin-top: -110px;
+  clip-path: polygon(6% 0, 94% 0, 100% 50%, 94% 100%, 6% 100%, 0 50%);
+  background:
+    linear-gradient(90deg, rgba(180, 255, 218, 0.1) 0%, rgba(255, 255, 255, 0.08) 28%, rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0.08) 72%, rgba(180, 255, 218, 0.1) 100%),
+    linear-gradient(90deg, rgba(10, 42, 32, 0.56) 0%, rgba(28, 112, 78, 0.52) 50%, rgba(10, 42, 32, 0.56) 100%);
+  animation: sceneTransitionSolidMarketCore 1380ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--world-left,
+.scene-transition-overlay__solid--world-right {
+  top: 10%;
+  bottom: 10%;
+  width: 20%;
+  background:
+    linear-gradient(180deg, rgba(126, 194, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 18%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, rgba(8, 18, 40, 0.56) 0%, rgba(10, 28, 58, 0.66) 100%);
+}
+
+.scene-transition-overlay__solid--world-left {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 70% 100%, 0 100%);
+  animation: sceneTransitionSolidWorldLeft 1600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--world-right {
+  right: 0;
+  clip-path: polygon(30% 0, 100% 0, 100% 100%, 0 100%);
+  animation: sceneTransitionSolidWorldRight 1600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--world-axis {
+  left: 50%;
+  top: 14%;
+  bottom: 14%;
+  width: 140px;
+  margin-left: -70px;
+  clip-path: polygon(28% 0, 72% 0, 100% 14%, 100% 86%, 72% 100%, 28% 100%, 0 86%, 0 14%);
+  background:
+    linear-gradient(180deg, rgba(180, 224, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 20%, rgba(255, 255, 255, 0) 38%),
+    linear-gradient(180deg, rgba(18, 84, 170, 0.28) 0%, rgba(10, 32, 78, 0.52) 100%);
+  animation: sceneTransitionSolidWorldAxis 1600ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--festival-runway {
+  left: 50%;
+  bottom: -4%;
+  width: 760px;
+  height: 700px;
+  margin-left: -380px;
+  clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%);
+  background:
+    linear-gradient(180deg, rgba(255, 214, 176, 0.08) 0%, rgba(255, 255, 255, 0.03) 14%, rgba(255, 255, 255, 0) 28%),
+    linear-gradient(180deg, rgba(76, 10, 96, 0.38) 0%, rgba(36, 8, 52, 0.58) 100%);
+  animation: sceneTransitionSolidFestivalRunway 1500ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--festival-left,
+.scene-transition-overlay__solid--festival-right {
+  top: 14%;
+  bottom: 14%;
+  width: 16%;
+  background:
+    linear-gradient(180deg, rgba(255, 188, 220, 0.08) 0%, rgba(255, 255, 255, 0.03) 18%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, rgba(56, 10, 72, 0.34) 0%, rgba(22, 6, 36, 0.56) 100%);
+}
+
+.scene-transition-overlay__solid--festival-left {
+  left: 10%;
+  clip-path: polygon(0 0, 100% 8%, 78% 100%, 0 92%);
+  animation: sceneTransitionSolidFestivalLeft 1500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--festival-right {
+  right: 10%;
+  clip-path: polygon(22% 8%, 100% 0, 100% 92%, 0 100%);
+  animation: sceneTransitionSolidFestivalRight 1500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__solid--hit-frame {
+  left: 13%;
+  right: 13%;
+  top: 15%;
+  bottom: 15%;
+  border-radius: 40px;
+  background:
+    linear-gradient(180deg, rgba(255, 232, 204, 0.08) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 32%),
+    linear-gradient(180deg, rgba(28, 10, 52, 0.36) 0%, rgba(14, 6, 28, 0.58) 100%);
+  animation: sceneTransitionSolidHitFrame 1420ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--hit-band-left,
+.scene-transition-overlay__solid--hit-band-right {
+  top: 12%;
+  bottom: 12%;
+  width: 14%;
+  border-radius: 28px;
+}
+
+.scene-transition-overlay__solid--hit-band-left {
+  left: 6%;
+  background:
+    linear-gradient(180deg, rgba(255, 224, 236, 0.1) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, rgba(255, 76, 170, 0.28) 0%, rgba(86, 24, 132, 0.54) 100%);
+  animation: sceneTransitionSolidHitBandLeft 1420ms ease-out forwards;
+}
+
+.scene-transition-overlay__solid--hit-band-right {
+  right: 6%;
+  background:
+    linear-gradient(180deg, rgba(255, 240, 214, 0.1) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, rgba(255, 200, 92, 0.28) 0%, rgba(86, 24, 132, 0.54) 100%);
+  animation: sceneTransitionSolidHitBandRight 1420ms ease-out forwards;
+}
+
+.scene-transition-overlay__sheen {
+  inset: -6%;
+  opacity: 0;
+  z-index: 9;
+  filter: blur(8px);
+}
+
+.scene-transition-overlay__sheen--cool {
+  background: linear-gradient(100deg, rgba(255,255,255,0) 30%, rgba(224,244,255,0.12) 42%, rgba(255,255,255,0.56) 50%, rgba(224,244,255,0.12) 58%, rgba(255,255,255,0) 70%);
+}
+
+.scene-transition-overlay__sheen--warm {
+  background: linear-gradient(100deg, rgba(255,255,255,0) 30%, rgba(255,236,208,0.12) 42%, rgba(255,244,214,0.56) 50%, rgba(255,208,108,0.12) 58%, rgba(255,255,255,0) 70%);
+}
+
+.scene-transition-overlay__sheen--alert {
+  background: linear-gradient(100deg, rgba(255,255,255,0) 30%, rgba(255,214,196,0.12) 42%, rgba(255,255,255,0.6) 50%, rgba(255,96,56,0.14) 58%, rgba(255,255,255,0) 70%);
+}
+
+.scene-transition-overlay__sheen--neon {
+  background: linear-gradient(100deg, rgba(255,255,255,0) 30%, rgba(255,180,228,0.12) 42%, rgba(255,255,255,0.58) 50%, rgba(120,180,255,0.12) 58%, rgba(255,255,255,0) 70%);
+}
+
+.scene-transition-overlay__grain {
+  inset: 0;
+  opacity: 0;
+  z-index: 10;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.035) 0 1px, transparent 1px),
+    radial-gradient(circle at 80% 30%, rgba(255,255,255,0.03) 0 1px, transparent 1px),
+    radial-gradient(circle at 60% 70%, rgba(255,255,255,0.025) 0 1px, transparent 1px),
+    radial-gradient(circle at 30% 80%, rgba(255,255,255,0.02) 0 1px, transparent 1px);
+  background-size: 18px 18px, 22px 22px, 26px 26px, 20px 20px;
+  mix-blend-mode: screen;
+  animation: sceneTransitionFinishGrain var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__sheen {
+  animation: sceneTransitionFinishSheen var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__election-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    linear-gradient(180deg, rgba(10, 18, 34, 0.16) 0%, rgba(12, 28, 54, 0.74) 42%, rgba(4, 10, 20, 0.94) 100%),
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 18%);
+  animation: sceneTransitionElectionWash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__election-grid {
+  inset: -4%;
+  opacity: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 84px 84px;
+  animation: sceneTransitionElectionGrid var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__election-column {
+  bottom: -8%;
+  width: 16%;
+  opacity: 0;
+  border-radius: 12px 12px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 18%, rgba(0, 0, 0, 0.12) 100%),
+    linear-gradient(180deg, rgba(130, 194, 255, 0.92) 0%, rgba(46, 112, 214, 0.92) 42%, rgba(10, 32, 84, 0.92) 100%);
+  box-shadow:
+    0 0 24px rgba(90, 168, 255, 0.12),
+    0 0 60px rgba(255, 255, 255, 0.04);
+}
+
+.scene-transition-overlay__election-column--one {
+  left: 14%;
+  height: 64%;
+  animation: sceneTransitionElectionColumnOne var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__election-column--two {
+  left: 42%;
+  height: 82%;
+  animation: sceneTransitionElectionColumnTwo var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__election-column--three {
+  right: 14%;
+  height: 56%;
+  animation: sceneTransitionElectionColumnThree var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__election-beam {
+  inset: -10%;
+  opacity: 0;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.18) 40%, rgba(255, 255, 255, 0.82) 50%, rgba(180, 214, 255, 0.18) 60%, rgba(255, 255, 255, 0) 70%);
+  filter: blur(8px);
+  animation: sceneTransitionElectionBeam var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__election-slate {
+  top: -4%;
+  bottom: -4%;
+  width: 46%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(4, 10, 18, 0.98) 0%, rgba(24, 58, 98, 0.84) 42%, rgba(138, 196, 255, 0.12) 62%, rgba(255, 255, 255, 0) 76%);
+}
+
+.scene-transition-overlay__election-slate--left {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  animation: sceneTransitionElectionSlateLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__election-slate--right {
+  right: 0;
+  clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
+  animation: sceneTransitionElectionSlateRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__election-flash {
+  inset: -8%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(225, 244, 255, 0.78) 8%, rgba(178, 214, 255, 0.18) 16%, rgba(255, 255, 255, 0) 28%);
+  filter: blur(10px);
+  animation: sceneTransitionElectionFlash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    linear-gradient(180deg, rgba(10, 20, 26, 0.18) 0%, rgba(8, 26, 32, 0.78) 44%, rgba(4, 14, 18, 0.96) 100%),
+    radial-gradient(circle at 50% 50%, rgba(140, 255, 198, 0.08) 0%, rgba(255, 255, 255, 0) 16%);
+  animation: sceneTransitionMarketWash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-ticker {
+  left: -6%;
+  right: -6%;
+  height: 14%;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0 18px,
+      rgba(255, 255, 255, 0.05) 18px 22px,
+      rgba(152, 255, 208, 0.12) 22px 42px,
+      rgba(255, 255, 255, 0) 42px 68px
+    );
+}
+
+.scene-transition-overlay__market-ticker--top {
+  top: 0;
+  animation: sceneTransitionMarketTickerTop var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-ticker--bottom {
+  bottom: 0;
+  animation: sceneTransitionMarketTickerBottom var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-chart {
+  top: 18%;
+  bottom: 18%;
+  width: 34%;
+  opacity: 0;
+}
+
+.scene-transition-overlay__market-chart--left {
+  left: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0) 0 36%, rgba(140, 255, 198, 0.12) 36% 40%, rgba(255, 255, 255, 0) 40% 56%, rgba(140, 255, 198, 0.12) 56% 60%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(90deg, rgba(8, 30, 26, 0.92) 0%, rgba(16, 74, 54, 0.62) 46%, rgba(255, 255, 255, 0) 76%);
+  animation: sceneTransitionMarketChartLeft var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-chart--right {
+  right: 0;
+  background:
+    linear-gradient(225deg, rgba(255, 255, 255, 0) 0 36%, rgba(140, 255, 198, 0.12) 36% 40%, rgba(255, 255, 255, 0) 40% 56%, rgba(140, 255, 198, 0.12) 56% 60%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(270deg, rgba(8, 30, 26, 0.92) 0%, rgba(16, 74, 54, 0.62) 46%, rgba(255, 255, 255, 0) 76%);
+  animation: sceneTransitionMarketChartRight var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-pulse-line {
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(150, 255, 210, 0.14) 20%, rgba(228, 255, 242, 0.96) 50%, rgba(150, 255, 210, 0.14) 80%, rgba(255, 255, 255, 0) 100%);
+  box-shadow: 0 0 18px rgba(140, 255, 198, 0.18);
+  animation: sceneTransitionMarketPulseLine var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-spike {
+  top: 18%;
+  bottom: 18%;
+  width: 10px;
+  opacity: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(228, 255, 242, 0.94) 50%, rgba(255, 255, 255, 0) 100%);
+  filter: blur(2px);
+}
+
+.scene-transition-overlay__market-spike--one {
+  left: 38%;
+  animation: sceneTransitionMarketSpikeOne var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-spike--two {
+  right: 38%;
+  animation: sceneTransitionMarketSpikeTwo var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__market-core {
+  inset: -8%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(228, 255, 242, 0.98) 0%, rgba(150, 255, 210, 0.54) 8%, rgba(255, 255, 255, 0) 20%);
+  filter: blur(10px);
+  animation: sceneTransitionMarketCore var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 18%),
+    linear-gradient(180deg, rgba(8, 18, 36, 0.12) 0%, rgba(12, 30, 60, 0.78) 42%, rgba(4, 10, 22, 0.96) 100%);
+  animation: sceneTransitionWorldWash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-orbit {
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+}
+
+.scene-transition-overlay__world-orbit--outer {
+  width: 1280px;
+  height: 760px;
+  border: 2px solid rgba(140, 192, 255, 0.22);
+  animation: sceneTransitionWorldOrbitOuter var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-orbit--inner {
+  width: 860px;
+  height: 480px;
+  border: 2px solid rgba(224, 244, 255, 0.34);
+  animation: sceneTransitionWorldOrbitInner var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-latitude,
+.scene-transition-overlay__world-meridian {
+  left: 50%;
+  top: 50%;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+}
+
+.scene-transition-overlay__world-latitude {
+  width: 980px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(224, 244, 255, 0.82) 50%, rgba(255, 255, 255, 0) 100%);
+  animation: sceneTransitionWorldLatitude var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-meridian {
+  width: 2px;
+  height: 640px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(224, 244, 255, 0.82) 50%, rgba(255, 255, 255, 0) 100%);
+  animation: sceneTransitionWorldMeridian var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-scan {
+  inset: -12%;
+  opacity: 0;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0) 34%, rgba(255, 255, 255, 0.16) 42%, rgba(224, 244, 255, 0.82) 50%, rgba(255, 255, 255, 0.16) 58%, rgba(255, 255, 255, 0) 66%);
+  filter: blur(7px);
+  animation: sceneTransitionWorldScan var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__world-panel {
+  top: -6%;
+  bottom: -6%;
+  width: 44%;
+  opacity: 0;
+  background: linear-gradient(90deg, rgba(4, 10, 20, 0.98) 0%, rgba(18, 58, 108, 0.78) 44%, rgba(224, 244, 255, 0.12) 62%, rgba(255, 255, 255, 0) 76%);
+}
+
+.scene-transition-overlay__world-panel--left {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 84% 100%, 0 100%);
+  animation: sceneTransitionWorldPanelLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__world-panel--right {
+  right: 0;
+  clip-path: polygon(16% 0, 100% 0, 100% 100%, 0 100%);
+  animation: sceneTransitionWorldPanelRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__world-flare {
+  inset: -8%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(224, 244, 255, 0.68) 8%, rgba(255, 255, 255, 0) 20%);
+  filter: blur(10px);
+  animation: sceneTransitionWorldFlare var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__festival-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 16%),
+    linear-gradient(180deg, rgba(40, 8, 48, 0.16) 0%, rgba(60, 10, 76, 0.72) 38%, rgba(18, 6, 30, 0.94) 100%);
+  animation: sceneTransitionFestivalWash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__festival-strip {
+  top: -8%;
+  bottom: -8%;
+  width: 20%;
+  opacity: 0;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 16%, rgba(0, 0, 0, 0.1) 100%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 160, 224, 0.34) 24%, rgba(255, 208, 108, 0.62) 54%, rgba(255, 255, 255, 0.12) 72%, rgba(255, 255, 255, 0) 100%);
+}
+
+.scene-transition-overlay__festival-strip--left {
+  left: 14%;
+  transform: skewX(-14deg) translateY(14%);
+  animation: sceneTransitionFestivalStripLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__festival-strip--center {
+  left: 40%;
+  width: 20%;
+  transform: skewX(-14deg) scaleY(0.2);
+  animation: sceneTransitionFestivalStripCenter var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__festival-strip--right {
+  right: 14%;
+  transform: skewX(-14deg) translateY(-14%);
+  animation: sceneTransitionFestivalStripRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__festival-lamp {
+  top: 12%;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.94) 0%, rgba(255, 244, 214, 0.62) 18%, rgba(255, 208, 108, 0.18) 36%, rgba(255, 255, 255, 0) 64%);
+  filter: blur(8px);
+}
+
+.scene-transition-overlay__festival-lamp--one { left: 10%; animation: sceneTransitionFestivalLampOne var(--scene-transition-duration) ease-out forwards; }
+.scene-transition-overlay__festival-lamp--two { left: 30%; animation: sceneTransitionFestivalLampTwo var(--scene-transition-duration) ease-out forwards; }
+.scene-transition-overlay__festival-lamp--three { right: 30%; animation: sceneTransitionFestivalLampThree var(--scene-transition-duration) ease-out forwards; }
+.scene-transition-overlay__festival-lamp--four { right: 10%; animation: sceneTransitionFestivalLampFour var(--scene-transition-duration) ease-out forwards; }
+
+.scene-transition-overlay__festival-curtain {
+  top: -4%;
+  bottom: -4%;
+  width: 48%;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(18, 6, 30, 0.96) 0%, rgba(92, 14, 120, 0.72) 42%, rgba(255, 180, 214, 0.14) 60%, rgba(255, 255, 255, 0) 76%);
+}
+
+.scene-transition-overlay__festival-curtain--left {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  animation: sceneTransitionFestivalCurtainLeft var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__festival-curtain--right {
+  right: 0;
+  clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
+  animation: sceneTransitionFestivalCurtainRight var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__festival-flash {
+  inset: -8%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 236, 208, 0.76) 8%, rgba(255, 196, 144, 0.18) 18%, rgba(255, 255, 255, 0) 28%);
+  filter: blur(10px);
+  animation: sceneTransitionFestivalFlash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__festival-sparkle {
+  inset: -6%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 24% 28%, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 2%),
+    radial-gradient(circle at 74% 22%, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 2%),
+    radial-gradient(circle at 68% 72%, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 2%);
+  animation: sceneTransitionFestivalSparkle var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__hit-wash {
+  inset: 0;
+  opacity: 0;
+  background:
+    linear-gradient(180deg, rgba(26, 8, 44, 0.16) 0%, rgba(24, 10, 52, 0.74) 40%, rgba(10, 6, 20, 0.96) 100%),
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 16%);
+  animation: sceneTransitionHitWash var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__hit-marquee {
+  left: -6%;
+  right: -6%;
+  height: 14%;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0 12px,
+      rgba(255, 244, 214, 0.12) 12px 18px,
+      rgba(255, 255, 255, 0) 18px 26px
+    ),
+    linear-gradient(90deg, rgba(255, 120, 224, 0.12) 0%, rgba(255, 196, 92, 0.18) 50%, rgba(255, 120, 224, 0.12) 100%);
+}
+
+.scene-transition-overlay__hit-marquee--top { top: 0; animation: sceneTransitionHitMarqueeTop var(--scene-transition-duration) ease-out forwards; }
+.scene-transition-overlay__hit-marquee--bottom { bottom: 0; animation: sceneTransitionHitMarqueeBottom var(--scene-transition-duration) ease-out forwards; }
+
+.scene-transition-overlay__hit-bar {
+  top: -10%;
+  bottom: -10%;
+  width: 20%;
+  opacity: 0;
+  border-radius: 12px;
+}
+
+.scene-transition-overlay__hit-bar--one {
+  left: 8%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 64, 160, 0.34) 26%, rgba(255, 188, 76, 0.54) 54%, rgba(255, 255, 255, 0) 100%);
+  animation: sceneTransitionHitBarOne var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__hit-bar--two {
+  left: 30%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(84, 132, 255, 0.28) 26%, rgba(255, 255, 255, 0.5) 54%, rgba(255, 255, 255, 0) 100%);
+  animation: sceneTransitionHitBarTwo var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__hit-bar--three {
+  right: 30%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(120, 255, 214, 0.28) 26%, rgba(255, 255, 255, 0.5) 54%, rgba(255, 255, 255, 0) 100%);
+  animation: sceneTransitionHitBarThree var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__hit-bar--four {
+  right: 8%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 64, 160, 0.34) 26%, rgba(255, 188, 76, 0.54) 54%, rgba(255, 255, 255, 0) 100%);
+  animation: sceneTransitionHitBarFour var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scene-transition-overlay__hit-pop {
+  top: 50%;
+  width: 180px;
+  height: 180px;
+  margin-top: -90px;
+  border-radius: 999px;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.96) 0%, rgba(255, 230, 198, 0.54) 18%, rgba(255, 255, 255, 0) 42%);
+  filter: blur(8px);
+}
+
+.scene-transition-overlay__hit-pop--left { left: 18%; animation: sceneTransitionHitPopLeft var(--scene-transition-duration) ease-out forwards; }
+.scene-transition-overlay__hit-pop--center { left: 50%; margin-left: -90px; animation: sceneTransitionHitPopCenter var(--scene-transition-duration) ease-out forwards; }
+.scene-transition-overlay__hit-pop--right { right: 18%; animation: sceneTransitionHitPopRight var(--scene-transition-duration) ease-out forwards; }
+
+.scene-transition-overlay__hit-shine {
+  inset: -8%;
+  opacity: 0;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0) 34%, rgba(255, 255, 255, 0.16) 42%, rgba(255, 255, 255, 0.9) 50%, rgba(255, 255, 255, 0.16) 58%, rgba(255, 255, 255, 0) 66%);
+  filter: blur(8px);
+  animation: sceneTransitionHitShine var(--scene-transition-duration) ease-out forwards;
+}
+
+.scene-transition-overlay__hit-flash {
+  inset: -8%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 236, 208, 0.78) 8%, rgba(255, 255, 255, 0) 20%);
+  filter: blur(10px);
+  animation: sceneTransitionHitFlash var(--scene-transition-duration) ease-out forwards;
+}
+
+@keyframes sceneTransitionElectionWash { 0% { opacity: 0; } 22% { opacity: 0.38; } 48% { opacity: 0.86; } 100% { opacity: 0; } }
+@keyframes sceneTransitionElectionGrid { 0% { opacity: 0; transform: scale(0.96); } 30% { opacity: 0.22; } 50% { opacity: 0.44; transform: scale(1); } 100% { opacity: 0; transform: scale(1.04); } }
+@keyframes sceneTransitionElectionColumnOne { 0%, 10% { opacity: 0; transform: translateY(24%); } 32% { opacity: 0.66; } 50% { opacity: 0.92; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20%); } }
+@keyframes sceneTransitionElectionColumnTwo { 0%, 14% { opacity: 0; transform: translateY(24%); } 36% { opacity: 0.74; } 50% { opacity: 0.98; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20%); } }
+@keyframes sceneTransitionElectionColumnThree { 0%, 18% { opacity: 0; transform: translateY(24%); } 40% { opacity: 0.62; } 50% { opacity: 0.9; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20%); } }
+@keyframes sceneTransitionElectionBeam { 0%, 30% { opacity: 0; transform: translateX(-18%); } 48% { opacity: 0.9; } 100% { opacity: 0; transform: translateX(18%); } }
+@keyframes sceneTransitionElectionSlateLeft { 0%, 40% { opacity: 0; transform: translateX(-10%); } 54% { opacity: 0.9; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-112%); } }
+@keyframes sceneTransitionElectionSlateRight { 0%, 40% { opacity: 0; transform: translateX(10%); } 54% { opacity: 0.9; transform: translateX(0); } 100% { opacity: 0; transform: translateX(112%); } }
+@keyframes sceneTransitionElectionFlash { 0%, 36% { opacity: 0; } 50% { opacity: 0.96; } 62% { opacity: 0.22; } 100% { opacity: 0; } }
+
+@keyframes sceneTransitionMarketWash { 0% { opacity: 0; } 22% { opacity: 0.34; } 48% { opacity: 0.82; } 100% { opacity: 0; } }
+@keyframes sceneTransitionMarketTickerTop { 0%, 10% { opacity: 0; transform: translateY(-20px); } 30% { opacity: 0.44; } 50% { opacity: 0.78; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-24px); } }
+@keyframes sceneTransitionMarketTickerBottom { 0%, 10% { opacity: 0; transform: translateY(20px); } 30% { opacity: 0.44; } 50% { opacity: 0.78; transform: translateY(0); } 100% { opacity: 0; transform: translateY(24px); } }
+@keyframes sceneTransitionMarketChartLeft { 0%, 16% { opacity: 0; transform: translateX(-18%); } 40% { opacity: 0.62; } 52% { opacity: 0.9; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-24%); } }
+@keyframes sceneTransitionMarketChartRight { 0%, 16% { opacity: 0; transform: translateX(18%); } 40% { opacity: 0.62; } 52% { opacity: 0.9; transform: translateX(0); } 100% { opacity: 0; transform: translateX(24%); } }
+@keyframes sceneTransitionMarketPulseLine { 0%, 22% { opacity: 0; transform: scaleX(0.12); } 48% { opacity: 0.98; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(0.08); } }
+@keyframes sceneTransitionMarketSpikeOne { 0%, 28% { opacity: 0; transform: scaleY(0.2); } 48% { opacity: 0.9; transform: scaleY(1.2); } 100% { opacity: 0; transform: scaleY(0.1); } }
+@keyframes sceneTransitionMarketSpikeTwo { 0%, 32% { opacity: 0; transform: scaleY(0.2); } 50% { opacity: 0.9; transform: scaleY(1.4); } 100% { opacity: 0; transform: scaleY(0.1); } }
+@keyframes sceneTransitionMarketCore { 0%, 34% { opacity: 0; } 50% { opacity: 0.94; } 62% { opacity: 0.26; } 100% { opacity: 0; } }
+
+@keyframes sceneTransitionWorldWash { 0% { opacity: 0; } 22% { opacity: 0.34; } 48% { opacity: 0.84; } 100% { opacity: 0; } }
+@keyframes sceneTransitionWorldOrbitOuter { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); } 34% { opacity: 0.36; } 52% { opacity: 0.74; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.08); } }
+@keyframes sceneTransitionWorldOrbitInner { 0%, 10% { opacity: 0; transform: translate(-50%, -50%) scale(0.28); } 36% { opacity: 0.42; } 52% { opacity: 0.86; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.12); } }
+@keyframes sceneTransitionWorldLatitude { 0%, 18% { opacity: 0; transform: translate(-50%, -50%) scaleX(0.2); } 48% { opacity: 0.84; transform: translate(-50%, -50%) scaleX(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scaleX(0.08); } }
+@keyframes sceneTransitionWorldMeridian { 0%, 18% { opacity: 0; transform: translate(-50%, -50%) scaleY(0.2); } 48% { opacity: 0.84; transform: translate(-50%, -50%) scaleY(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scaleY(0.08); } }
+@keyframes sceneTransitionWorldScan { 0%, 28% { opacity: 0; transform: translateX(-16%); } 48% { opacity: 0.86; } 100% { opacity: 0; transform: translateX(16%); } }
+@keyframes sceneTransitionWorldPanelLeft { 0%, 40% { opacity: 0; transform: translateX(-10%); } 54% { opacity: 0.9; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-112%); } }
+@keyframes sceneTransitionWorldPanelRight { 0%, 40% { opacity: 0; transform: translateX(10%); } 54% { opacity: 0.9; transform: translateX(0); } 100% { opacity: 0; transform: translateX(112%); } }
+@keyframes sceneTransitionWorldFlare { 0%, 36% { opacity: 0; } 50% { opacity: 0.94; } 62% { opacity: 0.24; } 100% { opacity: 0; } }
+
+@keyframes sceneTransitionFestivalWash { 0% { opacity: 0; } 22% { opacity: 0.34; } 48% { opacity: 0.84; } 100% { opacity: 0; } }
+@keyframes sceneTransitionFestivalStripLeft { 0%, 12% { opacity: 0; transform: skewX(-14deg) translateY(18%); } 36% { opacity: 0.72; } 50% { opacity: 0.94; transform: skewX(-14deg) translateY(0); } 100% { opacity: 0; transform: skewX(-14deg) translateY(-18%); } }
+@keyframes sceneTransitionFestivalStripCenter { 0%, 16% { opacity: 0; transform: skewX(-14deg) scaleY(0.14); } 40% { opacity: 0.84; } 52% { opacity: 0.98; transform: skewX(-14deg) scaleY(1); } 100% { opacity: 0; transform: skewX(-14deg) scaleY(0.08); } }
+@keyframes sceneTransitionFestivalStripRight { 0%, 12% { opacity: 0; transform: skewX(-14deg) translateY(-18%); } 36% { opacity: 0.72; } 50% { opacity: 0.94; transform: skewX(-14deg) translateY(0); } 100% { opacity: 0; transform: skewX(-14deg) translateY(18%); } }
+@keyframes sceneTransitionFestivalLampOne { 0%, 10% { opacity: 0; transform: scale(0.3); } 34% { opacity: 0.68; } 100% { opacity: 0; transform: scale(1.1); } }
+@keyframes sceneTransitionFestivalLampTwo { 0%, 14% { opacity: 0; transform: scale(0.3); } 38% { opacity: 0.76; } 100% { opacity: 0; transform: scale(1.16); } }
+@keyframes sceneTransitionFestivalLampThree { 0%, 18% { opacity: 0; transform: scale(0.3); } 42% { opacity: 0.76; } 100% { opacity: 0; transform: scale(1.16); } }
+@keyframes sceneTransitionFestivalLampFour { 0%, 22% { opacity: 0; transform: scale(0.3); } 46% { opacity: 0.68; } 100% { opacity: 0; transform: scale(1.1); } }
+@keyframes sceneTransitionFestivalCurtainLeft { 0%, 40% { opacity: 0; transform: translateX(-12%); } 54% { opacity: 0.92; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-112%); } }
+@keyframes sceneTransitionFestivalCurtainRight { 0%, 40% { opacity: 0; transform: translateX(12%); } 54% { opacity: 0.92; transform: translateX(0); } 100% { opacity: 0; transform: translateX(112%); } }
+@keyframes sceneTransitionFestivalFlash { 0%, 36% { opacity: 0; } 50% { opacity: 0.96; } 62% { opacity: 0.24; } 100% { opacity: 0; } }
+@keyframes sceneTransitionFestivalSparkle { 0%, 58% { opacity: 0; } 72% { opacity: 0.62; } 100% { opacity: 0; } }
+
+@keyframes sceneTransitionHitWash { 0% { opacity: 0; } 22% { opacity: 0.34; } 48% { opacity: 0.82; } 100% { opacity: 0; } }
+@keyframes sceneTransitionHitMarqueeTop { 0%, 10% { opacity: 0; transform: translateY(-20px); } 30% { opacity: 0.44; } 50% { opacity: 0.78; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); } }
+@keyframes sceneTransitionHitMarqueeBottom { 0%, 10% { opacity: 0; transform: translateY(20px); } 30% { opacity: 0.44; } 50% { opacity: 0.78; transform: translateY(0); } 100% { opacity: 0; transform: translateY(20px); } }
+@keyframes sceneTransitionHitBarOne { 0%, 14% { opacity: 0; transform: translateY(16%); } 38% { opacity: 0.74; } 50% { opacity: 0.92; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-16%); } }
+@keyframes sceneTransitionHitBarTwo { 0%, 18% { opacity: 0; transform: translateY(-16%); } 40% { opacity: 0.78; } 50% { opacity: 0.94; transform: translateY(0); } 100% { opacity: 0; transform: translateY(16%); } }
+@keyframes sceneTransitionHitBarThree { 0%, 22% { opacity: 0; transform: translateY(16%); } 42% { opacity: 0.78; } 50% { opacity: 0.94; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-16%); } }
+@keyframes sceneTransitionHitBarFour { 0%, 26% { opacity: 0; transform: translateY(-16%); } 44% { opacity: 0.74; } 50% { opacity: 0.92; transform: translateY(0); } 100% { opacity: 0; transform: translateY(16%); } }
+@keyframes sceneTransitionHitPopLeft { 0%, 30% { opacity: 0; transform: scale(0.3); } 50% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(0.18); } }
+@keyframes sceneTransitionHitPopCenter { 0%, 34% { opacity: 0; transform: scale(0.3); } 50% { opacity: 0.92; transform: scale(1.2); } 100% { opacity: 0; transform: scale(0.08); } }
+@keyframes sceneTransitionHitPopRight { 0%, 38% { opacity: 0; transform: scale(0.3); } 50% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(0.18); } }
+@keyframes sceneTransitionHitShine { 0%, 30% { opacity: 0; transform: translateX(-16%); } 48% { opacity: 0.9; } 100% { opacity: 0; transform: translateX(16%); } }
+@keyframes sceneTransitionHitFlash { 0%, 36% { opacity: 0; } 50% { opacity: 0.96; } 62% { opacity: 0.24; } 100% { opacity: 0; } }
+
+@keyframes sceneTransitionVectorFloat {
+  0%,
+  18% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  44% {
+    opacity: 0.82;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes sceneTransitionSolidElectionLeft { 0%, 18% { opacity: 0; transform: translateX(-14%); } 42% { opacity: 0.86; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-110%); } }
+@keyframes sceneTransitionSolidElectionRight { 0%, 18% { opacity: 0; transform: translateX(14%); } 42% { opacity: 0.86; transform: translateX(0); } 100% { opacity: 0; transform: translateX(110%); } }
+@keyframes sceneTransitionSolidElectionCenter { 0%, 18% { opacity: 0; transform: scaleY(0.2); } 44% { opacity: 0.94; transform: scaleY(1.02); } 100% { opacity: 0; transform: scaleY(0.08); } }
+
+@keyframes sceneTransitionSolidMarketTop { 0%, 14% { opacity: 0; transform: translateY(-24px) scaleX(0.3); } 40% { opacity: 0.84; transform: translateY(0) scaleX(1); } 100% { opacity: 0; transform: translateY(-22px) scaleX(0.2); } }
+@keyframes sceneTransitionSolidMarketBottom { 0%, 14% { opacity: 0; transform: translateY(24px) scaleX(0.3); } 40% { opacity: 0.84; transform: translateY(0) scaleX(1); } 100% { opacity: 0; transform: translateY(22px) scaleX(0.2); } }
+@keyframes sceneTransitionSolidMarketCore { 0%, 20% { opacity: 0; transform: scaleX(0.18); } 46% { opacity: 0.94; transform: scaleX(1.04); } 100% { opacity: 0; transform: scaleX(0.08); } }
+
+@keyframes sceneTransitionSolidWorldLeft { 0%, 20% { opacity: 0; transform: translateX(-14%); } 44% { opacity: 0.86; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-112%); } }
+@keyframes sceneTransitionSolidWorldRight { 0%, 20% { opacity: 0; transform: translateX(14%); } 44% { opacity: 0.86; transform: translateX(0); } 100% { opacity: 0; transform: translateX(112%); } }
+@keyframes sceneTransitionSolidWorldAxis { 0%, 22% { opacity: 0; transform: scaleY(0.18); } 46% { opacity: 0.92; transform: scaleY(1); } 100% { opacity: 0; transform: scaleY(0.08); } }
+
+@keyframes sceneTransitionSolidFestivalRunway { 0%, 16% { opacity: 0; transform: translateY(12%) scaleX(0.5); } 42% { opacity: 0.82; transform: translateY(0) scaleX(1); } 100% { opacity: 0; transform: translateY(-10%) scaleX(0.3); } }
+@keyframes sceneTransitionSolidFestivalLeft { 0%, 16% { opacity: 0; transform: translateX(-12%) rotate(-2deg); } 40% { opacity: 0.82; transform: translateX(0) rotate(0deg); } 100% { opacity: 0; transform: translateX(-108%) rotate(-4deg); } }
+@keyframes sceneTransitionSolidFestivalRight { 0%, 16% { opacity: 0; transform: translateX(12%) rotate(2deg); } 40% { opacity: 0.82; transform: translateX(0) rotate(0deg); } 100% { opacity: 0; transform: translateX(108%) rotate(4deg); } }
+
+@keyframes sceneTransitionSolidHitFrame { 0%, 18% { opacity: 0; transform: scale(0.86); } 44% { opacity: 0.84; transform: scale(1); } 100% { opacity: 0; transform: scale(0.92); } }
+@keyframes sceneTransitionSolidHitBandLeft { 0%, 16% { opacity: 0; transform: translateX(-18%); } 40% { opacity: 0.88; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-112%); } }
+@keyframes sceneTransitionSolidHitBandRight { 0%, 16% { opacity: 0; transform: translateX(18%); } 40% { opacity: 0.88; transform: translateX(0); } 100% { opacity: 0; transform: translateX(112%); } }
+
+@keyframes sceneTransitionFinishSheen {
+  0%,
+  38% {
+    opacity: 0;
+    transform: translateX(-16%);
+  }
+
+  54% {
+    opacity: 0.74;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(16%);
+  }
+}
+
+@keyframes sceneTransitionFinishGrain {
+  0%,
+  42% {
+    opacity: 0;
+  }
+
+  58% {
+    opacity: 0.42;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}

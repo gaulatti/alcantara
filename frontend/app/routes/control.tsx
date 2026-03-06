@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { GripVertical } from 'lucide-react';
 import type { Route } from './+types/control';
 import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../utils/timezones';
+import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import {
   countSequenceLeafItems,
   createToniChyronSequence,
@@ -148,6 +149,8 @@ export default function Control() {
   const [timeOverrideInput, setTimeOverrideInput] = useState('');
   const [broadcastTimeError, setBroadcastTimeError] = useState('');
   const [isSavingBroadcastTime, setIsSavingBroadcastTime] = useState(false);
+  const [selectedTransitionId, setSelectedTransitionId] = useState('crescendo-prism');
+  const selectedTransition = getSceneTransitionPreset(selectedTransitionId);
 
   useEffect(() => {
     fetchScenes();
@@ -296,7 +299,7 @@ export default function Control() {
       await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId })
+        body: JSON.stringify({ sceneId, transitionId: selectedTransitionId })
       });
       setSelectedScene(sceneId);
       await fetchProgramState(activeProgramId);
@@ -759,6 +762,37 @@ export default function Control() {
             </div>
           </div>
           {broadcastTimeError && <p className='text-red-600 text-sm mt-2'>{broadcastTimeError}</p>}
+        </div>
+
+        <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
+          <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
+            <div>
+              <h2 className='text-lg font-bold text-gray-900'>Scene Take Transition</h2>
+              <p className='text-sm text-gray-600'>Transitions are code-defined presets. The program can play them, but only control chooses which one to use on the next take.</p>
+              <p className='text-xs text-gray-500 mt-1'>
+                Active preset: <span className='font-semibold text-gray-700'>{selectedTransition.name}</span> ({selectedTransition.durationMs}ms total, cut at{' '}
+                {selectedTransition.cutPointMs}ms)
+              </p>
+            </div>
+            <div className='w-full md:w-[340px]'>
+              <label htmlFor='takeTransition' className='block text-xs text-gray-600 mb-1'>
+                Transition Preset
+              </label>
+              <select
+                id='takeTransition'
+                value={selectedTransitionId}
+                onChange={(e) => setSelectedTransitionId(e.target.value)}
+                className='w-full border border-gray-300 rounded px-3 py-2 text-sm'
+              >
+                {SCENE_TRANSITIONS.map((transition) => (
+                  <option key={transition.id} value={transition.id}>
+                    {transition.name}
+                  </option>
+                ))}
+              </select>
+              <p className='text-xs text-gray-500 mt-2'>{selectedTransition.description}</p>
+            </div>
+          </div>
         </div>
 
         <div className='grid grid-cols-1 md:grid-cols-2 gap-8'>

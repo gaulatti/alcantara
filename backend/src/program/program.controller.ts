@@ -57,14 +57,14 @@ export class ProgramController {
   @Post(':programId/activate')
   async activateSceneById(
     @Param('programId') programId: string,
-    @Body() data: { sceneId: number },
+    @Body() data: { sceneId: number; transitionId?: string | null },
   ) {
-    return this.programService.activateScene(data.sceneId, programId);
+    return this.programService.activateScene(data.sceneId, programId, data.transitionId);
   }
 
   @Post('activate')
-  async activateScene(@Body() data: { sceneId: number }) {
-    return this.programService.activateScene(data.sceneId);
+  async activateScene(@Body() data: { sceneId: number; transitionId?: string | null }) {
+    return this.programService.activateScene(data.sceneId, undefined, data.transitionId);
   }
 
   @Sse(':programId/events')
