@@ -220,20 +220,7 @@ export default function FifthBellProgram() {
     }
   }, [pause, resume, showLogoSlide, state.isPaused]);
 
-  const isMarqueeVisible = useMemo(() => {
-    if (showLogoSlide || segments.length === 0) {
-      return false;
-    }
-
-    const isLastSegment = state.currentSegmentIndex === segments.length - 1;
-    if (!isLastSegment) {
-      return true;
-    }
-
-    const lastSegment = segments[segments.length - 1];
-    const isLastItem = state.currentItemIndex === lastSegment.itemCount - 1;
-    return !(isLastItem && state.progress > 85);
-  }, [segments, showLogoSlide, state]);
+  const isMarqueeVisible = false;
 
   if (!dataLoaded || !currentSegment) {
     return (
