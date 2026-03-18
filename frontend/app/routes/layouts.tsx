@@ -84,9 +84,7 @@ export default function LayoutsAdmin() {
   };
 
   const toggleComponent = (componentType: string) => {
-    setSelectedComponents((prev) =>
-      prev.includes(componentType) ? prev.filter((item) => item !== componentType) : [...prev, componentType]
-    );
+    setSelectedComponents((prev) => (prev.includes(componentType) ? prev.filter((item) => item !== componentType) : [...prev, componentType]));
   };
 
   const saveLayout = async () => {
