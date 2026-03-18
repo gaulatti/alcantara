@@ -238,7 +238,10 @@ export default function FifthBellProgram() {
   if (!dataLoaded || !currentSegment) {
     return (
       <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>
-        <div className='relative bg-black text-white overflow-hidden shadow-2xl' style={{ width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' }}>
+        <div
+          className='relative bg-black text-white overflow-hidden shadow-2xl'
+          style={{ width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' }}
+        >
           <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
         </div>
       </div>
@@ -247,7 +250,10 @@ export default function FifthBellProgram() {
 
   return (
     <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>
-      <div className='relative bg-black text-white overflow-hidden shadow-2xl' style={{ width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' }}>
+      <div
+        className='relative bg-black text-white overflow-hidden shadow-2xl'
+        style={{ width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' }}
+      >
         {!showLogoSlide && (
           <div className='absolute top-16 right-24 z-50 flex items-start gap-6'>
             <div className='flex items-start pt-1.5'>
@@ -259,10 +265,19 @@ export default function FifthBellProgram() {
           </div>
         )}
 
-        {showLogoSlide ? currentSegment && <CallsignSlide currentTime={callsignTime} audioRef={audioRef} /> : currentSegment.render(state.currentItemIndex, state.progress)}
+        {showLogoSlide
+          ? currentSegment && <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
+          : currentSegment.render(state.currentItemIndex, state.progress)}
 
-        <div className={`absolute bottom-0 left-0 right-0 z-100 transition-transform duration-1000 ease-in-out ${isMarqueeVisible ? 'translate-y-0' : 'translate-y-full'}`}>
-          {!showLogoSlide && (showCurtain ? <MarqueeCurtain onComplete={handleCurtainComplete} /> : <Marquee events={programEvents} onCycleComplete={handleMarqueeCycleComplete} />)}
+        <div
+          className={`absolute bottom-0 left-0 right-0 z-100 transition-transform duration-1000 ease-in-out ${isMarqueeVisible ? 'translate-y-0' : 'translate-y-full'}`}
+        >
+          {!showLogoSlide &&
+            (showCurtain ? (
+              <MarqueeCurtain onComplete={handleCurtainComplete} />
+            ) : (
+              <Marquee events={programEvents} onCycleComplete={handleMarqueeCycleComplete} />
+            ))}
         </div>
       </div>
 

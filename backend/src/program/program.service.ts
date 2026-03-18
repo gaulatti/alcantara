@@ -103,7 +103,10 @@ export class ProgramService {
     const state = await this.prisma.programState.upsert({
       where: { programId: ProgramService.RELOJ_PROGRAM_ID },
       update: {},
-      create: { programId: ProgramService.RELOJ_PROGRAM_ID, activeSceneId: null },
+      create: {
+        programId: ProgramService.RELOJ_PROGRAM_ID,
+        activeSceneId: null,
+      },
       select: { id: true, activeSceneId: true },
     });
 
@@ -177,7 +180,10 @@ export class ProgramService {
     const state = await this.prisma.programState.upsert({
       where: { programId: ProgramService.RELOJ_LOOP_PROGRAM_ID },
       update: {},
-      create: { programId: ProgramService.RELOJ_LOOP_PROGRAM_ID, activeSceneId: null },
+      create: {
+        programId: ProgramService.RELOJ_LOOP_PROGRAM_ID,
+        activeSceneId: null,
+      },
       select: { id: true, activeSceneId: true },
     });
 
@@ -328,7 +334,9 @@ export class ProgramService {
     sceneId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
-    const scene = await this.prisma.scene.findUnique({ where: { id: sceneId } });
+    const scene = await this.prisma.scene.findUnique({
+      where: { id: sceneId },
+    });
     if (!scene) {
       throw new Error('Scene not found');
     }
@@ -419,7 +427,9 @@ export class ProgramService {
       include: { scenes: true },
     });
 
-    const isAssigned = state.scenes.some((programScene) => programScene.sceneId === sceneId);
+    const isAssigned = state.scenes.some(
+      (programScene) => programScene.sceneId === sceneId,
+    );
     if (!isAssigned) {
       throw new Error('Scene is not assigned to this program');
     }
@@ -507,10 +517,12 @@ export class ProgramService {
   getEventStream(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ): Observable<{ data: string }> {
-    return this.getEventSubject(programId).asObservable().pipe(
-      map((data) => ({
-        data: JSON.stringify(data),
-      })),
-    );
+    return this.getEventSubject(programId)
+      .asObservable()
+      .pipe(
+        map((data) => ({
+          data: JSON.stringify(data),
+        })),
+      );
   }
 }

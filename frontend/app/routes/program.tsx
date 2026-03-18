@@ -18,21 +18,11 @@ import {
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
-import {
-  SceneTransitionOverlay
-} from '../components/SceneTransitionOverlay';
+import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
-import {
-  getSceneTransitionPreset,
-  type SceneTransitionPreset
-} from '../utils/sceneTransitions';
-import {
-  BACKEND_SANREMO_REALTIME_URL,
-  buildEaroneRealtimeLookup,
-  matchEaroneRealtimeEntry,
-  type EaroneRealtimeLookup
-} from '../utils/earoneRealtime';
+import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
+import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
 
 interface Layout {
   id: number;
@@ -169,11 +159,7 @@ function SceneProgram({ programId }: { programId: string }) {
       if (data.type === 'scene_change') {
         const event = data as SceneChangeEvent;
         const preset = getSceneTransitionPreset(event.transitionId);
-        const canAnimate =
-          preset.id !== 'cut' &&
-          !!state?.activeScene &&
-          !!event.state.activeScene &&
-          state.activeSceneId !== event.state.activeSceneId;
+        const canAnimate = preset.id !== 'cut' && !!state?.activeScene && !!event.state.activeScene && state.activeSceneId !== event.state.activeSceneId;
 
         clearTransitionTimers();
 

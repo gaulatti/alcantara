@@ -216,7 +216,11 @@ function WeatherSlide({ weatherData, progress, unit, language }: WeatherSlidePro
             const low = displayUnit === 'celsius' ? fahrenheitToCelsius(city.low) : city.low;
 
             return (
-              <div key={city.name} className='flex items-center space-x-6 p-6 bg-white/10 backdrop-blur-sm rounded-lg' style={{ animationDelay: `${index * 0.1}s` }}>
+              <div
+                key={city.name}
+                className='flex items-center space-x-6 p-6 bg-white/10 backdrop-blur-sm rounded-lg'
+                style={{ animationDelay: `${index * 0.1}s` }}
+              >
                 <div className='shrink-0'>{getWeatherIcon(city.condition, 48)}</div>
                 <div className='flex-1'>
                   <h3 className="text-3xl font-bold mb-2 font-['Encode_Sans']">{city.name}</h3>
@@ -278,15 +282,7 @@ export function createWeatherSegment(
 
       const regionIndex = Math.floor(itemIndex / 2) % weatherData.length;
       const unit = itemIndex % 2 === 0 ? 'fahrenheit' : 'celsius';
-      return (
-        <WeatherSlide
-          key={`weather-${regionIndex}`}
-          weatherData={weatherData[regionIndex]}
-          progress={progress}
-          unit={unit}
-          language={language}
-        />
-      );
+      return <WeatherSlide key={`weather-${regionIndex}`} weatherData={weatherData[regionIndex]} progress={progress} unit={unit} language={language} />;
     },
     prefetch: async () => {
       if (!onDataUpdate) {

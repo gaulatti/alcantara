@@ -147,7 +147,10 @@ function EarthquakeSlide({ earthquakes, progress, language }: { earthquakes: Ear
           className='w-full h-full object-cover blur-xl scale-105'
         />
       </div>
-      <div className='absolute inset-0 opacity-75 mix-blend-multiply transition-all duration-1000' style={{ background: `linear-gradient(to bottom right, ${dominantColor}, #000000)` }} />
+      <div
+        className='absolute inset-0 opacity-75 mix-blend-multiply transition-all duration-1000'
+        style={{ background: `linear-gradient(to bottom right, ${dominantColor}, #000000)` }}
+      />
       <div className='absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.1),transparent_60%)]' />
 
       <div className='relative z-10 h-full flex flex-col justify-center px-24 py-24'>
@@ -181,7 +184,11 @@ function EarthquakeSlide({ earthquakes, progress, language }: { earthquakes: Ear
             const backgroundColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
 
             return (
-              <div key={quake.id} className='grid grid-cols-[auto_1fr] gap-x-12 items-center p-6 backdrop-blur-sm rounded-lg border border-white/5' style={{ animationDelay: `${index * 0.05}s`, backgroundColor }}>
+              <div
+                key={quake.id}
+                className='grid grid-cols-[auto_1fr] gap-x-12 items-center p-6 backdrop-blur-sm rounded-lg border border-white/5'
+                style={{ animationDelay: `${index * 0.05}s`, backgroundColor }}
+              >
                 <div className='flex flex-col items-center' style={{ width: '100px' }}>
                   <div className='text-5xl font-bold leading-none'>M{quake.magnitude.toFixed(1)}</div>
                 </div>
@@ -196,11 +203,15 @@ function EarthquakeSlide({ earthquakes, progress, language }: { earthquakes: Ear
                     </div>
                     <div className='flex items-center space-x-2'>
                       <Layers size={16} className='opacity-70 shrink-0' />
-                      <span className='truncate'>{quake.depth} {t('earthquakes.depth', language)}</span>
+                      <span className='truncate'>
+                        {quake.depth} {t('earthquakes.depth', language)}
+                      </span>
                     </div>
                     <div className='flex items-center space-x-2 opacity-80'>
                       <MapPin size={16} className='opacity-70 shrink-0' />
-                      <span className='truncate'>{quake.lat.toFixed(2)}°, {quake.lng.toFixed(2)}°</span>
+                      <span className='truncate'>
+                        {quake.lat.toFixed(2)}°, {quake.lng.toFixed(2)}°
+                      </span>
                     </div>
                     {quake.sources.length > 0 && (
                       <div className='flex items-center space-x-2 opacity-80'>
