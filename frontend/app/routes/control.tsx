@@ -59,6 +59,19 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
+interface FifthBellSettings {
+  id: number;
+  showArticles: boolean;
+  showWeather: boolean;
+  showEarthquakes: boolean;
+  showMarkets: boolean;
+  showMarquee: boolean;
+  showCallsignTake: boolean;
+  weatherCities: string[];
+  availableWeatherCities: string[];
+  updatedAt: string;
+}
+
 type ComponentPropsMap = Record<string, any>;
 
 const hasConfigurableSceneAttributes = (componentType: string): boolean => {
@@ -144,9 +157,12 @@ export default function Control() {
   const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
   const [isCreatingScene, setIsCreatingScene] = useState(false);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
+  const [fifthBellSettings, setFifthBellSettings] = useState<FifthBellSettings | null>(null);
   const [timeOverrideInput, setTimeOverrideInput] = useState('');
   const [broadcastTimeError, setBroadcastTimeError] = useState('');
   const [isSavingBroadcastTime, setIsSavingBroadcastTime] = useState(false);
+  const [isSavingFifthBellSettings, setIsSavingFifthBellSettings] = useState(false);
+  const [fifthBellSettingsError, setFifthBellSettingsError] = useState('');
   const [selectedTransitionId, setSelectedTransitionId] = useState('crescendo-prism');
   const selectedTransition = getSceneTransitionPreset(selectedTransitionId);
 
@@ -156,10 +172,17 @@ export default function Control() {
     fetchComponentTypes();
     fetchPrograms();
     fetchBroadcastSettings();
+    fetchFifthBellSettings();
   }, []);
 
   useEffect(() => {
     fetchProgramState(activeProgramId);
+  }, [activeProgramId]);
+
+  useEffect(() => {
+    if (activeProgramId === 'fifthbell') {
+      fetchFifthBellSettings();
+    }
   }, [activeProgramId]);
 
   const fetchScenes = async () => {
@@ -210,6 +233,18 @@ export default function Control() {
       setTimeOverrideInput(data?.timeOverrideStartTime || '');
     } catch (err) {
       console.error('Failed to fetch broadcast settings:', err);
+    }
+  };
+
+  const fetchFifthBellSettings = async () => {
+    try {
+      const res = await fetch(apiUrl('/program/fifthbell-settings'));
+      const data = await res.json();
+      setFifthBellSettings(data);
+      setFifthBellSettingsError('');
+    } catch (err) {
+      console.error('Failed to fetch FifthBell settings:', err);
+      setFifthBellSettingsError('Failed to load FifthBell settings.');
     }
   };
 
@@ -641,6 +676,65 @@ export default function Control() {
     }
   };
 
+  const updateFifthBellSetting = (key: keyof FifthBellSettings, value: any) => {
+    setFifthBellSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const toggleFifthBellWeatherCity = (city: string, checked: boolean) => {
+    setFifthBellSettings((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const next = new Set(prev.weatherCities || []);
+      if (checked) {
+        next.add(city);
+      } else {
+        next.delete(city);
+      }
+
+      return {
+        ...prev,
+        weatherCities: [...next]
+      };
+    });
+  };
+
+  const saveFifthBellSettings = async () => {
+    if (!fifthBellSettings) {
+      return;
+    }
+
+    setIsSavingFifthBellSettings(true);
+    setFifthBellSettingsError('');
+    try {
+      const res = await fetch(apiUrl('/program/fifthbell-settings'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          showArticles: fifthBellSettings.showArticles,
+          showWeather: fifthBellSettings.showWeather,
+          showEarthquakes: fifthBellSettings.showEarthquakes,
+          showMarkets: fifthBellSettings.showMarkets,
+          showMarquee: fifthBellSettings.showMarquee,
+          showCallsignTake: fifthBellSettings.showCallsignTake,
+          weatherCities: fifthBellSettings.weatherCities
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const updated = await res.json();
+      setFifthBellSettings(updated);
+    } catch (err) {
+      console.error('Failed to save FifthBell settings:', err);
+      setFifthBellSettingsError('Failed to save FifthBell settings. Please try again.');
+    } finally {
+      setIsSavingFifthBellSettings(false);
+    }
+  };
+
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
     ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
   );
@@ -759,6 +853,110 @@ export default function Control() {
           {broadcastTimeError && <p className='text-red-600 text-sm mt-2'>{broadcastTimeError}</p>}
         </div>
 
+        {activeProgramId === 'fifthbell' && (
+          <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
+            <div className='flex flex-col md:flex-row md:items-start md:justify-between gap-4'>
+              <div>
+                <h2 className='text-lg font-bold text-gray-900'>FifthBell Program Controls</h2>
+                <p className='text-sm text-gray-600'>Manage which segments are shown, weather cities, marquee visibility, and callsign take behavior.</p>
+                {fifthBellSettings?.updatedAt && (
+                  <p className='text-xs text-gray-500 mt-1'>Updated: {new Date(fifthBellSettings.updatedAt).toLocaleString()}</p>
+                )}
+              </div>
+              <button
+                onClick={saveFifthBellSettings}
+                disabled={isSavingFifthBellSettings || !fifthBellSettings}
+                className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold disabled:bg-blue-400 disabled:cursor-not-allowed'
+              >
+                {isSavingFifthBellSettings ? 'Saving...' : 'Save FifthBell Controls'}
+              </button>
+            </div>
+
+            {fifthBellSettings ? (
+              <div className='mt-4 space-y-4'>
+                <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(fifthBellSettings.showArticles)}
+                      onChange={(e) => updateFifthBellSetting('showArticles', e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    Show Articles
+                  </label>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(fifthBellSettings.showWeather)}
+                      onChange={(e) => updateFifthBellSetting('showWeather', e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    Show Weather
+                  </label>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(fifthBellSettings.showEarthquakes)}
+                      onChange={(e) => updateFifthBellSetting('showEarthquakes', e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    Show Earthquakes
+                  </label>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(fifthBellSettings.showMarkets)}
+                      onChange={(e) => updateFifthBellSetting('showMarkets', e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    Show Markets
+                  </label>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(fifthBellSettings.showMarquee)}
+                      onChange={(e) => updateFifthBellSetting('showMarquee', e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    Show Bottom Marquee
+                  </label>
+                  <label className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={Boolean(fifthBellSettings.showCallsignTake)}
+                      onChange={(e) => updateFifthBellSetting('showCallsignTake', e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    Enable Callsign Take
+                  </label>
+                </div>
+
+                <div>
+                  <h3 className='text-sm font-semibold text-gray-800 mb-2'>Weather Cities</h3>
+                  <p className='text-xs text-gray-500 mb-2'>Select which cities appear in the weather segment.</p>
+                  <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-gray-50'>
+                    {(fifthBellSettings.availableWeatherCities || []).map((city) => (
+                      <label key={city} className='flex items-center gap-2 text-sm text-gray-700'>
+                        <input
+                          type='checkbox'
+                          checked={fifthBellSettings.weatherCities?.includes(city) ?? false}
+                          onChange={(e) => toggleFifthBellWeatherCity(city, e.target.checked)}
+                          className='h-4 w-4'
+                        />
+                        {city}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className='text-sm text-gray-500 mt-3'>Loading FifthBell controls...</p>
+            )}
+
+            {fifthBellSettingsError && <p className='text-red-600 text-sm mt-3'>{fifthBellSettingsError}</p>}
+          </div>
+        )}
+
         <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
           <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
             <div>
@@ -771,7 +969,7 @@ export default function Control() {
                 {selectedTransition.cutPointMs}ms)
               </p>
             </div>
-            <div className='w-full md:w-[340px]'>
+            <div className='w-full md:w-85'>
               <label htmlFor='takeTransition' className='block text-xs text-gray-600 mb-1'>
                 Transition Preset
               </label>
