@@ -23,11 +23,16 @@
   "dependencies": {
     "@libsql/client": "^0.17.0",
     "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-fastify": "^11.1.13",
     "@prisma/adapter-libsql": "^7.3.0",
     "@prisma/client": "^7.3.0",
+    "jwks-rsa": "^4.0.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },

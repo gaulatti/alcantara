@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
+import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
 import {
   BroadcastLayout,
   Ticker,
@@ -78,6 +79,15 @@ interface ActiveTransition {
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
+
+  if (programId === 'fifthbell') {
+    return <FifthBellProgram />;
+  }
+
+  return <SceneProgram programId={programId} />;
+}
+
+function SceneProgram({ programId }: { programId: string }) {
   const [state, setState] = useState<ProgramState | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);

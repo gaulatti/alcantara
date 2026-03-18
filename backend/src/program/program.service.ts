@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma.service';
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
+  private static readonly FIFTHBELL_PROGRAM_ID = 'fifthbell';
   private static readonly RELOJ_PROGRAM_ID = 'reloj';
   private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
   private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
@@ -29,6 +30,7 @@ export class ProgramService {
 
   private async ensureBuiltinPrograms() {
     await this.initializeProgramState(ProgramService.DEFAULT_PROGRAM_ID);
+    await this.initializeProgramState(ProgramService.FIFTHBELL_PROGRAM_ID);
     await this.ensureRelojProgramConfigured();
     await this.ensureRelojLoopProgramConfigured();
     await this.ensureBroadcastSettings();
