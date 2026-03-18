@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
+import { apiUrl } from '../utils/apiBaseUrl';
 import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
 import {
   BroadcastLayout,
@@ -96,7 +97,7 @@ function SceneProgram({ programId }: { programId: string }) {
     setActiveTransition(null);
     setState(null);
 
-    fetch(`http://localhost:3000/program/${encodeURIComponent(programId)}/state`)
+    fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
       .then((res) => res.json())
       .then((data) => setState(data))
       .catch((err) => console.error('Failed to fetch initial state:', err));
@@ -110,7 +111,7 @@ function SceneProgram({ programId }: { programId: string }) {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:3000/program/broadcast-settings')
+    fetch(apiUrl('/program/broadcast-settings'))
       .then((res) => res.json())
       .then((data) => setBroadcastSettings(data))
       .catch((err) => console.error('Failed to fetch broadcast settings:', err));
@@ -154,7 +155,7 @@ function SceneProgram({ programId }: { programId: string }) {
   }, [state?.activeScene?.id, state?.activeScene?.layout.componentType]);
 
   useSSE({
-    url: `http://localhost:3000/program/${encodeURIComponent(programId)}/events`,
+    url: apiUrl(`/program/${encodeURIComponent(programId)}/events`),
     onMessage: (data) => {
       if (data.type === 'scene_change') {
         const event = data as SceneChangeEvent;

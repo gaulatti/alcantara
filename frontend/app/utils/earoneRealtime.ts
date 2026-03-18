@@ -1,5 +1,7 @@
+import { apiUrl } from './apiBaseUrl';
+
 export const BACKEND_SANREMO_REALTIME_URL =
-  'http://localhost:3000/charts/sanremo-realtime';
+  apiUrl('/charts/sanremo-realtime');
 
 export interface EaroneRealtimeEntry {
   earoneSongId: string | null;

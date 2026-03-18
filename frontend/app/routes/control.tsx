@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GripVertical } from 'lucide-react';
 import type { Route } from './+types/control';
+import { apiUrl } from '../utils/apiBaseUrl';
 import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../utils/timezones';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import {
@@ -166,7 +167,7 @@ export default function Control() {
 
   const fetchScenes = async () => {
     try {
-      const res = await fetch('http://localhost:3000/scenes');
+      const res = await fetch(apiUrl('/scenes'));
       const data = await res.json();
       setScenes(data);
     } catch (err) {
@@ -176,7 +177,7 @@ export default function Control() {
 
   const fetchLayouts = async () => {
     try {
-      const res = await fetch('http://localhost:3000/layouts');
+      const res = await fetch(apiUrl('/layouts'));
       const data = await res.json();
       setLayouts(data);
     } catch (err) {
@@ -186,7 +187,7 @@ export default function Control() {
 
   const fetchComponentTypes = async () => {
     try {
-      const res = await fetch('http://localhost:3000/layouts/component-types');
+      const res = await fetch(apiUrl('/layouts/component-types'));
       const data = await res.json();
       setComponentTypes(data);
     } catch (err) {
@@ -196,7 +197,7 @@ export default function Control() {
 
   const fetchPrograms = async () => {
     try {
-      const res = await fetch('http://localhost:3000/program');
+      const res = await fetch(apiUrl('/program'));
       const data = await res.json();
       setPrograms(data);
     } catch (err) {
@@ -206,7 +207,7 @@ export default function Control() {
 
   const fetchBroadcastSettings = async () => {
     try {
-      const res = await fetch('http://localhost:3000/program/broadcast-settings');
+      const res = await fetch(apiUrl('/program/broadcast-settings'));
       const data = await res.json();
       setBroadcastSettings(data);
       setTimeOverrideInput(data?.timeOverrideStartTime || '');
@@ -217,7 +218,7 @@ export default function Control() {
 
   const fetchProgramState = async (targetProgramId: string) => {
     try {
-      const res = await fetch(`http://localhost:3000/program/${encodeURIComponent(targetProgramId)}/state`);
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`));
       const data = await res.json();
       setProgramState(data);
       setSelectedScene(data?.activeSceneId ?? null);
@@ -255,7 +256,7 @@ export default function Control() {
     const nextProgramId = programIdInput.trim() || 'main';
 
     try {
-      await fetch('http://localhost:3000/program', {
+      await fetch(apiUrl('/program'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ programId: nextProgramId })
@@ -271,7 +272,7 @@ export default function Control() {
 
   const assignSceneToProgram = async (sceneId: number) => {
     try {
-      await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes`, {
+      await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scenes`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sceneId })
@@ -284,7 +285,7 @@ export default function Control() {
 
   const removeSceneFromProgram = async (sceneId: number) => {
     try {
-      await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/scenes/${sceneId}`, { method: 'DELETE' });
+      await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scenes/${sceneId}`), { method: 'DELETE' });
       await fetchProgramState(activeProgramId);
     } catch (err) {
       console.error('Failed to remove scene from program:', err);
@@ -296,7 +297,7 @@ export default function Control() {
       if (!isSceneAssigned(sceneId)) {
         await assignSceneToProgram(sceneId);
       }
-      await fetch(`http://localhost:3000/program/${encodeURIComponent(activeProgramId)}/activate`, {
+      await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/activate`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sceneId, transitionId: selectedTransitionId })
@@ -357,7 +358,7 @@ export default function Control() {
         };
       }
 
-      const response = await fetch(`http://localhost:3000/scenes/${selectedScene}`, {
+      const response = await fetch(apiUrl(`/scenes/${selectedScene}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -546,7 +547,7 @@ export default function Control() {
         metadata: sceneComponentProps // Send as object, backend will stringify
       };
 
-      const url = editingScene ? `http://localhost:3000/scenes/${editingScene.id}` : 'http://localhost:3000/scenes';
+      const url = editingScene ? apiUrl(`/scenes/${editingScene.id}`) : apiUrl('/scenes');
       const method = editingScene ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
@@ -574,7 +575,7 @@ export default function Control() {
     if (!confirm('Are you sure you want to delete this scene?')) return;
 
     try {
-      await fetch(`http://localhost:3000/scenes/${id}`, {
+      await fetch(apiUrl(`/scenes/${id}`), {
         method: 'DELETE'
       });
       if (selectedScene === id) {
@@ -597,7 +598,7 @@ export default function Control() {
     setIsSavingBroadcastTime(true);
     setBroadcastTimeError('');
     try {
-      const res = await fetch('http://localhost:3000/program/broadcast-settings', {
+      const res = await fetch(apiUrl('/program/broadcast-settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -624,7 +625,7 @@ export default function Control() {
     setIsSavingBroadcastTime(true);
     setBroadcastTimeError('');
     try {
-      const res = await fetch('http://localhost:3000/program/broadcast-settings', {
+      const res = await fetch(apiUrl('/program/broadcast-settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
