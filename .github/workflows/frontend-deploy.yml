@@ -40,7 +40,7 @@ jobs:
           VITE_FQDN: ${{ vars.FQDN }}
           VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
           VITE_COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
-          VITE_COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID}}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
           VITE_COGNITO_DOMAIN: ${{ vars.COGNITO_DOMAIN }}
         run: |
           npm run build

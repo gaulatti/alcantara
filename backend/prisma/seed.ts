@@ -1,12 +1,10 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { createPostgresAdapter } from '../src/prisma-adapter';
 
-const adapter = new PrismaLibSql({
-  url: 'file:./prisma/dev.db',
+const prisma = new PrismaClient({
+  adapter: createPostgresAdapter(process.env.DATABASE_URL),
 });
-
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('Seeding database...');

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { createPostgresAdapter } from './prisma-adapter';
 
 @Injectable()
 export class PrismaService
@@ -8,10 +8,9 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    const adapter = new PrismaLibSql({
-      url: process.env.DATABASE_URL || 'file:./prisma/dev.db',
+    super({
+      adapter: createPostgresAdapter(process.env.DATABASE_URL),
     });
-    super({ adapter });
   }
 
   async onModuleInit() {

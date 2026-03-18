@@ -56,10 +56,10 @@ jobs:
             -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
             -e HTTP_PORT="${{ vars.HTTP_PORT }}" \
             -e PORT="${{ vars.HTTP_PORT }}" \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL || vars.DATABASE_URL }}" \
-            -e COGNITO_REGION="${{ vars.COGNITO_REGION || vars.AWS_REGION }}" \
-            -e COGNITO_USER_POOL_ID="${{ vars.COGNITO_USER_POOL_ID || secrets.COGNITO_USER_POOL_ID }}" \
-            -e COGNITO_CLIENT_ID="${{ vars.COGNITO_CLIENT_ID || secrets.COGNITO_CLIENT_ID }}" \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e COGNITO_REGION="${{ vars.AWS_REGION }}" \
+            -e COGNITO_USER_POOL_ID="${{ vars.COGNITO_USER_POOL_ID }}" \
+            -e COGNITO_CLIENT_ID="${{ vars.COGNITO_CLIENT_ID }}" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=awslogs \
