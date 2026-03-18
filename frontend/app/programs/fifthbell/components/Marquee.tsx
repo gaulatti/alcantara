@@ -5,6 +5,14 @@ import type { Event } from '../events';
 interface MarqueeProps {
   events: Event[];
   onCycleComplete?: () => void;
+  minPostsCount?: number;
+  minAverageRelevance?: number;
+  minMedianRelevance?: number;
+  pixelsPerSecond?: number;
+  minDurationSeconds?: number;
+  heightPx?: number;
+  backgroundColor?: string;
+  borderColor?: string;
 }
 
 function calculateMedianRelevance(posts: { relevance: number }[]): number {
@@ -20,20 +28,34 @@ function calculateAverageRelevance(posts: { relevance: number }[]): number {
   return sum / posts.length;
 }
 
-export function Marquee({ events, onCycleComplete }: MarqueeProps) {
+export function Marquee({
+  events,
+  onCycleComplete,
+  minPostsCount = 4,
+  minAverageRelevance = 5,
+  minMedianRelevance = 7,
+  pixelsPerSecond = 150,
+  minDurationSeconds = 10,
+  heightPx = 72,
+  backgroundColor = 'rgba(0, 0, 0, 0.6)',
+  borderColor = '#b21100'
+}: MarqueeProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [animationDuration, setAnimationDuration] = useState('20s');
 
   const sortedEvents = useMemo(() => {
     return events
       .filter((event) => {
-        const postsCount = event.posts.length;
+        const postsCount = typeof event.posts_count === 'number' ? event.posts_count : event.posts.length;
         const average = calculateAverageRelevance(event.posts);
         const median = calculateMedianRelevance(event.posts);
-        return postsCount >= 4 || average >= 5 || median >= 7;
+        const postsThreshold = minPostsCount <= 0 || postsCount >= minPostsCount;
+        const averageThreshold = minAverageRelevance <= 0 || average >= minAverageRelevance;
+        const medianThreshold = minMedianRelevance <= 0 || median >= minMedianRelevance;
+        return postsThreshold && averageThreshold && medianThreshold;
       })
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [events]);
+  }, [events, minPostsCount, minAverageRelevance, minMedianRelevance]);
 
   useEffect(() => {
     const updateDuration = () => {
@@ -43,7 +65,7 @@ export function Marquee({ events, onCycleComplete }: MarqueeProps) {
 
       const contentWidth = contentRef.current.scrollWidth;
       const totalDistance = 1920 + contentWidth;
-      const duration = Math.max(totalDistance / 150, 10);
+      const duration = Math.max(totalDistance / Math.max(1, pixelsPerSecond), minDurationSeconds);
       setAnimationDuration(`${duration}s`);
     };
 
@@ -54,7 +76,7 @@ export function Marquee({ events, onCycleComplete }: MarqueeProps) {
       window.clearTimeout(timer);
       window.removeEventListener('resize', updateDuration);
     };
-  }, [sortedEvents]);
+  }, [sortedEvents, pixelsPerSecond, minDurationSeconds]);
 
   if (sortedEvents.length === 0) {
     return null;
@@ -67,9 +89,11 @@ export function Marquee({ events, onCycleComplete }: MarqueeProps) {
         bottom: 0,
         left: 0,
         right: 0,
-        height: '50px',
-        backgroundColor: '#000000',
-        borderTop: '2px solid #b21100',
+        height: `${heightPx}px`,
+        backgroundColor,
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        borderTop: `2px solid ${borderColor}`,
         overflow: 'hidden',
         zIndex: 100
       }}
@@ -91,9 +115,9 @@ export function Marquee({ events, onCycleComplete }: MarqueeProps) {
             <span
               style={{
                 color: '#ffffff',
-                fontSize: '1.5rem',
+                fontSize: '2rem',
                 fontWeight: '600',
-                fontFamily: 'Libre Franklin, sans-serif'
+                fontFamily: 'Encode Sans, sans-serif'
               }}
             >
               {event.title}

@@ -6,7 +6,7 @@ interface CityTime {
   timezone: string;
 }
 
-const CITIES: CityTime[] = [
+export const DEFAULT_WORLD_CLOCK_CITIES: CityTime[] = [
   { city: 'NEW YORK', timezone: 'America/New_York' },
   { city: 'LONDON', timezone: 'Europe/London' },
   { city: 'TOKYO', timezone: 'Asia/Tokyo' },
@@ -46,13 +46,32 @@ function shuffleArray<T>(array: T[]): T[] {
 interface WorldClocksProps {
   currentTime?: Date;
   language?: SupportedLanguage;
+  cities?: CityTime[];
+  rotateIntervalMs?: number;
+  transitionDurationMs?: number;
+  shuffleCities?: boolean;
+  widthPx?: number;
 }
 
-export function WorldClocks({ currentTime, language = 'en' }: WorldClocksProps) {
+export function WorldClocks({
+  currentTime,
+  language = 'en',
+  cities,
+  rotateIntervalMs = 7000,
+  transitionDurationMs = 300,
+  shuffleCities = true,
+  widthPx = 200
+}: WorldClocksProps) {
+  const activeCities = cities && cities.length > 0 ? cities : DEFAULT_WORLD_CLOCK_CITIES;
   const [time, setTime] = useState(currentTime || new Date());
-  const [cityPool, setCityPool] = useState<CityTime[]>(() => shuffleArray(CITIES));
+  const [cityPool, setCityPool] = useState<CityTime[]>(() => (shuffleCities ? shuffleArray(activeCities) : [...activeCities]));
   const [currentCityIndex, setCurrentCityIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    setCityPool(shuffleCities ? shuffleArray(activeCities) : [...activeCities]);
+    setCurrentCityIndex(0);
+  }, [activeCities, shuffleCities]);
 
   useEffect(() => {
     if (currentTime) {
@@ -76,14 +95,14 @@ export function WorldClocks({ currentTime, language = 'en' }: WorldClocksProps) 
         setCurrentCityIndex((prevIndex) => {
           const nextIndex = prevIndex + 1;
           if (nextIndex >= cityPool.length) {
-            setCityPool(shuffleArray(CITIES));
+            setCityPool(shuffleCities ? shuffleArray(activeCities) : [...activeCities]);
             return 0;
           }
           return nextIndex;
         });
         setIsAnimating(false);
-      }, 300);
-    }, 7000);
+      }, Math.max(0, transitionDurationMs));
+    }, Math.max(500, rotateIntervalMs));
 
     return () => {
       clearInterval(interval);
@@ -91,9 +110,9 @@ export function WorldClocks({ currentTime, language = 'en' }: WorldClocksProps) 
         window.clearTimeout(timeoutId);
       }
     };
-  }, [cityPool]);
+  }, [cityPool, rotateIntervalMs, transitionDurationMs, shuffleCities, activeCities]);
 
-  const currentCity = cityPool[currentCityIndex];
+  const currentCity = cityPool[currentCityIndex] ?? activeCities[0];
   const formatTime = (timezone: string) =>
     time.toLocaleTimeString('en-US', {
       timeZone: timezone,
@@ -103,7 +122,7 @@ export function WorldClocks({ currentTime, language = 'en' }: WorldClocksProps) 
     });
 
   return (
-    <div className='flex flex-col gap-1.5 transition-opacity duration-300' style={{ opacity: isAnimating ? 0 : 1, width: '200px' }}>
+    <div className='flex flex-col gap-1.5 transition-opacity duration-300' style={{ opacity: isAnimating ? 0 : 1, width: `${widthPx}px` }}>
       <div className='text-white font-bold text-6xl tracking-tight leading-none text-center' style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
         {formatTime(currentCity.timezone)}
       </div>

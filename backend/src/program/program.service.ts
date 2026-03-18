@@ -7,14 +7,8 @@ import { PrismaService } from '../prisma.service';
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly FIFTHBELL_PROGRAM_ID = 'fifthbell';
-  private static readonly RELOJ_PROGRAM_ID = 'reloj';
-  private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
-  private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
-  private static readonly RELOJ_LOOP_PROGRAM_ID = 'reloj-loop';
-  private static readonly RELOJ_LOOP_LAYOUT_NAME = 'Reloj Loop Layout';
-  private static readonly RELOJ_LOOP_SCENE_NAME = 'Reloj Loop Scene';
-  private static readonly BROADCAST_SETTINGS_ID = 1;
-  private static readonly FIFTHBELL_SETTINGS_ID = 1;
+  private static readonly FIFTHBELL_LAYOUT_NAME = 'FifthBell Layout';
+  private static readonly FIFTHBELL_SCENE_NAME = 'FifthBell Scene';
   private static readonly FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
     'New York',
     'San Juan',
@@ -41,6 +35,14 @@ export class ProgramService {
     'Bangkok',
     'Jakarta',
   ] as const;
+  private static readonly RELOJ_PROGRAM_ID = 'reloj';
+  private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
+  private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
+  private static readonly RELOJ_LOOP_PROGRAM_ID = 'reloj-loop';
+  private static readonly RELOJ_LOOP_LAYOUT_NAME = 'Reloj Loop Layout';
+  private static readonly RELOJ_LOOP_SCENE_NAME = 'Reloj Loop Scene';
+  private static readonly BROADCAST_SETTINGS_ID = 1;
+
   private eventSubjects = new Map<string, Subject<any>>();
 
   constructor(private prisma: PrismaService) {
@@ -57,179 +59,10 @@ export class ProgramService {
 
   private async ensureBuiltinPrograms() {
     await this.initializeProgramState(ProgramService.DEFAULT_PROGRAM_ID);
-    await this.initializeProgramState(ProgramService.FIFTHBELL_PROGRAM_ID);
+    await this.ensureFifthBellProgramConfigured();
     await this.ensureRelojProgramConfigured();
     await this.ensureRelojLoopProgramConfigured();
     await this.ensureBroadcastSettings();
-    await this.ensureFifthBellSettings();
-  }
-
-  private parseWeatherCities(value: string | null | undefined): string[] {
-    if (!value) {
-      return [];
-    }
-
-    try {
-      const parsed = JSON.parse(value);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-
-      return parsed.filter((city): city is string => typeof city === 'string');
-    } catch {
-      return [];
-    }
-  }
-
-  private normalizeWeatherCities(
-    cities: string[] | null | undefined,
-  ): string[] {
-    if (!Array.isArray(cities) || cities.length === 0) {
-      return [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
-    }
-
-    const allowed = new Set<string>(
-      ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES,
-    );
-    const deduped = new Set<string>();
-
-    for (const city of cities) {
-      if (typeof city !== 'string') {
-        continue;
-      }
-
-      const trimmed = city.trim();
-      if (!trimmed || !allowed.has(trimmed)) {
-        continue;
-      }
-
-      deduped.add(trimmed);
-    }
-
-    return deduped.size > 0
-      ? [...deduped]
-      : [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
-  }
-
-  private mapFifthBellSettings(settings: {
-    id: number;
-    showArticles: boolean;
-    showWeather: boolean;
-    showEarthquakes: boolean;
-    showMarkets: boolean;
-    showMarquee: boolean;
-    showCallsignTake: boolean;
-    weatherCitiesJson: string;
-    updatedAt: Date;
-  }) {
-    return {
-      id: settings.id,
-      showArticles: settings.showArticles,
-      showWeather: settings.showWeather,
-      showEarthquakes: settings.showEarthquakes,
-      showMarkets: settings.showMarkets,
-      showMarquee: settings.showMarquee,
-      showCallsignTake: settings.showCallsignTake,
-      weatherCities: this.parseWeatherCities(settings.weatherCitiesJson),
-      availableWeatherCities: [
-        ...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES,
-      ],
-      updatedAt: settings.updatedAt,
-    };
-  }
-
-  private async ensureFifthBellSettings() {
-    const defaults = [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
-    const settings = await this.prisma.fifthBellSettings.upsert({
-      where: { id: ProgramService.FIFTHBELL_SETTINGS_ID },
-      update: {},
-      create: {
-        id: ProgramService.FIFTHBELL_SETTINGS_ID,
-        showArticles: true,
-        showWeather: true,
-        showEarthquakes: true,
-        showMarkets: true,
-        showMarquee: false,
-        showCallsignTake: true,
-        weatherCitiesJson: JSON.stringify(defaults),
-      },
-    });
-
-    return this.mapFifthBellSettings(settings);
-  }
-
-  async getFifthBellSettings() {
-    return this.ensureFifthBellSettings();
-  }
-
-  async updateFifthBellSettings(data: {
-    showArticles?: boolean;
-    showWeather?: boolean;
-    showEarthquakes?: boolean;
-    showMarkets?: boolean;
-    showMarquee?: boolean;
-    showCallsignTake?: boolean;
-    weatherCities?: string[];
-  }) {
-    const existing = await this.ensureFifthBellSettings();
-
-    const settings = await this.prisma.fifthBellSettings.upsert({
-      where: { id: ProgramService.FIFTHBELL_SETTINGS_ID },
-      update: {
-        showArticles:
-          typeof data.showArticles === 'boolean'
-            ? data.showArticles
-            : existing.showArticles,
-        showWeather:
-          typeof data.showWeather === 'boolean'
-            ? data.showWeather
-            : existing.showWeather,
-        showEarthquakes:
-          typeof data.showEarthquakes === 'boolean'
-            ? data.showEarthquakes
-            : existing.showEarthquakes,
-        showMarkets:
-          typeof data.showMarkets === 'boolean'
-            ? data.showMarkets
-            : existing.showMarkets,
-        showMarquee:
-          typeof data.showMarquee === 'boolean'
-            ? data.showMarquee
-            : existing.showMarquee,
-        showCallsignTake:
-          typeof data.showCallsignTake === 'boolean'
-            ? data.showCallsignTake
-            : existing.showCallsignTake,
-        weatherCitiesJson: JSON.stringify(
-          this.normalizeWeatherCities(
-            data.weatherCities ?? existing.weatherCities,
-          ),
-        ),
-      },
-      create: {
-        id: ProgramService.FIFTHBELL_SETTINGS_ID,
-        showArticles: data.showArticles ?? existing.showArticles,
-        showWeather: data.showWeather ?? existing.showWeather,
-        showEarthquakes: data.showEarthquakes ?? existing.showEarthquakes,
-        showMarkets: data.showMarkets ?? existing.showMarkets,
-        showMarquee: data.showMarquee ?? existing.showMarquee,
-        showCallsignTake: data.showCallsignTake ?? existing.showCallsignTake,
-        weatherCitiesJson: JSON.stringify(
-          this.normalizeWeatherCities(
-            data.weatherCities ?? existing.weatherCities,
-          ),
-        ),
-      },
-    });
-
-    const mapped = this.mapFifthBellSettings(settings);
-
-    this.broadcastUpdate(ProgramService.FIFTHBELL_PROGRAM_ID, {
-      type: 'fifthbell_settings_update',
-      settings: mapped,
-    });
-
-    return mapped;
   }
 
   private async ensureBroadcastSettings() {
@@ -293,6 +126,121 @@ export class ProgramService {
     });
 
     return settings;
+  }
+
+  private async ensureFifthBellProgramConfigured() {
+    const state = await this.prisma.programState.upsert({
+      where: { programId: ProgramService.FIFTHBELL_PROGRAM_ID },
+      update: {},
+      create: {
+        programId: ProgramService.FIFTHBELL_PROGRAM_ID,
+        activeSceneId: null,
+      },
+      select: { id: true, activeSceneId: true },
+    });
+
+    const layout = await this.prisma.layout.upsert({
+      where: { name: ProgramService.FIFTHBELL_LAYOUT_NAME },
+      update: {
+        componentType: 'fifthbell',
+      },
+      create: {
+        name: ProgramService.FIFTHBELL_LAYOUT_NAME,
+        componentType: 'fifthbell',
+        settings: JSON.stringify({}),
+      },
+      select: { id: true },
+    });
+
+    let scene = await this.prisma.scene.findFirst({
+      where: {
+        name: ProgramService.FIFTHBELL_SCENE_NAME,
+        layoutId: layout.id,
+      },
+      select: { id: true },
+    });
+
+    if (!scene) {
+      scene = await this.prisma.scene.create({
+        data: {
+          name: ProgramService.FIFTHBELL_SCENE_NAME,
+          layoutId: layout.id,
+          chyronText: null,
+          metadata: JSON.stringify({
+            fifthbell: {
+              showArticles: true,
+              showWeather: true,
+              showEarthquakes: true,
+              showMarkets: true,
+              showMarquee: false,
+              showCallsignTake: true,
+              weatherCities: [
+                ...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES,
+              ],
+              languageRotation: ['en', 'es', 'en', 'it'],
+              dataLoadTimeoutMs: 15000,
+              playlistDefaultDurationMs: 10000,
+              playlistUpdateIntervalMs: 100,
+              articlesDurationMs: 10000,
+              weatherDurationMs: 5000,
+              earthquakesDurationMs: 10000,
+              marketsDurationMs: 10000,
+              showWorldClocks: true,
+              showBellIcon: true,
+              worldClockRotateIntervalMs: 7000,
+              worldClockTransitionMs: 300,
+              worldClockShuffle: true,
+              worldClockWidthPx: 200,
+              audioCueEnabled: true,
+              audioCueMinute: 59,
+              audioCueSecond: 55,
+              callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
+              callsignWindowStartSecond: 50,
+              callsignWindowEndSecond: 3,
+              marqueeMinPostsCount: 4,
+              marqueeMinAverageRelevance: 0,
+              marqueeMinMedianRelevance: 0,
+              marqueePixelsPerSecond: 150,
+              marqueeMinDurationSeconds: 10,
+              marqueeHeightPx: 72,
+            },
+          }),
+        },
+        select: { id: true },
+      });
+    }
+
+    const existingAssignment = await this.prisma.programScene.findUnique({
+      where: {
+        programStateId_sceneId: {
+          programStateId: state.id,
+          sceneId: scene.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!existingAssignment) {
+      const maxPosition = await this.prisma.programScene.aggregate({
+        where: { programStateId: state.id },
+        _max: { position: true },
+      });
+
+      await this.prisma.programScene.create({
+        data: {
+          programStateId: state.id,
+          sceneId: scene.id,
+          position: (maxPosition._max.position ?? -1) + 1,
+        },
+      });
+    }
+
+    if (!state.activeSceneId) {
+      await this.prisma.programState.update({
+        where: { id: state.id },
+        data: { activeSceneId: scene.id },
+      });
+    }
   }
 
   private async ensureRelojProgramConfigured() {
@@ -517,7 +465,9 @@ export class ProgramService {
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
-    if (programId === ProgramService.RELOJ_PROGRAM_ID) {
+    if (programId === ProgramService.FIFTHBELL_PROGRAM_ID) {
+      await this.ensureFifthBellProgramConfigured();
+    } else if (programId === ProgramService.RELOJ_PROGRAM_ID) {
       await this.ensureRelojProgramConfigured();
     } else if (programId === ProgramService.RELOJ_LOOP_PROGRAM_ID) {
       await this.ensureRelojLoopProgramConfigured();

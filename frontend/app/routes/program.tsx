@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
 import { apiUrl } from '../utils/apiBaseUrl';
-import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
 import {
   BroadcastLayout,
   Ticker,
@@ -19,6 +18,7 @@ import {
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
+import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';

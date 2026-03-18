@@ -59,20 +59,33 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
-interface FifthBellSettings {
-  id: number;
-  showArticles: boolean;
-  showWeather: boolean;
-  showEarthquakes: boolean;
-  showMarkets: boolean;
-  showMarquee: boolean;
-  showCallsignTake: boolean;
-  weatherCities: string[];
-  availableWeatherCities: string[];
-  updatedAt: string;
-}
-
 type ComponentPropsMap = Record<string, any>;
+const FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
+  'New York',
+  'San Juan',
+  'Los Angeles',
+  'Honolulu',
+  'Mexico City',
+  'Havana',
+  'London',
+  'Paris',
+  'Berlin',
+  'Rome',
+  'Madrid',
+  'Athens',
+  'Santiago',
+  'Buenos Aires',
+  'Rio',
+  'Lima',
+  'Caracas',
+  'Bogotá',
+  'Tokyo',
+  'Seoul',
+  'Shanghai',
+  'Hong Kong',
+  'Bangkok',
+  'Jakarta'
+] as const;
 
 const hasConfigurableSceneAttributes = (componentType: string): boolean => {
   switch (componentType) {
@@ -85,11 +98,25 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'reloj-loop-clock':
     case 'toni-chyron':
     case 'earone':
+    case 'fifthbell':
       return true;
     default:
       return false;
   }
 };
+
+function parseSceneMetadata(metadata: string | null): ComponentPropsMap {
+  try {
+    const parsed = metadata ? JSON.parse(metadata) : {};
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // no-op, fallback below
+  }
+
+  return {};
+}
 
 function getStoredSceneChyronText(metadata: ComponentPropsMap, fallbackText: string): string {
   const toniProps = metadata['toni-chyron'];
@@ -109,7 +136,7 @@ function getStoredSceneChyronText(metadata: ComponentPropsMap, fallbackText: str
 
 function getSceneSummaryText(scene: Scene): string {
   try {
-    const metadata = scene.metadata ? JSON.parse(scene.metadata) : {};
+    const metadata = parseSceneMetadata(scene.metadata);
     const toniProps = metadata?.['toni-chyron'];
 
     if (toniProps && typeof toniProps === 'object') {
@@ -157,12 +184,9 @@ export default function Control() {
   const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
   const [isCreatingScene, setIsCreatingScene] = useState(false);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
-  const [fifthBellSettings, setFifthBellSettings] = useState<FifthBellSettings | null>(null);
   const [timeOverrideInput, setTimeOverrideInput] = useState('');
   const [broadcastTimeError, setBroadcastTimeError] = useState('');
   const [isSavingBroadcastTime, setIsSavingBroadcastTime] = useState(false);
-  const [isSavingFifthBellSettings, setIsSavingFifthBellSettings] = useState(false);
-  const [fifthBellSettingsError, setFifthBellSettingsError] = useState('');
   const [selectedTransitionId, setSelectedTransitionId] = useState('crescendo-prism');
   const selectedTransition = getSceneTransitionPreset(selectedTransitionId);
 
@@ -172,17 +196,10 @@ export default function Control() {
     fetchComponentTypes();
     fetchPrograms();
     fetchBroadcastSettings();
-    fetchFifthBellSettings();
   }, []);
 
   useEffect(() => {
-    fetchProgramState(activeProgramId);
-  }, [activeProgramId]);
-
-  useEffect(() => {
-    if (activeProgramId === 'fifthbell') {
-      fetchFifthBellSettings();
-    }
+    void fetchProgramState(activeProgramId);
   }, [activeProgramId]);
 
   const fetchScenes = async () => {
@@ -236,18 +253,6 @@ export default function Control() {
     }
   };
 
-  const fetchFifthBellSettings = async () => {
-    try {
-      const res = await fetch(apiUrl('/program/fifthbell-settings'));
-      const data = await res.json();
-      setFifthBellSettings(data);
-      setFifthBellSettingsError('');
-    } catch (err) {
-      console.error('Failed to fetch FifthBell settings:', err);
-      setFifthBellSettingsError('Failed to load FifthBell settings.');
-    }
-  };
-
   const fetchProgramState = async (targetProgramId: string) => {
     try {
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`));
@@ -261,15 +266,7 @@ export default function Control() {
   };
 
   const buildComponentPropsForScene = (scene: Scene): Record<string, any> => {
-    let metadata: Record<string, any> = {};
-    try {
-      const parsed = scene.metadata ? JSON.parse(scene.metadata) : {};
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        metadata = parsed;
-      }
-    } catch (err) {
-      console.error('Failed to parse scene metadata for editor:', err);
-    }
+    const metadata = parseSceneMetadata(scene.metadata);
 
     const components = scene.layout.componentType.split(',').filter(Boolean);
     const combined: Record<string, any> = {};
@@ -380,7 +377,12 @@ export default function Control() {
 
     setIsSavingSceneAttributes(true);
     try {
-      const nextMetadata: ComponentPropsMap = { ...nextSceneProps };
+      const selectedSceneData = scenes.find((scene) => scene.id === selectedScene);
+      const existingMetadata = selectedSceneData ? parseSceneMetadata(selectedSceneData.metadata) : {};
+      const nextMetadata: ComponentPropsMap = {
+        ...existingMetadata,
+        ...nextSceneProps
+      };
       const resolvedChyronText = getStoredSceneChyronText(nextMetadata, sceneEditorChyronText);
       if (Object.prototype.hasOwnProperty.call(nextMetadata, 'chyron')) {
         const currentChyron = nextMetadata.chyron;
@@ -439,30 +441,19 @@ export default function Control() {
   };
 
   const openEditSceneModal = (scene: Scene) => {
-    console.log('Editing scene:', scene);
-    console.log('Scene metadata (raw):', scene.metadata);
-
     setEditingScene(scene);
     setNewSceneName(scene.name);
     setSelectedLayoutId(scene.layoutId);
 
-    // Parse metadata if it exists
     try {
-      const metadata = scene.metadata ? JSON.parse(scene.metadata) : {};
-      console.log('Parsed metadata:', metadata);
-      console.log('Metadata is array?', Array.isArray(metadata));
-      console.log('Metadata keys:', Object.keys(metadata));
-
-      // If metadata is valid object with component keys, use it
+      const metadata = parseSceneMetadata(scene.metadata);
       if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
         setSceneComponentProps(buildComponentPropsForScene(scene));
       } else {
-        console.warn('Invalid metadata structure, falling back to defaults');
         handleLayoutSelect(scene.layoutId);
       }
     } catch (err) {
       console.error('Failed to parse scene metadata:', err);
-      // Fall back to default props
       handleLayoutSelect(scene.layoutId);
     }
 
@@ -528,6 +519,42 @@ export default function Control() {
         return {};
       case 'earone':
         return { label: 'EARONE', rank: '', spins: '' };
+      case 'fifthbell':
+        return {
+          showArticles: true,
+          showWeather: true,
+          showEarthquakes: true,
+          showMarkets: true,
+          showMarquee: false,
+          showCallsignTake: true,
+          weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES],
+          languageRotation: ['en', 'es', 'en', 'it'],
+          dataLoadTimeoutMs: 15000,
+          playlistDefaultDurationMs: 10000,
+          playlistUpdateIntervalMs: 100,
+          articlesDurationMs: 10000,
+          weatherDurationMs: 5000,
+          earthquakesDurationMs: 10000,
+          marketsDurationMs: 10000,
+          showWorldClocks: true,
+          showBellIcon: true,
+          worldClockRotateIntervalMs: 7000,
+          worldClockTransitionMs: 300,
+          worldClockShuffle: true,
+          worldClockWidthPx: 200,
+          audioCueEnabled: true,
+          audioCueMinute: 59,
+          audioCueSecond: 55,
+          callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
+          callsignWindowStartSecond: 50,
+          callsignWindowEndSecond: 3,
+          marqueeMinPostsCount: 4,
+          marqueeMinAverageRelevance: 0,
+          marqueeMinMedianRelevance: 0,
+          marqueePixelsPerSecond: 150,
+          marqueeMinDurationSeconds: 10,
+          marqueeHeightPx: 72
+        };
       default:
         return {};
     }
@@ -569,11 +596,15 @@ export default function Control() {
     setIsCreatingScene(true);
 
     try {
+      const existingMetadata = editingScene ? parseSceneMetadata(editingScene.metadata) : {};
       const payload = {
         name: newSceneName,
         layoutId: selectedLayoutId,
         chyronText: getStoredSceneChyronText(sceneComponentProps, ''),
-        metadata: sceneComponentProps // Send as object, backend will stringify
+        metadata: {
+          ...existingMetadata,
+          ...sceneComponentProps
+        }
       };
 
       const url = editingScene ? apiUrl(`/scenes/${editingScene.id}`) : apiUrl('/scenes');
@@ -673,65 +704,6 @@ export default function Control() {
       setBroadcastTimeError('Failed to disable time override. Please try again.');
     } finally {
       setIsSavingBroadcastTime(false);
-    }
-  };
-
-  const updateFifthBellSetting = (key: keyof FifthBellSettings, value: any) => {
-    setFifthBellSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
-  };
-
-  const toggleFifthBellWeatherCity = (city: string, checked: boolean) => {
-    setFifthBellSettings((prev) => {
-      if (!prev) {
-        return prev;
-      }
-
-      const next = new Set(prev.weatherCities || []);
-      if (checked) {
-        next.add(city);
-      } else {
-        next.delete(city);
-      }
-
-      return {
-        ...prev,
-        weatherCities: [...next]
-      };
-    });
-  };
-
-  const saveFifthBellSettings = async () => {
-    if (!fifthBellSettings) {
-      return;
-    }
-
-    setIsSavingFifthBellSettings(true);
-    setFifthBellSettingsError('');
-    try {
-      const res = await fetch(apiUrl('/program/fifthbell-settings'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          showArticles: fifthBellSettings.showArticles,
-          showWeather: fifthBellSettings.showWeather,
-          showEarthquakes: fifthBellSettings.showEarthquakes,
-          showMarkets: fifthBellSettings.showMarkets,
-          showMarquee: fifthBellSettings.showMarquee,
-          showCallsignTake: fifthBellSettings.showCallsignTake,
-          weatherCities: fifthBellSettings.weatherCities
-        })
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const updated = await res.json();
-      setFifthBellSettings(updated);
-    } catch (err) {
-      console.error('Failed to save FifthBell settings:', err);
-      setFifthBellSettingsError('Failed to save FifthBell settings. Please try again.');
-    } finally {
-      setIsSavingFifthBellSettings(false);
     }
   };
 
@@ -852,110 +824,6 @@ export default function Control() {
           </div>
           {broadcastTimeError && <p className='text-red-600 text-sm mt-2'>{broadcastTimeError}</p>}
         </div>
-
-        {activeProgramId === 'fifthbell' && (
-          <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
-            <div className='flex flex-col md:flex-row md:items-start md:justify-between gap-4'>
-              <div>
-                <h2 className='text-lg font-bold text-gray-900'>FifthBell Program Controls</h2>
-                <p className='text-sm text-gray-600'>Manage which segments are shown, weather cities, marquee visibility, and callsign take behavior.</p>
-                {fifthBellSettings?.updatedAt && (
-                  <p className='text-xs text-gray-500 mt-1'>Updated: {new Date(fifthBellSettings.updatedAt).toLocaleString()}</p>
-                )}
-              </div>
-              <button
-                onClick={saveFifthBellSettings}
-                disabled={isSavingFifthBellSettings || !fifthBellSettings}
-                className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold disabled:bg-blue-400 disabled:cursor-not-allowed'
-              >
-                {isSavingFifthBellSettings ? 'Saving...' : 'Save FifthBell Controls'}
-              </button>
-            </div>
-
-            {fifthBellSettings ? (
-              <div className='mt-4 space-y-4'>
-                <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
-                      type='checkbox'
-                      checked={Boolean(fifthBellSettings.showArticles)}
-                      onChange={(e) => updateFifthBellSetting('showArticles', e.target.checked)}
-                      className='h-4 w-4'
-                    />
-                    Show Articles
-                  </label>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
-                      type='checkbox'
-                      checked={Boolean(fifthBellSettings.showWeather)}
-                      onChange={(e) => updateFifthBellSetting('showWeather', e.target.checked)}
-                      className='h-4 w-4'
-                    />
-                    Show Weather
-                  </label>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
-                      type='checkbox'
-                      checked={Boolean(fifthBellSettings.showEarthquakes)}
-                      onChange={(e) => updateFifthBellSetting('showEarthquakes', e.target.checked)}
-                      className='h-4 w-4'
-                    />
-                    Show Earthquakes
-                  </label>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
-                      type='checkbox'
-                      checked={Boolean(fifthBellSettings.showMarkets)}
-                      onChange={(e) => updateFifthBellSetting('showMarkets', e.target.checked)}
-                      className='h-4 w-4'
-                    />
-                    Show Markets
-                  </label>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
-                      type='checkbox'
-                      checked={Boolean(fifthBellSettings.showMarquee)}
-                      onChange={(e) => updateFifthBellSetting('showMarquee', e.target.checked)}
-                      className='h-4 w-4'
-                    />
-                    Show Bottom Marquee
-                  </label>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
-                      type='checkbox'
-                      checked={Boolean(fifthBellSettings.showCallsignTake)}
-                      onChange={(e) => updateFifthBellSetting('showCallsignTake', e.target.checked)}
-                      className='h-4 w-4'
-                    />
-                    Enable Callsign Take
-                  </label>
-                </div>
-
-                <div>
-                  <h3 className='text-sm font-semibold text-gray-800 mb-2'>Weather Cities</h3>
-                  <p className='text-xs text-gray-500 mb-2'>Select which cities appear in the weather segment.</p>
-                  <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-gray-50'>
-                    {(fifthBellSettings.availableWeatherCities || []).map((city) => (
-                      <label key={city} className='flex items-center gap-2 text-sm text-gray-700'>
-                        <input
-                          type='checkbox'
-                          checked={fifthBellSettings.weatherCities?.includes(city) ?? false}
-                          onChange={(e) => toggleFifthBellWeatherCity(city, e.target.checked)}
-                          className='h-4 w-4'
-                        />
-                        {city}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className='text-sm text-gray-500 mt-3'>Loading FifthBell controls...</p>
-            )}
-
-            {fifthBellSettingsError && <p className='text-red-600 text-sm mt-3'>{fifthBellSettingsError}</p>}
-          </div>
-        )}
 
         <div className='bg-white rounded-lg shadow-lg p-4 mb-8'>
           <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
@@ -1095,6 +963,9 @@ export default function Control() {
             ) : (
               <div className='space-y-4'>
                 <p className='text-sm text-blue-600'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
+                {activeProgramId === 'fifthbell' && (
+                  <p className='text-xs text-gray-600'>FifthBell runtime settings are stored in the `fifthbell` component metadata for this scene.</p>
+                )}
                 {!sceneEditorProps['toni-chyron'] && (
                   <div>
                     <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
@@ -1261,6 +1132,16 @@ function ComponentPropsFields({
   commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
 }) {
   const timezoneOptions = getTimezonesSortedByOffset();
+  const toBoolean = (value: unknown, fallback: boolean): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'off', ''].includes(normalized)) return false;
+    }
+    return fallback;
+  };
 
   switch (componentType) {
     case 'ticker':
@@ -1510,6 +1391,414 @@ function ComponentPropsFields({
           <p className='text-xs text-gray-500'>Leave rank/spins blank to follow the active Toni chyron sequence item.</p>
         </div>
       );
+    case 'fifthbell': {
+      const selectedWeatherCities = Array.isArray(props.weatherCities)
+        ? props.weatherCities.filter((city: unknown): city is string => typeof city === 'string')
+        : [];
+      const selectedCitySet = new Set(selectedWeatherCities);
+      const languageRotation = Array.isArray(props.languageRotation)
+        ? props.languageRotation.filter((lang: unknown): lang is string => typeof lang === 'string')
+        : ['en', 'es', 'en', 'it'];
+      const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
+
+      return (
+        <div className='space-y-4'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showArticles, true)}
+                onChange={(e) => updateProp(componentType, 'showArticles', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Articles
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showWeather, true)}
+                onChange={(e) => updateProp(componentType, 'showWeather', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Weather
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showEarthquakes, true)}
+                onChange={(e) => updateProp(componentType, 'showEarthquakes', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Earthquakes
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showMarkets, true)}
+                onChange={(e) => updateProp(componentType, 'showMarkets', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Markets
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showMarquee, false)}
+                onChange={(e) => updateProp(componentType, 'showMarquee', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Bottom Marquee
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showCallsignTake, true)}
+                onChange={(e) => updateProp(componentType, 'showCallsignTake', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Enable Callsign Take
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showWorldClocks, true)}
+                onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show World Clocks
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showBellIcon, true)}
+                onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Bell Icon
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.audioCueEnabled, true)}
+                onChange={(e) => updateProp(componentType, 'audioCueEnabled', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Enable Audio Cue
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.worldClockShuffle, true)}
+                onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Shuffle world clocks
+            </label>
+          </div>
+
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Data load timeout (ms)</span>
+              <input
+                type='number'
+                min={1000}
+                value={props.dataLoadTimeoutMs ?? 15000}
+                onChange={(e) => updateProp(componentType, 'dataLoadTimeoutMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Playlist default duration (ms)</span>
+              <input
+                type='number'
+                min={1000}
+                value={props.playlistDefaultDurationMs ?? 10000}
+                onChange={(e) => updateProp(componentType, 'playlistDefaultDurationMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Playlist update interval (ms)</span>
+              <input
+                type='number'
+                min={16}
+                value={props.playlistUpdateIntervalMs ?? 100}
+                onChange={(e) => updateProp(componentType, 'playlistUpdateIntervalMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Articles duration (ms)</span>
+              <input
+                type='number'
+                min={1000}
+                value={props.articlesDurationMs ?? 10000}
+                onChange={(e) => updateProp(componentType, 'articlesDurationMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Weather duration (ms)</span>
+              <input
+                type='number'
+                min={1000}
+                value={props.weatherDurationMs ?? 5000}
+                onChange={(e) => updateProp(componentType, 'weatherDurationMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Earthquakes duration (ms)</span>
+              <input
+                type='number'
+                min={1000}
+                value={props.earthquakesDurationMs ?? 10000}
+                onChange={(e) => updateProp(componentType, 'earthquakesDurationMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Markets duration (ms)</span>
+              <input
+                type='number'
+                min={1000}
+                value={props.marketsDurationMs ?? 10000}
+                onChange={(e) => updateProp(componentType, 'marketsDurationMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock rotate (ms)</span>
+              <input
+                type='number'
+                min={500}
+                value={props.worldClockRotateIntervalMs ?? 7000}
+                onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
+              <input
+                type='number'
+                min={0}
+                value={props.worldClockTransitionMs ?? 300}
+                onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
+              <input
+                type='number'
+                min={120}
+                value={props.worldClockWidthPx ?? 200}
+                onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Audio cue minute</span>
+              <input
+                type='number'
+                min={0}
+                max={59}
+                value={props.audioCueMinute ?? 59}
+                onChange={(e) => updateProp(componentType, 'audioCueMinute', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Audio cue second</span>
+              <input
+                type='number'
+                min={0}
+                max={59}
+                value={props.audioCueSecond ?? 55}
+                onChange={(e) => updateProp(componentType, 'audioCueSecond', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Callsign prelaunch until (NYC ISO)</span>
+              <input
+                type='text'
+                value={props.callsignPrelaunchUntilNyc ?? '2026-01-02T21:30:00'}
+                onChange={(e) => updateProp(componentType, 'callsignPrelaunchUntilNyc', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                placeholder='2026-01-02T21:30:00'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Callsign window start sec (:59)</span>
+              <input
+                type='number'
+                min={0}
+                max={59}
+                value={props.callsignWindowStartSecond ?? 50}
+                onChange={(e) => updateProp(componentType, 'callsignWindowStartSecond', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Callsign window end sec (:00)</span>
+              <input
+                type='number'
+                min={0}
+                max={59}
+                value={props.callsignWindowEndSecond ?? 3}
+                onChange={(e) => updateProp(componentType, 'callsignWindowEndSecond', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Marquee min posts</span>
+              <input
+                type='number'
+                min={0}
+                value={props.marqueeMinPostsCount ?? 4}
+                onChange={(e) => updateProp(componentType, 'marqueeMinPostsCount', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Marquee min average relevance</span>
+              <input
+                type='number'
+                min={0}
+                value={props.marqueeMinAverageRelevance ?? 0}
+                onChange={(e) => updateProp(componentType, 'marqueeMinAverageRelevance', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Marquee min median relevance</span>
+              <input
+                type='number'
+                min={0}
+                value={props.marqueeMinMedianRelevance ?? 0}
+                onChange={(e) => updateProp(componentType, 'marqueeMinMedianRelevance', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Marquee px/sec</span>
+              <input
+                type='number'
+                min={10}
+                value={props.marqueePixelsPerSecond ?? 150}
+                onChange={(e) => updateProp(componentType, 'marqueePixelsPerSecond', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Marquee min duration (sec)</span>
+              <input
+                type='number'
+                min={1}
+                value={props.marqueeMinDurationSeconds ?? 10}
+                onChange={(e) => updateProp(componentType, 'marqueeMinDurationSeconds', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Marquee height (px)</span>
+              <input
+                type='number'
+                min={72}
+                value={props.marqueeHeightPx ?? 72}
+                onChange={(e) => updateProp(componentType, 'marqueeHeightPx', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+          </div>
+          <p className='text-xs text-gray-500'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>
+
+          <div className='space-y-2'>
+            <label className='block text-xs text-gray-600'>Language Rotation (comma-separated: en, es, it)</label>
+            <input
+              type='text'
+              defaultValue={languageRotation.join(', ')}
+              onBlur={(e) => {
+                const next = e.target.value
+                  .split(',')
+                  .map((lang) => lang.trim().toLowerCase())
+                  .filter((lang) => ['en', 'es', 'it'].includes(lang));
+                updateProp(componentType, 'languageRotation', next.length > 0 ? next : ['en']);
+              }}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            />
+          </div>
+
+          <div>
+            <h3 className='text-sm font-semibold text-gray-800 mb-2'>Weather Cities</h3>
+            <p className='text-xs text-gray-500 mb-2'>If none are selected, all cities are shown in the weather segment.</p>
+            <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-gray-50'>
+              {FIFTHBELL_AVAILABLE_WEATHER_CITIES.map((city) => (
+                <label key={city} className='flex items-center gap-2 text-sm text-gray-700'>
+                  <input
+                    type='checkbox'
+                    checked={selectedCitySet.has(city)}
+                    onChange={(e) => {
+                      const next = new Set(selectedWeatherCities);
+                      if (e.target.checked) {
+                        next.add(city);
+                      } else {
+                        next.delete(city);
+                      }
+                      updateProp(componentType, 'weatherCities', [...next]);
+                    }}
+                    className='h-4 w-4'
+                  />
+                  {city}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <label className='block text-xs text-gray-600'>World Clock Cities JSON (optional override)</label>
+            <textarea
+              defaultValue={worldClockCitiesDefaultValue}
+              onBlur={(e) => {
+                if (!e.target.value.trim()) {
+                  updateProp(componentType, 'worldClockCities', []);
+                  return;
+                }
+
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  if (!Array.isArray(parsed)) {
+                    return;
+                  }
+
+                  const normalized = parsed
+                    .map((item) => {
+                      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                        return null;
+                      }
+                      const city = typeof item.city === 'string' ? item.city.trim() : '';
+                      const timezone = typeof item.timezone === 'string' ? item.timezone.trim() : '';
+                      if (!city || !timezone) {
+                        return null;
+                      }
+                      return { city, timezone };
+                    })
+                    .filter((item): item is { city: string; timezone: string } => item !== null);
+
+                  updateProp(componentType, 'worldClockCities', normalized);
+                } catch (error) {
+                  console.error('Invalid FifthBell worldClockCities JSON:', error);
+                }
+              }}
+              rows={6}
+              className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-green-500'
+            />
+            <p className='text-xs text-gray-500'>Each item must be {'{ \"city\": \"NEW YORK\", \"timezone\": \"America/New_York\" }'}.</p>
+          </div>
+        </div>
+      );
+    }
     default:
       return <div className='text-xs text-gray-500 italic'>Default configuration</div>;
   }
