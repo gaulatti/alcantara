@@ -8,7 +8,9 @@ import { AppModule } from './app.module';
 
 function getAllowedOrigins(): Set<string> {
   const configuredOrigins = (
-    process.env.ALLOWED_ORIGINS ?? process.env.FRONTEND_ORIGIN ?? ''
+    process.env.ALLOWED_ORIGINS ??
+    process.env.FRONTEND_ORIGIN ??
+    ''
   )
     .split(',')
     .map((origin) => origin.trim())
