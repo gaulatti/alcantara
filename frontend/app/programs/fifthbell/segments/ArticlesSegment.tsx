@@ -119,25 +119,18 @@ export async function fetchArticles(language: SupportedLanguage = 'en'): Promise
     const recentThreshold = new Date(now.getTime() - 12 * 60 * 60 * 1000);
     const feedArticles = Array.isArray(data.articles) ? data.articles : [];
 
-    const articlesWithImages = feedArticles
-      .filter((article) => article.featuredImage?.url)
-      .sort((a, b) => {
-        const aFeatured = a.featured === true;
-        const bFeatured = b.featured === true;
-        if (aFeatured !== bFeatured) {
-          return aFeatured ? -1 : 1;
-        }
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      });
+    const articlesWithImages = feedArticles.filter((article) => article.featuredImage?.url);
+    const sortByPublishedDesc = (a: ApiArticle, b: ApiArticle) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
 
-    const recentArticles = articlesWithImages.filter((article) => new Date(article.publishedAt) >= recentThreshold);
-    const topRecentArticles = recentArticles.slice(0, 10);
-    const selectedRecentIds = new Set(topRecentArticles.map((article) => article.id));
-    const backfillArticles = articlesWithImages
-      .filter((article) => !selectedRecentIds.has(article.id))
-      .slice(0, Math.max(0, 10 - topRecentArticles.length));
+    const featuredRecentArticles = articlesWithImages
+      .filter((article) => article.featured === true && new Date(article.publishedAt) >= recentThreshold)
+      .sort(sortByPublishedDesc);
 
-    const selectedArticles = [...topRecentArticles, ...backfillArticles];
+    const everythingElseArticles = articlesWithImages
+      .filter((article) => !(article.featured === true && new Date(article.publishedAt) >= recentThreshold))
+      .sort(sortByPublishedDesc);
+
+    const selectedArticles = [...featuredRecentArticles, ...everythingElseArticles].slice(0, 10);
 
     const items: NewsItem[] = selectedArticles.map((article) => ({
       id: article.id.toString(),
@@ -208,11 +201,7 @@ function ArticlesSegmentRenderer({ items, itemIndex, progress, language }: Artic
   );
 }
 
-export function createArticlesSegment(
-  articles: NewsItem[],
-  onDataUpdate?: (nextArticles: NewsItem[]) => void,
-  language: SupportedLanguage = 'en'
-): Segment {
+export function createArticlesSegment(articles: NewsItem[], onDataUpdate?: (nextArticles: NewsItem[]) => void, language: SupportedLanguage = 'en'): Segment {
   return {
     id: 'articles',
     label: t('segment.articles', language),
@@ -222,15 +211,7 @@ export function createArticlesSegment(
     durationMsPerItem: 10000,
     render: (itemIndex: number, progress: number) => {
       const items = articles.length > 0 ? articles : MOCK_ARTICLES;
-      return (
-        <ArticlesSegmentRenderer
-          key={`article-${itemIndex}`}
-          items={items}
-          itemIndex={itemIndex}
-          progress={progress}
-          language={language}
-        />
-      );
+      return <ArticlesSegmentRenderer key={`article-${itemIndex}`} items={items} itemIndex={itemIndex} progress={progress} language={language} />;
     },
     prefetch: async () => {
       if (!onDataUpdate) {
