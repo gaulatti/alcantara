@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Route } from './+types/layouts';
+import { apiUrl } from '../utils/apiBaseUrl';
 
 interface Layout {
   id: number;
@@ -31,14 +32,14 @@ export default function LayoutsAdmin() {
   const [isSaving, setIsSaving] = useState(false);
 
   const fetchLayouts = async () => {
-    const res = await fetch('http://localhost:3000/layouts');
+    const res = await fetch(apiUrl('/layouts'));
     if (!res.ok) throw new Error(`Failed to fetch layouts: ${res.status}`);
     const data = await res.json();
     setLayouts(data);
   };
 
   const fetchComponentTypes = async () => {
-    const res = await fetch('http://localhost:3000/layouts/component-types');
+    const res = await fetch(apiUrl('/layouts/component-types'));
     if (!res.ok) throw new Error(`Failed to fetch component types: ${res.status}`);
     const data = await res.json();
     setComponentTypes(data);
@@ -111,7 +112,7 @@ export default function LayoutsAdmin() {
       };
 
       const isEditing = !!editingLayout;
-      const url = isEditing ? `http://localhost:3000/layouts/${editingLayout.id}` : 'http://localhost:3000/layouts';
+      const url = isEditing ? apiUrl(`/layouts/${editingLayout.id}`) : apiUrl('/layouts');
       const method = isEditing ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -139,7 +140,7 @@ export default function LayoutsAdmin() {
     if (!confirm('Are you sure you want to delete this layout?')) return;
 
     try {
-      const res = await fetch(`http://localhost:3000/layouts/${layoutId}`, {
+      const res = await fetch(apiUrl(`/layouts/${layoutId}`), {
         method: 'DELETE'
       });
       if (!res.ok) {

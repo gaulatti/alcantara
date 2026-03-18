@@ -1,10 +1,9 @@
 import axios, { AxiosError } from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
-
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:3000' : undefined);
+import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json'
   }
@@ -39,7 +38,7 @@ export const authFetch = async (input: string, init?: RequestInit): Promise<Resp
     // no-op
   }
 
-  return fetch(`${API_BASE_URL}${input}`, {
+  return fetch(apiUrl(input), {
     ...init,
     headers
   });
