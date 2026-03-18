@@ -11,6 +11,7 @@ RUN pnpm install --no-frozen-lockfile
 
 # Copy app source and build
 COPY . .
+RUN pnpm run prisma:generate
 RUN pnpm run build
 
 CMD ["node", "dist/main"]
