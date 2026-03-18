@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Sse, Param, Delete, Put } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Sse,
+  Param,
+  Delete,
+  Put,
+} from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ProgramService } from './program.service';
 
@@ -72,7 +81,10 @@ export class ProgramController {
     @Param('programId') programId: string,
     @Param('sceneId') sceneId: string,
   ) {
-    return this.programService.removeSceneFromProgram(Number(sceneId), programId);
+    return this.programService.removeSceneFromProgram(
+      Number(sceneId),
+      programId,
+    );
   }
 
   @Post(':programId/activate')
@@ -80,12 +92,22 @@ export class ProgramController {
     @Param('programId') programId: string,
     @Body() data: { sceneId: number; transitionId?: string | null },
   ) {
-    return this.programService.activateScene(data.sceneId, programId, data.transitionId);
+    return this.programService.activateScene(
+      data.sceneId,
+      programId,
+      data.transitionId,
+    );
   }
 
   @Post('activate')
-  async activateScene(@Body() data: { sceneId: number; transitionId?: string | null }) {
-    return this.programService.activateScene(data.sceneId, undefined, data.transitionId);
+  async activateScene(
+    @Body() data: { sceneId: number; transitionId?: string | null },
+  ) {
+    return this.programService.activateScene(
+      data.sceneId,
+      undefined,
+      data.transitionId,
+    );
   }
 
   @Sse(':programId/events')

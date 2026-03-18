@@ -256,7 +256,16 @@ export default function FifthBellProgram() {
     if (settings.showEarthquakes) nextSegments.push(earthquakeSegment);
     if (settings.showMarkets) nextSegments.push(marketsSegment);
     return nextSegments;
-  }, [articlesSegment, earthquakeSegment, marketsSegment, settings.showArticles, settings.showEarthquakes, settings.showMarkets, settings.showWeather, weatherSegment]);
+  }, [
+    articlesSegment,
+    earthquakeSegment,
+    marketsSegment,
+    settings.showArticles,
+    settings.showEarthquakes,
+    settings.showMarkets,
+    settings.showWeather,
+    weatherSegment
+  ]);
 
   const { state, currentSegment, pause, resume, reset } = usePlaylistEngine({
     segments,
@@ -379,11 +388,13 @@ export default function FifthBellProgram() {
           </div>
         )}
 
-        {showLogoSlide
-          ? <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
-          : currentSegment
-            ? currentSegment.render(state.currentItemIndex, state.progress)
-            : <div className='absolute inset-0 bg-black' />}
+        {showLogoSlide ? (
+          <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
+        ) : currentSegment ? (
+          currentSegment.render(state.currentItemIndex, state.progress)
+        ) : (
+          <div className='absolute inset-0 bg-black' />
+        )}
 
         <div
           className={`absolute bottom-0 left-0 right-0 z-100 transition-transform duration-1000 ease-in-out ${isMarqueeVisible ? 'translate-y-0' : 'translate-y-full'}`}
