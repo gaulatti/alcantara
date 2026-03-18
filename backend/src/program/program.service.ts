@@ -88,7 +88,9 @@ export class ProgramService {
       return [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
     }
 
-    const allowed = new Set(ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES);
+    const allowed = new Set<string>(
+      ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES,
+    );
     const deduped = new Set<string>();
 
     for (const city of cities) {
