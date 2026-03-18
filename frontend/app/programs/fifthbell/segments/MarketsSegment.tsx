@@ -105,7 +105,10 @@ function MarketSlide({ progress, marketData, language }: { progress: number; mar
           className='w-full h-full object-cover blur-xl scale-105'
         />
       </div>
-      <div className='absolute inset-0 opacity-75 mix-blend-multiply transition-all duration-1000' style={{ background: `linear-gradient(to bottom right, ${dominantColor}, #000000)` }} />
+      <div
+        className='absolute inset-0 opacity-75 mix-blend-multiply transition-all duration-1000'
+        style={{ background: `linear-gradient(to bottom right, ${dominantColor}, #000000)` }}
+      />
       <div className='absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.1),transparent_60%)]' />
 
       <div className='relative z-10 h-full flex flex-col justify-center px-24'>
@@ -125,7 +128,11 @@ function MarketSlide({ progress, marketData, language }: { progress: number; mar
             const backgroundColor = isPositive ? `rgba(34, 197, 94, ${opacity})` : `rgba(239, 68, 68, ${opacity})`;
 
             return (
-              <div key={stock.symbol} className='grid grid-cols-2 gap-x-12 items-center p-6 backdrop-blur-sm rounded-lg border border-white/5' style={{ animationDelay: `${index * 0.05}s`, backgroundColor }}>
+              <div
+                key={stock.symbol}
+                className='grid grid-cols-2 gap-x-12 items-center p-6 backdrop-blur-sm rounded-lg border border-white/5'
+                style={{ animationDelay: `${index * 0.05}s`, backgroundColor }}
+              >
                 <div className='flex flex-col'>
                   <span className="text-4xl font-bold mb-1 font-['Encode_Sans']">{stock.symbol}</span>
                   <span className='text-2xl opacity-70'>{stock.name}</span>
@@ -161,17 +168,15 @@ function MarketSlide({ progress, marketData, language }: { progress: number; mar
   );
 }
 
-export function createMarketsSegment(
-  marketData: MarketData[],
-  onDataUpdate?: (data: MarketData[]) => void,
-  language: SupportedLanguage = 'en'
-): Segment {
+export function createMarketsSegment(marketData: MarketData[], onDataUpdate?: (data: MarketData[]) => void, language: SupportedLanguage = 'en'): Segment {
   return {
     id: 'markets',
     label: t('segment.markets', language),
     itemCount: 1,
     durationMsPerItem: 10000,
-    render: (itemIndex: number, progress: number) => <MarketSlide key={`market-${itemIndex}`} progress={progress} marketData={marketData} language={language} />,
+    render: (itemIndex: number, progress: number) => (
+      <MarketSlide key={`market-${itemIndex}`} progress={progress} marketData={marketData} language={language} />
+    ),
     prefetch: async () => {
       if (!onDataUpdate) {
         return;
