@@ -3,12 +3,19 @@ import './ToniClock.css';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
 
+export interface ToniClockCity {
+  timezone: string;
+  label: string;
+}
+
 interface ToniClockProps {
   timeOverride?: GlobalTimeOverride | null;
   showSeconds?: boolean;
+  cities?: ToniClockCity[];
+  rotationIntervalMs?: number;
 }
 
-const CITIES = [
+export const DEFAULT_TONI_CLOCK_CITIES: ToniClockCity[] = [
   { timezone: 'Europe/Rome', label: 'Sanremo' },
   { timezone: 'America/New_York', label: 'New York' },
   { timezone: 'Europe/Madrid', label: 'Madrid' },
@@ -16,7 +23,7 @@ const CITIES = [
   { timezone: 'America/Santiago', label: 'Santiago' }
 ];
 
-const CITY_INTERVAL_MS = 5000;
+const DEFAULT_CITY_INTERVAL_MS = 5000;
 
 function getTimeForZone(timezone: string, timeOverride: import('../utils/broadcastTime').GlobalTimeOverride | null): string {
   const now = new Date();
@@ -40,40 +47,56 @@ function getTimeForZone(timezone: string, timeOverride: import('../utils/broadca
   }
 }
 
-export const ToniClock: React.FC<ToniClockProps> = ({ timeOverride = null, showSeconds = false }) => {
-  const [times, setTimes] = useState(() => CITIES.map((c) => getTimeForZone(c.timezone, null)));
+export const ToniClock: React.FC<ToniClockProps> = ({
+  timeOverride = null,
+  showSeconds = false,
+  cities = DEFAULT_TONI_CLOCK_CITIES,
+  rotationIntervalMs = DEFAULT_CITY_INTERVAL_MS
+}) => {
+  const resolvedCities = cities.length > 0 ? cities : DEFAULT_TONI_CLOCK_CITIES;
+  const [times, setTimes] = useState(() => resolvedCities.map((c) => getTimeForZone(c.timezone, null)));
   const [cityIndex, setCityIndex] = useState(0);
   const cityIndexRef = useRef(0);
+
+  useEffect(() => {
+    setTimes(resolvedCities.map((city) => getTimeForZone(city.timezone, timeOverride)));
+    cityIndexRef.current = 0;
+    setCityIndex(0);
+  }, [resolvedCities, timeOverride]);
 
   // Tick all timezones every second
   useEffect(() => {
     const id = setInterval(() => {
-      setTimes(CITIES.map((c) => getTimeForZone(c.timezone, timeOverride)));
+      setTimes(resolvedCities.map((city) => getTimeForZone(city.timezone, timeOverride)));
     }, 1000);
     return () => clearInterval(id);
-  }, [timeOverride, showSeconds]);
+  }, [resolvedCities, timeOverride, showSeconds]);
 
   // City cycling
   useEffect(() => {
+    if (resolvedCities.length <= 1) {
+      return;
+    }
+
     const timer = setInterval(() => {
-      const next = (cityIndexRef.current + 1) % CITIES.length;
+      const next = (cityIndexRef.current + 1) % resolvedCities.length;
       cityIndexRef.current = next;
       setCityIndex(next);
-    }, CITY_INTERVAL_MS);
+    }, rotationIntervalMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [resolvedCities, rotationIntervalMs]);
 
   return (
     <div className='toni-clock'>
       <div className='toni-clock-time-stack'>
-        {CITIES.map((city, i) => (
+        {resolvedCities.map((city, i) => (
           <div key={city.timezone} className={`toni-clock-time${i === cityIndex ? ' toni-clock-slot--active' : ''}`}>
             {times[i]}
           </div>
         ))}
       </div>
       <div className='toni-clock-label-stack'>
-        {CITIES.map((city, i) => (
+        {resolvedCities.map((city, i) => (
           <div key={city.timezone} className={`toni-clock-label${i === cityIndex ? ' toni-clock-slot--active' : ''}`}>
             {city.label.toUpperCase()}
           </div>
