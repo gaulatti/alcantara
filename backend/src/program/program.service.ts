@@ -81,7 +81,9 @@ export class ProgramService {
     }
   }
 
-  private normalizeWeatherCities(cities: string[] | null | undefined): string[] {
+  private normalizeWeatherCities(
+    cities: string[] | null | undefined,
+  ): string[] {
     if (!Array.isArray(cities) || cities.length === 0) {
       return [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
     }
@@ -102,7 +104,9 @@ export class ProgramService {
       deduped.add(trimmed);
     }
 
-    return deduped.size > 0 ? [...deduped] : [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
+    return deduped.size > 0
+      ? [...deduped]
+      : [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES];
   }
 
   private mapFifthBellSettings(settings: {
@@ -125,7 +129,9 @@ export class ProgramService {
       showMarquee: settings.showMarquee,
       showCallsignTake: settings.showCallsignTake,
       weatherCities: this.parseWeatherCities(settings.weatherCitiesJson),
-      availableWeatherCities: [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES],
+      availableWeatherCities: [
+        ...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES,
+      ],
       updatedAt: settings.updatedAt,
     };
   }
@@ -168,13 +174,35 @@ export class ProgramService {
     const settings = await this.prisma.fifthBellSettings.upsert({
       where: { id: ProgramService.FIFTHBELL_SETTINGS_ID },
       update: {
-        showArticles: typeof data.showArticles === 'boolean' ? data.showArticles : existing.showArticles,
-        showWeather: typeof data.showWeather === 'boolean' ? data.showWeather : existing.showWeather,
-        showEarthquakes: typeof data.showEarthquakes === 'boolean' ? data.showEarthquakes : existing.showEarthquakes,
-        showMarkets: typeof data.showMarkets === 'boolean' ? data.showMarkets : existing.showMarkets,
-        showMarquee: typeof data.showMarquee === 'boolean' ? data.showMarquee : existing.showMarquee,
-        showCallsignTake: typeof data.showCallsignTake === 'boolean' ? data.showCallsignTake : existing.showCallsignTake,
-        weatherCitiesJson: JSON.stringify(this.normalizeWeatherCities(data.weatherCities ?? existing.weatherCities)),
+        showArticles:
+          typeof data.showArticles === 'boolean'
+            ? data.showArticles
+            : existing.showArticles,
+        showWeather:
+          typeof data.showWeather === 'boolean'
+            ? data.showWeather
+            : existing.showWeather,
+        showEarthquakes:
+          typeof data.showEarthquakes === 'boolean'
+            ? data.showEarthquakes
+            : existing.showEarthquakes,
+        showMarkets:
+          typeof data.showMarkets === 'boolean'
+            ? data.showMarkets
+            : existing.showMarkets,
+        showMarquee:
+          typeof data.showMarquee === 'boolean'
+            ? data.showMarquee
+            : existing.showMarquee,
+        showCallsignTake:
+          typeof data.showCallsignTake === 'boolean'
+            ? data.showCallsignTake
+            : existing.showCallsignTake,
+        weatherCitiesJson: JSON.stringify(
+          this.normalizeWeatherCities(
+            data.weatherCities ?? existing.weatherCities,
+          ),
+        ),
       },
       create: {
         id: ProgramService.FIFTHBELL_SETTINGS_ID,
@@ -184,7 +212,11 @@ export class ProgramService {
         showMarkets: data.showMarkets ?? existing.showMarkets,
         showMarquee: data.showMarquee ?? existing.showMarquee,
         showCallsignTake: data.showCallsignTake ?? existing.showCallsignTake,
-        weatherCitiesJson: JSON.stringify(this.normalizeWeatherCities(data.weatherCities ?? existing.weatherCities)),
+        weatherCitiesJson: JSON.stringify(
+          this.normalizeWeatherCities(
+            data.weatherCities ?? existing.weatherCities,
+          ),
+        ),
       },
     });
 
