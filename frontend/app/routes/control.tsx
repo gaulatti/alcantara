@@ -78,10 +78,7 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
   }
 };
 
-function getStoredSceneChyronText(
-  metadata: ComponentPropsMap,
-  fallbackText: string
-): string {
+function getStoredSceneChyronText(metadata: ComponentPropsMap, fallbackText: string): string {
   const toniProps = metadata['toni-chyron'];
   if (toniProps && typeof toniProps === 'object' && typeof toniProps.text === 'string') {
     return toniProps.text;
@@ -384,10 +381,7 @@ export default function Control() {
     await persistSceneAttributes(sceneEditorProps);
   };
 
-  const commitSceneEditorComponentProps = async (
-    componentType: string,
-    nextProps: any
-  ) => {
+  const commitSceneEditorComponentProps = async (componentType: string, nextProps: any) => {
     const nextSceneProps = {
       ...sceneEditorProps,
       [componentType]: nextProps
@@ -769,7 +763,9 @@ export default function Control() {
           <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
             <div>
               <h2 className='text-lg font-bold text-gray-900'>Scene Take Transition</h2>
-              <p className='text-sm text-gray-600'>Transitions are code-defined presets. The program can play them, but only control chooses which one to use on the next take.</p>
+              <p className='text-sm text-gray-600'>
+                Transitions are code-defined presets. The program can play them, but only control chooses which one to use on the next take.
+              </p>
               <p className='text-xs text-gray-500 mt-1'>
                 Active preset: <span className='font-semibold text-gray-700'>{selectedTransition.name}</span> ({selectedTransition.durationMs}ms total, cut at{' '}
                 {selectedTransition.cutPointMs}ms)
@@ -1272,13 +1268,7 @@ function ComponentPropsFields({
       );
     case 'toni-chyron':
       return (
-        <ToniChyronEditorFields
-          componentType={componentType}
-          props={props}
-          updateProp={updateProp}
-          replaceProps={replaceProps}
-          commitProps={commitProps}
-        />
+        <ToniChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
     case 'toni-clock':
       return <p className='text-xs text-gray-500 italic'>Cities cycle automatically: Sanremo, New York, Madrid, Montevideo, Santiago.</p>;
@@ -1319,9 +1309,7 @@ function ComponentPropsFields({
               />
             </div>
           </div>
-          <p className='text-xs text-gray-500'>
-            Leave rank/spins blank to follow the active Toni chyron sequence item.
-          </p>
+          <p className='text-xs text-gray-500'>Leave rank/spins blank to follow the active Toni chyron sequence item.</p>
         </div>
       );
     default:
@@ -1373,9 +1361,7 @@ function ToniChyronEditorFields({
             })
           }
           className={`px-3 py-1.5 rounded text-sm font-medium border ${
-            contentMode === 'text'
-              ? 'bg-green-600 text-white border-green-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            contentMode === 'text' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
           }`}
         >
           Direct Text
@@ -1390,9 +1376,7 @@ function ToniChyronEditorFields({
             })
           }
           className={`px-3 py-1.5 rounded text-sm font-medium border ${
-            contentMode === 'sequence'
-              ? 'bg-green-600 text-white border-green-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            contentMode === 'sequence' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
           }`}
         >
           Sequence
@@ -1401,9 +1385,7 @@ function ToniChyronEditorFields({
 
       {contentMode === 'sequence' ? (
         <div className='space-y-3'>
-          <p className='text-xs text-gray-500'>
-            Sequence mode lets you preload multiple chyron values and take them live with one tap.
-          </p>
+          <p className='text-xs text-gray-500'>Sequence mode lets you preload multiple chyron values and take them live with one tap.</p>
           <ToniChyronSequenceEditor
             sequence={normalizedSequence ?? createToniChyronSequence('manual')}
             onChange={(nextSequence) =>
@@ -1416,9 +1398,7 @@ function ToniChyronEditorFields({
             onTakeSelection={activateSequence}
           />
           <details className='rounded border border-dashed border-gray-300 px-3 py-2'>
-            <summary className='cursor-pointer text-xs font-medium text-gray-600'>
-              Fallback direct text
-            </summary>
+            <summary className='cursor-pointer text-xs font-medium text-gray-600'>Fallback direct text</summary>
             <div className='space-y-2 pt-3'>
               <div>
                 <label className='block text-xs text-gray-600 mb-1'>Fallback Text</label>
@@ -1503,7 +1483,7 @@ function ToniChyronSequenceEditor({
       activeItemId:
         nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
           ? nextSequence.activeItemId
-          : nextSequence.items[0]?.id ?? null
+          : (nextSequence.items[0]?.id ?? null)
     });
   };
 
@@ -1535,8 +1515,7 @@ function ToniChyronSequenceEditor({
     applySequence({
       ...sequence,
       items: nextItems,
-      activeItemId:
-        sequence.activeItemId === removedItem.id ? nextItems[0]?.id ?? null : sequence.activeItemId,
+      activeItemId: sequence.activeItemId === removedItem.id ? (nextItems[0]?.id ?? null) : sequence.activeItemId,
       startedAt: Date.now()
     });
   };
@@ -1554,13 +1533,7 @@ function ToniChyronSequenceEditor({
   };
 
   const reorderItems = (fromIndex: number, toIndex: number) => {
-    if (
-      fromIndex === toIndex ||
-      fromIndex < 0 ||
-      toIndex < 0 ||
-      fromIndex >= sequence.items.length ||
-      toIndex >= sequence.items.length
-    ) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= sequence.items.length || toIndex >= sequence.items.length) {
       return;
     }
 
@@ -1577,26 +1550,19 @@ function ToniChyronSequenceEditor({
   return (
     <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
       <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>
-          {isNested ? 'Nested Sequence' : 'Sequence'}
-        </span>
+        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
         <button
           type='button'
           onClick={() =>
             applySequence({
               ...sequence,
               mode: 'manual',
-              activeItemId:
-                sequence.mode === 'autoplay'
-                  ? effectiveActiveItemId ?? sequence.activeItemId
-                  : sequence.activeItemId,
+              activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
               startedAt: Date.now()
             })
           }
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'manual'
-              ? 'bg-slate-800 text-white border-slate-800'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
           }`}
         >
           Manual
@@ -1611,18 +1577,14 @@ function ToniChyronSequenceEditor({
             })
           }
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'autoplay'
-              ? 'bg-slate-800 text-white border-slate-800'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
           }`}
         >
           Autoplay
         </button>
         {sequence.mode === 'autoplay' && (
           <>
-            <label className='text-xs text-slate-600'>
-              Interval (ms)
-            </label>
+            <label className='text-xs text-slate-600'>Interval (ms)</label>
             <input
               type='number'
               min={500}
@@ -1655,9 +1617,7 @@ function ToniChyronSequenceEditor({
         )}
       </div>
 
-      {sequence.items.length === 0 && (
-        <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>
-      )}
+      {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
 
       <div className='space-y-3'>
         {sequence.items.map((item, index) => {
@@ -1674,9 +1634,7 @@ function ToniChyronSequenceEditor({
                 }
                 setDraggingIndex(null);
               }}
-              className={`rounded border p-3 ${
-                isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'
-              }`}
+              className={`rounded border p-3 ${isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}
             >
               <div className='flex flex-wrap items-center gap-2'>
                 <span
@@ -1698,9 +1656,7 @@ function ToniChyronSequenceEditor({
                     placeholder='Sequence name'
                   />
                 ) : (
-                  <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>
-                    Preset Item
-                  </div>
+                  <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>Preset Item</div>
                 )}
                 <select
                   value={item.kind}
@@ -1713,10 +1669,7 @@ function ToniChyronSequenceEditor({
                     if (nextKind === 'sequence') {
                       updateItem(index, {
                         id: item.id,
-                        label:
-                          item.kind === 'sequence'
-                            ? item.label
-                            : item.text.trim() || 'Nested Sequence',
+                        label: item.kind === 'sequence' ? item.label : item.text.trim() || 'Nested Sequence',
                         kind: 'sequence',
                         sequence: createToniChyronSequence('manual')
                       });
@@ -1726,10 +1679,7 @@ function ToniChyronSequenceEditor({
                     updateItem(index, {
                       id: item.id,
                       kind: 'preset',
-                      text:
-                        item.kind === 'sequence'
-                          ? item.label
-                          : item.text,
+                      text: item.kind === 'sequence' ? item.label : item.text,
                       useMarquee: false
                     });
                   }}

@@ -1,7 +1,6 @@
 import { apiUrl } from './apiBaseUrl';
 
-export const BACKEND_SANREMO_REALTIME_URL =
-  apiUrl('/charts/sanremo-realtime');
+export const BACKEND_SANREMO_REALTIME_URL = apiUrl('/charts/sanremo-realtime');
 
 export interface EaroneRealtimeEntry {
   earoneSongId: string | null;
@@ -41,29 +40,17 @@ export function normalizeEaroneMatchKey(value: string): string {
 }
 
 export function buildEaroneRealtimeLookup(payload: unknown): EaroneRealtimeLookup {
-  const entries = Array.isArray((payload as any)?.entries)
-    ? (((payload as any).entries as EaroneRealtimeEntry[]) ?? [])
-    : [];
+  const entries = Array.isArray((payload as any)?.entries) ? (((payload as any).entries as EaroneRealtimeEntry[]) ?? []) : [];
 
   const lookup: EaroneRealtimeLookup = {
     bySongId: {},
     byNormalizedText: {},
-    updatedAt:
-      typeof (payload as any)?.updatedAt === 'string'
-        ? (payload as any).updatedAt
-        : null,
+    updatedAt: typeof (payload as any)?.updatedAt === 'string' ? (payload as any).updatedAt : null,
     sources:
-      (payload as any)?.sources &&
-      typeof (payload as any).sources === 'object'
+      (payload as any)?.sources && typeof (payload as any).sources === 'object'
         ? {
-            earoneUpdatedAt:
-              typeof (payload as any).sources.earoneUpdatedAt === 'string'
-                ? (payload as any).sources.earoneUpdatedAt
-                : null,
-            escplusUpdatedAt:
-              typeof (payload as any).sources.escplusUpdatedAt === 'string'
-                ? (payload as any).sources.escplusUpdatedAt
-                : null
+            earoneUpdatedAt: typeof (payload as any).sources.earoneUpdatedAt === 'string' ? (payload as any).sources.earoneUpdatedAt : null,
+            escplusUpdatedAt: typeof (payload as any).sources.escplusUpdatedAt === 'string' ? (payload as any).sources.escplusUpdatedAt : null
           }
         : undefined
   };
@@ -95,18 +82,12 @@ export function matchEaroneRealtimeEntry(
     return null;
   }
 
-  const normalizedId =
-    typeof options.earoneSongId === 'string' && options.earoneSongId.trim()
-      ? options.earoneSongId.trim()
-      : null;
+  const normalizedId = typeof options.earoneSongId === 'string' && options.earoneSongId.trim() ? options.earoneSongId.trim() : null;
   if (normalizedId && lookup.bySongId[normalizedId]) {
     return lookup.bySongId[normalizedId];
   }
 
-  const normalizedText =
-    typeof options.text === 'string' && options.text.trim()
-      ? normalizeEaroneMatchKey(options.text)
-      : '';
+  const normalizedText = typeof options.text === 'string' && options.text.trim() ? normalizeEaroneMatchKey(options.text) : '';
   if (normalizedText && lookup.byNormalizedText[normalizedText]) {
     return lookup.byNormalizedText[normalizedText];
   }
