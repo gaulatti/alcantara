@@ -1,5 +1,7 @@
 import { BellRing } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSSE } from '../../hooks/useSSE';
+import { apiUrl } from '../../utils/apiBaseUrl';
 import { FIFTHBELL_ASSETS } from './assets';
 import { MarqueeCurtain } from './components/MarqueeCurtain';
 import Marquee from './components/Marquee';
@@ -24,6 +26,42 @@ import {
   usePlaylistEngine
 } from './segments';
 
+function parseBooleanFlag(value: string | null | undefined): boolean | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on', 'show', 'visible'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off', 'hide', 'hidden'].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
+interface FifthBellSettings {
+  showArticles: boolean;
+  showWeather: boolean;
+  showEarthquakes: boolean;
+  showMarkets: boolean;
+  showMarquee: boolean;
+  showCallsignTake: boolean;
+  weatherCities: string[];
+}
+
+const DEFAULT_FIFTHBELL_SETTINGS: FifthBellSettings = {
+  showArticles: true,
+  showWeather: true,
+  showEarthquakes: true,
+  showMarkets: true,
+  showMarquee: false,
+  showCallsignTake: true,
+  weatherCities: []
+};
+
 export default function FifthBellProgram() {
   const [showLogoSlide, setShowLogoSlide] = useState(false);
   const currentTimeRef = useRef(new Date());
@@ -46,6 +84,30 @@ export default function FifthBellProgram() {
   const updatePendingRef = useRef(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const lastFetchedItemRef = useRef<number>(-1);
+  const [settings, setSettings] = useState<FifthBellSettings>(DEFAULT_FIFTHBELL_SETTINGS);
+
+  const fetchProgramSettings = useCallback(async () => {
+    try {
+      const response = await fetch(apiUrl('/program/fifthbell-settings'));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setSettings((prev) => ({
+        ...prev,
+        showArticles: payload?.showArticles ?? prev.showArticles,
+        showWeather: payload?.showWeather ?? prev.showWeather,
+        showEarthquakes: payload?.showEarthquakes ?? prev.showEarthquakes,
+        showMarkets: payload?.showMarkets ?? prev.showMarkets,
+        showMarquee: payload?.showMarquee ?? prev.showMarquee,
+        showCallsignTake: payload?.showCallsignTake ?? prev.showCallsignTake,
+        weatherCities: Array.isArray(payload?.weatherCities) ? payload.weatherCities : prev.weatherCities
+      }));
+    } catch (error) {
+      console.error('Failed to fetch FifthBell settings:', error);
+    }
+  }, []);
 
   useEffect(() => {
     updatePendingRef.current = updatePending;
@@ -77,6 +139,28 @@ export default function FifthBellProgram() {
   useEffect(() => {
     void refreshAllData();
   }, [refreshAllData]);
+
+  useEffect(() => {
+    void fetchProgramSettings();
+  }, [fetchProgramSettings]);
+
+  useSSE({
+    url: apiUrl('/program/fifthbell/events'),
+    onMessage: (data) => {
+      if (data?.type === 'fifthbell_settings_update' && data.settings) {
+        setSettings((prev) => ({
+          ...prev,
+          showArticles: data.settings.showArticles ?? prev.showArticles,
+          showWeather: data.settings.showWeather ?? prev.showWeather,
+          showEarthquakes: data.settings.showEarthquakes ?? prev.showEarthquakes,
+          showMarkets: data.settings.showMarkets ?? prev.showMarkets,
+          showMarquee: data.settings.showMarquee ?? prev.showMarquee,
+          showCallsignTake: data.settings.showCallsignTake ?? prev.showCallsignTake,
+          weatherCities: Array.isArray(data.settings.weatherCities) ? data.settings.weatherCities : prev.weatherCities
+        }));
+      }
+    }
+  });
 
   useEffect(() => {
     if (dataLoaded) {
@@ -147,14 +231,32 @@ export default function FifthBellProgram() {
     return segment;
   }, [articles, currentLanguage, refreshEvents]);
 
-  const weatherSegment = useMemo(() => createWeatherSegment(weatherData, setWeatherData, currentLanguage), [currentLanguage, weatherData]);
+  const filteredWeatherData = useMemo(() => {
+    if (!settings.weatherCities || settings.weatherCities.length === 0) {
+      return weatherData;
+    }
+
+    const allowed = new Set(settings.weatherCities);
+    return weatherData
+      .map((region) => ({
+        ...region,
+        cities: region.cities.filter((city) => allowed.has(city.name))
+      }))
+      .filter((region) => region.cities.length > 0);
+  }, [settings.weatherCities, weatherData]);
+
+  const weatherSegment = useMemo(() => createWeatherSegment(filteredWeatherData, setWeatherData, currentLanguage), [currentLanguage, filteredWeatherData]);
   const earthquakeSegment = useMemo(() => createEarthquakeSegment(earthquakes, setEarthquakes, currentLanguage), [currentLanguage, earthquakes]);
   const marketsSegment = useMemo(() => createMarketsSegment(markets, setMarkets, currentLanguage), [currentLanguage, markets]);
 
-  const segments = useMemo(
-    () => [articlesSegment, weatherSegment, earthquakeSegment, marketsSegment],
-    [articlesSegment, earthquakeSegment, marketsSegment, weatherSegment]
-  );
+  const segments = useMemo(() => {
+    const nextSegments = [];
+    if (settings.showArticles) nextSegments.push(articlesSegment);
+    if (settings.showWeather) nextSegments.push(weatherSegment);
+    if (settings.showEarthquakes) nextSegments.push(earthquakeSegment);
+    if (settings.showMarkets) nextSegments.push(marketsSegment);
+    return nextSegments;
+  }, [articlesSegment, earthquakeSegment, marketsSegment, settings.showArticles, settings.showEarthquakes, settings.showMarkets, settings.showWeather, weatherSegment]);
 
   const { state, currentSegment, pause, resume, reset } = usePlaylistEngine({
     segments,
@@ -196,7 +298,7 @@ export default function FifthBellProgram() {
       const launchDateNyc = new Date(launchDate.toLocaleString('en-US', { timeZone: 'America/New_York' }));
       const isBeforeLaunch = nycTime < launchDateNyc;
 
-      const shouldShow = isBeforeLaunch ? true : (minutes === 59 && seconds >= 50) || (minutes === 0 && seconds <= 3);
+      const shouldShow = settings.showCallsignTake && (isBeforeLaunch ? true : (minutes === 59 && seconds >= 50) || (minutes === 0 && seconds <= 3));
       if (shouldShow && !showLogoSlide) {
         reset();
       }
@@ -210,7 +312,7 @@ export default function FifthBellProgram() {
     checkTime();
     const timer = window.setInterval(checkTime, 1000);
     return () => window.clearInterval(timer);
-  }, [reset, showLogoSlide]);
+  }, [reset, settings.showCallsignTake, showLogoSlide]);
 
   useEffect(() => {
     if (showLogoSlide) {
@@ -220,9 +322,34 @@ export default function FifthBellProgram() {
     }
   }, [pause, resume, showLogoSlide, state.isPaused]);
 
-  const isMarqueeVisible = false;
+  const marqueeQueryOverride = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
 
-  if (!dataLoaded || !currentSegment) {
+    const searchParams = new URLSearchParams(window.location.search);
+    return parseBooleanFlag(searchParams.get('marquee'));
+  }, []);
+
+  const marqueeEnabledByDefault = parseBooleanFlag(import.meta.env.VITE_FIFTHBELL_SHOW_MARQUEE) ?? settings.showMarquee;
+  const marqueeEnabled = marqueeQueryOverride ?? marqueeEnabledByDefault;
+
+  const isMarqueeVisible = useMemo(() => {
+    if (!marqueeEnabled || showLogoSlide || segments.length === 0) {
+      return false;
+    }
+
+    const isLastSegment = state.currentSegmentIndex === segments.length - 1;
+    if (!isLastSegment) {
+      return true;
+    }
+
+    const lastSegment = segments[segments.length - 1];
+    const isLastItem = state.currentItemIndex === lastSegment.itemCount - 1;
+    return !(isLastItem && state.progress > 85);
+  }, [marqueeEnabled, segments, showLogoSlide, state]);
+
+  if (!dataLoaded) {
     return (
       <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>
         <div
@@ -253,8 +380,10 @@ export default function FifthBellProgram() {
         )}
 
         {showLogoSlide
-          ? currentSegment && <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
-          : currentSegment.render(state.currentItemIndex, state.progress)}
+          ? <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
+          : currentSegment
+            ? currentSegment.render(state.currentItemIndex, state.progress)
+            : <div className='absolute inset-0 bg-black' />}
 
         <div
           className={`absolute bottom-0 left-0 right-0 z-100 transition-transform duration-1000 ease-in-out ${isMarqueeVisible ? 'translate-y-0' : 'translate-y-full'}`}

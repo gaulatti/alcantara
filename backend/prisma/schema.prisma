@@ -60,3 +60,15 @@ model BroadcastSettings {
   timeOverrideStartedAt DateTime?
   updatedAt             DateTime @updatedAt
 }
+
+model FifthBellSettings {
+  id                Int      @id
+  showArticles      Boolean  @default(true)
+  showWeather       Boolean  @default(true)
+  showEarthquakes   Boolean  @default(true)
+  showMarkets       Boolean  @default(true)
+  showMarquee       Boolean  @default(false)
+  showCallsignTake  Boolean  @default(true)
+  weatherCitiesJson String   @default("[]")
+  updatedAt         DateTime @updatedAt
+}
