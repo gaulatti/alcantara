@@ -91,6 +91,12 @@ export class LayoutsService {
       description:
         'Compact Toni-styled ranking box for chart position and radio spins',
     },
+    {
+      type: 'fifthbell',
+      name: 'FifthBell',
+      description:
+        'FifthBell rundown controls (segments, weather cities, marquee, callsign take)',
+    },
   ];
 
   constructor(private prisma: PrismaService) {}

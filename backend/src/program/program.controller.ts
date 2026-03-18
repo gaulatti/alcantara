@@ -37,27 +37,6 @@ export class ProgramController {
     return this.programService.updateBroadcastSettings(data);
   }
 
-  @Get('fifthbell-settings')
-  async getFifthBellSettings() {
-    return this.programService.getFifthBellSettings();
-  }
-
-  @Put('fifthbell-settings')
-  async updateFifthBellSettings(
-    @Body()
-    data: {
-      showArticles?: boolean;
-      showWeather?: boolean;
-      showEarthquakes?: boolean;
-      showMarkets?: boolean;
-      showMarquee?: boolean;
-      showCallsignTake?: boolean;
-      weatherCities?: string[];
-    },
-  ) {
-    return this.programService.updateFifthBellSettings(data);
-  }
-
   @Get(':programId/state')
   async getStateById(@Param('programId') programId: string) {
     return this.programService.getState(programId);
