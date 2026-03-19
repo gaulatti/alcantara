@@ -21,6 +21,7 @@ interface ToniClockProps {
   showWorldClocks?: boolean;
   showBellIcon?: boolean;
   bellSize?: number;
+  inline?: boolean;
 }
 
 export const DEFAULT_TONI_CLOCK_CITIES: ToniClockCity[] = [
@@ -43,7 +44,8 @@ export const ToniClock: React.FC<ToniClockProps> = ({
   language = 'en',
   showWorldClocks = true,
   showBellIcon = false,
-  bellSize = 64
+  bellSize = 64,
+  inline = false
 }) => {
   const resolvedCities = cities.length > 0 ? cities : DEFAULT_TONI_CLOCK_CITIES;
   if (!showWorldClocks && !showBellIcon) {
@@ -51,7 +53,7 @@ export const ToniClock: React.FC<ToniClockProps> = ({
   }
 
   return (
-    <div className='toni-clock-corner'>
+    <div className={`toni-clock-corner${inline ? ' toni-clock-corner--inline' : ''}`}>
       {showWorldClocks && (
         <div className='flex items-start pt-1.5'>
           <WorldClocks

@@ -536,13 +536,8 @@ export default function Control() {
         };
       case 'modoitaliano-clock':
         return {
-          showWorldClocks: true,
-          showBellIcon: false,
+          songs: [],
           worldClockRotateIntervalMs: 5000,
-          worldClockTransitionMs: 300,
-          worldClockShuffle: false,
-          worldClockWidthPx: 220,
-          language: 'it',
           worldClockCities: [
             { city: 'SANREMO', timezone: 'Europe/Rome' },
             { city: 'ROME', timezone: 'Europe/Rome' },
@@ -552,7 +547,7 @@ export default function Control() {
           ]
         };
       case 'modoitaliano-chyron':
-        return { text: '', show: true, useMarquee: false, label: 'MODO ITALIANO' };
+        return { cta: '', text: '', show: true, useMarquee: false };
       case 'modoitaliano-disclaimer':
         return {
           text: 'Contenuti a scopo informativo.',
@@ -1421,6 +1416,17 @@ function ComponentPropsFields({
     case 'modoitaliano-chyron':
       return (
         <div className='space-y-3'>
+          <p className='text-xs text-gray-500'>ModoItaliano row rule: if chyron and disclaimer are both enabled, chyron is shown.</p>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>CTA</label>
+            <input
+              type='text'
+              value={props.cta || ''}
+              onChange={(e) => updateProp(componentType, 'cta', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='Call to action (shown above chyron)'
+            />
+          </div>
           <div>
             <label className='block text-xs text-gray-600 mb-1'>Text</label>
             <input
@@ -1429,16 +1435,6 @@ function ComponentPropsFields({
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
               placeholder='Main chyron text'
-            />
-          </div>
-          <div>
-            <label className='block text-xs text-gray-600 mb-1'>Label</label>
-            <input
-              type='text'
-              value={props.label || 'MODO ITALIANO'}
-              onChange={(e) => updateProp(componentType, 'label', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              placeholder='MODO ITALIANO'
             />
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
@@ -1467,38 +1463,128 @@ function ComponentPropsFields({
     case 'modoitaliano-clock': {
       const isModoItalianoClock = componentType === 'modoitaliano-clock';
       const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
+      const songsDefaultValue = Array.isArray(props.songs)
+        ? props.songs
+            .map((song) => {
+              if (!song || typeof song !== 'object' || Array.isArray(song)) {
+                return null;
+              }
+              const artist = typeof song.artist === 'string' ? song.artist : '';
+              const title = typeof song.title === 'string' ? song.title : '';
+              const coverUrl = typeof song.coverUrl === 'string' ? song.coverUrl : '';
+              return { artist, title, coverUrl };
+            })
+            .filter((song): song is { artist: string; title: string; coverUrl: string } => song !== null)
+        : [];
 
       return (
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showWorldClocks, true)}
-                onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show World Clocks
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showBellIcon, false)}
-                onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Bell Icon
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.worldClockShuffle, false)}
-                onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Shuffle world clocks
-            </label>
+            {!isModoItalianoClock && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showWorldClocks, true)}
+                  onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show World Clocks
+              </label>
+            )}
+            {!isModoItalianoClock && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showBellIcon, false)}
+                  onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Bell Icon
+              </label>
+            )}
+            {!isModoItalianoClock && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.worldClockShuffle, false)}
+                  onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Shuffle world clocks
+              </label>
+            )}
           </div>
+          {isModoItalianoClock && (
+            <div className='space-y-2'>
+              <div className='flex items-center justify-between'>
+                <label className='block text-xs text-gray-600'>Songs (clock cue source)</label>
+                <button
+                  type='button'
+                  onClick={() => updateProp(componentType, 'songs', [...songsDefaultValue, { artist: '', title: '', coverUrl: '' }])}
+                  className='px-3 py-1.5 text-xs font-medium rounded border border-green-500 text-green-700 hover:bg-green-50'
+                >
+                  Add Song
+                </button>
+              </div>
+              {songsDefaultValue.length === 0 ? (
+                <p className='text-xs text-gray-500'>No songs loaded. Cue above clock stays hidden.</p>
+              ) : (
+                <div className='space-y-2'>
+                  {songsDefaultValue.map((song, index) => (
+                    <div key={`modoitaliano-song-${index}`} className='grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end'>
+                      <label className='text-sm text-gray-700'>
+                        <span className='block text-xs text-gray-500 mb-1'>Artist</span>
+                        <input
+                          type='text'
+                          value={song.artist}
+                          onChange={(e) => {
+                            const next = [...songsDefaultValue];
+                            next[index] = { ...next[index], artist: e.target.value };
+                            updateProp(componentType, 'songs', next);
+                          }}
+                          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        />
+                      </label>
+                      <label className='text-sm text-gray-700'>
+                        <span className='block text-xs text-gray-500 mb-1'>Title</span>
+                        <input
+                          type='text'
+                          value={song.title}
+                          onChange={(e) => {
+                            const next = [...songsDefaultValue];
+                            next[index] = { ...next[index], title: e.target.value };
+                            updateProp(componentType, 'songs', next);
+                          }}
+                          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        />
+                      </label>
+                      <label className='text-sm text-gray-700'>
+                        <span className='block text-xs text-gray-500 mb-1'>Cover URL</span>
+                        <input
+                          type='text'
+                          value={song.coverUrl}
+                          onChange={(e) => {
+                            const next = [...songsDefaultValue];
+                            next[index] = { ...next[index], coverUrl: e.target.value };
+                            updateProp(componentType, 'songs', next);
+                          }}
+                          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                          placeholder='/cover.jpg'
+                        />
+                      </label>
+                      <button
+                        type='button'
+                        onClick={() => updateProp(componentType, 'songs', songsDefaultValue.filter((_, songIndex) => songIndex !== index))}
+                        className='h-10 px-3 text-xs font-medium rounded border border-red-300 text-red-700 hover:bg-red-50'
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
             <label className='text-sm text-gray-700'>
@@ -1511,38 +1597,28 @@ function ComponentPropsFields({
                 className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
               />
             </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
-              <input
-                type='number'
-                min={0}
-                value={props.worldClockTransitionMs ?? 300}
-                onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
-              <input
-                type='number'
-                min={120}
-                value={props.worldClockWidthPx ?? 200}
-                onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            {isModoItalianoClock && (
+            {!isModoItalianoClock && (
               <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Language</span>
-                <select
-                  value={props.language || 'it'}
-                  onChange={(e) => updateProp(componentType, 'language', e.target.value)}
+                <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
+                <input
+                  type='number'
+                  min={0}
+                  value={props.worldClockTransitionMs ?? 300}
+                  onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
                   className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                >
-                  <option value='it'>Italiano</option>
-                  <option value='en'>English</option>
-                  <option value='es'>Español</option>
-                </select>
+                />
+              </label>
+            )}
+            {!isModoItalianoClock && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
+                <input
+                  type='number'
+                  min={120}
+                  value={props.worldClockWidthPx ?? 200}
+                  onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
               </label>
             )}
           </div>
@@ -1593,6 +1669,7 @@ function ComponentPropsFields({
     case 'modoitaliano-disclaimer':
       return (
         <div className='space-y-3'>
+          <p className='text-xs text-gray-500'>Shown only when ModoItaliano chyron is hidden/empty.</p>
           <div>
             <label className='block text-xs text-gray-600 mb-1'>Text</label>
             <input

@@ -8,6 +8,13 @@
   gap: 24px;
 }
 
+.toni-clock-corner--inline {
+  position: relative;
+  top: auto;
+  right: auto;
+  align-items: center;
+}
+
 .toni-clock-bell {
   background: #b21100;
   color: #ffffff;
