@@ -256,8 +256,6 @@ function SceneProgram({ programId }: { programId: string }) {
     const hasModoItalianoClock = components.includes('modoitaliano-clock');
     const hasModoItalianoChyron = components.includes('modoitaliano-chyron');
     const hasModoItalianoDisclaimer = components.includes('modoitaliano-disclaimer');
-    const hasModoItalianoComponents = hasModoItalianoClock || hasModoItalianoChyron || hasModoItalianoDisclaimer;
-    const showModoItalianoTestBackground = true;
     const shouldRenderModoItalianoRow = hasModoItalianoClock && (hasModoItalianoChyron || hasModoItalianoDisclaimer);
     const modoItalianoClockProps = metadata['modoitaliano-clock'] || {};
     const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
@@ -348,17 +346,6 @@ function SceneProgram({ programId }: { programId: string }) {
     // Handle multi-component custom layouts
     return (
       <div className='w-full h-full relative bg-transparent'>
-        {hasModoItalianoComponents && showModoItalianoTestBackground && (
-          <div className='absolute inset-0 z-0 pointer-events-none'>
-            <img src='/reloj/ariston.jpg' alt='' className='w-full h-full object-cover' />
-            <div
-              className='absolute inset-0'
-              style={{
-                background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.45) 100%)'
-              }}
-            />
-          </div>
-        )}
         {components.map((componentType) => {
           const props = metadata[componentType] || {};
 
