@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t, type SupportedLanguage } from '../i18n';
+import type { GlobalTimeOverride } from '../../../utils/broadcastTime';
+import { getOverrideClockParts } from '../../../utils/broadcastTime';
 
 interface CityTime {
   city: string;
@@ -33,6 +35,7 @@ export const DEFAULT_WORLD_CLOCK_CITIES: CityTime[] = [
   { city: 'NAIROBI', timezone: 'Africa/Nairobi' },
   { city: 'CASABLANCA', timezone: 'Africa/Casablanca' }
 ];
+const TRANSLATABLE_CITY_KEYS = new Set(DEFAULT_WORLD_CLOCK_CITIES.map((city) => city.city));
 
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -45,6 +48,7 @@ function shuffleArray<T>(array: T[]): T[] {
 
 interface WorldClocksProps {
   currentTime?: Date;
+  timeOverride?: GlobalTimeOverride | null;
   language?: SupportedLanguage;
   cities?: CityTime[];
   rotateIntervalMs?: number;
@@ -55,6 +59,7 @@ interface WorldClocksProps {
 
 export function WorldClocks({
   currentTime,
+  timeOverride = null,
   language = 'en',
   cities,
   rotateIntervalMs = 7000,
@@ -113,13 +118,22 @@ export function WorldClocks({
   }, [cityPool, rotateIntervalMs, transitionDurationMs, shuffleCities, activeCities]);
 
   const currentCity = cityPool[currentCityIndex] ?? activeCities[0];
-  const formatTime = (timezone: string) =>
-    time.toLocaleTimeString('en-US', {
+  const formatTime = (timezone: string) => {
+    if (timeOverride) {
+      const parts = getOverrideClockParts(timeOverride, time);
+      if (parts) {
+        return `${String(parts.hours).padStart(2, '0')}:${String(parts.minutes).padStart(2, '0')}`;
+      }
+    }
+
+    return time.toLocaleTimeString('en-US', {
       timeZone: timezone,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false
     });
+  };
+  const cityLabel = TRANSLATABLE_CITY_KEYS.has(currentCity.city) ? t(`city.${currentCity.city}`, language) : currentCity.city;
 
   return (
     <div className='flex flex-col gap-1.5 transition-opacity duration-300' style={{ opacity: isAnimating ? 0 : 1, width: `${widthPx}px` }}>
@@ -127,7 +141,7 @@ export function WorldClocks({
         {formatTime(currentCity.timezone)}
       </div>
       <div className='text-white/50 text-2xl font-bold tracking-wider leading-none uppercase text-center' style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        {t(`city.${currentCity.city}`, language)}
+        {cityLabel}
       </div>
     </div>
   );

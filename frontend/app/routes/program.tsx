@@ -14,7 +14,10 @@ import {
   ToniChyron,
   ToniClock,
   ToniLogo,
-  Earone
+  Earone,
+  ModoItalianoClock,
+  ModoItalianoChyron,
+  ModoItalianoDisclaimer
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
@@ -67,13 +70,20 @@ interface ActiveTransition {
   preset: SceneTransitionPreset;
 }
 
+const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set([
+  'fifthbell',
+  'fifthbell-content',
+  'fifthbell-marquee',
+  'fifthbell-corner'
+]);
+const FIFTHBELL_LAYOUT_COMPONENT_TYPES = new Set([
+  ...FIFTHBELL_DRIVER_COMPONENT_TYPES,
+  'toni-clock'
+]);
+
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
-
-  if (programId === 'fifthbell') {
-    return <FifthBellProgram />;
-  }
 
   return <SceneProgram programId={programId} />;
 }
@@ -194,17 +204,6 @@ function SceneProgram({ programId }: { programId: string }) {
             activeScene: data.scene
           };
         });
-      } else if (data.type === 'chyron_update') {
-        setState((prev) => {
-          if (!prev || !prev.activeScene || prev.activeScene.id !== data.scene.id) return prev;
-          return {
-            ...prev,
-            activeScene: {
-              ...prev.activeScene,
-              chyronText: data.scene.chyronText
-            }
-          };
-        });
       } else if (data.type === 'scene_cleared') {
         clearTransitionTimers();
         setActiveTransition(null);
@@ -250,46 +249,45 @@ function SceneProgram({ programId }: { programId: string }) {
       earoneSongId: activeToniLeaf?.earoneSongId || null,
       text: activeToniLeaf?.text || null
     });
+    const hasOnlyFifthBellComponents =
+      components.length > 0 &&
+      components.every((componentType) => FIFTHBELL_LAYOUT_COMPONENT_TYPES.has(componentType)) &&
+      components.some((componentType) => FIFTHBELL_DRIVER_COMPONENT_TYPES.has(componentType));
 
-    console.log('=== RENDERING SCENE ===');
-    console.log('Scene:', scene.name);
-    console.log('Layout:', scene.layout.name);
-    console.log('Component types (raw):', scene.layout.componentType);
-    console.log('Components array:', components);
-    console.log('Metadata (raw):', scene.metadata);
-    console.log('Metadata (parsed):', metadata);
-    console.log('Metadata type:', typeof metadata);
-    console.log('Is array?:', Array.isArray(metadata));
-    console.log('Metadata keys:', Object.keys(metadata));
+    if (hasOnlyFifthBellComponents) {
+      return (
+        <div className='absolute inset-0'>
+          <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} />
+        </div>
+      );
+    }
 
     // Handle legacy single-component layouts
     if (components.length === 1) {
       const componentType = components[0];
-      console.log('Single component mode:', componentType);
+      const legacyProps = metadata[componentType] || {};
 
       if (componentType === 'lower-third') {
-        return <LowerThird chyronText={scene.chyronText} />;
+        return <LowerThird text={legacyProps.text} />;
       }
       if (componentType === 'full-screen') {
-        return <FullScreen chyronText={scene.chyronText} />;
+        return <FullScreen text={legacyProps.text} />;
       }
       if (componentType === 'corner-bug') {
-        return <CornerBug chyronText={scene.chyronText} />;
+        return <CornerBug text={legacyProps.text} />;
       }
     }
 
     // Handle broadcast-layout component
     if (components.includes('broadcast-layout')) {
-      console.log('Using broadcast-layout component');
       const props = metadata['broadcast-layout'] || {};
-      console.log('Broadcast layout props:', props);
       return (
         <BroadcastLayout
           headerTitle={props.headerTitle || ''}
           hashtag={props.hashtag || '#ModoSanremoMR'}
           url={props.url || 'modoradio.cl'}
-          chyronText={scene.chyronText || ''}
-          showChyron={!!scene.chyronText}
+          chyronText={props.chyronText || ''}
+          showChyron={Boolean(props.showChyron ?? !!props.chyronText)}
           qrCodeContent={props.qrCodeContent || 'https://modoradio.cl'}
           clockTimezone={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
           showLiveIndicator={true}
@@ -298,13 +296,13 @@ function SceneProgram({ programId }: { programId: string }) {
       );
     }
 
+    const firstFifthBellComponentType = components.find((componentType) => FIFTHBELL_DRIVER_COMPONENT_TYPES.has(componentType));
+
     // Handle multi-component custom layouts
-    console.log('Rendering multi-component layout...');
     return (
       <div className='w-full h-full relative bg-transparent'>
         {components.map((componentType) => {
           const props = metadata[componentType] || {};
-          console.log(`Rendering component: ${componentType}`, 'Props:', props);
 
           switch (componentType) {
             case 'ticker':
@@ -316,7 +314,7 @@ function SceneProgram({ programId }: { programId: string }) {
             case 'chyron':
               return (
                 <div key={componentType} style={{ position: 'absolute', bottom: '120px', left: 0, right: 0 }}>
-                  <ChyronHolder text={scene.chyronText || props.text || 'Chyron'} show={true} />
+                  <ChyronHolder text={props.text || 'Chyron'} show={true} />
                 </div>
               );
             case 'header':
@@ -337,7 +335,7 @@ function SceneProgram({ programId }: { programId: string }) {
               return (
                 <ToniChyron
                   key={componentType}
-                  text={props.text || scene.chyronText || ''}
+                  text={props.text || ''}
                   show={true}
                   useMarquee={props.useMarquee}
                   contentMode={props.contentMode}
@@ -345,7 +343,56 @@ function SceneProgram({ programId }: { programId: string }) {
                 />
               );
             case 'toni-clock':
-              return <ToniClock key={componentType} showSeconds={false} timeOverride={globalTimeOverride} />;
+              return (
+                <ToniClock
+                  key={componentType}
+                  timeOverride={globalTimeOverride}
+                  cities={Array.isArray(props.worldClockCities) ? props.worldClockCities : undefined}
+                  rotationIntervalMs={typeof props.worldClockRotateIntervalMs === 'number' ? props.worldClockRotateIntervalMs : undefined}
+                  transitionDurationMs={typeof props.worldClockTransitionMs === 'number' ? props.worldClockTransitionMs : undefined}
+                  shuffleCities={typeof props.worldClockShuffle === 'boolean' ? props.worldClockShuffle : undefined}
+                  widthPx={typeof props.worldClockWidthPx === 'number' ? props.worldClockWidthPx : undefined}
+                  showWorldClocks={typeof props.showWorldClocks === 'boolean' ? props.showWorldClocks : undefined}
+                  showBellIcon={typeof props.showBellIcon === 'boolean' ? props.showBellIcon : undefined}
+                />
+              );
+            case 'modoitaliano-clock':
+              return (
+                <ModoItalianoClock
+                  key={componentType}
+                  timeOverride={globalTimeOverride}
+                  cities={Array.isArray(props.worldClockCities) ? props.worldClockCities : undefined}
+                  rotationIntervalMs={typeof props.worldClockRotateIntervalMs === 'number' ? props.worldClockRotateIntervalMs : undefined}
+                  transitionDurationMs={typeof props.worldClockTransitionMs === 'number' ? props.worldClockTransitionMs : undefined}
+                  shuffleCities={typeof props.worldClockShuffle === 'boolean' ? props.worldClockShuffle : undefined}
+                  widthPx={typeof props.worldClockWidthPx === 'number' ? props.worldClockWidthPx : undefined}
+                  showWorldClocks={typeof props.showWorldClocks === 'boolean' ? props.showWorldClocks : undefined}
+                  showBellIcon={typeof props.showBellIcon === 'boolean' ? props.showBellIcon : undefined}
+                  language={props.language === 'it' || props.language === 'en' || props.language === 'es' ? props.language : undefined}
+                />
+              );
+            case 'modoitaliano-chyron':
+              return (
+                <ModoItalianoChyron
+                  key={componentType}
+                  text={props.text || ''}
+                  show={typeof props.show === 'boolean' ? props.show : true}
+                  useMarquee={typeof props.useMarquee === 'boolean' ? props.useMarquee : false}
+                  label={typeof props.label === 'string' ? props.label : undefined}
+                />
+              );
+            case 'modoitaliano-disclaimer':
+              return (
+                <ModoItalianoDisclaimer
+                  key={componentType}
+                  text={props.text || ''}
+                  show={typeof props.show === 'boolean' ? props.show : true}
+                  align={props.align === 'left' || props.align === 'center' || props.align === 'right' ? props.align : undefined}
+                  bottomPx={typeof props.bottomPx === 'number' ? props.bottomPx : undefined}
+                  fontSizePx={typeof props.fontSizePx === 'number' ? props.fontSizePx : undefined}
+                  opacity={typeof props.opacity === 'number' ? props.opacity : undefined}
+                />
+              );
             case 'toni-logo':
               return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
             case 'earone':
@@ -357,10 +404,22 @@ function SceneProgram({ programId }: { programId: string }) {
                   spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
                 />
               );
+            case 'fifthbell':
+            case 'fifthbell-content':
+            case 'fifthbell-marquee':
+            case 'fifthbell-corner':
+              if (firstFifthBellComponentType !== componentType) {
+                return null;
+              }
+              return (
+                <div key={componentType} className='absolute inset-0'>
+                  <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} />
+                </div>
+              );
             case 'corner-bug':
               return (
                 <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>
-                  <CornerBug chyronText={scene.chyronText} />
+                  <CornerBug text={props.text} />
                 </div>
               );
             default:
@@ -384,28 +443,28 @@ function SceneProgram({ programId }: { programId: string }) {
   );
 }
 
-function LowerThird({ chyronText }: { chyronText: string | null }) {
+function LowerThird({ text }: { text?: string }) {
   return (
     <div className='absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-r from-blue-600 to-blue-800 flex items-center px-16'>
       <div className='text-white'>
-        <div className='text-5xl font-bold'>{chyronText || 'Lower Third'}</div>
+        <div className='text-5xl font-bold'>{text || 'Lower Third'}</div>
       </div>
     </div>
   );
 }
 
-function FullScreen({ chyronText }: { chyronText: string | null }) {
+function FullScreen({ text }: { text?: string }) {
   return (
     <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900 to-blue-900'>
-      <div className='text-white text-8xl font-bold text-center px-16'>{chyronText || 'Full Screen'}</div>
+      <div className='text-white text-8xl font-bold text-center px-16'>{text || 'Full Screen'}</div>
     </div>
   );
 }
 
-function CornerBug({ chyronText }: { chyronText: string | null }) {
+function CornerBug({ text }: { text?: string }) {
   return (
     <div className='absolute top-8 right-8 bg-red-600 text-white px-8 py-4 rounded-lg shadow-2xl'>
-      <div className='text-3xl font-bold'>{chyronText || 'LIVE'}</div>
+      <div className='text-3xl font-bold'>{text || 'LIVE'}</div>
     </div>
   );
 }

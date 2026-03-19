@@ -1,11 +1,11 @@
-import { BellRing } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ToniClock } from '../../components/ToniClock';
 import { useSSE } from '../../hooks/useSSE';
 import { apiUrl } from '../../utils/apiBaseUrl';
 import { FIFTHBELL_ASSETS } from './assets';
 import { MarqueeCurtain } from './components/MarqueeCurtain';
 import Marquee from './components/Marquee';
-import { DEFAULT_WORLD_CLOCK_CITIES, WorldClocks } from './components/WorldClocks';
+import { DEFAULT_WORLD_CLOCK_CITIES } from './components/WorldClocks';
 import { CallsignSlide } from './components/slides/CallsignSlide';
 import { slideStyles } from './components/slides/slideStyles';
 import { fetchEvents, getCachedEvents, hasEventChanges, type Event } from './events';
@@ -54,6 +54,13 @@ interface FifthBellWorldClockCity {
   timezone: string;
 }
 
+interface FifthBellProgramProps {
+  programId?: string;
+  embedded?: boolean;
+  sceneMetadata?: Record<string, unknown> | null;
+  activeComponents?: string[];
+}
+
 interface FifthBellConfig {
   showArticles: boolean;
   showWeather: boolean;
@@ -93,6 +100,11 @@ interface FifthBellConfig {
 
 const DEFAULT_LANGUAGE_ROTATION: SupportedLanguage[] = ['en', 'es', 'en', 'it'];
 const DEFAULT_CALLSIGN_PRELAUNCH_UNTIL_NYC = '2026-01-02T21:30:00';
+const FIFTHBELL_COMPONENT_TYPE_CONTENT = 'fifthbell-content';
+const FIFTHBELL_COMPONENT_TYPE_MARQUEE = 'fifthbell-marquee';
+const FIFTHBELL_COMPONENT_TYPE_TONI_CLOCK = 'toni-clock';
+const FIFTHBELL_COMPONENT_TYPE_CORNER = 'fifthbell-corner';
+const FIFTHBELL_COMPONENT_TYPE_LEGACY = 'fifthbell';
 
 const DEFAULT_FIFTHBELL_CONFIG: FifthBellConfig = {
   showArticles: true,
@@ -227,70 +239,116 @@ function normalizeCityKey(value: string): string {
     .toLowerCase();
 }
 
-function extractConfigFromSceneMetadata(scene: Scene | null): FifthBellConfig {
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function parseSceneMetadata(scene: Scene | null): Record<string, unknown> {
   if (!scene || !scene.metadata) {
-    return DEFAULT_FIFTHBELL_CONFIG;
+    return {};
   }
 
   try {
-    const metadata = JSON.parse(scene.metadata);
-    const fifthbellProps = metadata?.fifthbell;
-    if (!fifthbellProps || typeof fifthbellProps !== 'object' || Array.isArray(fifthbellProps)) {
-      return DEFAULT_FIFTHBELL_CONFIG;
-    }
-
-    const parsedMarqueeMinPostsCount = clampNumber(fifthbellProps.marqueeMinPostsCount, DEFAULT_FIFTHBELL_CONFIG.marqueeMinPostsCount, 0, 50);
-    let parsedMarqueeMinAverageRelevance = clampNumber(fifthbellProps.marqueeMinAverageRelevance, DEFAULT_FIFTHBELL_CONFIG.marqueeMinAverageRelevance, 0, 100);
-    let parsedMarqueeMinMedianRelevance = clampNumber(fifthbellProps.marqueeMinMedianRelevance, DEFAULT_FIFTHBELL_CONFIG.marqueeMinMedianRelevance, 0, 100);
-
-    // Compatibility: prior defaults were tuned for OR logic. Under threshold logic, treat that trio as legacy.
-    if (parsedMarqueeMinPostsCount === 4 && parsedMarqueeMinAverageRelevance === 5 && parsedMarqueeMinMedianRelevance === 7) {
-      parsedMarqueeMinAverageRelevance = 0;
-      parsedMarqueeMinMedianRelevance = 0;
-    }
-
-    return {
-      showArticles: normalizeBoolean(fifthbellProps.showArticles, DEFAULT_FIFTHBELL_CONFIG.showArticles),
-      showWeather: normalizeBoolean(fifthbellProps.showWeather, DEFAULT_FIFTHBELL_CONFIG.showWeather),
-      showEarthquakes: normalizeBoolean(fifthbellProps.showEarthquakes, DEFAULT_FIFTHBELL_CONFIG.showEarthquakes),
-      showMarkets: normalizeBoolean(fifthbellProps.showMarkets, DEFAULT_FIFTHBELL_CONFIG.showMarkets),
-      showMarquee: normalizeBoolean(fifthbellProps.showMarquee, DEFAULT_FIFTHBELL_CONFIG.showMarquee),
-      showCallsignTake: normalizeBoolean(fifthbellProps.showCallsignTake, DEFAULT_FIFTHBELL_CONFIG.showCallsignTake),
-      weatherCities: normalizeStringArray(fifthbellProps.weatherCities),
-      languageRotation: normalizeLanguageRotation(fifthbellProps.languageRotation),
-      dataLoadTimeoutMs: clampNumber(fifthbellProps.dataLoadTimeoutMs, DEFAULT_FIFTHBELL_CONFIG.dataLoadTimeoutMs, 1000, 120000),
-      playlistDefaultDurationMs: clampNumber(fifthbellProps.playlistDefaultDurationMs, DEFAULT_FIFTHBELL_CONFIG.playlistDefaultDurationMs, 1000, 120000),
-      playlistUpdateIntervalMs: clampNumber(fifthbellProps.playlistUpdateIntervalMs, DEFAULT_FIFTHBELL_CONFIG.playlistUpdateIntervalMs, 16, 5000),
-      articlesDurationMs: clampNumber(fifthbellProps.articlesDurationMs, DEFAULT_FIFTHBELL_CONFIG.articlesDurationMs, 1000, 120000),
-      weatherDurationMs: clampNumber(fifthbellProps.weatherDurationMs, DEFAULT_FIFTHBELL_CONFIG.weatherDurationMs, 1000, 120000),
-      earthquakesDurationMs: clampNumber(fifthbellProps.earthquakesDurationMs, DEFAULT_FIFTHBELL_CONFIG.earthquakesDurationMs, 1000, 120000),
-      marketsDurationMs: clampNumber(fifthbellProps.marketsDurationMs, DEFAULT_FIFTHBELL_CONFIG.marketsDurationMs, 1000, 120000),
-      showWorldClocks: normalizeBoolean(fifthbellProps.showWorldClocks, DEFAULT_FIFTHBELL_CONFIG.showWorldClocks),
-      showBellIcon: normalizeBoolean(fifthbellProps.showBellIcon, DEFAULT_FIFTHBELL_CONFIG.showBellIcon),
-      worldClockRotateIntervalMs: clampNumber(fifthbellProps.worldClockRotateIntervalMs, DEFAULT_FIFTHBELL_CONFIG.worldClockRotateIntervalMs, 500, 120000),
-      worldClockTransitionMs: clampNumber(fifthbellProps.worldClockTransitionMs, DEFAULT_FIFTHBELL_CONFIG.worldClockTransitionMs, 0, 10000),
-      worldClockShuffle: normalizeBoolean(fifthbellProps.worldClockShuffle, DEFAULT_FIFTHBELL_CONFIG.worldClockShuffle),
-      worldClockWidthPx: clampNumber(fifthbellProps.worldClockWidthPx, DEFAULT_FIFTHBELL_CONFIG.worldClockWidthPx, 120, 600),
-      worldClockCities: normalizeWorldClockCities(fifthbellProps.worldClockCities),
-      audioCueEnabled: normalizeBoolean(fifthbellProps.audioCueEnabled, DEFAULT_FIFTHBELL_CONFIG.audioCueEnabled),
-      audioCueMinute: clampNumber(fifthbellProps.audioCueMinute, DEFAULT_FIFTHBELL_CONFIG.audioCueMinute, 0, 59),
-      audioCueSecond: clampNumber(fifthbellProps.audioCueSecond, DEFAULT_FIFTHBELL_CONFIG.audioCueSecond, 0, 59),
-      callsignPrelaunchUntilNyc:
-        typeof fifthbellProps.callsignPrelaunchUntilNyc === 'string' && fifthbellProps.callsignPrelaunchUntilNyc.trim()
-          ? fifthbellProps.callsignPrelaunchUntilNyc.trim()
-          : DEFAULT_FIFTHBELL_CONFIG.callsignPrelaunchUntilNyc,
-      callsignWindowStartSecond: clampNumber(fifthbellProps.callsignWindowStartSecond, DEFAULT_FIFTHBELL_CONFIG.callsignWindowStartSecond, 0, 59),
-      callsignWindowEndSecond: clampNumber(fifthbellProps.callsignWindowEndSecond, DEFAULT_FIFTHBELL_CONFIG.callsignWindowEndSecond, 0, 59),
-      marqueeMinPostsCount: parsedMarqueeMinPostsCount,
-      marqueeMinAverageRelevance: parsedMarqueeMinAverageRelevance,
-      marqueeMinMedianRelevance: parsedMarqueeMinMedianRelevance,
-      marqueePixelsPerSecond: clampNumber(fifthbellProps.marqueePixelsPerSecond, DEFAULT_FIFTHBELL_CONFIG.marqueePixelsPerSecond, 10, 1000),
-      marqueeMinDurationSeconds: clampNumber(fifthbellProps.marqueeMinDurationSeconds, DEFAULT_FIFTHBELL_CONFIG.marqueeMinDurationSeconds, 1, 120),
-      marqueeHeightPx: clampNumber(fifthbellProps.marqueeHeightPx, DEFAULT_FIFTHBELL_CONFIG.marqueeHeightPx, 72, 200)
-    };
+    const parsed = JSON.parse(scene.metadata);
+    return toRecord(parsed);
   } catch {
-    return DEFAULT_FIFTHBELL_CONFIG;
+    return {};
   }
+}
+
+function resolveFifthBellLayerAvailability(activeComponents?: string[]) {
+  const defaultAvailability = {
+    content: true,
+    marquee: true,
+    corner: true
+  };
+
+  if (!activeComponents || activeComponents.length === 0) {
+    return defaultAvailability;
+  }
+
+  if (activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_LEGACY)) {
+    return defaultAvailability;
+  }
+
+  return {
+    content: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CONTENT),
+    marquee: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_MARQUEE),
+    corner:
+      activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_TONI_CLOCK) ||
+      activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CORNER)
+  };
+}
+
+function extractConfigFromMetadata(metadataInput: Record<string, unknown> | null | undefined): FifthBellConfig {
+  const metadata = toRecord(metadataInput);
+  const legacyProps = toRecord(metadata[FIFTHBELL_COMPONENT_TYPE_LEGACY]);
+  const contentProps = {
+    ...legacyProps,
+    ...toRecord(metadata[FIFTHBELL_COMPONENT_TYPE_CONTENT])
+  };
+  const marqueeProps = {
+    ...legacyProps,
+    ...toRecord(metadata[FIFTHBELL_COMPONENT_TYPE_MARQUEE])
+  };
+  const cornerProps = {
+    ...legacyProps,
+    ...toRecord(metadata[FIFTHBELL_COMPONENT_TYPE_TONI_CLOCK]),
+    ...toRecord(metadata[FIFTHBELL_COMPONENT_TYPE_CORNER])
+  };
+
+  const parsedMarqueeMinPostsCount = clampNumber(marqueeProps.marqueeMinPostsCount, DEFAULT_FIFTHBELL_CONFIG.marqueeMinPostsCount, 0, 50);
+  let parsedMarqueeMinAverageRelevance = clampNumber(marqueeProps.marqueeMinAverageRelevance, DEFAULT_FIFTHBELL_CONFIG.marqueeMinAverageRelevance, 0, 100);
+  let parsedMarqueeMinMedianRelevance = clampNumber(marqueeProps.marqueeMinMedianRelevance, DEFAULT_FIFTHBELL_CONFIG.marqueeMinMedianRelevance, 0, 100);
+
+  // Compatibility: prior defaults were tuned for OR logic. Under threshold logic, treat that trio as legacy.
+  if (parsedMarqueeMinPostsCount === 4 && parsedMarqueeMinAverageRelevance === 5 && parsedMarqueeMinMedianRelevance === 7) {
+    parsedMarqueeMinAverageRelevance = 0;
+    parsedMarqueeMinMedianRelevance = 0;
+  }
+
+  return {
+    showArticles: normalizeBoolean(contentProps.showArticles, DEFAULT_FIFTHBELL_CONFIG.showArticles),
+    showWeather: normalizeBoolean(contentProps.showWeather, DEFAULT_FIFTHBELL_CONFIG.showWeather),
+    showEarthquakes: normalizeBoolean(contentProps.showEarthquakes, DEFAULT_FIFTHBELL_CONFIG.showEarthquakes),
+    showMarkets: normalizeBoolean(contentProps.showMarkets, DEFAULT_FIFTHBELL_CONFIG.showMarkets),
+    showMarquee: normalizeBoolean(marqueeProps.showMarquee, DEFAULT_FIFTHBELL_CONFIG.showMarquee),
+    showCallsignTake: normalizeBoolean(contentProps.showCallsignTake, DEFAULT_FIFTHBELL_CONFIG.showCallsignTake),
+    weatherCities: normalizeStringArray(contentProps.weatherCities),
+    languageRotation: normalizeLanguageRotation(contentProps.languageRotation),
+    dataLoadTimeoutMs: clampNumber(contentProps.dataLoadTimeoutMs, DEFAULT_FIFTHBELL_CONFIG.dataLoadTimeoutMs, 1000, 120000),
+    playlistDefaultDurationMs: clampNumber(contentProps.playlistDefaultDurationMs, DEFAULT_FIFTHBELL_CONFIG.playlistDefaultDurationMs, 1000, 120000),
+    playlistUpdateIntervalMs: clampNumber(contentProps.playlistUpdateIntervalMs, DEFAULT_FIFTHBELL_CONFIG.playlistUpdateIntervalMs, 16, 5000),
+    articlesDurationMs: clampNumber(contentProps.articlesDurationMs, DEFAULT_FIFTHBELL_CONFIG.articlesDurationMs, 1000, 120000),
+    weatherDurationMs: clampNumber(contentProps.weatherDurationMs, DEFAULT_FIFTHBELL_CONFIG.weatherDurationMs, 1000, 120000),
+    earthquakesDurationMs: clampNumber(contentProps.earthquakesDurationMs, DEFAULT_FIFTHBELL_CONFIG.earthquakesDurationMs, 1000, 120000),
+    marketsDurationMs: clampNumber(contentProps.marketsDurationMs, DEFAULT_FIFTHBELL_CONFIG.marketsDurationMs, 1000, 120000),
+    showWorldClocks: normalizeBoolean(cornerProps.showWorldClocks, DEFAULT_FIFTHBELL_CONFIG.showWorldClocks),
+    showBellIcon: normalizeBoolean(cornerProps.showBellIcon, DEFAULT_FIFTHBELL_CONFIG.showBellIcon),
+    worldClockRotateIntervalMs: clampNumber(cornerProps.worldClockRotateIntervalMs, DEFAULT_FIFTHBELL_CONFIG.worldClockRotateIntervalMs, 500, 120000),
+    worldClockTransitionMs: clampNumber(cornerProps.worldClockTransitionMs, DEFAULT_FIFTHBELL_CONFIG.worldClockTransitionMs, 0, 10000),
+    worldClockShuffle: normalizeBoolean(cornerProps.worldClockShuffle, DEFAULT_FIFTHBELL_CONFIG.worldClockShuffle),
+    worldClockWidthPx: clampNumber(cornerProps.worldClockWidthPx, DEFAULT_FIFTHBELL_CONFIG.worldClockWidthPx, 120, 600),
+    worldClockCities: normalizeWorldClockCities(cornerProps.worldClockCities),
+    audioCueEnabled: normalizeBoolean(contentProps.audioCueEnabled, DEFAULT_FIFTHBELL_CONFIG.audioCueEnabled),
+    audioCueMinute: clampNumber(contentProps.audioCueMinute, DEFAULT_FIFTHBELL_CONFIG.audioCueMinute, 0, 59),
+    audioCueSecond: clampNumber(contentProps.audioCueSecond, DEFAULT_FIFTHBELL_CONFIG.audioCueSecond, 0, 59),
+    callsignPrelaunchUntilNyc:
+      typeof contentProps.callsignPrelaunchUntilNyc === 'string' && contentProps.callsignPrelaunchUntilNyc.trim()
+        ? contentProps.callsignPrelaunchUntilNyc.trim()
+        : DEFAULT_FIFTHBELL_CONFIG.callsignPrelaunchUntilNyc,
+    callsignWindowStartSecond: clampNumber(contentProps.callsignWindowStartSecond, DEFAULT_FIFTHBELL_CONFIG.callsignWindowStartSecond, 0, 59),
+    callsignWindowEndSecond: clampNumber(contentProps.callsignWindowEndSecond, DEFAULT_FIFTHBELL_CONFIG.callsignWindowEndSecond, 0, 59),
+    marqueeMinPostsCount: parsedMarqueeMinPostsCount,
+    marqueeMinAverageRelevance: parsedMarqueeMinAverageRelevance,
+    marqueeMinMedianRelevance: parsedMarqueeMinMedianRelevance,
+    marqueePixelsPerSecond: clampNumber(marqueeProps.marqueePixelsPerSecond, DEFAULT_FIFTHBELL_CONFIG.marqueePixelsPerSecond, 10, 1000),
+    marqueeMinDurationSeconds: clampNumber(marqueeProps.marqueeMinDurationSeconds, DEFAULT_FIFTHBELL_CONFIG.marqueeMinDurationSeconds, 1, 120),
+    marqueeHeightPx: clampNumber(marqueeProps.marqueeHeightPx, DEFAULT_FIFTHBELL_CONFIG.marqueeHeightPx, 72, 200)
+  };
 }
 
 function normalizeLaunchDate(rawDate: string): Date {
@@ -302,10 +360,15 @@ function normalizeLaunchDate(rawDate: string): Date {
   return parsed;
 }
 
-export default function FifthBellProgram() {
+export default function FifthBellProgram({
+  programId = 'fifthbell',
+  embedded = false,
+  sceneMetadata,
+  activeComponents
+}: FifthBellProgramProps) {
+  const encodedProgramId = encodeURIComponent(programId);
   const [state, setState] = useState<ProgramState | null>(null);
   const [showLogoSlide, setShowLogoSlide] = useState(false);
-  const currentTimeRef = useRef(new Date());
   const [callsignTime, setCallsignTime] = useState(new Date());
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioInitialized = useRef(false);
@@ -325,7 +388,16 @@ export default function FifthBellProgram() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const lastFetchedItemRef = useRef<number>(-1);
 
-  const config = useMemo(() => extractConfigFromSceneMetadata(state?.activeScene ?? null), [state?.activeScene]);
+  const controlledBySceneRenderer = sceneMetadata !== undefined;
+  const effectiveSceneMetadata = useMemo(() => {
+    if (sceneMetadata !== undefined) {
+      return toRecord(sceneMetadata);
+    }
+
+    return parseSceneMetadata(state?.activeScene ?? null);
+  }, [sceneMetadata, state?.activeScene]);
+  const config = useMemo(() => extractConfigFromMetadata(effectiveSceneMetadata), [effectiveSceneMetadata]);
+  const layerAvailability = useMemo(() => resolveFifthBellLayerAvailability(activeComponents), [activeComponents]);
   const languageRotation = config.languageRotation;
   const currentLanguage: SupportedLanguage = languageRotation[languageIndex] ?? languageRotation[0] ?? 'en';
 
@@ -340,11 +412,15 @@ export default function FifthBellProgram() {
   }, [updatePending]);
 
   useEffect(() => {
-    fetch(apiUrl('/program/fifthbell/state'))
+    if (controlledBySceneRenderer) {
+      return;
+    }
+
+    fetch(apiUrl(`/program/${encodedProgramId}/state`))
       .then((res) => res.json())
       .then((data) => setState(data))
       .catch((err) => console.error('Failed to fetch FifthBell program state:', err));
-  }, []);
+  }, [controlledBySceneRenderer, encodedProgramId]);
 
   const refreshAllData = useCallback(async () => {
     const [articlesData, weatherDataResult, earthquakesData, marketsData] = await Promise.all([
@@ -374,7 +450,8 @@ export default function FifthBellProgram() {
   }, [refreshAllData]);
 
   useSSE({
-    url: apiUrl('/program/fifthbell/events'),
+    url: apiUrl(`/program/${encodedProgramId}/events`),
+    enabled: !controlledBySceneRenderer,
     onMessage: (data) => {
       if ((data.type === 'scene_change' || data.type === 'program_scenes_changed') && data.state) {
         setState(data.state);
@@ -553,7 +630,6 @@ export default function FifthBellProgram() {
   useEffect(() => {
     const checkTime = () => {
       const now = new Date();
-      currentTimeRef.current = now;
       const minutes = now.getMinutes();
       const seconds = now.getSeconds();
 
@@ -587,7 +663,7 @@ export default function FifthBellProgram() {
     }
   }, [pause, resume, showLogoSlide, playlistState.isPaused]);
 
-  const marqueeEnabled = config.showMarquee;
+  const marqueeEnabled = layerAvailability.marquee && config.showMarquee;
 
   const isMarqueeVisible = useMemo(() => {
     if (!marqueeEnabled || showLogoSlide || segments.length === 0) {
@@ -597,52 +673,45 @@ export default function FifthBellProgram() {
     return true;
   }, [marqueeEnabled, showLogoSlide, segments.length]);
 
+  const stageContainerStyle = embedded
+    ? { width: '100%', height: '100%' }
+    : { width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' };
+
+  const stageContainerClass = embedded ? 'relative bg-black text-white overflow-hidden w-full h-full' : 'relative bg-black text-white overflow-hidden shadow-2xl';
+
+  const loadingStage = (
+    <div className={stageContainerClass} style={stageContainerStyle}>
+      {layerAvailability.content ? <CallsignSlide currentTime={callsignTime} audioRef={audioRef} /> : <div className='absolute inset-0 bg-black' />}
+    </div>
+  );
+
   if (!dataLoaded) {
-    return (
-      <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>
-        <div
-          className='relative bg-black text-white overflow-hidden shadow-2xl'
-          style={{ width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' }}
-        >
-          <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
-        </div>
-      </div>
-    );
+    return embedded ? <div className='w-full h-full bg-black overflow-hidden'>{loadingStage}</div> : <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>{loadingStage}</div>;
   }
 
-  return (
-    <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>
-      <div
-        className='relative bg-black text-white overflow-hidden shadow-2xl'
-        style={{ width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' }}
-      >
-        {!showLogoSlide && (config.showWorldClocks || config.showBellIcon) && (
-          <div className='absolute top-16 right-24 z-50 flex items-start gap-6'>
-            {config.showWorldClocks && (
-              <div className='flex items-start pt-1.5'>
-                <WorldClocks
-                  currentTime={currentTimeRef.current}
-                  language={currentLanguage}
-                  cities={config.worldClockCities}
-                  rotateIntervalMs={config.worldClockRotateIntervalMs}
-                  transitionDurationMs={config.worldClockTransitionMs}
-                  shuffleCities={config.worldClockShuffle}
-                  widthPx={config.worldClockWidthPx}
-                />
-              </div>
-            )}
-            {config.showBellIcon && (
-              <div className='bg-[#b21100] text-white p-6 shadow-lg'>
-                <BellRing size={64} strokeWidth={2} />
-              </div>
-            )}
-          </div>
+  const liveStage = (
+    <div className={stageContainerClass} style={stageContainerStyle}>
+        {layerAvailability.corner && !showLogoSlide && (
+          <ToniClock
+            language={currentLanguage}
+            cities={config.worldClockCities}
+            rotationIntervalMs={config.worldClockRotateIntervalMs}
+            transitionDurationMs={config.worldClockTransitionMs}
+            shuffleCities={config.worldClockShuffle}
+            widthPx={config.worldClockWidthPx}
+            showWorldClocks={config.showWorldClocks}
+            showBellIcon={config.showBellIcon}
+          />
         )}
 
-        {showLogoSlide ? (
-          <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
-        ) : currentSegment ? (
-          currentSegment.render(playlistState.currentItemIndex, playlistState.progress)
+        {layerAvailability.content ? (
+          showLogoSlide ? (
+            <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
+          ) : currentSegment ? (
+            currentSegment.render(playlistState.currentItemIndex, playlistState.progress)
+          ) : (
+            <div className='absolute inset-0 bg-black' />
+          )
         ) : (
           <div className='absolute inset-0 bg-black' />
         )}
@@ -667,7 +736,11 @@ export default function FifthBellProgram() {
           </div>
         )}
       </div>
+  );
 
+  return (
+    <div className={embedded ? 'w-full h-full bg-black overflow-hidden' : 'min-h-screen bg-black flex items-center justify-center overflow-hidden'}>
+      {liveStage}
       <audio ref={audioRef} preload='auto'>
         <source src={FIFTHBELL_ASSETS.audio.pipes} type='audio/ogg' />
       </audio>
