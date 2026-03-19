@@ -97,7 +97,14 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'reloj-clock':
     case 'reloj-loop-clock':
     case 'toni-chyron':
+    case 'toni-clock':
+    case 'modoitaliano-clock':
+    case 'modoitaliano-chyron':
+    case 'modoitaliano-disclaimer':
     case 'earone':
+    case 'fifthbell-content':
+    case 'fifthbell-marquee':
+    case 'fifthbell-corner':
     case 'fifthbell':
       return true;
     default:
@@ -118,22 +125,6 @@ function parseSceneMetadata(metadata: string | null): ComponentPropsMap {
   return {};
 }
 
-function getStoredSceneChyronText(metadata: ComponentPropsMap, fallbackText: string): string {
-  const toniProps = metadata['toni-chyron'];
-  if (toniProps && typeof toniProps === 'object' && typeof toniProps.text === 'string') {
-    return toniProps.text;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(metadata, 'chyron')) {
-    const chyronProps = metadata.chyron;
-    if (chyronProps && typeof chyronProps === 'object' && typeof chyronProps.text === 'string') {
-      return chyronProps.text;
-    }
-  }
-
-  return fallbackText;
-}
-
 function getSceneSummaryText(scene: Scene): string {
   try {
     const metadata = parseSceneMetadata(scene.metadata);
@@ -151,11 +142,26 @@ function getSceneSummaryText(scene: Scene): string {
         return toniProps.text;
       }
     }
+
+    const chyronProps = metadata?.chyron;
+    if (chyronProps && typeof chyronProps === 'object' && typeof chyronProps.text === 'string' && chyronProps.text.trim()) {
+      return chyronProps.text;
+    }
+
+    const broadcastProps = metadata?.['broadcast-layout'];
+    if (
+      broadcastProps &&
+      typeof broadcastProps === 'object' &&
+      typeof broadcastProps.chyronText === 'string' &&
+      broadcastProps.chyronText.trim()
+    ) {
+      return broadcastProps.chyronText;
+    }
   } catch (err) {
     console.error('Failed to parse scene metadata for summary:', err);
   }
 
-  return scene.chyronText || '(none)';
+  return '(none)';
 }
 
 export function meta({}: Route.MetaArgs) {
@@ -172,7 +178,6 @@ export default function Control() {
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
-  const [sceneEditorChyronText, setSceneEditorChyronText] = useState('');
   const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
   const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
@@ -267,14 +272,23 @@ export default function Control() {
 
   const buildComponentPropsForScene = (scene: Scene): Record<string, any> => {
     const metadata = parseSceneMetadata(scene.metadata);
+    const legacyFifthBell =
+      metadata?.fifthbell && typeof metadata.fifthbell === 'object' && !Array.isArray(metadata.fifthbell) ? metadata.fifthbell : {};
 
     const components = scene.layout.componentType.split(',').filter(Boolean);
     const combined: Record<string, any> = {};
 
     for (const componentType of components) {
+      const compatibleMetadata =
+        componentType === 'fifthbell-content' || componentType === 'fifthbell-marquee'
+          ? { ...legacyFifthBell, ...(metadata[componentType] || {}) }
+          : componentType === 'toni-clock' || componentType === 'fifthbell-corner'
+            ? { ...legacyFifthBell, ...(metadata['fifthbell-corner'] || {}), ...(metadata['toni-clock'] || {}), ...(metadata[componentType] || {}) }
+          : metadata[componentType] || {};
+
       combined[componentType] = {
         ...getDefaultPropsForComponent(componentType),
-        ...(metadata[componentType] || {})
+        ...compatibleMetadata
       };
     }
 
@@ -340,7 +354,6 @@ export default function Control() {
 
   useEffect(() => {
     if (!selectedScene) {
-      setSceneEditorChyronText('');
       setSceneEditorProps({});
       return;
     }
@@ -352,7 +365,6 @@ export default function Control() {
 
     const nextProps = buildComponentPropsForScene(scene);
     setSceneEditorProps(nextProps);
-    setSceneEditorChyronText(scene.chyronText ?? nextProps.chyron?.text ?? '');
   }, [selectedScene, scenes]);
 
   const updateSceneEditorProp = (componentType: string, propName: string, value: any) => {
@@ -383,20 +395,11 @@ export default function Control() {
         ...existingMetadata,
         ...nextSceneProps
       };
-      const resolvedChyronText = getStoredSceneChyronText(nextMetadata, sceneEditorChyronText);
-      if (Object.prototype.hasOwnProperty.call(nextMetadata, 'chyron')) {
-        const currentChyron = nextMetadata.chyron;
-        nextMetadata.chyron = {
-          ...(currentChyron && typeof currentChyron === 'object' ? currentChyron : {}),
-          text: resolvedChyronText
-        };
-      }
 
       const response = await fetch(apiUrl(`/scenes/${selectedScene}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chyronText: resolvedChyronText,
           metadata: nextMetadata
         })
       });
@@ -505,7 +508,9 @@ export default function Control() {
           hashtag: '#ModoSanremoMR',
           url: 'modoradio.cl',
           qrCodeContent: 'https://modoradio.cl',
-          clockTimezone: 'America/Argentina/Buenos_Aires'
+          clockTimezone: 'America/Argentina/Buenos_Aires',
+          showChyron: false,
+          chyronText: ''
         };
       case 'reloj-clock':
         return { timezone: 'America/Argentina/Buenos_Aires' };
@@ -514,18 +519,59 @@ export default function Control() {
       case 'toni-chyron':
         return { text: '', useMarquee: false };
       case 'toni-clock':
-        return {};
+        return {
+          showWorldClocks: true,
+          showBellIcon: false,
+          worldClockRotateIntervalMs: 5000,
+          worldClockTransitionMs: 300,
+          worldClockShuffle: false,
+          worldClockWidthPx: 200,
+          worldClockCities: [
+            { city: 'SANREMO', timezone: 'Europe/Rome' },
+            { city: 'NEW YORK', timezone: 'America/New_York' },
+            { city: 'MADRID', timezone: 'Europe/Madrid' },
+            { city: 'MONTEVIDEO', timezone: 'America/Montevideo' },
+            { city: 'SANTIAGO', timezone: 'America/Santiago' }
+          ]
+        };
+      case 'modoitaliano-clock':
+        return {
+          showWorldClocks: true,
+          showBellIcon: false,
+          worldClockRotateIntervalMs: 5000,
+          worldClockTransitionMs: 300,
+          worldClockShuffle: false,
+          worldClockWidthPx: 220,
+          language: 'it',
+          worldClockCities: [
+            { city: 'SANREMO', timezone: 'Europe/Rome' },
+            { city: 'ROME', timezone: 'Europe/Rome' },
+            { city: 'MILAN', timezone: 'Europe/Rome' },
+            { city: 'MADRID', timezone: 'Europe/Madrid' },
+            { city: 'NEW YORK', timezone: 'America/New_York' }
+          ]
+        };
+      case 'modoitaliano-chyron':
+        return { text: '', show: true, useMarquee: false, label: 'MODO ITALIANO' };
+      case 'modoitaliano-disclaimer':
+        return {
+          text: 'Contenuti a scopo informativo.',
+          show: true,
+          align: 'right',
+          bottomPx: 24,
+          fontSizePx: 20,
+          opacity: 0.82
+        };
       case 'toni-logo':
         return {};
       case 'earone':
         return { label: 'EARONE', rank: '', spins: '' };
-      case 'fifthbell':
+      case 'fifthbell-content':
         return {
           showArticles: true,
           showWeather: true,
           showEarthquakes: true,
           showMarkets: true,
-          showMarquee: false,
           showCallsignTake: true,
           weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES],
           languageRotation: ['en', 'es', 'en', 'it'],
@@ -536,24 +582,37 @@ export default function Control() {
           weatherDurationMs: 5000,
           earthquakesDurationMs: 10000,
           marketsDurationMs: 10000,
-          showWorldClocks: true,
-          showBellIcon: true,
-          worldClockRotateIntervalMs: 7000,
-          worldClockTransitionMs: 300,
-          worldClockShuffle: true,
-          worldClockWidthPx: 200,
           audioCueEnabled: true,
           audioCueMinute: 59,
           audioCueSecond: 55,
           callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
           callsignWindowStartSecond: 50,
-          callsignWindowEndSecond: 3,
+          callsignWindowEndSecond: 3
+        };
+      case 'fifthbell-marquee':
+        return {
+          showMarquee: false,
           marqueeMinPostsCount: 4,
           marqueeMinAverageRelevance: 0,
           marqueeMinMedianRelevance: 0,
           marqueePixelsPerSecond: 150,
           marqueeMinDurationSeconds: 10,
           marqueeHeightPx: 72
+        };
+      case 'fifthbell-corner':
+        return {
+          showWorldClocks: true,
+          showBellIcon: true,
+          worldClockRotateIntervalMs: 7000,
+          worldClockTransitionMs: 300,
+          worldClockShuffle: true,
+          worldClockWidthPx: 200
+        };
+      case 'fifthbell':
+        return {
+          ...getDefaultPropsForComponent('fifthbell-content'),
+          ...getDefaultPropsForComponent('fifthbell-marquee'),
+          ...getDefaultPropsForComponent('toni-clock')
         };
       default:
         return {};
@@ -600,7 +659,6 @@ export default function Control() {
       const payload = {
         name: newSceneName,
         layoutId: selectedLayoutId,
-        chyronText: getStoredSceneChyronText(sceneComponentProps, ''),
         metadata: {
           ...existingMetadata,
           ...sceneComponentProps
@@ -964,19 +1022,9 @@ export default function Control() {
               <div className='space-y-4'>
                 <p className='text-sm text-blue-600'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
                 {activeProgramId === 'fifthbell' && (
-                  <p className='text-xs text-gray-600'>FifthBell runtime settings are stored in the `fifthbell` component metadata for this scene.</p>
-                )}
-                {!sceneEditorProps['toni-chyron'] && (
-                  <div>
-                    <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
-                    <input
-                      type='text'
-                      value={sceneEditorChyronText}
-                      onChange={(e) => setSceneEditorChyronText(e.target.value)}
-                      placeholder='Enter chyron text'
-                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500'
-                    />
-                  </div>
+                  <p className='text-xs text-gray-600'>
+                    FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `toni-clock`).
+                  </p>
                 )}
                 <div className='space-y-4 border rounded p-4'>
                   {editableSceneComponentEntries.length === 0 && <p className='text-sm text-gray-500'>No configurable component attributes for this scene.</p>}
@@ -1266,6 +1314,27 @@ function ComponentPropsFields({
             />
           </div>
           <div className='col-span-2'>
+            <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
+            <input
+              type='text'
+              value={props.chyronText || ''}
+              onChange={(e) => updateProp(componentType, 'chyronText', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='Optional lower chyron text'
+            />
+          </div>
+          <div className='col-span-2'>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showChyron, false)}
+                onChange={(e) => updateProp(componentType, 'showChyron', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Chyron
+            </label>
+          </div>
+          <div className='col-span-2'>
             <label className='block text-xs text-gray-600 mb-1'>QR Code Content</label>
             <input
               type='text'
@@ -1349,8 +1418,248 @@ function ComponentPropsFields({
       return (
         <ToniChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
+    case 'modoitaliano-chyron':
+      return (
+        <div className='space-y-3'>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Text</label>
+            <input
+              type='text'
+              value={props.text || ''}
+              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='Main chyron text'
+            />
+          </div>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Label</label>
+            <input
+              type='text'
+              value={props.label || 'MODO ITALIANO'}
+              onChange={(e) => updateProp(componentType, 'label', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='MODO ITALIANO'
+            />
+          </div>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.show, true)}
+                onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Chyron
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.useMarquee, false)}
+                onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Marquee Mode
+            </label>
+          </div>
+        </div>
+      );
     case 'toni-clock':
-      return <p className='text-xs text-gray-500 italic'>Cities cycle automatically: Sanremo, New York, Madrid, Montevideo, Santiago.</p>;
+    case 'modoitaliano-clock': {
+      const isModoItalianoClock = componentType === 'modoitaliano-clock';
+      const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
+
+      return (
+        <div className='space-y-4'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showWorldClocks, true)}
+                onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show World Clocks
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showBellIcon, false)}
+                onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Bell Icon
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.worldClockShuffle, false)}
+                onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Shuffle world clocks
+            </label>
+          </div>
+
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock rotate (ms)</span>
+              <input
+                type='number'
+                min={500}
+                value={props.worldClockRotateIntervalMs ?? 5000}
+                onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
+              <input
+                type='number'
+                min={0}
+                value={props.worldClockTransitionMs ?? 300}
+                onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
+              <input
+                type='number'
+                min={120}
+                value={props.worldClockWidthPx ?? 200}
+                onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            {isModoItalianoClock && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Language</span>
+                <select
+                  value={props.language || 'it'}
+                  onChange={(e) => updateProp(componentType, 'language', e.target.value)}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                >
+                  <option value='it'>Italiano</option>
+                  <option value='en'>English</option>
+                  <option value='es'>Español</option>
+                </select>
+              </label>
+            )}
+          </div>
+
+          <div className='space-y-2'>
+            <label className='block text-xs text-gray-600'>World Clock Cities JSON</label>
+            <textarea
+              defaultValue={worldClockCitiesDefaultValue}
+              onBlur={(e) => {
+                if (!e.target.value.trim()) {
+                  updateProp(componentType, 'worldClockCities', []);
+                  return;
+                }
+
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  if (!Array.isArray(parsed)) {
+                    return;
+                  }
+
+                  const normalized = parsed
+                    .map((item) => {
+                      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                        return null;
+                      }
+                      const city = typeof item.city === 'string' ? item.city.trim() : '';
+                      const timezone = typeof item.timezone === 'string' ? item.timezone.trim() : '';
+                      if (!city || !timezone) {
+                        return null;
+                      }
+                      return { city, timezone };
+                    })
+                    .filter((item): item is { city: string; timezone: string } => item !== null);
+
+                  updateProp(componentType, 'worldClockCities', normalized);
+                } catch (error) {
+                  console.error('Invalid ToniClock worldClockCities JSON:', error);
+                }
+              }}
+              rows={6}
+              className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-green-500'
+            />
+            <p className='text-xs text-gray-500'>Each item must be {'{ \"city\": \"SANREMO\", \"timezone\": \"Europe/Rome\" }'}.</p>
+          </div>
+        </div>
+      );
+    }
+    case 'modoitaliano-disclaimer':
+      return (
+        <div className='space-y-3'>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Text</label>
+            <input
+              type='text'
+              value={props.text || ''}
+              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='Disclaimer text'
+            />
+          </div>
+          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.show, true)}
+                onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Disclaimer
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Alignment</span>
+              <select
+                value={props.align || 'right'}
+                onChange={(e) => updateProp(componentType, 'align', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              >
+                <option value='left'>Left</option>
+                <option value='center'>Center</option>
+                <option value='right'>Right</option>
+              </select>
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Bottom (px)</span>
+              <input
+                type='number'
+                min={0}
+                value={props.bottomPx ?? 24}
+                onChange={(e) => updateProp(componentType, 'bottomPx', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Font Size (px)</span>
+              <input
+                type='number'
+                min={10}
+                value={props.fontSizePx ?? 20}
+                onChange={(e) => updateProp(componentType, 'fontSizePx', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+          </div>
+          <label className='text-sm text-gray-700 block max-w-xs'>
+            <span className='block text-xs text-gray-500 mb-1'>Opacity (0-1)</span>
+            <input
+              type='number'
+              min={0}
+              max={1}
+              step={0.05}
+              value={props.opacity ?? 0.82}
+              onChange={(e) => updateProp(componentType, 'opacity', Number(e.target.value))}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            />
+          </label>
+        </div>
+      );
     case 'toni-logo':
       return <p className='text-xs text-gray-500 italic'>Logo cycles automatically between station images.</p>;
     case 'earone':
@@ -1391,7 +1700,13 @@ function ComponentPropsFields({
           <p className='text-xs text-gray-500'>Leave rank/spins blank to follow the active Toni chyron sequence item.</p>
         </div>
       );
-    case 'fifthbell': {
+    case 'fifthbell':
+    case 'fifthbell-content':
+    case 'fifthbell-marquee':
+    case 'fifthbell-corner': {
+      const supportsContent = componentType === 'fifthbell' || componentType === 'fifthbell-content';
+      const supportsMarquee = componentType === 'fifthbell' || componentType === 'fifthbell-marquee';
+      const supportsCorner = componentType === 'fifthbell' || componentType === 'fifthbell-corner';
       const selectedWeatherCities = Array.isArray(props.weatherCities)
         ? props.weatherCities.filter((city: unknown): city is string => typeof city === 'string')
         : [];
@@ -1404,398 +1719,468 @@ function ComponentPropsFields({
       return (
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showArticles, true)}
-                onChange={(e) => updateProp(componentType, 'showArticles', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Articles
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showWeather, true)}
-                onChange={(e) => updateProp(componentType, 'showWeather', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Weather
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showEarthquakes, true)}
-                onChange={(e) => updateProp(componentType, 'showEarthquakes', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Earthquakes
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showMarkets, true)}
-                onChange={(e) => updateProp(componentType, 'showMarkets', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Markets
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showMarquee, false)}
-                onChange={(e) => updateProp(componentType, 'showMarquee', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Bottom Marquee
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showCallsignTake, true)}
-                onChange={(e) => updateProp(componentType, 'showCallsignTake', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Enable Callsign Take
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showWorldClocks, true)}
-                onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show World Clocks
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showBellIcon, true)}
-                onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Bell Icon
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.audioCueEnabled, true)}
-                onChange={(e) => updateProp(componentType, 'audioCueEnabled', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Enable Audio Cue
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.worldClockShuffle, true)}
-                onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Shuffle world clocks
-            </label>
+            {supportsContent && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showArticles, true)}
+                  onChange={(e) => updateProp(componentType, 'showArticles', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Articles
+              </label>
+            )}
+            {supportsContent && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showWeather, true)}
+                  onChange={(e) => updateProp(componentType, 'showWeather', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Weather
+              </label>
+            )}
+            {supportsContent && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showEarthquakes, true)}
+                  onChange={(e) => updateProp(componentType, 'showEarthquakes', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Earthquakes
+              </label>
+            )}
+            {supportsContent && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showMarkets, true)}
+                  onChange={(e) => updateProp(componentType, 'showMarkets', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Markets
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showMarquee, false)}
+                  onChange={(e) => updateProp(componentType, 'showMarquee', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Bottom Marquee
+              </label>
+            )}
+            {supportsContent && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showCallsignTake, true)}
+                  onChange={(e) => updateProp(componentType, 'showCallsignTake', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Enable Callsign Take
+              </label>
+            )}
+            {supportsCorner && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showWorldClocks, true)}
+                  onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show World Clocks
+              </label>
+            )}
+            {supportsCorner && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showBellIcon, true)}
+                  onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Bell Icon
+              </label>
+            )}
+            {supportsContent && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.audioCueEnabled, true)}
+                  onChange={(e) => updateProp(componentType, 'audioCueEnabled', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Enable Audio Cue
+              </label>
+            )}
+            {supportsCorner && (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.worldClockShuffle, true)}
+                  onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Shuffle world clocks
+              </label>
+            )}
           </div>
 
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Data load timeout (ms)</span>
-              <input
-                type='number'
-                min={1000}
-                value={props.dataLoadTimeoutMs ?? 15000}
-                onChange={(e) => updateProp(componentType, 'dataLoadTimeoutMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Playlist default duration (ms)</span>
-              <input
-                type='number'
-                min={1000}
-                value={props.playlistDefaultDurationMs ?? 10000}
-                onChange={(e) => updateProp(componentType, 'playlistDefaultDurationMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Playlist update interval (ms)</span>
-              <input
-                type='number'
-                min={16}
-                value={props.playlistUpdateIntervalMs ?? 100}
-                onChange={(e) => updateProp(componentType, 'playlistUpdateIntervalMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Articles duration (ms)</span>
-              <input
-                type='number'
-                min={1000}
-                value={props.articlesDurationMs ?? 10000}
-                onChange={(e) => updateProp(componentType, 'articlesDurationMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Weather duration (ms)</span>
-              <input
-                type='number'
-                min={1000}
-                value={props.weatherDurationMs ?? 5000}
-                onChange={(e) => updateProp(componentType, 'weatherDurationMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Earthquakes duration (ms)</span>
-              <input
-                type='number'
-                min={1000}
-                value={props.earthquakesDurationMs ?? 10000}
-                onChange={(e) => updateProp(componentType, 'earthquakesDurationMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Markets duration (ms)</span>
-              <input
-                type='number'
-                min={1000}
-                value={props.marketsDurationMs ?? 10000}
-                onChange={(e) => updateProp(componentType, 'marketsDurationMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock rotate (ms)</span>
-              <input
-                type='number'
-                min={500}
-                value={props.worldClockRotateIntervalMs ?? 7000}
-                onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
-              <input
-                type='number'
-                min={0}
-                value={props.worldClockTransitionMs ?? 300}
-                onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
-              <input
-                type='number'
-                min={120}
-                value={props.worldClockWidthPx ?? 200}
-                onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Audio cue minute</span>
-              <input
-                type='number'
-                min={0}
-                max={59}
-                value={props.audioCueMinute ?? 59}
-                onChange={(e) => updateProp(componentType, 'audioCueMinute', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Audio cue second</span>
-              <input
-                type='number'
-                min={0}
-                max={59}
-                value={props.audioCueSecond ?? 55}
-                onChange={(e) => updateProp(componentType, 'audioCueSecond', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Callsign prelaunch until (NYC ISO)</span>
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Data load timeout (ms)</span>
+                <input
+                  type='number'
+                  min={1000}
+                  value={props.dataLoadTimeoutMs ?? 15000}
+                  onChange={(e) => updateProp(componentType, 'dataLoadTimeoutMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Playlist default duration (ms)</span>
+                <input
+                  type='number'
+                  min={1000}
+                  value={props.playlistDefaultDurationMs ?? 10000}
+                  onChange={(e) => updateProp(componentType, 'playlistDefaultDurationMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Playlist update interval (ms)</span>
+                <input
+                  type='number'
+                  min={16}
+                  value={props.playlistUpdateIntervalMs ?? 100}
+                  onChange={(e) => updateProp(componentType, 'playlistUpdateIntervalMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Articles duration (ms)</span>
+                <input
+                  type='number'
+                  min={1000}
+                  value={props.articlesDurationMs ?? 10000}
+                  onChange={(e) => updateProp(componentType, 'articlesDurationMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Weather duration (ms)</span>
+                <input
+                  type='number'
+                  min={1000}
+                  value={props.weatherDurationMs ?? 5000}
+                  onChange={(e) => updateProp(componentType, 'weatherDurationMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Earthquakes duration (ms)</span>
+                <input
+                  type='number'
+                  min={1000}
+                  value={props.earthquakesDurationMs ?? 10000}
+                  onChange={(e) => updateProp(componentType, 'earthquakesDurationMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Markets duration (ms)</span>
+                <input
+                  type='number'
+                  min={1000}
+                  value={props.marketsDurationMs ?? 10000}
+                  onChange={(e) => updateProp(componentType, 'marketsDurationMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsCorner && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>World clock rotate (ms)</span>
+                <input
+                  type='number'
+                  min={500}
+                  value={props.worldClockRotateIntervalMs ?? 7000}
+                  onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsCorner && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
+                <input
+                  type='number'
+                  min={0}
+                  value={props.worldClockTransitionMs ?? 300}
+                  onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsCorner && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
+                <input
+                  type='number'
+                  min={120}
+                  value={props.worldClockWidthPx ?? 200}
+                  onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Audio cue minute</span>
+                <input
+                  type='number'
+                  min={0}
+                  max={59}
+                  value={props.audioCueMinute ?? 59}
+                  onChange={(e) => updateProp(componentType, 'audioCueMinute', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Audio cue second</span>
+                <input
+                  type='number'
+                  min={0}
+                  max={59}
+                  value={props.audioCueSecond ?? 55}
+                  onChange={(e) => updateProp(componentType, 'audioCueSecond', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Callsign prelaunch until (NYC ISO)</span>
+                <input
+                  type='text'
+                  value={props.callsignPrelaunchUntilNyc ?? '2026-01-02T21:30:00'}
+                  onChange={(e) => updateProp(componentType, 'callsignPrelaunchUntilNyc', e.target.value)}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  placeholder='2026-01-02T21:30:00'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Callsign window start sec (:59)</span>
+                <input
+                  type='number'
+                  min={0}
+                  max={59}
+                  value={props.callsignWindowStartSecond ?? 50}
+                  onChange={(e) => updateProp(componentType, 'callsignWindowStartSecond', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsContent && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Callsign window end sec (:00)</span>
+                <input
+                  type='number'
+                  min={0}
+                  max={59}
+                  value={props.callsignWindowEndSecond ?? 3}
+                  onChange={(e) => updateProp(componentType, 'callsignWindowEndSecond', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Marquee min posts</span>
+                <input
+                  type='number'
+                  min={0}
+                  value={props.marqueeMinPostsCount ?? 4}
+                  onChange={(e) => updateProp(componentType, 'marqueeMinPostsCount', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Marquee min average relevance</span>
+                <input
+                  type='number'
+                  min={0}
+                  value={props.marqueeMinAverageRelevance ?? 0}
+                  onChange={(e) => updateProp(componentType, 'marqueeMinAverageRelevance', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Marquee min median relevance</span>
+                <input
+                  type='number'
+                  min={0}
+                  value={props.marqueeMinMedianRelevance ?? 0}
+                  onChange={(e) => updateProp(componentType, 'marqueeMinMedianRelevance', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Marquee px/sec</span>
+                <input
+                  type='number'
+                  min={10}
+                  value={props.marqueePixelsPerSecond ?? 150}
+                  onChange={(e) => updateProp(componentType, 'marqueePixelsPerSecond', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Marquee min duration (sec)</span>
+                <input
+                  type='number'
+                  min={1}
+                  value={props.marqueeMinDurationSeconds ?? 10}
+                  onChange={(e) => updateProp(componentType, 'marqueeMinDurationSeconds', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+            {supportsMarquee && (
+              <label className='text-sm text-gray-700'>
+                <span className='block text-xs text-gray-500 mb-1'>Marquee height (px)</span>
+                <input
+                  type='number'
+                  min={72}
+                  value={props.marqueeHeightPx ?? 72}
+                  onChange={(e) => updateProp(componentType, 'marqueeHeightPx', Number(e.target.value))}
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                />
+              </label>
+            )}
+          </div>
+          {supportsMarquee && (
+            <p className='text-xs text-gray-500'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>
+          )}
+
+          {supportsContent && (
+            <div className='space-y-2'>
+              <label className='block text-xs text-gray-600'>Language Rotation (comma-separated: en, es, it)</label>
               <input
                 type='text'
-                value={props.callsignPrelaunchUntilNyc ?? '2026-01-02T21:30:00'}
-                onChange={(e) => updateProp(componentType, 'callsignPrelaunchUntilNyc', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                placeholder='2026-01-02T21:30:00'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Callsign window start sec (:59)</span>
-              <input
-                type='number'
-                min={0}
-                max={59}
-                value={props.callsignWindowStartSecond ?? 50}
-                onChange={(e) => updateProp(componentType, 'callsignWindowStartSecond', Number(e.target.value))}
+                defaultValue={languageRotation.join(', ')}
+                onBlur={(e) => {
+                  const next = e.target.value
+                    .split(',')
+                    .map((lang) => lang.trim().toLowerCase())
+                    .filter((lang) => ['en', 'es', 'it'].includes(lang));
+                  updateProp(componentType, 'languageRotation', next.length > 0 ? next : ['en']);
+                }}
                 className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
               />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Callsign window end sec (:00)</span>
-              <input
-                type='number'
-                min={0}
-                max={59}
-                value={props.callsignWindowEndSecond ?? 3}
-                onChange={(e) => updateProp(componentType, 'callsignWindowEndSecond', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Marquee min posts</span>
-              <input
-                type='number'
-                min={0}
-                value={props.marqueeMinPostsCount ?? 4}
-                onChange={(e) => updateProp(componentType, 'marqueeMinPostsCount', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Marquee min average relevance</span>
-              <input
-                type='number'
-                min={0}
-                value={props.marqueeMinAverageRelevance ?? 0}
-                onChange={(e) => updateProp(componentType, 'marqueeMinAverageRelevance', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Marquee min median relevance</span>
-              <input
-                type='number'
-                min={0}
-                value={props.marqueeMinMedianRelevance ?? 0}
-                onChange={(e) => updateProp(componentType, 'marqueeMinMedianRelevance', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Marquee px/sec</span>
-              <input
-                type='number'
-                min={10}
-                value={props.marqueePixelsPerSecond ?? 150}
-                onChange={(e) => updateProp(componentType, 'marqueePixelsPerSecond', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Marquee min duration (sec)</span>
-              <input
-                type='number'
-                min={1}
-                value={props.marqueeMinDurationSeconds ?? 10}
-                onChange={(e) => updateProp(componentType, 'marqueeMinDurationSeconds', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Marquee height (px)</span>
-              <input
-                type='number'
-                min={72}
-                value={props.marqueeHeightPx ?? 72}
-                onChange={(e) => updateProp(componentType, 'marqueeHeightPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              />
-            </label>
-          </div>
-          <p className='text-xs text-gray-500'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>
-
-          <div className='space-y-2'>
-            <label className='block text-xs text-gray-600'>Language Rotation (comma-separated: en, es, it)</label>
-            <input
-              type='text'
-              defaultValue={languageRotation.join(', ')}
-              onBlur={(e) => {
-                const next = e.target.value
-                  .split(',')
-                  .map((lang) => lang.trim().toLowerCase())
-                  .filter((lang) => ['en', 'es', 'it'].includes(lang));
-                updateProp(componentType, 'languageRotation', next.length > 0 ? next : ['en']);
-              }}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-            />
-          </div>
-
-          <div>
-            <h3 className='text-sm font-semibold text-gray-800 mb-2'>Weather Cities</h3>
-            <p className='text-xs text-gray-500 mb-2'>If none are selected, all cities are shown in the weather segment.</p>
-            <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-gray-50'>
-              {FIFTHBELL_AVAILABLE_WEATHER_CITIES.map((city) => (
-                <label key={city} className='flex items-center gap-2 text-sm text-gray-700'>
-                  <input
-                    type='checkbox'
-                    checked={selectedCitySet.has(city)}
-                    onChange={(e) => {
-                      const next = new Set(selectedWeatherCities);
-                      if (e.target.checked) {
-                        next.add(city);
-                      } else {
-                        next.delete(city);
-                      }
-                      updateProp(componentType, 'weatherCities', [...next]);
-                    }}
-                    className='h-4 w-4'
-                  />
-                  {city}
-                </label>
-              ))}
             </div>
-          </div>
+          )}
 
-          <div className='space-y-2'>
-            <label className='block text-xs text-gray-600'>World Clock Cities JSON (optional override)</label>
-            <textarea
-              defaultValue={worldClockCitiesDefaultValue}
-              onBlur={(e) => {
-                if (!e.target.value.trim()) {
-                  updateProp(componentType, 'worldClockCities', []);
-                  return;
-                }
+          {supportsContent && (
+            <div>
+              <h3 className='text-sm font-semibold text-gray-800 mb-2'>Weather Cities</h3>
+              <p className='text-xs text-gray-500 mb-2'>If none are selected, all cities are shown in the weather segment.</p>
+              <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-gray-50'>
+                {FIFTHBELL_AVAILABLE_WEATHER_CITIES.map((city) => (
+                  <label key={city} className='flex items-center gap-2 text-sm text-gray-700'>
+                    <input
+                      type='checkbox'
+                      checked={selectedCitySet.has(city)}
+                      onChange={(e) => {
+                        const next = new Set(selectedWeatherCities);
+                        if (e.target.checked) {
+                          next.add(city);
+                        } else {
+                          next.delete(city);
+                        }
+                        updateProp(componentType, 'weatherCities', [...next]);
+                      }}
+                      className='h-4 w-4'
+                    />
+                    {city}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  if (!Array.isArray(parsed)) {
+          {supportsCorner && (
+            <div className='space-y-2'>
+              <label className='block text-xs text-gray-600'>World Clock Cities JSON (optional override)</label>
+              <textarea
+                defaultValue={worldClockCitiesDefaultValue}
+                onBlur={(e) => {
+                  if (!e.target.value.trim()) {
+                    updateProp(componentType, 'worldClockCities', []);
                     return;
                   }
 
-                  const normalized = parsed
-                    .map((item) => {
-                      if (!item || typeof item !== 'object' || Array.isArray(item)) {
-                        return null;
-                      }
-                      const city = typeof item.city === 'string' ? item.city.trim() : '';
-                      const timezone = typeof item.timezone === 'string' ? item.timezone.trim() : '';
-                      if (!city || !timezone) {
-                        return null;
-                      }
-                      return { city, timezone };
-                    })
-                    .filter((item): item is { city: string; timezone: string } => item !== null);
+                  try {
+                    const parsed = JSON.parse(e.target.value);
+                    if (!Array.isArray(parsed)) {
+                      return;
+                    }
 
-                  updateProp(componentType, 'worldClockCities', normalized);
-                } catch (error) {
-                  console.error('Invalid FifthBell worldClockCities JSON:', error);
-                }
-              }}
-              rows={6}
-              className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-green-500'
-            />
-            <p className='text-xs text-gray-500'>Each item must be {'{ \"city\": \"NEW YORK\", \"timezone\": \"America/New_York\" }'}.</p>
-          </div>
+                    const normalized = parsed
+                      .map((item) => {
+                        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                          return null;
+                        }
+                        const city = typeof item.city === 'string' ? item.city.trim() : '';
+                        const timezone = typeof item.timezone === 'string' ? item.timezone.trim() : '';
+                        if (!city || !timezone) {
+                          return null;
+                        }
+                        return { city, timezone };
+                      })
+                      .filter((item): item is { city: string; timezone: string } => item !== null);
+
+                    updateProp(componentType, 'worldClockCities', normalized);
+                  } catch (error) {
+                    console.error('Invalid FifthBell worldClockCities JSON:', error);
+                  }
+                }}
+                rows={6}
+                className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-green-500'
+              />
+              <p className='text-xs text-gray-500'>Each item must be {'{ \"city\": \"NEW YORK\", \"timezone\": \"America/New_York\" }'}.</p>
+            </div>
+          )}
         </div>
       );
     }

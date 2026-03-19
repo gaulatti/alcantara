@@ -9,6 +9,8 @@ export class ProgramService {
   private static readonly FIFTHBELL_PROGRAM_ID = 'fifthbell';
   private static readonly FIFTHBELL_LAYOUT_NAME = 'FifthBell Layout';
   private static readonly FIFTHBELL_SCENE_NAME = 'FifthBell Scene';
+  private static readonly FIFTHBELL_LAYOUT_COMPONENT_TYPE =
+    'fifthbell-content,fifthbell-marquee,toni-clock';
   private static readonly FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
     'New York',
     'San Juan',
@@ -35,6 +37,45 @@ export class ProgramService {
     'Bangkok',
     'Jakarta',
   ] as const;
+  private static readonly FIFTHBELL_DEFAULT_CONTENT_CONFIG = {
+    showArticles: true,
+    showWeather: true,
+    showEarthquakes: true,
+    showMarkets: true,
+    showCallsignTake: true,
+    weatherCities: [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES],
+    languageRotation: ['en', 'es', 'en', 'it'],
+    dataLoadTimeoutMs: 15000,
+    playlistDefaultDurationMs: 10000,
+    playlistUpdateIntervalMs: 100,
+    articlesDurationMs: 10000,
+    weatherDurationMs: 5000,
+    earthquakesDurationMs: 10000,
+    marketsDurationMs: 10000,
+    audioCueEnabled: true,
+    audioCueMinute: 59,
+    audioCueSecond: 55,
+    callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
+    callsignWindowStartSecond: 50,
+    callsignWindowEndSecond: 3,
+  } as const;
+  private static readonly FIFTHBELL_DEFAULT_MARQUEE_CONFIG = {
+    showMarquee: false,
+    marqueeMinPostsCount: 4,
+    marqueeMinAverageRelevance: 0,
+    marqueeMinMedianRelevance: 0,
+    marqueePixelsPerSecond: 150,
+    marqueeMinDurationSeconds: 10,
+    marqueeHeightPx: 72,
+  } as const;
+  private static readonly FIFTHBELL_DEFAULT_CORNER_CONFIG = {
+    showWorldClocks: true,
+    showBellIcon: true,
+    worldClockRotateIntervalMs: 7000,
+    worldClockTransitionMs: 300,
+    worldClockShuffle: true,
+    worldClockWidthPx: 200,
+  } as const;
   private static readonly RELOJ_PROGRAM_ID = 'reloj';
   private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
   private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
@@ -142,11 +183,11 @@ export class ProgramService {
     const layout = await this.prisma.layout.upsert({
       where: { name: ProgramService.FIFTHBELL_LAYOUT_NAME },
       update: {
-        componentType: 'fifthbell',
+        componentType: ProgramService.FIFTHBELL_LAYOUT_COMPONENT_TYPE,
       },
       create: {
         name: ProgramService.FIFTHBELL_LAYOUT_NAME,
-        componentType: 'fifthbell',
+        componentType: ProgramService.FIFTHBELL_LAYOUT_COMPONENT_TYPE,
         settings: JSON.stringify({}),
       },
       select: { id: true },
@@ -157,7 +198,7 @@ export class ProgramService {
         name: ProgramService.FIFTHBELL_SCENE_NAME,
         layoutId: layout.id,
       },
-      select: { id: true },
+      select: { id: true, metadata: true },
     });
 
     if (!scene) {
@@ -167,46 +208,98 @@ export class ProgramService {
           layoutId: layout.id,
           chyronText: null,
           metadata: JSON.stringify({
-            fifthbell: {
-              showArticles: true,
-              showWeather: true,
-              showEarthquakes: true,
-              showMarkets: true,
-              showMarquee: false,
-              showCallsignTake: true,
-              weatherCities: [
-                ...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES,
-              ],
-              languageRotation: ['en', 'es', 'en', 'it'],
-              dataLoadTimeoutMs: 15000,
-              playlistDefaultDurationMs: 10000,
-              playlistUpdateIntervalMs: 100,
-              articlesDurationMs: 10000,
-              weatherDurationMs: 5000,
-              earthquakesDurationMs: 10000,
-              marketsDurationMs: 10000,
-              showWorldClocks: true,
-              showBellIcon: true,
-              worldClockRotateIntervalMs: 7000,
-              worldClockTransitionMs: 300,
-              worldClockShuffle: true,
-              worldClockWidthPx: 200,
-              audioCueEnabled: true,
-              audioCueMinute: 59,
-              audioCueSecond: 55,
-              callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
-              callsignWindowStartSecond: 50,
-              callsignWindowEndSecond: 3,
-              marqueeMinPostsCount: 4,
-              marqueeMinAverageRelevance: 0,
-              marqueeMinMedianRelevance: 0,
-              marqueePixelsPerSecond: 150,
-              marqueeMinDurationSeconds: 10,
-              marqueeHeightPx: 72,
-            },
+            'fifthbell-content':
+              ProgramService.FIFTHBELL_DEFAULT_CONTENT_CONFIG,
+            'fifthbell-marquee':
+              ProgramService.FIFTHBELL_DEFAULT_MARQUEE_CONFIG,
+            'toni-clock': ProgramService.FIFTHBELL_DEFAULT_CORNER_CONFIG,
           }),
         },
-        select: { id: true },
+        select: { id: true, metadata: true },
+      });
+    }
+
+    const parseMetadata = (
+      rawMetadata: string | null,
+    ): Record<string, unknown> => {
+      if (!rawMetadata) {
+        return {};
+      }
+
+      try {
+        const parsed = JSON.parse(rawMetadata);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // no-op
+      }
+
+      return {};
+    };
+
+    const pickKnownKeys = <T extends Record<string, unknown>>(
+      defaults: T,
+      ...sources: unknown[]
+    ): T => {
+      const result: Record<string, unknown> = { ...defaults };
+      for (const source of sources) {
+        if (!source || typeof source !== 'object' || Array.isArray(source)) {
+          continue;
+        }
+
+        const asObject = source as Record<string, unknown>;
+        for (const key of Object.keys(defaults)) {
+          if (asObject[key] !== undefined) {
+            result[key] = asObject[key];
+          }
+        }
+      }
+      return result as T;
+    };
+
+    const currentMetadata = parseMetadata(scene.metadata);
+    const legacyConfig =
+      currentMetadata.fifthbell &&
+      typeof currentMetadata.fifthbell === 'object' &&
+      !Array.isArray(currentMetadata.fifthbell)
+        ? (currentMetadata.fifthbell as Record<string, unknown>)
+        : {};
+    const nextMetadata: Record<string, unknown> = {
+      ...currentMetadata,
+      'fifthbell-content': pickKnownKeys(
+        ProgramService.FIFTHBELL_DEFAULT_CONTENT_CONFIG as unknown as Record<
+          string,
+          unknown
+        >,
+        legacyConfig,
+        currentMetadata['fifthbell-content'],
+      ),
+      'fifthbell-marquee': pickKnownKeys(
+        ProgramService.FIFTHBELL_DEFAULT_MARQUEE_CONFIG as unknown as Record<
+          string,
+          unknown
+        >,
+        legacyConfig,
+        currentMetadata['fifthbell-marquee'],
+      ),
+      'toni-clock': pickKnownKeys(
+        ProgramService.FIFTHBELL_DEFAULT_CORNER_CONFIG as unknown as Record<
+          string,
+          unknown
+        >,
+        legacyConfig,
+        currentMetadata['fifthbell-corner'],
+        currentMetadata['toni-clock'],
+      ),
+    };
+
+    const currentMetadataJson = JSON.stringify(currentMetadata);
+    const nextMetadataJson = JSON.stringify(nextMetadata);
+    if (currentMetadataJson !== nextMetadataJson) {
+      await this.prisma.scene.update({
+        where: { id: scene.id },
+        data: { metadata: nextMetadataJson },
       });
     }
 

@@ -92,10 +92,45 @@ export class LayoutsService {
         'Compact Toni-styled ranking box for chart position and radio spins',
     },
     {
-      type: 'fifthbell',
-      name: 'FifthBell',
+      type: 'modoitaliano-clock',
+      name: 'ModoItaliano Clock',
       description:
-        'FifthBell rundown controls (segments, weather cities, marquee, callsign take)',
+        'ModoItaliano corner clock block (timezone rotation, bell toggle, sizing)',
+    },
+    {
+      type: 'modoitaliano-chyron',
+      name: 'ModoItaliano Chyron',
+      description:
+        'ModoItaliano lower chyron strip for headline text and label',
+    },
+    {
+      type: 'modoitaliano-disclaimer',
+      name: 'ModoItaliano Disclaimer',
+      description:
+        'ModoItaliano legal/disclaimer text block with alignment and sizing',
+    },
+    {
+      type: 'fifthbell-content',
+      name: 'FifthBell Content',
+      description:
+        'FifthBell main content/slides controls (segments, playlist, callsign, weather cities)',
+    },
+    {
+      type: 'fifthbell-marquee',
+      name: 'FifthBell Marquee',
+      description: 'FifthBell bottom marquee controls',
+    },
+    {
+      type: 'fifthbell-corner',
+      name: 'FifthBell Corner (Legacy)',
+      description:
+        'Legacy FifthBell corner controls. Prefer using `toni-clock` in layouts.',
+    },
+    {
+      type: 'fifthbell',
+      name: 'FifthBell (Legacy)',
+      description:
+        'Legacy combined FifthBell component. Prefer fifthbell-content,fifthbell-marquee,toni-clock.',
     },
   ];
 

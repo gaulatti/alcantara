@@ -4,13 +4,20 @@ interface UseSSEOptions {
   url: string;
   onMessage?: (data: any) => void;
   reconnectInterval?: number;
+  enabled?: boolean;
 }
 
-export function useSSE({ url, onMessage, reconnectInterval = 3000 }: UseSSEOptions) {
+export function useSSE({ url, onMessage, reconnectInterval = 3000, enabled = true }: UseSSEOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const connect = useCallback(() => {
+    if (!enabled) {
+      return () => {
+        // no-op when disabled
+      };
+    }
+
     let eventSource: EventSource | null = null;
 
     try {
@@ -47,12 +54,18 @@ export function useSSE({ url, onMessage, reconnectInterval = 3000 }: UseSSEOptio
     return () => {
       eventSource?.close();
     };
-  }, [url, onMessage, reconnectInterval]);
+  }, [enabled, url, onMessage, reconnectInterval]);
 
   useEffect(() => {
+    if (!enabled) {
+      setIsConnected(false);
+      setError(null);
+      return;
+    }
+
     const cleanup = connect();
     return cleanup;
-  }, [connect]);
+  }, [connect, enabled]);
 
   return { isConnected, error };
 }

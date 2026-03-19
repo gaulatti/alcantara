@@ -10,3 +10,6 @@ export { ToniChyron } from './ToniChyron';
 export { ToniClock } from './ToniClock';
 export { ToniLogo } from './ToniLogo';
 export { Earone } from './Earone';
+export { ModoItalianoClock } from './ModoItalianoClock';
+export { ModoItalianoChyron } from './ModoItalianoChyron';
+export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';

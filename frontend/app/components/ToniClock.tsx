@@ -1,107 +1,75 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
+import { BellRing } from 'lucide-react';
 import './ToniClock.css';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
-import { getOverrideClockParts } from '../utils/broadcastTime';
+import { WorldClocks } from '../programs/fifthbell/components/WorldClocks';
+import type { SupportedLanguage } from '../programs/fifthbell/i18n';
 
 export interface ToniClockCity {
+  city: string;
   timezone: string;
-  label: string;
 }
 
 interface ToniClockProps {
   timeOverride?: GlobalTimeOverride | null;
-  showSeconds?: boolean;
   cities?: ToniClockCity[];
   rotationIntervalMs?: number;
+  transitionDurationMs?: number;
+  shuffleCities?: boolean;
+  widthPx?: number;
+  language?: SupportedLanguage;
+  showWorldClocks?: boolean;
+  showBellIcon?: boolean;
+  bellSize?: number;
 }
 
 export const DEFAULT_TONI_CLOCK_CITIES: ToniClockCity[] = [
-  { timezone: 'Europe/Rome', label: 'Sanremo' },
-  { timezone: 'America/New_York', label: 'New York' },
-  { timezone: 'Europe/Madrid', label: 'Madrid' },
-  { timezone: 'America/Montevideo', label: 'Montevideo' },
-  { timezone: 'America/Santiago', label: 'Santiago' }
+  { city: 'SANREMO', timezone: 'Europe/Rome' },
+  { city: 'NEW YORK', timezone: 'America/New_York' },
+  { city: 'MADRID', timezone: 'Europe/Madrid' },
+  { city: 'MONTEVIDEO', timezone: 'America/Montevideo' },
+  { city: 'SANTIAGO', timezone: 'America/Santiago' }
 ];
 
 const DEFAULT_CITY_INTERVAL_MS = 5000;
 
-function getTimeForZone(timezone: string, timeOverride: import('../utils/broadcastTime').GlobalTimeOverride | null): string {
-  const now = new Date();
-  if (timeOverride) {
-    const parts = getOverrideClockParts(timeOverride, now);
-    if (parts) {
-      return `${String(parts.hours).padStart(2, '0')}:${String(parts.minutes).padStart(2, '0')}`;
-    }
-  }
-  try {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: timezone
-    });
-    const p = Object.fromEntries(fmt.formatToParts(now).map((x) => [x.type, x.value]));
-    return `${p.hour ?? '00'}:${p.minute ?? '00'}`;
-  } catch {
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  }
-}
-
 export const ToniClock: React.FC<ToniClockProps> = ({
   timeOverride = null,
-  showSeconds = false,
   cities = DEFAULT_TONI_CLOCK_CITIES,
-  rotationIntervalMs = DEFAULT_CITY_INTERVAL_MS
+  rotationIntervalMs = DEFAULT_CITY_INTERVAL_MS,
+  transitionDurationMs = 300,
+  shuffleCities = false,
+  widthPx = 200,
+  language = 'en',
+  showWorldClocks = true,
+  showBellIcon = false,
+  bellSize = 64
 }) => {
   const resolvedCities = cities.length > 0 ? cities : DEFAULT_TONI_CLOCK_CITIES;
-  const [times, setTimes] = useState(() => resolvedCities.map((c) => getTimeForZone(c.timezone, null)));
-  const [cityIndex, setCityIndex] = useState(0);
-  const cityIndexRef = useRef(0);
-
-  useEffect(() => {
-    setTimes(resolvedCities.map((city) => getTimeForZone(city.timezone, timeOverride)));
-    cityIndexRef.current = 0;
-    setCityIndex(0);
-  }, [resolvedCities, timeOverride]);
-
-  // Tick all timezones every second
-  useEffect(() => {
-    const id = setInterval(() => {
-      setTimes(resolvedCities.map((city) => getTimeForZone(city.timezone, timeOverride)));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [resolvedCities, timeOverride, showSeconds]);
-
-  // City cycling
-  useEffect(() => {
-    if (resolvedCities.length <= 1) {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      const next = (cityIndexRef.current + 1) % resolvedCities.length;
-      cityIndexRef.current = next;
-      setCityIndex(next);
-    }, rotationIntervalMs);
-    return () => clearInterval(timer);
-  }, [resolvedCities, rotationIntervalMs]);
+  if (!showWorldClocks && !showBellIcon) {
+    return null;
+  }
 
   return (
-    <div className='toni-clock'>
-      <div className='toni-clock-time-stack'>
-        {resolvedCities.map((city, i) => (
-          <div key={city.timezone} className={`toni-clock-time${i === cityIndex ? ' toni-clock-slot--active' : ''}`}>
-            {times[i]}
-          </div>
-        ))}
-      </div>
-      <div className='toni-clock-label-stack'>
-        {resolvedCities.map((city, i) => (
-          <div key={city.timezone} className={`toni-clock-label${i === cityIndex ? ' toni-clock-slot--active' : ''}`}>
-            {city.label.toUpperCase()}
-          </div>
-        ))}
-      </div>
+    <div className='toni-clock-corner'>
+      {showWorldClocks && (
+        <div className='flex items-start pt-1.5'>
+          <WorldClocks
+            timeOverride={timeOverride}
+            language={language}
+            cities={resolvedCities}
+            rotateIntervalMs={rotationIntervalMs}
+            transitionDurationMs={transitionDurationMs}
+            shuffleCities={shuffleCities}
+            widthPx={widthPx}
+          />
+        </div>
+      )}
+      {showBellIcon && (
+        <div className='toni-clock-bell'>
+          <BellRing size={bellSize} strokeWidth={2} />
+        </div>
+      )}
     </div>
   );
 };
