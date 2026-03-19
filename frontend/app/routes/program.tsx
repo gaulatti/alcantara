@@ -253,6 +253,53 @@ function SceneProgram({ programId }: { programId: string }) {
       components.length > 0 &&
       components.every((componentType) => FIFTHBELL_LAYOUT_COMPONENT_TYPES.has(componentType)) &&
       components.some((componentType) => FIFTHBELL_DRIVER_COMPONENT_TYPES.has(componentType));
+    const hasModoItalianoClock = components.includes('modoitaliano-clock');
+    const hasModoItalianoChyron = components.includes('modoitaliano-chyron');
+    const hasModoItalianoDisclaimer = components.includes('modoitaliano-disclaimer');
+    const hasModoItalianoComponents = hasModoItalianoClock || hasModoItalianoChyron || hasModoItalianoDisclaimer;
+    const showModoItalianoTestBackground = true;
+    const shouldRenderModoItalianoRow = hasModoItalianoClock && (hasModoItalianoChyron || hasModoItalianoDisclaimer);
+    const modoItalianoClockProps = metadata['modoitaliano-clock'] || {};
+    const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
+    const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
+    const toBoolean = (value: unknown, fallback: boolean): boolean => {
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return value !== 0;
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'off', ''].includes(normalized)) return false;
+      }
+      return fallback;
+    };
+    const asTrimmedText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+    const normalizeModoItalianoSongs = (value: unknown): Array<{ artist: string; title: string; coverUrl: string }> => {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((song) => {
+          if (!song || typeof song !== 'object' || Array.isArray(song)) return null;
+          const artist = asTrimmedText((song as Record<string, unknown>).artist);
+          const title = asTrimmedText((song as Record<string, unknown>).title);
+          const coverUrl = asTrimmedText((song as Record<string, unknown>).coverUrl);
+          if (!artist && !title && !coverUrl) return null;
+          return { artist, title, coverUrl };
+        })
+        .filter((song): song is { artist: string; title: string; coverUrl: string } => song !== null);
+    };
+    const modoItalianoClockSongs = normalizeModoItalianoSongs(modoItalianoClockProps.songs);
+    const activeModoItalianoSong = modoItalianoClockSongs[0] ?? null;
+    const modoItalianoChyronText = asTrimmedText(modoItalianoChyronProps.text);
+    const modoItalianoDisclaimerText = typeof modoItalianoDisclaimerProps.text === 'string' ? modoItalianoDisclaimerProps.text.trim() : '';
+    const shouldShowModoItalianoChyronComponent =
+      shouldRenderModoItalianoRow && hasModoItalianoChyron && toBoolean(modoItalianoChyronProps.show, true);
+    const showModoItalianoChyron = shouldShowModoItalianoChyronComponent && !!modoItalianoChyronText;
+    const showModoItalianoClockListeningCue = hasModoItalianoClock && !!activeModoItalianoSong;
+    const showModoItalianoDisclaimer =
+      shouldRenderModoItalianoRow &&
+      hasModoItalianoDisclaimer &&
+      !showModoItalianoChyron &&
+      toBoolean(modoItalianoDisclaimerProps.show, true) &&
+      !!modoItalianoDisclaimerText;
 
     if (hasOnlyFifthBellComponents) {
       return (
@@ -301,6 +348,17 @@ function SceneProgram({ programId }: { programId: string }) {
     // Handle multi-component custom layouts
     return (
       <div className='w-full h-full relative bg-transparent'>
+        {hasModoItalianoComponents && showModoItalianoTestBackground && (
+          <div className='absolute inset-0 z-0 pointer-events-none'>
+            <img src='/reloj/ariston.jpg' alt='' className='w-full h-full object-cover' />
+            <div
+              className='absolute inset-0'
+              style={{
+                background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.45) 100%)'
+              }}
+            />
+          </div>
+        )}
         {components.map((componentType) => {
           const props = metadata[componentType] || {};
 
@@ -356,32 +414,48 @@ function SceneProgram({ programId }: { programId: string }) {
                   showBellIcon={typeof props.showBellIcon === 'boolean' ? props.showBellIcon : undefined}
                 />
               );
-            case 'modoitaliano-clock':
+            case 'modoitaliano-clock': {
+              if (shouldRenderModoItalianoRow) {
+                return null;
+              }
+              const standaloneSongs = normalizeModoItalianoSongs(props.songs);
+              const standaloneSong = standaloneSongs[0] ?? null;
               return (
                 <ModoItalianoClock
                   key={componentType}
                   timeOverride={globalTimeOverride}
                   cities={Array.isArray(props.worldClockCities) ? props.worldClockCities : undefined}
                   rotationIntervalMs={typeof props.worldClockRotateIntervalMs === 'number' ? props.worldClockRotateIntervalMs : undefined}
-                  transitionDurationMs={typeof props.worldClockTransitionMs === 'number' ? props.worldClockTransitionMs : undefined}
-                  shuffleCities={typeof props.worldClockShuffle === 'boolean' ? props.worldClockShuffle : undefined}
-                  widthPx={typeof props.worldClockWidthPx === 'number' ? props.worldClockWidthPx : undefined}
-                  showWorldClocks={typeof props.showWorldClocks === 'boolean' ? props.showWorldClocks : undefined}
-                  showBellIcon={typeof props.showBellIcon === 'boolean' ? props.showBellIcon : undefined}
-                  language={props.language === 'it' || props.language === 'en' || props.language === 'es' ? props.language : undefined}
+                  transitionDurationMs={300}
+                  shuffleCities={false}
+                  widthPx={220}
+                  showWorldClocks={true}
+                  showBellIcon={false}
+                  playingSong={!!standaloneSong}
+                  songArtist={standaloneSong?.artist}
+                  songTitle={standaloneSong?.title}
+                  songCoverUrl={standaloneSong?.coverUrl}
+                  language='es'
                 />
               );
+            }
             case 'modoitaliano-chyron':
+              if (shouldRenderModoItalianoRow) {
+                return null;
+              }
               return (
                 <ModoItalianoChyron
                   key={componentType}
-                  text={props.text || ''}
+                  cta={typeof props.cta === 'string' ? props.cta : ''}
+                  text={typeof props.text === 'string' ? props.text : ''}
                   show={typeof props.show === 'boolean' ? props.show : true}
                   useMarquee={typeof props.useMarquee === 'boolean' ? props.useMarquee : false}
-                  label={typeof props.label === 'string' ? props.label : undefined}
                 />
               );
             case 'modoitaliano-disclaimer':
+              if (shouldRenderModoItalianoRow) {
+                return null;
+              }
               return (
                 <ModoItalianoDisclaimer
                   key={componentType}
@@ -431,6 +505,54 @@ function SceneProgram({ programId }: { programId: string }) {
               );
           }
         })}
+        {shouldRenderModoItalianoRow && (
+          <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
+            <div className='flex-1 min-w-0'>
+              {showModoItalianoChyron ? (
+                <ModoItalianoChyron
+                  cta={typeof modoItalianoChyronProps.cta === 'string' ? modoItalianoChyronProps.cta : ''}
+                  text={typeof modoItalianoChyronProps.text === 'string' ? modoItalianoChyronProps.text : ''}
+                  show
+                  useMarquee={typeof modoItalianoChyronProps.useMarquee === 'boolean' ? modoItalianoChyronProps.useMarquee : false}
+                  inline
+                />
+              ) : showModoItalianoDisclaimer ? (
+                <ModoItalianoDisclaimer
+                  text={modoItalianoDisclaimerProps.text || ''}
+                  show
+                  align={
+                    modoItalianoDisclaimerProps.align === 'left' ||
+                    modoItalianoDisclaimerProps.align === 'center' ||
+                    modoItalianoDisclaimerProps.align === 'right'
+                      ? modoItalianoDisclaimerProps.align
+                      : 'right'
+                  }
+                  fontSizePx={typeof modoItalianoDisclaimerProps.fontSizePx === 'number' ? modoItalianoDisclaimerProps.fontSizePx : 20}
+                  opacity={typeof modoItalianoDisclaimerProps.opacity === 'number' ? modoItalianoDisclaimerProps.opacity : 0.82}
+                  inline
+                />
+              ) : null}
+            </div>
+            <div className='shrink-0'>
+              <ModoItalianoClock
+                timeOverride={globalTimeOverride}
+                cities={Array.isArray(modoItalianoClockProps.worldClockCities) ? modoItalianoClockProps.worldClockCities : undefined}
+                rotationIntervalMs={typeof modoItalianoClockProps.worldClockRotateIntervalMs === 'number' ? modoItalianoClockProps.worldClockRotateIntervalMs : undefined}
+                transitionDurationMs={300}
+                shuffleCities={false}
+                widthPx={220}
+                showWorldClocks={true}
+                showBellIcon={false}
+                playingSong={showModoItalianoClockListeningCue}
+                songArtist={activeModoItalianoSong?.artist}
+                songTitle={activeModoItalianoSong?.title}
+                songCoverUrl={activeModoItalianoSong?.coverUrl}
+                language='es'
+                inline
+              />
+            </div>
+          </div>
+        )}
       </div>
     );
   };
