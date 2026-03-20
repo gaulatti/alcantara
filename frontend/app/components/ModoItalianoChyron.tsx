@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  getModoItalianoTextContentMode,
+  normalizeModoItalianoTextSequence,
+  resolveModoItalianoTextContent
+} from '../utils/modoItalianoSequence';
 
 interface ModoItalianoChyronProps {
   cta?: string;
   text?: string;
   show?: boolean;
   useMarquee?: boolean;
+  textContentMode?: 'text' | 'sequence';
+  textSequence?: unknown;
+  ctaContentMode?: 'text' | 'sequence';
+  ctaSequence?: unknown;
   inline?: boolean;
 }
 
@@ -13,9 +22,77 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
   text = '',
   show = true,
   useMarquee = false,
+  textContentMode,
+  textSequence,
+  ctaContentMode,
+  ctaSequence,
   inline = false
 }) => {
-  if (!show || !text.trim()) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const normalizedTextSequence = useMemo(
+    () => normalizeModoItalianoTextSequence(textSequence, 0, { includeMarquee: true }),
+    [textSequence]
+  );
+  const normalizedCtaSequence = useMemo(
+    () => normalizeModoItalianoTextSequence(ctaSequence),
+    [ctaSequence]
+  );
+  const resolvedTextContentMode = getModoItalianoTextContentMode(textContentMode, normalizedTextSequence);
+  const resolvedCtaContentMode = getModoItalianoTextContentMode(ctaContentMode, normalizedCtaSequence);
+  const shouldTick =
+    (resolvedTextContentMode === 'sequence' && normalizedTextSequence?.mode === 'autoplay') ||
+    (resolvedCtaContentMode === 'sequence' && normalizedCtaSequence?.mode === 'autoplay');
+
+  useEffect(() => {
+    if (!shouldTick) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(timer);
+  }, [
+    shouldTick,
+    normalizedTextSequence?.mode,
+    normalizedTextSequence?.startedAt,
+    normalizedTextSequence?.intervalMs,
+    normalizedTextSequence?.loop,
+    normalizedTextSequence?.items.length,
+    normalizedCtaSequence?.mode,
+    normalizedCtaSequence?.startedAt,
+    normalizedCtaSequence?.intervalMs,
+    normalizedCtaSequence?.loop,
+    normalizedCtaSequence?.items.length
+  ]);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, [textSequence, ctaSequence, textContentMode, ctaContentMode]);
+
+  const resolvedText = resolveModoItalianoTextContent(
+    {
+      text,
+      useMarquee,
+      contentMode: textContentMode,
+      sequence: textSequence
+    },
+    nowMs,
+    { includeMarquee: true }
+  );
+  const resolvedCta = resolveModoItalianoTextContent(
+    {
+      text: cta,
+      contentMode: ctaContentMode,
+      sequence: ctaSequence
+    },
+    nowMs
+  );
+  const resolvedMainText = resolvedText.text.trim();
+  const resolvedUseMarquee = Boolean(resolvedText.useMarquee);
+
+  if (!show || !resolvedMainText) {
     return null;
   }
 
@@ -47,7 +124,7 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
       padding: '0 34px'
     };
 
-  const ctaText = cta.trim();
+  const ctaText = resolvedCta.text.trim();
   const ctaStyle: React.CSSProperties = inline
     ? {
         width: '100%',
@@ -97,8 +174,8 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     justifyContent: 'center'
   };
 
-  if (useMarquee) {
-    const marqueeText = text.trim().toUpperCase();
+  if (resolvedUseMarquee) {
+    const marqueeText = resolvedMainText.toUpperCase();
     return (
       <div style={wrapperStyle}>
         {ctaText ? <div style={ctaStyle}>{ctaText}</div> : null}
@@ -144,7 +221,7 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
             100% { background-position: 0% 50%; }
           }
         `}</style>
-        <div style={{ ...contentStyle, textOverflow: 'ellipsis' }}>{text.trim().toUpperCase()}</div>
+        <div style={{ ...contentStyle, textOverflow: 'ellipsis' }}>{resolvedMainText.toUpperCase()}</div>
       </div>
     </div>
   );

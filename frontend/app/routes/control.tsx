@@ -14,6 +14,22 @@ import {
   type ToniChyronSequence,
   type ToniChyronSequenceItem
 } from '../utils/toniChyronSequence';
+import {
+  createModoItalianoSongSequence,
+  createModoItalianoSongSequenceItem,
+  createModoItalianoTextSequence,
+  createModoItalianoTextSequenceItem,
+  getModoItalianoSongContentMode,
+  getModoItalianoSongSequenceSelectedItemId,
+  getModoItalianoTextContentMode,
+  getModoItalianoTextSequenceSelectedItemId,
+  normalizeModoItalianoSongSequence,
+  normalizeModoItalianoTextSequence,
+  type ModoItalianoSongSequence,
+  type ModoItalianoSongSequenceItem,
+  type ModoItalianoTextSequence,
+  type ModoItalianoTextSequenceItem
+} from '../utils/modoItalianoSequence';
 
 interface Layout {
   id: number;
@@ -536,18 +552,24 @@ export default function Control() {
         };
       case 'modoitaliano-clock':
         return {
-          songs: [],
-          worldClockRotateIntervalMs: 5000,
-          worldClockCities: [
-            { city: 'SANREMO', timezone: 'Europe/Rome' },
-            { city: 'ROME', timezone: 'Europe/Rome' },
-            { city: 'MILAN', timezone: 'Europe/Rome' },
-            { city: 'MADRID', timezone: 'Europe/Madrid' },
-            { city: 'NEW YORK', timezone: 'America/New_York' }
-          ]
+          songContentMode: 'direct',
+          songArtist: '',
+          songTitle: '',
+          songCoverUrl: '',
+          songEaroneSongId: '',
+          songEaroneRank: '',
+          songEaroneSpins: '',
+          songs: []
         };
       case 'modoitaliano-chyron':
-        return { cta: '', text: '', show: true, useMarquee: false };
+        return {
+          cta: '',
+          text: '',
+          show: true,
+          useMarquee: false,
+          textContentMode: 'text',
+          ctaContentMode: 'text'
+        };
       case 'modoitaliano-disclaimer':
         return {
           text: 'Contenuti a scopo informativo.',
@@ -1415,176 +1437,59 @@ function ComponentPropsFields({
       );
     case 'modoitaliano-chyron':
       return (
-        <div className='space-y-3'>
-          <p className='text-xs text-gray-500'>ModoItaliano row rule: if chyron and disclaimer are both enabled, chyron is shown.</p>
-          <div>
-            <label className='block text-xs text-gray-600 mb-1'>CTA</label>
-            <input
-              type='text'
-              value={props.cta || ''}
-              onChange={(e) => updateProp(componentType, 'cta', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              placeholder='Call to action (shown above chyron)'
-            />
-          </div>
-          <div>
-            <label className='block text-xs text-gray-600 mb-1'>Text</label>
-            <input
-              type='text'
-              value={props.text || ''}
-              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              placeholder='Main chyron text'
-            />
-          </div>
-          <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.show, true)}
-                onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Chyron
-            </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.useMarquee, false)}
-                onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Marquee Mode
-            </label>
-          </div>
-        </div>
+        <ModoItalianoChyronEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          replaceProps={replaceProps}
+          commitProps={commitProps}
+        />
+      );
+    case 'modoitaliano-clock':
+      return (
+        <ModoItalianoClockEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          replaceProps={replaceProps}
+          commitProps={commitProps}
+        />
       );
     case 'toni-clock':
-    case 'modoitaliano-clock': {
-      const isModoItalianoClock = componentType === 'modoitaliano-clock';
+    {
       const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
-      const songsDefaultValue = Array.isArray(props.songs)
-        ? props.songs
-            .map((song) => {
-              if (!song || typeof song !== 'object' || Array.isArray(song)) {
-                return null;
-              }
-              const artist = typeof song.artist === 'string' ? song.artist : '';
-              const title = typeof song.title === 'string' ? song.title : '';
-              const coverUrl = typeof song.coverUrl === 'string' ? song.coverUrl : '';
-              return { artist, title, coverUrl };
-            })
-            .filter((song): song is { artist: string; title: string; coverUrl: string } => song !== null)
-        : [];
 
       return (
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-            {!isModoItalianoClock && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
-                  type='checkbox'
-                  checked={toBoolean(props.showWorldClocks, true)}
-                  onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
-                  className='h-4 w-4'
-                />
-                Show World Clocks
-              </label>
-            )}
-            {!isModoItalianoClock && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
-                  type='checkbox'
-                  checked={toBoolean(props.showBellIcon, false)}
-                  onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
-                  className='h-4 w-4'
-                />
-                Show Bell Icon
-              </label>
-            )}
-            {!isModoItalianoClock && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
-                  type='checkbox'
-                  checked={toBoolean(props.worldClockShuffle, false)}
-                  onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
-                  className='h-4 w-4'
-                />
-                Shuffle world clocks
-              </label>
-            )}
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showWorldClocks, true)}
+                onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show World Clocks
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showBellIcon, false)}
+                onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Bell Icon
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.worldClockShuffle, false)}
+                onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Shuffle world clocks
+            </label>
           </div>
-          {isModoItalianoClock && (
-            <div className='space-y-2'>
-              <div className='flex items-center justify-between'>
-                <label className='block text-xs text-gray-600'>Songs (clock cue source)</label>
-                <button
-                  type='button'
-                  onClick={() => updateProp(componentType, 'songs', [...songsDefaultValue, { artist: '', title: '', coverUrl: '' }])}
-                  className='px-3 py-1.5 text-xs font-medium rounded border border-green-500 text-green-700 hover:bg-green-50'
-                >
-                  Add Song
-                </button>
-              </div>
-              {songsDefaultValue.length === 0 ? (
-                <p className='text-xs text-gray-500'>No songs loaded. Cue above clock stays hidden.</p>
-              ) : (
-                <div className='space-y-2'>
-                  {songsDefaultValue.map((song, index) => (
-                    <div key={`modoitaliano-song-${index}`} className='grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end'>
-                      <label className='text-sm text-gray-700'>
-                        <span className='block text-xs text-gray-500 mb-1'>Artist</span>
-                        <input
-                          type='text'
-                          value={song.artist}
-                          onChange={(e) => {
-                            const next = [...songsDefaultValue];
-                            next[index] = { ...next[index], artist: e.target.value };
-                            updateProp(componentType, 'songs', next);
-                          }}
-                          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                        />
-                      </label>
-                      <label className='text-sm text-gray-700'>
-                        <span className='block text-xs text-gray-500 mb-1'>Title</span>
-                        <input
-                          type='text'
-                          value={song.title}
-                          onChange={(e) => {
-                            const next = [...songsDefaultValue];
-                            next[index] = { ...next[index], title: e.target.value };
-                            updateProp(componentType, 'songs', next);
-                          }}
-                          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                        />
-                      </label>
-                      <label className='text-sm text-gray-700'>
-                        <span className='block text-xs text-gray-500 mb-1'>Cover URL</span>
-                        <input
-                          type='text'
-                          value={song.coverUrl}
-                          onChange={(e) => {
-                            const next = [...songsDefaultValue];
-                            next[index] = { ...next[index], coverUrl: e.target.value };
-                            updateProp(componentType, 'songs', next);
-                          }}
-                          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                          placeholder='/cover.jpg'
-                        />
-                      </label>
-                      <button
-                        type='button'
-                        onClick={() => updateProp(componentType, 'songs', songsDefaultValue.filter((_, songIndex) => songIndex !== index))}
-                        className='h-10 px-3 text-xs font-medium rounded border border-red-300 text-red-700 hover:bg-red-50'
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
             <label className='text-sm text-gray-700'>
@@ -1597,30 +1502,26 @@ function ComponentPropsFields({
                 className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
               />
             </label>
-            {!isModoItalianoClock && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
-                <input
-                  type='number'
-                  min={0}
-                  value={props.worldClockTransitionMs ?? 300}
-                  onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                />
-              </label>
-            )}
-            {!isModoItalianoClock && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
-                <input
-                  type='number'
-                  min={120}
-                  value={props.worldClockWidthPx ?? 200}
-                  onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-                />
-              </label>
-            )}
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
+              <input
+                type='number'
+                min={0}
+                value={props.worldClockTransitionMs ?? 300}
+                onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
+              <input
+                type='number'
+                min={120}
+                value={props.worldClockWidthPx ?? 200}
+                onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              />
+            </label>
           </div>
 
           <div className='space-y-2'>
@@ -2737,6 +2638,1278 @@ function ToniChyronSequenceEditor({
               ) : (
                 <div className='mt-3'>
                   <ToniChyronSequenceEditor
+                    sequence={item.sequence}
+                    depth={depth + 1}
+                    onChange={(nextNestedSequence) =>
+                      updateItem(index, {
+                        ...item,
+                        sequence: nextNestedSequence
+                      })
+                    }
+                    onTakeSelection={async (nextNestedSequence) => {
+                      const nextSequence = {
+                        ...sequence,
+                        items: sequence.items.map((sequenceItem, sequenceIndex) =>
+                          sequenceIndex === index
+                            ? {
+                                ...item,
+                                sequence: nextNestedSequence
+                              }
+                            : sequenceItem
+                        )
+                      };
+                      applySequence(nextSequence);
+                      if (onTakeSelection) {
+                        await onTakeSelection(nextSequence);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className='flex flex-wrap gap-2'>
+        <button
+          type='button'
+          onClick={() => addItem('preset')}
+          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+        >
+          + Preset
+        </button>
+        <button
+          type='button'
+          onClick={() => addItem('sequence')}
+          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+        >
+          + Nested Sequence
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface ModoItalianoSongDraft {
+  artist: string;
+  title: string;
+  coverUrl: string;
+  earoneSongId: string;
+  earoneRank: string;
+  earoneSpins: string;
+}
+
+function normalizeModoItalianoSongDraft(value: unknown): ModoItalianoSongDraft | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const artist = typeof record.artist === 'string' ? record.artist.trim() : '';
+  const title = typeof record.title === 'string' ? record.title.trim() : '';
+  const coverUrl = typeof record.coverUrl === 'string' ? record.coverUrl.trim() : '';
+  const earoneSongId =
+    typeof record.earoneSongId === 'string'
+      ? record.earoneSongId.trim()
+      : typeof record.earoneSongId === 'number' && Number.isFinite(record.earoneSongId)
+        ? String(record.earoneSongId)
+        : '';
+  const earoneRank = typeof record.earoneRank === 'string' ? record.earoneRank.trim() : '';
+  const earoneSpins =
+    typeof record.earoneSpins === 'string'
+      ? record.earoneSpins.trim()
+      : typeof record.earoneSpins === 'number' && Number.isFinite(record.earoneSpins)
+        ? String(record.earoneSpins)
+        : '';
+
+  if (!artist && !title && !coverUrl && !earoneSongId && !earoneRank && !earoneSpins) {
+    return null;
+  }
+
+  return {
+    artist,
+    title,
+    coverUrl,
+    earoneSongId,
+    earoneRank,
+    earoneSpins
+  };
+}
+
+function ModoItalianoClockEditorFields({
+  componentType,
+  props,
+  updateProp,
+  replaceProps,
+  commitProps
+}: {
+  componentType: string;
+  props: any;
+  updateProp: (componentType: string, propName: string, value: any) => void;
+  replaceProps: (componentType: string, nextProps: any) => void;
+  commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+}) {
+  const normalizedSequence = normalizeModoItalianoSongSequence(props.songSequence);
+  const songContentMode = getModoItalianoSongContentMode(props.songContentMode, normalizedSequence);
+  const directSongFromFields = normalizeModoItalianoSongDraft({
+    artist: props.songArtist,
+    title: props.songTitle,
+    coverUrl: props.songCoverUrl,
+    earoneSongId: props.songEaroneSongId,
+    earoneRank: props.songEaroneRank,
+    earoneSpins: props.songEaroneSpins
+  });
+  const directSongFromLegacyList = Array.isArray(props.songs)
+    ? props.songs
+        .map((song: unknown) => normalizeModoItalianoSongDraft(song))
+        .find((song: ModoItalianoSongDraft | null): song is ModoItalianoSongDraft => song !== null) ?? null
+    : null;
+  const directSong = directSongFromFields ?? directSongFromLegacyList ?? {
+    artist: '',
+    title: '',
+    coverUrl: '',
+    earoneSongId: '',
+    earoneRank: '',
+    earoneSpins: ''
+  };
+
+  const applyProps = (nextProps: any) => {
+    replaceProps(componentType, nextProps);
+  };
+
+  const activateSequence = async (nextSequence: ModoItalianoSongSequence) => {
+    const nextProps = {
+      ...props,
+      songContentMode: 'sequence',
+      songSequence: nextSequence
+    };
+    replaceProps(componentType, nextProps);
+    if (commitProps) {
+      await commitProps(componentType, nextProps);
+    }
+  };
+
+  const updateDirectSongField = (propName: string, value: string) => {
+    updateProp(componentType, propName, value);
+    if (Array.isArray(props.songs) && props.songs.length > 0) {
+      updateProp(componentType, 'songs', []);
+    }
+  };
+
+  const currentSongArtist = directSong.artist;
+  const currentSongTitle = directSong.title;
+  const currentSongCoverUrl = directSong.coverUrl;
+  const currentSongEaroneSongId = directSong.earoneSongId;
+  const currentSongEaroneRank = directSong.earoneRank;
+  const currentSongEaroneSpins = directSong.earoneSpins;
+
+  const renderDirectSongFields = () => (
+    <div className='space-y-3'>
+      <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+        <label className='text-sm text-gray-700'>
+          <span className='block text-xs text-gray-500 mb-1'>Artist</span>
+          <input
+            type='text'
+            value={currentSongArtist}
+            onChange={(e) => updateDirectSongField('songArtist', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            placeholder='Artist'
+          />
+        </label>
+        <label className='text-sm text-gray-700'>
+          <span className='block text-xs text-gray-500 mb-1'>Title</span>
+          <input
+            type='text'
+            value={currentSongTitle}
+            onChange={(e) => updateDirectSongField('songTitle', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            placeholder='Song title'
+          />
+        </label>
+        <label className='text-sm text-gray-700'>
+          <span className='block text-xs text-gray-500 mb-1'>Cover URL</span>
+          <input
+            type='text'
+            value={currentSongCoverUrl}
+            onChange={(e) => updateDirectSongField('songCoverUrl', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            placeholder='/cover.jpg'
+          />
+        </label>
+      </div>
+      <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+        <label className='text-sm text-gray-700'>
+          <span className='block text-xs text-gray-500 mb-1'>EarOne Song ID</span>
+          <input
+            type='text'
+            value={currentSongEaroneSongId}
+            onChange={(e) => updateDirectSongField('songEaroneSongId', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            placeholder='Matches song.earoneSongId'
+          />
+        </label>
+        <label className='text-sm text-gray-700'>
+          <span className='block text-xs text-gray-500 mb-1'>EarOne Rank</span>
+          <input
+            type='text'
+            value={currentSongEaroneRank}
+            onChange={(e) => updateDirectSongField('songEaroneRank', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            placeholder='Optional fallback'
+          />
+        </label>
+        <label className='text-sm text-gray-700'>
+          <span className='block text-xs text-gray-500 mb-1'>EarOne Spins</span>
+          <input
+            type='text'
+            value={currentSongEaroneSpins}
+            onChange={(e) => updateDirectSongField('songEaroneSpins', e.target.value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            placeholder='Optional fallback'
+          />
+        </label>
+      </div>
+      <p className='text-xs text-gray-500'>Legacy `songs[]` metadata is still read for older scenes. These direct fields are now the primary source.</p>
+    </div>
+  );
+
+  return (
+    <div className='space-y-4'>
+      <div className='space-y-2'>
+        <div className='flex flex-wrap gap-2'>
+          <button
+            type='button'
+            onClick={() =>
+              applyProps({
+                ...props,
+                songContentMode: 'direct'
+              })
+            }
+            className={`px-3 py-1.5 rounded text-sm font-medium border ${
+              songContentMode === 'direct' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Direct Song
+          </button>
+          <button
+            type='button'
+            onClick={() =>
+              applyProps({
+                ...props,
+                songContentMode: 'sequence',
+                songSequence: normalizedSequence ?? createModoItalianoSongSequence('manual')
+              })
+            }
+            className={`px-3 py-1.5 rounded text-sm font-medium border ${
+              songContentMode === 'sequence' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Sequence
+          </button>
+        </div>
+
+        {songContentMode === 'sequence' ? (
+          <div className='space-y-3'>
+            <p className='text-xs text-gray-500'>Sequence mode lets you preload songs and take/remove entries live with manual or autoplay behavior.</p>
+            <ModoItalianoSongSequenceEditor
+              sequence={normalizedSequence ?? createModoItalianoSongSequence('manual')}
+              onChange={(nextSequence) =>
+                applyProps({
+                  ...props,
+                  songContentMode: 'sequence',
+                  songSequence: nextSequence
+                })
+              }
+              onTakeSelection={activateSequence}
+            />
+            <details className='rounded border border-dashed border-gray-300 px-3 py-2'>
+              <summary className='cursor-pointer text-xs font-medium text-gray-600'>Fallback direct song</summary>
+              <div className='pt-3'>{renderDirectSongFields()}</div>
+            </details>
+          </div>
+        ) : (
+          renderDirectSongFields()
+        )}
+      </div>
+
+      <p className='text-xs text-gray-500'>World clock cities/timezones are fixed for ModoItaliano 2026 and are no longer configurable here.</p>
+    </div>
+  );
+}
+
+function ModoItalianoChyronEditorFields({
+  componentType,
+  props,
+  updateProp,
+  replaceProps,
+  commitProps
+}: {
+  componentType: string;
+  props: any;
+  updateProp: (componentType: string, propName: string, value: any) => void;
+  replaceProps: (componentType: string, nextProps: any) => void;
+  commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+}) {
+  const normalizedTextSequence = normalizeModoItalianoTextSequence(props.textSequence, 0, { includeMarquee: true });
+  const normalizedCtaSequence = normalizeModoItalianoTextSequence(props.ctaSequence);
+  const textContentMode = getModoItalianoTextContentMode(props.textContentMode, normalizedTextSequence);
+  const ctaContentMode = getModoItalianoTextContentMode(props.ctaContentMode, normalizedCtaSequence);
+  const showValue =
+    typeof props.show === 'boolean'
+      ? props.show
+      : typeof props.show === 'string'
+        ? props.show.trim().toLowerCase() !== 'false'
+        : true;
+
+  const applyProps = (nextProps: any) => {
+    replaceProps(componentType, nextProps);
+  };
+
+  const activateTextSequence = async (nextSequence: ModoItalianoTextSequence) => {
+    const nextProps = {
+      ...props,
+      textContentMode: 'sequence',
+      textSequence: nextSequence
+    };
+    replaceProps(componentType, nextProps);
+    if (commitProps) {
+      await commitProps(componentType, nextProps);
+    }
+  };
+
+  const activateCtaSequence = async (nextSequence: ModoItalianoTextSequence) => {
+    const nextProps = {
+      ...props,
+      ctaContentMode: 'sequence',
+      ctaSequence: nextSequence
+    };
+    replaceProps(componentType, nextProps);
+    if (commitProps) {
+      await commitProps(componentType, nextProps);
+    }
+  };
+
+  return (
+    <div className='space-y-4'>
+      <p className='text-xs text-gray-500'>ModoItaliano row rule: if chyron and disclaimer are both enabled, chyron is shown.</p>
+      <label className='flex items-center gap-2 text-sm text-gray-700'>
+        <input
+          type='checkbox'
+          checked={showValue}
+          onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
+          className='h-4 w-4'
+        />
+        Show Chyron
+      </label>
+
+      <div className='space-y-2 rounded border border-slate-200 p-3'>
+        <div className='flex items-center justify-between'>
+          <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>Main Chyron</span>
+          <div className='flex gap-2'>
+            <button
+              type='button'
+              onClick={() =>
+                applyProps({
+                  ...props,
+                  textContentMode: 'text'
+                })
+              }
+              className={`px-3 py-1.5 rounded text-sm font-medium border ${
+                textContentMode === 'text' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Direct
+            </button>
+            <button
+              type='button'
+              onClick={() =>
+                applyProps({
+                  ...props,
+                  textContentMode: 'sequence',
+                  textSequence: normalizedTextSequence ?? createModoItalianoTextSequence('manual', { includeMarquee: true })
+                })
+              }
+              className={`px-3 py-1.5 rounded text-sm font-medium border ${
+                textContentMode === 'sequence' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Sequence
+            </button>
+          </div>
+        </div>
+
+        {textContentMode === 'sequence' ? (
+          <div className='space-y-3'>
+            <p className='text-xs text-gray-500'>Preload multiple chyron lines, then take/remove manually or let autoplay run.</p>
+            <ModoItalianoTextSequenceEditor
+              sequence={normalizedTextSequence ?? createModoItalianoTextSequence('manual', { includeMarquee: true })}
+              includeMarquee
+              textLabel='Text'
+              textPlaceholder='Main chyron text'
+              onChange={(nextSequence) =>
+                applyProps({
+                  ...props,
+                  textContentMode: 'sequence',
+                  textSequence: nextSequence
+                })
+              }
+              onTakeSelection={activateTextSequence}
+            />
+            <details className='rounded border border-dashed border-gray-300 px-3 py-2'>
+              <summary className='cursor-pointer text-xs font-medium text-gray-600'>Fallback direct text</summary>
+              <div className='space-y-2 pt-3'>
+                <label className='text-sm text-gray-700 block'>
+                  <span className='block text-xs text-gray-500 mb-1'>Text</span>
+                  <input
+                    type='text'
+                    value={typeof props.text === 'string' ? props.text : ''}
+                    onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                    placeholder='Main chyron text'
+                  />
+                </label>
+                <label className='flex items-center gap-2 text-sm text-gray-700'>
+                  <input
+                    type='checkbox'
+                    checked={Boolean(props.useMarquee)}
+                    onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
+                    className='h-4 w-4'
+                  />
+                  Fallback marquee
+                </label>
+              </div>
+            </details>
+          </div>
+        ) : (
+          <div className='space-y-2'>
+            <label className='text-sm text-gray-700 block'>
+              <span className='block text-xs text-gray-500 mb-1'>Text</span>
+              <input
+                type='text'
+                value={typeof props.text === 'string' ? props.text : ''}
+                onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                placeholder='Main chyron text'
+              />
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={Boolean(props.useMarquee)}
+                onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Marquee Mode
+            </label>
+          </div>
+        )}
+      </div>
+
+      <div className='space-y-2 rounded border border-slate-200 p-3'>
+        <div className='flex items-center justify-between'>
+          <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>CTA</span>
+          <div className='flex gap-2'>
+            <button
+              type='button'
+              onClick={() =>
+                applyProps({
+                  ...props,
+                  ctaContentMode: 'text'
+                })
+              }
+              className={`px-3 py-1.5 rounded text-sm font-medium border ${
+                ctaContentMode === 'text' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Direct
+            </button>
+            <button
+              type='button'
+              onClick={() =>
+                applyProps({
+                  ...props,
+                  ctaContentMode: 'sequence',
+                  ctaSequence: normalizedCtaSequence ?? createModoItalianoTextSequence('manual')
+                })
+              }
+              className={`px-3 py-1.5 rounded text-sm font-medium border ${
+                ctaContentMode === 'sequence' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Sequence
+            </button>
+          </div>
+        </div>
+
+        {ctaContentMode === 'sequence' ? (
+          <div className='space-y-3'>
+            <p className='text-xs text-gray-500'>Preload CTA messages separately and take/remove them independently.</p>
+            <ModoItalianoTextSequenceEditor
+              sequence={normalizedCtaSequence ?? createModoItalianoTextSequence('manual')}
+              textLabel='CTA'
+              textPlaceholder='Call to action (shown above chyron)'
+              onChange={(nextSequence) =>
+                applyProps({
+                  ...props,
+                  ctaContentMode: 'sequence',
+                  ctaSequence: nextSequence
+                })
+              }
+              onTakeSelection={activateCtaSequence}
+            />
+            <details className='rounded border border-dashed border-gray-300 px-3 py-2'>
+              <summary className='cursor-pointer text-xs font-medium text-gray-600'>Fallback direct CTA</summary>
+              <div className='pt-3'>
+                <label className='text-sm text-gray-700 block'>
+                  <span className='block text-xs text-gray-500 mb-1'>CTA</span>
+                  <input
+                    type='text'
+                    value={typeof props.cta === 'string' ? props.cta : ''}
+                    onChange={(e) => updateProp(componentType, 'cta', e.target.value)}
+                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                    placeholder='Call to action (shown above chyron)'
+                  />
+                </label>
+              </div>
+            </details>
+          </div>
+        ) : (
+          <label className='text-sm text-gray-700 block'>
+            <span className='block text-xs text-gray-500 mb-1'>CTA</span>
+            <input
+              type='text'
+              value={typeof props.cta === 'string' ? props.cta : ''}
+              onChange={(e) => updateProp(componentType, 'cta', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='Call to action (shown above chyron)'
+            />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ModoItalianoTextSequenceEditor({
+  sequence,
+  onChange,
+  onTakeSelection,
+  depth = 0,
+  includeMarquee = false,
+  textLabel = 'Text',
+  textPlaceholder = 'Text'
+}: {
+  sequence: ModoItalianoTextSequence;
+  onChange: (nextSequence: ModoItalianoTextSequence) => void;
+  onTakeSelection?: (nextSequence: ModoItalianoTextSequence) => Promise<void> | void;
+  depth?: number;
+  includeMarquee?: boolean;
+  textLabel?: string;
+  textPlaceholder?: string;
+}) {
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const isNested = depth > 0;
+  const effectiveActiveItemId = getModoItalianoTextSequenceSelectedItemId(sequence, nowMs);
+
+  useEffect(() => {
+    if (sequence.mode !== 'autoplay') {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => clearInterval(timer);
+  }, [sequence.mode, sequence.startedAt, sequence.intervalMs, sequence.loop, sequence.items.length]);
+
+  const applySequence = (nextSequence: ModoItalianoTextSequence) => {
+    onChange({
+      ...nextSequence,
+      activeItemId:
+        nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
+          ? nextSequence.activeItemId
+          : (nextSequence.items[0]?.id ?? null)
+    });
+  };
+
+  const updateItem = (index: number, nextItem: ModoItalianoTextSequenceItem) => {
+    const nextItems = sequence.items.map((item, itemIndex) => (itemIndex === index ? nextItem : item));
+    applySequence({
+      ...sequence,
+      items: nextItems
+    });
+  };
+
+  const addItem = (kind: ModoItalianoTextSequenceItem['kind']) => {
+    const nextItem = createModoItalianoTextSequenceItem(kind, { includeMarquee });
+    applySequence({
+      ...sequence,
+      items: [...sequence.items, nextItem],
+      activeItemId: sequence.activeItemId ?? nextItem.id,
+      startedAt: Date.now()
+    });
+  };
+
+  const removeItem = (index: number) => {
+    const removedItem = sequence.items[index];
+    if (!removedItem) {
+      return;
+    }
+
+    const nextItems = sequence.items.filter((_, itemIndex) => itemIndex !== index);
+    applySequence({
+      ...sequence,
+      items: nextItems,
+      activeItemId: sequence.activeItemId === removedItem.id ? (nextItems[0]?.id ?? null) : sequence.activeItemId,
+      startedAt: Date.now()
+    });
+  };
+
+  const activateItem = async (itemId: string) => {
+    const nextSequence = {
+      ...sequence,
+      activeItemId: itemId,
+      startedAt: Date.now()
+    };
+    applySequence(nextSequence);
+    if (onTakeSelection) {
+      await onTakeSelection(nextSequence);
+    }
+  };
+
+  const reorderItems = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= sequence.items.length || toIndex >= sequence.items.length) {
+      return;
+    }
+
+    const nextItems = [...sequence.items];
+    const [moved] = nextItems.splice(fromIndex, 1);
+    nextItems.splice(toIndex, 0, moved);
+
+    applySequence({
+      ...sequence,
+      items: nextItems
+    });
+  };
+
+  return (
+    <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
+      <div className='flex flex-wrap items-center gap-2'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
+        <button
+          type='button'
+          onClick={() =>
+            applySequence({
+              ...sequence,
+              mode: 'manual',
+              activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
+              startedAt: Date.now()
+            })
+          }
+          className={`px-2.5 py-1 rounded text-xs font-medium border ${
+            sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          Manual
+        </button>
+        <button
+          type='button'
+          onClick={() =>
+            applySequence({
+              ...sequence,
+              mode: 'autoplay',
+              startedAt: Date.now()
+            })
+          }
+          className={`px-2.5 py-1 rounded text-xs font-medium border ${
+            sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          Autoplay
+        </button>
+        {sequence.mode === 'autoplay' && (
+          <>
+            <label className='text-xs text-slate-600'>Interval (ms)</label>
+            <input
+              type='number'
+              min={500}
+              step={500}
+              value={sequence.intervalMs ?? 4000}
+              onChange={(e) =>
+                applySequence({
+                  ...sequence,
+                  intervalMs: Math.max(500, Number(e.target.value) || 4000),
+                  startedAt: Date.now()
+                })
+              }
+              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
+            />
+            <label className='flex items-center gap-1 text-xs text-slate-600'>
+              <input
+                type='checkbox'
+                checked={sequence.loop !== false}
+                onChange={(e) =>
+                  applySequence({
+                    ...sequence,
+                    loop: e.target.checked
+                  })
+                }
+                className='h-3.5 w-3.5'
+              />
+              Loop
+            </label>
+          </>
+        )}
+      </div>
+
+      {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
+
+      <div className='space-y-3'>
+        {sequence.items.map((item, index) => {
+          const isActive = item.id === effectiveActiveItemId;
+
+          return (
+            <div
+              key={item.id}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggingIndex !== null) {
+                  reorderItems(draggingIndex, index);
+                }
+                setDraggingIndex(null);
+              }}
+              className={`rounded border p-3 ${isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}
+            >
+              <div className='flex flex-wrap items-center gap-2'>
+                <span
+                  draggable
+                  onDragStart={() => setDraggingIndex(index)}
+                  onDragEnd={() => setDraggingIndex(null)}
+                  className='cursor-grab select-none rounded border border-dashed border-slate-300 p-2 text-slate-500'
+                  title='Drag to reorder'
+                  aria-label='Drag to reorder'
+                >
+                  <GripVertical size={14} strokeWidth={2} />
+                </span>
+                {item.kind === 'sequence' ? (
+                  <input
+                    type='text'
+                    value={item.label}
+                    onChange={(e) => updateItem(index, { ...item, label: e.target.value })}
+                    className='min-w-0 flex-1 px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                    placeholder='Sequence name'
+                  />
+                ) : (
+                  <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>Preset Item</div>
+                )}
+                <select
+                  value={item.kind}
+                  onChange={(e) => {
+                    const nextKind = e.target.value as ModoItalianoTextSequenceItem['kind'];
+                    if (nextKind === item.kind) {
+                      return;
+                    }
+
+                    if (nextKind === 'sequence') {
+                      updateItem(index, {
+                        id: item.id,
+                        label: item.kind === 'sequence' ? item.label : item.text.trim() || 'Nested Sequence',
+                        kind: 'sequence',
+                        sequence: createModoItalianoTextSequence('manual', { includeMarquee })
+                      });
+                      return;
+                    }
+
+                    updateItem(index, {
+                      id: item.id,
+                      kind: 'preset',
+                      text: item.kind === 'sequence' ? item.label : item.text,
+                      useMarquee: includeMarquee ? false : undefined
+                    });
+                  }}
+                  className='px-2 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                >
+                  <option value='preset'>Preset</option>
+                  <option value='sequence'>Nested</option>
+                </select>
+                <button
+                  type='button'
+                  onClick={() => {
+                    void activateItem(item.id);
+                  }}
+                  className='px-3 py-2 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700'
+                >
+                  Take
+                </button>
+                <button
+                  type='button'
+                  onClick={() => removeItem(index)}
+                  className='px-3 py-2 text-xs font-semibold rounded border border-red-200 text-red-600 hover:bg-red-50'
+                >
+                  Remove
+                </button>
+              </div>
+
+              {item.kind === 'preset' ? (
+                <div className='mt-3 space-y-2'>
+                  <label className='text-sm text-gray-700 block'>
+                    <span className='block text-xs text-gray-500 mb-1'>{textLabel}</span>
+                    <input
+                      type='text'
+                      value={item.text}
+                      onChange={(e) =>
+                        updateItem(index, {
+                          ...item,
+                          text: e.target.value
+                        })
+                      }
+                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                      placeholder={textPlaceholder}
+                    />
+                  </label>
+                  {includeMarquee && (
+                    <label className='flex items-center gap-2 text-sm text-gray-700'>
+                      <input
+                        type='checkbox'
+                        checked={Boolean(item.useMarquee)}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            useMarquee: e.target.checked
+                          })
+                        }
+                        className='h-4 w-4'
+                      />
+                      Force marquee scrolling
+                    </label>
+                  )}
+                </div>
+              ) : (
+                <div className='mt-3'>
+                  <ModoItalianoTextSequenceEditor
+                    sequence={item.sequence}
+                    depth={depth + 1}
+                    includeMarquee={includeMarquee}
+                    textLabel={textLabel}
+                    textPlaceholder={textPlaceholder}
+                    onChange={(nextNestedSequence) =>
+                      updateItem(index, {
+                        ...item,
+                        sequence: nextNestedSequence
+                      })
+                    }
+                    onTakeSelection={async (nextNestedSequence) => {
+                      const nextSequence = {
+                        ...sequence,
+                        items: sequence.items.map((sequenceItem, sequenceIndex) =>
+                          sequenceIndex === index
+                            ? {
+                                ...item,
+                                sequence: nextNestedSequence
+                              }
+                            : sequenceItem
+                        )
+                      };
+                      applySequence(nextSequence);
+                      if (onTakeSelection) {
+                        await onTakeSelection(nextSequence);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className='flex flex-wrap gap-2'>
+        <button
+          type='button'
+          onClick={() => addItem('preset')}
+          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+        >
+          + Preset
+        </button>
+        <button
+          type='button'
+          onClick={() => addItem('sequence')}
+          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+        >
+          + Nested Sequence
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ModoItalianoSongSequenceEditor({
+  sequence,
+  onChange,
+  onTakeSelection,
+  depth = 0
+}: {
+  sequence: ModoItalianoSongSequence;
+  onChange: (nextSequence: ModoItalianoSongSequence) => void;
+  onTakeSelection?: (nextSequence: ModoItalianoSongSequence) => Promise<void> | void;
+  depth?: number;
+}) {
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const isNested = depth > 0;
+  const effectiveActiveItemId = getModoItalianoSongSequenceSelectedItemId(sequence, nowMs);
+
+  useEffect(() => {
+    if (sequence.mode !== 'autoplay') {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => clearInterval(timer);
+  }, [sequence.mode, sequence.startedAt, sequence.intervalMs, sequence.loop, sequence.items.length]);
+
+  const applySequence = (nextSequence: ModoItalianoSongSequence) => {
+    onChange({
+      ...nextSequence,
+      activeItemId:
+        nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
+          ? nextSequence.activeItemId
+          : (nextSequence.items[0]?.id ?? null)
+    });
+  };
+
+  const updateItem = (index: number, nextItem: ModoItalianoSongSequenceItem) => {
+    const nextItems = sequence.items.map((item, itemIndex) => (itemIndex === index ? nextItem : item));
+    applySequence({
+      ...sequence,
+      items: nextItems
+    });
+  };
+
+  const addItem = (kind: ModoItalianoSongSequenceItem['kind']) => {
+    const nextItem = createModoItalianoSongSequenceItem(kind);
+    applySequence({
+      ...sequence,
+      items: [...sequence.items, nextItem],
+      activeItemId: sequence.activeItemId ?? nextItem.id,
+      startedAt: Date.now()
+    });
+  };
+
+  const removeItem = (index: number) => {
+    const removedItem = sequence.items[index];
+    if (!removedItem) {
+      return;
+    }
+
+    const nextItems = sequence.items.filter((_, itemIndex) => itemIndex !== index);
+    applySequence({
+      ...sequence,
+      items: nextItems,
+      activeItemId: sequence.activeItemId === removedItem.id ? (nextItems[0]?.id ?? null) : sequence.activeItemId,
+      startedAt: Date.now()
+    });
+  };
+
+  const activateItem = async (itemId: string) => {
+    const nextSequence = {
+      ...sequence,
+      activeItemId: itemId,
+      startedAt: Date.now()
+    };
+    applySequence(nextSequence);
+    if (onTakeSelection) {
+      await onTakeSelection(nextSequence);
+    }
+  };
+
+  const reorderItems = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= sequence.items.length || toIndex >= sequence.items.length) {
+      return;
+    }
+
+    const nextItems = [...sequence.items];
+    const [moved] = nextItems.splice(fromIndex, 1);
+    nextItems.splice(toIndex, 0, moved);
+
+    applySequence({
+      ...sequence,
+      items: nextItems
+    });
+  };
+
+  return (
+    <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
+      <div className='flex flex-wrap items-center gap-2'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
+        <button
+          type='button'
+          onClick={() =>
+            applySequence({
+              ...sequence,
+              mode: 'manual',
+              activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
+              startedAt: Date.now()
+            })
+          }
+          className={`px-2.5 py-1 rounded text-xs font-medium border ${
+            sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          Manual
+        </button>
+        <button
+          type='button'
+          onClick={() =>
+            applySequence({
+              ...sequence,
+              mode: 'autoplay',
+              startedAt: Date.now()
+            })
+          }
+          className={`px-2.5 py-1 rounded text-xs font-medium border ${
+            sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          Autoplay
+        </button>
+        {sequence.mode === 'autoplay' && (
+          <>
+            <label className='text-xs text-slate-600'>Interval (ms)</label>
+            <input
+              type='number'
+              min={500}
+              step={500}
+              value={sequence.intervalMs ?? 4000}
+              onChange={(e) =>
+                applySequence({
+                  ...sequence,
+                  intervalMs: Math.max(500, Number(e.target.value) || 4000),
+                  startedAt: Date.now()
+                })
+              }
+              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
+            />
+            <label className='flex items-center gap-1 text-xs text-slate-600'>
+              <input
+                type='checkbox'
+                checked={sequence.loop !== false}
+                onChange={(e) =>
+                  applySequence({
+                    ...sequence,
+                    loop: e.target.checked
+                  })
+                }
+                className='h-3.5 w-3.5'
+              />
+              Loop
+            </label>
+          </>
+        )}
+      </div>
+
+      {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
+
+      <div className='space-y-3'>
+        {sequence.items.map((item, index) => {
+          const isActive = item.id === effectiveActiveItemId;
+
+          return (
+            <div
+              key={item.id}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggingIndex !== null) {
+                  reorderItems(draggingIndex, index);
+                }
+                setDraggingIndex(null);
+              }}
+              className={`rounded border p-3 ${isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}
+            >
+              <div className='flex flex-wrap items-center gap-2'>
+                <span
+                  draggable
+                  onDragStart={() => setDraggingIndex(index)}
+                  onDragEnd={() => setDraggingIndex(null)}
+                  className='cursor-grab select-none rounded border border-dashed border-slate-300 p-2 text-slate-500'
+                  title='Drag to reorder'
+                  aria-label='Drag to reorder'
+                >
+                  <GripVertical size={14} strokeWidth={2} />
+                </span>
+                {item.kind === 'sequence' ? (
+                  <input
+                    type='text'
+                    value={item.label}
+                    onChange={(e) => updateItem(index, { ...item, label: e.target.value })}
+                    className='min-w-0 flex-1 px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                    placeholder='Sequence name'
+                  />
+                ) : (
+                  <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>Song Preset</div>
+                )}
+                <select
+                  value={item.kind}
+                  onChange={(e) => {
+                    const nextKind = e.target.value as ModoItalianoSongSequenceItem['kind'];
+                    if (nextKind === item.kind) {
+                      return;
+                    }
+
+                    if (nextKind === 'sequence') {
+                      const nextLabel =
+                        item.kind === 'sequence'
+                          ? item.label
+                          : [item.artist, item.title].filter(Boolean).join(' - ') || 'Nested Sequence';
+                      updateItem(index, {
+                        id: item.id,
+                        label: nextLabel,
+                        kind: 'sequence',
+                        sequence: createModoItalianoSongSequence('manual')
+                      });
+                      return;
+                    }
+
+                    updateItem(index, {
+                      id: item.id,
+                      kind: 'preset',
+                      artist: item.kind === 'sequence' ? item.label : item.artist,
+                      title: item.kind === 'sequence' ? '' : item.title,
+                      coverUrl: item.kind === 'sequence' ? '' : item.coverUrl,
+                      earoneSongId: item.kind === 'sequence' ? '' : item.earoneSongId,
+                      earoneRank: item.kind === 'sequence' ? '' : item.earoneRank,
+                      earoneSpins: item.kind === 'sequence' ? '' : item.earoneSpins
+                    });
+                  }}
+                  className='px-2 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                >
+                  <option value='preset'>Preset</option>
+                  <option value='sequence'>Nested</option>
+                </select>
+                <button
+                  type='button'
+                  onClick={() => {
+                    void activateItem(item.id);
+                  }}
+                  className='px-3 py-2 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700'
+                >
+                  Take
+                </button>
+                <button
+                  type='button'
+                  onClick={() => removeItem(index)}
+                  className='px-3 py-2 text-xs font-semibold rounded border border-red-200 text-red-600 hover:bg-red-50'
+                >
+                  Remove
+                </button>
+              </div>
+
+              {item.kind === 'preset' ? (
+                <div className='mt-3 space-y-2'>
+                  <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+                    <label className='text-sm text-gray-700'>
+                      <span className='block text-xs text-gray-500 mb-1'>Artist</span>
+                      <input
+                        type='text'
+                        value={item.artist}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            artist: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                      />
+                    </label>
+                    <label className='text-sm text-gray-700'>
+                      <span className='block text-xs text-gray-500 mb-1'>Title</span>
+                      <input
+                        type='text'
+                        value={item.title}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            title: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                      />
+                    </label>
+                    <label className='text-sm text-gray-700'>
+                      <span className='block text-xs text-gray-500 mb-1'>Cover URL</span>
+                      <input
+                        type='text'
+                        value={item.coverUrl}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            coverUrl: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='/cover.jpg'
+                      />
+                    </label>
+                  </div>
+                  <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+                    <label className='text-sm text-gray-700'>
+                      <span className='block text-xs text-gray-500 mb-1'>EarOne Song ID</span>
+                      <input
+                        type='text'
+                        value={item.earoneSongId || ''}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            earoneSongId: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='Matches song.earoneSongId'
+                      />
+                    </label>
+                    <label className='text-sm text-gray-700'>
+                      <span className='block text-xs text-gray-500 mb-1'>EarOne Rank</span>
+                      <input
+                        type='text'
+                        value={item.earoneRank || ''}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            earoneRank: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='Optional fallback'
+                      />
+                    </label>
+                    <label className='text-sm text-gray-700'>
+                      <span className='block text-xs text-gray-500 mb-1'>EarOne Spins</span>
+                      <input
+                        type='text'
+                        value={item.earoneSpins || ''}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            ...item,
+                            earoneSpins: e.target.value
+                          })
+                        }
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        placeholder='Optional fallback'
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className='mt-3'>
+                  <ModoItalianoSongSequenceEditor
                     sequence={item.sequence}
                     depth={depth + 1}
                     onChange={(nextNestedSequence) =>

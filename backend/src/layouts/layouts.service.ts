@@ -95,7 +95,7 @@ export class LayoutsService {
       type: 'modoitaliano-clock',
       name: 'ModoItaliano Clock',
       description:
-        'ModoItaliano corner clock block (timezone rotation, bell toggle, sizing)',
+        'ModoItaliano corner clock block (fixed city/timezone rotation + song metadata)',
     },
     {
       type: 'modoitaliano-chyron',
