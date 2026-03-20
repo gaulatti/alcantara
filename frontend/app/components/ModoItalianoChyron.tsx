@@ -125,39 +125,22 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     };
 
   const ctaText = resolvedCta.text.trim();
-  const ctaStyle: React.CSSProperties = inline
-    ? {
-        width: '100%',
-        marginBottom: '18px',
-        paddingLeft: '34px',
-        color: '#ffffff',
-        fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
-        fontSize: '38.4px',
-        fontWeight: 500,
-        lineHeight: 1,
-        textAlign: 'left',
-        textShadow: '0 4px 18px rgba(0, 0, 0, 0.96), 0 0 28px rgba(0, 0, 0, 0.72), 0 0 10px rgba(255, 255, 255, 0.2)',
-        WebkitTextStroke: '0.7px rgba(0, 0, 0, 0.5)',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis'
-      }
-    : {
-        width: '100%',
-        marginBottom: '18px',
-        paddingLeft: '34px',
-        color: '#ffffff',
-        fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
-        fontSize: '38.4px',
-        fontWeight: 500,
-        lineHeight: 1,
-        textAlign: 'left',
-        textShadow: '0 4px 18px rgba(0, 0, 0, 0.96), 0 0 28px rgba(0, 0, 0, 0.72), 0 0 10px rgba(255, 255, 255, 0.2)',
-        WebkitTextStroke: '0.7px rgba(0, 0, 0, 0.5)',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis'
-      };
+  const ctaStyle: React.CSSProperties = {
+    width: '100%',
+    marginBottom: '18px',
+    paddingLeft: '34px',
+    color: '#ffffff',
+    fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
+    fontSize: '38.4px',
+    fontWeight: 500,
+    lineHeight: 1,
+    textAlign: 'left',
+    textShadow: '0 4px 18px rgba(0, 0, 0, 0.96), 0 0 28px rgba(0, 0, 0, 0.72), 0 0 10px rgba(255, 255, 255, 0.2)',
+    WebkitTextStroke: '0.7px rgba(0, 0, 0, 0.5)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  };
 
   const contentStyle: React.CSSProperties = {
     width: '100%',

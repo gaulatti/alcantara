@@ -271,6 +271,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   const [displaySongCoverUrl, setDisplaySongCoverUrl] = useState(normalizedSongCoverUrl || '/cover.jpg');
   const [clockBoxMotion, setClockBoxMotion] = useState<'in' | 'out' | null>(null);
   const previousHasSongPayloadRef = useRef(hasSongPayload);
+  const useSplitSongClockLayout = songUiVisible && showWorldClocks;
 
   useEffect(() => {
     if (hasSongPayload) {
@@ -334,7 +335,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     ? {
         display: 'flex',
         flexDirection: 'column',
-        width: 'fit-content'
+        width: useSplitSongClockLayout ? '100%' : 'fit-content'
       }
     : {
         position: 'absolute',
@@ -343,8 +344,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         zIndex: 950,
         display: 'flex',
         flexDirection: 'column',
-        width: 'fit-content'
-      };
+        width: useSplitSongClockLayout ? 'min(1420px, calc(100vw - 192px))' : 'fit-content'
+    };
   const listeningStyle: React.CSSProperties = {
     color: '#ffffff',
     fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
@@ -352,8 +353,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     fontWeight: 500,
     lineHeight: 1,
     textAlign: 'left',
-    textShadow: '0 24px 44px rgba(0, 0, 0, 0.72)',
-    filter: 'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.52))',
+    textShadow: '0 4px 18px rgba(0, 0, 0, 0.96), 0 0 28px rgba(0, 0, 0, 0.72), 0 0 10px rgba(255, 255, 255, 0.2)',
+    WebkitTextStroke: '0.7px rgba(0, 0, 0, 0.5)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -392,6 +393,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     backgroundSize: hasSongCardBackground ? '200% 200%' : undefined,
     display: 'flex',
     alignItems: 'center',
+    justifyContent: useSplitSongClockLayout ? 'space-between' : 'flex-start',
+    width: useSplitSongClockLayout ? '100%' : undefined,
     padding: '0 34px',
     boxShadow: hasSongCardBackground ? '0 24px 44px rgba(0, 0, 0, 0.72)' : 'none',
     filter: hasSongCardBackground ? 'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.52))' : 'none',
@@ -510,7 +513,9 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
               flexDirection: 'column',
               justifyContent: 'center',
               marginRight: '28px',
-              maxWidth: '980px',
+              flex: useSplitSongClockLayout ? '1 1 auto' : undefined,
+              minWidth: useSplitSongClockLayout ? 0 : undefined,
+              maxWidth: useSplitSongClockLayout ? undefined : '980px',
               opacity: songUiActive ? 1 : 0,
               transform: songUiActive ? 'translateY(0px)' : 'translateY(10px)',
               transition: `opacity ${SONG_UI_FADE_MS}ms ease, transform ${SONG_UI_FADE_MS}ms ease`
@@ -526,7 +531,9 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
                   lineHeight: 1,
                   letterSpacing: '0.02em',
                   textTransform: 'uppercase',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
                 }}
               >
                 {displaySongTitle}
@@ -543,7 +550,9 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
                   lineHeight: 1,
                   letterSpacing: '0.02em',
                   textTransform: 'uppercase',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
                 }}
               >
                 {displaySongArtist}
@@ -551,22 +560,33 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
             ) : null}
           </div>
         )}
-        {showWorldClocks && cityClockBlock}
-        {showBellIcon && (
+        {(showWorldClocks || showBellIcon) && (
           <div
             style={{
-              marginLeft: showWorldClocks ? '20px' : 0,
-              width: '72px',
-              height: '72px',
-              borderRadius: '24px',
-              background: '#3a3a3a',
-              color: '#f3f3f3',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              flexShrink: 0,
+              marginLeft: useSplitSongClockLayout ? '24px' : 0
             }}
           >
-            <BellRing size={42} strokeWidth={2} />
+            {showWorldClocks && cityClockBlock}
+            {showBellIcon && (
+              <div
+                style={{
+                  marginLeft: showWorldClocks ? '20px' : 0,
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '24px',
+                  background: '#3a3a3a',
+                  color: '#f3f3f3',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <BellRing size={42} strokeWidth={2} />
+              </div>
+            )}
           </div>
         )}
       </div>
