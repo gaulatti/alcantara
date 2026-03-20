@@ -2700,6 +2700,12 @@ interface ModoItalianoSongDraft {
   earoneSpins: string;
 }
 
+interface ModoItalianoSongBulkImportDraft {
+  artist: string;
+  title: string;
+  coverUrl: string;
+}
+
 function normalizeModoItalianoSongDraft(value: unknown): ModoItalianoSongDraft | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -2735,6 +2741,61 @@ function normalizeModoItalianoSongDraft(value: unknown): ModoItalianoSongDraft |
     earoneRank,
     earoneSpins
   };
+}
+
+function normalizeModoItalianoSongBulkImportDraft(value: unknown): ModoItalianoSongBulkImportDraft | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const artist = typeof record.artist === 'string' ? record.artist.trim() : '';
+  const title = typeof record.title === 'string' ? record.title.trim() : '';
+  const coverUrlRaw = typeof record.coverUrl === 'string' ? record.coverUrl : typeof record.cover_url === 'string' ? record.cover_url : '';
+  const coverUrl = coverUrlRaw.trim();
+
+  if (!artist && !title && !coverUrl) {
+    return null;
+  }
+
+  return {
+    artist,
+    title,
+    coverUrl
+  };
+}
+
+function parseModoItalianoSongBulkImportJson(rawJson: string): ModoItalianoSongBulkImportDraft[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    throw new Error('Invalid JSON. Paste a valid JSON array of songs.');
+  }
+
+  const candidates = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).songs)
+      ? ((parsed as Record<string, unknown>).songs as unknown[])
+      : null;
+
+  if (!candidates) {
+    throw new Error('JSON must be an array or an object with a `songs` array.');
+  }
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const importedSongs = candidates
+    .map((entry) => normalizeModoItalianoSongBulkImportDraft(entry))
+    .filter((entry): entry is ModoItalianoSongBulkImportDraft => entry !== null);
+
+  if (importedSongs.length === 0) {
+    throw new Error('No valid songs found. Each entry should include `artist`, `title`, and `coverUrl` or `cover_url`.');
+  }
+
+  return importedSongs;
 }
 
 function ModoItalianoClockEditorFields({
@@ -3560,6 +3621,9 @@ function ModoItalianoSongSequenceEditor({
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [bulkImportJson, setBulkImportJson] = useState('');
+  const [bulkImportError, setBulkImportError] = useState('');
+  const [bulkImportStatus, setBulkImportStatus] = useState('');
   const isNested = depth > 0;
   const effectiveActiveItemId = getModoItalianoSongSequenceSelectedItemId(sequence, nowMs);
 
@@ -3579,7 +3643,9 @@ function ModoItalianoSongSequenceEditor({
     onChange({
       ...nextSequence,
       activeItemId:
-        nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
+        nextSequence.activeItemId === null
+          ? null
+          : nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
           ? nextSequence.activeItemId
           : (nextSequence.items[0]?.id ?? null)
     });
@@ -3630,6 +3696,18 @@ function ModoItalianoSongSequenceEditor({
     }
   };
 
+  const clearActiveItem = async () => {
+    const nextSequence = {
+      ...sequence,
+      activeItemId: null,
+      startedAt: Date.now()
+    };
+    applySequence(nextSequence);
+    if (onTakeSelection) {
+      await onTakeSelection(nextSequence);
+    }
+  };
+
   const reorderItems = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= sequence.items.length || toIndex >= sequence.items.length) {
       return;
@@ -3643,6 +3721,79 @@ function ModoItalianoSongSequenceEditor({
       ...sequence,
       items: nextItems
     });
+  };
+
+  const importSongsFromJson = (mode: 'append' | 'replace') => {
+    const payload = bulkImportJson.trim();
+    if (!payload) {
+      setBulkImportStatus('');
+      setBulkImportError('Paste a JSON payload first.');
+      return;
+    }
+
+    try {
+      const importedSongs = parseModoItalianoSongBulkImportJson(payload);
+      const importedItems = importedSongs.map((song) => {
+        const nextItem = createModoItalianoSongSequenceItem('preset');
+        if (nextItem.kind !== 'preset') {
+          return {
+            id: `song_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            kind: 'preset' as const,
+            artist: song.artist,
+            title: song.title,
+            coverUrl: song.coverUrl
+          };
+        }
+
+        return {
+          ...nextItem,
+          artist: song.artist,
+          title: song.title,
+          coverUrl: song.coverUrl
+        };
+      });
+
+      if (importedItems.length === 0) {
+        if (mode === 'replace') {
+          applySequence({
+            ...sequence,
+            items: [],
+            activeItemId: null,
+            startedAt: Date.now()
+          });
+          setBulkImportError('');
+          setBulkImportStatus('Sequence cleared (import payload was empty).');
+          return;
+        }
+
+        setBulkImportError('');
+        setBulkImportStatus('No songs found in payload. Nothing appended.');
+        return;
+      }
+
+      const nextItems = mode === 'replace' ? importedItems : [...sequence.items, ...importedItems];
+      const nextActiveItemId =
+        mode === 'replace'
+          ? null
+          : sequence.activeItemId && nextItems.some((item) => item.id === sequence.activeItemId)
+            ? sequence.activeItemId
+            : (nextItems[0]?.id ?? null);
+
+      applySequence({
+        ...sequence,
+        items: nextItems,
+        activeItemId: nextActiveItemId,
+        startedAt: Date.now()
+      });
+
+      setBulkImportError('');
+      setBulkImportStatus(
+        `Imported ${importedItems.length} song${importedItems.length === 1 ? '' : 's'} (${mode === 'replace' ? 'replaced sequence and left off-air' : 'appended'}).`
+      );
+    } catch (error) {
+      setBulkImportStatus('');
+      setBulkImportError(error instanceof Error ? error.message : 'Unable to import songs.');
+    }
   };
 
   return (
@@ -3680,6 +3831,15 @@ function ModoItalianoSongSequenceEditor({
         >
           Autoplay
         </button>
+        <button
+          type='button'
+          onClick={() => {
+            void clearActiveItem();
+          }}
+          className='px-2.5 py-1 rounded text-xs font-medium border bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+        >
+          Take Off Air
+        </button>
         {sequence.mode === 'autoplay' && (
           <>
             <label className='text-xs text-slate-600'>Interval (ms)</label>
@@ -3714,6 +3874,48 @@ function ModoItalianoSongSequenceEditor({
           </>
         )}
       </div>
+
+      {!isNested && (
+        <div className='rounded border border-dashed border-slate-300 bg-white/80 p-3 space-y-2'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>Bulk Songs JSON</span>
+            <span className='text-xs text-slate-500'>Fields: `artist`, `title`, `coverUrl` or `cover_url`</span>
+          </div>
+          <textarea
+            value={bulkImportJson}
+            onChange={(e) => {
+              setBulkImportJson(e.target.value);
+              if (bulkImportError) {
+                setBulkImportError('');
+              }
+              if (bulkImportStatus) {
+                setBulkImportStatus('');
+              }
+            }}
+            rows={5}
+            className='w-full rounded border border-slate-300 px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-green-500'
+            placeholder={`[\n  { "artist": "Artist Name", "title": "Song Title", "coverUrl": "https://..." }\n]`}
+          />
+          <div className='flex flex-wrap gap-2'>
+            <button
+              type='button'
+              onClick={() => importSongsFromJson('append')}
+              className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+            >
+              Import + Append
+            </button>
+            <button
+              type='button'
+              onClick={() => importSongsFromJson('replace')}
+              className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
+            >
+              Import + Replace
+            </button>
+          </div>
+          {bulkImportError && <p className='text-xs text-red-600'>{bulkImportError}</p>}
+          {bulkImportStatus && <p className='text-xs text-green-700'>{bulkImportStatus}</p>}
+        </div>
+      )}
 
       {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
 

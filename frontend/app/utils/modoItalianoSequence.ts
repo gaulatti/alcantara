@@ -185,7 +185,9 @@ function withNormalizedSequenceShape<TItem extends BaseSequenceItem>(
   items: TItem[]
 ): BaseSequence<TItem> {
   const activeItemId =
-    typeof record.activeItemId === 'string' && items.some((item) => item.id === record.activeItemId)
+    record.activeItemId === null
+      ? null
+      : typeof record.activeItemId === 'string' && items.some((item) => item.id === record.activeItemId)
       ? record.activeItemId
       : items[0]?.id ?? null;
 
@@ -260,7 +262,11 @@ function normalizeSongSequenceItem(
 
 function getBaseIndex<TItem extends BaseSequenceItem>(
   sequence: BaseSequence<TItem>
-): number {
+): number | null {
+  if (sequence.activeItemId === null) {
+    return null;
+  }
+
   const activeIndex = sequence.items.findIndex((item) => item.id === sequence.activeItemId);
   return activeIndex >= 0 ? activeIndex : 0;
 }
@@ -274,6 +280,10 @@ function getSelectedItem<TItem extends BaseSequenceItem>(
   }
 
   const baseIndex = getBaseIndex(sequence);
+  if (baseIndex === null) {
+    return null;
+  }
+
   if (sequence.mode === 'manual') {
     return sequence.items[baseIndex] ?? null;
   }
