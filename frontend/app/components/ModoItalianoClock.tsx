@@ -2,11 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BellRing } from 'lucide-react';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
-import {
-  getModoItalianoSongContentMode,
-  normalizeModoItalianoSongSequence,
-  resolveModoItalianoSongLeaf
-} from '../utils/modoItalianoSequence';
+import { getModoItalianoSongContentMode, normalizeModoItalianoSongSequence, resolveModoItalianoSongLeaf } from '../utils/modoItalianoSequence';
 
 export interface ModoItalianoClockCity {
   city: string;
@@ -36,11 +32,11 @@ interface ModoItalianoClockProps {
 }
 
 const DEFAULT_MODOITALIANO_CLOCK_CITIES: ModoItalianoClockCity[] = [
-  { city: 'SANREMO', timezone: 'Europe/Rome' },
-  { city: 'ROME', timezone: 'Europe/Rome' },
-  { city: 'MILAN', timezone: 'Europe/Rome' },
-  { city: 'MADRID', timezone: 'Europe/Madrid' },
-  { city: 'NEW YORK', timezone: 'America/New_York' }
+  { city: 'IT', timezone: 'Europe/Rome' },
+  { city: 'ES', timezone: 'Europe/Madrid' },
+  { city: 'UY', timezone: 'America/Montevideo' },
+  { city: 'CL', timezone: 'America/Santiago' },
+  { city: 'NY', timezone: 'America/New_York' }
 ];
 const SONG_UI_FADE_MS = 320;
 const SONG_BOX_MOTION_MS = 360;
@@ -102,10 +98,7 @@ function normalizeSongPayload(value: unknown): SongPayload | null {
       : typeof record.earoneSongId === 'number' && Number.isFinite(record.earoneSongId)
         ? String(record.earoneSongId)
         : undefined;
-  const earoneRank =
-    typeof record.earoneRank === 'string' && record.earoneRank.trim()
-      ? record.earoneRank.trim()
-      : undefined;
+  const earoneRank = typeof record.earoneRank === 'string' && record.earoneRank.trim() ? record.earoneRank.trim() : undefined;
   const earoneSpins =
     typeof record.earoneSpins === 'string' && record.earoneSpins.trim()
       ? record.earoneSpins.trim()
@@ -265,7 +258,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     normalizedSongSequence?.items.length
   ]);
 
-  const activeSongPayload = resolvedSongContentMode === 'sequence' ? (resolvedSequenceSong ?? directSongPayload) : directSongPayload;
+  const activeSongPayload = resolvedSongContentMode === 'sequence' ? (normalizedSongSequence ? resolvedSequenceSong : directSongPayload) : directSongPayload;
   const normalizedSongArtist = activeSongPayload?.artist?.trim() || '';
   const normalizedSongTitle = activeSongPayload?.title?.trim() || '';
   const normalizedSongCoverUrl = activeSongPayload?.coverUrl?.trim() || '';
@@ -351,7 +344,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         display: 'flex',
         flexDirection: 'column',
         width: 'fit-content'
-    };
+      };
   const listeningStyle: React.CSSProperties = {
     color: '#ffffff',
     fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
@@ -390,8 +383,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     clockBoxMotion === 'in'
       ? `, modoItalianoClockSongBoxIn ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
       : clockBoxMotion === 'out'
-      ? `, modoItalianoClockSongBoxOut ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
-      : '';
+        ? `, modoItalianoClockSongBoxOut ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
+        : '';
   const outerStyle: React.CSSProperties = {
     height: '140px',
     borderRadius: '50px',
@@ -407,8 +400,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     animation: hasSongCardBackground
       ? `modoItalianoClockBgFlow 8s ease-in-out infinite, modoItalianoClockBgPalette 60s ease-in-out infinite${clockBoxMotionAnimation}`
       : clockBoxMotion
-      ? `modoItalianoClockSongBox${clockBoxMotion === 'in' ? 'In' : 'Out'} ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
-      : undefined
+        ? `modoItalianoClockSongBox${clockBoxMotion === 'in' ? 'In' : 'Out'} ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
+        : undefined
   };
 
   const cityLabel = currentCity.city.trim().toUpperCase();
