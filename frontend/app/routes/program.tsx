@@ -270,32 +270,13 @@ function SceneProgram({ programId }: { programId: string }) {
       }
       return fallback;
     };
-    const asTrimmedText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
-    const normalizeModoItalianoSongs = (value: unknown): Array<{ artist: string; title: string; coverUrl: string }> => {
-      if (!Array.isArray(value)) return [];
-      return value
-        .map((song) => {
-          if (!song || typeof song !== 'object' || Array.isArray(song)) return null;
-          const artist = asTrimmedText((song as Record<string, unknown>).artist);
-          const title = asTrimmedText((song as Record<string, unknown>).title);
-          const coverUrl = asTrimmedText((song as Record<string, unknown>).coverUrl);
-          if (!artist && !title && !coverUrl) return null;
-          return { artist, title, coverUrl };
-        })
-        .filter((song): song is { artist: string; title: string; coverUrl: string } => song !== null);
-    };
-    const modoItalianoClockSongs = normalizeModoItalianoSongs(modoItalianoClockProps.songs);
-    const activeModoItalianoSong = modoItalianoClockSongs[0] ?? null;
-    const modoItalianoChyronText = asTrimmedText(modoItalianoChyronProps.text);
     const modoItalianoDisclaimerText = typeof modoItalianoDisclaimerProps.text === 'string' ? modoItalianoDisclaimerProps.text.trim() : '';
     const shouldShowModoItalianoChyronComponent =
       shouldRenderModoItalianoRow && hasModoItalianoChyron && toBoolean(modoItalianoChyronProps.show, true);
-    const showModoItalianoChyron = shouldShowModoItalianoChyronComponent && !!modoItalianoChyronText;
-    const showModoItalianoClockListeningCue = hasModoItalianoClock && !!activeModoItalianoSong;
     const showModoItalianoDisclaimer =
       shouldRenderModoItalianoRow &&
       hasModoItalianoDisclaimer &&
-      !showModoItalianoChyron &&
+      !shouldShowModoItalianoChyronComponent &&
       toBoolean(modoItalianoDisclaimerProps.show, true) &&
       !!modoItalianoDisclaimerText;
 
@@ -405,23 +386,24 @@ function SceneProgram({ programId }: { programId: string }) {
               if (shouldRenderModoItalianoRow) {
                 return null;
               }
-              const standaloneSongs = normalizeModoItalianoSongs(props.songs);
-              const standaloneSong = standaloneSongs[0] ?? null;
               return (
                 <ModoItalianoClock
                   key={componentType}
                   timeOverride={globalTimeOverride}
-                  cities={Array.isArray(props.worldClockCities) ? props.worldClockCities : undefined}
-                  rotationIntervalMs={typeof props.worldClockRotateIntervalMs === 'number' ? props.worldClockRotateIntervalMs : undefined}
                   transitionDurationMs={300}
                   shuffleCities={false}
                   widthPx={220}
                   showWorldClocks={true}
                   showBellIcon={false}
-                  playingSong={!!standaloneSong}
-                  songArtist={standaloneSong?.artist}
-                  songTitle={standaloneSong?.title}
-                  songCoverUrl={standaloneSong?.coverUrl}
+                  songs={Array.isArray(props.songs) ? props.songs : undefined}
+                  songContentMode={typeof props.songContentMode === 'string' ? props.songContentMode : undefined}
+                  songSequence={props.songSequence}
+                  songArtist={typeof props.songArtist === 'string' ? props.songArtist : ''}
+                  songTitle={typeof props.songTitle === 'string' ? props.songTitle : ''}
+                  songCoverUrl={typeof props.songCoverUrl === 'string' ? props.songCoverUrl : ''}
+                  songEaroneSongId={typeof props.songEaroneSongId === 'string' ? props.songEaroneSongId : ''}
+                  songEaroneRank={typeof props.songEaroneRank === 'string' ? props.songEaroneRank : ''}
+                  songEaroneSpins={typeof props.songEaroneSpins === 'string' ? props.songEaroneSpins : ''}
                   language='es'
                 />
               );
@@ -437,6 +419,10 @@ function SceneProgram({ programId }: { programId: string }) {
                   text={typeof props.text === 'string' ? props.text : ''}
                   show={typeof props.show === 'boolean' ? props.show : true}
                   useMarquee={typeof props.useMarquee === 'boolean' ? props.useMarquee : false}
+                  textContentMode={typeof props.textContentMode === 'string' ? props.textContentMode : undefined}
+                  textSequence={props.textSequence}
+                  ctaContentMode={typeof props.ctaContentMode === 'string' ? props.ctaContentMode : undefined}
+                  ctaSequence={props.ctaSequence}
                 />
               );
             case 'modoitaliano-disclaimer':
@@ -495,12 +481,16 @@ function SceneProgram({ programId }: { programId: string }) {
         {shouldRenderModoItalianoRow && (
           <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
             <div className='flex-1 min-w-0'>
-              {showModoItalianoChyron ? (
+              {shouldShowModoItalianoChyronComponent ? (
                 <ModoItalianoChyron
                   cta={typeof modoItalianoChyronProps.cta === 'string' ? modoItalianoChyronProps.cta : ''}
                   text={typeof modoItalianoChyronProps.text === 'string' ? modoItalianoChyronProps.text : ''}
                   show
                   useMarquee={typeof modoItalianoChyronProps.useMarquee === 'boolean' ? modoItalianoChyronProps.useMarquee : false}
+                  textContentMode={typeof modoItalianoChyronProps.textContentMode === 'string' ? modoItalianoChyronProps.textContentMode : undefined}
+                  textSequence={modoItalianoChyronProps.textSequence}
+                  ctaContentMode={typeof modoItalianoChyronProps.ctaContentMode === 'string' ? modoItalianoChyronProps.ctaContentMode : undefined}
+                  ctaSequence={modoItalianoChyronProps.ctaSequence}
                   inline
                 />
               ) : showModoItalianoDisclaimer ? (
@@ -523,17 +513,20 @@ function SceneProgram({ programId }: { programId: string }) {
             <div className='shrink-0'>
               <ModoItalianoClock
                 timeOverride={globalTimeOverride}
-                cities={Array.isArray(modoItalianoClockProps.worldClockCities) ? modoItalianoClockProps.worldClockCities : undefined}
-                rotationIntervalMs={typeof modoItalianoClockProps.worldClockRotateIntervalMs === 'number' ? modoItalianoClockProps.worldClockRotateIntervalMs : undefined}
                 transitionDurationMs={300}
                 shuffleCities={false}
                 widthPx={220}
                 showWorldClocks={true}
                 showBellIcon={false}
-                playingSong={showModoItalianoClockListeningCue}
-                songArtist={activeModoItalianoSong?.artist}
-                songTitle={activeModoItalianoSong?.title}
-                songCoverUrl={activeModoItalianoSong?.coverUrl}
+                songs={Array.isArray(modoItalianoClockProps.songs) ? modoItalianoClockProps.songs : undefined}
+                songContentMode={typeof modoItalianoClockProps.songContentMode === 'string' ? modoItalianoClockProps.songContentMode : undefined}
+                songSequence={modoItalianoClockProps.songSequence}
+                songArtist={typeof modoItalianoClockProps.songArtist === 'string' ? modoItalianoClockProps.songArtist : ''}
+                songTitle={typeof modoItalianoClockProps.songTitle === 'string' ? modoItalianoClockProps.songTitle : ''}
+                songCoverUrl={typeof modoItalianoClockProps.songCoverUrl === 'string' ? modoItalianoClockProps.songCoverUrl : ''}
+                songEaroneSongId={typeof modoItalianoClockProps.songEaroneSongId === 'string' ? modoItalianoClockProps.songEaroneSongId : ''}
+                songEaroneRank={typeof modoItalianoClockProps.songEaroneRank === 'string' ? modoItalianoClockProps.songEaroneRank : ''}
+                songEaroneSpins={typeof modoItalianoClockProps.songEaroneSpins === 'string' ? modoItalianoClockProps.songEaroneSpins : ''}
                 language='es'
                 inline
               />

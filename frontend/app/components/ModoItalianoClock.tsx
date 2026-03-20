@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BellRing } from 'lucide-react';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
+import {
+  getModoItalianoSongContentMode,
+  normalizeModoItalianoSongSequence,
+  resolveModoItalianoSongLeaf
+} from '../utils/modoItalianoSequence';
 
 export interface ModoItalianoClockCity {
   city: string;
@@ -10,7 +15,6 @@ export interface ModoItalianoClockCity {
 
 interface ModoItalianoClockProps {
   timeOverride?: GlobalTimeOverride | null;
-  cities?: ModoItalianoClockCity[];
   rotationIntervalMs?: number;
   transitionDurationMs?: number;
   shuffleCities?: boolean;
@@ -18,10 +22,16 @@ interface ModoItalianoClockProps {
   language?: 'it' | 'en' | 'es';
   showWorldClocks?: boolean;
   showBellIcon?: boolean;
+  songs?: unknown;
+  songContentMode?: 'direct' | 'sequence';
+  songSequence?: unknown;
   playingSong?: boolean;
   songArtist?: string;
   songTitle?: string;
   songCoverUrl?: string;
+  songEaroneSongId?: string;
+  songEaroneRank?: string;
+  songEaroneSpins?: string;
   inline?: boolean;
 }
 
@@ -34,6 +44,15 @@ const DEFAULT_MODOITALIANO_CLOCK_CITIES: ModoItalianoClockCity[] = [
 ];
 const SONG_UI_FADE_MS = 320;
 const SONG_BOX_MOTION_MS = 360;
+
+interface SongPayload {
+  artist: string;
+  title: string;
+  coverUrl: string;
+  earoneSongId?: string;
+  earoneRank?: string;
+  earoneSpins?: string;
+}
 
 function shuffleArray<T>(items: T[]): T[] {
   const next = [...items];
@@ -68,9 +87,48 @@ function formatClockValue(timezone: string, now: Date, timeOverride: GlobalTimeO
   }
 }
 
+function normalizeSongPayload(value: unknown): SongPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const artist = typeof record.artist === 'string' ? record.artist.trim() : '';
+  const title = typeof record.title === 'string' ? record.title.trim() : '';
+  const coverUrl = typeof record.coverUrl === 'string' ? record.coverUrl.trim() : '';
+  const earoneSongId =
+    typeof record.earoneSongId === 'string' && record.earoneSongId.trim()
+      ? record.earoneSongId.trim()
+      : typeof record.earoneSongId === 'number' && Number.isFinite(record.earoneSongId)
+        ? String(record.earoneSongId)
+        : undefined;
+  const earoneRank =
+    typeof record.earoneRank === 'string' && record.earoneRank.trim()
+      ? record.earoneRank.trim()
+      : undefined;
+  const earoneSpins =
+    typeof record.earoneSpins === 'string' && record.earoneSpins.trim()
+      ? record.earoneSpins.trim()
+      : typeof record.earoneSpins === 'number' && Number.isFinite(record.earoneSpins)
+        ? String(record.earoneSpins)
+        : undefined;
+
+  if (!artist && !title && !coverUrl && !earoneSongId && !earoneRank && !earoneSpins) {
+    return null;
+  }
+
+  return {
+    artist,
+    title,
+    coverUrl,
+    earoneSongId,
+    earoneRank,
+    earoneSpins
+  };
+}
+
 export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   timeOverride = null,
-  cities = DEFAULT_MODOITALIANO_CLOCK_CITIES,
   rotationIntervalMs = 5000,
   transitionDurationMs = 300,
   shuffleCities = false,
@@ -78,22 +136,19 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   language = 'it',
   showWorldClocks = true,
   showBellIcon = false,
-  playingSong = false,
+  songs,
+  songContentMode,
+  songSequence,
+  playingSong,
   songArtist = '',
   songTitle = '',
   songCoverUrl = '',
+  songEaroneSongId = '',
+  songEaroneRank = '',
+  songEaroneSpins = '',
   inline = false
 }) => {
-  const resolvedCities = useMemo(() => {
-    const cleaned = (Array.isArray(cities) ? cities : [])
-      .map((city) => ({
-        city: typeof city?.city === 'string' ? city.city.trim().toUpperCase() : '',
-        timezone: typeof city?.timezone === 'string' ? city.timezone.trim() : ''
-      }))
-      .filter((city) => city.city && city.timezone);
-
-    return cleaned.length > 0 ? cleaned : DEFAULT_MODOITALIANO_CLOCK_CITIES;
-  }, [cities]);
+  const resolvedCities = DEFAULT_MODOITALIANO_CLOCK_CITIES;
   const [now, setNow] = useState(() => new Date());
   const [cityPool, setCityPool] = useState<ModoItalianoClockCity[]>(() => (shuffleCities ? shuffleArray(resolvedCities) : [...resolvedCities]));
   const [cityIndex, setCityIndex] = useState(0);
@@ -146,10 +201,76 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
 
   const currentCity = cityPool[cityIndex] ?? resolvedCities[0];
   const timeText = formatClockValue(currentCity.timezone, now, timeOverride);
-  const normalizedSongArtist = songArtist.trim();
-  const normalizedSongTitle = songTitle.trim();
-  const normalizedSongCoverUrl = songCoverUrl.trim();
-  const hasSongPayload = playingSong && (!!normalizedSongArtist || !!normalizedSongTitle);
+  const normalizedSongSequence = useMemo(() => normalizeModoItalianoSongSequence(songSequence), [songSequence]);
+  const resolvedSongContentMode = getModoItalianoSongContentMode(songContentMode, normalizedSongSequence);
+  const [sequenceNowMs, setSequenceNowMs] = useState(() => Date.now());
+  const directSongPayload = useMemo(() => {
+    const directFromFields = normalizeSongPayload({
+      artist: songArtist,
+      title: songTitle,
+      coverUrl: songCoverUrl,
+      earoneSongId: songEaroneSongId,
+      earoneRank: songEaroneRank,
+      earoneSpins: songEaroneSpins
+    });
+    if (directFromFields) {
+      return directFromFields;
+    }
+
+    if (!Array.isArray(songs)) {
+      return null;
+    }
+
+    for (const song of songs) {
+      const normalized = normalizeSongPayload(song);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }, [songArtist, songTitle, songCoverUrl, songEaroneSongId, songEaroneRank, songEaroneSpins, songs]);
+  const resolvedSequenceSong = useMemo(
+    () =>
+      resolveModoItalianoSongLeaf(
+        {
+          contentMode: resolvedSongContentMode,
+          sequence: songSequence
+        },
+        sequenceNowMs
+      ),
+    [resolvedSongContentMode, sequenceNowMs, songSequence]
+  );
+
+  useEffect(() => {
+    setSequenceNowMs(Date.now());
+  }, [resolvedSongContentMode, songSequence]);
+
+  useEffect(() => {
+    if (!normalizedSongSequence || resolvedSongContentMode !== 'sequence' || normalizedSongSequence.mode !== 'autoplay') {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setSequenceNowMs(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(timer);
+  }, [
+    resolvedSongContentMode,
+    normalizedSongSequence?.mode,
+    normalizedSongSequence?.startedAt,
+    normalizedSongSequence?.intervalMs,
+    normalizedSongSequence?.loop,
+    normalizedSongSequence?.items.length
+  ]);
+
+  const activeSongPayload = resolvedSongContentMode === 'sequence' ? (resolvedSequenceSong ?? directSongPayload) : directSongPayload;
+  const normalizedSongArtist = activeSongPayload?.artist?.trim() || '';
+  const normalizedSongTitle = activeSongPayload?.title?.trim() || '';
+  const normalizedSongCoverUrl = activeSongPayload?.coverUrl?.trim() || '';
+  const songGateEnabled = typeof playingSong === 'boolean' ? playingSong : true;
+  const hasSongPayload = songGateEnabled && (!!normalizedSongArtist || !!normalizedSongTitle);
   const [songUiVisible, setSongUiVisible] = useState(hasSongPayload);
   const [songUiActive, setSongUiActive] = useState(hasSongPayload);
   const [displaySongTitle, setDisplaySongTitle] = useState(normalizedSongTitle);
@@ -264,6 +385,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     boxShadow: '0 10px 24px rgba(0, 0, 0, 0.55)',
     flexShrink: 0
   };
+  const hasSongCardBackground = songUiVisible;
   const clockBoxMotionAnimation =
     clockBoxMotion === 'in'
       ? `, modoItalianoClockSongBoxIn ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
@@ -273,16 +395,20 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   const outerStyle: React.CSSProperties = {
     height: '140px',
     borderRadius: '50px',
-    background: 'linear-gradient(125deg, #6B7E39 0%, #3F4D20 48%, #6B7E39 100%)',
-    backgroundSize: '200% 200%',
+    background: hasSongCardBackground ? 'linear-gradient(125deg, #6B7E39 0%, #3F4D20 48%, #6B7E39 100%)' : 'transparent',
+    backgroundSize: hasSongCardBackground ? '200% 200%' : undefined,
     display: 'flex',
     alignItems: 'center',
     padding: '0 34px',
-    boxShadow: '0 24px 44px rgba(0, 0, 0, 0.72)',
-    filter: 'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.52))',
+    boxShadow: hasSongCardBackground ? '0 24px 44px rgba(0, 0, 0, 0.72)' : 'none',
+    filter: hasSongCardBackground ? 'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.52))' : 'none',
     maxWidth: '100%',
     transformOrigin: 'right center',
-    animation: `modoItalianoClockBgFlow 8s ease-in-out infinite, modoItalianoClockBgPalette 60s ease-in-out infinite${clockBoxMotionAnimation}`
+    animation: hasSongCardBackground
+      ? `modoItalianoClockBgFlow 8s ease-in-out infinite, modoItalianoClockBgPalette 60s ease-in-out infinite${clockBoxMotionAnimation}`
+      : clockBoxMotion
+      ? `modoItalianoClockSongBox${clockBoxMotion === 'in' ? 'In' : 'Out'} ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
+      : undefined
   };
 
   const cityLabel = currentCity.city.trim().toUpperCase();
