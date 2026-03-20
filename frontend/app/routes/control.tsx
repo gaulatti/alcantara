@@ -2382,6 +2382,13 @@ function ToniChyronSequenceEditor({
     }
   };
 
+  const applySequenceAndTakeSelection = async (nextSequence: ModoItalianoTextSequence) => {
+    applySequence(nextSequence);
+    if (onTakeSelection) {
+      await onTakeSelection(nextSequence);
+    }
+  };
+
   const reorderItems = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= sequence.items.length || toIndex >= sequence.items.length) {
       return;
@@ -2403,14 +2410,14 @@ function ToniChyronSequenceEditor({
         <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
         <button
           type='button'
-          onClick={() =>
-            applySequence({
+          onClick={() => {
+            void applySequenceAndTakeSelection({
               ...sequence,
               mode: 'manual',
               activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
               startedAt: Date.now()
-            })
-          }
+            });
+          }}
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
             sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
           }`}
@@ -2419,13 +2426,13 @@ function ToniChyronSequenceEditor({
         </button>
         <button
           type='button'
-          onClick={() =>
-            applySequence({
+          onClick={() => {
+            void applySequenceAndTakeSelection({
               ...sequence,
               mode: 'autoplay',
               startedAt: Date.now()
-            })
-          }
+            });
+          }}
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
             sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
           }`}
@@ -2440,25 +2447,25 @@ function ToniChyronSequenceEditor({
               min={500}
               step={500}
               value={sequence.intervalMs ?? 4000}
-              onChange={(e) =>
-                applySequence({
+              onChange={(e) => {
+                void applySequenceAndTakeSelection({
                   ...sequence,
                   intervalMs: Math.max(500, Number(e.target.value) || 4000),
                   startedAt: Date.now()
-                })
-              }
+                });
+              }}
               className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
             />
             <label className='flex items-center gap-1 text-xs text-slate-600'>
               <input
                 type='checkbox'
                 checked={sequence.loop !== false}
-                onChange={(e) =>
-                  applySequence({
+                onChange={(e) => {
+                  void applySequenceAndTakeSelection({
                     ...sequence,
                     loop: e.target.checked
-                  })
-                }
+                  });
+                }}
                 className='h-3.5 w-3.5'
               />
               Loop

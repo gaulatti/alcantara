@@ -75,8 +75,8 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     {
       text,
       useMarquee,
-      contentMode: textContentMode,
-      sequence: textSequence
+      contentMode: resolvedTextContentMode,
+      sequence: normalizedTextSequence
     },
     nowMs,
     { includeMarquee: true }
@@ -84,8 +84,8 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
   const resolvedCta = resolveModoItalianoTextContent(
     {
       text: cta,
-      contentMode: ctaContentMode,
-      sequence: ctaSequence
+      contentMode: resolvedCtaContentMode,
+      sequence: normalizedCtaSequence
     },
     nowMs
   );
