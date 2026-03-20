@@ -17,6 +17,8 @@ interface ModoItalianoChyronProps {
   inline?: boolean;
 }
 
+const CHYRON_SWAP_MS = 220;
+
 export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
   cta = '',
   text = '',
@@ -91,8 +93,66 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
   );
   const resolvedMainText = resolvedText.text.trim();
   const resolvedUseMarquee = Boolean(resolvedText.useMarquee);
+  const resolvedCtaText = resolvedCta.text.trim();
 
-  if (!show || !resolvedMainText) {
+  const [displayMainText, setDisplayMainText] = useState(resolvedMainText);
+  const [displayUseMarquee, setDisplayUseMarquee] = useState(resolvedUseMarquee);
+  const [mainTextActive, setMainTextActive] = useState(true);
+  const [displayCtaText, setDisplayCtaText] = useState(resolvedCtaText);
+  const [ctaActive, setCtaActive] = useState(true);
+
+  useEffect(() => {
+    if (resolvedMainText === displayMainText && resolvedUseMarquee === displayUseMarquee) {
+      return;
+    }
+
+    let swapTimer: number | undefined;
+    let frameHandle: number | undefined;
+    setMainTextActive(false);
+    swapTimer = window.setTimeout(() => {
+      setDisplayMainText(resolvedMainText);
+      setDisplayUseMarquee(resolvedUseMarquee);
+      frameHandle = window.requestAnimationFrame(() => {
+        setMainTextActive(true);
+      });
+    }, CHYRON_SWAP_MS);
+
+    return () => {
+      if (swapTimer !== undefined) {
+        window.clearTimeout(swapTimer);
+      }
+      if (frameHandle !== undefined) {
+        window.cancelAnimationFrame(frameHandle);
+      }
+    };
+  }, [resolvedMainText, resolvedUseMarquee, displayMainText, displayUseMarquee]);
+
+  useEffect(() => {
+    if (resolvedCtaText === displayCtaText) {
+      return;
+    }
+
+    let swapTimer: number | undefined;
+    let frameHandle: number | undefined;
+    setCtaActive(false);
+    swapTimer = window.setTimeout(() => {
+      setDisplayCtaText(resolvedCtaText);
+      frameHandle = window.requestAnimationFrame(() => {
+        setCtaActive(true);
+      });
+    }, CHYRON_SWAP_MS);
+
+    return () => {
+      if (swapTimer !== undefined) {
+        window.clearTimeout(swapTimer);
+      }
+      if (frameHandle !== undefined) {
+        window.cancelAnimationFrame(frameHandle);
+      }
+    };
+  }, [resolvedCtaText, displayCtaText]);
+
+  if (!show || (!resolvedMainText && !displayMainText)) {
     return null;
   }
 
@@ -124,7 +184,6 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
       padding: '0 34px'
     };
 
-  const ctaText = resolvedCta.text.trim();
   const ctaStyle: React.CSSProperties = {
     width: '100%',
     marginBottom: '18px',
@@ -137,6 +196,9 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     textAlign: 'left',
     textShadow: '0 4px 18px rgba(0, 0, 0, 0.96), 0 0 28px rgba(0, 0, 0, 0.72), 0 0 10px rgba(255, 255, 255, 0.2)',
     WebkitTextStroke: '0.7px rgba(0, 0, 0, 0.5)',
+    opacity: ctaActive ? 1 : 0,
+    transform: ctaActive ? 'translateY(0px)' : 'translateY(6px)',
+    transition: `opacity ${CHYRON_SWAP_MS}ms ease, transform ${CHYRON_SWAP_MS}ms ease`,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis'
@@ -157,11 +219,11 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     justifyContent: 'center'
   };
 
-  if (resolvedUseMarquee) {
-    const marqueeText = resolvedMainText.toUpperCase();
+  if (displayUseMarquee) {
+    const marqueeText = displayMainText.toUpperCase();
     return (
       <div style={wrapperStyle}>
-        {ctaText ? <div style={ctaStyle}>{ctaText}</div> : null}
+        {displayCtaText ? <div style={ctaStyle}>{displayCtaText}</div> : null}
         <div style={boxStyle}>
           <style>{`
           @keyframes modoItalianoChyronBgFlow {
@@ -174,7 +236,15 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
             to { transform: translateX(-50%); }
           }
         `}</style>
-        <div style={{ ...contentStyle, overflow: 'hidden' }}>
+        <div
+          style={{
+            ...contentStyle,
+            overflow: 'hidden',
+            opacity: mainTextActive ? 1 : 0,
+            transform: mainTextActive ? 'translateY(0px)' : 'translateY(10px)',
+            transition: `opacity ${CHYRON_SWAP_MS}ms ease, transform ${CHYRON_SWAP_MS}ms ease`
+          }}
+        >
           <div
             style={{
               display: 'inline-flex',
@@ -195,7 +265,7 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
 
   return (
     <div style={wrapperStyle}>
-      {ctaText ? <div style={ctaStyle}>{ctaText}</div> : null}
+      {displayCtaText ? <div style={ctaStyle}>{displayCtaText}</div> : null}
       <div style={boxStyle}>
         <style>{`
           @keyframes modoItalianoChyronBgFlow {
@@ -204,7 +274,17 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
             100% { background-position: 0% 50%; }
           }
         `}</style>
-        <div style={{ ...contentStyle, textOverflow: 'ellipsis' }}>{resolvedMainText.toUpperCase()}</div>
+        <div
+          style={{
+            ...contentStyle,
+            textOverflow: 'ellipsis',
+            opacity: mainTextActive ? 1 : 0,
+            transform: mainTextActive ? 'translateY(0px)' : 'translateY(10px)',
+            transition: `opacity ${CHYRON_SWAP_MS}ms ease, transform ${CHYRON_SWAP_MS}ms ease`
+          }}
+        >
+          {displayMainText.toUpperCase()}
+        </div>
       </div>
     </div>
   );
