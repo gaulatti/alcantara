@@ -106,25 +106,9 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
       return;
     }
 
-    let swapTimer: number | undefined;
-    let frameHandle: number | undefined;
-    setMainTextActive(false);
-    swapTimer = window.setTimeout(() => {
-      setDisplayMainText(resolvedMainText);
-      setDisplayUseMarquee(resolvedUseMarquee);
-      frameHandle = window.requestAnimationFrame(() => {
-        setMainTextActive(true);
-      });
-    }, CHYRON_SWAP_MS);
-
-    return () => {
-      if (swapTimer !== undefined) {
-        window.clearTimeout(swapTimer);
-      }
-      if (frameHandle !== undefined) {
-        window.cancelAnimationFrame(frameHandle);
-      }
-    };
+    setDisplayMainText(resolvedMainText);
+    setDisplayUseMarquee(resolvedUseMarquee);
+    setMainTextActive(true);
   }, [resolvedMainText, resolvedUseMarquee, displayMainText, displayUseMarquee]);
 
   useEffect(() => {
@@ -132,24 +116,8 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
       return;
     }
 
-    let swapTimer: number | undefined;
-    let frameHandle: number | undefined;
-    setCtaActive(false);
-    swapTimer = window.setTimeout(() => {
-      setDisplayCtaText(resolvedCtaText);
-      frameHandle = window.requestAnimationFrame(() => {
-        setCtaActive(true);
-      });
-    }, CHYRON_SWAP_MS);
-
-    return () => {
-      if (swapTimer !== undefined) {
-        window.clearTimeout(swapTimer);
-      }
-      if (frameHandle !== undefined) {
-        window.cancelAnimationFrame(frameHandle);
-      }
-    };
+    setDisplayCtaText(resolvedCtaText);
+    setCtaActive(true);
   }, [resolvedCtaText, displayCtaText]);
 
   if (!show || (!resolvedMainText && !displayMainText)) {
