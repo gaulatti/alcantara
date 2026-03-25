@@ -61,6 +61,7 @@ jobs:
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
             -e COGNITO_USER_POOL_ID="${{ vars.COGNITO_USER_POOL_ID }}" \
             -e COGNITO_CLIENT_ID="${{ vars.COGNITO_CLIENT_ID }}" \
+            -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=awslogs \
