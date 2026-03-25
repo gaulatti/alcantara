@@ -1,18 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  getModoItalianoTextContentMode,
   normalizeModoItalianoTextSequence,
-  resolveModoItalianoTextContent
+  resolveModoItalianoTextLeaf
 } from '../utils/modoItalianoSequence';
 
 interface ModoItalianoChyronProps {
-  cta?: string;
-  text?: string;
   show?: boolean;
-  useMarquee?: boolean;
-  textContentMode?: 'text' | 'sequence';
   textSequence?: unknown;
-  ctaContentMode?: 'text' | 'sequence';
   ctaSequence?: unknown;
   inline?: boolean;
 }
@@ -20,13 +14,8 @@ interface ModoItalianoChyronProps {
 const CHYRON_SWAP_MS = 220;
 
 export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
-  cta = '',
-  text = '',
   show = true,
-  useMarquee = false,
-  textContentMode,
   textSequence,
-  ctaContentMode,
   ctaSequence,
   inline = false
 }) => {
@@ -39,11 +28,7 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     () => normalizeModoItalianoTextSequence(ctaSequence),
     [ctaSequence]
   );
-  const resolvedTextContentMode = getModoItalianoTextContentMode(textContentMode, normalizedTextSequence);
-  const resolvedCtaContentMode = getModoItalianoTextContentMode(ctaContentMode, normalizedCtaSequence);
-  const shouldTick =
-    (resolvedTextContentMode === 'sequence' && normalizedTextSequence?.mode === 'autoplay') ||
-    (resolvedCtaContentMode === 'sequence' && normalizedCtaSequence?.mode === 'autoplay');
+  const shouldTick = normalizedTextSequence?.mode === 'autoplay' || normalizedCtaSequence?.mode === 'autoplay';
 
   useEffect(() => {
     if (!shouldTick) {
@@ -71,44 +56,83 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
 
   useEffect(() => {
     setNowMs(Date.now());
-  }, [textSequence, ctaSequence, textContentMode, ctaContentMode]);
+  }, [textSequence, ctaSequence]);
 
-  const resolvedText = resolveModoItalianoTextContent(
+  const resolvedTextLeaf = resolveModoItalianoTextLeaf(
     {
-      text,
-      useMarquee,
-      contentMode: resolvedTextContentMode,
+      contentMode: 'sequence',
       sequence: normalizedTextSequence
     },
     nowMs,
     { includeMarquee: true }
   );
-  const resolvedCta = resolveModoItalianoTextContent(
+  const resolvedCtaLeaf = resolveModoItalianoTextLeaf(
     {
-      text: cta,
-      contentMode: resolvedCtaContentMode,
+      contentMode: 'sequence',
       sequence: normalizedCtaSequence
     },
     nowMs
   );
-  const resolvedMainText = resolvedText.text.trim();
-  const resolvedUseMarquee = Boolean(resolvedText.useMarquee);
-  const resolvedCtaText = resolvedCta.text.trim();
+  const resolvedMainText = resolvedTextLeaf?.text.trim() ?? '';
+  const resolvedUseMarquee = Boolean(resolvedTextLeaf?.useMarquee);
+  const resolvedCtaText = resolvedCtaLeaf?.text.trim() ?? '';
 
   const [displayMainText, setDisplayMainText] = useState(resolvedMainText);
   const [displayUseMarquee, setDisplayUseMarquee] = useState(resolvedUseMarquee);
   const [mainTextActive, setMainTextActive] = useState(true);
   const [displayCtaText, setDisplayCtaText] = useState(resolvedCtaText);
   const [ctaActive, setCtaActive] = useState(true);
+  const shouldShowChyron = Boolean(show && resolvedMainText);
+  const [isMounted, setIsMounted] = useState(shouldShowChyron);
+  const [isVisible, setIsVisible] = useState(shouldShowChyron);
+  const mainTextSwapTimerRef = useRef<number | null>(null);
+  const ctaSwapTimerRef = useRef<number | null>(null);
+  const visibilityTimerRef = useRef<number | null>(null);
+  const visibilityFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (visibilityTimerRef.current !== null) {
+      window.clearTimeout(visibilityTimerRef.current);
+      visibilityTimerRef.current = null;
+    }
+    if (visibilityFrameRef.current !== null) {
+      window.cancelAnimationFrame(visibilityFrameRef.current);
+      visibilityFrameRef.current = null;
+    }
+
+    if (shouldShowChyron) {
+      setIsMounted(true);
+      visibilityFrameRef.current = window.requestAnimationFrame(() => {
+        setIsVisible(true);
+        visibilityFrameRef.current = null;
+      });
+      return;
+    }
+
+    setIsVisible(false);
+    visibilityTimerRef.current = window.setTimeout(() => {
+      setIsMounted(false);
+      visibilityTimerRef.current = null;
+    }, CHYRON_SWAP_MS);
+  }, [shouldShowChyron]);
 
   useEffect(() => {
     if (resolvedMainText === displayMainText && resolvedUseMarquee === displayUseMarquee) {
       return;
     }
 
-    setDisplayMainText(resolvedMainText);
-    setDisplayUseMarquee(resolvedUseMarquee);
-    setMainTextActive(true);
+    if (mainTextSwapTimerRef.current !== null) {
+      window.clearTimeout(mainTextSwapTimerRef.current);
+      mainTextSwapTimerRef.current = null;
+    }
+
+    setMainTextActive(false);
+    mainTextSwapTimerRef.current = window.setTimeout(() => {
+      setDisplayMainText(resolvedMainText);
+      setDisplayUseMarquee(resolvedUseMarquee);
+      setMainTextActive(true);
+      mainTextSwapTimerRef.current = null;
+    }, CHYRON_SWAP_MS);
   }, [resolvedMainText, resolvedUseMarquee, displayMainText, displayUseMarquee]);
 
   useEffect(() => {
@@ -116,24 +140,60 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
       return;
     }
 
-    setDisplayCtaText(resolvedCtaText);
-    setCtaActive(true);
+    if (ctaSwapTimerRef.current !== null) {
+      window.clearTimeout(ctaSwapTimerRef.current);
+      ctaSwapTimerRef.current = null;
+    }
+
+    setCtaActive(false);
+    ctaSwapTimerRef.current = window.setTimeout(() => {
+      setDisplayCtaText(resolvedCtaText);
+      setCtaActive(true);
+      ctaSwapTimerRef.current = null;
+    }, CHYRON_SWAP_MS);
   }, [resolvedCtaText, displayCtaText]);
 
-  if (!show || (!resolvedMainText && !displayMainText)) {
+  useEffect(() => {
+    return () => {
+      if (mainTextSwapTimerRef.current !== null) {
+        window.clearTimeout(mainTextSwapTimerRef.current);
+        mainTextSwapTimerRef.current = null;
+      }
+      if (ctaSwapTimerRef.current !== null) {
+        window.clearTimeout(ctaSwapTimerRef.current);
+        ctaSwapTimerRef.current = null;
+      }
+      if (visibilityTimerRef.current !== null) {
+        window.clearTimeout(visibilityTimerRef.current);
+        visibilityTimerRef.current = null;
+      }
+      if (visibilityFrameRef.current !== null) {
+        window.cancelAnimationFrame(visibilityFrameRef.current);
+        visibilityFrameRef.current = null;
+      }
+    };
+  }, []);
+
+  if (!isMounted) {
     return null;
   }
 
   const wrapperStyle: React.CSSProperties = inline
     ? {
-        width: '100%'
+        width: '100%',
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0px)' : 'translateY(8px)',
+        transition: `opacity ${CHYRON_SWAP_MS}ms ease, transform ${CHYRON_SWAP_MS}ms ease`
       }
     : {
         position: 'absolute',
         left: '110px',
         right: '110px',
         bottom: '110px',
-        zIndex: 950
+        zIndex: 950,
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0px)' : 'translateY(8px)',
+        transition: `opacity ${CHYRON_SWAP_MS}ms ease, transform ${CHYRON_SWAP_MS}ms ease`
       };
 
   const boxStyle: React.CSSProperties =

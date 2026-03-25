@@ -1,4 +1,7 @@
+import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import type { Route } from './+types/layouts';
 import { apiUrl } from '../utils/apiBaseUrl';
 
@@ -20,6 +23,7 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function LayoutsAdmin() {
+  const navigate = useNavigate();
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,6 +56,7 @@ export default function LayoutsAdmin() {
         await Promise.all([fetchLayouts(), fetchComponentTypes()]);
       } catch (err) {
         console.error(err);
+        showAlert('Failed to load layouts. Please refresh and try again.', 'error');
       } finally {
         setIsLoading(false);
       }
@@ -126,9 +131,11 @@ export default function LayoutsAdmin() {
 
       await fetchLayouts();
       closeModal();
+      showAlert(editingLayout ? 'Layout updated.' : 'Layout created.', 'success');
     } catch (err) {
       console.error('Failed to save layout:', err);
       setErrors((prev) => ({ ...prev, request: 'Failed to save layout. Please try again.' }));
+      showAlert('Failed to save layout.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -145,174 +152,184 @@ export default function LayoutsAdmin() {
         throw new Error(`HTTP error ${res.status}`);
       }
       await fetchLayouts();
+      showAlert('Layout deleted.', 'success');
     } catch (err) {
       console.error('Failed to delete layout:', err);
-      alert('Cannot delete layout - it may be in use by scenes');
+      showAlert('Cannot delete layout - it may be in use by scenes.', 'error');
     }
   };
 
   return (
-    <div className='min-h-screen bg-gray-100 p-8'>
-      <div className='max-w-6xl mx-auto'>
-        <div className='flex justify-between items-center mb-8'>
-          <div>
-            <h1 className='text-4xl font-bold'>Layouts</h1>
-            <p className='text-gray-600 mt-2'>Create and manage reusable scene layouts.</p>
-          </div>
-          <div className='flex items-center gap-3'>
-            <a href='/control' className='px-4 py-2 rounded border border-gray-300 bg-white hover:bg-gray-50 text-sm font-semibold'>
+    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+      <AlertContainer />
+      <div className='mx-auto max-w-6xl space-y-6'>
+        <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+          <SectionHeader title='Layouts' description='Create and manage reusable scene layouts.' />
+          <div className='flex flex-wrap items-center gap-3'>
+            <Button variant='secondary' onClick={() => navigate('/control')}>
               Back to Control
-            </a>
-            <button onClick={openCreateModal} className='bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm font-semibold'>
-              + Create Layout
-            </button>
+            </Button>
+            <Button onClick={openCreateModal}>
+              <Plus size={16} />
+              Create Layout
+            </Button>
           </div>
         </div>
 
-        <div className='bg-white rounded-lg shadow-lg p-6'>
+        <Card className='space-y-4'>
           {isLoading ? (
-            <div className='text-gray-500 text-center py-8'>Loading layouts...</div>
+            <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
+              <LoadingSpinner />
+              <p>Loading layouts...</p>
+            </div>
           ) : layouts.length === 0 ? (
-            <div className='text-gray-500 text-center py-8'>No layouts yet. Create one to get started.</div>
+            <Empty
+              title='No layouts yet'
+              description='Create a reusable layout to speed up scene creation.'
+              action={
+                <Button onClick={openCreateModal}>
+                  <Plus size={16} />
+                  Create your first layout
+                </Button>
+              }
+            />
           ) : (
-            <div className='space-y-2'>
+            <div className='space-y-3'>
               {layouts.map((layout) => {
                 const components = layout.componentType.split(',').filter(Boolean);
                 return (
-                  <div key={layout.id} className='p-4 border rounded'>
-                    <div className='flex justify-between items-start'>
+                  <article
+                    key={layout.id}
+                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 backdrop-blur-sm transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/60'
+                  >
+                    <div className='flex justify-between gap-4'>
                       <div className='flex-1'>
-                        <div className='font-bold text-lg'>{layout.name}</div>
-                        <div className='text-sm text-gray-600 mt-1'>Components:</div>
-                        <div className='flex flex-wrap gap-1 mt-1'>
+                        <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{layout.name}</h3>
+                        <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Components</p>
+                        <div className='mt-2 flex flex-wrap gap-2'>
                           {components.map((component) => {
                             const info = componentTypes.find((ct) => ct.type === component);
                             return (
-                              <span key={component} className='inline-block bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded' title={info?.description}>
+                              <span
+                                key={component}
+                                className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2.5 py-1 text-xs font-medium text-sea dark:border-accent-blue/40 dark:bg-accent-blue/15 dark:text-accent-blue'
+                                title={info?.description}
+                              >
                                 {info?.name || component}
                               </span>
                             );
                           })}
                         </div>
                       </div>
-                      <div className='flex gap-2'>
-                        <button
+                      <div className='flex items-start gap-2'>
+                        <IconButton
                           onClick={() => openEditModal(layout)}
-                          className='text-purple-600 hover:text-purple-800 px-2 py-1 rounded hover:bg-purple-50'
-                          title='Edit layout'
+                          className='text-sea dark:text-accent-blue'
+                          title={`Edit ${layout.name}`}
+                          aria-label={`Edit ${layout.name}`}
                         >
-                          ✏️
-                        </button>
-                        <button
+                          <Pencil size={16} />
+                        </IconButton>
+                        <IconButton
                           onClick={() => deleteLayout(layout.id)}
-                          className='text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50'
-                          title='Delete layout'
+                          className='text-terracotta'
+                          title={`Delete ${layout.name}`}
+                          aria-label={`Delete ${layout.name}`}
                         >
-                          🗑️
-                        </button>
+                          <Trash2 size={16} />
+                        </IconButton>
                       </div>
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
           )}
-        </div>
+        </Card>
 
-        {showModal && (
-          <div
-            className='fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50'
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                closeModal();
-              }
-            }}
-          >
-            <div className='bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto' onClick={(e) => e.stopPropagation()}>
-              <h2 className='text-2xl font-bold mb-4'>{editingLayout ? 'Edit Layout' : 'Create New Layout'}</h2>
+        <Modal isOpen={showModal} onClose={closeModal} title={editingLayout ? 'Edit Layout' : 'Create Layout'} className='max-w-3xl'>
+          <div className='space-y-6'>
+            <div>
+              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Layout Name</label>
+              <input
+                type='text'
+                value={layoutName}
+                onChange={(e) => {
+                  setLayoutName(e.target.value);
+                  if (errors.name) {
+                    setErrors((prev) => ({ ...prev, name: '' }));
+                  }
+                }}
+                placeholder='Enter layout name'
+                className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors dark:bg-dark-sand ${
+                  errors.name
+                    ? 'border-terracotta focus:ring-2 focus:ring-terracotta'
+                    : 'border-sand/40 focus:border-sea focus:ring-2 focus:ring-sea dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                }`}
+                autoFocus
+              />
+              {errors.name ? <p className='mt-1 text-sm text-terracotta'>{errors.name}</p> : null}
+            </div>
 
-              <div className='mb-6'>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>Layout Name</label>
-                <input
-                  type='text'
-                  value={layoutName}
-                  onChange={(e) => {
-                    setLayoutName(e.target.value);
-                    if (errors.name) {
-                      setErrors((prev) => ({ ...prev, name: '' }));
-                    }
-                  }}
-                  placeholder='Enter layout name'
-                  className={`w-full px-4 py-2 border rounded focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${
-                    errors.name ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : ''
-                  }`}
-                  autoFocus
-                />
-                {errors.name && <p className='text-red-600 text-sm mt-1'>{errors.name}</p>}
-              </div>
-
-              <div className='mb-6'>
-                <label className='block text-sm font-medium text-gray-700 mb-3'>Select Components</label>
-                <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${errors.components ? 'border-2 border-red-500 rounded p-2' : ''}`}>
-                  {componentTypes.map((ct) => (
-                    <div
-                      key={ct.type}
-                      className={`border rounded p-3 cursor-pointer transition-all ${
-                        selectedComponents.includes(ct.type) ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-200' : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => {
-                        toggleComponent(ct.type);
-                        if (errors.components) {
-                          setErrors((prev) => ({ ...prev, components: '' }));
-                        }
-                      }}
-                    >
-                      <div className='flex items-start gap-3'>
-                        <input
-                          type='checkbox'
-                          checked={selectedComponents.includes(ct.type)}
-                          onChange={() => {
-                            toggleComponent(ct.type);
-                            if (errors.components) {
-                              setErrors((prev) => ({ ...prev, components: '' }));
-                            }
-                          }}
-                          className='mt-1 h-4 w-4 text-purple-600 rounded focus:ring-purple-500'
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <div className='flex-1'>
-                          <div className='font-semibold text-gray-900'>{ct.name}</div>
-                          <div className='text-xs text-gray-500 mt-1'>{ct.description}</div>
-                        </div>
+            <div>
+              <label className='mb-3 block text-sm font-medium text-text-primary dark:text-text-primary'>Select Components</label>
+              <div className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${errors.components ? 'rounded-2xl border-2 border-terracotta p-2' : ''}`}>
+                {componentTypes.map((ct) => (
+                  <button
+                    key={ct.type}
+                    type='button'
+                    className={`w-full rounded-2xl border p-3 text-left transition-colors ${
+                      selectedComponents.includes(ct.type)
+                        ? 'border-sea bg-sea/10 dark:border-accent-blue dark:bg-accent-blue/10'
+                        : 'border-sand/30 bg-white hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:hover:bg-sand/10'
+                    }`}
+                    onClick={() => {
+                      toggleComponent(ct.type);
+                      if (errors.components) {
+                        setErrors((prev) => ({ ...prev, components: '' }));
+                      }
+                    }}
+                  >
+                    <div className='flex items-start gap-3'>
+                      <input
+                        type='checkbox'
+                        checked={selectedComponents.includes(ct.type)}
+                        onChange={() => {
+                          toggleComponent(ct.type);
+                          if (errors.components) {
+                            setErrors((prev) => ({ ...prev, components: '' }));
+                          }
+                        }}
+                        className='mt-0.5 h-4 w-4 rounded border-sand/30 accent-sea'
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className='min-w-0 flex-1'>
+                        <p className='font-semibold text-text-primary dark:text-text-primary'>{ct.name}</p>
+                        <p className='mt-1 text-xs text-text-secondary dark:text-text-secondary'>{ct.description}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-                {errors.components && <p className='text-red-600 text-sm mt-2'>{errors.components}</p>}
-                {!errors.components && selectedComponents.length > 0 && (
-                  <div className='mt-3 text-sm text-purple-600'>
-                    Selected: {selectedComponents.length} component{selectedComponents.length !== 1 ? 's' : ''}
-                  </div>
-                )}
-                {errors.request && <p className='text-red-600 text-sm mt-2'>{errors.request}</p>}
+                  </button>
+                ))}
               </div>
+              {errors.components ? <p className='mt-2 text-sm text-terracotta'>{errors.components}</p> : null}
+              {errors.components ? null : selectedComponents.length > 0 ? (
+                <p className='mt-2 text-sm text-sea dark:text-accent-blue'>
+                  Selected: {selectedComponents.length} component{selectedComponents.length === 1 ? '' : 's'}
+                </p>
+              ) : null}
+              {errors.request ? <p className='mt-2 text-sm text-terracotta'>{errors.request}</p> : null}
+            </div>
 
-              <div className='flex justify-end gap-3'>
-                <button onClick={closeModal} type='button' disabled={isSaving} className='px-4 py-2 border rounded hover:bg-gray-50'>
-                  Cancel
-                </button>
-                <button
-                  onClick={saveLayout}
-                  type='button'
-                  disabled={isSaving}
-                  className='bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed'
-                >
-                  {isSaving ? 'Saving...' : editingLayout ? 'Update Layout' : 'Create Layout'}
-                </button>
-              </div>
+            <div className='flex justify-end gap-3'>
+              <Button onClick={closeModal} variant='secondary' disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button onClick={saveLayout} disabled={isSaving}>
+                {isSaving ? 'Saving...' : editingLayout ? 'Update Layout' : 'Create Layout'}
+              </Button>
             </div>
           </div>
-        )}
+        </Modal>
       </div>
     </div>
   );

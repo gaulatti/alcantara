@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
@@ -6,105 +6,10 @@ import { PrismaService } from '../prisma.service';
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
-  private static readonly FIFTHBELL_PROGRAM_ID = 'fifthbell';
-  private static readonly FIFTHBELL_LAYOUT_NAME = 'FifthBell Layout';
-  private static readonly FIFTHBELL_SCENE_NAME = 'FifthBell Scene';
-  private static readonly FIFTHBELL_LAYOUT_COMPONENT_TYPE =
-    'fifthbell-content,fifthbell-marquee,toni-clock';
-  private static readonly FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
-    'New York',
-    'San Juan',
-    'Los Angeles',
-    'Honolulu',
-    'Mexico City',
-    'Havana',
-    'London',
-    'Paris',
-    'Berlin',
-    'Rome',
-    'Madrid',
-    'Athens',
-    'Santiago',
-    'Buenos Aires',
-    'Rio',
-    'Lima',
-    'Caracas',
-    'Bogotá',
-    'Tokyo',
-    'Seoul',
-    'Shanghai',
-    'Hong Kong',
-    'Bangkok',
-    'Jakarta',
-  ] as const;
-  private static readonly FIFTHBELL_DEFAULT_CONTENT_CONFIG = {
-    showArticles: true,
-    showWeather: true,
-    showEarthquakes: true,
-    showMarkets: true,
-    showCallsignTake: true,
-    weatherCities: [...ProgramService.FIFTHBELL_AVAILABLE_WEATHER_CITIES],
-    languageRotation: ['en', 'es', 'en', 'it'],
-    dataLoadTimeoutMs: 15000,
-    playlistDefaultDurationMs: 10000,
-    playlistUpdateIntervalMs: 100,
-    articlesDurationMs: 10000,
-    weatherDurationMs: 5000,
-    earthquakesDurationMs: 10000,
-    marketsDurationMs: 10000,
-    audioCueEnabled: true,
-    audioCueMinute: 59,
-    audioCueSecond: 55,
-    callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
-    callsignWindowStartSecond: 50,
-    callsignWindowEndSecond: 3,
-  } as const;
-  private static readonly FIFTHBELL_DEFAULT_MARQUEE_CONFIG = {
-    showMarquee: false,
-    marqueeMinPostsCount: 4,
-    marqueeMinAverageRelevance: 0,
-    marqueeMinMedianRelevance: 0,
-    marqueePixelsPerSecond: 150,
-    marqueeMinDurationSeconds: 10,
-    marqueeHeightPx: 72,
-  } as const;
-  private static readonly FIFTHBELL_DEFAULT_CORNER_CONFIG = {
-    showWorldClocks: true,
-    showBellIcon: true,
-    worldClockRotateIntervalMs: 7000,
-    worldClockTransitionMs: 300,
-    worldClockShuffle: true,
-    worldClockWidthPx: 200,
-  } as const;
-  private static readonly RELOJ_PROGRAM_ID = 'reloj';
-  private static readonly RELOJ_LAYOUT_NAME = 'Reloj Layout';
-  private static readonly RELOJ_SCENE_NAME = 'Reloj Scene';
-  private static readonly RELOJ_LOOP_PROGRAM_ID = 'reloj-loop';
-  private static readonly RELOJ_LOOP_LAYOUT_NAME = 'Reloj Loop Layout';
-  private static readonly RELOJ_LOOP_SCENE_NAME = 'Reloj Loop Scene';
   private static readonly BROADCAST_SETTINGS_ID = 1;
-
   private eventSubjects = new Map<string, Subject<any>>();
 
-  constructor(private prisma: PrismaService) {
-    this.ensureBuiltinPrograms();
-  }
-
-  private async initializeProgramState(programId: string) {
-    await this.prisma.programState.upsert({
-      where: { programId },
-      update: {},
-      create: { programId, activeSceneId: null },
-    });
-  }
-
-  private async ensureBuiltinPrograms() {
-    await this.initializeProgramState(ProgramService.DEFAULT_PROGRAM_ID);
-    await this.ensureFifthBellProgramConfigured();
-    await this.ensureRelojProgramConfigured();
-    await this.ensureRelojLoopProgramConfigured();
-    await this.ensureBroadcastSettings();
-  }
+  constructor(private prisma: PrismaService) {}
 
   private async ensureBroadcastSettings() {
     return this.prisma.broadcastSettings.upsert({
@@ -169,331 +74,6 @@ export class ProgramService {
     return settings;
   }
 
-  private async ensureFifthBellProgramConfigured() {
-    const state = await this.prisma.programState.upsert({
-      where: { programId: ProgramService.FIFTHBELL_PROGRAM_ID },
-      update: {},
-      create: {
-        programId: ProgramService.FIFTHBELL_PROGRAM_ID,
-        activeSceneId: null,
-      },
-      select: { id: true, activeSceneId: true },
-    });
-
-    const layout = await this.prisma.layout.upsert({
-      where: { name: ProgramService.FIFTHBELL_LAYOUT_NAME },
-      update: {
-        componentType: ProgramService.FIFTHBELL_LAYOUT_COMPONENT_TYPE,
-      },
-      create: {
-        name: ProgramService.FIFTHBELL_LAYOUT_NAME,
-        componentType: ProgramService.FIFTHBELL_LAYOUT_COMPONENT_TYPE,
-        settings: JSON.stringify({}),
-      },
-      select: { id: true },
-    });
-
-    let scene = await this.prisma.scene.findFirst({
-      where: {
-        name: ProgramService.FIFTHBELL_SCENE_NAME,
-        layoutId: layout.id,
-      },
-      select: { id: true, metadata: true },
-    });
-
-    if (!scene) {
-      scene = await this.prisma.scene.create({
-        data: {
-          name: ProgramService.FIFTHBELL_SCENE_NAME,
-          layoutId: layout.id,
-          chyronText: null,
-          metadata: JSON.stringify({
-            'fifthbell-content':
-              ProgramService.FIFTHBELL_DEFAULT_CONTENT_CONFIG,
-            'fifthbell-marquee':
-              ProgramService.FIFTHBELL_DEFAULT_MARQUEE_CONFIG,
-            'toni-clock': ProgramService.FIFTHBELL_DEFAULT_CORNER_CONFIG,
-          }),
-        },
-        select: { id: true, metadata: true },
-      });
-    }
-
-    const parseMetadata = (
-      rawMetadata: string | null,
-    ): Record<string, unknown> => {
-      if (!rawMetadata) {
-        return {};
-      }
-
-      try {
-        const parsed = JSON.parse(rawMetadata);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          return parsed as Record<string, unknown>;
-        }
-      } catch {
-        // no-op
-      }
-
-      return {};
-    };
-
-    const pickKnownKeys = <T extends Record<string, unknown>>(
-      defaults: T,
-      ...sources: unknown[]
-    ): T => {
-      const result: Record<string, unknown> = { ...defaults };
-      for (const source of sources) {
-        if (!source || typeof source !== 'object' || Array.isArray(source)) {
-          continue;
-        }
-
-        const asObject = source as Record<string, unknown>;
-        for (const key of Object.keys(defaults)) {
-          if (asObject[key] !== undefined) {
-            result[key] = asObject[key];
-          }
-        }
-      }
-      return result as T;
-    };
-
-    const currentMetadata = parseMetadata(scene.metadata);
-    const legacyConfig =
-      currentMetadata.fifthbell &&
-      typeof currentMetadata.fifthbell === 'object' &&
-      !Array.isArray(currentMetadata.fifthbell)
-        ? (currentMetadata.fifthbell as Record<string, unknown>)
-        : {};
-    const nextMetadata: Record<string, unknown> = {
-      ...currentMetadata,
-      'fifthbell-content': pickKnownKeys(
-        ProgramService.FIFTHBELL_DEFAULT_CONTENT_CONFIG as unknown as Record<
-          string,
-          unknown
-        >,
-        legacyConfig,
-        currentMetadata['fifthbell-content'],
-      ),
-      'fifthbell-marquee': pickKnownKeys(
-        ProgramService.FIFTHBELL_DEFAULT_MARQUEE_CONFIG as unknown as Record<
-          string,
-          unknown
-        >,
-        legacyConfig,
-        currentMetadata['fifthbell-marquee'],
-      ),
-      'toni-clock': pickKnownKeys(
-        ProgramService.FIFTHBELL_DEFAULT_CORNER_CONFIG as unknown as Record<
-          string,
-          unknown
-        >,
-        legacyConfig,
-        currentMetadata['fifthbell-corner'],
-        currentMetadata['toni-clock'],
-      ),
-    };
-
-    const currentMetadataJson = JSON.stringify(currentMetadata);
-    const nextMetadataJson = JSON.stringify(nextMetadata);
-    if (currentMetadataJson !== nextMetadataJson) {
-      await this.prisma.scene.update({
-        where: { id: scene.id },
-        data: { metadata: nextMetadataJson },
-      });
-    }
-
-    const existingAssignment = await this.prisma.programScene.findUnique({
-      where: {
-        programStateId_sceneId: {
-          programStateId: state.id,
-          sceneId: scene.id,
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!existingAssignment) {
-      const maxPosition = await this.prisma.programScene.aggregate({
-        where: { programStateId: state.id },
-        _max: { position: true },
-      });
-
-      await this.prisma.programScene.create({
-        data: {
-          programStateId: state.id,
-          sceneId: scene.id,
-          position: (maxPosition._max.position ?? -1) + 1,
-        },
-      });
-    }
-
-    if (!state.activeSceneId) {
-      await this.prisma.programState.update({
-        where: { id: state.id },
-        data: { activeSceneId: scene.id },
-      });
-    }
-  }
-
-  private async ensureRelojProgramConfigured() {
-    const state = await this.prisma.programState.upsert({
-      where: { programId: ProgramService.RELOJ_PROGRAM_ID },
-      update: {},
-      create: {
-        programId: ProgramService.RELOJ_PROGRAM_ID,
-        activeSceneId: null,
-      },
-      select: { id: true, activeSceneId: true },
-    });
-
-    const layout = await this.prisma.layout.upsert({
-      where: { name: ProgramService.RELOJ_LAYOUT_NAME },
-      update: {
-        componentType: 'reloj-clock',
-      },
-      create: {
-        name: ProgramService.RELOJ_LAYOUT_NAME,
-        componentType: 'reloj-clock',
-        settings: JSON.stringify({}),
-      },
-      select: { id: true },
-    });
-
-    let scene = await this.prisma.scene.findFirst({
-      where: {
-        name: ProgramService.RELOJ_SCENE_NAME,
-        layoutId: layout.id,
-      },
-      select: { id: true },
-    });
-
-    if (!scene) {
-      scene = await this.prisma.scene.create({
-        data: {
-          name: ProgramService.RELOJ_SCENE_NAME,
-          layoutId: layout.id,
-          chyronText: null,
-          metadata: JSON.stringify({ 'reloj-clock': {} }),
-        },
-        select: { id: true },
-      });
-    }
-
-    const existingAssignment = await this.prisma.programScene.findUnique({
-      where: {
-        programStateId_sceneId: {
-          programStateId: state.id,
-          sceneId: scene.id,
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!existingAssignment) {
-      const maxPosition = await this.prisma.programScene.aggregate({
-        where: { programStateId: state.id },
-        _max: { position: true },
-      });
-
-      await this.prisma.programScene.create({
-        data: {
-          programStateId: state.id,
-          sceneId: scene.id,
-          position: (maxPosition._max.position ?? -1) + 1,
-        },
-      });
-    }
-
-    if (!state.activeSceneId) {
-      await this.prisma.programState.update({
-        where: { id: state.id },
-        data: { activeSceneId: scene.id },
-      });
-    }
-  }
-
-  private async ensureRelojLoopProgramConfigured() {
-    const state = await this.prisma.programState.upsert({
-      where: { programId: ProgramService.RELOJ_LOOP_PROGRAM_ID },
-      update: {},
-      create: {
-        programId: ProgramService.RELOJ_LOOP_PROGRAM_ID,
-        activeSceneId: null,
-      },
-      select: { id: true, activeSceneId: true },
-    });
-
-    const layout = await this.prisma.layout.upsert({
-      where: { name: ProgramService.RELOJ_LOOP_LAYOUT_NAME },
-      update: {
-        componentType: 'reloj-loop-clock',
-      },
-      create: {
-        name: ProgramService.RELOJ_LOOP_LAYOUT_NAME,
-        componentType: 'reloj-loop-clock',
-        settings: JSON.stringify({}),
-      },
-      select: { id: true },
-    });
-
-    let scene = await this.prisma.scene.findFirst({
-      where: {
-        name: ProgramService.RELOJ_LOOP_SCENE_NAME,
-        layoutId: layout.id,
-      },
-      select: { id: true },
-    });
-
-    if (!scene) {
-      scene = await this.prisma.scene.create({
-        data: {
-          name: ProgramService.RELOJ_LOOP_SCENE_NAME,
-          layoutId: layout.id,
-          chyronText: null,
-          metadata: JSON.stringify({
-            'reloj-loop-clock': {
-              timezone: 'Europe/Madrid',
-            },
-          }),
-        },
-        select: { id: true },
-      });
-    }
-
-    const existingAssignment = await this.prisma.programScene.findUnique({
-      where: {
-        programStateId_sceneId: {
-          programStateId: state.id,
-          sceneId: scene.id,
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!existingAssignment) {
-      const maxPosition = await this.prisma.programScene.aggregate({
-        where: { programStateId: state.id },
-        _max: { position: true },
-      });
-
-      await this.prisma.programScene.create({
-        data: {
-          programStateId: state.id,
-          sceneId: scene.id,
-          position: (maxPosition._max.position ?? -1) + 1,
-        },
-      });
-    }
-
-    if (!state.activeSceneId) {
-      await this.prisma.programState.update({
-        where: { id: state.id },
-        data: { activeSceneId: scene.id },
-      });
-    }
-  }
-
   private getEventSubject(programId: string) {
     const existing = this.eventSubjects.get(programId);
     if (existing) {
@@ -505,11 +85,32 @@ export class ProgramService {
     return subject;
   }
 
+  private normalizeProgramId(programId: string): string {
+    const normalized = programId.trim();
+    if (!normalized) {
+      throw new Error('programId is required');
+    }
+    return normalized;
+  }
+
+  private async getProgramStateRecord(programId: string) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { id: true, programId: true },
+    });
+
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    return state;
+  }
+
   private async getProgramStateWithScenes(programId: string) {
-    return this.prisma.programState.upsert({
-      where: { programId },
-      update: {},
-      create: { programId, activeSceneId: null },
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
       include: {
         activeScene: {
           include: { layout: true },
@@ -524,21 +125,95 @@ export class ProgramService {
         },
       },
     });
+
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    return state;
   }
 
   async createProgram(programId: string) {
-    const normalized = programId.trim();
-    if (!normalized) {
-      throw new Error('programId is required');
+    const normalized = this.normalizeProgramId(programId);
+
+    const existing = await this.prisma.programState.findUnique({
+      where: { programId: normalized },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new Error('Program already exists');
     }
 
-    await this.initializeProgramState(normalized);
+    await this.prisma.programState.create({
+      data: { programId: normalized, activeSceneId: null },
+    });
+
     return this.getProgramStateWithScenes(normalized);
   }
 
-  async listPrograms() {
-    await this.ensureBuiltinPrograms();
+  async renameProgram(programId: string, nextProgramId: string) {
+    const current = this.normalizeProgramId(programId);
+    const next = this.normalizeProgramId(nextProgramId);
+    if (current === next) {
+      return this.getProgramStateWithScenes(current);
+    }
 
+    const existingTarget = await this.prisma.programState.findUnique({
+      where: { programId: next },
+      select: { id: true },
+    });
+    if (existingTarget) {
+      throw new Error('Target program id already exists');
+    }
+
+    const existingSource = await this.prisma.programState.findUnique({
+      where: { programId: current },
+      select: { id: true },
+    });
+    if (!existingSource) {
+      throw new Error('Program not found');
+    }
+
+    await this.prisma.programState.update({
+      where: { id: existingSource.id },
+      data: { programId: next },
+    });
+
+    const currentSubject = this.eventSubjects.get(current);
+    if (currentSubject) {
+      this.eventSubjects.set(next, currentSubject);
+      this.eventSubjects.delete(current);
+    }
+
+    return this.getProgramStateWithScenes(next);
+  }
+
+  async deleteProgram(programId: string) {
+    const normalized = this.normalizeProgramId(programId);
+    const existing = await this.prisma.programState.findUnique({
+      where: { programId: normalized },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new Error('Program not found');
+    }
+
+    await this.prisma.programState.delete({
+      where: { id: existing.id },
+    });
+
+    const subject = this.eventSubjects.get(normalized);
+    if (subject) {
+      subject.complete();
+      this.eventSubjects.delete(normalized);
+    }
+
+    return { deletedProgramId: normalized };
+  }
+
+  async listPrograms() {
     return this.prisma.programState.findMany({
       orderBy: { programId: 'asc' },
       include: {
@@ -558,14 +233,6 @@ export class ProgramService {
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
-    if (programId === ProgramService.FIFTHBELL_PROGRAM_ID) {
-      await this.ensureFifthBellProgramConfigured();
-    } else if (programId === ProgramService.RELOJ_PROGRAM_ID) {
-      await this.ensureRelojProgramConfigured();
-    } else if (programId === ProgramService.RELOJ_LOOP_PROGRAM_ID) {
-      await this.ensureRelojLoopProgramConfigured();
-    }
-
     return this.getProgramStateWithScenes(programId);
   }
 
@@ -580,11 +247,7 @@ export class ProgramService {
       throw new Error('Scene not found');
     }
 
-    const state = await this.prisma.programState.upsert({
-      where: { programId },
-      update: {},
-      create: { programId, activeSceneId: null },
-    });
+    const state = await this.getProgramStateRecord(programId);
 
     const existing = await this.prisma.programScene.findUnique({
       where: {
@@ -623,13 +286,14 @@ export class ProgramService {
     sceneId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.prisma.programState.findUnique({
-      where: { programId },
+      where: { programId: normalizedProgramId },
       select: { id: true, activeSceneId: true },
     });
 
     if (!state) {
-      return this.getProgramStateWithScenes(programId);
+      throw new Error('Program not found');
     }
 
     await this.prisma.programScene.deleteMany({
@@ -646,8 +310,8 @@ export class ProgramService {
       });
     }
 
-    const updated = await this.getProgramStateWithScenes(programId);
-    this.broadcastUpdate(programId, {
+    const updated = await this.getProgramStateWithScenes(normalizedProgramId);
+    this.broadcastUpdate(normalizedProgramId, {
       type: 'program_scenes_changed',
       state: updated,
     });
@@ -659,12 +323,14 @@ export class ProgramService {
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
     transitionId?: string | null,
   ) {
-    const state = await this.prisma.programState.upsert({
-      where: { programId },
-      update: {},
-      create: { programId, activeSceneId: null },
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
       include: { scenes: true },
     });
+    if (!state) {
+      throw new Error('Program not found');
+    }
 
     const isAssigned = state.scenes.some(
       (programScene) => programScene.sceneId === sceneId,
@@ -696,9 +362,52 @@ export class ProgramService {
         ? transitionId.trim()
         : null;
 
-    this.broadcastUpdate(programId, {
+    this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_change',
       transitionId: normalizedTransitionId,
+      state: updatedState,
+    });
+
+    return updatedState;
+  }
+
+  async takeProgramOffAir(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      include: { scenes: true },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    if (!state.activeSceneId) {
+      return this.getProgramStateWithScenes(normalizedProgramId);
+    }
+
+    const updatedState = await this.prisma.programState.update({
+      where: { id: state.id },
+      data: { activeSceneId: null },
+      include: {
+        activeScene: {
+          include: { layout: true },
+        },
+        scenes: {
+          orderBy: { position: 'asc' },
+          include: {
+            scene: {
+              include: { layout: true },
+            },
+          },
+        },
+      },
+    });
+
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'scene_change',
+      transitionId: null,
       state: updatedState,
     });
 
@@ -738,6 +447,166 @@ export class ProgramService {
     });
 
     return [...new Set(rows.map((row) => row.programState.programId))];
+  }
+
+  async listInstants() {
+    return this.prisma.instant.findMany({
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async createInstant(data: {
+    name: string;
+    audioUrl: string;
+    volume?: number;
+    enabled?: boolean;
+  }) {
+    const name = (data.name || '').trim();
+    const audioUrl = (data.audioUrl || '').trim();
+
+    if (!name) {
+      throw new BadRequestException('name is required');
+    }
+    if (!audioUrl) {
+      throw new BadRequestException('audioUrl is required');
+    }
+
+    const maxPosition = await this.prisma.instant.aggregate({
+      _max: { position: true },
+    });
+    const nextPosition = (maxPosition._max.position ?? -1) + 1;
+
+    return this.prisma.instant.create({
+      data: {
+        name,
+        audioUrl,
+        volume:
+          typeof data.volume === 'number' && Number.isFinite(data.volume)
+            ? Math.min(1, Math.max(0, data.volume))
+            : 1,
+        enabled: data.enabled !== undefined ? Boolean(data.enabled) : true,
+        position: nextPosition,
+      },
+    });
+  }
+
+  async updateInstant(
+    instantId: number,
+    data: {
+      name?: string;
+      audioUrl?: string;
+      volume?: number;
+      enabled?: boolean;
+    },
+  ) {
+    const instant = await this.prisma.instant.findUnique({
+      where: { id: instantId },
+      select: { id: true },
+    });
+
+    if (!instant) {
+      throw new NotFoundException('Instant not found');
+    }
+
+    const updateData: Record<string, unknown> = {};
+
+    if (data.name !== undefined) {
+      const name = data.name.trim();
+      if (!name) {
+        throw new BadRequestException('name cannot be empty');
+      }
+      updateData.name = name;
+    }
+
+    if (data.audioUrl !== undefined) {
+      const audioUrl = data.audioUrl.trim();
+      if (!audioUrl) {
+        throw new BadRequestException('audioUrl cannot be empty');
+      }
+      updateData.audioUrl = audioUrl;
+    }
+
+    if (data.volume !== undefined) {
+      if (!Number.isFinite(data.volume)) {
+        throw new BadRequestException('volume must be a number');
+      }
+      updateData.volume = Math.min(1, Math.max(0, data.volume));
+    }
+
+    if (data.enabled !== undefined) {
+      updateData.enabled = Boolean(data.enabled);
+    }
+
+    return this.prisma.instant.update({
+      where: { id: instant.id },
+      data: updateData,
+    });
+  }
+
+  async deleteInstant(instantId: number) {
+    const instant = await this.prisma.instant.findUnique({
+      where: { id: instantId },
+      select: { id: true },
+    });
+
+    if (!instant) {
+      throw new NotFoundException('Instant not found');
+    }
+
+    await this.prisma.instant.delete({
+      where: { id: instant.id },
+    });
+
+    const remaining = await this.prisma.instant.findMany({
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
+      select: { id: true },
+    });
+
+    await Promise.all(
+      remaining.map((item, index) =>
+        this.prisma.instant.update({
+          where: { id: item.id },
+          data: { position: index },
+        }),
+      ),
+    );
+
+    return { deletedInstantId: instant.id };
+  }
+
+  async playInstant(instantId: number) {
+    const instant = await this.prisma.instant.findUnique({
+      where: { id: instantId },
+    });
+
+    if (!instant) {
+      throw new NotFoundException('Instant not found');
+    }
+    if (!instant.enabled) {
+      throw new BadRequestException('Instant is disabled');
+    }
+
+    this.broadcastGlobalUpdate({
+      type: 'instant_play',
+      instant: {
+        id: instant.id,
+        name: instant.name,
+        audioUrl: instant.audioUrl,
+        volume: instant.volume,
+      },
+      triggeredAt: new Date().toISOString(),
+    });
+
+    return { ok: true };
+  }
+
+  async stopAllInstants() {
+    this.broadcastGlobalUpdate({
+      type: 'instant_stop_all',
+      triggeredAt: new Date().toISOString(),
+    });
+
+    return { ok: true };
   }
 
   broadcastUpdate(

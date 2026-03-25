@@ -13,3 +13,4 @@ export { Earone } from './Earone';
 export { ModoItalianoClock } from './ModoItalianoClock';
 export { ModoItalianoChyron } from './ModoItalianoChyron';
 export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
+export { Slideshow } from './Slideshow';

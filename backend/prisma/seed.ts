@@ -9,76 +9,14 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('Seeding database...');
 
-  // Create layouts
-  const lowerThirdLayout = await prisma.layout.create({
-    data: {
-      name: 'Lower Third',
-      componentType: 'lower-third',
-      settings: JSON.stringify({ position: 'bottom' }),
+  await prisma.broadcastSettings.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      id: 1,
+      timeOverrideEnabled: false,
     },
   });
-
-  const fullScreenLayout = await prisma.layout.create({
-    data: {
-      name: 'Full Screen',
-      componentType: 'full-screen',
-      settings: JSON.stringify({}),
-    },
-  });
-
-  const cornerBugLayout = await prisma.layout.create({
-    data: {
-      name: 'Corner Bug',
-      componentType: 'corner-bug',
-      settings: JSON.stringify({ position: 'top-right' }),
-    },
-  });
-
-  console.log('Created layouts:', {
-    lowerThirdLayout,
-    fullScreenLayout,
-    cornerBugLayout,
-  });
-
-  // Create scenes
-  const newsScene = await prisma.scene.create({
-    data: {
-      name: 'Breaking News',
-      layoutId: lowerThirdLayout.id,
-      chyronText: 'BREAKING NEWS',
-      metadata: JSON.stringify({ color: 'red' }),
-    },
-  });
-
-  const welcomeScene = await prisma.scene.create({
-    data: {
-      name: 'Welcome',
-      layoutId: fullScreenLayout.id,
-      chyronText: 'Welcome to the Show',
-      metadata: JSON.stringify({ animation: 'fade' }),
-    },
-  });
-
-  const liveScene = await prisma.scene.create({
-    data: {
-      name: 'Live Indicator',
-      layoutId: cornerBugLayout.id,
-      chyronText: 'LIVE',
-      metadata: JSON.stringify({ blink: true }),
-    },
-  });
-
-  console.log('Created scenes:', { newsScene, welcomeScene, liveScene });
-
-  // Initialize program state
-  const programState = await prisma.programState.create({
-    data: {
-      programId: 'main',
-      activeSceneId: null,
-    },
-  });
-
-  console.log('Created program state:', programState);
 
   console.log('Seeding complete!');
 }

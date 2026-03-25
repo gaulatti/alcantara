@@ -1,6 +1,6 @@
 export type ModoItalianoSequenceMode = 'manual' | 'autoplay';
 export type ModoItalianoTextContentMode = 'text' | 'sequence';
-export type ModoItalianoSongContentMode = 'direct' | 'sequence';
+export type ModoItalianoSongContentMode = 'sequence';
 
 interface BaseSequenceItem {
   id: string;
@@ -54,6 +54,8 @@ export interface ModoItalianoSongSequenceLeafItem extends BaseSequenceItem {
   artist: string;
   title: string;
   coverUrl: string;
+  audioUrl?: string;
+  durationMs?: number;
   earoneSongId?: string;
   earoneRank?: string;
   earoneSpins?: string;
@@ -72,9 +74,12 @@ export type ModoItalianoSongSequenceItem =
 export type ModoItalianoSongSequence = BaseSequence<ModoItalianoSongSequenceItem>;
 
 export interface ModoItalianoResolvedSongLeaf {
+  id: string;
   artist: string;
   title: string;
   coverUrl: string;
+  audioUrl?: string;
+  durationMs?: number;
   earoneSongId?: string;
   earoneRank?: string;
   earoneSpins?: string;
@@ -113,13 +118,7 @@ function normalizeSongContentMode(
   contentMode: unknown,
   sequence: ModoItalianoSongSequence | null
 ): ModoItalianoSongContentMode {
-  if (contentMode === 'direct') {
-    return 'direct';
-  }
-  if (contentMode === 'sequence') {
-    return 'sequence';
-  }
-  return sequence ? 'sequence' : 'direct';
+  return 'sequence';
 }
 
 function normalizeTextLeafItem(
@@ -154,6 +153,16 @@ function normalizeSongLeafItem(record: RecordValue): ModoItalianoSongSequenceLea
     typeof record.coverUrl === 'string' && record.coverUrl.trim()
       ? record.coverUrl.trim()
       : '';
+  const audioUrl =
+    typeof record.audioUrl === 'string' && record.audioUrl.trim()
+      ? record.audioUrl.trim()
+      : '';
+  const durationMs =
+    typeof record.durationMs === 'number' &&
+    Number.isFinite(record.durationMs) &&
+    record.durationMs > 0
+      ? Math.round(record.durationMs)
+      : undefined;
 
   return {
     id: typeof record.id === 'string' && record.id ? record.id : createId('song'),
@@ -161,6 +170,8 @@ function normalizeSongLeafItem(record: RecordValue): ModoItalianoSongSequenceLea
     artist,
     title,
     coverUrl,
+    audioUrl: audioUrl || undefined,
+    durationMs,
     earoneSongId:
       typeof record.earoneSongId === 'string' && record.earoneSongId.trim()
         ? record.earoneSongId.trim()
@@ -351,9 +362,12 @@ function resolveSongSequenceRecursive(
 
   const songLabel = [selected.artist, selected.title].filter(Boolean).join(' - ');
   return {
+    id: selected.id,
     artist: selected.artist,
     title: selected.title,
     coverUrl: selected.coverUrl,
+    audioUrl: selected.audioUrl,
+    durationMs: selected.durationMs,
     earoneSongId: selected.earoneSongId,
     earoneRank: selected.earoneRank,
     earoneSpins: selected.earoneSpins,
@@ -442,7 +456,9 @@ export function createModoItalianoSongSequenceItem(
     kind: 'preset',
     artist: '',
     title: '',
-    coverUrl: ''
+    coverUrl: '',
+    audioUrl: '',
+    durationMs: undefined
   };
 }
 

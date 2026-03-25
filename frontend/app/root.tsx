@@ -1,8 +1,12 @@
+import { BleeckerThemeScript, ThemeProvider } from '@gaulatti/bleecker';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
+import type { ReactNode } from 'react';
+
 import type { Route } from './+types/root';
 import './app.css';
 
 export const links: Route.LinksFunction = () => [
+  { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
   { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
   {
     rel: 'preconnect',
@@ -15,7 +19,7 @@ export const links: Route.LinksFunction = () => [
   }
 ];
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang='en'>
       <head>
@@ -23,8 +27,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name='viewport' content='width=device-width, initial-scale=1' />
         <Meta />
         <Links />
+        <BleeckerThemeScript storageKey='theme' />
       </head>
-      <body>
+      <body className='bg-light-sand text-text-primary'>
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -34,7 +39,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <ThemeProvider defaultTheme='system' storageKey='theme'>
+      <Outlet />
+    </ThemeProvider>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

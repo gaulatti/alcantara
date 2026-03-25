@@ -8,12 +8,14 @@ import { passportJwtSecret } from 'jwks-rsa';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(configService: ConfigService) {
     const userPoolId = configService.get<string>('COGNITO_USER_POOL_ID');
-    const cognitoRegion = configService.get<string>('COGNITO_REGION');
+    const awsRegion =
+      configService.get<string>('AWS_REGION') ??
+      configService.get<string>('AWS_DEFAULT_REGION');
     const clientId = configService.get<string>('COGNITO_CLIENT_ID');
 
-    if (!userPoolId || !cognitoRegion || !clientId) {
+    if (!userPoolId || !awsRegion || !clientId) {
       throw new Error(
-        'Missing Cognito configuration. Ensure COGNITO_USER_POOL_ID, COGNITO_REGION, and COGNITO_CLIENT_ID are set.',
+        'Missing Cognito configuration. Ensure COGNITO_USER_POOL_ID, AWS_REGION, and COGNITO_CLIENT_ID are set.',
       );
     }
 
@@ -21,13 +23,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       audience: clientId,
-      issuer: `https://cognito-idp.${cognitoRegion}.amazonaws.com/${userPoolId}`,
+      issuer: `https://cognito-idp.${awsRegion}.amazonaws.com/${userPoolId}`,
       algorithms: ['RS256'],
       secretOrKeyProvider: passportJwtSecret({
         cache: true,
         rateLimit: true,
         jwksRequestsPerMinute: 5,
-        jwksUri: `https://cognito-idp.${cognitoRegion}.amazonaws.com/${userPoolId}/.well-known/jwks.json`,
+        jwksUri: `https://cognito-idp.${awsRegion}.amazonaws.com/${userPoolId}/.well-known/jwks.json`,
       }) as any,
     });
   }

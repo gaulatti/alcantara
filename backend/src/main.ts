@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import multipart from '@fastify/multipart';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -33,6 +34,13 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   );
+
+  await app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: 100 * 1024 * 1024,
+    },
+  });
 
   const allowedOrigins = getAllowedOrigins();
 

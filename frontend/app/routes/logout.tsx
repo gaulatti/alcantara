@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
+import { Card, LoadingSpinner } from '@gaulatti/bleecker';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router';
-import LoadingSpinner from '../components/common/LoadingSpinner';
 import { logout as logoutDispatcher, setAuthLoaded } from '../state/dispatchers/auth';
 
 export default function Logout() {
@@ -15,11 +15,11 @@ export default function Logout() {
   }, [dispatch, navigate]);
 
   return (
-    <div className='min-h-screen flex items-center justify-center'>
-      <div className='flex flex-col items-center text-center gap-4'>
+    <div className='flex min-h-screen items-center justify-center bg-light-sand px-4 dark:bg-deep-sea'>
+      <Card className='flex w-full max-w-sm flex-col items-center gap-4 text-center'>
         <LoadingSpinner size='lg' />
-        <p>Signing you out...</p>
-      </div>
+        <p className='text-text-secondary dark:text-text-secondary'>Signing you out...</p>
+      </Card>
     </div>
   );
 }

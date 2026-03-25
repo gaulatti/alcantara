@@ -22,9 +22,15 @@ The database has already been seeded with sample data:
 ./launch.sh
 ```
 
-This will open a tmux session with two windows:
-- Window 1: Backend (NestJS on port 3000)
-- Window 2: Frontend (Vite dev server on port 5173)
+This will open a tmux session with one `dev` window split into two panes:
+- Left pane: Backend (NestJS on port 3000)
+- Right pane: Frontend (Vite dev server on port 5173)
+
+If your session is messy or you want to rebuild the split layout:
+
+```bash
+./launch.sh --reset
+```
 
 To detach from tmux: `Ctrl+B` then `D`
 To reattach: `tmux attach -t alcantara`

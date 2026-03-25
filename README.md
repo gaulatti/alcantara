@@ -87,7 +87,15 @@ pnpm install
 ./launch.sh
 ```
 
-This launches both frontend and backend in split tmux windows.
+This launches one tmux window (`dev`) split into two panes:
+- Left pane: Backend (`pnpm start:dev`)
+- Right pane: Frontend (`pnpm dev`)
+
+If you need to rebuild the session layout:
+
+```bash
+./launch.sh --reset
+```
 
 #### Option 2: Manual launch
 

@@ -25,6 +25,19 @@ export class ProgramController {
     return this.programService.createProgram(data.programId);
   }
 
+  @Put(':programId')
+  async renameProgram(
+    @Param('programId') programId: string,
+    @Body() data: { nextProgramId: string },
+  ) {
+    return this.programService.renameProgram(programId, data.nextProgramId);
+  }
+
+  @Delete(':programId')
+  async deleteProgram(@Param('programId') programId: string) {
+    return this.programService.deleteProgram(programId);
+  }
+
   @Get('broadcast-settings')
   async getBroadcastSettings() {
     return this.programService.getBroadcastSettings();
@@ -78,6 +91,11 @@ export class ProgramController {
     );
   }
 
+  @Post(':programId/off-air')
+  async takeProgramOffAirById(@Param('programId') programId: string) {
+    return this.programService.takeProgramOffAir(programId);
+  }
+
   @Post('activate')
   async activateScene(
     @Body() data: { sceneId: number; transitionId?: string | null },
@@ -87,6 +105,11 @@ export class ProgramController {
       undefined,
       data.transitionId,
     );
+  }
+
+  @Post('off-air')
+  async takeProgramOffAir() {
+    return this.programService.takeProgramOffAir();
   }
 
   @Sse(':programId/events')
