@@ -58,7 +58,7 @@ jobs:
             -e PORT="${{ vars.HTTP_PORT }}" \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
-            -e COGNITO_REGION="${{ vars.AWS_REGION }}" \
+            -e AWS_REGION="${{ vars.AWS_REGION }}" \
             -e COGNITO_USER_POOL_ID="${{ vars.COGNITO_USER_POOL_ID }}" \
             -e COGNITO_CLIENT_ID="${{ vars.COGNITO_CLIENT_ID }}" \
             -e CONTAINERIZED=true \

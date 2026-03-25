@@ -1,8 +1,9 @@
+import { LoadingSpinner } from '@gaulatti/bleecker';
+import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
 import { useAuthStatus } from '../../hooks/useAuth';
-import LoadingSpinner from './LoadingSpinner';
 
-export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
+export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoaded } = useAuthStatus();
 
   if (!isLoaded) {

@@ -15,6 +15,11 @@ export class LayoutsService {
       description: 'Full-screen text display',
     },
     {
+      type: 'slideshow',
+      name: 'Slideshow',
+      description: 'Full HD animated slideshow of images',
+    },
+    {
       type: 'corner-bug',
       name: 'Corner Bug',
       description: 'Small badge in the top-right corner',

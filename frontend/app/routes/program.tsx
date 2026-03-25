@@ -17,7 +17,8 @@ import {
   Earone,
   ModoItalianoClock,
   ModoItalianoChyron,
-  ModoItalianoDisclaimer
+  ModoItalianoDisclaimer,
+  Slideshow
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
@@ -65,6 +66,17 @@ interface SceneChangeEvent {
   state: ProgramState;
 }
 
+interface InstantPlayEvent {
+  type: 'instant_play';
+  instant: {
+    id: number;
+    name: string;
+    audioUrl: string;
+    volume: number;
+  };
+  triggeredAt: string;
+}
+
 interface ActiveTransition {
   sequence: number;
   preset: SceneTransitionPreset;
@@ -95,10 +107,52 @@ function SceneProgram({ programId }: { programId: string }) {
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
   const transitionTimersRef = useRef<number[]>([]);
   const transitionSequenceRef = useRef(0);
+  const activeInstantAudiosRef = useRef<Set<HTMLAudioElement>>(new Set());
 
   const clearTransitionTimers = () => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     transitionTimersRef.current = [];
+  };
+
+  const stopAllInstantAudio = () => {
+    for (const audio of activeInstantAudiosRef.current) {
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // no-op for unsupported media
+      }
+      audio.onended = null;
+      audio.onerror = null;
+    }
+    activeInstantAudiosRef.current.clear();
+  };
+
+  const playInstantAudio = (event: InstantPlayEvent) => {
+    const audio = new Audio(event.instant.audioUrl);
+    audio.preload = 'auto';
+    audio.volume = Math.max(0, Math.min(1, Number(event.instant.volume ?? 1)));
+
+    const cleanup = () => {
+      audio.onended = null;
+      audio.onerror = null;
+      activeInstantAudiosRef.current.delete(audio);
+    };
+
+    audio.onended = cleanup;
+    audio.onerror = () => {
+      console.error(`Instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
+      cleanup();
+    };
+    activeInstantAudiosRef.current.add(audio);
+
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((err) => {
+        console.error(`Failed to play instant "${event.instant.name}":`, err);
+        cleanup();
+      });
+    }
   };
 
   useEffect(() => {
@@ -106,6 +160,7 @@ function SceneProgram({ programId }: { programId: string }) {
     transitionTimersRef.current = [];
     setActiveTransition(null);
     setState(null);
+    stopAllInstantAudio();
 
     fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
       .then((res) => res.json())
@@ -117,6 +172,7 @@ function SceneProgram({ programId }: { programId: string }) {
     return () => {
       transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       transitionTimersRef.current = [];
+      stopAllInstantAudio();
     };
   }, []);
 
@@ -217,6 +273,10 @@ function SceneProgram({ programId }: { programId: string }) {
         });
       } else if (data.type === 'broadcast_settings_update') {
         setBroadcastSettings(data.settings);
+      } else if (data.type === 'instant_play') {
+        playInstantAudio(data as InstantPlayEvent);
+      } else if (data.type === 'instant_stop_all') {
+        stopAllInstantAudio();
       }
     }
   });
@@ -353,6 +413,18 @@ function SceneProgram({ programId }: { programId: string }) {
               return <LiveIndicator key={componentType} animate={props.animate ?? true} />;
             case 'logo-widget':
               return <LogoWidget key={componentType} logoUrl={props.logoUrl} position={props.position} />;
+            case 'slideshow':
+              return (
+                <Slideshow
+                  key={componentType}
+                  images={props.images}
+                  intervalMs={props.intervalMs}
+                  transitionMs={props.transitionMs}
+                  shuffle={props.shuffle}
+                  fitMode={props.fitMode}
+                  kenBurns={props.kenBurns}
+                />
+              );
             case 'reloj-clock':
               return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
             case 'reloj-loop-clock':
@@ -396,7 +468,6 @@ function SceneProgram({ programId }: { programId: string }) {
                   showWorldClocks={true}
                   showBellIcon={false}
                   songs={Array.isArray(props.songs) ? props.songs : undefined}
-                  songContentMode={typeof props.songContentMode === 'string' ? props.songContentMode : undefined}
                   songSequence={props.songSequence}
                   songArtist={typeof props.songArtist === 'string' ? props.songArtist : ''}
                   songTitle={typeof props.songTitle === 'string' ? props.songTitle : ''}
@@ -415,13 +486,8 @@ function SceneProgram({ programId }: { programId: string }) {
               return (
                 <ModoItalianoChyron
                   key={componentType}
-                  cta={typeof props.cta === 'string' ? props.cta : ''}
-                  text={typeof props.text === 'string' ? props.text : ''}
                   show={typeof props.show === 'boolean' ? props.show : true}
-                  useMarquee={typeof props.useMarquee === 'boolean' ? props.useMarquee : false}
-                  textContentMode={typeof props.textContentMode === 'string' ? props.textContentMode : undefined}
                   textSequence={props.textSequence}
-                  ctaContentMode={typeof props.ctaContentMode === 'string' ? props.ctaContentMode : undefined}
                   ctaSequence={props.ctaSequence}
                 />
               );
@@ -483,13 +549,8 @@ function SceneProgram({ programId }: { programId: string }) {
             <div className='flex-1 min-w-0'>
               {shouldShowModoItalianoChyronComponent ? (
                 <ModoItalianoChyron
-                  cta={typeof modoItalianoChyronProps.cta === 'string' ? modoItalianoChyronProps.cta : ''}
-                  text={typeof modoItalianoChyronProps.text === 'string' ? modoItalianoChyronProps.text : ''}
                   show
-                  useMarquee={typeof modoItalianoChyronProps.useMarquee === 'boolean' ? modoItalianoChyronProps.useMarquee : false}
-                  textContentMode={typeof modoItalianoChyronProps.textContentMode === 'string' ? modoItalianoChyronProps.textContentMode : undefined}
                   textSequence={modoItalianoChyronProps.textSequence}
-                  ctaContentMode={typeof modoItalianoChyronProps.ctaContentMode === 'string' ? modoItalianoChyronProps.ctaContentMode : undefined}
                   ctaSequence={modoItalianoChyronProps.ctaSequence}
                   inline
                 />
@@ -519,7 +580,6 @@ function SceneProgram({ programId }: { programId: string }) {
                 showWorldClocks={true}
                 showBellIcon={false}
                 songs={Array.isArray(modoItalianoClockProps.songs) ? modoItalianoClockProps.songs : undefined}
-                songContentMode={typeof modoItalianoClockProps.songContentMode === 'string' ? modoItalianoClockProps.songContentMode : undefined}
                 songSequence={modoItalianoClockProps.songSequence}
                 songArtist={typeof modoItalianoClockProps.songArtist === 'string' ? modoItalianoClockProps.songArtist : ''}
                 songTitle={typeof modoItalianoClockProps.songTitle === 'string' ? modoItalianoClockProps.songTitle : ''}

@@ -1,26 +1,55 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -euo pipefail
 
 SESSION_NAME="alcantara"
+WINDOW_NAME="dev"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$SCRIPT_DIR"
+RESET_REQUESTED=0
 
-# Check if session already exists
-tmux has-session -t $SESSION_NAME 2>/dev/null
-
-if [ $? != 0 ]; then
-  # Create new session with first window for backend
-  tmux new-session -d -s $SESSION_NAME -n "backend" -c "$PWD/backend"
-
-  # Send commands to backend window
-  tmux send-keys -t $SESSION_NAME:backend "pnpm start:dev" C-m
-
-  # Create new window for frontend
-  tmux new-window -t $SESSION_NAME -n "frontend" -c "$PWD/frontend"
-
-  # Send commands to frontend window
-  tmux send-keys -t $SESSION_NAME:frontend "pnpm dev" C-m
-
-  # Select the first window
-  tmux select-window -t $SESSION_NAME:backend
+if [[ "${1:-}" == "--reset" ]]; then
+  RESET_REQUESTED=1
 fi
 
-# Attach to session
-tmux attach-session -t $SESSION_NAME
+session_exists() {
+  tmux has-session -t "$SESSION_NAME" 2>/dev/null
+}
+
+expected_layout_exists() {
+  local window_count pane_count
+  window_count="$(tmux list-windows -t "$SESSION_NAME" -F '#W' | wc -l | tr -d ' ')"
+  pane_count="$(tmux list-panes -t "$SESSION_NAME:$WINDOW_NAME" 2>/dev/null | wc -l | tr -d ' ')"
+  [[ "$window_count" == "1" && "$pane_count" == "2" ]]
+}
+
+legacy_layout_exists() {
+  local windows
+  windows="$(tmux list-windows -t "$SESSION_NAME" -F '#W')"
+  grep -q '^backend$' <<<"$windows" && grep -q '^frontend$' <<<"$windows"
+}
+
+create_session() {
+  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_NAME" -c "$ROOT_DIR/backend" "pnpm start:dev"
+  tmux split-window -h -t "$SESSION_NAME:$WINDOW_NAME.0" -c "$ROOT_DIR/frontend" "pnpm dev"
+  tmux select-layout -t "$SESSION_NAME:$WINDOW_NAME" even-horizontal
+  tmux set-window-option -t "$SESSION_NAME:$WINDOW_NAME" remain-on-exit off
+  tmux select-pane -t "$SESSION_NAME:$WINDOW_NAME.0"
+}
+
+if session_exists; then
+  if [[ "$RESET_REQUESTED" == "1" ]]; then
+    tmux kill-session -t "$SESSION_NAME"
+    create_session
+  elif legacy_layout_exists; then
+    tmux kill-session -t "$SESSION_NAME"
+    create_session
+  elif ! expected_layout_exists; then
+    echo "Existing tmux session '$SESSION_NAME' has a custom layout."
+    echo "Use './launch.sh --reset' to recreate the standard frontend/backend split."
+  fi
+else
+  create_session
+fi
+
+tmux attach-session -t "$SESSION_NAME"
