@@ -9,7 +9,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
-    "@gaulatti/bleecker": "file:../../bleecker",
+    "@gaulatti/bleecker": "0.1.9",
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
     "fast-average-color": "^9.5.0",
