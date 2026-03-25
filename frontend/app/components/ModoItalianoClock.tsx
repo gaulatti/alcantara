@@ -43,6 +43,7 @@ const DEFAULT_MODOITALIANO_CLOCK_CITIES: ModoItalianoClockCity[] = [
 ];
 const SONG_UI_FADE_MS = 320;
 const SONG_BOX_MOTION_MS = 360;
+const SONG_PROGRESS_UPDATE_MS = 120;
 
 interface SongPayload {
   id?: string;
@@ -310,6 +311,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   const hasLiveSongPayload = hasSongPayload && (!playbackToken || endedPlaybackToken !== playbackToken);
   const [songUiVisible, setSongUiVisible] = useState(hasLiveSongPayload);
   const [songUiActive, setSongUiActive] = useState(hasLiveSongPayload);
+  const [songProgress, setSongProgress] = useState(0);
   const [displaySongTitle, setDisplaySongTitle] = useState(normalizedSongTitle);
   const [displaySongArtist, setDisplaySongArtist] = useState(normalizedSongArtist);
   const [displaySongCoverUrl, setDisplaySongCoverUrl] = useState(normalizedSongCoverUrl || '/cover.jpg');
@@ -351,6 +353,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
       }
       activeSongPlaybackTokenRef.current = '';
       setEndedPlaybackToken('');
+      setSongProgress(0);
       return;
     }
 
@@ -375,6 +378,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     activeSongAudioRef.current = audio;
     activeSongPlaybackTokenRef.current = playbackToken;
     setEndedPlaybackToken('');
+    setSongProgress(0);
 
     const cleanup = () => {
       if (activeSongAudioRef.current === audio) {
@@ -385,11 +389,13 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     };
 
     audio.onended = () => {
+      setSongProgress(1);
       setEndedPlaybackToken(playbackToken);
       cleanup();
     };
     audio.onerror = () => {
       console.error(`Failed to play song audio: ${activeSongAudioUrl}`);
+      setSongProgress(0);
       cleanup();
     };
 
@@ -401,6 +407,40 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
       });
     }
   }, [songGateEnabled, activeSongAudioUrl, playbackToken]);
+
+  useEffect(() => {
+    if (!songGateEnabled || !hasLiveSongPayload || !activeSongAudioUrl) {
+      setSongProgress(0);
+      return;
+    }
+
+    const updateProgress = () => {
+      const activeAudio = activeSongAudioRef.current;
+      if (!activeAudio) {
+        return;
+      }
+
+      const runtimeSeconds =
+        Number.isFinite(activeAudio.duration) && activeAudio.duration > 0
+          ? activeAudio.duration
+          : typeof activeSongPayload?.durationMs === 'number' &&
+              Number.isFinite(activeSongPayload.durationMs) &&
+              activeSongPayload.durationMs > 0
+            ? activeSongPayload.durationMs / 1000
+            : null;
+
+      if (!runtimeSeconds) {
+        return;
+      }
+
+      const nextProgress = Math.max(0, Math.min(1, activeAudio.currentTime / runtimeSeconds));
+      setSongProgress(nextProgress);
+    };
+
+    updateProgress();
+    const timer = window.setInterval(updateProgress, SONG_PROGRESS_UPDATE_MS);
+    return () => window.clearInterval(timer);
+  }, [songGateEnabled, hasLiveSongPayload, activeSongAudioUrl, playbackToken, activeSongPayload?.durationMs]);
 
   useEffect(() => {
     if (hasLiveSongPayload) {
@@ -528,12 +568,40 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     boxShadow: hasSongCardBackground ? '0 24px 44px rgba(0, 0, 0, 0.72)' : 'none',
     filter: hasSongCardBackground ? 'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.52))' : 'none',
     maxWidth: '100%',
+    position: 'relative',
+    overflow: 'hidden',
     transformOrigin: 'right center',
     animation: hasSongCardBackground
       ? `modoItalianoClockBgFlow 8s ease-in-out infinite, modoItalianoClockBgPalette 60s ease-in-out infinite${clockBoxMotionAnimation}`
       : clockBoxMotion
         ? `modoItalianoClockSongBox${clockBoxMotion === 'in' ? 'In' : 'Out'} ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
         : undefined
+  };
+  const clampedSongProgress = Math.max(0, Math.min(1, songProgress));
+  const progressLayerStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 'inherit',
+    background:
+      'linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.08) 70%, rgba(255, 255, 255, 0.02) 100%)',
+    transform: `scaleX(${clampedSongProgress})`,
+    transformOrigin: 'left center',
+    transition: 'transform 140ms linear, opacity 220ms ease',
+    opacity: hasSongCardBackground && hasLiveSongPayload ? 0.85 : 0,
+    pointerEvents: 'none'
+  };
+  const progressEdgeStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: `${clampedSongProgress * 100}%`,
+    width: '2px',
+    background: 'rgba(255, 255, 255, 0.28)',
+    boxShadow: '0 0 8px rgba(255, 255, 255, 0.22)',
+    opacity: hasSongCardBackground && hasLiveSongPayload ? 0.7 : 0,
+    transform: 'translateX(-1px)',
+    transition: 'left 140ms linear, opacity 220ms ease',
+    pointerEvents: 'none'
   };
 
   const cityLabel = currentCity.city.trim().toUpperCase();
@@ -635,6 +703,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         </div>
       )}
       <div style={outerStyle}>
+        <div style={progressLayerStyle} />
+        <div style={progressEdgeStyle} />
         {songUiVisible && (
           <div
             style={{
