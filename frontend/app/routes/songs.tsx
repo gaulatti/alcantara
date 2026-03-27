@@ -508,80 +508,90 @@ export default function SongsCatalog() {
               }
             />
           ) : (
-            <div className='space-y-2'>
-              {filteredSongs.map((song, index) => (
-                <article
-                  key={song.id}
-                  className='rounded-2xl border border-sand/20 bg-white/85 p-3 transition-colors hover:border-sea/50 dark:border-sand/40 dark:bg-dark-sand/65 dark:hover:border-accent-blue/60'
-                >
-                  <div className='flex items-start gap-3'>
-                    <div className='flex h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
+            <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
+              {/* Header row */}
+              <div className='grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:border-sand/35 dark:bg-dark-sand/40 dark:text-text-secondary'>
+                <span />
+                <span className='text-center'>#</span>
+                <span>Title</span>
+                <span>Artist</span>
+                <span className='text-right'>Duration</span>
+                <span />
+              </div>
+              <div className='divide-y divide-sand/15 dark:divide-sand/25'>
+                {filteredSongs.map((song, index) => (
+                  <div
+                    key={song.id}
+                    className={`group grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 px-3 py-2 transition-colors hover:bg-sand/10 dark:hover:bg-dark-sand/50 ${!song.enabled ? 'opacity-50' : ''}`}
+                  >
+                    {/* Cover art */}
+                    <div className='h-9 w-9 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
                       {song.coverUrl ? (
-                        <img src={song.coverUrl} alt={formatSongTitle(song)} className='h-full w-full object-cover' />
+                        <img src={song.coverUrl} alt='' className='h-full w-full object-cover' />
                       ) : (
-                        <div className='flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>
-                          No Art
+                        <div className='flex h-full w-full items-center justify-center'>
+                          <Music2 size={14} className='text-text-secondary/40' />
                         </div>
                       )}
                     </div>
 
-                    <div className='min-w-0 flex-1'>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <span className='inline-flex rounded-md border border-sand/35 bg-sand/10 px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary dark:border-sand/45 dark:bg-sand/15 dark:text-text-secondary'>
-                          #{index + 1}
-                        </span>
-                        <h3 className='truncate text-base font-semibold text-text-primary dark:text-text-primary'>{song.title || 'Untitled song'}</h3>
-                        {!song.enabled ? (
-                          <span className='inline-flex rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15 dark:text-text-secondary'>
-                            Disabled
-                          </span>
-                        ) : null}
-                      </div>
+                    {/* Track number */}
+                    <span className='text-center text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{index + 1}</span>
 
-                      <p className='mt-1 truncate text-sm text-text-secondary dark:text-text-secondary'>{song.artist || 'Unknown artist'}</p>
-
-                      <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary dark:text-text-secondary'>
-                        <span>Length {formatSongDuration(song.durationMs)}</span>
-                        {song.earoneSongId ? <span>EarOne {song.earoneSongId}</span> : null}
-                        <span>Updated {formatLastUpdatedLabel(song.updatedAt)}</span>
-                      </div>
-
-                      <p className='mt-1 truncate text-xs text-text-secondary/85 dark:text-text-secondary/85'>{song.audioUrl}</p>
+                    {/* Title only */}
+                    <div className='min-w-0'>
+                      <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{song.title || 'Untitled'}</div>
                     </div>
 
-                    <div className='flex items-start gap-2'>
+                    {/* Artist */}
+                    <div className='min-w-0'>
+                      <button
+                        type='button'
+                        onClick={() => setSearchQuery(song.artist || '')}
+                        className='max-w-full truncate text-left text-sm text-text-secondary transition-colors hover:text-sea dark:text-text-secondary dark:hover:text-accent-blue'
+                        title={`Filter by ${song.artist}`}
+                      >
+                        {song.artist || '—'}
+                      </button>
+                    </div>
+
+                    {/* Duration */}
+                    <span className='text-right text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{formatSongDuration(song.durationMs)}</span>
+
+                    {/* Actions — visible on hover */}
+                    <div className='flex items-center justify-end gap-1'>
                       <IconButton
                         onClick={() => {
                           void playSongPreview(song);
                         }}
-                        className='text-sea dark:text-accent-blue'
+                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 dark:text-accent-blue'
                         title={`Preview ${formatSongTitle(song)}`}
                         aria-label={`Preview ${formatSongTitle(song)}`}
                       >
-                        <Play size={16} />
+                        <Play size={14} />
                       </IconButton>
                       <IconButton
                         onClick={() => openEditModal(song)}
-                        className='text-sea dark:text-accent-blue'
+                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 dark:text-accent-blue'
                         title={`Edit ${formatSongTitle(song)}`}
                         aria-label={`Edit ${formatSongTitle(song)}`}
                       >
-                        <Pencil size={16} />
+                        <Pencil size={14} />
                       </IconButton>
                       <IconButton
                         onClick={() => {
                           void deleteSong(song);
                         }}
-                        className='text-terracotta'
+                        className='text-terracotta opacity-0 transition-opacity group-hover:opacity-100'
                         title={`Delete ${formatSongTitle(song)}`}
                         aria-label={`Delete ${formatSongTitle(song)}`}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={14} />
                       </IconButton>
                     </div>
                   </div>
-                </article>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </Card>
