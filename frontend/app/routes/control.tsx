@@ -573,20 +573,20 @@ export default function Control() {
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
       const normalizedSongSequence = normalizeModoItalianoSongPlaylist(
-        normalizeModoItalianoSongSequence(payload?.songSequence) ?? createModoItalianoSongSequence('manual')
+        normalizeModoItalianoSongSequence(payload?.songSequence) ?? { ...createModoItalianoSongSequence('manual'), activeItemId: null }
       );
       setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     } catch (err) {
       console.error('Failed to fetch program audio bus settings:', err);
       setProgramAudioBusSettings({
-        songSequence: createModoItalianoSongSequence('manual')
+        songSequence: { ...createModoItalianoSongSequence('manual'), activeItemId: null }
       });
     }
   };
 
   const saveProgramAudioBusSongSequence = async (nextSequence: ModoItalianoSongSequence) => {
     const normalizedSongSequence = normalizeModoItalianoSongPlaylist(
-      normalizeModoItalianoSongSequence(nextSequence) ?? createModoItalianoSongSequence('manual')
+      normalizeModoItalianoSongSequence(nextSequence) ?? { ...createModoItalianoSongSequence('manual'), activeItemId: null }
     );
     setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     setIsSavingProgramAudioBus(true);
@@ -1301,7 +1301,9 @@ export default function Control() {
   const selectedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
   const programAudioBusSongSequence = useMemo(
     () =>
-      normalizeModoItalianoSongPlaylist(normalizeModoItalianoSongSequence(programAudioBusSettings.songSequence) ?? createModoItalianoSongSequence('manual')),
+      normalizeModoItalianoSongPlaylist(
+        normalizeModoItalianoSongSequence(programAudioBusSettings.songSequence) ?? { ...createModoItalianoSongSequence('manual'), activeItemId: null }
+      ),
     [programAudioBusSettings.songSequence]
   );
   return (
@@ -3608,6 +3610,7 @@ function ModoItalianoSongSequenceEditor({
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [addSongValue, setAddSongValue] = useState('');
   const songDurationByUrlRef = useRef<Record<string, number | null>>({});
+  const songAnimInitialElapsedRef = useRef<Record<string, number>>({});
   const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
   const isNested = depth > 0;
@@ -3732,8 +3735,7 @@ function ModoItalianoSongSequenceEditor({
     applySequence({
       ...sequence,
       items: [...sequence.items, filledItem],
-      activeItemId: sequence.activeItemId ?? filledItem.id,
-      startedAt: Date.now()
+      activeItemId: sequence.mode === 'autoplay' ? (sequence.activeItemId ?? filledItem.id) : sequence.activeItemId
     });
   };
 
@@ -3880,6 +3882,8 @@ function ModoItalianoSongSequenceEditor({
 
   const clearActiveItem = async () => {
     clearAutoTakeOffTimer();
+    // Clear the animation offset cache so the fill restarts correctly on next play
+    songAnimInitialElapsedRef.current = {};
 
     const nextSequence = {
       ...sequence,
@@ -4265,14 +4269,16 @@ function ModoItalianoSongSequenceEditor({
 
           <button
             type='button'
-            title={effectiveActiveItemId ? 'Next / Advance' : 'Play first'}
+            title={sequence.activeItemId ? 'Next / Advance' : 'Play'}
             onClick={() => {
-              if (!effectiveActiveItemId && sequence.items.length > 0) {
+              if (!sequence.activeItemId && sequence.items.length > 0) {
                 void activateItem(sequence.items[0].id);
-              } else if (effectiveActiveItemId) {
-                const idx = sequence.items.findIndex((i) => i.id === effectiveActiveItemId);
+              } else if (sequence.activeItemId) {
+                const idx = sequence.items.findIndex((i) => i.id === sequence.activeItemId);
                 if (idx < sequence.items.length - 1) {
                   void activateItem(sequence.items[idx + 1].id);
+                } else {
+                  void activateItem(sequence.items[0].id);
                 }
               }
             }}
@@ -4312,11 +4318,58 @@ function ModoItalianoSongSequenceEditor({
         <div className='hidden min-w-0 flex-1 px-4 md:block'>
           {sequence.activeItemId ? (
             (() => {
-              const activeItem = sequence.items.find((i) => i.id === sequence.activeItemId);
-              if (!activeItem || activeItem.kind !== 'preset') return null;
-              const totalMs = typeof activeItem.durationMs === 'number' && activeItem.durationMs > 0 ? activeItem.durationMs : null;
-              const elapsedMs = typeof sequence.startedAt === 'number' ? Math.max(0, nowMs - sequence.startedAt) : 0;
-              const isWithinDuration = totalMs !== null && elapsedMs < totalMs;
+              // In autoplay, effectiveActiveItemId walks the sequence by elapsed time
+              const displayItem = sequence.items.find((i) => i.id === effectiveActiveItemId);
+              if (!displayItem || displayItem.kind !== 'preset') return null;
+
+              // Compute how far into the current song we are
+              let songElapsedMs = 0;
+              let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
+
+              if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
+                const seqStartedAt = sequence.startedAt;
+                const totalElapsed = Math.max(0, nowMs - seqStartedAt);
+                const baseIndex = sequence.items.findIndex((i) => i.id === sequence.activeItemId);
+                const startIdx = baseIndex >= 0 ? baseIndex : 0;
+                const itemDurations = sequence.items.map((item) =>
+                  item.kind === 'preset' && typeof item.durationMs === 'number' && item.durationMs > 0 ? item.durationMs : null
+                );
+                const allKnown = itemDurations.every((d) => d !== null);
+                let remaining = totalElapsed;
+                let cycleOffset = 0;
+                if (allKnown && sequence.loop !== false) {
+                  const cycleDuration = itemDurations.reduce((s, d) => s + (d ?? 0), 0);
+                  if (cycleDuration > 0) {
+                    remaining = totalElapsed % cycleDuration;
+                    cycleOffset = totalElapsed - remaining;
+                  }
+                }
+                let cumulativeOffset = 0;
+                for (let step = 0; step < sequence.items.length; step++) {
+                  const idx = (startIdx + step) % sequence.items.length;
+                  const dur = itemDurations[idx];
+                  if (dur === null || remaining < dur) {
+                    songStartedAt = seqStartedAt + cycleOffset + cumulativeOffset;
+                    songElapsedMs = remaining;
+                    break;
+                  }
+                  remaining -= dur;
+                  cumulativeOffset += dur;
+                }
+              } else {
+                songElapsedMs = Math.max(0, nowMs - songStartedAt);
+              }
+
+              const totalMs = typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0 ? displayItem.durationMs : null;
+              const isWithinDuration = totalMs !== null && songElapsedMs < totalMs;
+
+              // Capture animation delay offset once per song instance to avoid restarting animation on each tick
+              const animKey = `${displayItem.id}-${songStartedAt}`;
+              if (isWithinDuration && !(animKey in songAnimInitialElapsedRef.current)) {
+                songAnimInitialElapsedRef.current[animKey] = Math.max(0, Date.now() - songStartedAt);
+              }
+              const animationDelayMs = songAnimInitialElapsedRef.current[animKey] ?? 0;
+
               const fmt = (ms: number) => {
                 const s = Math.floor(ms / 1000);
                 return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -4326,30 +4379,30 @@ function ModoItalianoSongSequenceEditor({
                   {/* Fill progress — only while song is actively within its known duration */}
                   {isWithinDuration && (
                     <div
-                      key={`${sequence.activeItemId}-${sequence.startedAt}`}
+                      key={`${displayItem.id}-${songStartedAt}`}
                       className='pointer-events-none absolute inset-0 origin-left bg-sky-500/20'
                       style={{
                         animation: `${SONG_PROGRESS_FILL_ANIMATION} ${totalMs}ms linear forwards`,
-                        animationDelay: `-${elapsedMs}ms`
+                        animationDelay: `-${animationDelayMs}ms`
                       }}
                     />
                   )}
                   <div className='relative flex items-center gap-2 px-3 py-2'>
-                    {activeItem.coverUrl ? (
-                      <img src={activeItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
+                    {displayItem.coverUrl ? (
+                      <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
                     ) : (
                       <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800'>
                         <Music2 size={11} className='text-zinc-500' />
                       </div>
                     )}
                     <div className='min-w-0 flex-1'>
-                      <div className='truncate text-xs font-semibold text-sky-400'>{activeItem.title || 'Untitled'}</div>
-                      <div className='truncate text-[10px] text-zinc-400'>{activeItem.artist || 'Unknown Artist'}</div>
+                      <div className='truncate text-xs font-semibold text-sky-400'>{displayItem.title || 'Untitled'}</div>
+                      <div className='truncate text-[10px] text-zinc-400'>{displayItem.artist || 'Unknown Artist'}</div>
                     </div>
                     <div className='shrink-0 text-right text-[10px] tabular-nums text-zinc-500'>
                       {totalMs && isWithinDuration && (
                         <span>
-                          {fmt(elapsedMs)}
+                          {fmt(songElapsedMs)}
                           <span className='text-zinc-700'> / {fmt(totalMs)}</span>
                         </span>
                       )}
