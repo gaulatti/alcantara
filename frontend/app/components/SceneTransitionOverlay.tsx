@@ -377,6 +377,9 @@ export function SceneTransitionOverlay({ transition }: SceneTransitionOverlayPro
         <div className='scene-transition-overlay__hit-pop scene-transition-overlay__hit-pop--left' />
         <div className='scene-transition-overlay__hit-pop scene-transition-overlay__hit-pop--center' />
         <div className='scene-transition-overlay__hit-pop scene-transition-overlay__hit-pop--right' />
+        <div className='scene-transition-overlay__hit-logo-shell'>
+          <img className='scene-transition-overlay__hit-logo' src='/mi.svg' alt='' />
+        </div>
         <div className='scene-transition-overlay__hit-shine' />
         <div className='scene-transition-overlay__hit-flash' />
         <TransitionFinishLayer tone='neon' />
