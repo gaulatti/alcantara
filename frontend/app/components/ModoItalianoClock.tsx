@@ -7,6 +7,11 @@ import {
   resolveModoItalianoSongLeaf,
   type ModoItalianoSongSequence
 } from '../utils/modoItalianoSequence';
+import {
+  ensureModoItalianoAudioBusTrack,
+  getModoItalianoAudioBusSnapshot,
+  subscribeModoItalianoAudioBus
+} from '../utils/modoItalianoAudioBus';
 
 export interface ModoItalianoClockCity {
   city: string;
@@ -14,6 +19,7 @@ export interface ModoItalianoClockCity {
 }
 
 interface ModoItalianoClockProps {
+  programId: string;
   timeOverride?: GlobalTimeOverride | null;
   rotationIntervalMs?: number;
   transitionDurationMs?: number;
@@ -43,7 +49,6 @@ const DEFAULT_MODOITALIANO_CLOCK_CITIES: ModoItalianoClockCity[] = [
 ];
 const SONG_UI_FADE_MS = 320;
 const SONG_BOX_MOTION_MS = 360;
-const SONG_PROGRESS_UPDATE_MS = 120;
 
 interface SongPayload {
   id?: string;
@@ -58,7 +63,16 @@ interface SongPayload {
 }
 
 function toSingleSongSequence(song: SongPayload): ModoItalianoSongSequence {
-  const itemId = `song_${Math.random().toString(36).slice(2, 8)}`;
+  const itemId = [
+    song.id?.trim() || '',
+    song.artist.trim(),
+    song.title.trim(),
+    song.audioUrl?.trim() || '',
+    song.coverUrl.trim(),
+    song.earoneSongId?.trim() || ''
+  ]
+    .filter(Boolean)
+    .join('|');
   return {
     mode: 'manual',
     items: [
@@ -78,7 +92,7 @@ function toSingleSongSequence(song: SongPayload): ModoItalianoSongSequence {
     activeItemId: itemId,
     intervalMs: 4000,
     loop: true,
-    startedAt: Date.now()
+    startedAt: 0
   };
 }
 
@@ -160,6 +174,7 @@ function normalizeSongPayload(value: unknown): SongPayload | null {
 }
 
 export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
+  programId,
   timeOverride = null,
   rotationIntervalMs = 5000,
   transitionDurationMs = 300,
@@ -298,149 +313,68 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   ]);
 
   const activeSongPayload = resolvedSequenceSong;
-  const activeSongAudioUrl = activeSongPayload?.audioUrl?.trim() || '';
-  const playbackToken = activeSongAudioUrl
-    ? `${activeSongPayload?.id ?? ''}:${effectiveSongSequence?.startedAt ?? ''}:${activeSongAudioUrl}`
-    : '';
-  const normalizedSongArtist = activeSongPayload?.artist?.trim() || '';
-  const normalizedSongTitle = activeSongPayload?.title?.trim() || '';
-  const normalizedSongCoverUrl = activeSongPayload?.coverUrl?.trim() || '';
+  const [audioBusSnapshot, setAudioBusSnapshot] = useState(() => getModoItalianoAudioBusSnapshot(programId));
+  const fallbackSongAudioUrl = activeSongPayload?.audioUrl?.trim() || '';
+  const fallbackSongArtist = activeSongPayload?.artist?.trim() || '';
+  const fallbackSongTitle = activeSongPayload?.title?.trim() || '';
+  const fallbackSongCoverUrl = activeSongPayload?.coverUrl?.trim() || '';
+  const fallbackSongIdentity = activeSongPayload?.id?.trim() || `${fallbackSongArtist}|${fallbackSongTitle}`.trim();
+  const sequenceStartToken =
+    effectiveSongSequence?.mode === 'autoplay' && typeof effectiveSongSequence?.startedAt === 'number'
+      ? String(effectiveSongSequence.startedAt)
+      : '';
+  const fallbackPlaybackToken = fallbackSongAudioUrl ? `${fallbackSongIdentity}:${sequenceStartToken}:${fallbackSongAudioUrl}` : '';
   const songGateEnabled = typeof playingSong === 'boolean' ? playingSong : true;
+  const audioBusSong = songGateEnabled ? audioBusSnapshot.track : null;
+  const normalizedSongArtist = (audioBusSong?.artist ?? fallbackSongArtist).trim();
+  const normalizedSongTitle = (audioBusSong?.title ?? fallbackSongTitle).trim();
+  const normalizedSongCoverUrl = (audioBusSong?.coverUrl ?? fallbackSongCoverUrl).trim();
   const hasSongPayload = songGateEnabled && (!!normalizedSongArtist || !!normalizedSongTitle);
-  const [endedPlaybackToken, setEndedPlaybackToken] = useState('');
-  const hasLiveSongPayload = hasSongPayload && (!playbackToken || endedPlaybackToken !== playbackToken);
+  const hasLiveSongPayload = hasSongPayload && (!audioBusSong || audioBusSnapshot.endedToken !== audioBusSong.token);
   const [songUiVisible, setSongUiVisible] = useState(hasLiveSongPayload);
   const [songUiActive, setSongUiActive] = useState(hasLiveSongPayload);
-  const [songProgress, setSongProgress] = useState(0);
   const [displaySongTitle, setDisplaySongTitle] = useState(normalizedSongTitle);
   const [displaySongArtist, setDisplaySongArtist] = useState(normalizedSongArtist);
   const [displaySongCoverUrl, setDisplaySongCoverUrl] = useState(normalizedSongCoverUrl || '/cover.jpg');
   const [clockBoxMotion, setClockBoxMotion] = useState<'in' | 'out' | null>(null);
   const previousHasSongPayloadRef = useRef(hasLiveSongPayload);
-  const activeSongAudioRef = useRef<HTMLAudioElement | null>(null);
-  const activeSongPlaybackTokenRef = useRef('');
   const useSplitSongClockLayout = songUiVisible && showWorldClocks;
 
   useEffect(() => {
-    return () => {
-      if (activeSongAudioRef.current) {
-        activeSongAudioRef.current.pause();
-        try {
-          activeSongAudioRef.current.currentTime = 0;
-        } catch {
-          // no-op
-        }
-        activeSongAudioRef.current.onended = null;
-        activeSongAudioRef.current.onerror = null;
-        activeSongAudioRef.current = null;
-      }
-      activeSongPlaybackTokenRef.current = '';
-    };
-  }, []);
+    return subscribeModoItalianoAudioBus(programId, (snapshot) => {
+      setAudioBusSnapshot(snapshot);
+    });
+  }, [programId]);
 
   useEffect(() => {
-    if (!songGateEnabled || !activeSongAudioUrl) {
-      if (activeSongAudioRef.current) {
-        activeSongAudioRef.current.pause();
-        try {
-          activeSongAudioRef.current.currentTime = 0;
-        } catch {
-          // no-op
-        }
-        activeSongAudioRef.current.onended = null;
-        activeSongAudioRef.current.onerror = null;
-        activeSongAudioRef.current = null;
-      }
-      activeSongPlaybackTokenRef.current = '';
-      setEndedPlaybackToken('');
-      setSongProgress(0);
+    if (!songGateEnabled || !fallbackSongAudioUrl || !fallbackPlaybackToken) {
       return;
     }
 
-    if (playbackToken && playbackToken === activeSongPlaybackTokenRef.current) {
-      return;
-    }
-
-    if (activeSongAudioRef.current) {
-      activeSongAudioRef.current.pause();
-      try {
-        activeSongAudioRef.current.currentTime = 0;
-      } catch {
-        // no-op
-      }
-      activeSongAudioRef.current.onended = null;
-      activeSongAudioRef.current.onerror = null;
-      activeSongAudioRef.current = null;
-    }
-
-    const audio = new Audio(activeSongAudioUrl);
-    audio.preload = 'auto';
-    activeSongAudioRef.current = audio;
-    activeSongPlaybackTokenRef.current = playbackToken;
-    setEndedPlaybackToken('');
-    setSongProgress(0);
-
-    const cleanup = () => {
-      if (activeSongAudioRef.current === audio) {
-        activeSongAudioRef.current = null;
-      }
-      audio.onended = null;
-      audio.onerror = null;
-    };
-
-    audio.onended = () => {
-      setSongProgress(1);
-      setEndedPlaybackToken(playbackToken);
-      cleanup();
-    };
-    audio.onerror = () => {
-      console.error(`Failed to play song audio: ${activeSongAudioUrl}`);
-      setSongProgress(0);
-      cleanup();
-    };
-
-    const playPromise = audio.play();
-    if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch((err) => {
-        console.error(`Failed to start song audio "${activeSongAudioUrl}"`, err);
-        cleanup();
-      });
-    }
-  }, [songGateEnabled, activeSongAudioUrl, playbackToken]);
-
-  useEffect(() => {
-    if (!songGateEnabled || !hasLiveSongPayload || !activeSongAudioUrl) {
-      setSongProgress(0);
-      return;
-    }
-
-    const updateProgress = () => {
-      const activeAudio = activeSongAudioRef.current;
-      if (!activeAudio) {
-        return;
-      }
-
-      const runtimeSeconds =
-        Number.isFinite(activeAudio.duration) && activeAudio.duration > 0
-          ? activeAudio.duration
-          : typeof activeSongPayload?.durationMs === 'number' &&
-              Number.isFinite(activeSongPayload.durationMs) &&
-              activeSongPayload.durationMs > 0
-            ? activeSongPayload.durationMs / 1000
-            : null;
-
-      if (!runtimeSeconds) {
-        return;
-      }
-
-      const nextProgress = Math.max(0, Math.min(1, activeAudio.currentTime / runtimeSeconds));
-      setSongProgress(nextProgress);
-    };
-
-    updateProgress();
-    const timer = window.setInterval(updateProgress, SONG_PROGRESS_UPDATE_MS);
-    return () => window.clearInterval(timer);
-  }, [songGateEnabled, hasLiveSongPayload, activeSongAudioUrl, playbackToken, activeSongPayload?.durationMs]);
+    ensureModoItalianoAudioBusTrack(programId, {
+      token: fallbackPlaybackToken,
+      audioUrl: fallbackSongAudioUrl,
+      durationMs: activeSongPayload?.durationMs,
+      artist: fallbackSongArtist,
+      title: fallbackSongTitle,
+      coverUrl: fallbackSongCoverUrl,
+      earoneSongId: activeSongPayload?.earoneSongId,
+      earoneRank: activeSongPayload?.earoneRank,
+      earoneSpins: activeSongPayload?.earoneSpins
+    });
+  }, [
+    programId,
+    songGateEnabled,
+    fallbackSongAudioUrl,
+    fallbackPlaybackToken,
+    fallbackSongArtist,
+    fallbackSongTitle,
+    fallbackSongCoverUrl,
+    activeSongPayload?.durationMs,
+    activeSongPayload?.earoneSongId,
+    activeSongPayload?.earoneRank,
+    activeSongPayload?.earoneSpins
+  ]);
 
   useEffect(() => {
     if (hasLiveSongPayload) {
@@ -577,7 +511,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         ? `modoItalianoClockSongBox${clockBoxMotion === 'in' ? 'In' : 'Out'} ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
         : undefined
   };
-  const clampedSongProgress = Math.max(0, Math.min(1, songProgress));
+  const clampedSongProgress = Math.max(0, Math.min(1, audioBusSong ? audioBusSnapshot.progress : 0));
   const progressLayerStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,

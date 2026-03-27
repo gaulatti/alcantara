@@ -313,6 +313,99 @@ function getSelectedItem<TItem extends BaseSequenceItem>(
   return sequence.items[nextIndex] ?? null;
 }
 
+function getSongItemPlaybackDurationMs(
+  item: ModoItalianoSongSequenceItem
+): number | null {
+  if (
+    item.kind === 'preset' &&
+    typeof item.durationMs === 'number' &&
+    Number.isFinite(item.durationMs) &&
+    item.durationMs > 0
+  ) {
+    return Math.max(1, Math.round(item.durationMs));
+  }
+
+  return null;
+}
+
+function getSelectedSongItem(
+  sequence: ModoItalianoSongSequence,
+  nowMs: number
+): ModoItalianoSongSequenceItem | null {
+  if (sequence.items.length === 0) {
+    return null;
+  }
+
+  const baseIndex = getBaseIndex(sequence);
+  if (baseIndex === null) {
+    return null;
+  }
+
+  if (sequence.mode === 'manual') {
+    return sequence.items[baseIndex] ?? null;
+  }
+
+  const startedAt = sequence.startedAt ?? nowMs;
+  const elapsedMs = Math.max(0, nowMs - startedAt);
+  const itemDurations = sequence.items.map((item) => getSongItemPlaybackDurationMs(item));
+
+  if (sequence.loop !== false) {
+    const hasUnknownDuration = itemDurations.some((durationMs) => durationMs === null);
+    if (!hasUnknownDuration) {
+      const cycleDurationMs = itemDurations.reduce((sum, durationMs) => sum + (durationMs ?? 0), 0);
+      if (cycleDurationMs <= 0) {
+        return sequence.items[baseIndex] ?? null;
+      }
+
+      let remainingMs = elapsedMs % cycleDurationMs;
+      for (let step = 0; step < sequence.items.length; step += 1) {
+        const index = (baseIndex + step) % sequence.items.length;
+        const itemDurationMs = itemDurations[index];
+        if (typeof itemDurationMs !== 'number') {
+          return sequence.items[index] ?? null;
+        }
+        if (remainingMs < itemDurationMs) {
+          return sequence.items[index] ?? null;
+        }
+        remainingMs -= itemDurationMs;
+      }
+
+      return sequence.items[baseIndex] ?? null;
+    }
+
+    let remainingMs = elapsedMs;
+    for (let step = 0; step < sequence.items.length; step += 1) {
+      const index = (baseIndex + step) % sequence.items.length;
+      const itemDurationMs = itemDurations[index];
+      if (typeof itemDurationMs !== 'number') {
+        return sequence.items[index] ?? null;
+      }
+      if (remainingMs < itemDurationMs) {
+        return sequence.items[index] ?? null;
+      }
+      remainingMs -= itemDurationMs;
+    }
+
+    return sequence.items[baseIndex] ?? null;
+  }
+
+  let index = baseIndex;
+  let remainingMs = elapsedMs;
+  while (index < sequence.items.length - 1) {
+    const itemDurationMs = itemDurations[index];
+    if (typeof itemDurationMs !== 'number') {
+      return sequence.items[index] ?? null;
+    }
+    if (remainingMs < itemDurationMs) {
+      break;
+    }
+    remainingMs -= itemDurationMs;
+    index += 1;
+  }
+
+  return sequence.items[index] ?? null;
+}
+
 function resolveTextSequenceRecursive(
   sequence: ModoItalianoTextSequence,
   nowMs: number,
@@ -350,7 +443,7 @@ function resolveSongSequenceRecursive(
     return null;
   }
 
-  const selected = getSelectedItem(sequence, nowMs);
+  const selected = getSelectedSongItem(sequence, nowMs);
   if (!selected) {
     return null;
   }
@@ -518,7 +611,7 @@ export function getModoItalianoSongSequenceSelectedItemId(
   sequence: ModoItalianoSongSequence,
   nowMs = Date.now()
 ): string | null {
-  return getSelectedItem(sequence, nowMs)?.id ?? null;
+  return getSelectedSongItem(sequence, nowMs)?.id ?? null;
 }
 
 export function resolveModoItalianoTextContent(

@@ -1,3 +1,23 @@
 @import "@gaulatti/bleecker/styles.base.css";
 @source "../node_modules/@gaulatti/bleecker/dist/**/*.js";
 @source "./**/*.{ts,tsx}";
+
+@keyframes eq-bar1 {
+    from {
+        height: 3px;
+    }
+
+    to {
+        height: 14px;
+    }
+}
+
+@keyframes eq-bar2 {
+    from {
+        height: 8px;
+    }
+
+    to {
+        height: 4px;
+    }
+}

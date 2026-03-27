@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
@@ -8,6 +12,10 @@ export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
   private eventSubjects = new Map<string, Subject<any>>();
+  private programAudioBusByProgramId = new Map<
+    string,
+    { songSequence: unknown | null }
+  >();
 
   constructor(private prisma: PrismaService) {}
 
@@ -186,6 +194,12 @@ export class ProgramService {
       this.eventSubjects.delete(current);
     }
 
+    const currentAudioBus = this.programAudioBusByProgramId.get(current);
+    if (currentAudioBus) {
+      this.programAudioBusByProgramId.set(next, currentAudioBus);
+      this.programAudioBusByProgramId.delete(current);
+    }
+
     return this.getProgramStateWithScenes(next);
   }
 
@@ -209,6 +223,7 @@ export class ProgramService {
       subject.complete();
       this.eventSubjects.delete(normalized);
     }
+    this.programAudioBusByProgramId.delete(normalized);
 
     return { deletedProgramId: normalized };
   }
@@ -234,6 +249,50 @@ export class ProgramService {
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
     return this.getProgramStateWithScenes(programId);
+  }
+
+  async getProgramAudioBus(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    return (
+      this.programAudioBusByProgramId.get(normalizedProgramId) ?? {
+        songSequence: null,
+      }
+    );
+  }
+
+  async updateProgramAudioBus(
+    data: { songSequence?: unknown } | null | undefined,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    if (data !== null && data !== undefined && typeof data !== 'object') {
+      throw new BadRequestException('audio bus payload must be an object');
+    }
+
+    const songSequence =
+      data && 'songSequence' in data
+        ? ((data as { songSequence?: unknown }).songSequence ?? null)
+        : null;
+
+    const nextSettings = {
+      songSequence,
+    };
+
+    this.programAudioBusByProgramId.set(normalizedProgramId, nextSettings);
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'audio_bus_update',
+      programId: normalizedProgramId,
+      settings: nextSettings,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return nextSettings;
   }
 
   async addSceneToProgram(
@@ -412,6 +471,36 @@ export class ProgramService {
     });
 
     return updatedState;
+  }
+
+  async takeProgramSongOffAir(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+
+    // Clear activeItemId from the stored audio bus sequence so it persists across reloads
+    const currentAudioBus =
+      this.programAudioBusByProgramId.get(normalizedProgramId);
+    if (
+      currentAudioBus?.songSequence &&
+      typeof currentAudioBus.songSequence === 'object'
+    ) {
+      const updatedSequence = {
+        ...(currentAudioBus.songSequence as Record<string, unknown>),
+        activeItemId: null,
+      };
+      this.programAudioBusByProgramId.set(normalizedProgramId, {
+        songSequence: updatedSequence,
+      });
+    }
+
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'song_off_air',
+      programId: normalizedProgramId,
+      triggeredAt: new Date().toISOString(),
+    });
+
+    return { ok: true, programId: normalizedProgramId };
   }
 
   async getProgramIdsByActiveScene(sceneId: number) {

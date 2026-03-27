@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Kbd, Modal, SectionHeader, Select, Switch } from '@gaulatti/bleecker';
-import { GripVertical } from 'lucide-react';
+import { Button, Card, Kbd, SectionHeader, Select, Switch } from '@gaulatti/bleecker';
+import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { uploadFileToMediaBucket } from '../services/uploads';
@@ -96,8 +96,13 @@ interface SongCatalogItem {
   enabled: boolean;
 }
 
+interface ProgramAudioBusSettings {
+  songSequence: unknown | null;
+}
+
 const INSTANT_PLAYBACK_SWEEP_ANIMATION = 'alcantaraInstantPlaybackSweep';
 const INSTANT_PLAYBACK_PULSE_ANIMATION = 'alcantaraInstantPlaybackPulse';
+const SONG_PROGRESS_FILL_ANIMATION = 'alcantaraSongProgressFill';
 const INSTANT_SHORTCUT_KEYS = 'qwertyuiopasdfghjklzxcvbnm';
 
 type ComponentPropsMap = Record<string, any>;
@@ -140,7 +145,6 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'reloj-loop-clock':
     case 'toni-chyron':
     case 'toni-clock':
-    case 'modoitaliano-clock':
     case 'modoitaliano-chyron':
     case 'modoitaliano-disclaimer':
     case 'earone':
@@ -257,9 +261,7 @@ function SlideshowEditorFields({
       setImages(nextImages);
       if (failedUploads > 0) {
         setUploadError(
-          failedUploads === files.length
-            ? 'Failed to upload selected image files.'
-            : `Uploaded ${files.length - failedUploads} of ${files.length} images.`,
+          failedUploads === files.length ? 'Failed to upload selected image files.' : `Uploaded ${files.length - failedUploads} of ${files.length} images.`
         );
       }
     } finally {
@@ -379,6 +381,17 @@ function parseSceneMetadata(metadata: string | null): ComponentPropsMap {
   return {};
 }
 
+function withIndependentModoItalianoClockMetadata(metadata: ComponentPropsMap): ComponentPropsMap {
+  if (!Object.prototype.hasOwnProperty.call(metadata, 'modoitaliano-clock')) {
+    return metadata;
+  }
+
+  return {
+    ...metadata,
+    'modoitaliano-clock': {}
+  };
+}
+
 function getSceneSummaryText(scene: Scene): string {
   try {
     const metadata = parseSceneMetadata(scene.metadata);
@@ -403,12 +416,7 @@ function getSceneSummaryText(scene: Scene): string {
     }
 
     const broadcastProps = metadata?.['broadcast-layout'];
-    if (
-      broadcastProps &&
-      typeof broadcastProps === 'object' &&
-      typeof broadcastProps.chyronText === 'string' &&
-      broadcastProps.chyronText.trim()
-    ) {
+    if (broadcastProps && typeof broadcastProps === 'object' && typeof broadcastProps.chyronText === 'string' && broadcastProps.chyronText.trim()) {
       return broadcastProps.chyronText;
     }
   } catch (err) {
@@ -447,6 +455,10 @@ export default function Control() {
   const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
   const [isCreatingScene, setIsCreatingScene] = useState(false);
   const [selectedTransitionId] = useGlobalTransitionId();
+  const [programAudioBusSettings, setProgramAudioBusSettings] = useState<ProgramAudioBusSettings>({
+    songSequence: createModoItalianoSongSequence('manual')
+  });
+  const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
 
   useEffect(() => {
     fetchScenes();
@@ -457,6 +469,7 @@ export default function Control() {
 
   useEffect(() => {
     void fetchProgramState(activeProgramId);
+    void fetchProgramAudioBusSettings(activeProgramId);
     void fetchInstants();
     Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
       window.clearTimeout(timeoutId);
@@ -538,7 +551,7 @@ export default function Control() {
         ? ({
             ...data,
             scenes: Array.isArray(data.scenes) ? data.scenes : [],
-            activeSceneId: typeof data.activeSceneId === 'number' ? data.activeSceneId : null,
+            activeSceneId: typeof data.activeSceneId === 'number' ? data.activeSceneId : null
           } as ProgramState)
         : null;
 
@@ -551,21 +564,87 @@ export default function Control() {
     }
   };
 
+  const fetchProgramAudioBusSettings = async (targetProgramId: string) => {
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      const normalizedSongSequence = normalizeModoItalianoSongPlaylist(
+        normalizeModoItalianoSongSequence(payload?.songSequence) ?? createModoItalianoSongSequence('manual')
+      );
+      setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+    } catch (err) {
+      console.error('Failed to fetch program audio bus settings:', err);
+      setProgramAudioBusSettings({
+        songSequence: createModoItalianoSongSequence('manual')
+      });
+    }
+  };
+
+  const saveProgramAudioBusSongSequence = async (nextSequence: ModoItalianoSongSequence) => {
+    const normalizedSongSequence = normalizeModoItalianoSongPlaylist(
+      normalizeModoItalianoSongSequence(nextSequence) ?? createModoItalianoSongSequence('manual')
+    );
+    setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+    setIsSavingProgramAudioBus(true);
+
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          songSequence: normalizedSongSequence
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      const persistedSongSequence = normalizeModoItalianoSongPlaylist(normalizeModoItalianoSongSequence(payload?.songSequence) ?? normalizedSongSequence);
+      setProgramAudioBusSettings({ songSequence: persistedSongSequence });
+    } catch (err) {
+      console.error('Failed to save program audio bus settings:', err);
+    } finally {
+      setIsSavingProgramAudioBus(false);
+    }
+  };
+
+  const takeProgramSongOffAir = async (targetProgramId: string = activeProgramId) => {
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song/off-air`), {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.error('Failed to take song off air:', err);
+    }
+  };
+
   const buildComponentPropsForScene = (scene: Scene): Record<string, any> => {
     const metadata = parseSceneMetadata(scene.metadata);
-    const legacyFifthBell =
-      metadata?.fifthbell && typeof metadata.fifthbell === 'object' && !Array.isArray(metadata.fifthbell) ? metadata.fifthbell : {};
+    const legacyFifthBell = metadata?.fifthbell && typeof metadata.fifthbell === 'object' && !Array.isArray(metadata.fifthbell) ? metadata.fifthbell : {};
 
     const components = scene.layout.componentType.split(',').filter(Boolean);
     const combined: Record<string, any> = {};
 
     for (const componentType of components) {
+      if (componentType === 'modoitaliano-clock') {
+        continue;
+      }
+
       const compatibleMetadata =
         componentType === 'fifthbell-content' || componentType === 'fifthbell-marquee'
           ? { ...legacyFifthBell, ...(metadata[componentType] || {}) }
           : componentType === 'toni-clock' || componentType === 'fifthbell-corner'
             ? { ...legacyFifthBell, ...(metadata['fifthbell-corner'] || {}), ...(metadata['toni-clock'] || {}), ...(metadata[componentType] || {}) }
-          : metadata[componentType] || {};
+            : metadata[componentType] || {};
 
       combined[componentType] = {
         ...getDefaultPropsForComponent(componentType),
@@ -625,7 +704,7 @@ export default function Control() {
   const triggerInstant = async (instantId: number) => {
     try {
       const res = await fetch(apiUrl(`/instants/${instantId}/play`), {
-        method: 'POST',
+        method: 'POST'
       });
 
       if (!res.ok) {
@@ -643,8 +722,8 @@ export default function Control() {
         ...prev,
         [instantId]: {
           startedAtMs,
-          endsAtMs: typeof durationMs === 'number' && durationMs > 0 ? startedAtMs + durationMs : null,
-        },
+          endsAtMs: typeof durationMs === 'number' && durationMs > 0 ? startedAtMs + durationMs : null
+        }
       }));
 
       if (typeof durationMs === 'number' && durationMs > 0) {
@@ -669,7 +748,7 @@ export default function Control() {
   const stopAllInstants = async () => {
     try {
       const res = await fetch(apiUrl('/instants/stop-all'), {
-        method: 'POST',
+        method: 'POST'
       });
 
       if (!res.ok) {
@@ -740,9 +819,7 @@ export default function Control() {
 
       const cachedDuration = instantDurationByUrlRef.current[instant.audioUrl];
       if (cachedDuration !== undefined) {
-        setInstantDurationsMs((prev) =>
-          prev[instant.id] === cachedDuration ? prev : { ...prev, [instant.id]: cachedDuration },
-        );
+        setInstantDurationsMs((prev) => (prev[instant.id] === cachedDuration ? prev : { ...prev, [instant.id]: cachedDuration }));
         return;
       }
 
@@ -762,7 +839,7 @@ export default function Control() {
         if (!cancelled) {
           setInstantDurationsMs((prev) => ({
             ...prev,
-            [instant.id]: durationMs,
+            [instant.id]: durationMs
           }));
         }
 
@@ -774,7 +851,7 @@ export default function Control() {
         if (!cancelled) {
           setInstantDurationsMs((prev) => ({
             ...prev,
-            [instant.id]: null,
+            [instant.id]: null
           }));
         }
         cleanup();
@@ -841,10 +918,10 @@ export default function Control() {
     try {
       const selectedSceneData = scenes.find((scene) => scene.id === selectedScene);
       const existingMetadata = selectedSceneData ? parseSceneMetadata(selectedSceneData.metadata) : {};
-      const nextMetadata: ComponentPropsMap = {
+      const nextMetadata = withIndependentModoItalianoClockMetadata({
         ...existingMetadata,
         ...nextSceneProps
-      };
+      });
 
       const response = await fetch(apiUrl(`/scenes/${selectedScene}`), {
         method: 'PUT',
@@ -930,6 +1007,9 @@ export default function Control() {
       const components = layout.componentType.split(',').filter(Boolean);
       const initialProps: Record<string, any> = {};
       components.forEach((comp) => {
+        if (comp === 'modoitaliano-clock') {
+          return;
+        }
         initialProps[comp] = getDefaultPropsForComponent(comp);
       });
       setSceneComponentProps(initialProps);
@@ -994,9 +1074,7 @@ export default function Control() {
           ]
         };
       case 'modoitaliano-clock':
-        return {
-          songSequence: createModoItalianoSongSequence('manual')
-        };
+        return {};
       case 'modoitaliano-chyron':
         return {
           show: true,
@@ -1109,10 +1187,10 @@ export default function Control() {
       const payload = {
         name: newSceneName,
         layoutId: selectedLayoutId,
-        metadata: {
+        metadata: withIndependentModoItalianoClockMetadata({
           ...existingMetadata,
           ...sceneComponentProps
-        }
+        })
       };
 
       const url = editingScene ? apiUrl(`/scenes/${editingScene.id}`) : apiUrl('/scenes');
@@ -1220,7 +1298,12 @@ export default function Control() {
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
     ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
   );
-  const selectedSceneData = selectedScene ? assignedScenes.find((scene) => scene.id === selectedScene) ?? null : null;
+  const selectedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
+  const programAudioBusSongSequence = useMemo(
+    () =>
+      normalizeModoItalianoSongPlaylist(normalizeModoItalianoSongSequence(programAudioBusSettings.songSequence) ?? createModoItalianoSongSequence('manual')),
+    [programAudioBusSettings.songSequence]
+  );
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
       <style>
@@ -1228,6 +1311,11 @@ export default function Control() {
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
             0% { transform: scaleX(1); opacity: 0.26; }
             100% { transform: scaleX(0); opacity: 0.08; }
+          }
+
+          @keyframes ${SONG_PROGRESS_FILL_ANIMATION} {
+            0% { transform: scaleX(0); }
+            100% { transform: scaleX(1); }
           }
 
           @keyframes ${INSTANT_PLAYBACK_PULSE_ANIMATION} {
@@ -1302,7 +1390,28 @@ export default function Control() {
             )}
           </Card>
 
-          {/* Scene Attributes Panel */}
+          <Card className='space-y-4'>
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Program Audio Bus Playlist</h2>
+              {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
+            </div>
+            <p className='text-sm text-text-secondary dark:text-text-secondary'>Independent from scene component metadata, including `modoitaliano-clock`.</p>
+            <ModoItalianoSongSequenceEditor
+              sequence={programAudioBusSongSequence}
+              songCatalog={songCatalog}
+              onChange={(nextSequence) => {
+                void saveProgramAudioBusSongSequence(nextSequence);
+              }}
+              onTakeSelection={async (nextSequence) => {
+                await saveProgramAudioBusSongSequence(nextSequence);
+              }}
+              onTakeOffAir={async () => {
+                await takeProgramSongOffAir(activeProgramId);
+              }}
+            />
+          </Card>
+
+          {/* Instants Panel */}
           <Card className='space-y-4'>
             <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
               <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Instants</h2>
@@ -1325,8 +1434,8 @@ export default function Control() {
             ) : instants.length === 0 ? (
               <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants in catalog. Create some in Instants.</p>
             ) : (
-                <div className='overflow-x-auto'>
-                  <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
+              <div className='overflow-x-auto'>
+                <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
                   {instants.map((instant, index) => {
                     const playbackState = instantPlayback[instant.id] ?? null;
                     const isPlaying = playbackState !== null;
@@ -1357,9 +1466,7 @@ export default function Control() {
                           <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>{instant.name}</div>
                           <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>Vol {instant.volume}</div>
                           {isPlaying ? (
-                            <div className='mt-1 line-clamp-1 text-[11px] font-semibold text-sea dark:text-accent-blue'>
-                              Playing
-                            </div>
+                            <div className='mt-1 line-clamp-1 text-[11px] font-semibold text-sea dark:text-accent-blue'>Playing</div>
                           ) : durationMs !== null ? (
                             <div className='mt-1 line-clamp-1 text-[11px] text-text-secondary dark:text-text-secondary'>
                               {`Length ${Math.max(0.1, durationMs / 1000).toFixed(1)}s`}
@@ -1373,14 +1480,14 @@ export default function Control() {
                                 key={`${instant.id}-${playbackState.startedAtMs}`}
                                 className='absolute inset-0 origin-left bg-sea dark:bg-accent-blue'
                                 style={{
-                                  animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`,
+                                  animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`
                                 }}
                               />
                             ) : (
                               <div
                                 className='absolute inset-0 bg-sea dark:bg-accent-blue'
                                 style={{
-                                  animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`,
+                                  animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`
                                 }}
                               />
                             )}
@@ -1709,18 +1816,8 @@ function ComponentPropsFields({
         />
       );
     case 'modoitaliano-clock':
-      return (
-        <ModoItalianoClockEditorFields
-          componentType={componentType}
-          props={props}
-          updateProp={updateProp}
-          replaceProps={replaceProps}
-          commitProps={commitProps}
-          songCatalog={songCatalog}
-        />
-      );
-    case 'toni-clock':
-    {
+      return null;
+    case 'toni-clock': {
       const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
 
       return (
@@ -2331,9 +2428,7 @@ function ComponentPropsFields({
               </label>
             )}
           </div>
-          {supportsMarquee && (
-            <p className='text-xs text-gray-500'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>
-          )}
+          {supportsMarquee && <p className='text-xs text-gray-500'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>}
 
           {supportsContent && (
             <div className='space-y-2'>
@@ -2949,11 +3044,7 @@ function ToniChyronSequenceEditor({
       </div>
 
       <div className='flex flex-wrap gap-2'>
-        <button
-          type='button'
-          onClick={addItem}
-          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-        >
+        <button type='button' onClick={addItem} className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'>
           + Sequence
         </button>
       </div>
@@ -2961,259 +3052,35 @@ function ToniChyronSequenceEditor({
   );
 }
 
-interface ModoItalianoSongDraft {
-  artist: string;
-  title: string;
-  coverUrl: string;
-  audioUrl: string;
-  durationMs?: number;
-  earoneSongId: string;
-  earoneRank: string;
-  earoneSpins: string;
-}
+function flattenModoItalianoSongItems(items: ModoItalianoSongSequenceItem[]): Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] {
+  const flattened: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] = [];
 
-interface ModoItalianoSongBulkImportDraft {
-  artist: string;
-  title: string;
-  coverUrl: string;
-}
+  for (const item of items) {
+    if (item.kind === 'preset') {
+      flattened.push(item);
+      continue;
+    }
 
-function normalizeModoItalianoSongDraft(value: unknown): ModoItalianoSongDraft | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
+    flattened.push(...flattenModoItalianoSongItems(item.sequence.items));
   }
 
-  const record = value as Record<string, unknown>;
-  const artist = typeof record.artist === 'string' ? record.artist.trim() : '';
-  const title = typeof record.title === 'string' ? record.title.trim() : '';
-  const coverUrl = typeof record.coverUrl === 'string' ? record.coverUrl.trim() : '';
-  const audioUrl = typeof record.audioUrl === 'string' ? record.audioUrl.trim() : '';
-  const durationMs =
-    typeof record.durationMs === 'number' && Number.isFinite(record.durationMs) && record.durationMs > 0
-      ? Math.round(record.durationMs)
-      : undefined;
-  const earoneSongId =
-    typeof record.earoneSongId === 'string'
-      ? record.earoneSongId.trim()
-      : typeof record.earoneSongId === 'number' && Number.isFinite(record.earoneSongId)
-        ? String(record.earoneSongId)
-        : '';
-  const earoneRank = typeof record.earoneRank === 'string' ? record.earoneRank.trim() : '';
-  const earoneSpins =
-    typeof record.earoneSpins === 'string'
-      ? record.earoneSpins.trim()
-      : typeof record.earoneSpins === 'number' && Number.isFinite(record.earoneSpins)
-        ? String(record.earoneSpins)
-        : '';
+  return flattened;
+}
 
-  if (!artist && !title && !coverUrl && !audioUrl && !durationMs && !earoneSongId && !earoneRank && !earoneSpins) {
-    return null;
-  }
+function normalizeModoItalianoSongPlaylist(sequence: ModoItalianoSongSequence): ModoItalianoSongSequence {
+  const playlistItems = flattenModoItalianoSongItems(sequence.items);
+  const activeItemId =
+    sequence.activeItemId === null
+      ? null
+      : sequence.activeItemId && playlistItems.some((item) => item.id === sequence.activeItemId)
+        ? sequence.activeItemId
+        : (playlistItems[0]?.id ?? null);
 
   return {
-    artist,
-    title,
-    coverUrl,
-    audioUrl,
-    durationMs,
-    earoneSongId,
-    earoneRank,
-    earoneSpins
+    ...sequence,
+    items: playlistItems,
+    activeItemId
   };
-}
-
-function normalizeModoItalianoSongBulkImportDraft(value: unknown): ModoItalianoSongBulkImportDraft | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-  const artist = typeof record.artist === 'string' ? record.artist.trim() : '';
-  const title = typeof record.title === 'string' ? record.title.trim() : '';
-  const coverUrlRaw = typeof record.coverUrl === 'string' ? record.coverUrl : typeof record.cover_url === 'string' ? record.cover_url : '';
-  const coverUrl = coverUrlRaw.trim();
-
-  if (!artist && !title && !coverUrl) {
-    return null;
-  }
-
-  return {
-    artist,
-    title,
-    coverUrl
-  };
-}
-
-function parseModoItalianoSongBulkImportJson(rawJson: string): ModoItalianoSongBulkImportDraft[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawJson);
-  } catch {
-    throw new Error('Invalid JSON. Paste a valid JSON array of songs.');
-  }
-
-  const candidates = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).songs)
-      ? ((parsed as Record<string, unknown>).songs as unknown[])
-      : null;
-
-  if (!candidates) {
-    throw new Error('JSON must be an array or an object with a `songs` array.');
-  }
-
-  if (candidates.length === 0) {
-    return [];
-  }
-
-  const importedSongs = candidates
-    .map((entry) => normalizeModoItalianoSongBulkImportDraft(entry))
-    .filter((entry): entry is ModoItalianoSongBulkImportDraft => entry !== null);
-
-  if (importedSongs.length === 0) {
-    throw new Error('No valid songs found. Each entry should include `artist`, `title`, and `coverUrl` or `cover_url`.');
-  }
-
-  return importedSongs;
-}
-
-function ModoItalianoClockEditorFields({
-  componentType,
-  props,
-  updateProp,
-  replaceProps,
-  commitProps,
-  songCatalog
-}: {
-  componentType: string;
-  props: any;
-  updateProp: (componentType: string, propName: string, value: any) => void;
-  replaceProps: (componentType: string, nextProps: any) => void;
-  commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
-  songCatalog: SongCatalogItem[];
-}) {
-  const normalizedSequence = normalizeModoItalianoSongSequence(props.songSequence);
-  const directSongFromFields = normalizeModoItalianoSongDraft({
-    artist: props.songArtist,
-    title: props.songTitle,
-    coverUrl: props.songCoverUrl,
-    earoneSongId: props.songEaroneSongId,
-    earoneRank: props.songEaroneRank,
-    earoneSpins: props.songEaroneSpins
-  });
-  const directSongFromLegacyList = Array.isArray(props.songs)
-    ? props.songs
-        .map((song: unknown) => normalizeModoItalianoSongDraft(song))
-        .find((song: ModoItalianoSongDraft | null): song is ModoItalianoSongDraft => song !== null) ?? null
-    : null;
-
-  const sequenceHasSongContent = (sequence: ModoItalianoSongSequence): boolean =>
-    sequence.items.some((item) =>
-      item.kind === 'sequence'
-        ? sequenceHasSongContent(item.sequence)
-        : Boolean(
-            item.artist.trim() ||
-              item.title.trim() ||
-              item.coverUrl.trim() ||
-              item.audioUrl?.trim() ||
-              item.durationMs ||
-              item.earoneSongId?.trim() ||
-              item.earoneRank?.trim() ||
-              item.earoneSpins?.trim(),
-          ),
-    );
-
-  const sequenceForEditor = useMemo<ModoItalianoSongSequence>(() => {
-    const baseSequence = normalizedSequence ?? createModoItalianoSongSequence('manual');
-    if (!directSongFromFields && !directSongFromLegacyList) {
-      return baseSequence;
-    }
-    if (sequenceHasSongContent(baseSequence)) {
-      return baseSequence;
-    }
-
-    const legacySong = directSongFromFields ?? directSongFromLegacyList;
-    if (!legacySong) {
-      return baseSequence;
-    }
-
-    const firstItem = baseSequence.items[0];
-    const fallbackItem = createModoItalianoSongSequenceItem('preset');
-    const seededItem =
-      firstItem && firstItem.kind === 'preset'
-        ? {
-            ...firstItem,
-            artist: legacySong.artist,
-            title: legacySong.title,
-            coverUrl: legacySong.coverUrl,
-            audioUrl: legacySong.audioUrl,
-            durationMs: legacySong.durationMs,
-            earoneSongId: legacySong.earoneSongId || '',
-            earoneRank: legacySong.earoneRank || '',
-            earoneSpins: legacySong.earoneSpins || '',
-          }
-        : {
-            ...(fallbackItem.kind === 'preset' ? fallbackItem : createModoItalianoSongSequenceItem('preset')),
-            artist: legacySong.artist,
-            title: legacySong.title,
-            coverUrl: legacySong.coverUrl,
-            audioUrl: legacySong.audioUrl,
-            durationMs: legacySong.durationMs,
-            earoneSongId: legacySong.earoneSongId || '',
-            earoneRank: legacySong.earoneRank || '',
-            earoneSpins: legacySong.earoneSpins || '',
-          };
-
-    const nextItems = [...baseSequence.items];
-    nextItems[0] = seededItem;
-
-    return {
-      ...baseSequence,
-      items: nextItems,
-      activeItemId: baseSequence.activeItemId ?? seededItem.id,
-      startedAt: baseSequence.startedAt ?? Date.now(),
-    };
-  }, [normalizedSequence, directSongFromFields, directSongFromLegacyList]);
-
-  const buildSequenceProps = (nextSequence: ModoItalianoSongSequence) => ({
-    ...props,
-    songSequence: nextSequence,
-    songs: [],
-    songArtist: '',
-    songTitle: '',
-    songCoverUrl: '',
-    songEaroneSongId: '',
-    songEaroneRank: '',
-    songEaroneSpins: '',
-  });
-
-  const applyProps = (nextProps: any) => {
-    replaceProps(componentType, nextProps);
-  };
-
-  const activateSequence = async (nextSequence: ModoItalianoSongSequence) => {
-    const nextProps = buildSequenceProps(nextSequence);
-    replaceProps(componentType, nextProps);
-    if (commitProps) {
-      await commitProps(componentType, nextProps);
-    }
-  };
-
-  return (
-    <div className='space-y-4'>
-      <div className='space-y-2'>
-        <p className='text-xs text-gray-500'>Songs are sequence-only. A single song is just a sequence with one item, selected from the global catalog.</p>
-        <ModoItalianoSongSequenceEditor
-          sequence={sequenceForEditor}
-          songCatalog={songCatalog}
-          onChange={(nextSequence) => applyProps(buildSequenceProps(nextSequence))}
-          onTakeSelection={activateSequence}
-        />
-      </div>
-
-      <p className='text-xs text-gray-500'>World clock cities/timezones are fixed for ModoItaliano 2026 and are no longer configurable here.</p>
-    </div>
-  );
 }
 
 function ModoItalianoChyronEditorFields({
@@ -3231,12 +3098,7 @@ function ModoItalianoChyronEditorFields({
 }) {
   const normalizedTextSequence = normalizeModoItalianoTextSequence(props.textSequence, 0, { includeMarquee: true });
   const normalizedCtaSequence = normalizeModoItalianoTextSequence(props.ctaSequence);
-  const showValue =
-    typeof props.show === 'boolean'
-      ? props.show
-      : typeof props.show === 'string'
-        ? props.show.trim().toLowerCase() !== 'false'
-        : true;
+  const showValue = typeof props.show === 'boolean' ? props.show : typeof props.show === 'string' ? props.show.trim().toLowerCase() !== 'false' : true;
   const legacyMainText = typeof props.text === 'string' ? props.text : '';
   const legacyUseMarquee = Boolean(props.useMarquee);
   const legacyCtaText = typeof props.cta === 'string' ? props.cta : '';
@@ -3430,9 +3292,7 @@ function ModoItalianoTextSequenceEditor({
     });
   };
 
-  const toSequenceItem = (
-    item: ModoItalianoTextSequenceItem
-  ): Extract<ModoItalianoTextSequenceItem, { kind: 'sequence' }> => {
+  const toSequenceItem = (item: ModoItalianoTextSequenceItem): Extract<ModoItalianoTextSequenceItem, { kind: 'sequence' }> => {
     if (item.kind === 'sequence') {
       return item;
     }
@@ -3720,11 +3580,7 @@ function ModoItalianoTextSequenceEditor({
       </div>
 
       <div className='flex flex-wrap gap-2'>
-        <button
-          type='button'
-          onClick={addItem}
-          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-        >
+        <button type='button' onClick={addItem} className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'>
           + Sequence
         </button>
       </div>
@@ -3737,25 +3593,23 @@ function ModoItalianoSongSequenceEditor({
   songCatalog = [],
   onChange,
   onTakeSelection,
+  onTakeOffAir,
   depth = 0
 }: {
   sequence: ModoItalianoSongSequence;
   songCatalog?: SongCatalogItem[];
   onChange: (nextSequence: ModoItalianoSongSequence) => void;
   onTakeSelection?: (nextSequence: ModoItalianoSongSequence) => Promise<void> | void;
+  onTakeOffAir?: () => Promise<void> | void;
   depth?: number;
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [bulkImportJson, setBulkImportJson] = useState('');
-  const [bulkImportError, setBulkImportError] = useState('');
-  const [bulkImportStatus, setBulkImportStatus] = useState('');
-  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
-  const [bulkImportFileMode, setBulkImportFileMode] = useState<'append' | 'replace'>('append');
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [addSongValue, setAddSongValue] = useState('');
   const songDurationByUrlRef = useRef<Record<string, number | null>>({});
   const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
-  const bulkImportFileInputRef = useRef<HTMLInputElement>(null);
   const isNested = depth > 0;
   const effectiveActiveItemId = getModoItalianoSongSequenceSelectedItemId(sequence, nowMs);
   const availableSongCatalog = useMemo(
@@ -3767,15 +3621,15 @@ function ModoItalianoSongSequenceEditor({
           const bTitle = [b.artist, b.title].filter(Boolean).join(' - ').toLowerCase();
           return aTitle.localeCompare(bTitle);
         }),
-    [songCatalog],
+    [songCatalog]
   );
   const catalogOptions = useMemo(
     () =>
       availableSongCatalog.map((song) => ({
         value: String(song.id),
-        label: [song.artist, song.title].filter(Boolean).join(' - ') || `Song #${song.id}`,
+        label: [song.artist, song.title].filter(Boolean).join(' - ') || `Song #${song.id}`
       })),
-    [availableSongCatalog],
+    [availableSongCatalog]
   );
 
   useEffect(() => {
@@ -3783,7 +3637,16 @@ function ModoItalianoSongSequenceEditor({
   }, [sequence]);
 
   useEffect(() => {
-    if (sequence.mode !== 'autoplay') {
+    if (!expandedItemId) {
+      return;
+    }
+    if (!sequence.items.some((item) => item.id === expandedItemId)) {
+      setExpandedItemId(null);
+    }
+  }, [sequence.items, expandedItemId]);
+
+  useEffect(() => {
+    if (!sequence.activeItemId) {
       return;
     }
 
@@ -3792,7 +3655,7 @@ function ModoItalianoSongSequenceEditor({
     }, 250);
 
     return () => clearInterval(timer);
-  }, [sequence.mode, sequence.startedAt, sequence.intervalMs, sequence.loop, sequence.items.length]);
+  }, [sequence.activeItemId, sequence.startedAt]);
 
   const applySequence = (nextSequence: ModoItalianoSongSequence) => {
     onChange({
@@ -3801,8 +3664,8 @@ function ModoItalianoSongSequenceEditor({
         nextSequence.activeItemId === null
           ? null
           : nextSequence.activeItemId && nextSequence.items.some((item) => item.id === nextSequence.activeItemId)
-          ? nextSequence.activeItemId
-          : (nextSequence.items[0]?.id ?? null)
+            ? nextSequence.activeItemId
+            : (nextSequence.items[0]?.id ?? null)
     });
   };
 
@@ -3833,54 +3696,9 @@ function ModoItalianoSongSequenceEditor({
     });
   };
 
-  const toSequenceItem = (
-    item: ModoItalianoSongSequenceItem
-  ): Extract<ModoItalianoSongSequenceItem, { kind: 'sequence' }> => {
-    if (item.kind === 'sequence') {
-      return item;
-    }
-
-    const nextItem = createModoItalianoSongSequenceItem('sequence');
-    if (nextItem.kind !== 'sequence') {
-      return {
-        id: item.id,
-        label: [item.artist, item.title].filter(Boolean).join(' - ') || 'Sequence',
-        kind: 'sequence',
-        sequence: createModoItalianoSongSequence('manual')
-      };
-    }
-
-    const nestedFirstItem = nextItem.sequence.items[0];
-    const nextLeaf =
-      nestedFirstItem && nestedFirstItem.kind === 'preset'
-        ? {
-            ...nestedFirstItem,
-            artist: item.artist,
-            title: item.title,
-            coverUrl: item.coverUrl,
-            audioUrl: item.audioUrl,
-            durationMs: item.durationMs,
-            earoneSongId: item.earoneSongId,
-            earoneRank: item.earoneRank,
-            earoneSpins: item.earoneSpins
-          }
-        : createModoItalianoSongSequenceItem('preset');
-
-    return {
-      ...nextItem,
-      id: item.id,
-      label: [item.artist, item.title].filter(Boolean).join(' - ') || 'Sequence',
-      sequence: {
-        ...nextItem.sequence,
-        items: [nextLeaf],
-        activeItemId: nextLeaf.id
-      }
-    };
-  };
-
   const addItem = () => {
-    const nextItem = createModoItalianoSongSequenceItem('sequence');
-    if (nextItem.kind !== 'sequence') {
+    const nextItem = createModoItalianoSongSequenceItem('preset');
+    if (nextItem.kind !== 'preset') {
       return;
     }
 
@@ -3888,6 +3706,33 @@ function ModoItalianoSongSequenceEditor({
       ...sequence,
       items: [...sequence.items, nextItem],
       activeItemId: sequence.activeItemId ?? nextItem.id,
+      startedAt: Date.now()
+    });
+  };
+
+  const addItemFromCatalog = (songId: number) => {
+    const selectedSong = availableSongCatalog.find((s) => s.id === songId);
+    if (!selectedSong) return;
+    const nextItem = createModoItalianoSongSequenceItem('preset');
+    if (nextItem.kind !== 'preset') return;
+    const filledItem = {
+      ...nextItem,
+      artist: selectedSong.artist || '',
+      title: selectedSong.title || '',
+      coverUrl: selectedSong.coverUrl || '',
+      audioUrl: selectedSong.audioUrl || '',
+      durationMs:
+        typeof selectedSong.durationMs === 'number' && Number.isFinite(selectedSong.durationMs) && selectedSong.durationMs > 0
+          ? Math.round(selectedSong.durationMs)
+          : nextItem.durationMs,
+      earoneSongId: selectedSong.earoneSongId || nextItem.earoneSongId,
+      earoneRank: selectedSong.earoneRank || nextItem.earoneRank,
+      earoneSpins: selectedSong.earoneSpins || nextItem.earoneSpins
+    };
+    applySequence({
+      ...sequence,
+      items: [...sequence.items, filledItem],
+      activeItemId: sequence.activeItemId ?? filledItem.id,
       startedAt: Date.now()
     });
   };
@@ -3914,17 +3759,10 @@ function ModoItalianoSongSequenceEditor({
       return;
     }
 
-    const resolvedLeaf = resolveModoItalianoSongLeaf(
-      { sequence: nextSequence },
-      Date.now(),
-    );
+    const resolvedLeaf = resolveModoItalianoSongLeaf({ sequence: nextSequence }, Date.now());
     const durationMs = resolvedLeaf?.durationMs;
 
-    if (
-      typeof durationMs !== 'number' ||
-      !Number.isFinite(durationMs) ||
-      durationMs <= 0
-    ) {
+    if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) {
       const fallbackAudioUrl = resolvedLeaf?.audioUrl?.trim();
       if (!fallbackAudioUrl) {
         return;
@@ -3934,30 +3772,29 @@ function ModoItalianoSongSequenceEditor({
       if (typeof cachedDuration === 'number' && Number.isFinite(cachedDuration) && cachedDuration > 0) {
         const fallbackSequenceWithDuration = {
           ...nextSequence,
-          items: nextSequence.items,
+          items: nextSequence.items
         };
         const expectedActiveItemId = fallbackSequenceWithDuration.activeItemId ?? null;
         const expectedStartedAt =
-          typeof fallbackSequenceWithDuration.startedAt === 'number' &&
-          Number.isFinite(fallbackSequenceWithDuration.startedAt)
+          typeof fallbackSequenceWithDuration.startedAt === 'number' && Number.isFinite(fallbackSequenceWithDuration.startedAt)
             ? fallbackSequenceWithDuration.startedAt
             : null;
 
-        autoTakeOffTimerRef.current = window.setTimeout(() => {
-          const currentSequence = sequenceRef.current;
-          const currentStartedAt =
-            typeof currentSequence.startedAt === 'number' &&
-            Number.isFinite(currentSequence.startedAt)
-              ? currentSequence.startedAt
-              : null;
-          if (currentSequence.activeItemId !== expectedActiveItemId) {
-            return;
-          }
-          if (currentStartedAt !== expectedStartedAt) {
-            return;
-          }
-          void clearActiveItem();
-        }, Math.max(200, Math.round(cachedDuration)));
+        autoTakeOffTimerRef.current = window.setTimeout(
+          () => {
+            const currentSequence = sequenceRef.current;
+            const currentStartedAt =
+              typeof currentSequence.startedAt === 'number' && Number.isFinite(currentSequence.startedAt) ? currentSequence.startedAt : null;
+            if (currentSequence.activeItemId !== expectedActiveItemId) {
+              return;
+            }
+            if (currentStartedAt !== expectedStartedAt) {
+              return;
+            }
+            void clearActiveItem();
+          },
+          Math.max(200, Math.round(cachedDuration))
+        );
         return;
       }
 
@@ -3968,34 +3805,31 @@ function ModoItalianoSongSequenceEditor({
         audio.onloadedmetadata = null;
         audio.onerror = null;
         audio.src = '';
-        const derivedDuration =
-          Number.isFinite(seconds) && seconds > 0 ? Math.max(1, Math.round(seconds * 1000)) : null;
+        const derivedDuration = Number.isFinite(seconds) && seconds > 0 ? Math.max(1, Math.round(seconds * 1000)) : null;
         songDurationByUrlRef.current[fallbackAudioUrl] = derivedDuration;
         if (!derivedDuration) {
           return;
         }
 
         const expectedActiveItemId = nextSequence.activeItemId ?? null;
-        const expectedStartedAt =
-          typeof nextSequence.startedAt === 'number' && Number.isFinite(nextSequence.startedAt)
-            ? nextSequence.startedAt
-            : null;
+        const expectedStartedAt = typeof nextSequence.startedAt === 'number' && Number.isFinite(nextSequence.startedAt) ? nextSequence.startedAt : null;
 
         clearAutoTakeOffTimer();
-        autoTakeOffTimerRef.current = window.setTimeout(() => {
-          const currentSequence = sequenceRef.current;
-          const currentStartedAt =
-            typeof currentSequence.startedAt === 'number' && Number.isFinite(currentSequence.startedAt)
-              ? currentSequence.startedAt
-              : null;
-          if (currentSequence.activeItemId !== expectedActiveItemId) {
-            return;
-          }
-          if (currentStartedAt !== expectedStartedAt) {
-            return;
-          }
-          void clearActiveItem();
-        }, Math.max(200, derivedDuration));
+        autoTakeOffTimerRef.current = window.setTimeout(
+          () => {
+            const currentSequence = sequenceRef.current;
+            const currentStartedAt =
+              typeof currentSequence.startedAt === 'number' && Number.isFinite(currentSequence.startedAt) ? currentSequence.startedAt : null;
+            if (currentSequence.activeItemId !== expectedActiveItemId) {
+              return;
+            }
+            if (currentStartedAt !== expectedStartedAt) {
+              return;
+            }
+            void clearActiveItem();
+          },
+          Math.max(200, derivedDuration)
+        );
       };
       audio.onerror = () => {
         audio.onloadedmetadata = null;
@@ -4009,29 +3843,24 @@ function ModoItalianoSongSequenceEditor({
     }
 
     const expectedActiveItemId = nextSequence.activeItemId ?? null;
-    const expectedStartedAt =
-      typeof nextSequence.startedAt === 'number' &&
-      Number.isFinite(nextSequence.startedAt)
-        ? nextSequence.startedAt
-        : null;
+    const expectedStartedAt = typeof nextSequence.startedAt === 'number' && Number.isFinite(nextSequence.startedAt) ? nextSequence.startedAt : null;
 
-    autoTakeOffTimerRef.current = window.setTimeout(() => {
-      const currentSequence = sequenceRef.current;
-      const currentStartedAt =
-        typeof currentSequence.startedAt === 'number' &&
-        Number.isFinite(currentSequence.startedAt)
-          ? currentSequence.startedAt
-          : null;
+    autoTakeOffTimerRef.current = window.setTimeout(
+      () => {
+        const currentSequence = sequenceRef.current;
+        const currentStartedAt = typeof currentSequence.startedAt === 'number' && Number.isFinite(currentSequence.startedAt) ? currentSequence.startedAt : null;
 
-      if (currentSequence.activeItemId !== expectedActiveItemId) {
-        return;
-      }
-      if (currentStartedAt !== expectedStartedAt) {
-        return;
-      }
+        if (currentSequence.activeItemId !== expectedActiveItemId) {
+          return;
+        }
+        if (currentStartedAt !== expectedStartedAt) {
+          return;
+        }
 
-      void clearActiveItem();
-    }, Math.max(200, Math.round(durationMs)));
+        void clearActiveItem();
+      },
+      Math.max(200, Math.round(durationMs))
+    );
   };
 
   const activateItem = async (itemId: string) => {
@@ -4054,12 +3883,15 @@ function ModoItalianoSongSequenceEditor({
 
     const nextSequence = {
       ...sequence,
-      activeItemId: null,
-      startedAt: Date.now()
+      mode: 'manual' as const,
+      activeItemId: null
     };
     applySequence(nextSequence);
     if (onTakeSelection) {
       await onTakeSelection(nextSequence);
+    }
+    if (!isNested && onTakeOffAir) {
+      await onTakeOffAir();
     }
   };
 
@@ -4078,111 +3910,7 @@ function ModoItalianoSongSequenceEditor({
     });
   };
 
-  const importSongsFromPayload = (rawPayload: string, mode: 'append' | 'replace'): boolean => {
-    const payload = rawPayload.trim();
-    if (!payload) {
-      setBulkImportStatus('');
-      setBulkImportError('Paste a JSON payload first.');
-      return false;
-    }
-
-    try {
-      const importedSongs = parseModoItalianoSongBulkImportJson(payload);
-      const importedItems = importedSongs.map((song) => {
-        const nextItem = createModoItalianoSongSequenceItem('sequence');
-        if (nextItem.kind !== 'sequence') {
-          return {
-            id: `song_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-            label: [song.artist, song.title].filter(Boolean).join(' - ') || 'Sequence',
-            kind: 'sequence' as const,
-            sequence: createModoItalianoSongSequence('manual')
-          };
-        }
-
-        const nestedFirstItem = nextItem.sequence.items[0];
-        const nextLeaf =
-          nestedFirstItem && nestedFirstItem.kind === 'preset'
-            ? {
-                ...nestedFirstItem,
-                artist: song.artist,
-                title: song.title,
-                coverUrl: song.coverUrl
-              }
-            : createModoItalianoSongSequenceItem('preset');
-
-        return {
-          ...nextItem,
-          label: [song.artist, song.title].filter(Boolean).join(' - ') || nextItem.label,
-          sequence: {
-            ...nextItem.sequence,
-            items: [nextLeaf],
-            activeItemId: nextLeaf.id
-          }
-        };
-      });
-
-      if (importedItems.length === 0) {
-        if (mode === 'replace') {
-          applySequence({
-            ...sequence,
-            items: [],
-            activeItemId: null,
-            startedAt: Date.now()
-          });
-          setBulkImportError('');
-          setBulkImportStatus('Sequence cleared (import payload was empty).');
-          return true;
-        }
-
-        setBulkImportError('');
-        setBulkImportStatus('No songs found in payload. Nothing appended.');
-        return true;
-      }
-
-      const nextItems = mode === 'replace' ? importedItems : [...sequence.items, ...importedItems];
-      const nextActiveItemId =
-        mode === 'replace'
-          ? null
-          : sequence.activeItemId && nextItems.some((item) => item.id === sequence.activeItemId)
-            ? sequence.activeItemId
-            : (nextItems[0]?.id ?? null);
-
-      applySequence({
-        ...sequence,
-        items: nextItems,
-        activeItemId: nextActiveItemId,
-        startedAt: Date.now()
-      });
-
-      setBulkImportError('');
-      setBulkImportStatus(
-        `Imported ${importedItems.length} song${importedItems.length === 1 ? '' : 's'} (${mode === 'replace' ? 'replaced sequence and left off-air' : 'appended'}).`
-      );
-      return true;
-    } catch (error) {
-      setBulkImportStatus('');
-      setBulkImportError(error instanceof Error ? error.message : 'Unable to import songs.');
-      return false;
-    }
-  };
-
-  const importSongsFromJson = (mode: 'append' | 'replace') => {
-    const didImport = importSongsFromPayload(bulkImportJson, mode);
-    if (didImport) {
-      setShowBulkImportModal(false);
-    }
-  };
-
-  const triggerFileImport = (mode: 'append' | 'replace') => {
-    setBulkImportFileMode(mode);
-    bulkImportFileInputRef.current?.click();
-  };
-
-  const applyCatalogSongToItem = (
-    index: number,
-    item: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>,
-    selectedSong: SongCatalogItem,
-  ) => {
+  const applyCatalogSongToItem = (index: number, item: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>, selectedSong: SongCatalogItem) => {
     updateItem(index, {
       ...item,
       artist: selectedSong.artist || item.artist,
@@ -4211,367 +3939,472 @@ function ModoItalianoSongSequenceEditor({
   };
 
   return (
-    <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
-      <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
-        <button
-          type='button'
-          onClick={() =>
-            applySequence({
-              ...sequence,
-              mode: 'manual',
-              activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
-              startedAt: Date.now()
-            })
-          }
-          className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-          }`}
-        >
-          Manual
-        </button>
-        <button
-          type='button'
-          onClick={() =>
-            applySequence({
-              ...sequence,
-              mode: 'autoplay',
-              startedAt: Date.now()
-            })
-          }
-          className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-          }`}
-        >
-          Autoplay
-        </button>
-        <button
-          type='button'
-          onClick={() => {
-            void clearActiveItem();
-          }}
-          className='px-2.5 py-1 rounded text-xs font-medium border bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-        >
-          Take Off Air
-        </button>
-        {sequence.mode === 'autoplay' && (
-          <>
-            <label className='text-xs text-slate-600'>Interval (ms)</label>
+    <div className={`flex flex-col overflow-hidden rounded-xl ${isNested ? 'border border-zinc-800 bg-zinc-900' : 'bg-zinc-950'}`}>
+      {/* Two-column layout container */}
+      <div className='flex flex-col md:flex-row'>
+        {/* Left Column: Playlist Queue */}
+        <div className='flex-1 border-r-0 border-zinc-800/60 md:border-r'>
+          <div className='flex items-center justify-between border-b border-zinc-800/60 bg-zinc-900/20 px-4 py-2 border-t'>
+            <span className='text-[10px] font-semibold uppercase tracking-widest text-zinc-500'>Current Queue</span>
+            <span className='text-[10px] text-zinc-500'>
+              {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
+            </span>
+          </div>
+
+          {sequence.items.length === 0 ? (
+            <div className='flex flex-col items-center justify-center px-4 py-16 text-center'>
+              <Music2 size={32} className='mb-3 text-zinc-700' />
+              <p className='text-sm font-medium text-zinc-400'>Queue is empty</p>
+              <p className='mt-1 text-xs text-zinc-600'>Search and add songs from the catalog panel.</p>
+            </div>
+          ) : (
+            <div className='overflow-x-auto'>
+              <div className='min-w-100'>
+                {/* Column header */}
+                <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-zinc-800/60 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-700'>
+                  <span />
+                  <span className='text-center'>#</span>
+                  <span style={{ paddingLeft: '50px' }}>Title</span>
+                  <span className='flex items-center justify-end pr-3'>
+                    <Clock size={10} />
+                  </span>
+                  <span />
+                </div>
+
+                <div className='divide-y divide-zinc-800/40'>
+                  {sequence.items.map((item, index) => {
+                    const displayItem = item;
+                    const isActive = displayItem.id === effectiveActiveItemId;
+                    const isExpanded = displayItem.kind === 'preset' && expandedItemId === displayItem.id;
+                    const selectedCatalogSong =
+                      displayItem.kind === 'preset'
+                        ? availableSongCatalog.find((song) => {
+                            if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) {
+                              return true;
+                            }
+
+                            const sameArtist = (song.artist || '').trim() === displayItem.artist.trim();
+                            const sameTitle = (song.title || '').trim() === displayItem.title.trim();
+                            const sameCover = (song.coverUrl || '').trim() === displayItem.coverUrl.trim();
+                            return sameArtist && sameTitle && sameCover;
+                          })
+                        : null;
+                    const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
+                    const titleText =
+                      displayItem.kind === 'preset' ? displayItem.title.trim() || 'Untitled Song' : displayItem.label.trim() || 'Nested Sequence';
+                    const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() || 'Unknown Artist' : 'Nested playlist';
+                    const rowDuration = displayItem.kind === 'preset' ? formatDurationFromMs(displayItem.durationMs) : '—';
+                    const coverUrl = displayItem.kind === 'preset' ? displayItem.coverUrl.trim() : '';
+
+                    return (
+                      <div
+                        key={displayItem.id}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggingIndex !== null) {
+                            reorderItems(draggingIndex, index);
+                          }
+                          setDraggingIndex(null);
+                        }}
+                      >
+                        {/* Main track row */}
+                        <div
+                          className={`group grid grid-cols-[28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${
+                            isActive ? 'bg-sky-500/10' : 'hover:bg-white/3'
+                          }`}
+                        >
+                          {/* Drag handle — hidden until hover */}
+                          <span
+                            draggable
+                            onDragStart={() => setDraggingIndex(index)}
+                            onDragEnd={() => setDraggingIndex(null)}
+                            className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100'
+                            title='Drag to reorder'
+                            aria-label='Drag to reorder'
+                          >
+                            <GripVertical size={12} strokeWidth={2} />
+                          </span>
+
+                          {/* Track number / eq bars / take-on-hover */}
+                          <button
+                            type='button'
+                            onClick={() => {
+                              void activateItem(displayItem.id);
+                            }}
+                            className='relative flex h-6 w-6 shrink-0 items-center justify-center'
+                            title='Take on air'
+                          >
+                            {/* Number — visible by default when not active, hidden on hover */}
+                            <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-zinc-500 group-hover:opacity-0'}`}>
+                              {index + 1}
+                            </span>
+                            {/* EQ bars — only when active */}
+                            {isActive && (
+                              <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
+                                <span
+                                  className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                  style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }}
+                                />
+                                <span
+                                  className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                  style={{ animation: 'eq-bar2 0.8s ease-in-out 0.15s infinite alternate' }}
+                                />
+                                <span
+                                  className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                  style={{ animation: 'eq-bar1 0.8s ease-in-out 0.3s infinite alternate' }}
+                                />
+                              </span>
+                            )}
+                            {/* Play icon — shows on hover always */}
+                            <span className='absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100'>
+                              <Play size={11} className='fill-zinc-100 text-zinc-100' />
+                            </span>
+                          </button>
+
+                          {/* Cover art + title + artist */}
+                          <div className='flex min-w-0 items-center gap-2.5 pl-1'>
+                            {coverUrl ? (
+                              <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
+                            ) : (
+                              <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-xs font-bold text-zinc-600'>
+                                {titleText.slice(0, 1).toUpperCase() || '?'}
+                              </div>
+                            )}
+                            <div className='min-w-0'>
+                              <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sky-400' : 'text-zinc-100'}`}>{titleText}</div>
+                              <div className='truncate text-[11px] leading-tight text-zinc-500 mt-0.5'>{artistText}</div>
+                            </div>
+                          </div>
+
+                          {/* Duration */}
+                          <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{rowDuration}</span>
+
+                          {/* Hover actions */}
+                          <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                            {displayItem.kind === 'preset' ? (
+                              <button
+                                type='button'
+                                onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
+                                className='flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:text-zinc-200'
+                                title='Edit song'
+                              >
+                                <svg
+                                  width='13'
+                                  height='13'
+                                  viewBox='0 0 24 24'
+                                  fill='none'
+                                  stroke='currentColor'
+                                  strokeWidth='2'
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                >
+                                  <path d='M12 20h9' />
+                                  <path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
+                                </svg>
+                              </button>
+                            ) : null}
+                            <button
+                              type='button'
+                              onClick={() => removeItem(index)}
+                              className='flex h-6 w-6 items-center justify-center rounded text-zinc-600 transition-colors hover:text-red-400'
+                              title='Remove'
+                            >
+                              <svg
+                                width='13'
+                                height='13'
+                                viewBox='0 0 24 24'
+                                fill='none'
+                                stroke='currentColor'
+                                strokeWidth='2'
+                                strokeLinecap='round'
+                                strokeLinejoin='round'
+                              >
+                                <polyline points='3 6 5 6 21 6' />
+                                <path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' />
+                                <path d='M10 11v6' />
+                                <path d='M14 11v6' />
+                                <path d='M9 6V4h6v2' />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expanded edit panel */}
+                        {displayItem.kind === 'preset' && isExpanded ? (
+                          <div className='border-t border-zinc-800 bg-zinc-900/40 px-3 py-2'>
+                            <div className='flex items-center rounded'>
+                              <Select
+                                value={selectedCatalogSongValue}
+                                options={catalogOptions}
+                                placeholder='Swap song...'
+                                onChange={(value) => {
+                                  const songId = Number(value);
+                                  if (!Number.isFinite(songId) || songId <= 0) return;
+                                  const selectedSong = availableSongCatalog.find((song) => song.id === songId);
+                                  if (!selectedSong) return;
+                                  applyCatalogSongToItem(index, displayItem, selectedSong);
+                                  setExpandedItemId(null);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {displayItem.kind === 'sequence' ? (
+                          <div className='border-t border-zinc-800 bg-zinc-900/50 px-4 py-3'>
+                            <p className='mb-2 text-xs text-zinc-600'>Legacy nested sequence. Flatten if possible.</p>
+                            <ModoItalianoSongSequenceEditor
+                              sequence={displayItem.sequence}
+                              songCatalog={songCatalog}
+                              depth={depth + 1}
+                              onChange={(nextNestedSequence) =>
+                                updateItem(index, {
+                                  ...displayItem,
+                                  sequence: nextNestedSequence
+                                })
+                              }
+                              onTakeSelection={async (nextNestedSequence) => {
+                                const nextSequence = {
+                                  ...sequence,
+                                  items: sequence.items.map((entry, sequenceIndex) =>
+                                    sequenceIndex === index ? { ...displayItem, sequence: nextNestedSequence } : entry
+                                  )
+                                };
+                                applySequence(nextSequence);
+                                if (onTakeSelection) {
+                                  await onTakeSelection(nextSequence);
+                                }
+                                scheduleAutoTakeOffForSequence(nextSequence);
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Catalog Inventory */}
+        <div className='hidden w-[320px] shrink-0 flex-col border-t border-zinc-800/60 bg-zinc-900/30 md:flex'>
+          <div className='border-b border-zinc-800/60 bg-zinc-900/40 p-2'>
             <input
-              type='number'
-              min={500}
-              step={500}
-              value={sequence.intervalMs ?? 4000}
-              onChange={(e) =>
-                applySequence({
-                  ...sequence,
-                  intervalMs: Math.max(500, Number(e.target.value) || 4000),
-                  startedAt: Date.now()
-                })
-              }
-              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
+              type='text'
+              placeholder='Search catalog to add...'
+              value={addSongValue}
+              onChange={(e) => setAddSongValue(e.target.value)}
+              className='w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/50'
             />
-            <label className='flex items-center gap-1 text-xs text-slate-600'>
-              <input
-                type='checkbox'
-                checked={sequence.loop !== false}
-                onChange={(e) =>
-                  applySequence({
-                    ...sequence,
-                    loop: e.target.checked
-                  })
-                }
-                className='h-3.5 w-3.5'
-              />
-              Loop
-            </label>
-          </>
-        )}
+          </div>
+          <div className='max-h-125 flex-1 overflow-y-auto'>
+            {availableSongCatalog
+              .filter((song) => {
+                if (!addSongValue) return true;
+                const search = addSongValue.toLowerCase();
+                return song.title?.toLowerCase().includes(search) || song.artist?.toLowerCase().includes(search);
+              })
+              .slice(0, 80)
+              .map((song) => (
+                <div key={song.id} className='group flex items-center justify-between border-b border-zinc-800/40 px-3 py-2 hover:bg-white/5'>
+                  <div className='flex min-w-0 items-center gap-2'>
+                    {song.coverUrl ? (
+                      <img src={song.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover opacity-80' />
+                    ) : (
+                      <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-zinc-500'>
+                        {song.title?.charAt(0) || <Music2 size={12} />}
+                      </div>
+                    )}
+                    <div className='min-w-0 pr-2'>
+                      <div className='truncate text-[11px] font-medium text-zinc-200'>{song.title}</div>
+                      <div className='truncate text-[10px] text-zinc-500'>{song.artist}</div>
+                    </div>
+                  </div>
+                  <button
+                    type='button'
+                    onClick={() => addItemFromCatalog(song.id)}
+                    className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-zinc-500 opacity-0 transition-all hover:bg-sky-500/20 hover:text-sky-400 group-hover:opacity-100'
+                    title='Add to queue'
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              ))}
+            {availableSongCatalog.length > 0 &&
+              availableSongCatalog.filter(
+                (song) =>
+                  !addSongValue ||
+                  song.title?.toLowerCase().includes(addSongValue.toLowerCase()) ||
+                  song.artist?.toLowerCase().includes(addSongValue.toLowerCase())
+              ).length === 0 && <div className='p-4 text-center text-xs text-zinc-500'>No matches found</div>}
+          </div>
+        </div>
       </div>
 
-      {!isNested && (
-        <div className='rounded border border-dashed border-slate-300 bg-white/80 p-3 space-y-2'>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>Bulk Songs</span>
-            <span className='text-xs text-slate-500'>Fields: `artist`, `title`, `coverUrl` or `cover_url`</span>
-          </div>
-          <div className='flex flex-wrap gap-2'>
-            <button
-              type='button'
-              onClick={() => setShowBulkImportModal(true)}
-              className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-            >
-              Paste JSON (Modal)
-            </button>
-            <button
-              type='button'
-              onClick={() => triggerFileImport('append')}
-              className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-            >
-              Import File + Append
-            </button>
-            <button
-              type='button'
-              onClick={() => triggerFileImport('replace')}
-              className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-            >
-              Import File + Replace
-            </button>
-          </div>
-          <input
-            ref={bulkImportFileInputRef}
-            type='file'
-            accept='.json,application/json,text/plain'
-            className='hidden'
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              if (!file) {
-                return;
+      {/* Playback Bar */}
+      <div className='flex items-center justify-between border-t border-zinc-800 bg-zinc-900/80 px-4 py-3'>
+        {/* Transport controls */}
+        <div className='flex items-center gap-2'>
+          <button
+            type='button'
+            title='Previous'
+            disabled={sequence.items.findIndex((i) => i.id === effectiveActiveItemId) <= 0}
+            onClick={() => {
+              const idx = sequence.items.findIndex((i) => i.id === effectiveActiveItemId);
+              if (idx > 0) {
+                void activateItem(sequence.items[idx - 1].id);
               }
-
-              void file
-                .text()
-                .then((text) => {
-                  setBulkImportJson(text);
-                  const didImport = importSongsFromPayload(text, bulkImportFileMode);
-                  if (!didImport) {
-                    setShowBulkImportModal(true);
-                  }
-                })
-                .catch((error) => {
-                  console.error('Failed to read song import file:', error);
-                  setBulkImportStatus('');
-                  setBulkImportError('Unable to read file contents.');
-                });
             }}
-          />
-          {bulkImportError && <p className='text-xs text-red-600'>{bulkImportError}</p>}
-          {bulkImportStatus && <p className='text-xs text-green-700'>{bulkImportStatus}</p>}
+            className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
+          >
+            <SkipBack size={16} fill='currentColor' />
+          </button>
+
+          <button
+            type='button'
+            title={effectiveActiveItemId ? 'Next / Advance' : 'Play first'}
+            onClick={() => {
+              if (!effectiveActiveItemId && sequence.items.length > 0) {
+                void activateItem(sequence.items[0].id);
+              } else if (effectiveActiveItemId) {
+                const idx = sequence.items.findIndex((i) => i.id === effectiveActiveItemId);
+                if (idx < sequence.items.length - 1) {
+                  void activateItem(sequence.items[idx + 1].id);
+                }
+              }
+            }}
+            className='flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-zinc-950 shadow-lg transition-transform hover:scale-105 hover:bg-sky-400 active:scale-95'
+          >
+            <Play size={18} fill='currentColor' className='ml-0.5' />
+          </button>
+
+          <button
+            type='button'
+            title='Stop / Take Off Air'
+            onClick={() => {
+              void clearActiveItem();
+            }}
+            className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200'
+          >
+            <Square size={16} fill='currentColor' />
+          </button>
+
+          <button
+            type='button'
+            title='Next'
+            disabled={!effectiveActiveItemId || sequence.items.findIndex((i) => i.id === effectiveActiveItemId) >= sequence.items.length - 1}
+            onClick={() => {
+              const idx = sequence.items.findIndex((i) => i.id === effectiveActiveItemId);
+              if (idx < sequence.items.length - 1) {
+                void activateItem(sequence.items[idx + 1].id);
+              }
+            }}
+            className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
+          >
+            <SkipForward size={16} fill='currentColor' />
+          </button>
         </div>
-      )}
 
-      {!isNested && (
-        <Modal isOpen={showBulkImportModal} onClose={() => setShowBulkImportModal(false)} title='Bulk Songs JSON'>
-          <div className='space-y-3'>
-            <p className='text-xs text-slate-600'>Paste a JSON array (or an object with a songs array) with artist, title, and coverUrl/cover_url.</p>
-            <textarea
-              value={bulkImportJson}
-              onChange={(e) => {
-                setBulkImportJson(e.target.value);
-                if (bulkImportError) {
-                  setBulkImportError('');
-                }
-                if (bulkImportStatus) {
-                  setBulkImportStatus('');
-                }
-              }}
-              rows={10}
-              className='w-full rounded border border-slate-300 px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-green-500'
-              placeholder={`[\n  { "artist": "Artist Name", "title": "Song Title", "coverUrl": "https://..." }\n]`}
-            />
-            <div className='flex flex-wrap justify-end gap-2'>
-              <button
-                type='button'
-                onClick={() => setShowBulkImportModal(false)}
-                className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-              >
-                Cancel
-              </button>
-              <button
-                type='button'
-                onClick={() => importSongsFromJson('append')}
-                className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-              >
-                Import + Append
-              </button>
-              <button
-                type='button'
-                onClick={() => importSongsFromJson('replace')}
-                className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-              >
-                Import + Replace
-              </button>
-            </div>
-            {bulkImportError && <p className='text-xs text-red-600'>{bulkImportError}</p>}
-            {bulkImportStatus && <p className='text-xs text-green-700'>{bulkImportStatus}</p>}
-          </div>
-        </Modal>
-      )}
-
-      {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
-
-      <div className='space-y-3'>
-        {sequence.items.map((item, index) => {
-          const displayItem = depth === 0 && item.kind === 'preset' ? toSequenceItem(item) : item;
-          const isActive = displayItem.id === effectiveActiveItemId;
-
-          return (
-            <div
-              key={displayItem.id}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (draggingIndex !== null) {
-                  reorderItems(draggingIndex, index);
-                }
-                setDraggingIndex(null);
-              }}
-              className={`rounded border p-3 ${isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}
-            >
-              <div className='flex flex-wrap items-center gap-2'>
-                <span
-                  draggable
-                  onDragStart={() => setDraggingIndex(index)}
-                  onDragEnd={() => setDraggingIndex(null)}
-                  className='cursor-grab select-none rounded border border-dashed border-slate-300 p-2 text-slate-500'
-                  title='Drag to reorder'
-                  aria-label='Drag to reorder'
-                >
-                  <GripVertical size={14} strokeWidth={2} />
-                </span>
-                <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>
-                  {displayItem.kind === 'sequence' ? 'Nested Sequence' : 'Song Item'}
-                </div>
-                <button
-                  type='button'
-                  onClick={() => {
-                    void activateItem(displayItem.id);
-                  }}
-                  className='px-3 py-2 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700'
-                >
-                  Take
-                </button>
-                <button
-                  type='button'
-                  onClick={() => removeItem(index)}
-                  className='px-3 py-2 text-xs font-semibold rounded border border-red-200 text-red-600 hover:bg-red-50'
-                >
-                  Remove
-                </button>
-              </div>
-
-              {displayItem.kind === 'preset' ? (() => {
-                const selectedCatalogSong = availableSongCatalog.find((song) => {
-                  if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) {
-                    return true;
-                  }
-
-                  const sameArtist = (song.artist || '').trim() === displayItem.artist.trim();
-                  const sameTitle = (song.title || '').trim() === displayItem.title.trim();
-                  const sameCover = (song.coverUrl || '').trim() === displayItem.coverUrl.trim();
-                  return sameArtist && sameTitle && sameCover;
-                });
-                const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
-
-                return (
-                <div className='mt-3 space-y-2'>
-                  <div className='rounded border border-slate-200 bg-slate-50 p-3'>
-                    <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-                      <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>Catalog</span>
-                      <a
-                        href='/songs'
-                        className='text-xs font-medium text-blue-700 hover:underline'
-                        target='_blank'
-                        rel='noreferrer'
-                      >
-                        Manage Songs
-                      </a>
-                    </div>
-                    <Select
-                      className='mt-2'
-                      value={selectedCatalogSongValue}
-                      options={catalogOptions}
-                      placeholder='Select song from global catalog...'
-                      onChange={(value) => {
-                        const songId = Number(value);
-                        if (!Number.isFinite(songId) || songId <= 0) {
-                          return;
-                        }
-
-                        const selectedSong = availableSongCatalog.find((song) => song.id === songId);
-                        if (!selectedSong) {
-                          return;
-                        }
-
-                        applyCatalogSongToItem(index, displayItem, selectedSong);
+        {/* Now playing info + progress */}
+        <div className='hidden min-w-0 flex-1 px-4 md:block'>
+          {sequence.activeItemId ? (
+            (() => {
+              const activeItem = sequence.items.find((i) => i.id === sequence.activeItemId);
+              if (!activeItem || activeItem.kind !== 'preset') return null;
+              const totalMs = typeof activeItem.durationMs === 'number' && activeItem.durationMs > 0 ? activeItem.durationMs : null;
+              const elapsedMs = typeof sequence.startedAt === 'number' ? Math.max(0, nowMs - sequence.startedAt) : 0;
+              const isWithinDuration = totalMs !== null && elapsedMs < totalMs;
+              const fmt = (ms: number) => {
+                const s = Math.floor(ms / 1000);
+                return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+              };
+              return (
+                <div className='relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/60'>
+                  {/* Fill progress — only while song is actively within its known duration */}
+                  {isWithinDuration && (
+                    <div
+                      key={`${sequence.activeItemId}-${sequence.startedAt}`}
+                      className='pointer-events-none absolute inset-0 origin-left bg-sky-500/20'
+                      style={{
+                        animation: `${SONG_PROGRESS_FILL_ANIMATION} ${totalMs}ms linear forwards`,
+                        animationDelay: `-${elapsedMs}ms`
                       }}
                     />
-                    <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-                      <div className='rounded border border-slate-200 bg-white p-2'>
-                        <span className='block text-[11px] uppercase tracking-wide text-slate-500'>Artist</span>
-                        <span className='block truncate text-sm text-slate-800'>{displayItem.artist || '—'}</span>
-                      </div>
-                      <div className='rounded border border-slate-200 bg-white p-2'>
-                        <span className='block text-[11px] uppercase tracking-wide text-slate-500'>Title</span>
-                        <span className='block truncate text-sm text-slate-800'>{displayItem.title || '—'}</span>
-                      </div>
-                      <div className='rounded border border-slate-200 bg-white p-2'>
-                        <span className='block text-[11px] uppercase tracking-wide text-slate-500'>Duration</span>
-                        <span className='block truncate text-sm text-slate-800'>{formatDurationFromMs(displayItem.durationMs)}</span>
-                      </div>
-                      <div className='rounded border border-slate-200 bg-white p-2'>
-                        <span className='block text-[11px] uppercase tracking-wide text-slate-500'>EarOne</span>
-                        <span className='block truncate text-sm text-slate-800'>{displayItem.earoneSongId || '—'}</span>
-                      </div>
-                    </div>
-                    {displayItem.audioUrl ? (
-                      <p className='mt-2 truncate text-xs text-slate-600'>Audio URL: {displayItem.audioUrl}</p>
+                  )}
+                  <div className='relative flex items-center gap-2 px-3 py-2'>
+                    {activeItem.coverUrl ? (
+                      <img src={activeItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
                     ) : (
-                      <p className='mt-2 text-xs text-slate-500'>Select a song from catalog to assign audio and runtime.</p>
+                      <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800'>
+                        <Music2 size={11} className='text-zinc-500' />
+                      </div>
                     )}
-                    {displayItem.coverUrl ? (
-                      <p className='truncate text-xs text-slate-600'>Cover URL: {displayItem.coverUrl}</p>
-                    ) : null}
+                    <div className='min-w-0 flex-1'>
+                      <div className='truncate text-xs font-semibold text-sky-400'>{activeItem.title || 'Untitled'}</div>
+                      <div className='truncate text-[10px] text-zinc-400'>{activeItem.artist || 'Unknown Artist'}</div>
+                    </div>
+                    <div className='shrink-0 text-right text-[10px] tabular-nums text-zinc-500'>
+                      {totalMs && isWithinDuration && (
+                        <span>
+                          {fmt(elapsedMs)}
+                          <span className='text-zinc-700'> / {fmt(totalMs)}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
-              })() : (
-                <div className='mt-3'>
-                  <ModoItalianoSongSequenceEditor
-                    sequence={displayItem.sequence}
-                    songCatalog={songCatalog}
-                    depth={depth + 1}
-                    onChange={(nextNestedSequence) =>
-                      updateItem(index, {
-                        ...displayItem,
-                        sequence: nextNestedSequence
-                      })
-                    }
-                    onTakeSelection={async (nextNestedSequence) => {
-                      const nextSequence = {
-                        ...sequence,
-                        items: sequence.items.map((entry, sequenceIndex) =>
-                          sequenceIndex === index
-                            ? {
-                                ...displayItem,
-                                sequence: nextNestedSequence
-                              }
-                            : entry
-                        )
-                      };
-                      applySequence(nextSequence);
-                      if (onTakeSelection) {
-                        await onTakeSelection(nextSequence);
-                      }
-                      scheduleAutoTakeOffForSequence(nextSequence);
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            })()
+          ) : (
+            <p className='text-[11px] text-zinc-600'>Nothing on air</p>
+          )}
+        </div>
 
-      <div className='flex flex-wrap gap-2'>
-        <button
-          type='button'
-          onClick={addItem}
-          className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'
-        >
-          + Sequence
-        </button>
+        {/* Mode and loop toggles */}
+        <div className='flex items-center gap-3'>
+          <div className='flex items-center gap-0.5 rounded-lg border border-zinc-800 bg-zinc-950/60 p-0.5'>
+            <button
+              type='button'
+              onClick={() =>
+                applySequence({
+                  ...sequence,
+                  mode: 'manual',
+                  activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
+                  startedAt: Date.now()
+                })
+              }
+              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                sequence.mode === 'manual' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Manual
+            </button>
+            <button
+              type='button'
+              onClick={() => applySequence({ ...sequence, mode: 'autoplay', startedAt: Date.now() })}
+              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                sequence.mode === 'autoplay' ? 'bg-sky-500/20 text-sky-400' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <Play size={9} fill='currentColor' />
+              Autoplay
+            </button>
+          </div>
+
+          <button
+            type='button'
+            title='Loop'
+            onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+              sequence.loop !== false ? 'text-sky-400 bg-sky-500/10' : 'text-zinc-600 hover:text-zinc-300'
+            }`}
+          >
+            <Repeat2 size={16} />
+          </button>
+        </div>
       </div>
     </div>
   );

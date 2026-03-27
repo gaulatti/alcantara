@@ -55,6 +55,11 @@ export class ProgramController {
     return this.programService.getState(programId);
   }
 
+  @Get(':programId/audio-bus')
+  async getProgramAudioBusById(@Param('programId') programId: string) {
+    return this.programService.getProgramAudioBus(programId);
+  }
+
   @Get('state')
   async getState() {
     return this.programService.getState();
@@ -96,6 +101,19 @@ export class ProgramController {
     return this.programService.takeProgramOffAir(programId);
   }
 
+  @Post(':programId/song/off-air')
+  async takeProgramSongOffAirById(@Param('programId') programId: string) {
+    return this.programService.takeProgramSongOffAir(programId);
+  }
+
+  @Put(':programId/audio-bus')
+  async updateProgramAudioBusById(
+    @Param('programId') programId: string,
+    @Body() data: { songSequence?: unknown },
+  ) {
+    return this.programService.updateProgramAudioBus(data, programId);
+  }
+
   @Post('activate')
   async activateScene(
     @Body() data: { sceneId: number; transitionId?: string | null },
@@ -110,6 +128,11 @@ export class ProgramController {
   @Post('off-air')
   async takeProgramOffAir() {
     return this.programService.takeProgramOffAir();
+  }
+
+  @Post('song/off-air')
+  async takeProgramSongOffAir() {
+    return this.programService.takeProgramSongOffAir();
   }
 
   @Sse(':programId/events')
