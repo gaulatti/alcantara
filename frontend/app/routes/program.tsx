@@ -26,11 +26,7 @@ import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { stopModoItalianoAudioBus } from '../utils/modoItalianoAudioBus';
-import {
-  normalizeModoItalianoSongSequence,
-  type ModoItalianoSongSequence,
-  type ModoItalianoSongSequenceItem
-} from '../utils/modoItalianoSequence';
+import { normalizeModoItalianoSongSequence, type ModoItalianoSongSequence, type ModoItalianoSongSequenceItem } from '../utils/modoItalianoSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
@@ -105,16 +101,8 @@ interface AudioBusUpdateEvent {
   updatedAt: string;
 }
 
-const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set([
-  'fifthbell',
-  'fifthbell-content',
-  'fifthbell-marquee',
-  'fifthbell-corner'
-]);
-const FIFTHBELL_LAYOUT_COMPONENT_TYPES = new Set([
-  ...FIFTHBELL_DRIVER_COMPONENT_TYPES,
-  'toni-clock'
-]);
+const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner']);
+const FIFTHBELL_LAYOUT_COMPONENT_TYPES = new Set([...FIFTHBELL_DRIVER_COMPONENT_TYPES, 'toni-clock']);
 
 function flattenModoItalianoSongItems(items: ModoItalianoSongSequenceItem[]): Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] {
   const flattened: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] = [];
@@ -134,9 +122,11 @@ function flattenModoItalianoSongItems(items: ModoItalianoSongSequenceItem[]): Ex
 function normalizeModoItalianoSongPlaylist(sequence: ModoItalianoSongSequence): ModoItalianoSongSequence {
   const playlistItems = flattenModoItalianoSongItems(sequence.items);
   const activeItemId =
-    sequence.activeItemId && playlistItems.some((item) => item.id === sequence.activeItemId)
-      ? sequence.activeItemId
-      : (playlistItems[0]?.id ?? null);
+    sequence.activeItemId === null
+      ? null
+      : sequence.activeItemId && playlistItems.some((item) => item.id === sequence.activeItemId)
+        ? sequence.activeItemId
+        : (playlistItems[0]?.id ?? null);
 
   return {
     ...sequence,
@@ -412,8 +402,7 @@ function SceneProgram({ programId }: { programId: string }) {
       return fallback;
     };
     const modoItalianoDisclaimerText = typeof modoItalianoDisclaimerProps.text === 'string' ? modoItalianoDisclaimerProps.text.trim() : '';
-    const shouldShowModoItalianoChyronComponent =
-      shouldRenderModoItalianoRow && hasModoItalianoChyron && toBoolean(modoItalianoChyronProps.show, true);
+    const shouldShowModoItalianoChyronComponent = shouldRenderModoItalianoRow && hasModoItalianoChyron && toBoolean(modoItalianoChyronProps.show, true);
     const showModoItalianoDisclaimer =
       shouldRenderModoItalianoRow &&
       hasModoItalianoDisclaimer &&
@@ -623,12 +612,7 @@ function SceneProgram({ programId }: { programId: string }) {
           <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
             <div className='flex-1 min-w-0'>
               {shouldShowModoItalianoChyronComponent ? (
-                <ModoItalianoChyron
-                  show
-                  textSequence={modoItalianoChyronProps.textSequence}
-                  ctaSequence={modoItalianoChyronProps.ctaSequence}
-                  inline
-                />
+                <ModoItalianoChyron show textSequence={modoItalianoChyronProps.textSequence} ctaSequence={modoItalianoChyronProps.ctaSequence} inline />
               ) : showModoItalianoDisclaimer ? (
                 <ModoItalianoDisclaimer
                   text={modoItalianoDisclaimerProps.text || ''}
