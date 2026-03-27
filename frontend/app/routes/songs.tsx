@@ -1,5 +1,5 @@
 import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
-import { Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/songs';
@@ -75,7 +75,7 @@ function formatLastUpdatedLabel(updatedAt: string): string {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit',
+    minute: '2-digit'
   });
 }
 
@@ -136,14 +136,9 @@ export default function SongsCatalog() {
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [batchItems, setBatchItems] = useState<Array<{ name: string; status: 'pending' | 'uploading' | 'done' | 'error'; error?: string }>>([]);
 
-  const sortedSongs = useMemo(
-    () =>
-      [...songs].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ),
-    [songs],
-  );
+  const sortedSongs = useMemo(() => [...songs].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [songs]);
 
   const filteredSongs = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -167,28 +162,18 @@ export default function SongsCatalog() {
 
   const enabledSongCount = useMemo(() => songs.filter((song) => song.enabled).length, [songs]);
   const knownDurationCount = useMemo(
-    () =>
-      songs.filter(
-        (song) =>
-          typeof song.durationMs === 'number' &&
-          Number.isFinite(song.durationMs) &&
-          song.durationMs > 0,
-      ).length,
-    [songs],
+    () => songs.filter((song) => typeof song.durationMs === 'number' && Number.isFinite(song.durationMs) && song.durationMs > 0).length,
+    [songs]
   );
   const totalKnownDurationMs = useMemo(
     () =>
       songs.reduce((acc, song) => {
-        if (
-          typeof song.durationMs === 'number' &&
-          Number.isFinite(song.durationMs) &&
-          song.durationMs > 0
-        ) {
+        if (typeof song.durationMs === 'number' && Number.isFinite(song.durationMs) && song.durationMs > 0) {
           return acc + song.durationMs;
         }
         return acc;
       }, 0),
-    [songs],
+    [songs]
   );
 
   const fetchSongs = async () => {
@@ -234,6 +219,40 @@ export default function SongsCatalog() {
     setIsUploadingSong(false);
     setIsUploadingCover(false);
     setIsSaving(false);
+    setBatchItems([]);
+  };
+
+  const batchCreateSongs = async (files: File[]) => {
+    if (files.length === 0) return;
+    setBatchItems(files.map((f) => ({ name: f.name, status: 'pending' })));
+    let anyDone = false;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setBatchItems((prev) => prev.map((item, idx) => (idx === i ? { ...item, status: 'uploading' } : item)));
+      try {
+        const upload = await uploadFileToMediaBucket('song', file);
+        const fallbackDurationMs = await readAudioDurationFromFile(file);
+        const artist = (typeof upload.metadata?.artist === 'string' ? upload.metadata.artist.trim() : '') || file.name.replace(/\.[^.]+$/, '');
+        const title = typeof upload.metadata?.title === 'string' ? upload.metadata.title.trim() : '';
+        const coverUrl = typeof upload.metadata?.coverUrl === 'string' ? upload.metadata.coverUrl.trim() : '';
+        const durationMs =
+          typeof upload.metadata?.durationMs === 'number' && Number.isFinite(upload.metadata.durationMs) && upload.metadata.durationMs > 0
+            ? Math.round(upload.metadata.durationMs)
+            : fallbackDurationMs;
+        const res = await fetch(apiUrl('/songs'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ artist, title, audioUrl: upload.url, coverUrl: coverUrl || null, durationMs: durationMs ?? null, enabled: true })
+        });
+        if (!res.ok) throw new Error(await extractErrorMessage(res));
+        setBatchItems((prev) => prev.map((item, idx) => (idx === i ? { ...item, status: 'done' } : item)));
+        anyDone = true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        setBatchItems((prev) => prev.map((item, idx) => (idx === i ? { ...item, status: 'error', error: msg } : item)));
+      }
+    }
+    if (anyDone) await fetchSongs();
   };
 
   const openCreateModal = () => {
@@ -289,9 +308,7 @@ export default function SongsCatalog() {
         setCoverUrlInput(upload.metadata.coverUrl.trim());
       }
       const durationMs =
-        typeof upload.metadata?.durationMs === 'number' &&
-        Number.isFinite(upload.metadata.durationMs) &&
-        upload.metadata.durationMs > 0
+        typeof upload.metadata?.durationMs === 'number' && Number.isFinite(upload.metadata.durationMs) && upload.metadata.durationMs > 0
           ? Math.round(upload.metadata.durationMs)
           : fallbackDurationMs;
       if (typeof durationMs === 'number' && durationMs > 0) {
@@ -397,7 +414,7 @@ export default function SongsCatalog() {
 
     try {
       const res = await fetch(apiUrl(`/songs/${song.id}`), {
-        method: 'DELETE',
+        method: 'DELETE'
       });
       if (!res.ok) {
         throw new Error(await extractErrorMessage(res));
@@ -458,11 +475,7 @@ export default function SongsCatalog() {
               />
             </label>
             <label className='inline-flex items-center gap-2 rounded-xl border border-sand/30 bg-white/70 px-3 py-2 text-sm text-text-primary dark:border-sand/45 dark:bg-dark-sand/55 dark:text-text-primary'>
-              <input
-                type='checkbox'
-                checked={showDisabledSongs}
-                onChange={(event) => setShowDisabledSongs(event.target.checked)}
-              />
+              <input type='checkbox' checked={showDisabledSongs} onChange={(event) => setShowDisabledSongs(event.target.checked)} />
               Show disabled songs
             </label>
           </div>
@@ -473,7 +486,11 @@ export default function SongsCatalog() {
               <p>Loading songs...</p>
             </div>
           ) : sortedSongs.length === 0 ? (
-            <Empty title='No songs yet' description='Upload your first song into the global catalog.' action={<Button onClick={openCreateModal}>Add Song</Button>} />
+            <Empty
+              title='No songs yet'
+              description='Upload your first song into the global catalog.'
+              action={<Button onClick={openCreateModal}>Add Song</Button>}
+            />
           ) : filteredSongs.length === 0 ? (
             <Empty
               title='No songs match this search'
@@ -572,144 +589,206 @@ export default function SongsCatalog() {
 
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingSong ? 'Edit Song' : 'Add Song'}>
         <div className='space-y-4'>
-          <div className='rounded-xl border border-sand/30 bg-sand/5 p-3 space-y-2'>
-            <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
-              <input
-                type='file'
-                accept='audio/*'
-                className='hidden'
-                disabled={isUploadingSong || isSaving}
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null;
-                  event.target.value = '';
-                  setSongFile(file);
-                }}
-              />
-              Choose Song File
-            </label>
-            <span className='block text-xs text-text-secondary dark:text-text-secondary'>
-              {songFile ? `Selected: ${songFile.name}` : 'No song file selected.'}
-            </span>
-            <Button variant='secondary' disabled={!songFile || isUploadingSong || isSaving} onClick={() => void uploadSongFile()}>
-              {isUploadingSong ? 'Uploading Song...' : 'Upload Song and Read Metadata'}
-            </Button>
-          </div>
+          {!editingSong ? (
+            <>
+              <label
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+                  batchItems.some((i) => i.status === 'uploading')
+                    ? 'cursor-not-allowed border-sand/30 bg-sand/5 opacity-60'
+                    : 'border-sand/40 bg-sand/5 hover:border-sea dark:border-sand/50 dark:bg-dark-sand/30 dark:hover:border-accent-blue'
+                }`}
+              >
+                <input
+                  type='file'
+                  accept='audio/*'
+                  multiple
+                  className='hidden'
+                  disabled={batchItems.some((i) => i.status === 'uploading')}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    event.target.value = '';
+                    if (files.length > 0) void batchCreateSongs(files);
+                  }}
+                />
+                <Music2 size={28} className='text-text-secondary dark:text-text-secondary' />
+                <span className='text-sm font-medium text-text-primary dark:text-text-primary'>
+                  {batchItems.some((i) => i.status === 'uploading') ? 'Uploading…' : 'Click to select audio files'}
+                </span>
+                <span className='text-xs text-text-secondary dark:text-text-secondary'>Multiple files supported — metadata read automatically</span>
+              </label>
 
-          <div className='grid gap-3 sm:grid-cols-2'>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>Artist</label>
-              <input
-                type='text'
-                value={artistInput}
-                onChange={(event) => setArtistInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>Title</label>
-              <input
-                type='text'
-                value={titleInput}
-                onChange={(event) => setTitleInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-          </div>
+              {batchItems.length > 0 && (
+                <ul className='space-y-1.5'>
+                  {batchItems.map((item, idx) => (
+                    <li
+                      key={idx}
+                      className='flex items-center gap-2 rounded-lg border border-sand/30 bg-white/60 px-3 py-2 text-sm dark:border-sand/40 dark:bg-dark-sand/50'
+                    >
+                      <span
+                        className={`shrink-0 text-base ${
+                          item.status === 'done'
+                            ? 'text-green-500'
+                            : item.status === 'error'
+                              ? 'text-terracotta'
+                              : item.status === 'uploading'
+                                ? 'text-sea dark:text-accent-blue'
+                                : 'text-text-secondary'
+                        }`}
+                      >
+                        {item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : item.status === 'uploading' ? '⟳' : '·'}
+                      </span>
+                      <span className='min-w-0 flex-1 truncate text-text-primary dark:text-text-primary'>{item.name}</span>
+                      {item.error && <span className='shrink-0 text-xs text-terracotta'>{item.error}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-          <div>
-            <label className='mb-1 block text-xs text-gray-600'>Audio URL</label>
-            <input
-              type='text'
-              value={audioUrlInput}
-              onChange={(event) => setAudioUrlInput(event.target.value)}
-              className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              placeholder='Uploaded automatically after song upload'
-            />
-          </div>
+              <div className='flex justify-end gap-3'>
+                <Button variant='secondary' onClick={closeModal}>
+                  {batchItems.length > 0 && batchItems.every((i) => i.status === 'done' || i.status === 'error') ? 'Done' : 'Cancel'}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className='rounded-xl border border-sand/30 bg-sand/5 p-3 space-y-2'>
+                <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
+                  <input
+                    type='file'
+                    accept='audio/*'
+                    className='hidden'
+                    disabled={isUploadingSong || isSaving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      event.target.value = '';
+                      if (file) {
+                        setSongFile(file);
+                        void uploadSongFile();
+                      }
+                    }}
+                  />
+                  {isUploadingSong ? 'Uploading…' : songFile ? `Replace: ${songFile.name}` : 'Replace Song File'}
+                </label>
+              </div>
 
-          <div className='grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end'>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>Cover URL</label>
-              <input
-                type='text'
-                value={coverUrlInput}
-                onChange={(event) => setCoverUrlInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-            <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
-              <input
-                type='file'
-                accept='image/*'
-                className='hidden'
-                disabled={isUploadingCover || isSaving}
-                onChange={(event) => {
-                  const file = event.target.files?.[0] ?? null;
-                  event.target.value = '';
-                  void uploadCoverFile(file);
-                }}
-              />
-              {isUploadingCover ? 'Uploading Cover...' : 'Upload Cover'}
-            </label>
-          </div>
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>Artist</label>
+                  <input
+                    type='text'
+                    value={artistInput}
+                    onChange={(event) => setArtistInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>Title</label>
+                  <input
+                    type='text'
+                    value={titleInput}
+                    onChange={(event) => setTitleInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+              </div>
 
-          <div className='grid gap-3 sm:grid-cols-2'>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>Duration (ms)</label>
-              <input
-                type='number'
-                min={1}
-                value={durationMsInput}
-                onChange={(event) => setDurationMsInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-            <label className='mt-7 inline-flex items-center gap-2 text-sm text-text-primary dark:text-text-primary'>
-              <input type='checkbox' checked={enabledInput} onChange={(event) => setEnabledInput(event.target.checked)} />
-              Enabled
-            </label>
-          </div>
+              <div>
+                <label className='mb-1 block text-xs text-gray-600'>Audio URL</label>
+                <input
+                  type='text'
+                  value={audioUrlInput}
+                  onChange={(event) => setAudioUrlInput(event.target.value)}
+                  className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  placeholder='Uploaded automatically after song upload'
+                />
+              </div>
 
-          <div className='grid gap-3 sm:grid-cols-3'>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>EarOne Song ID</label>
-              <input
-                type='text'
-                value={earoneSongIdInput}
-                onChange={(event) => setEaroneSongIdInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>EarOne Rank</label>
-              <input
-                type='text'
-                value={earoneRankInput}
-                onChange={(event) => setEaroneRankInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-            <div>
-              <label className='mb-1 block text-xs text-gray-600'>EarOne Spins</label>
-              <input
-                type='text'
-                value={earoneSpinsInput}
-                onChange={(event) => setEaroneSpinsInput(event.target.value)}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              />
-            </div>
-          </div>
+              <div className='grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end'>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>Cover URL</label>
+                  <input
+                    type='text'
+                    value={coverUrlInput}
+                    onChange={(event) => setCoverUrlInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+                <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
+                  <input
+                    type='file'
+                    accept='image/*'
+                    className='hidden'
+                    disabled={isUploadingCover || isSaving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      event.target.value = '';
+                      void uploadCoverFile(file);
+                    }}
+                  />
+                  {isUploadingCover ? 'Uploading Cover...' : 'Upload Cover'}
+                </label>
+              </div>
 
-          {error ? <p className='text-sm text-terracotta'>{error}</p> : null}
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>Duration (ms)</label>
+                  <input
+                    type='number'
+                    min={1}
+                    value={durationMsInput}
+                    onChange={(event) => setDurationMsInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+                <label className='mt-7 inline-flex items-center gap-2 text-sm text-text-primary dark:text-text-primary'>
+                  <input type='checkbox' checked={enabledInput} onChange={(event) => setEnabledInput(event.target.checked)} />
+                  Enabled
+                </label>
+              </div>
 
-          <div className='flex justify-end gap-3'>
-            <Button variant='secondary' onClick={closeModal} disabled={isSaving || isUploadingSong || isUploadingCover}>
-              Cancel
-            </Button>
-            <Button onClick={() => void saveSong()} disabled={isSaving || isUploadingSong || isUploadingCover}>
-              {isSaving ? 'Saving...' : editingSong ? 'Update Song' : 'Create Song'}
-            </Button>
-          </div>
+              <div className='grid gap-3 sm:grid-cols-3'>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>EarOne Song ID</label>
+                  <input
+                    type='text'
+                    value={earoneSongIdInput}
+                    onChange={(event) => setEaroneSongIdInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>EarOne Rank</label>
+                  <input
+                    type='text'
+                    value={earoneRankInput}
+                    onChange={(event) => setEaroneRankInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+                <div>
+                  <label className='mb-1 block text-xs text-gray-600'>EarOne Spins</label>
+                  <input
+                    type='text'
+                    value={earoneSpinsInput}
+                    onChange={(event) => setEaroneSpinsInput(event.target.value)}
+                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                  />
+                </div>
+              </div>
+
+              {error ? <p className='text-sm text-terracotta'>{error}</p> : null}
+
+              <div className='flex justify-end gap-3'>
+                <Button variant='secondary' onClick={closeModal} disabled={isSaving || isUploadingSong || isUploadingCover}>
+                  Cancel
+                </Button>
+                <Button onClick={() => void saveSong()} disabled={isSaving || isUploadingSong || isUploadingCover}>
+                  {isSaving ? 'Saving...' : 'Update Song'}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </div>

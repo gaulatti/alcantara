@@ -25,6 +25,12 @@ import RelojLoopClock from '../components/RelojLoopClock';
 import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
+import { stopModoItalianoAudioBus } from '../utils/modoItalianoAudioBus';
+import {
+  normalizeModoItalianoSongSequence,
+  type ModoItalianoSongSequence,
+  type ModoItalianoSongSequenceItem
+} from '../utils/modoItalianoSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
@@ -82,6 +88,23 @@ interface ActiveTransition {
   preset: SceneTransitionPreset;
 }
 
+interface SongOffAirEvent {
+  type: 'song_off_air';
+  programId: string;
+  triggeredAt: string;
+}
+
+interface ProgramAudioBusSettings {
+  songSequence?: unknown;
+}
+
+interface AudioBusUpdateEvent {
+  type: 'audio_bus_update';
+  programId: string;
+  settings: ProgramAudioBusSettings;
+  updatedAt: string;
+}
+
 const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set([
   'fifthbell',
   'fifthbell-content',
@@ -93,6 +116,48 @@ const FIFTHBELL_LAYOUT_COMPONENT_TYPES = new Set([
   'toni-clock'
 ]);
 
+function flattenModoItalianoSongItems(items: ModoItalianoSongSequenceItem[]): Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] {
+  const flattened: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] = [];
+
+  for (const item of items) {
+    if (item.kind === 'preset') {
+      flattened.push(item);
+      continue;
+    }
+
+    flattened.push(...flattenModoItalianoSongItems(item.sequence.items));
+  }
+
+  return flattened;
+}
+
+function normalizeModoItalianoSongPlaylist(sequence: ModoItalianoSongSequence): ModoItalianoSongSequence {
+  const playlistItems = flattenModoItalianoSongItems(sequence.items);
+  const activeItemId =
+    sequence.activeItemId && playlistItems.some((item) => item.id === sequence.activeItemId)
+      ? sequence.activeItemId
+      : (playlistItems[0]?.id ?? null);
+
+  return {
+    ...sequence,
+    items: playlistItems,
+    activeItemId
+  };
+}
+
+function normalizeProgramAudioBusSettings(value: unknown): ProgramAudioBusSettings {
+  if (!value || typeof value !== 'object') {
+    return { songSequence: null };
+  }
+
+  const record = value as Record<string, unknown>;
+  const normalizedSongSequence = normalizeModoItalianoSongSequence(record.songSequence);
+
+  return {
+    songSequence: normalizedSongSequence ? normalizeModoItalianoSongPlaylist(normalizedSongSequence) : null
+  };
+}
+
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
@@ -102,6 +167,7 @@ export default function Program() {
 
 function SceneProgram({ programId }: { programId: string }) {
   const [state, setState] = useState<ProgramState | null>(null);
+  const [audioBusSettings, setAudioBusSettings] = useState<ProgramAudioBusSettings | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
@@ -160,12 +226,18 @@ function SceneProgram({ programId }: { programId: string }) {
     transitionTimersRef.current = [];
     setActiveTransition(null);
     setState(null);
+    setAudioBusSettings(null);
     stopAllInstantAudio();
 
     fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
       .then((res) => res.json())
       .then((data) => setState(data))
       .catch((err) => console.error('Failed to fetch initial state:', err));
+
+    fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
+      .then((res) => res.json())
+      .then((data) => setAudioBusSettings(normalizeProgramAudioBusSettings(data)))
+      .catch((err) => console.error('Failed to fetch audio bus settings:', err));
   }, [programId]);
 
   useEffect(() => {
@@ -277,6 +349,16 @@ function SceneProgram({ programId }: { programId: string }) {
         playInstantAudio(data as InstantPlayEvent);
       } else if (data.type === 'instant_stop_all') {
         stopAllInstantAudio();
+      } else if (data.type === 'song_off_air') {
+        const event = data as SongOffAirEvent;
+        if (event.programId === programId) {
+          stopModoItalianoAudioBus(programId);
+        }
+      } else if (data.type === 'audio_bus_update') {
+        const event = data as AudioBusUpdateEvent;
+        if (event.programId === programId) {
+          setAudioBusSettings(normalizeProgramAudioBusSettings(event.settings));
+        }
       }
     }
   });
@@ -317,7 +399,6 @@ function SceneProgram({ programId }: { programId: string }) {
     const hasModoItalianoChyron = components.includes('modoitaliano-chyron');
     const hasModoItalianoDisclaimer = components.includes('modoitaliano-disclaimer');
     const shouldRenderModoItalianoRow = hasModoItalianoClock && (hasModoItalianoChyron || hasModoItalianoDisclaimer);
-    const modoItalianoClockProps = metadata['modoitaliano-clock'] || {};
     const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
     const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
     const toBoolean = (value: unknown, fallback: boolean): boolean => {
@@ -461,20 +542,14 @@ function SceneProgram({ programId }: { programId: string }) {
               return (
                 <ModoItalianoClock
                   key={componentType}
+                  programId={programId}
                   timeOverride={globalTimeOverride}
                   transitionDurationMs={300}
                   shuffleCities={false}
                   widthPx={220}
                   showWorldClocks={true}
                   showBellIcon={false}
-                  songs={Array.isArray(props.songs) ? props.songs : undefined}
-                  songSequence={props.songSequence}
-                  songArtist={typeof props.songArtist === 'string' ? props.songArtist : ''}
-                  songTitle={typeof props.songTitle === 'string' ? props.songTitle : ''}
-                  songCoverUrl={typeof props.songCoverUrl === 'string' ? props.songCoverUrl : ''}
-                  songEaroneSongId={typeof props.songEaroneSongId === 'string' ? props.songEaroneSongId : ''}
-                  songEaroneRank={typeof props.songEaroneRank === 'string' ? props.songEaroneRank : ''}
-                  songEaroneSpins={typeof props.songEaroneSpins === 'string' ? props.songEaroneSpins : ''}
+                  songSequence={audioBusSettings?.songSequence}
                   language='es'
                 />
               );
@@ -573,20 +648,14 @@ function SceneProgram({ programId }: { programId: string }) {
             </div>
             <div className='shrink-0'>
               <ModoItalianoClock
+                programId={programId}
                 timeOverride={globalTimeOverride}
                 transitionDurationMs={300}
                 shuffleCities={false}
                 widthPx={220}
                 showWorldClocks={true}
                 showBellIcon={false}
-                songs={Array.isArray(modoItalianoClockProps.songs) ? modoItalianoClockProps.songs : undefined}
-                songSequence={modoItalianoClockProps.songSequence}
-                songArtist={typeof modoItalianoClockProps.songArtist === 'string' ? modoItalianoClockProps.songArtist : ''}
-                songTitle={typeof modoItalianoClockProps.songTitle === 'string' ? modoItalianoClockProps.songTitle : ''}
-                songCoverUrl={typeof modoItalianoClockProps.songCoverUrl === 'string' ? modoItalianoClockProps.songCoverUrl : ''}
-                songEaroneSongId={typeof modoItalianoClockProps.songEaroneSongId === 'string' ? modoItalianoClockProps.songEaroneSongId : ''}
-                songEaroneRank={typeof modoItalianoClockProps.songEaroneRank === 'string' ? modoItalianoClockProps.songEaroneRank : ''}
-                songEaroneSpins={typeof modoItalianoClockProps.songEaroneSpins === 'string' ? modoItalianoClockProps.songEaroneSpins : ''}
+                songSequence={audioBusSettings?.songSequence}
                 language='es'
                 inline
               />

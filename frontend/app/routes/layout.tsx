@@ -392,18 +392,18 @@ export default function Layout() {
         }
       },
       {
-        id: 'take-selected-program-off-air',
-        title: `Take Off Air (${selectedProgramId})`,
-        description: 'Clear the active scene but keep assignments in the program',
-        group: 'Scenes',
+        id: 'take-selected-program-song-off-air',
+        title: `Take Song Off Air (${selectedProgramId})`,
+        description: 'Stop current song playback for this program only',
+        group: 'Songs',
         icon: <CircleOff size={16} />,
-        keywords: ['off air', 'clear active scene', selectedProgramId],
+        keywords: ['song off air', 'stop song', selectedProgramId],
         onSelect: async () => {
-          const res = await fetch(apiUrl(`/program/${encodeURIComponent(selectedProgramId)}/off-air`), {
+          const res = await fetch(apiUrl(`/program/${encodeURIComponent(selectedProgramId)}/song/off-air`), {
             method: 'POST'
           });
           if (!res.ok) {
-            throw new Error(`Failed to take program off air (${res.status})`);
+            throw new Error(`Failed to take song off air (${res.status})`);
           }
         }
       },
