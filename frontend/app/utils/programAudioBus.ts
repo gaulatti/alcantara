@@ -1,4 +1,6 @@
-export interface ModoItalianoAudioBusTrack {
+import { interpolateGainLog } from './audioTaper';
+
+export interface ProgramAudioBusTrack {
   token: string;
   audioUrl: string;
   durationMs?: number;
@@ -10,23 +12,30 @@ export interface ModoItalianoAudioBusTrack {
   earoneSpins?: string;
 }
 
-export interface ModoItalianoAudioBusSnapshot {
-  track: ModoItalianoAudioBusTrack | null;
+export interface ProgramAudioBusSnapshot {
+  track: ProgramAudioBusTrack | null;
   progress: number;
   endedToken: string;
   isPlaying: boolean;
 }
 
-type Listener = (snapshot: ModoItalianoAudioBusSnapshot) => void;
+type Listener = (snapshot: ProgramAudioBusSnapshot) => void;
 
 interface ProgramAudioBusState {
-  activeTrack: ModoItalianoAudioBusTrack | null;
+  activeTrack: ProgramAudioBusTrack | null;
   activeAudio: HTMLAudioElement | null;
+  masterVolume: number;
   progress: number;
   endedToken: string;
   isPlaying: boolean;
   transitionVersion: number;
   listeners: Set<Listener>;
+  meterContext: AudioContext | null;
+  meterSource: AudioNode | null;
+  meterAnalyser: AnalyserNode | null;
+  meterBuffer: Float32Array | null;
+  lastSignalLevel: number;
+  meterUsesMediaElementFallback: boolean;
 }
 
 const audioBusByProgram = new Map<string, ProgramAudioBusState>();
@@ -39,11 +48,18 @@ function createProgramAudioBusState(): ProgramAudioBusState {
   return {
     activeTrack: null,
     activeAudio: null,
+    masterVolume: 1,
     progress: 0,
     endedToken: '',
     isPlaying: false,
     transitionVersion: 0,
-    listeners: new Set<Listener>()
+    listeners: new Set<Listener>(),
+    meterContext: null,
+    meterSource: null,
+    meterAnalyser: null,
+    meterBuffer: null,
+    lastSignalLevel: 0,
+    meterUsesMediaElementFallback: false
   };
 }
 
@@ -93,7 +109,7 @@ function getAudioProgress(audio: HTMLAudioElement): number {
   return clampProgress(audio.currentTime / duration);
 }
 
-function getSnapshot(state: ProgramAudioBusState): ModoItalianoAudioBusSnapshot {
+function getSnapshot(state: ProgramAudioBusState): ProgramAudioBusSnapshot {
   return {
     track: state.activeTrack,
     progress: state.progress,
@@ -116,6 +132,118 @@ function clearAudioBindings(audio: HTMLAudioElement): void {
   audio.onloadedmetadata = null;
   audio.onended = null;
   audio.onerror = null;
+}
+
+function releaseAudioMeter(state: ProgramAudioBusState): void {
+  if (state.meterUsesMediaElementFallback && state.activeAudio) {
+    state.activeAudio.muted = false;
+  }
+  if (state.meterSource) {
+    try {
+      state.meterSource.disconnect();
+    } catch {
+      // no-op
+    }
+    state.meterSource = null;
+  }
+  if (state.meterAnalyser) {
+    try {
+      state.meterAnalyser.disconnect();
+    } catch {
+      // no-op
+    }
+    state.meterAnalyser = null;
+  }
+  state.meterBuffer = null;
+  state.lastSignalLevel = 0;
+  state.meterUsesMediaElementFallback = false;
+}
+
+function setupAudioMeter(state: ProgramAudioBusState, audio: HTMLAudioElement): void {
+  releaseAudioMeter(state);
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) {
+    return;
+  }
+
+  try {
+    const context = state.meterContext ?? new AudioContextCtor();
+    state.meterContext = context;
+    const attachFromStream = (): boolean => {
+      const stream =
+        audio.captureStream?.() ||
+        (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.();
+      if (!stream) {
+        return false;
+      }
+
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.78;
+      source.connect(analyser);
+      state.meterSource = source;
+      state.meterAnalyser = analyser;
+      state.meterBuffer = new Float32Array(analyser.fftSize);
+      state.meterUsesMediaElementFallback = false;
+      return true;
+    };
+
+    const attachFromMediaElement = (): boolean => {
+      if (context.state !== 'running') {
+        return false;
+      }
+      const source = context.createMediaElementSource(audio);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.78;
+      source.connect(analyser);
+      source.connect(context.destination);
+      audio.muted = true;
+      state.meterSource = source;
+      state.meterAnalyser = analyser;
+      state.meterBuffer = new Float32Array(analyser.fftSize);
+      state.meterUsesMediaElementFallback = true;
+      return true;
+    };
+
+    if (attachFromStream()) {
+      if (context.state === 'suspended') {
+        void context.resume().catch(() => {
+          // ignore resume failures; meter can recover on next track
+        });
+      }
+      return;
+    }
+
+    if (attachFromMediaElement()) {
+      return;
+    }
+
+    if (context.state === 'suspended') {
+      void context
+        .resume()
+        .then(() => {
+          if (state.activeAudio !== audio || state.meterSource) {
+            return;
+          }
+          try {
+            void attachFromMediaElement();
+          } catch {
+            // no-op
+          }
+        })
+        .catch(() => {
+          // ignore resume failures; some environments require user gesture
+        });
+    }
+  } catch {
+    releaseAudioMeter(state);
+  }
 }
 
 function detachAndStopAudio(audio: HTMLAudioElement): void {
@@ -145,8 +273,6 @@ function fadeAudioVolume(
   }
 
   const steps = Math.max(1, Math.round(durationMs / AUDIO_FADE_STEP_MS));
-  const delta = normalizedTo - normalizedFrom;
-
   return new Promise((resolve) => {
     let step = 0;
     const timer = window.setInterval(() => {
@@ -158,7 +284,7 @@ function fadeAudioVolume(
 
       step += 1;
       const ratio = Math.min(1, step / steps);
-      audio.volume = clampVolume(normalizedFrom + delta * ratio);
+      audio.volume = clampVolume(interpolateGainLog(normalizedFrom, normalizedTo, ratio));
 
       if (ratio >= 1) {
         window.clearInterval(timer);
@@ -170,6 +296,7 @@ function fadeAudioVolume(
 
 function setActiveAudio(state: ProgramAudioBusState, audio: HTMLAudioElement, trackToken: string): void {
   audio.preload = 'auto';
+  setupAudioMeter(state, audio);
 
   audio.onplay = () => {
     state.isPlaying = true;
@@ -208,8 +335,9 @@ function setActiveAudio(state: ProgramAudioBusState, audio: HTMLAudioElement, tr
   state.activeAudio = audio;
 }
 
-function replaceTrack(state: ProgramAudioBusState, track: ModoItalianoAudioBusTrack): void {
+function replaceTrack(state: ProgramAudioBusState, track: ProgramAudioBusTrack): void {
   if (state.activeAudio) {
+    releaseAudioMeter(state);
     detachAndStopAudio(state.activeAudio);
     state.activeAudio = null;
   }
@@ -220,7 +348,7 @@ function replaceTrack(state: ProgramAudioBusState, track: ModoItalianoAudioBusTr
   state.isPlaying = false;
 
   const audio = new Audio(track.audioUrl);
-  audio.volume = AUDIO_TARGET_VOLUME;
+  audio.volume = clampVolume(state.masterVolume);
   setActiveAudio(state, audio, track.token);
   emit(state);
 
@@ -234,7 +362,7 @@ function replaceTrack(state: ProgramAudioBusState, track: ModoItalianoAudioBusTr
   }
 }
 
-async function transitionToTrackWithFade(state: ProgramAudioBusState, track: ModoItalianoAudioBusTrack): Promise<void> {
+async function transitionToTrackWithFade(state: ProgramAudioBusState, track: ProgramAudioBusTrack): Promise<void> {
   state.transitionVersion += 1;
   const version = state.transitionVersion;
   const outgoingAudio = state.activeAudio;
@@ -249,6 +377,7 @@ async function transitionToTrackWithFade(state: ProgramAudioBusState, track: Mod
   }
 
   if (outgoingAudio) {
+    releaseAudioMeter(state);
     detachAndStopAudio(outgoingAudio);
     if (state.activeAudio === outgoingAudio) {
       state.activeAudio = null;
@@ -281,15 +410,16 @@ async function transitionToTrackWithFade(state: ProgramAudioBusState, track: Mod
     return;
   }
 
-  await fadeAudioVolume(incomingAudio, incomingAudio.volume, AUDIO_TARGET_VOLUME, AUDIO_FADE_IN_MS, () => version === state.transitionVersion);
+  const targetVolume = clampVolume(state.masterVolume);
+  await fadeAudioVolume(incomingAudio, incomingAudio.volume, targetVolume, AUDIO_FADE_IN_MS, () => version === state.transitionVersion);
 
   if (version !== state.transitionVersion) {
     return;
   }
-  incomingAudio.volume = AUDIO_TARGET_VOLUME;
+  incomingAudio.volume = targetVolume;
 }
 
-export function ensureModoItalianoAudioBusTrack(programId: string, track: ModoItalianoAudioBusTrack): void {
+export function ensureProgramAudioBusTrack(programId: string, track: ProgramAudioBusTrack): void {
   const state = getProgramAudioBusState(programId, true);
   if (!state) {
     return;
@@ -301,7 +431,7 @@ export function ensureModoItalianoAudioBusTrack(programId: string, track: ModoIt
     return;
   }
 
-  const normalizedTrack: ModoItalianoAudioBusTrack = {
+  const normalizedTrack: ProgramAudioBusTrack = {
     ...track,
     token: normalizedToken,
     audioUrl: normalizedUrl
@@ -330,7 +460,7 @@ export function ensureModoItalianoAudioBusTrack(programId: string, track: ModoIt
   replaceTrack(state, normalizedTrack);
 }
 
-export function stopModoItalianoAudioBus(programId: string): void {
+export function stopProgramAudioBus(programId: string): void {
   const state = getProgramAudioBusState(programId, false);
   if (!state) {
     return;
@@ -339,6 +469,7 @@ export function stopModoItalianoAudioBus(programId: string): void {
   state.transitionVersion += 1;
 
   if (state.activeAudio) {
+    releaseAudioMeter(state);
     detachAndStopAudio(state.activeAudio);
     state.activeAudio = null;
   }
@@ -350,7 +481,23 @@ export function stopModoItalianoAudioBus(programId: string): void {
   emit(state);
 }
 
-export function getModoItalianoAudioBusSnapshot(programId: string): ModoItalianoAudioBusSnapshot {
+export function setProgramAudioBusMasterVolume(programId: string, volume: number): void {
+  const state = getProgramAudioBusState(programId, true);
+  if (!state) {
+    return;
+  }
+
+  const normalizedVolume = clampVolume(volume);
+  state.masterVolume = normalizedVolume;
+
+  if (state.activeAudio) {
+    state.activeAudio.volume = normalizedVolume;
+  }
+
+  emit(state);
+}
+
+export function getProgramAudioBusSnapshot(programId: string): ProgramAudioBusSnapshot {
   const state = getProgramAudioBusState(programId, false);
   if (!state) {
     return {
@@ -364,7 +511,29 @@ export function getModoItalianoAudioBusSnapshot(programId: string): ModoItaliano
   return getSnapshot(state);
 }
 
-export function subscribeModoItalianoAudioBus(programId: string, listener: Listener): () => void {
+export function getProgramAudioBusSignalLevel(programId: string): number {
+  const state = getProgramAudioBusState(programId, false);
+  if (!state || !state.activeAudio || state.activeAudio.paused || state.activeAudio.ended) {
+    return 0;
+  }
+  if (!state.meterAnalyser || !state.meterBuffer) {
+    return 0;
+  }
+
+  state.meterAnalyser.getFloatTimeDomainData(state.meterBuffer);
+  let sumSquares = 0;
+  for (let index = 0; index < state.meterBuffer.length; index += 1) {
+    const sample = state.meterBuffer[index];
+    sumSquares += sample * sample;
+  }
+
+  const rms = Math.sqrt(sumSquares / state.meterBuffer.length);
+  const smoothed = state.lastSignalLevel * 0.72 + rms * 0.28;
+  state.lastSignalLevel = smoothed;
+  return Math.max(0, Math.min(1, smoothed));
+}
+
+export function subscribeProgramAudioBus(programId: string, listener: Listener): () => void {
   const state = getProgramAudioBusState(programId, true);
   if (!state) {
     listener({

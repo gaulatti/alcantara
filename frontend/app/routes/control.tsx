@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Kbd, SectionHeader, Select, Switch } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { useSSE } from '../hooks/useSSE';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
@@ -18,20 +19,21 @@ import {
   type ToniChyronSequenceItem
 } from '../utils/toniChyronSequence';
 import {
-  createModoItalianoSongSequence,
-  createModoItalianoSongSequenceItem,
-  createModoItalianoTextSequence,
-  createModoItalianoTextSequenceItem,
-  getModoItalianoSongSequenceSelectedItemId,
-  getModoItalianoTextSequenceSelectedItemId,
-  normalizeModoItalianoSongSequence,
-  normalizeModoItalianoTextSequence,
-  resolveModoItalianoSongLeaf,
-  type ModoItalianoSongSequence,
-  type ModoItalianoSongSequenceItem,
-  type ModoItalianoTextSequence,
-  type ModoItalianoTextSequenceItem
-} from '../utils/modoItalianoSequence';
+  createProgramSongSequence,
+  createProgramSongSequenceItem,
+  createProgramTextSequence,
+  createProgramTextSequenceItem,
+  getProgramSongSequenceSelectedItemId,
+  getProgramTextSequenceSelectedItemId,
+  normalizeProgramSongSequence,
+  normalizeProgramTextSequence,
+  resolveProgramSongLeaf,
+  type ProgramSongSequence,
+  type ProgramSongSequenceItem,
+  type ProgramTextSequence,
+  type ProgramTextSequenceItem
+} from '../utils/programSequence';
+import { faderToGain, formatGainDb, gainToMeterFill } from '../utils/audioTaper';
 
 interface Layout {
   id: number;
@@ -98,6 +100,23 @@ interface SongCatalogItem {
 
 interface ProgramAudioBusSettings {
   songSequence: unknown | null;
+}
+
+interface BroadcastSettings {
+  mainMasterVolume: number;
+  songMasterVolume: number;
+  instantMasterVolume: number;
+  songMuted: boolean;
+  instantMuted: boolean;
+  songSolo: boolean;
+  instantSolo: boolean;
+}
+
+interface ProgramAudioMeterLevels {
+  song: number;
+  instants: number;
+  main: number;
+  updatedAt: string;
 }
 
 const INSTANT_PLAYBACK_SWEEP_ANIMATION = 'alcantaraInstantPlaybackSweep';
@@ -177,6 +196,50 @@ function getInstantShortcutLetter(index: number): string | null {
   }
 
   return INSTANT_SHORTCUT_KEYS[index].toUpperCase();
+}
+
+function normalizeMasterVolume(value: unknown, fallback: number = 1): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(1, value));
+  }
+  return fallback;
+}
+
+function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeAudioMeterLevel(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(1, value));
+  }
+  return 0;
+}
+
+function normalizeProgramAudioMeter(value: unknown): ProgramAudioMeterLevels {
+  if (!value || typeof value !== 'object') {
+    return {
+      song: 0,
+      instants: 0,
+      main: 0,
+      updatedAt: new Date(0).toISOString()
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    song: normalizeAudioMeterLevel(record.song),
+    instants: normalizeAudioMeterLevel(record.instants),
+    main: normalizeAudioMeterLevel(record.main),
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
+  };
+}
+
+function formatVolumeDb(value: number): string {
+  return formatGainDb(faderToGain(value));
 }
 
 function normalizeSlideshowImageList(value: unknown): string[] {
@@ -381,7 +444,7 @@ function parseSceneMetadata(metadata: string | null): ComponentPropsMap {
   return {};
 }
 
-function withIndependentModoItalianoClockMetadata(metadata: ComponentPropsMap): ComponentPropsMap {
+function withIndependentProgramClockMetadata(metadata: ComponentPropsMap): ComponentPropsMap {
   if (!Object.prototype.hasOwnProperty.call(metadata, 'modoitaliano-clock')) {
     return metadata;
   }
@@ -456,9 +519,36 @@ export default function Control() {
   const [isCreatingScene, setIsCreatingScene] = useState(false);
   const [selectedTransitionId] = useGlobalTransitionId();
   const [programAudioBusSettings, setProgramAudioBusSettings] = useState<ProgramAudioBusSettings>({
-    songSequence: createModoItalianoSongSequence('manual')
+    songSequence: createProgramSongSequence('manual')
   });
   const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
+  const [mixerLevels, setMixerLevels] = useState<BroadcastSettings>({
+    mainMasterVolume: 1,
+    songMasterVolume: 1,
+    instantMasterVolume: 1,
+    songMuted: false,
+    instantMuted: false,
+    songSolo: false,
+    instantSolo: false
+  });
+  const mixerLevelsRef = useRef<BroadcastSettings>({
+    mainMasterVolume: 1,
+    songMasterVolume: 1,
+    instantMasterVolume: 1,
+    songMuted: false,
+    instantMuted: false,
+    songSolo: false,
+    instantSolo: false
+  });
+  const [isLoadingMixerLevels, setIsLoadingMixerLevels] = useState(false);
+  const [isSavingMixerLevels, setIsSavingMixerLevels] = useState(false);
+  const mixerSaveTimeoutRef = useRef<number | null>(null);
+  const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
+    song: 0,
+    instants: 0,
+    main: 0,
+    updatedAt: new Date(0).toISOString()
+  });
 
   useEffect(() => {
     fetchScenes();
@@ -470,13 +560,25 @@ export default function Control() {
   useEffect(() => {
     void fetchProgramState(activeProgramId);
     void fetchProgramAudioBusSettings(activeProgramId);
+    void fetchProgramAudioMeter(activeProgramId);
     void fetchInstants();
+    void fetchBroadcastSettings();
     Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
       window.clearTimeout(timeoutId);
     });
     instantPlaybackTimeoutsRef.current = {};
     setInstantPlayback({});
+    setProgramAudioMeterLevels({
+      song: 0,
+      instants: 0,
+      main: 0,
+      updatedAt: new Date(0).toISOString()
+    });
   }, [activeProgramId]);
+
+  useEffect(() => {
+    mixerLevelsRef.current = mixerLevels;
+  }, [mixerLevels]);
 
   const fetchScenes = async () => {
     try {
@@ -539,6 +641,179 @@ export default function Control() {
     }
   };
 
+  const fetchBroadcastSettings = async () => {
+    try {
+      setIsLoadingMixerLevels(true);
+      const res = await fetch(apiUrl('/program/broadcast-settings'));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = (await res.json()) as Partial<BroadcastSettings> | null;
+      const nextMixerLevels = {
+        mainMasterVolume: normalizeMasterVolume(payload?.mainMasterVolume, 1),
+        songMasterVolume: normalizeMasterVolume(payload?.songMasterVolume, 1),
+        instantMasterVolume: normalizeMasterVolume(payload?.instantMasterVolume, 1),
+        songMuted: normalizeMixerToggle(payload?.songMuted, false),
+        instantMuted: normalizeMixerToggle(payload?.instantMuted, false),
+        songSolo: normalizeMixerToggle(payload?.songSolo, false),
+        instantSolo: normalizeMixerToggle(payload?.instantSolo, false)
+      };
+      mixerLevelsRef.current = nextMixerLevels;
+      setMixerLevels(nextMixerLevels);
+    } catch (err) {
+      console.error('Failed to fetch broadcast mixer settings:', err);
+      const fallbackMixerLevels = {
+        mainMasterVolume: 1,
+        songMasterVolume: 1,
+        instantMasterVolume: 1,
+        songMuted: false,
+        instantMuted: false,
+        songSolo: false,
+        instantSolo: false
+      };
+      mixerLevelsRef.current = fallbackMixerLevels;
+      setMixerLevels(fallbackMixerLevels);
+    } finally {
+      setIsLoadingMixerLevels(false);
+    }
+  };
+
+  const persistMixerLevels = async (nextMixerLevels: BroadcastSettings) => {
+    setIsSavingMixerLevels(true);
+    try {
+      const res = await fetch(apiUrl('/program/broadcast-settings'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mainMasterVolume: nextMixerLevels.mainMasterVolume,
+          songMasterVolume: nextMixerLevels.songMasterVolume,
+          instantMasterVolume: nextMixerLevels.instantMasterVolume,
+          songMuted: nextMixerLevels.songMuted,
+          instantMuted: nextMixerLevels.instantMuted,
+          songSolo: nextMixerLevels.songSolo,
+          instantSolo: nextMixerLevels.instantSolo
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = (await res.json()) as Partial<BroadcastSettings> | null;
+      const persistedMixerLevels = {
+        mainMasterVolume: normalizeMasterVolume(payload?.mainMasterVolume, nextMixerLevels.mainMasterVolume),
+        songMasterVolume: normalizeMasterVolume(payload?.songMasterVolume, nextMixerLevels.songMasterVolume),
+        instantMasterVolume: normalizeMasterVolume(payload?.instantMasterVolume, nextMixerLevels.instantMasterVolume),
+        songMuted: normalizeMixerToggle(payload?.songMuted, nextMixerLevels.songMuted),
+        instantMuted: normalizeMixerToggle(payload?.instantMuted, nextMixerLevels.instantMuted),
+        songSolo: normalizeMixerToggle(payload?.songSolo, nextMixerLevels.songSolo),
+        instantSolo: normalizeMixerToggle(payload?.instantSolo, nextMixerLevels.instantSolo)
+      };
+      mixerLevelsRef.current = persistedMixerLevels;
+      setMixerLevels(persistedMixerLevels);
+    } catch (err) {
+      console.error('Failed to save mixer levels:', err);
+    } finally {
+      setIsSavingMixerLevels(false);
+    }
+  };
+
+  const queueMixerSave = (nextMixerLevels: BroadcastSettings) => {
+    if (mixerSaveTimeoutRef.current !== null) {
+      window.clearTimeout(mixerSaveTimeoutRef.current);
+    }
+
+    mixerSaveTimeoutRef.current = window.setTimeout(() => {
+      mixerSaveTimeoutRef.current = null;
+      void persistMixerLevels(nextMixerLevels);
+    }, 180);
+  };
+
+  const commitMixerLevels = (nextMixerLevels: BroadcastSettings) => {
+    mixerLevelsRef.current = nextMixerLevels;
+    setMixerLevels(nextMixerLevels);
+    queueMixerSave(nextMixerLevels);
+  };
+
+  const setSongMasterVolume = (nextValue: number) => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    const nextMixerLevels = {
+      ...currentMixerLevels,
+      songMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.songMasterVolume)
+    };
+    commitMixerLevels(nextMixerLevels);
+  };
+
+  const setMainMasterVolume = (nextValue: number) => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    const nextMixerLevels = {
+      ...currentMixerLevels,
+      mainMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.mainMasterVolume)
+    };
+    commitMixerLevels(nextMixerLevels);
+  };
+
+  const setInstantMasterVolume = (nextValue: number) => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    const nextMixerLevels = {
+      ...currentMixerLevels,
+      instantMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.instantMasterVolume)
+    };
+    commitMixerLevels(nextMixerLevels);
+  };
+
+  const toggleSongMuted = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      songMuted: !currentMixerLevels.songMuted
+    });
+  };
+
+  const toggleInstantMuted = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      instantMuted: !currentMixerLevels.instantMuted
+    });
+  };
+
+  const toggleSongSolo = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      songSolo: !currentMixerLevels.songSolo
+    });
+  };
+
+  const toggleInstantSolo = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      instantSolo: !currentMixerLevels.instantSolo
+    });
+  };
+
+  const fetchProgramAudioMeter = async (targetProgramId: string) => {
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-meter`));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = await res.json();
+      setProgramAudioMeterLevels(normalizeProgramAudioMeter(payload));
+    } catch (err) {
+      console.error('Failed to fetch program audio meter levels:', err);
+      setProgramAudioMeterLevels({
+        song: 0,
+        instants: 0,
+        main: 0,
+        updatedAt: new Date(0).toISOString()
+      });
+    }
+  };
+
   const fetchProgramState = async (targetProgramId: string) => {
     try {
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`));
@@ -572,21 +847,21 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
-      const normalizedSongSequence = normalizeModoItalianoSongPlaylist(
-        normalizeModoItalianoSongSequence(payload?.songSequence) ?? { ...createModoItalianoSongSequence('manual'), activeItemId: null }
+      const normalizedSongSequence = normalizeProgramSongPlaylist(
+        normalizeProgramSongSequence(payload?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
       );
       setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     } catch (err) {
       console.error('Failed to fetch program audio bus settings:', err);
       setProgramAudioBusSettings({
-        songSequence: { ...createModoItalianoSongSequence('manual'), activeItemId: null }
+        songSequence: { ...createProgramSongSequence('manual'), activeItemId: null }
       });
     }
   };
 
-  const saveProgramAudioBusSongSequence = async (nextSequence: ModoItalianoSongSequence) => {
-    const normalizedSongSequence = normalizeModoItalianoSongPlaylist(
-      normalizeModoItalianoSongSequence(nextSequence) ?? { ...createModoItalianoSongSequence('manual'), activeItemId: null }
+  const saveProgramAudioBusSongSequence = async (nextSequence: ProgramSongSequence) => {
+    const normalizedSongSequence = normalizeProgramSongPlaylist(
+      normalizeProgramSongSequence(nextSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
     );
     setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     setIsSavingProgramAudioBus(true);
@@ -604,7 +879,7 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
-      const persistedSongSequence = normalizeModoItalianoSongPlaylist(normalizeModoItalianoSongSequence(payload?.songSequence) ?? normalizedSongSequence);
+      const persistedSongSequence = normalizeProgramSongPlaylist(normalizeProgramSongSequence(payload?.songSequence) ?? normalizedSongSequence);
       setProgramAudioBusSettings({ songSequence: persistedSongSequence });
     } catch (err) {
       console.error('Failed to save program audio bus settings:', err);
@@ -876,6 +1151,10 @@ export default function Control() {
         window.clearTimeout(timeoutId);
       });
       instantPlaybackTimeoutsRef.current = {};
+      if (mixerSaveTimeoutRef.current !== null) {
+        window.clearTimeout(mixerSaveTimeoutRef.current);
+        mixerSaveTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -918,7 +1197,7 @@ export default function Control() {
     try {
       const selectedSceneData = scenes.find((scene) => scene.id === selectedScene);
       const existingMetadata = selectedSceneData ? parseSceneMetadata(selectedSceneData.metadata) : {};
-      const nextMetadata = withIndependentModoItalianoClockMetadata({
+      const nextMetadata = withIndependentProgramClockMetadata({
         ...existingMetadata,
         ...nextSceneProps
       });
@@ -1078,8 +1357,8 @@ export default function Control() {
       case 'modoitaliano-chyron':
         return {
           show: true,
-          textSequence: createModoItalianoTextSequence('manual', { includeMarquee: true }),
-          ctaSequence: createModoItalianoTextSequence('manual')
+          textSequence: createProgramTextSequence('manual', { includeMarquee: true }),
+          ctaSequence: createProgramTextSequence('manual')
         };
       case 'modoitaliano-disclaimer':
         return {
@@ -1187,7 +1466,7 @@ export default function Control() {
       const payload = {
         name: newSceneName,
         layoutId: selectedLayoutId,
-        metadata: withIndependentModoItalianoClockMetadata({
+        metadata: withIndependentProgramClockMetadata({
           ...existingMetadata,
           ...sceneComponentProps
         })
@@ -1295,17 +1574,50 @@ export default function Control() {
     };
   }, [assignedScenes, instants, activateScene, triggerInstant]);
 
+  const handleProgramEvent = useCallback(
+    (data: any) => {
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+
+      if (data.type === 'audio_meter_update') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId !== activeProgramId) {
+          return;
+        }
+        setProgramAudioMeterLevels(normalizeProgramAudioMeter(data.levels));
+      }
+    },
+    [activeProgramId]
+  );
+
+  useSSE({
+    url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
+    onMessage: handleProgramEvent
+  });
+
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
     ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
   );
   const selectedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
   const programAudioBusSongSequence = useMemo(
     () =>
-      normalizeModoItalianoSongPlaylist(
-        normalizeModoItalianoSongSequence(programAudioBusSettings.songSequence) ?? { ...createModoItalianoSongSequence('manual'), activeItemId: null }
+      normalizeProgramSongPlaylist(
+        normalizeProgramSongSequence(programAudioBusSettings.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
       ),
     [programAudioBusSettings.songSequence]
   );
+  const hasSoloChannel = mixerLevels.songSolo || mixerLevels.instantSolo;
+  const songAudible = (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
+  const instantsAudible = (hasSoloChannel ? mixerLevels.instantSolo : true) && !mixerLevels.instantMuted;
+  const mainMixGain = faderToGain(mixerLevels.mainMasterVolume);
+  const songChannelGain = songAudible ? faderToGain(mixerLevels.songMasterVolume) : 0;
+  const instantsChannelGain = instantsAudible ? faderToGain(mixerLevels.instantMasterVolume) : 0;
+  const songOutputGain = songChannelGain * mainMixGain;
+  const instantsOutputGain = instantsChannelGain * mainMixGain;
+  const songMeterFill = gainToMeterFill(programAudioMeterLevels.song);
+  const instantsMeterFill = gainToMeterFill(programAudioMeterLevels.instants);
+  const mainMixMeterFill = gainToMeterFill(programAudioMeterLevels.main);
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
       <style>
@@ -1398,7 +1710,7 @@ export default function Control() {
               {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
             </div>
             <p className='text-sm text-text-secondary dark:text-text-secondary'>Independent from scene component metadata, including `modoitaliano-clock`.</p>
-            <ModoItalianoSongSequenceEditor
+            <ProgramSongSequenceEditor
               sequence={programAudioBusSongSequence}
               songCatalog={songCatalog}
               onChange={(nextSequence) => {
@@ -1411,6 +1723,284 @@ export default function Control() {
                 await takeProgramSongOffAir(activeProgramId);
               }}
             />
+          </Card>
+
+          <Card className='space-y-4'>
+            <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Mixer</h2>
+              {isLoadingMixerLevels ? (
+                <span className='text-xs font-mono text-amber-500 animate-pulse'>LOADING STATE...</span>
+              ) : isSavingMixerLevels ? (
+                <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
+              ) : null}
+            </div>
+
+            <p className='text-sm text-text-secondary dark:text-text-secondary'>
+              Console strips: vertical faders with channel mute/solo plus a final Main Mix bus.
+            </p>
+
+            <div className='flex gap-6 rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-inner'>
+              {/* --- SCROLLABLE INPUTS SECTION --- */}
+              <div className='flex overflow-x-auto pb-4 custom-scrollbar flex-1'>
+                <div className='flex min-w-max items-stretch gap-4 pr-6'>
+                  {/* --- SONG STRIP --- */}
+                  <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl shrink-0'>
+                    <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
+                      <span className='text-[11px] font-bold tracking-widest text-zinc-400'>SONG</span>
+                    </div>
+
+                    <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                      <button
+                        type='button'
+                        onClick={toggleSongMuted}
+                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                          mixerLevels.songMuted
+                            ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                        }`}
+                      >
+                        Mute
+                      </button>
+                      <button
+                        type='button'
+                        onClick={toggleSongSolo}
+                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                          mixerLevels.songSolo
+                            ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                        }`}
+                      >
+                        Solo
+                      </button>
+                    </div>
+
+                    <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                      <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                        <span className='translate-y-[-50%]'>10</span>
+                        <span className='translate-y-[-50%]'>5</span>
+                        <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                        <span className='translate-y-[-50%]'>-5</span>
+                        <span className='translate-y-[-50%]'>-10</span>
+                        <span className='translate-y-[-50%]'>-20</span>
+                        <span className='translate-y-[-50%]'>-40</span>
+                        <span className='translate-y-[-50%]'>-∞</span>
+                      </div>
+
+                      <div className='ml-4 flex gap-3 h-full'>
+                        <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                          <div
+                            className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
+                            style={{ height: `${Math.round(songMeterFill * 100)}%` }}
+                          />
+                        </div>
+
+                        <div className='relative h-full w-10 flex flex-col justify-center'>
+                          {/* Fader Track Line */}
+                          <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                          {/* Wrapper for rotation */}
+                          <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                            <input
+                              type='range'
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={mixerLevels.songMasterVolume}
+                              onChange={(event) => setSongMasterVolume(Number(event.target.value))}
+                              onMouseEnter={() => {
+                                document.body.style.overflow = 'hidden';
+                              }}
+                              onMouseLeave={() => {
+                                document.body.style.overflow = '';
+                              }}
+                              onWheel={(e) => {
+                                const step = 0.02;
+                                const delta = e.deltaY > 0 ? step : -step;
+                                setSongMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.songMasterVolume + delta)).toFixed(2)));
+                              }}
+                              className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
+                      <span className='font-mono text-sm font-bold text-emerald-500'>{formatVolumeDb(mixerLevels.songMasterVolume)}</span>
+                      <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{songOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                    </div>
+                  </div>
+
+                  {/* --- INSTANTS STRIP --- */}
+                  <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl'>
+                    <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
+                      <span className='text-[11px] font-bold tracking-widest text-zinc-400'>INSTANTS</span>
+                    </div>
+
+                    <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                      <button
+                        type='button'
+                        onClick={toggleInstantMuted}
+                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                          mixerLevels.instantMuted
+                            ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                        }`}
+                      >
+                        Mute
+                      </button>
+                      <button
+                        type='button'
+                        onClick={toggleInstantSolo}
+                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                          mixerLevels.instantSolo
+                            ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                        }`}
+                      >
+                        Solo
+                      </button>
+                    </div>
+
+                    <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                      <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                        <span className='translate-y-[-50%]'>10</span>
+                        <span className='translate-y-[-50%]'>5</span>
+                        <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                        <span className='translate-y-[-50%]'>-5</span>
+                        <span className='translate-y-[-50%]'>-10</span>
+                        <span className='translate-y-[-50%]'>-20</span>
+                        <span className='translate-y-[-50%]'>-40</span>
+                        <span className='translate-y-[-50%]'>-∞</span>
+                      </div>
+
+                      <div className='ml-4 flex gap-3 h-full'>
+                        <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                          <div
+                            className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
+                            style={{ height: `${Math.round(instantsMeterFill * 100)}%` }}
+                          />
+                        </div>
+
+                        <div className='relative h-full w-10 flex flex-col justify-center'>
+                          {/* Fader Track Line */}
+                          <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                          {/* Wrapper for rotation */}
+                          <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                            <input
+                              type='range'
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={mixerLevels.instantMasterVolume}
+                              onChange={(event) => setInstantMasterVolume(Number(event.target.value))}
+                              onMouseEnter={() => {
+                                document.body.style.overflow = 'hidden';
+                              }}
+                              onMouseLeave={() => {
+                                document.body.style.overflow = '';
+                              }}
+                              onWheel={(e) => {
+                                const step = 0.02;
+                                const delta = e.deltaY > 0 ? step : -step;
+                                setInstantMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.instantMasterVolume + delta)).toFixed(2)));
+                              }}
+                              className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
+                      <span className='font-mono text-sm font-bold text-emerald-500'>{formatVolumeDb(mixerLevels.instantMasterVolume)}</span>
+                      <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{instantsOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* --- MASTER STRIP (FIXED TO RIGHT) --- */}
+              <div className='flex w-44 flex-col items-center rounded-lg border border-red-900/30 bg-zinc-800 pb-6 shadow-2xl shrink-0'>
+                <div className='w-full rounded-t-lg border-b border-red-900/50 bg-red-950/20 py-2.5 text-center shadow-sm'>
+                  <span className='text-[11px] font-bold tracking-widest text-red-500'>MAIN MIX</span>
+                </div>
+
+                <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                  {/* Spacer to match Mute/Solo button height exactly */}
+                  <div className='flex h-[82px] w-full items-center justify-center rounded border border-red-900/20 bg-zinc-900/50 shadow-inner'>
+                    <span className='font-mono text-[9px] font-bold tracking-widest text-red-900/40'>MASTER BUS</span>
+                  </div>
+                </div>
+
+                <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                  <div className='absolute left-4 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                    <span className='translate-y-[-50%] text-red-400'>10</span>
+                    <span className='translate-y-[-50%] text-red-400'>5</span>
+                    <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                    <span className='translate-y-[-50%]'>-5</span>
+                    <span className='translate-y-[-50%]'>-10</span>
+                    <span className='translate-y-[-50%]'>-20</span>
+                    <span className='translate-y-[-50%]'>-40</span>
+                    <span className='translate-y-[-50%]'>-∞</span>
+                  </div>
+
+                  <div className='ml-4 flex gap-4 h-full'>
+                    <div className='flex gap-1 h-full'>
+                      <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                        <div
+                          className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
+                          style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
+                        />
+                      </div>
+                      <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                        <div
+                          className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
+                          style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className='relative h-full w-10 flex flex-col justify-center'>
+                      {/* Fader Track Line */}
+                      <div className='absolute left-1/2 top-0 h-full w-2 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                      {/* Wrapper for rotation */}
+                      <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                        <input
+                          type='range'
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={mixerLevels.mainMasterVolume}
+                          onChange={(event) => setMainMasterVolume(Number(event.target.value))}
+                          onMouseEnter={() => {
+                            document.body.style.overflow = 'hidden';
+                          }}
+                          onMouseLeave={() => {
+                            document.body.style.overflow = '';
+                          }}
+                          onWheel={(e) => {
+                            const step = 0.02;
+                            const delta = e.deltaY > 0 ? step : -step;
+                            setMainMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.mainMasterVolume + delta)).toFixed(2)));
+                          }}
+                          className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-red-950 [&::-webkit-slider-thumb]:bg-red-700 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-red-600 [&::-webkit-slider-thumb]:to-red-800 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.4),-5px_0_0_rgba(100,0,0,0.5),0_0_0_rgba(100,0,0,0.5),5px_0_0_rgba(100,0,0,0.5)]'
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-red-950/50 bg-[#1a0a0a] text-center shadow-inner'>
+                  <span className='font-mono text-sm font-bold text-red-500'>{formatVolumeDb(mixerLevels.mainMasterVolume)}</span>
+                  <span className='font-mono text-[9px] tracking-wider text-red-700'>{mainMixGain > 0 ? 'LIVE' : 'CUT'}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className='text-xs text-text-secondary dark:text-text-secondary'>
+              Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Instants. Instant channel still
+              controls all instants together.
+            </p>
           </Card>
 
           {/* Instants Panel */}
@@ -1809,13 +2399,7 @@ function ComponentPropsFields({
       );
     case 'modoitaliano-chyron':
       return (
-        <ModoItalianoChyronEditorFields
-          componentType={componentType}
-          props={props}
-          updateProp={updateProp}
-          replaceProps={replaceProps}
-          commitProps={commitProps}
-        />
+        <ProgramChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
     case 'modoitaliano-clock':
       return null;
@@ -2787,7 +3371,7 @@ function ToniChyronSequenceEditor({
     }
   };
 
-  const applySequenceAndTakeSelection = async (nextSequence: ModoItalianoTextSequence) => {
+  const applySequenceAndTakeSelection = async (nextSequence: ProgramTextSequence) => {
     applySequence(nextSequence);
     if (onTakeSelection) {
       await onTakeSelection(nextSequence);
@@ -3054,8 +3638,8 @@ function ToniChyronSequenceEditor({
   );
 }
 
-function flattenModoItalianoSongItems(items: ModoItalianoSongSequenceItem[]): Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] {
-  const flattened: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>[] = [];
+function flattenProgramSongItems(items: ProgramSongSequenceItem[]): Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] {
+  const flattened: Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] = [];
 
   for (const item of items) {
     if (item.kind === 'preset') {
@@ -3063,14 +3647,14 @@ function flattenModoItalianoSongItems(items: ModoItalianoSongSequenceItem[]): Ex
       continue;
     }
 
-    flattened.push(...flattenModoItalianoSongItems(item.sequence.items));
+    flattened.push(...flattenProgramSongItems(item.sequence.items));
   }
 
   return flattened;
 }
 
-function normalizeModoItalianoSongPlaylist(sequence: ModoItalianoSongSequence): ModoItalianoSongSequence {
-  const playlistItems = flattenModoItalianoSongItems(sequence.items);
+function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSongSequence {
+  const playlistItems = flattenProgramSongItems(sequence.items);
   const activeItemId =
     sequence.activeItemId === null
       ? null
@@ -3085,7 +3669,7 @@ function normalizeModoItalianoSongPlaylist(sequence: ModoItalianoSongSequence): 
   };
 }
 
-function ModoItalianoChyronEditorFields({
+function ProgramChyronEditorFields({
   componentType,
   props,
   updateProp,
@@ -3098,18 +3682,18 @@ function ModoItalianoChyronEditorFields({
   replaceProps: (componentType: string, nextProps: any) => void;
   commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
 }) {
-  const normalizedTextSequence = normalizeModoItalianoTextSequence(props.textSequence, 0, { includeMarquee: true });
-  const normalizedCtaSequence = normalizeModoItalianoTextSequence(props.ctaSequence);
+  const normalizedTextSequence = normalizeProgramTextSequence(props.textSequence, 0, { includeMarquee: true });
+  const normalizedCtaSequence = normalizeProgramTextSequence(props.ctaSequence);
   const showValue = typeof props.show === 'boolean' ? props.show : typeof props.show === 'string' ? props.show.trim().toLowerCase() !== 'false' : true;
   const legacyMainText = typeof props.text === 'string' ? props.text : '';
   const legacyUseMarquee = Boolean(props.useMarquee);
   const legacyCtaText = typeof props.cta === 'string' ? props.cta : '';
 
-  const sequenceHasText = (sequence: ModoItalianoTextSequence): boolean =>
+  const sequenceHasText = (sequence: ProgramTextSequence): boolean =>
     sequence.items.some((item) => (item.kind === 'sequence' ? sequenceHasText(item.sequence) : Boolean(item.text.trim())));
 
-  const textSequenceForEditor = useMemo<ModoItalianoTextSequence>(() => {
-    const baseSequence = normalizedTextSequence ?? createModoItalianoTextSequence('manual', { includeMarquee: true });
+  const textSequenceForEditor = useMemo<ProgramTextSequence>(() => {
+    const baseSequence = normalizedTextSequence ?? createProgramTextSequence('manual', { includeMarquee: true });
     if (!legacyMainText.trim() && !legacyUseMarquee) {
       return baseSequence;
     }
@@ -3118,7 +3702,7 @@ function ModoItalianoChyronEditorFields({
     }
 
     const firstItem = baseSequence.items[0];
-    const fallbackItem = createModoItalianoTextSequenceItem('preset', { includeMarquee: true });
+    const fallbackItem = createProgramTextSequenceItem('preset', { includeMarquee: true });
     const seededItem =
       firstItem && firstItem.kind === 'preset'
         ? {
@@ -3127,7 +3711,7 @@ function ModoItalianoChyronEditorFields({
             useMarquee: legacyUseMarquee
           }
         : {
-            ...(fallbackItem.kind === 'preset' ? fallbackItem : createModoItalianoTextSequenceItem('preset', { includeMarquee: true })),
+            ...(fallbackItem.kind === 'preset' ? fallbackItem : createProgramTextSequenceItem('preset', { includeMarquee: true })),
             text: legacyMainText,
             useMarquee: legacyUseMarquee
           };
@@ -3143,8 +3727,8 @@ function ModoItalianoChyronEditorFields({
     };
   }, [normalizedTextSequence, legacyMainText, legacyUseMarquee]);
 
-  const ctaSequenceForEditor = useMemo<ModoItalianoTextSequence>(() => {
-    const baseSequence = normalizedCtaSequence ?? createModoItalianoTextSequence('manual');
+  const ctaSequenceForEditor = useMemo<ProgramTextSequence>(() => {
+    const baseSequence = normalizedCtaSequence ?? createProgramTextSequence('manual');
     if (!legacyCtaText.trim()) {
       return baseSequence;
     }
@@ -3153,7 +3737,7 @@ function ModoItalianoChyronEditorFields({
     }
 
     const firstItem = baseSequence.items[0];
-    const fallbackItem = createModoItalianoTextSequenceItem('preset');
+    const fallbackItem = createProgramTextSequenceItem('preset');
     const seededItem =
       firstItem && firstItem.kind === 'preset'
         ? {
@@ -3161,7 +3745,7 @@ function ModoItalianoChyronEditorFields({
             text: legacyCtaText
           }
         : {
-            ...(fallbackItem.kind === 'preset' ? fallbackItem : createModoItalianoTextSequenceItem('preset')),
+            ...(fallbackItem.kind === 'preset' ? fallbackItem : createProgramTextSequenceItem('preset')),
             text: legacyCtaText
           };
 
@@ -3176,7 +3760,7 @@ function ModoItalianoChyronEditorFields({
     };
   }, [normalizedCtaSequence, legacyCtaText]);
 
-  const buildSequenceProps = (nextTextSequence: ModoItalianoTextSequence, nextCtaSequence: ModoItalianoTextSequence) => ({
+  const buildSequenceProps = (nextTextSequence: ProgramTextSequence, nextCtaSequence: ProgramTextSequence) => ({
     ...props,
     textSequence: nextTextSequence,
     ctaSequence: nextCtaSequence,
@@ -3189,7 +3773,7 @@ function ModoItalianoChyronEditorFields({
     replaceProps(componentType, nextProps);
   };
 
-  const activateTextSequence = async (nextSequence: ModoItalianoTextSequence) => {
+  const activateTextSequence = async (nextSequence: ProgramTextSequence) => {
     const nextProps = buildSequenceProps(nextSequence, ctaSequenceForEditor);
     replaceProps(componentType, nextProps);
     if (commitProps) {
@@ -3197,7 +3781,7 @@ function ModoItalianoChyronEditorFields({
     }
   };
 
-  const activateCtaSequence = async (nextSequence: ModoItalianoTextSequence) => {
+  const activateCtaSequence = async (nextSequence: ProgramTextSequence) => {
     const nextProps = buildSequenceProps(textSequenceForEditor, nextSequence);
     replaceProps(componentType, nextProps);
     if (commitProps) {
@@ -3214,7 +3798,7 @@ function ModoItalianoChyronEditorFields({
         <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>Main Chyron</span>
         <div className='space-y-3'>
           <p className='text-xs text-gray-500'>Sequence-only. If no text item is selected, the chyron is hidden.</p>
-          <ModoItalianoTextSequenceEditor
+          <ProgramTextSequenceEditor
             sequence={textSequenceForEditor}
             includeMarquee
             textLabel='Text'
@@ -3229,7 +3813,7 @@ function ModoItalianoChyronEditorFields({
         <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>CTA</span>
         <div className='space-y-3'>
           <p className='text-xs text-gray-500'>CTA is sequence-only as well.</p>
-          <ModoItalianoTextSequenceEditor
+          <ProgramTextSequenceEditor
             sequence={ctaSequenceForEditor}
             textLabel='CTA'
             textPlaceholder='Call to action (shown above chyron)'
@@ -3242,7 +3826,7 @@ function ModoItalianoChyronEditorFields({
   );
 }
 
-function ModoItalianoTextSequenceEditor({
+function ProgramTextSequenceEditor({
   sequence,
   onChange,
   onTakeSelection,
@@ -3251,9 +3835,9 @@ function ModoItalianoTextSequenceEditor({
   textLabel = 'Text',
   textPlaceholder = 'Text'
 }: {
-  sequence: ModoItalianoTextSequence;
-  onChange: (nextSequence: ModoItalianoTextSequence) => void;
-  onTakeSelection?: (nextSequence: ModoItalianoTextSequence) => Promise<void> | void;
+  sequence: ProgramTextSequence;
+  onChange: (nextSequence: ProgramTextSequence) => void;
+  onTakeSelection?: (nextSequence: ProgramTextSequence) => Promise<void> | void;
   depth?: number;
   includeMarquee?: boolean;
   textLabel?: string;
@@ -3262,7 +3846,7 @@ function ModoItalianoTextSequenceEditor({
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const isNested = depth > 0;
-  const effectiveActiveItemId = getModoItalianoTextSequenceSelectedItemId(sequence, nowMs);
+  const effectiveActiveItemId = getProgramTextSequenceSelectedItemId(sequence, nowMs);
 
   useEffect(() => {
     if (sequence.mode !== 'autoplay') {
@@ -3276,7 +3860,7 @@ function ModoItalianoTextSequenceEditor({
     return () => clearInterval(timer);
   }, [sequence.mode, sequence.startedAt, sequence.intervalMs, sequence.loop, sequence.items.length]);
 
-  const applySequence = (nextSequence: ModoItalianoTextSequence) => {
+  const applySequence = (nextSequence: ProgramTextSequence) => {
     onChange({
       ...nextSequence,
       activeItemId:
@@ -3286,7 +3870,7 @@ function ModoItalianoTextSequenceEditor({
     });
   };
 
-  const updateItem = (index: number, nextItem: ModoItalianoTextSequenceItem) => {
+  const updateItem = (index: number, nextItem: ProgramTextSequenceItem) => {
     const nextItems = sequence.items.map((item, itemIndex) => (itemIndex === index ? nextItem : item));
     applySequence({
       ...sequence,
@@ -3294,18 +3878,18 @@ function ModoItalianoTextSequenceEditor({
     });
   };
 
-  const toSequenceItem = (item: ModoItalianoTextSequenceItem): Extract<ModoItalianoTextSequenceItem, { kind: 'sequence' }> => {
+  const toSequenceItem = (item: ProgramTextSequenceItem): Extract<ProgramTextSequenceItem, { kind: 'sequence' }> => {
     if (item.kind === 'sequence') {
       return item;
     }
 
-    const nextItem = createModoItalianoTextSequenceItem('sequence', { includeMarquee });
+    const nextItem = createProgramTextSequenceItem('sequence', { includeMarquee });
     if (nextItem.kind !== 'sequence') {
       return {
         id: item.id,
         label: item.text.trim() || 'Sequence',
         kind: 'sequence',
-        sequence: createModoItalianoTextSequence('manual', { includeMarquee })
+        sequence: createProgramTextSequence('manual', { includeMarquee })
       };
     }
 
@@ -3317,7 +3901,7 @@ function ModoItalianoTextSequenceEditor({
             text: item.text,
             useMarquee: includeMarquee ? item.useMarquee : undefined
           }
-        : createModoItalianoTextSequenceItem('preset', { includeMarquee });
+        : createProgramTextSequenceItem('preset', { includeMarquee });
 
     return {
       ...nextItem,
@@ -3332,7 +3916,7 @@ function ModoItalianoTextSequenceEditor({
   };
 
   const addItem = () => {
-    const nextItem = createModoItalianoTextSequenceItem('sequence', { includeMarquee });
+    const nextItem = createProgramTextSequenceItem('sequence', { includeMarquee });
     if (nextItem.kind !== 'sequence') {
       return;
     }
@@ -3544,7 +4128,7 @@ function ModoItalianoTextSequenceEditor({
                 </div>
               ) : (
                 <div className='mt-3'>
-                  <ModoItalianoTextSequenceEditor
+                  <ProgramTextSequenceEditor
                     sequence={displayItem.sequence}
                     depth={depth + 1}
                     includeMarquee={includeMarquee}
@@ -3590,7 +4174,7 @@ function ModoItalianoTextSequenceEditor({
   );
 }
 
-function ModoItalianoSongSequenceEditor({
+function ProgramSongSequenceEditor({
   sequence,
   songCatalog = [],
   onChange,
@@ -3598,10 +4182,10 @@ function ModoItalianoSongSequenceEditor({
   onTakeOffAir,
   depth = 0
 }: {
-  sequence: ModoItalianoSongSequence;
+  sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
-  onChange: (nextSequence: ModoItalianoSongSequence) => void;
-  onTakeSelection?: (nextSequence: ModoItalianoSongSequence) => Promise<void> | void;
+  onChange: (nextSequence: ProgramSongSequence) => void;
+  onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onTakeOffAir?: () => Promise<void> | void;
   depth?: number;
 }) {
@@ -3614,7 +4198,7 @@ function ModoItalianoSongSequenceEditor({
   const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
   const isNested = depth > 0;
-  const effectiveActiveItemId = getModoItalianoSongSequenceSelectedItemId(sequence, nowMs);
+  const effectiveActiveItemId = getProgramSongSequenceSelectedItemId(sequence, nowMs);
   const availableSongCatalog = useMemo(
     () =>
       songCatalog
@@ -3660,7 +4244,7 @@ function ModoItalianoSongSequenceEditor({
     return () => clearInterval(timer);
   }, [sequence.activeItemId, sequence.startedAt]);
 
-  const applySequence = (nextSequence: ModoItalianoSongSequence) => {
+  const applySequence = (nextSequence: ProgramSongSequence) => {
     onChange({
       ...nextSequence,
       activeItemId:
@@ -3691,7 +4275,7 @@ function ModoItalianoSongSequenceEditor({
     }
   }, [sequence.mode, sequence.activeItemId]);
 
-  const updateItem = (index: number, nextItem: ModoItalianoSongSequenceItem) => {
+  const updateItem = (index: number, nextItem: ProgramSongSequenceItem) => {
     const nextItems = sequence.items.map((item, itemIndex) => (itemIndex === index ? nextItem : item));
     applySequence({
       ...sequence,
@@ -3700,7 +4284,7 @@ function ModoItalianoSongSequenceEditor({
   };
 
   const addItem = () => {
-    const nextItem = createModoItalianoSongSequenceItem('preset');
+    const nextItem = createProgramSongSequenceItem('preset');
     if (nextItem.kind !== 'preset') {
       return;
     }
@@ -3716,7 +4300,7 @@ function ModoItalianoSongSequenceEditor({
   const addItemFromCatalog = (songId: number) => {
     const selectedSong = availableSongCatalog.find((s) => s.id === songId);
     if (!selectedSong) return;
-    const nextItem = createModoItalianoSongSequenceItem('preset');
+    const nextItem = createProgramSongSequenceItem('preset');
     if (nextItem.kind !== 'preset') return;
     const filledItem = {
       ...nextItem,
@@ -3754,14 +4338,14 @@ function ModoItalianoSongSequenceEditor({
     });
   };
 
-  const scheduleAutoTakeOffForSequence = (nextSequence: ModoItalianoSongSequence) => {
+  const scheduleAutoTakeOffForSequence = (nextSequence: ProgramSongSequence) => {
     clearAutoTakeOffTimer();
 
     if (isNested || nextSequence.mode !== 'manual') {
       return;
     }
 
-    const resolvedLeaf = resolveModoItalianoSongLeaf({ sequence: nextSequence }, Date.now());
+    const resolvedLeaf = resolveProgramSongLeaf({ sequence: nextSequence }, Date.now());
     const durationMs = resolvedLeaf?.durationMs;
 
     if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) {
@@ -3914,7 +4498,7 @@ function ModoItalianoSongSequenceEditor({
     });
   };
 
-  const applyCatalogSongToItem = (index: number, item: Extract<ModoItalianoSongSequenceItem, { kind: 'preset' }>, selectedSong: SongCatalogItem) => {
+  const applyCatalogSongToItem = (index: number, item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>, selectedSong: SongCatalogItem) => {
     updateItem(index, {
       ...item,
       artist: selectedSong.artist || item.artist,
@@ -4158,7 +4742,7 @@ function ModoItalianoSongSequenceEditor({
                         {displayItem.kind === 'sequence' ? (
                           <div className='border-t border-zinc-800 bg-zinc-900/50 px-4 py-3'>
                             <p className='mb-2 text-xs text-zinc-600'>Legacy nested sequence. Flatten if possible.</p>
-                            <ModoItalianoSongSequenceEditor
+                            <ProgramSongSequenceEditor
                               sequence={displayItem.sequence}
                               songCatalog={songCatalog}
                               depth={depth + 1}

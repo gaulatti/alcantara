@@ -45,7 +45,18 @@ export class ProgramController {
 
   @Put('broadcast-settings')
   async updateBroadcastSettings(
-    @Body() data: { enabled: boolean; startTime?: string | null },
+    @Body()
+    data: {
+      enabled?: boolean;
+      startTime?: string | null;
+      mainMasterVolume?: number;
+      songMasterVolume?: number;
+      instantMasterVolume?: number;
+      songMuted?: boolean;
+      instantMuted?: boolean;
+      songSolo?: boolean;
+      instantSolo?: boolean;
+    },
   ) {
     return this.programService.updateBroadcastSettings(data);
   }
@@ -58,6 +69,24 @@ export class ProgramController {
   @Get(':programId/audio-bus')
   async getProgramAudioBusById(@Param('programId') programId: string) {
     return this.programService.getProgramAudioBus(programId);
+  }
+
+  @Get(':programId/audio-meter')
+  async getProgramAudioMeterById(@Param('programId') programId: string) {
+    return this.programService.getProgramAudioMeter(programId);
+  }
+
+  @Post(':programId/audio-meter')
+  async updateProgramAudioMeterById(
+    @Param('programId') programId: string,
+    @Body()
+    data: {
+      song?: number;
+      instants?: number;
+      main?: number;
+    },
+  ) {
+    return this.programService.updateProgramAudioMeter(data, programId);
   }
 
   @Get('state')

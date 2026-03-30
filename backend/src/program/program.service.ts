@@ -16,6 +16,10 @@ export class ProgramService {
     string,
     { songSequence: unknown | null }
   >();
+  private programAudioMeterByProgramId = new Map<
+    string,
+    { song: number; instants: number; main: number; updatedAt: string }
+  >();
 
   constructor(private prisma: PrismaService) {}
 
@@ -26,6 +30,13 @@ export class ProgramService {
       create: {
         id: ProgramService.BROADCAST_SETTINGS_ID,
         timeOverrideEnabled: false,
+        mainMasterVolume: 1,
+        songMasterVolume: 1,
+        instantMasterVolume: 1,
+        songMuted: false,
+        instantMuted: false,
+        songSolo: false,
+        instantSolo: false,
       },
     });
   }
@@ -43,21 +54,145 @@ export class ProgramService {
     return `${match[1]}:${match[2]}`;
   }
 
+  private normalizeMasterVolume(
+    value: unknown,
+    fieldName: 'mainMasterVolume' | 'songMasterVolume' | 'instantMasterVolume',
+  ): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${fieldName} must be a finite number`);
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
+  private normalizeMixerToggle(
+    value: unknown,
+    fieldName: 'songMuted' | 'instantMuted' | 'songSolo' | 'instantSolo',
+  ): boolean {
+    if (typeof value !== 'boolean') {
+      throw new BadRequestException(`${fieldName} must be a boolean`);
+    }
+    return value;
+  }
+
   async updateBroadcastSettings(data: {
-    enabled: boolean;
+    enabled?: boolean;
     startTime?: string | null;
+    mainMasterVolume?: number;
+    songMasterVolume?: number;
+    instantMasterVolume?: number;
+    songMuted?: boolean;
+    instantMuted?: boolean;
+    songSolo?: boolean;
+    instantSolo?: boolean;
   }) {
-    const enabled = Boolean(data.enabled);
-    let startTime: string | null = null;
-    let startedAt: Date | null = null;
+    const current = await this.ensureBroadcastSettings();
+    const hasEnabledUpdate = typeof data.enabled === 'boolean';
+    const hasStartTimeUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'startTime',
+    );
+    const hasSongVolumeUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'songMasterVolume',
+    );
+    const hasMainVolumeUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'mainMasterVolume',
+    );
+    const hasInstantVolumeUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'instantMasterVolume',
+    );
+    const hasSongMutedUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'songMuted',
+    );
+    const hasInstantMutedUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'instantMuted',
+    );
+    const hasSongSoloUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'songSolo',
+    );
+    const hasInstantSoloUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'instantSolo',
+    );
+
+    if (
+      !hasEnabledUpdate &&
+      !hasStartTimeUpdate &&
+      !hasMainVolumeUpdate &&
+      !hasSongVolumeUpdate &&
+      !hasInstantVolumeUpdate &&
+      !hasSongMutedUpdate &&
+      !hasInstantMutedUpdate &&
+      !hasSongSoloUpdate &&
+      !hasInstantSoloUpdate
+    ) {
+      return current;
+    }
+
+    const enabled = hasEnabledUpdate
+      ? Boolean(data.enabled)
+      : current.timeOverrideEnabled;
+    let startTime: string | null = current.timeOverrideStartTime;
+    let startedAt: Date | null = current.timeOverrideStartedAt;
 
     if (enabled) {
-      if (!data.startTime) {
-        throw new Error('startTime is required when enabling time override');
+      const hasNonEmptyStartTimeUpdate =
+        typeof data.startTime === 'string' && data.startTime.trim().length > 0;
+      const sourceStartTime = hasNonEmptyStartTimeUpdate
+        ? data.startTime
+        : current.timeOverrideStartTime;
+
+      if (!sourceStartTime) {
+        throw new BadRequestException(
+          'startTime is required when enabling time override',
+        );
       }
-      startTime = this.normalizeOverrideTime(data.startTime);
-      startedAt = new Date();
+
+      const normalizedStartTime = this.normalizeOverrideTime(sourceStartTime);
+      const shouldResetStartedAt =
+        hasEnabledUpdate && Boolean(data.enabled) === true
+          ? true
+          : hasNonEmptyStartTimeUpdate &&
+            normalizedStartTime !== current.timeOverrideStartTime;
+
+      startTime = normalizedStartTime;
+      startedAt = shouldResetStartedAt
+        ? new Date()
+        : (current.timeOverrideStartedAt ?? new Date());
+    } else {
+      startTime = null;
+      startedAt = null;
     }
+
+    const mainMasterVolume = hasMainVolumeUpdate
+      ? this.normalizeMasterVolume(data.mainMasterVolume, 'mainMasterVolume')
+      : current.mainMasterVolume;
+    const songMasterVolume = hasSongVolumeUpdate
+      ? this.normalizeMasterVolume(data.songMasterVolume, 'songMasterVolume')
+      : current.songMasterVolume;
+    const instantMasterVolume = hasInstantVolumeUpdate
+      ? this.normalizeMasterVolume(
+          data.instantMasterVolume,
+          'instantMasterVolume',
+        )
+      : current.instantMasterVolume;
+    const songMuted = hasSongMutedUpdate
+      ? this.normalizeMixerToggle(data.songMuted, 'songMuted')
+      : current.songMuted;
+    const instantMuted = hasInstantMutedUpdate
+      ? this.normalizeMixerToggle(data.instantMuted, 'instantMuted')
+      : current.instantMuted;
+    const songSolo = hasSongSoloUpdate
+      ? this.normalizeMixerToggle(data.songSolo, 'songSolo')
+      : current.songSolo;
+    const instantSolo = hasInstantSoloUpdate
+      ? this.normalizeMixerToggle(data.instantSolo, 'instantSolo')
+      : current.instantSolo;
 
     const settings = await this.prisma.broadcastSettings.upsert({
       where: { id: ProgramService.BROADCAST_SETTINGS_ID },
@@ -65,12 +200,26 @@ export class ProgramService {
         timeOverrideEnabled: enabled,
         timeOverrideStartTime: startTime,
         timeOverrideStartedAt: startedAt,
+        mainMasterVolume,
+        songMasterVolume,
+        instantMasterVolume,
+        songMuted,
+        instantMuted,
+        songSolo,
+        instantSolo,
       },
       create: {
         id: ProgramService.BROADCAST_SETTINGS_ID,
         timeOverrideEnabled: enabled,
         timeOverrideStartTime: startTime,
         timeOverrideStartedAt: startedAt,
+        mainMasterVolume,
+        songMasterVolume,
+        instantMasterVolume,
+        songMuted,
+        instantMuted,
+        songSolo,
+        instantSolo,
       },
     });
 
@@ -199,6 +348,11 @@ export class ProgramService {
       this.programAudioBusByProgramId.set(next, currentAudioBus);
       this.programAudioBusByProgramId.delete(current);
     }
+    const currentAudioMeter = this.programAudioMeterByProgramId.get(current);
+    if (currentAudioMeter) {
+      this.programAudioMeterByProgramId.set(next, currentAudioMeter);
+      this.programAudioMeterByProgramId.delete(current);
+    }
 
     return this.getProgramStateWithScenes(next);
   }
@@ -224,6 +378,7 @@ export class ProgramService {
       this.eventSubjects.delete(normalized);
     }
     this.programAudioBusByProgramId.delete(normalized);
+    this.programAudioMeterByProgramId.delete(normalized);
 
     return { deletedProgramId: normalized };
   }
@@ -293,6 +448,63 @@ export class ProgramService {
     });
 
     return nextSettings;
+  }
+
+  async getProgramAudioMeter(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    return (
+      this.programAudioMeterByProgramId.get(normalizedProgramId) ?? {
+        song: 0,
+        instants: 0,
+        main: 0,
+        updatedAt: new Date(0).toISOString(),
+      }
+    );
+  }
+
+  private normalizeAudioMeterLevel(value: unknown, fieldName: string): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${fieldName} must be a finite number`);
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
+  async updateProgramAudioMeter(
+    data:
+      | {
+          song?: number;
+          instants?: number;
+          main?: number;
+        }
+      | null
+      | undefined,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    if (!data || typeof data !== 'object') {
+      throw new BadRequestException('audio meter payload must be an object');
+    }
+
+    const song = this.normalizeAudioMeterLevel(data.song, 'song');
+    const instants = this.normalizeAudioMeterLevel(data.instants, 'instants');
+    const main = this.normalizeAudioMeterLevel(data.main, 'main');
+    const updatedAt = new Date().toISOString();
+    const levels = { song, instants, main, updatedAt };
+
+    this.programAudioMeterByProgramId.set(normalizedProgramId, levels);
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'audio_meter_update',
+      programId: normalizedProgramId,
+      levels,
+    });
+
+    return levels;
   }
 
   async addSceneToProgram(

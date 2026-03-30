@@ -1,13 +1,13 @@
-export type ModoItalianoSequenceMode = 'manual' | 'autoplay';
-export type ModoItalianoTextContentMode = 'text' | 'sequence';
-export type ModoItalianoSongContentMode = 'sequence';
+export type ProgramSequenceMode = 'manual' | 'autoplay';
+export type ProgramTextContentMode = 'text' | 'sequence';
+export type ProgramSongContentMode = 'sequence';
 
 interface BaseSequenceItem {
   id: string;
 }
 
 interface BaseSequence<TItem extends BaseSequenceItem> {
-  mode: ModoItalianoSequenceMode;
+  mode: ProgramSequenceMode;
   items: TItem[];
   activeItemId?: string | null;
   intervalMs?: number;
@@ -18,38 +18,38 @@ interface BaseSequence<TItem extends BaseSequenceItem> {
 type RecordValue = Record<string, unknown>;
 const MAX_DEPTH = 8;
 
-export interface ModoItalianoTextSequenceLeafItem extends BaseSequenceItem {
+export interface ProgramTextSequenceLeafItem extends BaseSequenceItem {
   kind: 'preset';
   text: string;
   useMarquee?: boolean;
 }
 
-export interface ModoItalianoTextSequenceNestedItem extends BaseSequenceItem {
+export interface ProgramTextSequenceNestedItem extends BaseSequenceItem {
   label: string;
   kind: 'sequence';
-  sequence: ModoItalianoTextSequence;
+  sequence: ProgramTextSequence;
 }
 
-export type ModoItalianoTextSequenceItem =
-  | ModoItalianoTextSequenceLeafItem
-  | ModoItalianoTextSequenceNestedItem;
+export type ProgramTextSequenceItem =
+  | ProgramTextSequenceLeafItem
+  | ProgramTextSequenceNestedItem;
 
-export type ModoItalianoTextSequence = BaseSequence<ModoItalianoTextSequenceItem>;
+export type ProgramTextSequence = BaseSequence<ProgramTextSequenceItem>;
 
-export interface ModoItalianoResolvedTextContent {
+export interface ProgramResolvedTextContent {
   text: string;
   useMarquee: boolean;
-  source: ModoItalianoTextContentMode;
+  source: ProgramTextContentMode;
   activePathLabels: string[];
 }
 
-export interface ModoItalianoResolvedTextLeaf {
+export interface ProgramResolvedTextLeaf {
   text: string;
   useMarquee: boolean;
   activePathLabels: string[];
 }
 
-export interface ModoItalianoSongSequenceLeafItem extends BaseSequenceItem {
+export interface ProgramSongSequenceLeafItem extends BaseSequenceItem {
   kind: 'preset';
   artist: string;
   title: string;
@@ -61,19 +61,19 @@ export interface ModoItalianoSongSequenceLeafItem extends BaseSequenceItem {
   earoneSpins?: string;
 }
 
-export interface ModoItalianoSongSequenceNestedItem extends BaseSequenceItem {
+export interface ProgramSongSequenceNestedItem extends BaseSequenceItem {
   label: string;
   kind: 'sequence';
-  sequence: ModoItalianoSongSequence;
+  sequence: ProgramSongSequence;
 }
 
-export type ModoItalianoSongSequenceItem =
-  | ModoItalianoSongSequenceLeafItem
-  | ModoItalianoSongSequenceNestedItem;
+export type ProgramSongSequenceItem =
+  | ProgramSongSequenceLeafItem
+  | ProgramSongSequenceNestedItem;
 
-export type ModoItalianoSongSequence = BaseSequence<ModoItalianoSongSequenceItem>;
+export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem>;
 
-export interface ModoItalianoResolvedSongLeaf {
+export interface ProgramResolvedSongLeaf {
   id: string;
   artist: string;
   title: string;
@@ -97,14 +97,14 @@ function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function normalizeMode(value: unknown): ModoItalianoSequenceMode {
+function normalizeMode(value: unknown): ProgramSequenceMode {
   return value === 'autoplay' ? 'autoplay' : 'manual';
 }
 
 function normalizeTextContentMode(
   contentMode: unknown,
-  sequence: ModoItalianoTextSequence | null
-): ModoItalianoTextContentMode {
+  sequence: ProgramTextSequence | null
+): ProgramTextContentMode {
   if (contentMode === 'text') {
     return 'text';
   }
@@ -116,15 +116,15 @@ function normalizeTextContentMode(
 
 function normalizeSongContentMode(
   contentMode: unknown,
-  sequence: ModoItalianoSongSequence | null
-): ModoItalianoSongContentMode {
+  sequence: ProgramSongSequence | null
+): ProgramSongContentMode {
   return 'sequence';
 }
 
 function normalizeTextLeafItem(
   record: RecordValue,
   options?: { includeMarquee?: boolean }
-): ModoItalianoTextSequenceLeafItem {
+): ProgramTextSequenceLeafItem {
   const text =
     typeof record.text === 'string' && record.text.trim()
       ? record.text
@@ -140,7 +140,7 @@ function normalizeTextLeafItem(
   };
 }
 
-function normalizeSongLeafItem(record: RecordValue): ModoItalianoSongSequenceLeafItem {
+function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem {
   const artist =
     typeof record.artist === 'string' && record.artist.trim()
       ? record.artist.trim()
@@ -222,14 +222,14 @@ function normalizeTextSequenceItem(
   value: unknown,
   depth: number,
   options?: { includeMarquee?: boolean }
-): ModoItalianoTextSequenceItem | null {
+): ProgramTextSequenceItem | null {
   const record = asRecord(value);
   if (!record) {
     return null;
   }
 
   if (record.kind === 'sequence') {
-    const normalizedSequence = normalizeModoItalianoTextSequence(record.sequence, depth + 1, options);
+    const normalizedSequence = normalizeProgramTextSequence(record.sequence, depth + 1, options);
     if (!normalizedSequence) {
       return null;
     }
@@ -248,14 +248,14 @@ function normalizeTextSequenceItem(
 function normalizeSongSequenceItem(
   value: unknown,
   depth: number
-): ModoItalianoSongSequenceItem | null {
+): ProgramSongSequenceItem | null {
   const record = asRecord(value);
   if (!record) {
     return null;
   }
 
   if (record.kind === 'sequence') {
-    const normalizedSequence = normalizeModoItalianoSongSequence(record.sequence, depth + 1);
+    const normalizedSequence = normalizeProgramSongSequence(record.sequence, depth + 1);
     if (!normalizedSequence) {
       return null;
     }
@@ -314,7 +314,7 @@ function getSelectedItem<TItem extends BaseSequenceItem>(
 }
 
 function getSongItemPlaybackDurationMs(
-  item: ModoItalianoSongSequenceItem
+  item: ProgramSongSequenceItem
 ): number | null {
   if (
     item.kind === 'preset' &&
@@ -329,9 +329,9 @@ function getSongItemPlaybackDurationMs(
 }
 
 function getSelectedSongItem(
-  sequence: ModoItalianoSongSequence,
+  sequence: ProgramSongSequence,
   nowMs: number
-): ModoItalianoSongSequenceItem | null {
+): ProgramSongSequenceItem | null {
   if (sequence.items.length === 0) {
     return null;
   }
@@ -407,11 +407,11 @@ function getSelectedSongItem(
 }
 
 function resolveTextSequenceRecursive(
-  sequence: ModoItalianoTextSequence,
+  sequence: ProgramTextSequence,
   nowMs: number,
   depth: number,
   labels: string[]
-): ModoItalianoResolvedTextLeaf | null {
+): ProgramResolvedTextLeaf | null {
   if (depth > MAX_DEPTH) {
     return null;
   }
@@ -434,11 +434,11 @@ function resolveTextSequenceRecursive(
 }
 
 function resolveSongSequenceRecursive(
-  sequence: ModoItalianoSongSequence,
+  sequence: ProgramSongSequence,
   nowMs: number,
   depth: number,
   labels: string[]
-): ModoItalianoResolvedSongLeaf | null {
+): ProgramResolvedSongLeaf | null {
   if (depth > MAX_DEPTH) {
     return null;
   }
@@ -468,11 +468,11 @@ function resolveSongSequenceRecursive(
   };
 }
 
-export function normalizeModoItalianoTextSequence(
+export function normalizeProgramTextSequence(
   value: unknown,
   depth = 0,
   options?: { includeMarquee?: boolean }
-): ModoItalianoTextSequence | null {
+): ProgramTextSequence | null {
   if (depth > MAX_DEPTH) {
     return null;
   }
@@ -485,15 +485,15 @@ export function normalizeModoItalianoTextSequence(
   const rawItems = Array.isArray(record.items) ? record.items : [];
   const items = rawItems
     .map((item) => normalizeTextSequenceItem(item, depth, options))
-    .filter((item): item is ModoItalianoTextSequenceItem => item !== null);
+    .filter((item): item is ProgramTextSequenceItem => item !== null);
 
   return withNormalizedSequenceShape(record, items);
 }
 
-export function normalizeModoItalianoSongSequence(
+export function normalizeProgramSongSequence(
   value: unknown,
   depth = 0
-): ModoItalianoSongSequence | null {
+): ProgramSongSequence | null {
   if (depth > MAX_DEPTH) {
     return null;
   }
@@ -506,21 +506,21 @@ export function normalizeModoItalianoSongSequence(
   const rawItems = Array.isArray(record.items) ? record.items : [];
   const items = rawItems
     .map((item) => normalizeSongSequenceItem(item, depth))
-    .filter((item): item is ModoItalianoSongSequenceItem => item !== null);
+    .filter((item): item is ProgramSongSequenceItem => item !== null);
 
   return withNormalizedSequenceShape(record, items);
 }
 
-export function createModoItalianoTextSequenceItem(
-  kind: ModoItalianoTextSequenceItem['kind'] = 'preset',
+export function createProgramTextSequenceItem(
+  kind: ProgramTextSequenceItem['kind'] = 'preset',
   options?: { includeMarquee?: boolean }
-): ModoItalianoTextSequenceItem {
+): ProgramTextSequenceItem {
   if (kind === 'sequence') {
     return {
       id: createId('sequence'),
       label: 'Nested Sequence',
       kind: 'sequence',
-      sequence: createModoItalianoTextSequence('manual', options)
+      sequence: createProgramTextSequence('manual', options)
     };
   }
 
@@ -532,15 +532,15 @@ export function createModoItalianoTextSequenceItem(
   };
 }
 
-export function createModoItalianoSongSequenceItem(
-  kind: ModoItalianoSongSequenceItem['kind'] = 'preset'
-): ModoItalianoSongSequenceItem {
+export function createProgramSongSequenceItem(
+  kind: ProgramSongSequenceItem['kind'] = 'preset'
+): ProgramSongSequenceItem {
   if (kind === 'sequence') {
     return {
       id: createId('sequence'),
       label: 'Nested Sequence',
       kind: 'sequence',
-      sequence: createModoItalianoSongSequence('manual')
+      sequence: createProgramSongSequence('manual')
     };
   }
 
@@ -555,11 +555,11 @@ export function createModoItalianoSongSequenceItem(
   };
 }
 
-export function createModoItalianoTextSequence(
-  mode: ModoItalianoSequenceMode = 'manual',
+export function createProgramTextSequence(
+  mode: ProgramSequenceMode = 'manual',
   options?: { includeMarquee?: boolean }
-): ModoItalianoTextSequence {
-  const firstItem = createModoItalianoTextSequenceItem('preset', options);
+): ProgramTextSequence {
+  const firstItem = createProgramTextSequenceItem('preset', options);
 
   return {
     mode,
@@ -571,10 +571,10 @@ export function createModoItalianoTextSequence(
   };
 }
 
-export function createModoItalianoSongSequence(
-  mode: ModoItalianoSequenceMode = 'manual'
-): ModoItalianoSongSequence {
-  const firstItem = createModoItalianoSongSequenceItem('preset');
+export function createProgramSongSequence(
+  mode: ProgramSequenceMode = 'manual'
+): ProgramSongSequence {
+  const firstItem = createProgramSongSequenceItem('preset');
 
   return {
     mode,
@@ -586,35 +586,35 @@ export function createModoItalianoSongSequence(
   };
 }
 
-export function getModoItalianoTextContentMode(
+export function getProgramTextContentMode(
   contentMode: unknown,
-  sequence: ModoItalianoTextSequence | null
-): ModoItalianoTextContentMode {
+  sequence: ProgramTextSequence | null
+): ProgramTextContentMode {
   return normalizeTextContentMode(contentMode, sequence);
 }
 
-export function getModoItalianoSongContentMode(
+export function getProgramSongContentMode(
   contentMode: unknown,
-  sequence: ModoItalianoSongSequence | null
-): ModoItalianoSongContentMode {
+  sequence: ProgramSongSequence | null
+): ProgramSongContentMode {
   return normalizeSongContentMode(contentMode, sequence);
 }
 
-export function getModoItalianoTextSequenceSelectedItemId(
-  sequence: ModoItalianoTextSequence,
+export function getProgramTextSequenceSelectedItemId(
+  sequence: ProgramTextSequence,
   nowMs = Date.now()
 ): string | null {
   return getSelectedItem(sequence, nowMs)?.id ?? null;
 }
 
-export function getModoItalianoSongSequenceSelectedItemId(
-  sequence: ModoItalianoSongSequence,
+export function getProgramSongSequenceSelectedItemId(
+  sequence: ProgramSongSequence,
   nowMs = Date.now()
 ): string | null {
   return getSelectedSongItem(sequence, nowMs)?.id ?? null;
 }
 
-export function resolveModoItalianoTextContent(
+export function resolveProgramTextContent(
   config: {
     text?: string;
     useMarquee?: boolean;
@@ -623,8 +623,8 @@ export function resolveModoItalianoTextContent(
   },
   nowMs = Date.now(),
   options?: { includeMarquee?: boolean }
-): ModoItalianoResolvedTextContent {
-  const normalizedSequence = normalizeModoItalianoTextSequence(config.sequence, 0, options);
+): ProgramResolvedTextContent {
+  const normalizedSequence = normalizeProgramTextSequence(config.sequence, 0, options);
   const contentMode = normalizeTextContentMode(config.contentMode, normalizedSequence);
 
   if (contentMode === 'sequence' && normalizedSequence) {
@@ -647,15 +647,15 @@ export function resolveModoItalianoTextContent(
   };
 }
 
-export function resolveModoItalianoTextLeaf(
+export function resolveProgramTextLeaf(
   config: {
     contentMode?: unknown;
     sequence?: unknown;
   },
   nowMs = Date.now(),
   options?: { includeMarquee?: boolean }
-): ModoItalianoResolvedTextLeaf | null {
-  const normalizedSequence = normalizeModoItalianoTextSequence(config.sequence, 0, options);
+): ProgramResolvedTextLeaf | null {
+  const normalizedSequence = normalizeProgramTextSequence(config.sequence, 0, options);
   const contentMode = normalizeTextContentMode(config.contentMode, normalizedSequence);
 
   if (contentMode !== 'sequence' || !normalizedSequence) {
@@ -665,14 +665,14 @@ export function resolveModoItalianoTextLeaf(
   return resolveTextSequenceRecursive(normalizedSequence, nowMs, 0, []);
 }
 
-export function resolveModoItalianoSongLeaf(
+export function resolveProgramSongLeaf(
   config: {
     contentMode?: unknown;
     sequence?: unknown;
   },
   nowMs = Date.now()
-): ModoItalianoResolvedSongLeaf | null {
-  const normalizedSequence = normalizeModoItalianoSongSequence(config.sequence);
+): ProgramResolvedSongLeaf | null {
+  const normalizedSequence = normalizeProgramSongSequence(config.sequence);
   const contentMode = normalizeSongContentMode(config.contentMode, normalizedSequence);
 
   if (contentMode !== 'sequence' || !normalizedSequence) {
@@ -682,8 +682,8 @@ export function resolveModoItalianoSongLeaf(
   return resolveSongSequenceRecursive(normalizedSequence, nowMs, 0, []);
 }
 
-export function countModoItalianoTextSequenceLeafItems(
-  sequence: ModoItalianoTextSequence | null
+export function countProgramTextSequenceLeafItems(
+  sequence: ProgramTextSequence | null
 ): number {
   if (!sequence) {
     return 0;
@@ -691,14 +691,14 @@ export function countModoItalianoTextSequenceLeafItems(
 
   return sequence.items.reduce((count, item) => {
     if (item.kind === 'sequence') {
-      return count + countModoItalianoTextSequenceLeafItems(item.sequence);
+      return count + countProgramTextSequenceLeafItems(item.sequence);
     }
     return count + 1;
   }, 0);
 }
 
-export function countModoItalianoSongSequenceLeafItems(
-  sequence: ModoItalianoSongSequence | null
+export function countProgramSongSequenceLeafItems(
+  sequence: ProgramSongSequence | null
 ): number {
   if (!sequence) {
     return 0;
@@ -706,7 +706,7 @@ export function countModoItalianoSongSequenceLeafItems(
 
   return sequence.items.reduce((count, item) => {
     if (item.kind === 'sequence') {
-      return count + countModoItalianoSongSequenceLeafItems(item.sequence);
+      return count + countProgramSongSequenceLeafItems(item.sequence);
     }
     return count + 1;
   }, 0);

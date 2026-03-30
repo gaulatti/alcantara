@@ -3,15 +3,15 @@ import { BellRing } from 'lucide-react';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
 import {
-  normalizeModoItalianoSongSequence,
-  resolveModoItalianoSongLeaf,
-  type ModoItalianoSongSequence
-} from '../utils/modoItalianoSequence';
+  normalizeProgramSongSequence,
+  resolveProgramSongLeaf,
+  type ProgramSongSequence
+} from '../utils/programSequence';
 import {
-  ensureModoItalianoAudioBusTrack,
-  getModoItalianoAudioBusSnapshot,
-  subscribeModoItalianoAudioBus
-} from '../utils/modoItalianoAudioBus';
+  ensureProgramAudioBusTrack,
+  getProgramAudioBusSnapshot,
+  subscribeProgramAudioBus
+} from '../utils/programAudioBus';
 
 export interface ModoItalianoClockCity {
   city: string;
@@ -62,7 +62,7 @@ interface SongPayload {
   earoneSpins?: string;
 }
 
-function toSingleSongSequence(song: SongPayload): ModoItalianoSongSequence {
+function toSingleSongSequence(song: SongPayload): ProgramSongSequence {
   const itemId = [
     song.id?.trim() || '',
     song.artist.trim(),
@@ -247,7 +247,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
 
   const currentCity = cityPool[cityIndex] ?? resolvedCities[0];
   const timeText = formatClockValue(currentCity.timezone, now, timeOverride);
-  const normalizedSongSequence = useMemo(() => normalizeModoItalianoSongSequence(songSequence), [songSequence]);
+  const normalizedSongSequence = useMemo(() => normalizeProgramSongSequence(songSequence), [songSequence]);
   const [sequenceNowMs, setSequenceNowMs] = useState(() => Date.now());
   const legacySongPayload = useMemo(() => {
     const directFromFields = normalizeSongPayload({
@@ -281,7 +281,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   );
   const resolvedSequenceSong = useMemo(
     () =>
-      resolveModoItalianoSongLeaf(
+      resolveProgramSongLeaf(
         {
           sequence: effectiveSongSequence
         },
@@ -313,17 +313,13 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   ]);
 
   const activeSongPayload = resolvedSequenceSong;
-  const [audioBusSnapshot, setAudioBusSnapshot] = useState(() => getModoItalianoAudioBusSnapshot(programId));
+  const [audioBusSnapshot, setAudioBusSnapshot] = useState(() => getProgramAudioBusSnapshot(programId));
   const fallbackSongAudioUrl = activeSongPayload?.audioUrl?.trim() || '';
   const fallbackSongArtist = activeSongPayload?.artist?.trim() || '';
   const fallbackSongTitle = activeSongPayload?.title?.trim() || '';
   const fallbackSongCoverUrl = activeSongPayload?.coverUrl?.trim() || '';
   const fallbackSongIdentity = activeSongPayload?.id?.trim() || `${fallbackSongArtist}|${fallbackSongTitle}`.trim();
-  const sequenceStartToken =
-    effectiveSongSequence?.mode === 'autoplay' && typeof effectiveSongSequence?.startedAt === 'number'
-      ? String(effectiveSongSequence.startedAt)
-      : '';
-  const fallbackPlaybackToken = fallbackSongAudioUrl ? `${fallbackSongIdentity}:${sequenceStartToken}:${fallbackSongAudioUrl}` : '';
+  const fallbackPlaybackToken = fallbackSongAudioUrl ? `${fallbackSongIdentity}:${fallbackSongAudioUrl}` : '';
   const songGateEnabled = typeof playingSong === 'boolean' ? playingSong : true;
   const audioBusSong = songGateEnabled ? audioBusSnapshot.track : null;
   const normalizedSongArtist = (audioBusSong?.artist ?? fallbackSongArtist).trim();
@@ -341,7 +337,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   const useSplitSongClockLayout = songUiVisible && showWorldClocks;
 
   useEffect(() => {
-    return subscribeModoItalianoAudioBus(programId, (snapshot) => {
+    return subscribeProgramAudioBus(programId, (snapshot) => {
       setAudioBusSnapshot(snapshot);
     });
   }, [programId]);
@@ -351,7 +347,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
       return;
     }
 
-    ensureModoItalianoAudioBusTrack(programId, {
+    ensureProgramAudioBusTrack(programId, {
       token: fallbackPlaybackToken,
       audioUrl: fallbackSongAudioUrl,
       durationMs: activeSongPayload?.durationMs,

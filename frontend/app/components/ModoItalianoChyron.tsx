@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  normalizeModoItalianoTextSequence,
-  resolveModoItalianoTextLeaf
-} from '../utils/modoItalianoSequence';
+  normalizeProgramTextSequence,
+  resolveProgramTextLeaf
+} from '../utils/programSequence';
 
 interface ModoItalianoChyronProps {
   show?: boolean;
@@ -21,11 +21,11 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
 }) => {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const normalizedTextSequence = useMemo(
-    () => normalizeModoItalianoTextSequence(textSequence, 0, { includeMarquee: true }),
+    () => normalizeProgramTextSequence(textSequence, 0, { includeMarquee: true }),
     [textSequence]
   );
   const normalizedCtaSequence = useMemo(
-    () => normalizeModoItalianoTextSequence(ctaSequence),
+    () => normalizeProgramTextSequence(ctaSequence),
     [ctaSequence]
   );
   const shouldTick = normalizedTextSequence?.mode === 'autoplay' || normalizedCtaSequence?.mode === 'autoplay';
@@ -58,7 +58,7 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     setNowMs(Date.now());
   }, [textSequence, ctaSequence]);
 
-  const resolvedTextLeaf = resolveModoItalianoTextLeaf(
+  const resolvedTextLeaf = resolveProgramTextLeaf(
     {
       contentMode: 'sequence',
       sequence: normalizedTextSequence
@@ -66,7 +66,7 @@ export const ModoItalianoChyron: React.FC<ModoItalianoChyronProps> = ({
     nowMs,
     { includeMarquee: true }
   );
-  const resolvedCtaLeaf = resolveModoItalianoTextLeaf(
+  const resolvedCtaLeaf = resolveProgramTextLeaf(
     {
       contentMode: 'sequence',
       sequence: normalizedCtaSequence
