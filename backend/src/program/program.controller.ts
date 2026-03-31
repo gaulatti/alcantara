@@ -163,6 +163,23 @@ export class ProgramController {
     );
   }
 
+  @Get(':programId/stage')
+  async getStagedSceneById(@Param('programId') programId: string) {
+    return this.programService.getStagedScene(programId);
+  }
+
+  @Post(':programId/stage')
+  async stageSceneById(
+    @Param('programId') programId: string,
+    @Body() data: { sceneId?: number | null },
+  ) {
+    const nextSceneId =
+      typeof data?.sceneId === 'number' && Number.isFinite(data.sceneId)
+        ? data.sceneId
+        : null;
+    return this.programService.stageScene(nextSceneId, programId);
+  }
+
   @Post(':programId/off-air')
   async takeProgramOffAirById(@Param('programId') programId: string) {
     return this.programService.takeProgramOffAir(programId);

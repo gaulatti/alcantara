@@ -36,6 +36,7 @@ export class ProgramService {
   private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
   private broadcastSettingsColumnsEnsured = false;
   private eventSubjects = new Map<string, Subject<any>>();
+  private stagedSceneByProgramId = new Map<string, number | null>();
   private programAudioMeterByProgramId = new Map<string, ProgramAudioMeterLevels>();
   private programSongPlaybackByProgramId = new Map<
     string,
@@ -578,7 +579,48 @@ export class ProgramService {
       throw new Error('Program not found');
     }
 
-    return state;
+    return this.withStagedSceneState(normalizedProgramId, state);
+  }
+
+  private withStagedSceneState<T extends { scenes?: unknown }>(
+    programId: string,
+    state: T,
+  ): T & { stagedSceneId: number | null; stagedScene: any | null } {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const sceneEntries = Array.isArray(state.scenes) ? state.scenes : [];
+    const currentStagedSceneId = this.stagedSceneByProgramId.get(normalizedProgramId);
+    const stagedSceneId = typeof currentStagedSceneId === 'number' ? currentStagedSceneId : null;
+    const stagedSceneEntry =
+      stagedSceneId === null
+        ? null
+        : sceneEntries.find((entry) => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+              return false;
+            }
+            const record = entry as { sceneId?: unknown };
+            return record.sceneId === stagedSceneId;
+          });
+
+    if (stagedSceneId !== null && !stagedSceneEntry) {
+      this.stagedSceneByProgramId.set(normalizedProgramId, null);
+      return {
+        ...(state as any),
+        stagedSceneId: null,
+        stagedScene: null,
+      };
+    }
+
+    return {
+      ...(state as any),
+      stagedSceneId,
+      stagedScene:
+        stagedSceneEntry &&
+        typeof stagedSceneEntry === 'object' &&
+        !Array.isArray(stagedSceneEntry) &&
+        'scene' in stagedSceneEntry
+          ? (stagedSceneEntry as { scene?: unknown }).scene ?? null
+          : null,
+    };
   }
 
   async createProgram(programId: string) {
@@ -596,6 +638,7 @@ export class ProgramService {
     await this.prisma.programState.create({
       data: { programId: normalized, activeSceneId: null },
     });
+    this.stagedSceneByProgramId.set(normalized, null);
 
     return this.getProgramStateWithScenes(normalized);
   }
@@ -645,6 +688,13 @@ export class ProgramService {
       this.programSongPlaybackByProgramId.set(next, currentSongPlayback);
       this.programSongPlaybackByProgramId.delete(current);
     }
+    if (this.stagedSceneByProgramId.has(current)) {
+      this.stagedSceneByProgramId.set(
+        next,
+        this.stagedSceneByProgramId.get(current) ?? null,
+      );
+      this.stagedSceneByProgramId.delete(current);
+    }
 
     return this.getProgramStateWithScenes(next);
   }
@@ -671,12 +721,13 @@ export class ProgramService {
     }
     this.programAudioMeterByProgramId.delete(normalized);
     this.programSongPlaybackByProgramId.delete(normalized);
+    this.stagedSceneByProgramId.delete(normalized);
 
     return { deletedProgramId: normalized };
   }
 
   async listPrograms() {
-    return this.prisma.programState.findMany({
+    const states = await this.prisma.programState.findMany({
       orderBy: { programId: 'asc' },
       include: {
         activeScene: {
@@ -692,10 +743,22 @@ export class ProgramService {
         },
       },
     });
+    return states.map((state) =>
+      this.withStagedSceneState(state.programId, state),
+    );
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
     return this.getProgramStateWithScenes(programId);
+  }
+
+  async getStagedScene(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
+    const state = await this.getProgramStateWithScenes(programId);
+    return {
+      programId: state.programId,
+      stagedSceneId: state.stagedSceneId ?? null,
+      stagedScene: state.stagedScene ?? null,
+    };
   }
 
   async getProgramAudioBus(
@@ -1086,6 +1149,10 @@ export class ProgramService {
       },
     });
 
+    if ((this.stagedSceneByProgramId.get(normalizedProgramId) ?? null) === sceneId) {
+      this.stagedSceneByProgramId.set(normalizedProgramId, null);
+    }
+
     if (state.activeSceneId === sceneId) {
       await this.prisma.programState.update({
         where: { id: state.id },
@@ -1099,6 +1166,62 @@ export class ProgramService {
       state: updated,
     });
     return updated;
+  }
+
+  async stageScene(
+    sceneId: number | null,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      include: {
+        scenes: {
+          orderBy: { position: 'asc' },
+          include: {
+            scene: {
+              include: { layout: true },
+            },
+          },
+        },
+      },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    let nextStagedSceneId: number | null = null;
+    let stagedScene: unknown = null;
+
+    if (typeof sceneId === 'number' && Number.isFinite(sceneId)) {
+      const assignedSceneEntry = state.scenes.find(
+        (programScene) => programScene.sceneId === sceneId,
+      );
+      if (!assignedSceneEntry) {
+        throw new BadRequestException(
+          'Scene is not assigned to this program',
+        );
+      }
+      nextStagedSceneId = sceneId;
+      stagedScene = assignedSceneEntry.scene;
+    }
+
+    this.stagedSceneByProgramId.set(normalizedProgramId, nextStagedSceneId);
+
+    const payload = {
+      type: 'scene_staged',
+      programId: normalizedProgramId,
+      stagedSceneId: nextStagedSceneId,
+      scene: stagedScene,
+      updatedAt: new Date().toISOString(),
+    };
+    this.broadcastUpdate(normalizedProgramId, payload);
+
+    return {
+      programId: normalizedProgramId,
+      stagedSceneId: nextStagedSceneId,
+      stagedScene: stagedScene ?? null,
+    };
   }
 
   async activateScene(
@@ -1144,6 +1267,7 @@ export class ProgramService {
       typeof transitionId === 'string' && transitionId.trim()
         ? transitionId.trim()
         : null;
+    this.stagedSceneByProgramId.set(normalizedProgramId, sceneId);
 
     this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_change',

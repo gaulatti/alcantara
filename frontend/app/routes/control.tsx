@@ -69,6 +69,9 @@ interface ProgramState {
   id: number;
   programId: string;
   activeSceneId: number | null;
+  activeScene?: Scene | null;
+  stagedSceneId?: number | null;
+  stagedScene?: Scene | null;
   scenes: ProgramSceneEntry[];
 }
 
@@ -522,11 +525,23 @@ function normalizeProgramState(value: unknown): ProgramState | null {
     return null;
   }
 
-  const record = value as Partial<ProgramState>;
+  const record = value as Partial<ProgramState> & {
+    activeScene?: unknown;
+    stagedScene?: unknown;
+  };
   return {
     ...(record as ProgramState),
     scenes: Array.isArray(record.scenes) ? record.scenes : [],
-    activeSceneId: typeof record.activeSceneId === 'number' ? record.activeSceneId : null
+    activeSceneId: typeof record.activeSceneId === 'number' ? record.activeSceneId : null,
+    stagedSceneId: typeof record.stagedSceneId === 'number' ? record.stagedSceneId : null,
+    activeScene:
+      record.activeScene && typeof record.activeScene === 'object'
+        ? (record.activeScene as Scene)
+        : null,
+    stagedScene:
+      record.stagedScene && typeof record.stagedScene === 'object'
+        ? (record.stagedScene as Scene)
+        : null
   };
 }
 
@@ -944,6 +959,34 @@ export default function Control() {
     mixerLevelsRef.current = mixerLevels;
   }, [mixerLevels]);
 
+  const syncProgramStateAndStagedScene = useCallback((nextProgramState: ProgramState | null) => {
+    setProgramState(nextProgramState);
+    setSelectedScene((previousStagedSceneId) => {
+      if (!nextProgramState) {
+        return null;
+      }
+
+      const nextStagedSceneId =
+        typeof nextProgramState.stagedSceneId === 'number' &&
+        nextProgramState.scenes.some((entry) => entry.sceneId === nextProgramState.stagedSceneId)
+          ? nextProgramState.stagedSceneId
+          : null;
+
+      if (nextStagedSceneId !== null) {
+        return nextStagedSceneId;
+      }
+
+      if (
+        previousStagedSceneId !== null &&
+        nextProgramState.scenes.some((entry) => entry.sceneId === previousStagedSceneId)
+      ) {
+        return previousStagedSceneId;
+      }
+
+      return nextProgramState.activeSceneId ?? null;
+    });
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -998,8 +1041,7 @@ export default function Control() {
             return;
           }
           const normalizedProgramState = normalizeProgramState(payload.state);
-          setProgramState(normalizedProgramState);
-          setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+          syncProgramStateAndStagedScene(normalizedProgramState);
           return;
         }
 
@@ -1023,14 +1065,36 @@ export default function Control() {
           return;
         }
 
+        if (payload.type === 'scene_staged') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          const nextStagedSceneId = typeof payload.stagedSceneId === 'number' ? payload.stagedSceneId : null;
+          setSelectedScene(nextStagedSceneId);
+          setProgramState((previous) => {
+            if (!previous) {
+              return previous;
+            }
+            return {
+              ...previous,
+              stagedSceneId: nextStagedSceneId,
+              stagedScene:
+                payload.scene && typeof payload.scene === 'object'
+                  ? (payload.scene as Scene)
+                  : null,
+            };
+          });
+          return;
+        }
+
         if (payload.type === 'scene_change' || payload.type === 'program_scenes_changed') {
           const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
           if (eventProgramId !== activeProgramId) {
             return;
           }
           const normalizedProgramState = normalizeProgramState(payload.state);
-          setProgramState(normalizedProgramState);
-          setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+          syncProgramStateAndStagedScene(normalizedProgramState);
           return;
         }
 
@@ -1068,7 +1132,6 @@ export default function Control() {
               activeSceneId: null
             };
           });
-          setSelectedScene(null);
           return;
         }
 
@@ -1143,7 +1206,7 @@ export default function Control() {
         }
       }
     };
-  }, [activeProgramId]);
+  }, [activeProgramId, syncProgramStateAndStagedScene]);
 
   const fetchScenes = async () => {
     try {
@@ -1420,12 +1483,10 @@ export default function Control() {
       const data = (await res.json()) as unknown;
       const normalizedProgramState = normalizeProgramState(data);
 
-      setProgramState(normalizedProgramState);
-      setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+      syncProgramStateAndStagedScene(normalizedProgramState);
     } catch (err) {
       console.error('Failed to fetch program state:', err);
-      setProgramState(null);
-      setSelectedScene(null);
+      syncProgramStateAndStagedScene(null);
     }
   };
 
@@ -1551,6 +1612,25 @@ export default function Control() {
     }
   };
 
+  const stageSceneForProgram = async (sceneId: number | null) => {
+    try {
+      const response = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      if (!isProgramRealtimeConnected) {
+        await fetchProgramState(activeProgramId);
+      }
+    } catch (err) {
+      console.error('Failed to stage scene for program:', err);
+    }
+  };
+
   const activateScene = async (sceneId: number) => {
     try {
       if (!isSceneAssigned(sceneId)) {
@@ -1568,6 +1648,13 @@ export default function Control() {
     } catch (err) {
       console.error('Failed to activate scene:', err);
     }
+  };
+
+  const takeStagedSceneLive = async () => {
+    if (!selectedScene) {
+      return;
+    }
+    await activateScene(selectedScene);
   };
 
   const triggerInstant = async (instantId: number) => {
@@ -1760,6 +1847,7 @@ export default function Control() {
 
     const scene = scenes.find((s) => s.id === selectedScene);
     if (!scene) {
+      setSceneEditorProps({});
       return;
     }
 
@@ -2109,6 +2197,7 @@ export default function Control() {
       });
       if (selectedScene === id) {
         setSelectedScene(null);
+        void stageSceneForProgram(null);
       }
       fetchScenes();
       if (!isProgramRealtimeConnected) {
@@ -2139,6 +2228,12 @@ export default function Control() {
         return;
       }
 
+      if (event.code === 'Enter') {
+        event.preventDefault();
+        void takeStagedSceneLive();
+        return;
+      }
+
       const match = event.code.match(/^Digit(\d)$/);
       if (match && Date.now() <= sceneHotkeyArmedUntil) {
         const pressedDigit = Number(match[1]);
@@ -2150,7 +2245,8 @@ export default function Control() {
 
         event.preventDefault();
         sceneHotkeyArmedUntil = 0;
-        void activateScene(shortcutScene.id);
+        setSelectedScene(shortcutScene.id);
+        void stageSceneForProgram(shortcutScene.id);
         return;
       }
 
@@ -2179,7 +2275,7 @@ export default function Control() {
     return () => {
       window.removeEventListener('keydown', handleSceneHotkey);
     };
-  }, [assignedScenes, instants, activateScene, triggerInstant]);
+  }, [assignedScenes, instants, takeStagedSceneLive, triggerInstant, stageSceneForProgram]);
 
   const handleProgramEvent = useCallback(
     (data: any) => {
@@ -2205,8 +2301,26 @@ export default function Control() {
 
       if (data.type === 'scene_change' || data.type === 'program_scenes_changed') {
         const normalizedProgramState = normalizeProgramState(data.state);
-        setProgramState(normalizedProgramState);
-        setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+        syncProgramStateAndStagedScene(normalizedProgramState);
+        return;
+      }
+
+      if (data.type === 'scene_staged') {
+        const nextStagedSceneId = typeof data.stagedSceneId === 'number' ? data.stagedSceneId : null;
+        setSelectedScene(nextStagedSceneId);
+        setProgramState((previous) => {
+          if (!previous) {
+            return previous;
+          }
+          return {
+            ...previous,
+            stagedSceneId: nextStagedSceneId,
+            stagedScene:
+              data.scene && typeof data.scene === 'object'
+                ? (data.scene as Scene)
+                : null,
+          };
+        });
         return;
       }
 
@@ -2236,7 +2350,6 @@ export default function Control() {
             activeSceneId: null
           };
         });
-        setSelectedScene(null);
         return;
       }
 
@@ -2259,7 +2372,7 @@ export default function Control() {
         );
       }
     },
-    [activeProgramId, isProgramRealtimeConnected]
+    [activeProgramId, isProgramRealtimeConnected, syncProgramStateAndStagedScene]
   );
 
   useSSE({
@@ -2271,13 +2384,16 @@ export default function Control() {
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
     ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
   );
-  const selectedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
-  const selectedSceneSummaryText = useMemo(() => {
-    if (!selectedSceneData) {
+  const stagedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
+  const activeSceneId = programState?.activeSceneId ?? null;
+  const activeSceneData = activeSceneId ? (assignedScenes.find((scene) => scene.id === activeSceneId) ?? null) : null;
+  const stagedSceneSummaryText = useMemo(() => {
+    if (!stagedSceneData) {
       return '';
     }
-    return getSceneSummaryText(selectedSceneData);
-  }, [selectedSceneData?.id, selectedSceneData?.metadata]);
+    return getSceneSummaryText(stagedSceneData);
+  }, [stagedSceneData?.id, stagedSceneData?.metadata]);
+  const stagedIsOnAir = selectedScene !== null && selectedScene === activeSceneId;
   const programAudioBusSongSequence = useMemo(
     () =>
       normalizeProgramSongPlaylist(
@@ -2297,7 +2413,9 @@ export default function Control() {
   const instantsOutputGain = instantsChannelGain * mainMixGain;
   const streamOutputGain = streamChannelGain * mainMixGain;
   const activeSceneComponentTypes = (programState?.activeScene?.layout.componentType || '').split(',').filter(Boolean);
-  const shouldShowStreamStrip = activeSceneComponentTypes.includes('video-stream');
+  const stagedSceneComponentTypes = (stagedSceneData?.layout.componentType || '').split(',').filter(Boolean);
+  const shouldShowStreamStrip =
+    activeSceneComponentTypes.includes('video-stream') || stagedSceneComponentTypes.includes('video-stream');
   const songMeterFill = meterLevelToFill(programAudioMeterLevels.song.vu);
   const songPeakFill = meterLevelToFill(programAudioMeterLevels.song.peak);
   const songPeakHoldFill = meterLevelToFill(programAudioMeterLevels.song.peakHold);
@@ -2329,7 +2447,7 @@ export default function Control() {
         `}
       </style>
       <div className='mx-auto max-w-7xl space-y-6'>
-        <SectionHeader title='Control' description='Take scenes live and edit scene attributes for the selected global program.' />
+        <SectionHeader title='Control' description='Stage scenes, take them live, and edit staged scene attributes for the selected program.' />
 
         <div className='space-y-6'>
           {/* Scenes Panel */}
@@ -2337,6 +2455,9 @@ export default function Control() {
             <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
               <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Scenes</h2>
               <div className='flex flex-wrap items-center gap-2'>
+                <Button size='sm' onClick={() => void takeStagedSceneLive()} disabled={!selectedScene || stagedIsOnAir}>
+                  TAKE
+                </Button>
                 <Button size='sm' variant='secondary' onClick={() => window.location.assign('/scenes')}>
                   Manage Scenes
                 </Button>
@@ -2346,7 +2467,10 @@ export default function Control() {
               Hotkeys:
               <Kbd keys={['Ctrl', 'S']} />
               then
-              <span>1-9 (0 for #10)</span>
+              <span>1-9 (0 for #10) to stage</span>
+              <span>·</span>
+              <Kbd keys={['Ctrl', 'Enter']} />
+              <span>to TAKE</span>
             </p>
             {assignedScenes.length === 0 ? (
               <div className='py-8 text-center text-text-secondary dark:text-text-secondary'>No scenes assigned to this program.</div>
@@ -2355,18 +2479,24 @@ export default function Control() {
                 <div className='overflow-x-auto'>
                   <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
                     {assignedScenes.map((scene, index) => {
-                      const isActive = selectedScene === scene.id;
+                      const isStaged = selectedScene === scene.id;
+                      const isActive = activeSceneId === scene.id;
 
                       return (
                         <button
                           key={scene.id}
                           type='button'
                           onClick={() => {
-                            void activateScene(scene.id);
+                            setSelectedScene(scene.id);
+                            void stageSceneForProgram(scene.id);
                           }}
                           className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
-                            isActive
-                              ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
+                            isActive && isStaged
+                              ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30 dark:border-emerald-400 dark:bg-emerald-400/10 dark:ring-emerald-400/20'
+                              : isActive
+                                ? 'border-red-500 bg-red-500/10 ring-2 ring-red-500/30 dark:border-red-400 dark:bg-red-400/10 dark:ring-red-400/20'
+                                : isStaged
+                                  ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
                               : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
                           }`}
                           title={scene.name}
@@ -2374,6 +2504,10 @@ export default function Control() {
                           <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
                             {index + 1}
                           </span>
+                          <div className='absolute right-2 top-2 flex gap-1'>
+                            {isActive ? <span className='rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>PGM</span> : null}
+                            {isStaged ? <span className='rounded bg-cyan-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>STG</span> : null}
+                          </div>
                           <div className='mt-6'>
                             <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>{scene.name}</div>
                             <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>{scene.layout.name}</div>
@@ -2383,12 +2517,20 @@ export default function Control() {
                     })}
                   </div>
                 </div>
-                {selectedSceneData ? (
-                  <p className='text-xs text-text-secondary dark:text-text-secondary'>
-                    Active: <span className='font-semibold text-text-primary dark:text-text-primary'>{selectedSceneData.name}</span> · Text:{' '}
-                    {selectedSceneSummaryText}
+                <div className='text-xs text-text-secondary dark:text-text-secondary space-y-1'>
+                  <p>
+                    Program: <span className='font-semibold text-text-primary dark:text-text-primary'>{activeSceneData?.name ?? 'Off Air'}</span>
                   </p>
-                ) : null}
+                  <p>
+                    Staged: <span className='font-semibold text-text-primary dark:text-text-primary'>{stagedSceneData?.name ?? 'None'}</span>
+                    {stagedSceneData ? (
+                      <>
+                        {' '}
+                        · Text: {stagedSceneSummaryText}
+                      </>
+                    ) : null}
+                  </p>
+                </div>
               </>
             )}
           </Card>
@@ -2896,12 +3038,15 @@ export default function Control() {
 
           {/* Scene Attributes Panel */}
           <Card className='space-y-4'>
-            <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Edit Live Scene Attributes</h2>
+            <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Edit Staged Scene Attributes</h2>
             {!selectedScene ? (
-              <p className='text-sm text-text-secondary dark:text-text-secondary'>Take a scene live above, then edit the attributes for that live scene.</p>
+              <p className='text-sm text-text-secondary dark:text-text-secondary'>Stage a scene above to edit its attributes before taking it live.</p>
             ) : (
               <div className='space-y-4'>
-                <p className='text-sm text-sea dark:text-accent-blue'>Editing scene: {scenes.find((s) => s.id === selectedScene)?.name}</p>
+                <p className='text-sm text-sea dark:text-accent-blue'>
+                  Editing staged scene: {scenes.find((s) => s.id === selectedScene)?.name}
+                  {stagedIsOnAir ? ' (ON AIR)' : ''}
+                </p>
                 {activeProgramId === 'fifthbell' && (
                   <p className='text-xs text-text-secondary dark:text-text-secondary'>
                     FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `toni-clock`).

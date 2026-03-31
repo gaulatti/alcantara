@@ -63,8 +63,11 @@ interface Scene {
 
 interface ProgramState {
   id: number;
+  programId?: string;
   activeSceneId: number | null;
   activeScene: Scene | null;
+  stagedSceneId?: number | null;
+  stagedScene?: Scene | null;
   updatedAt: string;
 }
 
@@ -372,6 +375,17 @@ function normalizeBroadcastSettings(value: unknown): BroadcastSettings | null {
   };
 }
 
+function sceneIncludesVideoStream(scene: Scene | null | undefined): boolean {
+  if (!scene?.layout?.componentType) {
+    return false;
+  }
+  return scene.layout.componentType
+    .split(',')
+    .map((componentType) => componentType.trim())
+    .filter(Boolean)
+    .includes('video-stream');
+}
+
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
@@ -671,7 +685,25 @@ function SceneProgram({ programId }: { programId: string }) {
         return;
       }
 
-      if (data.type === 'scene_change') {
+      if (data.type === 'scene_staged') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
+        const nextStagedSceneId =
+          typeof data.stagedSceneId === 'number' && Number.isFinite(data.stagedSceneId) ? data.stagedSceneId : null;
+        const nextStagedScene = data.scene && typeof data.scene === 'object' ? (data.scene as Scene) : null;
+        setState((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          return {
+            ...prev,
+            stagedSceneId: nextStagedSceneId,
+            stagedScene: nextStagedScene
+          };
+        });
+      } else if (data.type === 'scene_change') {
         const event = data as SceneChangeEvent;
         const preset = getSceneTransitionPreset(event.transitionId);
         const canAnimate = preset.id !== 'cut' && !!state?.activeScene && !!event.state.activeScene && state.activeSceneId !== event.state.activeSceneId;
@@ -1330,7 +1362,12 @@ function SceneProgram({ programId }: { programId: string }) {
         }
       : null;
 
-  const renderScene = (scene: Scene | null) => {
+  const renderScene = (
+    scene: Scene | null,
+    options?: {
+      forceStreamMuted?: boolean;
+    }
+  ) => {
     if (!scene) {
       return <div className='w-full h-full flex items-center justify-center text-white text-4xl'>No Active Scene</div>;
     }
@@ -1470,7 +1507,7 @@ function SceneProgram({ programId }: { programId: string }) {
                   key={componentType}
                   sourceUrl={props.sourceUrl}
                   posterUrl={props.posterUrl}
-                  channelGain={resolvedStreamMasterVolume}
+                  channelGain={options?.forceStreamMuted ? 0 : resolvedStreamMasterVolume}
                   showControls={props.showControls}
                   loop={props.loop}
                   autoPlay={props.autoPlay}
@@ -1632,9 +1669,27 @@ function SceneProgram({ programId }: { programId: string }) {
     );
   };
 
+  const activeScene = state?.activeScene ?? null;
+  const stagedScene = state?.stagedScene ?? null;
+  const stagedSceneHasVideoStream = sceneIncludesVideoStream(stagedScene);
+  const stagedSceneIsOnAir =
+    stagedSceneHasVideoStream &&
+    stagedScene !== null &&
+    activeScene !== null &&
+    stagedScene.id === activeScene.id;
+
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
-      {renderScene(state?.activeScene ?? null)}
+      {stagedSceneHasVideoStream && stagedScene ? (
+        <div
+          className='pointer-events-none absolute inset-0 opacity-0'
+          aria-hidden='true'
+          style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}
+        >
+          {renderScene(stagedScene, { forceStreamMuted: !stagedSceneIsOnAir })}
+        </div>
+      ) : null}
+      {!stagedSceneIsOnAir ? renderScene(activeScene, { forceStreamMuted: false }) : null}
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
     </div>
   );
