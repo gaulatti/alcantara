@@ -13,6 +13,7 @@
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
     "fast-average-color": "^9.5.0",
+    "hls.js": "^1.6.15",
     "isbot": "^5.1.31",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",

@@ -59,13 +59,17 @@ model BroadcastSettings {
   timeOverrideEnabled   Boolean  @default(false)
   timeOverrideStartTime String?
   timeOverrideStartedAt DateTime?
+  mixerChannels         Json?
   mainMasterVolume      Float    @default(1)
   songMasterVolume      Float    @default(1)
   instantMasterVolume   Float    @default(1)
+  streamMasterVolume    Float    @default(1)
   songMuted             Boolean  @default(false)
   instantMuted          Boolean  @default(false)
+  streamMuted           Boolean  @default(false)
   songSolo              Boolean  @default(false)
   instantSolo           Boolean  @default(false)
+  streamSolo            Boolean  @default(false)
   updatedAt             DateTime @updatedAt
 }
 

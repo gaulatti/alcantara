@@ -107,10 +107,22 @@ interface BroadcastSettings {
   mainMasterVolume: number;
   songMasterVolume: number;
   instantMasterVolume: number;
+  streamMasterVolume: number;
   songMuted: boolean;
   instantMuted: boolean;
+  streamMuted: boolean;
   songSolo: boolean;
   instantSolo: boolean;
+  streamSolo: boolean;
+  mixerChannels: MixerChannelSetting[];
+}
+
+interface MixerChannelSetting {
+  id: string;
+  name: string;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
 }
 
 interface ProgramAudioMeterLevels {
@@ -183,6 +195,7 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'header':
     case 'qr-code':
     case 'slideshow':
+    case 'video-stream':
     case 'broadcast-layout':
     case 'clock-widget':
     case 'reloj-clock':
@@ -235,6 +248,143 @@ function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolea
     return value;
   }
   return fallback;
+}
+
+function defaultMixerChannelsFromScalars(source: {
+  songMasterVolume: number;
+  instantMasterVolume: number;
+  streamMasterVolume: number;
+  songMuted: boolean;
+  instantMuted: boolean;
+  streamMuted: boolean;
+  songSolo: boolean;
+  instantSolo: boolean;
+  streamSolo: boolean;
+}): MixerChannelSetting[] {
+  return [
+    {
+      id: 'song',
+      name: 'Song',
+      volume: source.songMasterVolume,
+      muted: source.songMuted,
+      solo: source.songSolo
+    },
+    {
+      id: 'stream',
+      name: 'Stream',
+      volume: source.streamMasterVolume,
+      muted: source.streamMuted,
+      solo: source.streamSolo
+    },
+    {
+      id: 'instants',
+      name: 'Instants',
+      volume: source.instantMasterVolume,
+      muted: source.instantMuted,
+      solo: source.instantSolo
+    }
+  ];
+}
+
+function normalizeMixerChannelsPayload(
+  value: unknown,
+  fallbackChannels: MixerChannelSetting[]
+): MixerChannelSetting[] {
+  if (!Array.isArray(value)) {
+    return fallbackChannels;
+  }
+
+  const byId = new Map<string, MixerChannelSetting>();
+  for (const fallbackChannel of fallbackChannels) {
+    byId.set(fallbackChannel.id, { ...fallbackChannel });
+  }
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    if (!id) {
+      continue;
+    }
+    const previous = byId.get(id);
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : previous?.name ?? id;
+    byId.set(id, {
+      id,
+      name,
+      volume: normalizeMasterVolume(record.volume, previous?.volume ?? 1),
+      muted: normalizeMixerToggle(record.muted, previous?.muted ?? false),
+      solo: normalizeMixerToggle(record.solo, previous?.solo ?? false)
+    });
+  }
+
+  return [...byId.values()];
+}
+
+function getMixerChannelById(channels: MixerChannelSetting[], channelId: string): MixerChannelSetting {
+  const matched = channels.find((channel) => channel.id === channelId);
+  if (matched) {
+    return matched;
+  }
+  return {
+    id: channelId,
+    name: channelId,
+    volume: 1,
+    muted: false,
+    solo: false
+  };
+}
+
+function normalizeBroadcastSettingsPayload(value: unknown): BroadcastSettings {
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const scalarFallback = {
+    songMasterVolume: normalizeMasterVolume(record.songMasterVolume, 1),
+    instantMasterVolume: normalizeMasterVolume(record.instantMasterVolume, 1),
+    streamMasterVolume: normalizeMasterVolume(record.streamMasterVolume, 1),
+    songMuted: normalizeMixerToggle(record.songMuted, false),
+    instantMuted: normalizeMixerToggle(record.instantMuted, false),
+    streamMuted: normalizeMixerToggle(record.streamMuted, false),
+    songSolo: normalizeMixerToggle(record.songSolo, false),
+    instantSolo: normalizeMixerToggle(record.instantSolo, false),
+    streamSolo: normalizeMixerToggle(record.streamSolo, false)
+  };
+  const mixerChannels = normalizeMixerChannelsPayload(
+    record.mixerChannels,
+    defaultMixerChannelsFromScalars(scalarFallback)
+  );
+  const songChannel = getMixerChannelById(mixerChannels, 'song');
+  const streamChannel = getMixerChannelById(mixerChannels, 'stream');
+  const instantsChannel = getMixerChannelById(mixerChannels, 'instants');
+
+  return {
+    mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
+    songMasterVolume: songChannel.volume,
+    instantMasterVolume: instantsChannel.volume,
+    streamMasterVolume: streamChannel.volume,
+    songMuted: songChannel.muted,
+    instantMuted: instantsChannel.muted,
+    streamMuted: streamChannel.muted,
+    songSolo: songChannel.solo,
+    instantSolo: instantsChannel.solo,
+    streamSolo: streamChannel.solo,
+    mixerChannels
+  };
+}
+
+function withNormalizedMixerChannels(value: BroadcastSettings): BroadcastSettings {
+  const fallbackChannels = defaultMixerChannelsFromScalars(value);
+  const existingChannels = normalizeMixerChannelsPayload(value.mixerChannels, fallbackChannels);
+  const byId = new Map(existingChannels.map((channel) => [channel.id, channel] as const));
+  const normalizedDefaults = defaultMixerChannelsFromScalars(value);
+  for (const normalizedChannel of normalizedDefaults) {
+    byId.set(normalizedChannel.id, normalizedChannel);
+  }
+  const mixerChannels = [...byId.values()];
+  return {
+    ...value,
+    mixerChannels
+  };
 }
 
 function normalizeAudioMeterLevel(value: unknown): number {
@@ -673,19 +823,47 @@ export default function Control() {
     mainMasterVolume: 1,
     songMasterVolume: 1,
     instantMasterVolume: 1,
+    streamMasterVolume: 1,
     songMuted: false,
     instantMuted: false,
+    streamMuted: false,
     songSolo: false,
-    instantSolo: false
+    instantSolo: false,
+    streamSolo: false,
+    mixerChannels: defaultMixerChannelsFromScalars({
+      songMasterVolume: 1,
+      instantMasterVolume: 1,
+      streamMasterVolume: 1,
+      songMuted: false,
+      instantMuted: false,
+      streamMuted: false,
+      songSolo: false,
+      instantSolo: false,
+      streamSolo: false
+    })
   });
   const mixerLevelsRef = useRef<BroadcastSettings>({
     mainMasterVolume: 1,
     songMasterVolume: 1,
     instantMasterVolume: 1,
+    streamMasterVolume: 1,
     songMuted: false,
     instantMuted: false,
+    streamMuted: false,
     songSolo: false,
-    instantSolo: false
+    instantSolo: false,
+    streamSolo: false,
+    mixerChannels: defaultMixerChannelsFromScalars({
+      songMasterVolume: 1,
+      instantMasterVolume: 1,
+      streamMasterVolume: 1,
+      songMuted: false,
+      instantMuted: false,
+      streamMuted: false,
+      songSolo: false,
+      instantSolo: false,
+      streamSolo: false
+    })
   });
   const [isLoadingMixerLevels, setIsLoadingMixerLevels] = useState(false);
   const [isSavingMixerLevels, setIsSavingMixerLevels] = useState(false);
@@ -838,16 +1016,8 @@ export default function Control() {
         }
 
         if (payload.type === 'broadcast_settings_snapshot' || payload.type === 'broadcast_settings_update') {
-          const source = payload.type === 'broadcast_settings_snapshot' ? payload.settings : payload.settings;
-          const nextMixerLevels = {
-            mainMasterVolume: normalizeMasterVolume(source?.mainMasterVolume, 1),
-            songMasterVolume: normalizeMasterVolume(source?.songMasterVolume, 1),
-            instantMasterVolume: normalizeMasterVolume(source?.instantMasterVolume, 1),
-            songMuted: normalizeMixerToggle(source?.songMuted, false),
-            instantMuted: normalizeMixerToggle(source?.instantMuted, false),
-            songSolo: normalizeMixerToggle(source?.songSolo, false),
-            instantSolo: normalizeMixerToggle(source?.instantSolo, false)
-          };
+          const source = payload.settings;
+          const nextMixerLevels = normalizeBroadcastSettingsPayload(source);
           mixerLevelsRef.current = nextMixerLevels;
           setMixerLevels(nextMixerLevels);
           return;
@@ -1044,29 +1214,24 @@ export default function Control() {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const payload = (await res.json()) as Partial<BroadcastSettings> | null;
-      const nextMixerLevels = {
-        mainMasterVolume: normalizeMasterVolume(payload?.mainMasterVolume, 1),
-        songMasterVolume: normalizeMasterVolume(payload?.songMasterVolume, 1),
-        instantMasterVolume: normalizeMasterVolume(payload?.instantMasterVolume, 1),
-        songMuted: normalizeMixerToggle(payload?.songMuted, false),
-        instantMuted: normalizeMixerToggle(payload?.instantMuted, false),
-        songSolo: normalizeMixerToggle(payload?.songSolo, false),
-        instantSolo: normalizeMixerToggle(payload?.instantSolo, false)
-      };
+      const payload = (await res.json()) as unknown;
+      const nextMixerLevels = normalizeBroadcastSettingsPayload(payload);
       mixerLevelsRef.current = nextMixerLevels;
       setMixerLevels(nextMixerLevels);
     } catch (err) {
       console.error('Failed to fetch broadcast mixer settings:', err);
-      const fallbackMixerLevels = {
+      const fallbackMixerLevels = normalizeBroadcastSettingsPayload({
         mainMasterVolume: 1,
         songMasterVolume: 1,
         instantMasterVolume: 1,
+        streamMasterVolume: 1,
         songMuted: false,
         instantMuted: false,
+        streamMuted: false,
         songSolo: false,
-        instantSolo: false
-      };
+        instantSolo: false,
+        streamSolo: false
+      });
       mixerLevelsRef.current = fallbackMixerLevels;
       setMixerLevels(fallbackMixerLevels);
     } finally {
@@ -1082,28 +1247,15 @@ export default function Control() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mainMasterVolume: nextMixerLevels.mainMasterVolume,
-          songMasterVolume: nextMixerLevels.songMasterVolume,
-          instantMasterVolume: nextMixerLevels.instantMasterVolume,
-          songMuted: nextMixerLevels.songMuted,
-          instantMuted: nextMixerLevels.instantMuted,
-          songSolo: nextMixerLevels.songSolo,
-          instantSolo: nextMixerLevels.instantSolo
+          mixerChannels: nextMixerLevels.mixerChannels
         })
       });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const payload = (await res.json()) as Partial<BroadcastSettings> | null;
-      const persistedMixerLevels = {
-        mainMasterVolume: normalizeMasterVolume(payload?.mainMasterVolume, nextMixerLevels.mainMasterVolume),
-        songMasterVolume: normalizeMasterVolume(payload?.songMasterVolume, nextMixerLevels.songMasterVolume),
-        instantMasterVolume: normalizeMasterVolume(payload?.instantMasterVolume, nextMixerLevels.instantMasterVolume),
-        songMuted: normalizeMixerToggle(payload?.songMuted, nextMixerLevels.songMuted),
-        instantMuted: normalizeMixerToggle(payload?.instantMuted, nextMixerLevels.instantMuted),
-        songSolo: normalizeMixerToggle(payload?.songSolo, nextMixerLevels.songSolo),
-        instantSolo: normalizeMixerToggle(payload?.instantSolo, nextMixerLevels.instantSolo)
-      };
+      const payload = (await res.json()) as unknown;
+      const persistedMixerLevels = normalizeBroadcastSettingsPayload(payload);
       mixerLevelsRef.current = persistedMixerLevels;
       setMixerLevels(persistedMixerLevels);
     } catch (err) {
@@ -1125,9 +1277,10 @@ export default function Control() {
   };
 
   const commitMixerLevels = (nextMixerLevels: BroadcastSettings) => {
-    mixerLevelsRef.current = nextMixerLevels;
-    setMixerLevels(nextMixerLevels);
-    queueMixerSave(nextMixerLevels);
+    const normalizedMixerLevels = withNormalizedMixerChannels(nextMixerLevels);
+    mixerLevelsRef.current = normalizedMixerLevels;
+    setMixerLevels(normalizedMixerLevels);
+    queueMixerSave(normalizedMixerLevels);
   };
 
   const setSongMasterVolume = (nextValue: number) => {
@@ -1157,6 +1310,15 @@ export default function Control() {
     commitMixerLevels(nextMixerLevels);
   };
 
+  const setStreamMasterVolume = (nextValue: number) => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    const nextMixerLevels = {
+      ...currentMixerLevels,
+      streamMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.streamMasterVolume)
+    };
+    commitMixerLevels(nextMixerLevels);
+  };
+
   const toggleSongMuted = () => {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
@@ -1173,6 +1335,14 @@ export default function Control() {
     });
   };
 
+  const toggleStreamMuted = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      streamMuted: !currentMixerLevels.streamMuted
+    });
+  };
+
   const toggleSongSolo = () => {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
@@ -1186,6 +1356,14 @@ export default function Control() {
     commitMixerLevels({
       ...currentMixerLevels,
       instantSolo: !currentMixerLevels.instantSolo
+    });
+  };
+
+  const toggleStreamSolo = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      streamSolo: !currentMixerLevels.streamSolo
     });
   };
 
@@ -1736,6 +1914,15 @@ export default function Control() {
           fitMode: 'cover',
           kenBurns: true
         };
+      case 'video-stream':
+        return {
+          sourceUrl: '',
+          posterUrl: '',
+          showControls: false,
+          loop: false,
+          autoPlay: true,
+          objectFit: 'cover'
+        };
       case 'qr-code':
         return { qrCodeUrl: '', placeholder: true, content: 'https://modoradio.cl' };
       case 'broadcast-layout':
@@ -2005,15 +2192,7 @@ export default function Control() {
       }
 
       if (data.type === 'broadcast_settings_update') {
-        const nextMixerLevels = {
-          mainMasterVolume: normalizeMasterVolume(data?.settings?.mainMasterVolume, 1),
-          songMasterVolume: normalizeMasterVolume(data?.settings?.songMasterVolume, 1),
-          instantMasterVolume: normalizeMasterVolume(data?.settings?.instantMasterVolume, 1),
-          songMuted: normalizeMixerToggle(data?.settings?.songMuted, false),
-          instantMuted: normalizeMixerToggle(data?.settings?.instantMuted, false),
-          songSolo: normalizeMixerToggle(data?.settings?.songSolo, false),
-          instantSolo: normalizeMixerToggle(data?.settings?.instantSolo, false)
-        };
+        const nextMixerLevels = normalizeBroadcastSettingsPayload(data?.settings);
         mixerLevelsRef.current = nextMixerLevels;
         setMixerLevels(nextMixerLevels);
         return;
@@ -2106,14 +2285,19 @@ export default function Control() {
       ),
     [programAudioBusSettings.songSequence]
   );
-  const hasSoloChannel = mixerLevels.songSolo || mixerLevels.instantSolo;
+  const hasSoloChannel = mixerLevels.songSolo || mixerLevels.instantSolo || mixerLevels.streamSolo;
+  const streamAudible = (hasSoloChannel ? mixerLevels.streamSolo : true) && !mixerLevels.streamMuted;
   const songAudible = (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
   const instantsAudible = (hasSoloChannel ? mixerLevels.instantSolo : true) && !mixerLevels.instantMuted;
   const mainMixGain = faderToGain(mixerLevels.mainMasterVolume);
   const songChannelGain = songAudible ? faderToGain(mixerLevels.songMasterVolume) : 0;
   const instantsChannelGain = instantsAudible ? faderToGain(mixerLevels.instantMasterVolume) : 0;
+  const streamChannelGain = streamAudible ? faderToGain(mixerLevels.streamMasterVolume) : 0;
   const songOutputGain = songChannelGain * mainMixGain;
   const instantsOutputGain = instantsChannelGain * mainMixGain;
+  const streamOutputGain = streamChannelGain * mainMixGain;
+  const activeSceneComponentTypes = (programState?.activeScene?.layout.componentType || '').split(',').filter(Boolean);
+  const shouldShowStreamStrip = activeSceneComponentTypes.includes('video-stream');
   const songMeterFill = meterLevelToFill(programAudioMeterLevels.song.vu);
   const songPeakFill = meterLevelToFill(programAudioMeterLevels.song.peak);
   const songPeakHoldFill = meterLevelToFill(programAudioMeterLevels.song.peakHold);
@@ -2339,6 +2523,90 @@ export default function Control() {
                     </div>
                   </div>
 
+                  {shouldShowStreamStrip ? (
+                    <>
+                      {/* --- STREAM STRIP --- */}
+                      <div className='flex w-36 flex-col items-center rounded-lg border border-cyan-900/50 bg-zinc-800/80 pb-6 shadow-xl'>
+                        <div className='w-full rounded-t-lg border-b border-cyan-900/60 bg-cyan-950/20 py-2.5 text-center shadow-sm'>
+                          <span className='text-[11px] font-bold tracking-widest text-cyan-300'>STREAM</span>
+                        </div>
+
+                        <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                          <button
+                            type='button'
+                            onClick={toggleStreamMuted}
+                            className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                              mixerLevels.streamMuted
+                                ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                                : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                            }`}
+                          >
+                            Mute
+                          </button>
+                          <button
+                            type='button'
+                            onClick={toggleStreamSolo}
+                            className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                              mixerLevels.streamSolo
+                                ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                                : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                            }`}
+                          >
+                            Solo
+                          </button>
+                        </div>
+
+                        <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                          <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                            <span className='translate-y-[-50%]'>10</span>
+                            <span className='translate-y-[-50%]'>5</span>
+                            <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                            <span className='translate-y-[-50%]'>-5</span>
+                            <span className='translate-y-[-50%]'>-10</span>
+                            <span className='translate-y-[-50%]'>-20</span>
+                            <span className='translate-y-[-50%]'>-40</span>
+                            <span className='translate-y-[-50%]'>-∞</span>
+                          </div>
+
+                          <div className='ml-4 flex gap-3 h-full'>
+                            <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]' />
+
+                            <div className='relative h-full w-10 flex flex-col justify-center'>
+                              <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                              <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                                <input
+                                  type='range'
+                                  min={0}
+                                  max={1}
+                                  step={0.01}
+                                  value={mixerLevels.streamMasterVolume}
+                                  onChange={(event) => setStreamMasterVolume(Number(event.target.value))}
+                                  onMouseEnter={() => {
+                                    document.body.style.overflow = 'hidden';
+                                  }}
+                                  onMouseLeave={() => {
+                                    document.body.style.overflow = '';
+                                  }}
+                                  onWheel={(e) => {
+                                    const step = 0.02;
+                                    const delta = e.deltaY > 0 ? step : -step;
+                                    setStreamMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.streamMasterVolume + delta)).toFixed(2)));
+                                  }}
+                                  className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-cyan-900/30 bg-[#07161a] text-center shadow-inner'>
+                          <span className='font-mono text-sm font-bold text-cyan-300'>{formatVolumeDb(mixerLevels.streamMasterVolume)}</span>
+                          <span className='font-mono text-[9px] tracking-wider text-cyan-700'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
                   {/* --- INSTANTS STRIP --- */}
                   <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl'>
                     <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
@@ -2531,8 +2799,8 @@ export default function Control() {
             </div>
 
             <p className='text-xs text-text-secondary dark:text-text-secondary'>
-              Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Instants. Instant channel still
-              controls all instants together.
+              Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Stream/Instants. Instant channel
+              still controls all instants together.
             </p>
           </Card>
 
@@ -2786,6 +3054,74 @@ function ComponentPropsFields({
       );
     case 'slideshow':
       return <SlideshowEditorFields componentType={componentType} props={props} updateProp={updateProp} />;
+    case 'video-stream':
+      return (
+        <div className='space-y-3'>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Source URL</label>
+            <input
+              type='text'
+              value={props.sourceUrl || ''}
+              onChange={(e) => updateProp(componentType, 'sourceUrl', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='https://example.com/stream.m3u8'
+            />
+          </div>
+          <div>
+            <label className='block text-xs text-gray-600 mb-1'>Poster URL (optional)</label>
+            <input
+              type='text'
+              value={props.posterUrl || ''}
+              onChange={(e) => updateProp(componentType, 'posterUrl', e.target.value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              placeholder='https://example.com/poster.jpg'
+            />
+          </div>
+          <div className='grid grid-cols-2 gap-3'>
+            <label className='text-sm text-gray-700'>
+              <span className='block text-xs text-gray-500 mb-1'>Fit Mode</span>
+              <select
+                value={props.objectFit || 'cover'}
+                onChange={(e) => updateProp(componentType, 'objectFit', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              >
+                <option value='cover'>Cover</option>
+                <option value='contain'>Contain</option>
+              </select>
+            </label>
+          </div>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.autoPlay, true)}
+                onChange={(e) => updateProp(componentType, 'autoPlay', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Autoplay
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.loop, false)}
+                onChange={(e) => updateProp(componentType, 'loop', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Loop
+            </label>
+            <label className='flex items-center gap-2 text-sm text-gray-700'>
+              <input
+                type='checkbox'
+                checked={toBoolean(props.showControls, false)}
+                onChange={(e) => updateProp(componentType, 'showControls', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Native Controls
+            </label>
+          </div>
+          <p className='text-xs text-gray-500'>Audio is controlled by mixer Song + Main faders (including mute/solo behavior).</p>
+        </div>
+      );
     case 'qr-code':
       return (
         <div>

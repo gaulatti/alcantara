@@ -20,6 +20,11 @@ export class LayoutsService {
       description: 'Full HD animated slideshow of images',
     },
     {
+      type: 'video-stream',
+      name: 'Video Stream',
+      description: 'Full-screen video or live stream playback layer',
+    },
+    {
       type: 'corner-bug',
       name: 'Corner Bug',
       description: 'Small badge in the top-right corner',

@@ -18,7 +18,8 @@ import {
   ModoItalianoClock,
   ModoItalianoChyron,
   ModoItalianoDisclaimer,
-  Slideshow
+  Slideshow,
+  VideoStream
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
@@ -75,11 +76,23 @@ interface BroadcastSettings {
   mainMasterVolume: number;
   songMasterVolume: number;
   instantMasterVolume: number;
+  streamMasterVolume: number;
   songMuted: boolean;
   instantMuted: boolean;
+  streamMuted: boolean;
   songSolo: boolean;
   instantSolo: boolean;
+  streamSolo: boolean;
+  mixerChannels: ProgramMixerChannel[];
   updatedAt: string;
+}
+
+interface ProgramMixerChannel {
+  id: string;
+  name: string;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
 }
 
 interface SceneChangeEvent {
@@ -248,6 +261,63 @@ function normalizeMasterVolume(value: unknown, fallback: number = 1): number {
   return fallback;
 }
 
+function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeProgramMixerChannels(
+  value: unknown,
+  fallback: ProgramMixerChannel[]
+): ProgramMixerChannel[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const byId = new Map<string, ProgramMixerChannel>();
+  for (const fallbackChannel of fallback) {
+    byId.set(fallbackChannel.id, { ...fallbackChannel });
+  }
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    if (!id) {
+      continue;
+    }
+    const previous = byId.get(id);
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : previous?.name ?? id;
+    byId.set(id, {
+      id,
+      name,
+      volume: normalizeMasterVolume(record.volume, previous?.volume ?? 1),
+      muted: normalizeMixerToggle(record.muted, previous?.muted ?? false),
+      solo: normalizeMixerToggle(record.solo, previous?.solo ?? false)
+    });
+  }
+
+  return [...byId.values()];
+}
+
+function getProgramMixerChannel(channels: ProgramMixerChannel[], id: string): ProgramMixerChannel {
+  const matched = channels.find((channel) => channel.id === id);
+  if (matched) {
+    return matched;
+  }
+  return {
+    id,
+    name: id,
+    volume: 1,
+    muted: false,
+    solo: false
+  };
+}
+
 function normalizeBroadcastSettings(value: unknown): BroadcastSettings | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -255,18 +325,49 @@ function normalizeBroadcastSettings(value: unknown): BroadcastSettings | null {
 
   const record = value as Record<string, unknown>;
   const id = typeof record.id === 'number' && Number.isFinite(record.id) ? record.id : 1;
+  const fallbackChannels: ProgramMixerChannel[] = [
+    {
+      id: 'song',
+      name: 'Song',
+      volume: normalizeMasterVolume(record.songMasterVolume, 1),
+      muted: normalizeMixerToggle(record.songMuted, false),
+      solo: normalizeMixerToggle(record.songSolo, false)
+    },
+    {
+      id: 'stream',
+      name: 'Stream',
+      volume: normalizeMasterVolume(record.streamMasterVolume, 1),
+      muted: normalizeMixerToggle(record.streamMuted, false),
+      solo: normalizeMixerToggle(record.streamSolo, false)
+    },
+    {
+      id: 'instants',
+      name: 'Instants',
+      volume: normalizeMasterVolume(record.instantMasterVolume, 1),
+      muted: normalizeMixerToggle(record.instantMuted, false),
+      solo: normalizeMixerToggle(record.instantSolo, false)
+    }
+  ];
+  const mixerChannels = normalizeProgramMixerChannels(record.mixerChannels, fallbackChannels);
+  const songChannel = getProgramMixerChannel(mixerChannels, 'song');
+  const streamChannel = getProgramMixerChannel(mixerChannels, 'stream');
+  const instantsChannel = getProgramMixerChannel(mixerChannels, 'instants');
   return {
     id,
     timeOverrideEnabled: Boolean(record.timeOverrideEnabled),
     timeOverrideStartTime: typeof record.timeOverrideStartTime === 'string' ? record.timeOverrideStartTime : null,
     timeOverrideStartedAt: typeof record.timeOverrideStartedAt === 'string' ? record.timeOverrideStartedAt : null,
     mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
-    songMasterVolume: normalizeMasterVolume(record.songMasterVolume, 1),
-    instantMasterVolume: normalizeMasterVolume(record.instantMasterVolume, 1),
-    songMuted: Boolean(record.songMuted),
-    instantMuted: Boolean(record.instantMuted),
-    songSolo: Boolean(record.songSolo),
-    instantSolo: Boolean(record.instantSolo),
+    songMasterVolume: songChannel.volume,
+    instantMasterVolume: instantsChannel.volume,
+    streamMasterVolume: streamChannel.volume,
+    songMuted: songChannel.muted,
+    instantMuted: instantsChannel.muted,
+    streamMuted: streamChannel.muted,
+    songSolo: songChannel.solo,
+    instantSolo: instantsChannel.solo,
+    streamSolo: streamChannel.solo,
+    mixerChannels,
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
   };
 }
@@ -318,13 +419,17 @@ function SceneProgram({ programId }: { programId: string }) {
   const mainMasterFader = normalizeMasterVolume(broadcastSettings?.mainMasterVolume, 1);
   const songMasterVolume = normalizeMasterVolume(broadcastSettings?.songMasterVolume, 1);
   const instantMasterVolume = normalizeMasterVolume(broadcastSettings?.instantMasterVolume, 1);
+  const streamMasterVolume = normalizeMasterVolume(broadcastSettings?.streamMasterVolume, 1);
   const songMuted = Boolean(broadcastSettings?.songMuted);
   const instantMuted = Boolean(broadcastSettings?.instantMuted);
+  const streamMuted = Boolean(broadcastSettings?.streamMuted);
   const songSolo = Boolean(broadcastSettings?.songSolo);
   const instantSolo = Boolean(broadcastSettings?.instantSolo);
-  const hasSoloChannel = songSolo || instantSolo;
+  const streamSolo = Boolean(broadcastSettings?.streamSolo);
+  const hasSoloChannel = songSolo || instantSolo || streamSolo;
   const effectiveSongMasterFader = hasSoloChannel ? (songSolo ? songMasterVolume : 0) : songMasterVolume;
   const effectiveInstantMasterFader = hasSoloChannel ? (instantSolo ? instantMasterVolume : 0) : instantMasterVolume;
+  const effectiveStreamMasterFader = hasSoloChannel ? (streamSolo ? streamMasterVolume : 0) : streamMasterVolume;
   const normalizedSongSequence = useMemo(
     () => normalizeProgramSongSequence(audioBusSettings?.songSequence),
     [audioBusSettings?.songSequence]
@@ -342,9 +447,11 @@ function SceneProgram({ programId }: { programId: string }) {
   );
   const resolvedSongChannelGain = songMuted ? 0 : faderToGain(effectiveSongMasterFader);
   const resolvedInstantChannelGain = instantMuted ? 0 : faderToGain(effectiveInstantMasterFader);
+  const resolvedStreamChannelGain = streamMuted ? 0 : faderToGain(effectiveStreamMasterFader);
   const mainMasterGain = faderToGain(mainMasterFader);
   const resolvedSongMasterVolume = normalizeMasterVolume(resolvedSongChannelGain * mainMasterGain, 0);
   const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain, 0);
+  const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain, 0);
 
   const clearTransitionTimers = () => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -1355,6 +1462,19 @@ function SceneProgram({ programId }: { programId: string }) {
                   shuffle={props.shuffle}
                   fitMode={props.fitMode}
                   kenBurns={props.kenBurns}
+                />
+              );
+            case 'video-stream':
+              return (
+                <VideoStream
+                  key={componentType}
+                  sourceUrl={props.sourceUrl}
+                  posterUrl={props.posterUrl}
+                  channelGain={resolvedStreamMasterVolume}
+                  showControls={props.showControls}
+                  loop={props.loop}
+                  autoPlay={props.autoPlay}
+                  objectFit={props.objectFit}
                 />
               );
             case 'reloj-clock':

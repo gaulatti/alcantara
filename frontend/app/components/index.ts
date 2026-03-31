@@ -14,3 +14,4 @@ export { ModoItalianoClock } from './ModoItalianoClock';
 export { ModoItalianoChyron } from './ModoItalianoChyron';
 export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
 export { Slideshow } from './Slideshow';
+export { VideoStream } from './VideoStream';

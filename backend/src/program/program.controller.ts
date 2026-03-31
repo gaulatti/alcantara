@@ -51,13 +51,17 @@ export class ProgramController {
     data: {
       enabled?: boolean;
       startTime?: string | null;
+      mixerChannels?: unknown;
       mainMasterVolume?: number;
       songMasterVolume?: number;
       instantMasterVolume?: number;
+      streamMasterVolume?: number;
       songMuted?: boolean;
       instantMuted?: boolean;
+      streamMuted?: boolean;
       songSolo?: boolean;
       instantSolo?: boolean;
+      streamSolo?: boolean;
     },
   ) {
     return this.programService.updateBroadcastSettings(data);

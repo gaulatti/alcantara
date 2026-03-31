@@ -21,11 +21,20 @@ export interface ProgramAudioMeterLevels {
   updatedAt: string;
 }
 
+interface BroadcastMixerChannel {
+  id: string;
+  name: string;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
+}
+
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
   private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
+  private broadcastSettingsColumnsEnsured = false;
   private eventSubjects = new Map<string, Subject<any>>();
   private programAudioMeterByProgramId = new Map<string, ProgramAudioMeterLevels>();
   private programSongPlaybackByProgramId = new Map<
@@ -50,26 +59,171 @@ export class ProgramService {
 
   constructor(private prisma: PrismaService) {}
 
+  private createDefaultBroadcastMixerChannels(): BroadcastMixerChannel[] {
+    return [
+      { id: 'song', name: 'Song', volume: 1, muted: false, solo: false },
+      { id: 'stream', name: 'Stream', volume: 1, muted: false, solo: false },
+      { id: 'instants', name: 'Instants', volume: 1, muted: false, solo: false },
+    ];
+  }
+
+  private coerceMasterVolume(value: unknown, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
+  private coerceMixerToggle(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    return fallback;
+  }
+
+  private normalizeBroadcastMixerChannels(
+    value: unknown,
+    fallback: BroadcastMixerChannel[],
+  ): BroadcastMixerChannel[] {
+    if (!Array.isArray(value)) {
+      return fallback;
+    }
+
+    const byId = new Map<string, BroadcastMixerChannel>();
+    for (const fallbackChannel of fallback) {
+      byId.set(fallbackChannel.id, { ...fallbackChannel });
+    }
+
+    for (const item of value) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        continue;
+      }
+      const record = item as Record<string, unknown>;
+      const id = typeof record.id === 'string' ? record.id.trim() : '';
+      if (!id) {
+        continue;
+      }
+      const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : byId.get(id)?.name ?? id;
+      const volume = this.coerceMasterVolume(record.volume, byId.get(id)?.volume ?? 1);
+      const muted = this.coerceMixerToggle(record.muted, byId.get(id)?.muted ?? false);
+      const solo = this.coerceMixerToggle(record.solo, byId.get(id)?.solo ?? false);
+      byId.set(id, { id, name, volume, muted, solo });
+    }
+
+    return [...byId.values()];
+  }
+
+  private getBroadcastMixerChannel(
+    channels: BroadcastMixerChannel[],
+    id: string,
+  ): BroadcastMixerChannel {
+    const matched = channels.find((channel) => channel.id === id);
+    if (matched) {
+      return matched;
+    }
+    return {
+      id,
+      name: id,
+      volume: 1,
+      muted: false,
+      solo: false,
+    };
+  }
+
+  private withResolvedBroadcastMixerChannels<T extends Record<string, any>>(
+    settings: T,
+  ): T & { mixerChannels: BroadcastMixerChannel[] } {
+    const defaultChannels = this.createDefaultBroadcastMixerChannels();
+    const legacyChannels: BroadcastMixerChannel[] = [
+      {
+        id: 'song',
+        name: 'Song',
+        volume: this.coerceMasterVolume(settings.songMasterVolume, 1),
+        muted: this.coerceMixerToggle(settings.songMuted, false),
+        solo: this.coerceMixerToggle(settings.songSolo, false),
+      },
+      {
+        id: 'stream',
+        name: 'Stream',
+        volume: this.coerceMasterVolume(settings.streamMasterVolume, 1),
+        muted: this.coerceMixerToggle(settings.streamMuted, false),
+        solo: this.coerceMixerToggle(settings.streamSolo, false),
+      },
+      {
+        id: 'instants',
+        name: 'Instants',
+        volume: this.coerceMasterVolume(settings.instantMasterVolume, 1),
+        muted: this.coerceMixerToggle(settings.instantMuted, false),
+        solo: this.coerceMixerToggle(settings.instantSolo, false),
+      },
+    ];
+
+    const normalizedChannels = this.normalizeBroadcastMixerChannels(
+      settings.mixerChannels,
+      legacyChannels.length ? legacyChannels : defaultChannels,
+    );
+    const song = this.getBroadcastMixerChannel(normalizedChannels, 'song');
+    const stream = this.getBroadcastMixerChannel(normalizedChannels, 'stream');
+    const instants = this.getBroadcastMixerChannel(normalizedChannels, 'instants');
+
+    return {
+      ...settings,
+      mixerChannels: normalizedChannels,
+      songMasterVolume: song.volume,
+      streamMasterVolume: stream.volume,
+      instantMasterVolume: instants.volume,
+      songMuted: song.muted,
+      streamMuted: stream.muted,
+      instantMuted: instants.muted,
+      songSolo: song.solo,
+      streamSolo: stream.solo,
+      instantSolo: instants.solo,
+    };
+  }
+
+  private async ensureBroadcastSettingsColumns() {
+    if (this.broadcastSettingsColumnsEnsured) {
+      return;
+    }
+
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "BroadcastSettings"
+      ADD COLUMN IF NOT EXISTS "mixerChannels" JSONB,
+      ADD COLUMN IF NOT EXISTS "streamMasterVolume" DOUBLE PRECISION NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS "streamMuted" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "streamSolo" BOOLEAN NOT NULL DEFAULT false;
+    `);
+
+    this.broadcastSettingsColumnsEnsured = true;
+  }
+
   private async ensureBroadcastSettings() {
+    await this.ensureBroadcastSettingsColumns();
+
     return this.prisma.broadcastSettings.upsert({
       where: { id: ProgramService.BROADCAST_SETTINGS_ID },
       update: {},
       create: {
         id: ProgramService.BROADCAST_SETTINGS_ID,
         timeOverrideEnabled: false,
+        mixerChannels: this.createDefaultBroadcastMixerChannels() as any,
         mainMasterVolume: 1,
         songMasterVolume: 1,
         instantMasterVolume: 1,
+        streamMasterVolume: 1,
         songMuted: false,
         instantMuted: false,
+        streamMuted: false,
         songSolo: false,
         instantSolo: false,
+        streamSolo: false,
       },
     });
   }
 
   async getBroadcastSettings() {
-    return this.ensureBroadcastSettings();
+    const settings = await this.ensureBroadcastSettings();
+    return this.withResolvedBroadcastMixerChannels(settings as any);
   }
 
   private normalizeOverrideTime(startTime: string): string {
@@ -83,7 +237,11 @@ export class ProgramService {
 
   private normalizeMasterVolume(
     value: unknown,
-    fieldName: 'mainMasterVolume' | 'songMasterVolume' | 'instantMasterVolume',
+    fieldName:
+      | 'mainMasterVolume'
+      | 'songMasterVolume'
+      | 'instantMasterVolume'
+      | 'streamMasterVolume',
   ): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new BadRequestException(`${fieldName} must be a finite number`);
@@ -93,7 +251,13 @@ export class ProgramService {
 
   private normalizeMixerToggle(
     value: unknown,
-    fieldName: 'songMuted' | 'instantMuted' | 'songSolo' | 'instantSolo',
+    fieldName:
+      | 'songMuted'
+      | 'instantMuted'
+      | 'streamMuted'
+      | 'songSolo'
+      | 'instantSolo'
+      | 'streamSolo',
   ): boolean {
     if (typeof value !== 'boolean') {
       throw new BadRequestException(`${fieldName} must be a boolean`);
@@ -104,19 +268,28 @@ export class ProgramService {
   async updateBroadcastSettings(data: {
     enabled?: boolean;
     startTime?: string | null;
+    mixerChannels?: unknown;
     mainMasterVolume?: number;
     songMasterVolume?: number;
     instantMasterVolume?: number;
+    streamMasterVolume?: number;
     songMuted?: boolean;
     instantMuted?: boolean;
+    streamMuted?: boolean;
     songSolo?: boolean;
     instantSolo?: boolean;
+    streamSolo?: boolean;
   }) {
-    const current = await this.ensureBroadcastSettings();
+    const currentRaw = await this.ensureBroadcastSettings();
+    const current = this.withResolvedBroadcastMixerChannels(currentRaw as any);
     const hasEnabledUpdate = typeof data.enabled === 'boolean';
     const hasStartTimeUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'startTime',
+    );
+    const hasMixerChannelsUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'mixerChannels',
     );
     const hasSongVolumeUpdate = Object.prototype.hasOwnProperty.call(
       data,
@@ -130,6 +303,10 @@ export class ProgramService {
       data,
       'instantMasterVolume',
     );
+    const hasStreamVolumeUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'streamMasterVolume',
+    );
     const hasSongMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'songMuted',
@@ -137,6 +314,10 @@ export class ProgramService {
     const hasInstantMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'instantMuted',
+    );
+    const hasStreamMutedUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'streamMuted',
     );
     const hasSongSoloUpdate = Object.prototype.hasOwnProperty.call(
       data,
@@ -146,17 +327,25 @@ export class ProgramService {
       data,
       'instantSolo',
     );
+    const hasStreamSoloUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'streamSolo',
+    );
 
     if (
       !hasEnabledUpdate &&
       !hasStartTimeUpdate &&
+      !hasMixerChannelsUpdate &&
       !hasMainVolumeUpdate &&
       !hasSongVolumeUpdate &&
       !hasInstantVolumeUpdate &&
+      !hasStreamVolumeUpdate &&
       !hasSongMutedUpdate &&
       !hasInstantMutedUpdate &&
+      !hasStreamMutedUpdate &&
       !hasSongSoloUpdate &&
-      !hasInstantSoloUpdate
+      !hasInstantSoloUpdate &&
+      !hasStreamSoloUpdate
     ) {
       return current;
     }
@@ -199,27 +388,90 @@ export class ProgramService {
     const mainMasterVolume = hasMainVolumeUpdate
       ? this.normalizeMasterVolume(data.mainMasterVolume, 'mainMasterVolume')
       : current.mainMasterVolume;
-    const songMasterVolume = hasSongVolumeUpdate
-      ? this.normalizeMasterVolume(data.songMasterVolume, 'songMasterVolume')
-      : current.songMasterVolume;
-    const instantMasterVolume = hasInstantVolumeUpdate
-      ? this.normalizeMasterVolume(
-          data.instantMasterVolume,
-          'instantMasterVolume',
-        )
-      : current.instantMasterVolume;
-    const songMuted = hasSongMutedUpdate
-      ? this.normalizeMixerToggle(data.songMuted, 'songMuted')
-      : current.songMuted;
-    const instantMuted = hasInstantMutedUpdate
-      ? this.normalizeMixerToggle(data.instantMuted, 'instantMuted')
-      : current.instantMuted;
-    const songSolo = hasSongSoloUpdate
-      ? this.normalizeMixerToggle(data.songSolo, 'songSolo')
-      : current.songSolo;
-    const instantSolo = hasInstantSoloUpdate
-      ? this.normalizeMixerToggle(data.instantSolo, 'instantSolo')
-      : current.instantSolo;
+    let mixerChannels = this.normalizeBroadcastMixerChannels(
+      current.mixerChannels,
+      this.createDefaultBroadcastMixerChannels(),
+    );
+    if (hasMixerChannelsUpdate) {
+      mixerChannels = this.normalizeBroadcastMixerChannels(
+        data.mixerChannels,
+        mixerChannels,
+      );
+    }
+
+    const applyChannelPatch = (
+      channelId: 'song' | 'stream' | 'instants',
+      patch: { volume?: number; muted?: boolean; solo?: boolean },
+    ) => {
+      mixerChannels = mixerChannels.map((channel) => {
+        if (channel.id !== channelId) {
+          return channel;
+        }
+        return {
+          ...channel,
+          ...patch,
+        };
+      });
+    };
+
+    if (hasSongVolumeUpdate) {
+      applyChannelPatch('song', {
+        volume: this.normalizeMasterVolume(data.songMasterVolume, 'songMasterVolume'),
+      });
+    }
+    if (hasInstantVolumeUpdate) {
+      applyChannelPatch('instants', {
+        volume: this.normalizeMasterVolume(data.instantMasterVolume, 'instantMasterVolume'),
+      });
+    }
+    if (hasStreamVolumeUpdate) {
+      applyChannelPatch('stream', {
+        volume: this.normalizeMasterVolume(data.streamMasterVolume, 'streamMasterVolume'),
+      });
+    }
+    if (hasSongMutedUpdate) {
+      applyChannelPatch('song', {
+        muted: this.normalizeMixerToggle(data.songMuted, 'songMuted'),
+      });
+    }
+    if (hasInstantMutedUpdate) {
+      applyChannelPatch('instants', {
+        muted: this.normalizeMixerToggle(data.instantMuted, 'instantMuted'),
+      });
+    }
+    if (hasStreamMutedUpdate) {
+      applyChannelPatch('stream', {
+        muted: this.normalizeMixerToggle(data.streamMuted, 'streamMuted'),
+      });
+    }
+    if (hasSongSoloUpdate) {
+      applyChannelPatch('song', {
+        solo: this.normalizeMixerToggle(data.songSolo, 'songSolo'),
+      });
+    }
+    if (hasInstantSoloUpdate) {
+      applyChannelPatch('instants', {
+        solo: this.normalizeMixerToggle(data.instantSolo, 'instantSolo'),
+      });
+    }
+    if (hasStreamSoloUpdate) {
+      applyChannelPatch('stream', {
+        solo: this.normalizeMixerToggle(data.streamSolo, 'streamSolo'),
+      });
+    }
+
+    const song = this.getBroadcastMixerChannel(mixerChannels, 'song');
+    const stream = this.getBroadcastMixerChannel(mixerChannels, 'stream');
+    const instants = this.getBroadcastMixerChannel(mixerChannels, 'instants');
+    const songMasterVolume = song.volume;
+    const instantMasterVolume = instants.volume;
+    const streamMasterVolume = stream.volume;
+    const songMuted = song.muted;
+    const instantMuted = instants.muted;
+    const streamMuted = stream.muted;
+    const songSolo = song.solo;
+    const instantSolo = instants.solo;
+    const streamSolo = stream.solo;
 
     const settings = await this.prisma.broadcastSettings.upsert({
       where: { id: ProgramService.BROADCAST_SETTINGS_ID },
@@ -227,35 +479,47 @@ export class ProgramService {
         timeOverrideEnabled: enabled,
         timeOverrideStartTime: startTime,
         timeOverrideStartedAt: startedAt,
+        mixerChannels: mixerChannels as any,
         mainMasterVolume,
         songMasterVolume,
         instantMasterVolume,
+        streamMasterVolume,
         songMuted,
         instantMuted,
+        streamMuted,
         songSolo,
         instantSolo,
+        streamSolo,
       },
       create: {
         id: ProgramService.BROADCAST_SETTINGS_ID,
         timeOverrideEnabled: enabled,
         timeOverrideStartTime: startTime,
         timeOverrideStartedAt: startedAt,
+        mixerChannels: mixerChannels as any,
         mainMasterVolume,
         songMasterVolume,
         instantMasterVolume,
+        streamMasterVolume,
         songMuted,
         instantMuted,
+        streamMuted,
         songSolo,
         instantSolo,
+        streamSolo,
       },
     });
 
+    const resolvedSettings = this.withResolvedBroadcastMixerChannels(
+      settings as any,
+    );
+
     this.broadcastGlobalUpdate({
       type: 'broadcast_settings_update',
-      settings,
+      settings: resolvedSettings,
     });
 
-    return settings;
+    return resolvedSettings;
   }
 
   private getEventSubject(programId: string) {
