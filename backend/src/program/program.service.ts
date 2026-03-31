@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  BadGatewayException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,18 +8,44 @@ import { Subject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
 
+export interface ProgramAudioMeterChannel {
+  vu: number;
+  peak: number;
+  peakHold: number;
+}
+
+export interface ProgramAudioMeterLevels {
+  song: ProgramAudioMeterChannel;
+  instants: ProgramAudioMeterChannel;
+  main: ProgramAudioMeterChannel;
+  updatedAt: string;
+}
+
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
+  private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
   private eventSubjects = new Map<string, Subject<any>>();
-  private programAudioBusByProgramId = new Map<
+  private programAudioMeterByProgramId = new Map<string, ProgramAudioMeterLevels>();
+  private programSongPlaybackByProgramId = new Map<
     string,
-    { songSequence: unknown | null }
+    {
+      token: string;
+      audioUrl: string;
+      progress: number;
+      currentTimeMs: number;
+      durationMs: number | null;
+      isPlaying: boolean;
+      updatedAt: string;
+    }
   >();
-  private programAudioMeterByProgramId = new Map<
-    string,
-    { song: number; instants: number; main: number; updatedAt: string }
+  private eventListeners = new Set<
+    (event: {
+      scope: 'program' | 'global';
+      programId: string | null;
+      data: any;
+    }) => void
   >();
 
   constructor(private prisma: PrismaService) {}
@@ -343,15 +370,16 @@ export class ProgramService {
       this.eventSubjects.delete(current);
     }
 
-    const currentAudioBus = this.programAudioBusByProgramId.get(current);
-    if (currentAudioBus) {
-      this.programAudioBusByProgramId.set(next, currentAudioBus);
-      this.programAudioBusByProgramId.delete(current);
-    }
     const currentAudioMeter = this.programAudioMeterByProgramId.get(current);
     if (currentAudioMeter) {
       this.programAudioMeterByProgramId.set(next, currentAudioMeter);
       this.programAudioMeterByProgramId.delete(current);
+    }
+    const currentSongPlayback =
+      this.programSongPlaybackByProgramId.get(current);
+    if (currentSongPlayback) {
+      this.programSongPlaybackByProgramId.set(next, currentSongPlayback);
+      this.programSongPlaybackByProgramId.delete(current);
     }
 
     return this.getProgramStateWithScenes(next);
@@ -377,8 +405,8 @@ export class ProgramService {
       subject.complete();
       this.eventSubjects.delete(normalized);
     }
-    this.programAudioBusByProgramId.delete(normalized);
     this.programAudioMeterByProgramId.delete(normalized);
+    this.programSongPlaybackByProgramId.delete(normalized);
 
     return { deletedProgramId: normalized };
   }
@@ -410,13 +438,17 @@ export class ProgramService {
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
-    await this.getProgramStateRecord(normalizedProgramId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { songSequence: true },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
 
-    return (
-      this.programAudioBusByProgramId.get(normalizedProgramId) ?? {
-        songSequence: null,
-      }
-    );
+    return {
+      songSequence: state.songSequence ?? null,
+    };
   }
 
   async updateProgramAudioBus(
@@ -435,11 +467,17 @@ export class ProgramService {
         ? ((data as { songSequence?: unknown }).songSequence ?? null)
         : null;
 
-    const nextSettings = {
-      songSequence,
-    };
+    const updatedState = await this.prisma.programState.update({
+      where: { programId: normalizedProgramId },
+      data: {
+        songSequence: songSequence as any,
+      },
+      select: { songSequence: true },
+    });
 
-    this.programAudioBusByProgramId.set(normalizedProgramId, nextSettings);
+    const nextSettings = {
+      songSequence: updatedState.songSequence ?? null,
+    };
     this.broadcastUpdate(normalizedProgramId, {
       type: 'audio_bus_update',
       programId: normalizedProgramId,
@@ -458,9 +496,9 @@ export class ProgramService {
 
     return (
       this.programAudioMeterByProgramId.get(normalizedProgramId) ?? {
-        song: 0,
-        instants: 0,
-        main: 0,
+        song: { vu: 0, peak: 0, peakHold: 0 },
+        instants: { vu: 0, peak: 0, peakHold: 0 },
+        main: { vu: 0, peak: 0, peakHold: 0 },
         updatedAt: new Date(0).toISOString(),
       }
     );
@@ -473,12 +511,91 @@ export class ProgramService {
     return Math.max(0, Math.min(1, value));
   }
 
+  private normalizeAudioMeterChannel(
+    value: unknown,
+    fieldName: 'song' | 'instants' | 'main',
+  ): ProgramAudioMeterChannel {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const normalized = Math.max(0, Math.min(1, value));
+      return {
+        vu: normalized,
+        peak: normalized,
+        peakHold: normalized,
+      };
+    }
+
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException(
+        `${fieldName} must be a number or an object with vu/peak/peakHold`,
+      );
+    }
+
+    const record = value as Record<string, unknown>;
+    const vu = this.normalizeAudioMeterLevel(
+      record.vu ?? record.level,
+      `${fieldName}.vu`,
+    );
+    const peak = this.normalizeAudioMeterLevel(
+      record.peak ?? vu,
+      `${fieldName}.peak`,
+    );
+    const peakHold = this.normalizeAudioMeterLevel(
+      record.peakHold ?? peak,
+      `${fieldName}.peakHold`,
+    );
+
+    return {
+      vu,
+      peak: Math.max(peak, vu),
+      peakHold: Math.max(peakHold, peak, vu),
+    };
+  }
+
+  private normalizeSongPlaybackToken(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private normalizeSongPlaybackAudioUrl(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private normalizeSongPlaybackProgress(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException('progress must be a finite number');
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
+  private normalizeSongPlaybackCurrentTimeMs(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException('currentTimeMs must be a finite number');
+    }
+    return Math.max(0, Math.round(value));
+  }
+
+  private normalizeSongPlaybackDurationMs(value: unknown): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new BadRequestException('durationMs must be a positive number or null');
+    }
+    return Math.round(value);
+  }
+
+  private normalizeSongPlaybackPlaying(value: unknown): boolean {
+    if (typeof value !== 'boolean') {
+      throw new BadRequestException('isPlaying must be a boolean');
+    }
+    return value;
+  }
+
   async updateProgramAudioMeter(
     data:
       | {
-          song?: number;
-          instants?: number;
-          main?: number;
+          song?: unknown;
+          instants?: unknown;
+          main?: unknown;
         }
       | null
       | undefined,
@@ -491,9 +608,9 @@ export class ProgramService {
       throw new BadRequestException('audio meter payload must be an object');
     }
 
-    const song = this.normalizeAudioMeterLevel(data.song, 'song');
-    const instants = this.normalizeAudioMeterLevel(data.instants, 'instants');
-    const main = this.normalizeAudioMeterLevel(data.main, 'main');
+    const song = this.normalizeAudioMeterChannel(data.song, 'song');
+    const instants = this.normalizeAudioMeterChannel(data.instants, 'instants');
+    const main = this.normalizeAudioMeterChannel(data.main, 'main');
     const updatedAt = new Date().toISOString();
     const levels = { song, instants, main, updatedAt };
 
@@ -505,6 +622,137 @@ export class ProgramService {
     });
 
     return levels;
+  }
+
+  async getProgramSongPlayback(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    return (
+      this.programSongPlaybackByProgramId.get(normalizedProgramId) ?? {
+        token: '',
+        audioUrl: '',
+        progress: 0,
+        currentTimeMs: 0,
+        durationMs: null,
+        isPlaying: false,
+        updatedAt: new Date(0).toISOString(),
+      }
+    );
+  }
+
+  async updateProgramSongPlayback(
+    data:
+      | {
+          token?: string;
+          audioUrl?: string;
+          progress?: number;
+          currentTimeMs?: number;
+          durationMs?: number | null;
+          isPlaying?: boolean;
+        }
+      | null
+      | undefined,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    if (!data || typeof data !== 'object') {
+      throw new BadRequestException('song playback payload must be an object');
+    }
+
+    const token = this.normalizeSongPlaybackToken(data.token);
+    const audioUrl = this.normalizeSongPlaybackAudioUrl(data.audioUrl);
+    const progress = this.normalizeSongPlaybackProgress(data.progress);
+    let currentTimeMs = this.normalizeSongPlaybackCurrentTimeMs(
+      data.currentTimeMs,
+    );
+    const durationMs = this.normalizeSongPlaybackDurationMs(data.durationMs);
+    const isPlaying = this.normalizeSongPlaybackPlaying(data.isPlaying);
+
+    if (durationMs !== null) {
+      currentTimeMs = Math.min(currentTimeMs, durationMs);
+    }
+
+    const previousPlayback =
+      this.programSongPlaybackByProgramId.get(normalizedProgramId) ?? null;
+    if (
+      previousPlayback &&
+      previousPlayback.token &&
+      token &&
+      previousPlayback.token === token &&
+      previousPlayback.audioUrl === audioUrl &&
+      previousPlayback.isPlaying
+    ) {
+      const backwardDriftMs =
+        previousPlayback.currentTimeMs - currentTimeMs;
+      if (
+        backwardDriftMs > ProgramService.SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS
+      ) {
+        return previousPlayback;
+      }
+    }
+
+    const playback = {
+      token,
+      audioUrl,
+      progress,
+      currentTimeMs,
+      durationMs,
+      isPlaying,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'song_playback_update',
+      programId: normalizedProgramId,
+      playback,
+    });
+
+    return playback;
+  }
+
+  async proxyAudio(url: unknown): Promise<{ buffer: Buffer; contentType: string }> {
+    if (typeof url !== 'string' || !url.trim()) {
+      throw new BadRequestException('url is required');
+    }
+
+    let normalizedUrl: URL;
+    try {
+      normalizedUrl = new URL(url.trim());
+    } catch {
+      throw new BadRequestException('url must be an absolute URL');
+    }
+
+    if (normalizedUrl.protocol !== 'http:' && normalizedUrl.protocol !== 'https:') {
+      throw new BadRequestException('url must use http or https');
+    }
+
+    let response: globalThis.Response;
+    try {
+      response = await fetch(normalizedUrl.toString());
+    } catch {
+      throw new BadGatewayException('failed to fetch remote audio');
+    }
+
+    if (!response.ok) {
+      throw new BadGatewayException(`remote audio returned HTTP ${response.status}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const maxBytes = 100 * 1024 * 1024;
+    if (arrayBuffer.byteLength > maxBytes) {
+      throw new BadRequestException('audio file is too large to proxy');
+    }
+
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      contentType: response.headers.get('content-type') || 'application/octet-stream',
+    };
   }
 
   async addSceneToProgram(
@@ -689,27 +937,62 @@ export class ProgramService {
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
+    const updatedAt = new Date().toISOString();
 
-    // Clear activeItemId from the stored audio bus sequence so it persists across reloads
-    const currentAudioBus =
-      this.programAudioBusByProgramId.get(normalizedProgramId);
+    const currentState = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { songSequence: true },
+    });
+    if (!currentState) {
+      throw new Error('Program not found');
+    }
+
     if (
-      currentAudioBus?.songSequence &&
-      typeof currentAudioBus.songSequence === 'object'
+      currentState.songSequence &&
+      typeof currentState.songSequence === 'object' &&
+      !Array.isArray(currentState.songSequence)
     ) {
       const updatedSequence = {
-        ...(currentAudioBus.songSequence as Record<string, unknown>),
+        ...(currentState.songSequence as Record<string, unknown>),
         activeItemId: null,
       };
-      this.programAudioBusByProgramId.set(normalizedProgramId, {
-        songSequence: updatedSequence,
+      await this.prisma.programState.update({
+        where: { programId: normalizedProgramId },
+        data: {
+          songSequence: updatedSequence as any,
+        },
+      });
+      this.broadcastUpdate(normalizedProgramId, {
+        type: 'audio_bus_update',
+        programId: normalizedProgramId,
+        settings: {
+          songSequence: updatedSequence,
+        },
+        updatedAt,
       });
     }
+
+    const stoppedPlayback = {
+      token: '',
+      audioUrl: '',
+      progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
+      isPlaying: false,
+      updatedAt,
+    };
+    this.programSongPlaybackByProgramId.set(normalizedProgramId, stoppedPlayback);
 
     this.broadcastUpdate(normalizedProgramId, {
       type: 'song_off_air',
       programId: normalizedProgramId,
-      triggeredAt: new Date().toISOString(),
+      triggeredAt: updatedAt,
+    });
+
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'song_playback_update',
+      programId: normalizedProgramId,
+      playback: stoppedPlayback,
     });
 
     return { ok: true, programId: normalizedProgramId };
@@ -915,11 +1198,48 @@ export class ProgramService {
     data: any,
   ) {
     this.getEventSubject(programId).next(data);
+    this.notifyEventListeners({
+      scope: 'program',
+      programId,
+      data,
+    });
   }
 
   private broadcastGlobalUpdate(data: any) {
     for (const subject of this.eventSubjects.values()) {
       subject.next(data);
+    }
+    this.notifyEventListeners({
+      scope: 'global',
+      programId: null,
+      data,
+    });
+  }
+
+  addEventListener(
+    listener: (event: {
+      scope: 'program' | 'global';
+      programId: string | null;
+      data: any;
+    }) => void,
+  ): () => void {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
+  }
+
+  private notifyEventListeners(event: {
+    scope: 'program' | 'global';
+    programId: string | null;
+    data: any;
+  }): void {
+    for (const listener of this.eventListeners) {
+      try {
+        listener(event);
+      } catch {
+        // no-op
+      }
     }
   }
 

@@ -37,6 +37,7 @@ model ProgramState {
   programId     String         @unique
   activeSceneId Int?
   activeScene   Scene?         @relation(fields: [activeSceneId], references: [id])
+  songSequence  Json?
   scenes        ProgramScene[]
   updatedAt     DateTime       @updatedAt
 }

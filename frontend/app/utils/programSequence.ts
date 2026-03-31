@@ -574,12 +574,10 @@ export function createProgramTextSequence(
 export function createProgramSongSequence(
   mode: ProgramSequenceMode = 'manual'
 ): ProgramSongSequence {
-  const firstItem = createProgramSongSequenceItem('preset');
-
   return {
     mode,
-    items: [firstItem],
-    activeItemId: firstItem.id,
+    items: [],
+    activeItemId: null,
     intervalMs: 4000,
     loop: true,
     startedAt: Date.now()

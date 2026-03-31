@@ -1,0 +1,2 @@
+ALTER TABLE "ProgramState"
+ADD COLUMN IF NOT EXISTS "songSequence" JSONB;

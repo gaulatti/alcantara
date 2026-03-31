@@ -64,6 +64,9 @@ importers:
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.2.0
@@ -144,8 +147,8 @@ importers:
   frontend:
     dependencies:
       '@gaulatti/bleecker':
-        specifier: file:../../bleecker
-        version: file:../bleecker(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: 0.1.9
+        version: 0.1.9(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@react-router/node':
         specifier: 7.12.0
         version: 7.12.0(react-router@7.12.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(typescript@5.9.3)
@@ -881,8 +884,8 @@ packages:
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
 
-  '@gaulatti/bleecker@file:../bleecker':
-    resolution: {directory: ../bleecker, type: directory}
+  '@gaulatti/bleecker@0.1.9':
+    resolution: {integrity: sha512-yvfuDENsk0f/Y77nEBLsGsgvRsFuqSzUi5MVeUqh6ygV3PzEi24QZTJtiPp6o40KqONUi/EJsThr74Ke38E2uw==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -5053,8 +5056,8 @@ packages:
     resolution: {integrity: sha512-+QU2zd6OTD8XWIJCbffaiQeH9U73qIqafo1x6V1snCWYGJf6cVE0cDR4D8xRzcEnfI21IFrUPzPGtcPf8AC+Rw==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
-  ws@8.19.0:
-    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
+  ws@8.20.0:
+    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -6081,7 +6084,7 @@ snapshots:
       '@fastify/forwarded': 3.0.1
       ipaddr.js: 2.3.0
 
-  '@gaulatti/bleecker@file:../bleecker(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@gaulatti/bleecker@0.1.9(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       clsx: 2.1.1
       lucide-react: 0.563.0(react@19.2.4)
@@ -6513,7 +6516,7 @@ snapshots:
   '@libsql/isomorphic-ws@0.1.5':
     dependencies:
       '@types/ws': 8.18.1
-      ws: 8.19.0
+      ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -10802,7 +10805,7 @@ snapshots:
       imurmurhash: 0.1.4
       signal-exit: 4.1.0
 
-  ws@8.19.0: {}
+  ws@8.20.0: {}
 
   xtend@4.0.2: {}
 

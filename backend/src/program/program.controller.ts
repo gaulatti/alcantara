@@ -7,6 +7,8 @@ import {
   Param,
   Delete,
   Put,
+  Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ProgramService } from './program.service';
@@ -81,12 +83,44 @@ export class ProgramController {
     @Param('programId') programId: string,
     @Body()
     data: {
-      song?: number;
-      instants?: number;
-      main?: number;
+      song?: unknown;
+      instants?: unknown;
+      main?: unknown;
     },
   ) {
     return this.programService.updateProgramAudioMeter(data, programId);
+  }
+
+  @Get(':programId/song-playback')
+  async getProgramSongPlaybackById(@Param('programId') programId: string) {
+    return this.programService.getProgramSongPlayback(programId);
+  }
+
+  @Post(':programId/song-playback')
+  async updateProgramSongPlaybackById(
+    @Param('programId') programId: string,
+    @Body()
+    data: {
+      token?: string;
+      audioUrl?: string;
+      progress?: number;
+      currentTimeMs?: number;
+      durationMs?: number | null;
+      isPlaying?: boolean;
+    },
+  ) {
+    return this.programService.updateProgramSongPlayback(data, programId);
+  }
+
+  @Get('audio-proxy')
+  async proxyAudio(
+    @Query('url') url: string,
+  ): Promise<StreamableFile> {
+    const proxied = await this.programService.proxyAudio(url);
+    return new StreamableFile(proxied.buffer, {
+      type: proxied.contentType,
+      disposition: 'inline'
+    });
   }
 
   @Get('state')

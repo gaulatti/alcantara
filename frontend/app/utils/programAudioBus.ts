@@ -1,4 +1,5 @@
 import { interpolateGainLog } from './audioTaper';
+import { apiUrl } from './apiBaseUrl';
 
 export interface ProgramAudioBusTrack {
   token: string;
@@ -15,11 +16,23 @@ export interface ProgramAudioBusTrack {
 export interface ProgramAudioBusSnapshot {
   track: ProgramAudioBusTrack | null;
   progress: number;
+  currentTimeMs: number;
+  durationMs: number | null;
   endedToken: string;
   isPlaying: boolean;
 }
 
+export interface ProgramAudioBusSignalSnapshot {
+  rms: number;
+  peak: number;
+}
+
 type Listener = (snapshot: ProgramAudioBusSnapshot) => void;
+
+interface MeterEnvelope {
+  stepMs: number;
+  values: Float32Array;
+}
 
 interface ProgramAudioBusState {
   activeTrack: ProgramAudioBusTrack | null;
@@ -36,13 +49,22 @@ interface ProgramAudioBusState {
   meterBuffer: Float32Array | null;
   lastSignalLevel: number;
   meterUsesMediaElementFallback: boolean;
+  meterEnvelopeUrl: string;
+  meterEnvelope: MeterEnvelope | null;
 }
 
 const audioBusByProgram = new Map<string, ProgramAudioBusState>();
+const meterEnvelopeByUrl = new Map<string, Promise<MeterEnvelope | null>>();
 const AUDIO_FADE_OUT_MS = 420;
 const AUDIO_FADE_IN_MS = 320;
 const AUDIO_FADE_STEP_MS = 20;
 const AUDIO_TARGET_VOLUME = 1;
+const METER_ENVELOPE_FRAME_MS = 24;
+const METER_ENVELOPE_LOW_PERCENTILE = 0.12;
+const METER_ENVELOPE_HIGH_PERCENTILE = 0.985;
+const METER_ENVELOPE_TOP_EXPAND_POWER = 1.6;
+const METER_ATTACK_COEFFICIENT = 0.45;
+const METER_RELEASE_COEFFICIENT = 0.2;
 
 function createProgramAudioBusState(): ProgramAudioBusState {
   return {
@@ -59,7 +81,9 @@ function createProgramAudioBusState(): ProgramAudioBusState {
     meterAnalyser: null,
     meterBuffer: null,
     lastSignalLevel: 0,
-    meterUsesMediaElementFallback: false
+    meterUsesMediaElementFallback: false,
+    meterEnvelopeUrl: '',
+    meterEnvelope: null
   };
 }
 
@@ -110,9 +134,25 @@ function getAudioProgress(audio: HTMLAudioElement): number {
 }
 
 function getSnapshot(state: ProgramAudioBusState): ProgramAudioBusSnapshot {
+  const hasTrack = Boolean(state.activeTrack);
+  const durationSeconds = state.activeAudio ? Number(state.activeAudio.duration) : Number.NaN;
+  const derivedDurationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
+  const durationMs =
+    derivedDurationMs ??
+    (typeof state.activeTrack?.durationMs === 'number' && Number.isFinite(state.activeTrack.durationMs) && state.activeTrack.durationMs > 0
+      ? Math.round(state.activeTrack.durationMs)
+      : null);
+  const currentSeconds = state.activeAudio ? Number(state.activeAudio.currentTime) : Number.NaN;
+  let currentTimeMs = Number.isFinite(currentSeconds) && currentSeconds >= 0 ? Math.round(currentSeconds * 1000) : 0;
+  if (durationMs !== null) {
+    currentTimeMs = Math.max(0, Math.min(currentTimeMs, durationMs));
+  }
+
   return {
     track: state.activeTrack,
     progress: state.progress,
+    currentTimeMs: hasTrack ? currentTimeMs : 0,
+    durationMs: hasTrack ? durationMs : null,
     endedToken: state.endedToken,
     isPlaying: state.isPlaying
   };
@@ -246,6 +286,145 @@ function setupAudioMeter(state: ProgramAudioBusState, audio: HTMLAudioElement): 
   }
 }
 
+function getAudioContextConstructor():
+  | typeof AudioContext
+  | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+  return (
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext
+  );
+}
+
+function buildMeterEnvelope(audioBuffer: AudioBuffer): MeterEnvelope | null {
+  const { numberOfChannels, length, sampleRate } = audioBuffer;
+  if (numberOfChannels <= 0 || length <= 0 || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return null;
+  }
+
+  const frameSize = Math.max(256, Math.round((sampleRate * METER_ENVELOPE_FRAME_MS) / 1000));
+  const frameCount = Math.max(1, Math.ceil(length / frameSize));
+  const values = new Float32Array(frameCount);
+
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    const start = frameIndex * frameSize;
+    const end = Math.min(length, start + frameSize);
+    const sampleCount = Math.max(1, end - start);
+    let peakChannelRms = 0;
+
+    for (let channelIndex = 0; channelIndex < numberOfChannels; channelIndex += 1) {
+      const channelData = audioBuffer.getChannelData(channelIndex);
+      let sumSquares = 0;
+      for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
+        const sample = channelData[sampleIndex];
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / sampleCount);
+      if (rms > peakChannelRms) {
+        peakChannelRms = rms;
+      }
+    }
+
+    values[frameIndex] = peakChannelRms;
+  }
+
+  if (values.length === 0) {
+    return {
+      stepMs: frameSize * 1000 / sampleRate,
+      values
+    };
+  }
+
+  const sortedValues = Array.from(values).sort((left, right) => left - right);
+  const lowIndex = Math.max(0, Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * METER_ENVELOPE_LOW_PERCENTILE)));
+  const highIndex = Math.max(lowIndex, Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * METER_ENVELOPE_HIGH_PERCENTILE)));
+  const floorValue = sortedValues[lowIndex] ?? 0;
+  const ceilingValue = Math.max(floorValue + 1e-6, sortedValues[highIndex] ?? floorValue + 1e-6);
+  let previousNormalized = 0;
+
+  // Normalize using percentiles and add transient emphasis for visible movement.
+  for (let index = 0; index < values.length; index += 1) {
+    const normalized = Math.max(0, Math.min(1, (values[index] - floorValue) / (ceilingValue - floorValue)));
+    const topExpanded = Math.pow(normalized, METER_ENVELOPE_TOP_EXPAND_POWER);
+    const transient = Math.max(0, topExpanded - previousNormalized * 0.94);
+    const emphasized = Math.max(0, Math.min(1, topExpanded * 0.8 + transient * 1.25));
+    values[index] = emphasized;
+    previousNormalized = emphasized;
+  }
+
+  return {
+    stepMs: frameSize * 1000 / sampleRate,
+    values
+  };
+}
+
+function getMeterEnvelope(audioUrl: string, context: AudioContext): Promise<MeterEnvelope | null> {
+  const existing = meterEnvelopeByUrl.get(audioUrl);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(resolveEnvelopeFetchUrl(audioUrl));
+      if (!response.ok) {
+        return null;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const decoded = await context.decodeAudioData(arrayBuffer.slice(0));
+      return buildMeterEnvelope(decoded);
+    } catch {
+      return null;
+    }
+  })();
+
+  meterEnvelopeByUrl.set(audioUrl, promise);
+  return promise;
+}
+
+function resolveEnvelopeFetchUrl(audioUrl: string): string {
+  const normalized = audioUrl.trim();
+  if (!normalized) {
+    return normalized;
+  }
+
+  try {
+    const parsed = new URL(normalized, window.location.href);
+    if (parsed.origin === window.location.origin) {
+      return parsed.toString();
+    }
+    return apiUrl(`/program/audio-proxy?url=${encodeURIComponent(parsed.toString())}`);
+  } catch {
+    return apiUrl(`/program/audio-proxy?url=${encodeURIComponent(normalized)}`);
+  }
+}
+
+function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: string): void {
+  const normalizedUrl = typeof trackAudioUrl === 'string' ? trackAudioUrl.trim() : '';
+  state.meterEnvelopeUrl = normalizedUrl;
+  state.meterEnvelope = null;
+  if (!normalizedUrl) {
+    return;
+  }
+
+  const AudioContextCtor = getAudioContextConstructor();
+  if (!AudioContextCtor) {
+    return;
+  }
+  const context = state.meterContext ?? new AudioContextCtor();
+  state.meterContext = context;
+
+  void getMeterEnvelope(normalizedUrl, context).then((envelope) => {
+    if (state.meterEnvelopeUrl !== normalizedUrl) {
+      return;
+    }
+    state.meterEnvelope = envelope;
+  });
+}
+
 function detachAndStopAudio(audio: HTMLAudioElement): void {
   clearAudioBindings(audio);
   audio.pause();
@@ -294,9 +473,10 @@ function fadeAudioVolume(
   });
 }
 
-function setActiveAudio(state: ProgramAudioBusState, audio: HTMLAudioElement, trackToken: string): void {
+function setActiveAudio(state: ProgramAudioBusState, audio: HTMLAudioElement, trackToken: string, trackAudioUrl: string): void {
   audio.preload = 'auto';
   setupAudioMeter(state, audio);
+  setupAudioMeterEnvelope(state, trackAudioUrl);
 
   audio.onplay = () => {
     state.isPlaying = true;
@@ -349,7 +529,7 @@ function replaceTrack(state: ProgramAudioBusState, track: ProgramAudioBusTrack):
 
   const audio = new Audio(track.audioUrl);
   audio.volume = clampVolume(state.masterVolume);
-  setActiveAudio(state, audio, track.token);
+  setActiveAudio(state, audio, track.token, track.audioUrl);
   emit(state);
 
   const playPromise = audio.play();
@@ -391,7 +571,7 @@ async function transitionToTrackWithFade(state: ProgramAudioBusState, track: Pro
 
   const incomingAudio = new Audio(track.audioUrl);
   incomingAudio.volume = 0;
-  setActiveAudio(state, incomingAudio, track.token);
+  setActiveAudio(state, incomingAudio, track.token, track.audioUrl);
   emit(state);
 
   try {
@@ -478,6 +658,8 @@ export function stopProgramAudioBus(programId: string): void {
   state.progress = 0;
   state.endedToken = '';
   state.isPlaying = false;
+  state.meterEnvelopeUrl = '';
+  state.meterEnvelope = null;
   emit(state);
 }
 
@@ -503,6 +685,8 @@ export function getProgramAudioBusSnapshot(programId: string): ProgramAudioBusSn
     return {
       track: null,
       progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
       endedToken: '',
       isPlaying: false
     };
@@ -512,25 +696,74 @@ export function getProgramAudioBusSnapshot(programId: string): ProgramAudioBusSn
 }
 
 export function getProgramAudioBusSignalLevel(programId: string): number {
+  const snapshot = getProgramAudioBusSignalSnapshot(programId);
   const state = getProgramAudioBusState(programId, false);
-  if (!state || !state.activeAudio || state.activeAudio.paused || state.activeAudio.ended) {
-    return 0;
-  }
-  if (!state.meterAnalyser || !state.meterBuffer) {
+  if (!state) {
     return 0;
   }
 
-  state.meterAnalyser.getFloatTimeDomainData(state.meterBuffer);
-  let sumSquares = 0;
-  for (let index = 0; index < state.meterBuffer.length; index += 1) {
-    const sample = state.meterBuffer[index];
-    sumSquares += sample * sample;
-  }
-
-  const rms = Math.sqrt(sumSquares / state.meterBuffer.length);
-  const smoothed = state.lastSignalLevel * 0.72 + rms * 0.28;
+  const coefficient = snapshot.rms >= state.lastSignalLevel ? METER_ATTACK_COEFFICIENT : METER_RELEASE_COEFFICIENT;
+  const smoothed = state.lastSignalLevel + (snapshot.rms - state.lastSignalLevel) * coefficient;
   state.lastSignalLevel = smoothed;
   return Math.max(0, Math.min(1, smoothed));
+}
+
+export function getProgramAudioBusSignalSnapshot(programId: string): ProgramAudioBusSignalSnapshot {
+  const state = getProgramAudioBusState(programId, false);
+  if (!state || !state.activeAudio || state.activeAudio.paused || state.activeAudio.ended) {
+    if (state) {
+      state.lastSignalLevel = 0;
+    }
+    return {
+      rms: 0,
+      peak: 0
+    };
+  }
+  let nextRms = 0;
+  let nextPeak = 0;
+  if (state.meterAnalyser && state.meterBuffer) {
+    state.meterAnalyser.getFloatTimeDomainData(state.meterBuffer);
+    let sumSquares = 0;
+    let peakSample = 0;
+    for (let index = 0; index < state.meterBuffer.length; index += 1) {
+      const sample = state.meterBuffer[index];
+      sumSquares += sample * sample;
+      const absSample = Math.abs(sample);
+      if (absSample > peakSample) {
+        peakSample = absSample;
+      }
+    }
+    nextRms = Math.sqrt(sumSquares / state.meterBuffer.length);
+    nextPeak = peakSample;
+  } else if (
+    state.meterEnvelope &&
+    state.meterEnvelope.values.length > 0 &&
+    Number.isFinite(state.activeAudio.currentTime)
+  ) {
+    const timeMs = Math.max(0, state.activeAudio.currentTime * 1000);
+    const envelopeIndex = Math.max(
+      0,
+      Math.min(
+        state.meterEnvelope.values.length - 1,
+      Math.floor(timeMs / Math.max(1, state.meterEnvelope.stepMs))
+      )
+    );
+    const envelopeLevel = state.meterEnvelope.values[envelopeIndex] ?? 0;
+    const normalizedEnvelopeLevel = envelopeLevel * clampVolume(state.activeAudio.volume);
+    nextRms = normalizedEnvelopeLevel;
+    nextPeak = normalizedEnvelopeLevel;
+  } else {
+    // Fallback when analyser capture is unavailable (e.g. restricted embeds):
+    // report post-fader output level so control still reflects live gain changes.
+    const volume = clampVolume(state.activeAudio.volume);
+    nextRms = volume;
+    nextPeak = volume;
+  }
+
+  return {
+    rms: Math.max(0, Math.min(1, nextRms)),
+    peak: Math.max(0, Math.min(1, nextPeak))
+  };
 }
 
 export function subscribeProgramAudioBus(programId: string, listener: Listener): () => void {
@@ -539,6 +772,8 @@ export function subscribeProgramAudioBus(programId: string, listener: Listener):
     listener({
       track: null,
       progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
       endedToken: '',
       isPlaying: false
     });

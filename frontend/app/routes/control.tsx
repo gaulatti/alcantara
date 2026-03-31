@@ -8,6 +8,7 @@ import { uploadFileToMediaBucket } from '../services/uploads';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../utils/timezones';
+import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import {
   countSequenceLeafItems,
   createToniChyronSequence,
@@ -33,7 +34,7 @@ import {
   type ProgramTextSequence,
   type ProgramTextSequenceItem
 } from '../utils/programSequence';
-import { faderToGain, formatGainDb, gainToMeterFill } from '../utils/audioTaper';
+import { faderToGain, formatGainDb } from '../utils/audioTaper';
 
 interface Layout {
   id: number;
@@ -113,11 +114,35 @@ interface BroadcastSettings {
 }
 
 interface ProgramAudioMeterLevels {
-  song: number;
-  instants: number;
-  main: number;
+  song: {
+    vu: number;
+    peak: number;
+    peakHold: number;
+  };
+  instants: {
+    vu: number;
+    peak: number;
+    peakHold: number;
+  };
+  main: {
+    vu: number;
+    peak: number;
+    peakHold: number;
+  };
   updatedAt: string;
 }
+
+interface ProgramSongPlaybackState {
+  token: string;
+  audioUrl: string;
+  progress: number;
+  currentTimeMs: number;
+  durationMs: number | null;
+  isPlaying: boolean;
+  updatedAt: string;
+}
+const SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
+const AUDIO_METER_UI_EPSILON = 0.0075;
 
 const INSTANT_PLAYBACK_SWEEP_ANIMATION = 'alcantaraInstantPlaybackSweep';
 const INSTANT_PLAYBACK_PULSE_ANIMATION = 'alcantaraInstantPlaybackPulse';
@@ -219,23 +244,145 @@ function normalizeAudioMeterLevel(value: unknown): number {
   return 0;
 }
 
+function createEmptyMeterChannel() {
+  return {
+    vu: 0,
+    peak: 0,
+    peakHold: 0
+  };
+}
+
+function normalizeProgramMeterChannel(value: unknown): { vu: number; peak: number; peakHold: number } {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const normalized = normalizeAudioMeterLevel(value);
+    return {
+      vu: normalized,
+      peak: normalized,
+      peakHold: normalized
+    };
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return createEmptyMeterChannel();
+  }
+
+  const record = value as Record<string, unknown>;
+  const vu = normalizeAudioMeterLevel(record.vu ?? record.level);
+  const peak = Math.max(vu, normalizeAudioMeterLevel(record.peak ?? vu));
+  const peakHold = Math.max(peak, normalizeAudioMeterLevel(record.peakHold ?? peak));
+  return {
+    vu,
+    peak,
+    peakHold
+  };
+}
+
 function normalizeProgramAudioMeter(value: unknown): ProgramAudioMeterLevels {
   if (!value || typeof value !== 'object') {
     return {
-      song: 0,
-      instants: 0,
-      main: 0,
+      song: createEmptyMeterChannel(),
+      instants: createEmptyMeterChannel(),
+      main: createEmptyMeterChannel(),
       updatedAt: new Date(0).toISOString()
     };
   }
 
   const record = value as Record<string, unknown>;
   return {
-    song: normalizeAudioMeterLevel(record.song),
-    instants: normalizeAudioMeterLevel(record.instants),
-    main: normalizeAudioMeterLevel(record.main),
+    song: normalizeProgramMeterChannel(record.song),
+    instants: normalizeProgramMeterChannel(record.instants),
+    main: normalizeProgramMeterChannel(record.main),
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
   };
+}
+
+function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybackState {
+  if (!value || typeof value !== 'object') {
+    return {
+      token: '',
+      audioUrl: '',
+      progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
+      isPlaying: false,
+      updatedAt: new Date(0).toISOString()
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  const durationMs =
+    typeof record.durationMs === 'number' && Number.isFinite(record.durationMs) && record.durationMs > 0 ? Math.round(record.durationMs) : null;
+  let currentTimeMs = typeof record.currentTimeMs === 'number' && Number.isFinite(record.currentTimeMs) ? Math.max(0, Math.round(record.currentTimeMs)) : 0;
+
+  if (durationMs !== null) {
+    currentTimeMs = Math.min(currentTimeMs, durationMs);
+  }
+
+  return {
+    token: typeof record.token === 'string' ? record.token : '',
+    audioUrl: typeof record.audioUrl === 'string' ? record.audioUrl : '',
+    progress: normalizeAudioMeterLevel(record.progress),
+    currentTimeMs,
+    durationMs,
+    isPlaying: Boolean(record.isPlaying),
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
+  };
+}
+
+function reconcileProgramSongPlayback(
+  previous: ProgramSongPlaybackState,
+  next: ProgramSongPlaybackState
+): ProgramSongPlaybackState {
+  if (
+    previous.token &&
+    next.token &&
+    previous.token === next.token &&
+    previous.audioUrl === next.audioUrl &&
+    previous.isPlaying
+  ) {
+    const backwardDriftMs = previous.currentTimeMs - next.currentTimeMs;
+    if (backwardDriftMs > SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS) {
+      return previous;
+    }
+  }
+
+  return next;
+}
+
+function reconcileProgramAudioMeter(previous: ProgramAudioMeterLevels, next: ProgramAudioMeterLevels): ProgramAudioMeterLevels {
+  const deltas = [
+    Math.abs(previous.song.vu - next.song.vu),
+    Math.abs(previous.song.peak - next.song.peak),
+    Math.abs(previous.song.peakHold - next.song.peakHold),
+    Math.abs(previous.instants.vu - next.instants.vu),
+    Math.abs(previous.instants.peak - next.instants.peak),
+    Math.abs(previous.instants.peakHold - next.instants.peakHold),
+    Math.abs(previous.main.vu - next.main.vu),
+    Math.abs(previous.main.peak - next.main.peak),
+    Math.abs(previous.main.peakHold - next.main.peakHold)
+  ];
+  if (deltas.every((delta) => delta < AUDIO_METER_UI_EPSILON)) {
+    return previous;
+  }
+  return next;
+}
+
+function normalizeProgramState(value: unknown): ProgramState | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Partial<ProgramState>;
+  return {
+    ...(record as ProgramState),
+    scenes: Array.isArray(record.scenes) ? record.scenes : [],
+    activeSceneId: typeof record.activeSceneId === 'number' ? record.activeSceneId : null
+  };
+}
+
+function meterLevelToFill(value: unknown): number {
+  const normalized = normalizeAudioMeterLevel(value);
+  return Math.max(0, Math.min(1, Math.pow(normalized, 0.6)));
 }
 
 function formatVolumeDb(value: number): string {
@@ -544,11 +691,22 @@ export default function Control() {
   const [isSavingMixerLevels, setIsSavingMixerLevels] = useState(false);
   const mixerSaveTimeoutRef = useRef<number | null>(null);
   const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
-    song: 0,
-    instants: 0,
-    main: 0,
+    song: createEmptyMeterChannel(),
+    instants: createEmptyMeterChannel(),
+    main: createEmptyMeterChannel(),
     updatedAt: new Date(0).toISOString()
   });
+  const [programSongPlaybackState, setProgramSongPlaybackState] = useState<ProgramSongPlaybackState>({
+    token: '',
+    audioUrl: '',
+    progress: 0,
+    currentTimeMs: 0,
+    durationMs: null,
+    isPlaying: false,
+    updatedAt: new Date(0).toISOString()
+  });
+  const programRealtimeSocketRef = useRef<WebSocket | null>(null);
+  const [isProgramRealtimeConnected, setIsProgramRealtimeConnected] = useState(false);
 
   useEffect(() => {
     fetchScenes();
@@ -558,27 +716,264 @@ export default function Control() {
   }, []);
 
   useEffect(() => {
-    void fetchProgramState(activeProgramId);
-    void fetchProgramAudioBusSettings(activeProgramId);
-    void fetchProgramAudioMeter(activeProgramId);
     void fetchInstants();
-    void fetchBroadcastSettings();
     Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
       window.clearTimeout(timeoutId);
     });
     instantPlaybackTimeoutsRef.current = {};
     setInstantPlayback({});
     setProgramAudioMeterLevels({
-      song: 0,
-      instants: 0,
-      main: 0,
+      song: createEmptyMeterChannel(),
+      instants: createEmptyMeterChannel(),
+      main: createEmptyMeterChannel(),
+      updatedAt: new Date(0).toISOString()
+    });
+    setProgramSongPlaybackState({
+      token: '',
+      audioUrl: '',
+      progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
+      isPlaying: false,
       updatedAt: new Date(0).toISOString()
     });
   }, [activeProgramId]);
 
   useEffect(() => {
+    if (isProgramRealtimeConnected) {
+      return;
+    }
+
+    let cancelled = false;
+    const fallbackTimer = window.setTimeout(() => {
+      if (cancelled || programRealtimeSocketRef.current?.readyState === WebSocket.OPEN) {
+        return;
+      }
+      void fetchProgramState(activeProgramId);
+      void fetchProgramAudioBusSettings(activeProgramId);
+      void fetchProgramAudioMeter(activeProgramId);
+      void fetchProgramSongPlayback(activeProgramId);
+      void fetchBroadcastSettings();
+    }, 900);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(fallbackTimer);
+    };
+  }, [activeProgramId, isProgramRealtimeConnected]);
+
+  useEffect(() => {
     mixerLevelsRef.current = mixerLevels;
   }, [mixerLevels]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let disposed = false;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (disposed) {
+        return;
+      }
+
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(getProgramRealtimeSocketUrl(activeProgramId, 'control'));
+      } catch {
+        reconnectTimer = window.setTimeout(connect, 1500);
+        return;
+      }
+
+      programRealtimeSocketRef.current = socket;
+      setIsProgramRealtimeConnected(false);
+
+      socket.addEventListener('open', () => {
+        if (disposed || programRealtimeSocketRef.current !== socket) {
+          try {
+            socket.close();
+          } catch {
+            // no-op
+          }
+          return;
+        }
+        setIsProgramRealtimeConnected(true);
+      });
+
+      socket.addEventListener('message', (event) => {
+        let payload: any;
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (!payload || typeof payload !== 'object') {
+          return;
+        }
+
+        if (payload.type === 'program_state_snapshot') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          const normalizedProgramState = normalizeProgramState(payload.state);
+          setProgramState(normalizedProgramState);
+          setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+          return;
+        }
+
+        if (payload.type === 'audio_bus_snapshot') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          const normalizedSongSequence = normalizeProgramSongPlaylist(
+            normalizeProgramSongSequence(payload?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+          );
+          setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+          return;
+        }
+
+        if (payload.type === 'broadcast_settings_snapshot' || payload.type === 'broadcast_settings_update') {
+          const source = payload.type === 'broadcast_settings_snapshot' ? payload.settings : payload.settings;
+          const nextMixerLevels = {
+            mainMasterVolume: normalizeMasterVolume(source?.mainMasterVolume, 1),
+            songMasterVolume: normalizeMasterVolume(source?.songMasterVolume, 1),
+            instantMasterVolume: normalizeMasterVolume(source?.instantMasterVolume, 1),
+            songMuted: normalizeMixerToggle(source?.songMuted, false),
+            instantMuted: normalizeMixerToggle(source?.instantMuted, false),
+            songSolo: normalizeMixerToggle(source?.songSolo, false),
+            instantSolo: normalizeMixerToggle(source?.instantSolo, false)
+          };
+          mixerLevelsRef.current = nextMixerLevels;
+          setMixerLevels(nextMixerLevels);
+          return;
+        }
+
+        if (payload.type === 'scene_change' || payload.type === 'program_scenes_changed') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          const normalizedProgramState = normalizeProgramState(payload.state);
+          setProgramState(normalizedProgramState);
+          setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+          return;
+        }
+
+        if (payload.type === 'scene_update') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setProgramState((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            const nextScenes = prev.scenes.map((entry) =>
+              entry.sceneId === payload.scene?.id ? { ...entry, scene: payload.scene } : entry
+            );
+            return {
+              ...prev,
+              scenes: nextScenes
+            };
+          });
+          return;
+        }
+
+        if (payload.type === 'scene_cleared') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setProgramState((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            return {
+              ...prev,
+              activeSceneId: null
+            };
+          });
+          setSelectedScene(null);
+          return;
+        }
+
+        if (payload.type === 'audio_bus_update') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          const normalizedSongSequence = normalizeProgramSongPlaylist(
+            normalizeProgramSongSequence(payload?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+          );
+          setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+          return;
+        }
+
+        if (payload.type === 'audio_meter_update') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setProgramAudioMeterLevels((previous) => reconcileProgramAudioMeter(previous, normalizeProgramAudioMeter(payload.levels)));
+          return;
+        }
+
+        if (payload.type === 'song_playback_update') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setProgramSongPlaybackState((previous) =>
+            reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(payload.playback))
+          );
+        }
+      });
+
+      socket.addEventListener('close', () => {
+        if (programRealtimeSocketRef.current === socket) {
+          programRealtimeSocketRef.current = null;
+        }
+        setIsProgramRealtimeConnected(false);
+        if (!disposed) {
+          reconnectTimer = window.setTimeout(connect, 1500);
+        }
+      });
+
+      socket.addEventListener('error', () => {
+        try {
+          socket.close();
+        } catch {
+          // no-op
+        }
+      });
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      setIsProgramRealtimeConnected(false);
+
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+
+      const socket = programRealtimeSocketRef.current;
+      programRealtimeSocketRef.current = null;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.close();
+        } catch {
+          // no-op
+        }
+      }
+    };
+  }, [activeProgramId]);
 
   const fetchScenes = async () => {
     try {
@@ -806,9 +1201,32 @@ export default function Control() {
     } catch (err) {
       console.error('Failed to fetch program audio meter levels:', err);
       setProgramAudioMeterLevels({
-        song: 0,
-        instants: 0,
-        main: 0,
+        song: createEmptyMeterChannel(),
+        instants: createEmptyMeterChannel(),
+        main: createEmptyMeterChannel(),
+        updatedAt: new Date(0).toISOString()
+      });
+    }
+  };
+
+  const fetchProgramSongPlayback = async (targetProgramId: string) => {
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song-playback`));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = await res.json();
+      setProgramSongPlaybackState(normalizeProgramSongPlayback(payload));
+    } catch (err) {
+      console.error('Failed to fetch program song playback:', err);
+      setProgramSongPlaybackState({
+        token: '',
+        audioUrl: '',
+        progress: 0,
+        currentTimeMs: 0,
+        durationMs: null,
+        isPlaying: false,
         updatedAt: new Date(0).toISOString()
       });
     }
@@ -821,14 +1239,8 @@ export default function Control() {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const data = (await res.json()) as Partial<ProgramState> | null;
-      const normalizedProgramState: ProgramState | null = data
-        ? ({
-            ...data,
-            scenes: Array.isArray(data.scenes) ? data.scenes : [],
-            activeSceneId: typeof data.activeSceneId === 'number' ? data.activeSceneId : null
-          } as ProgramState)
-        : null;
+      const data = (await res.json()) as unknown;
+      const normalizedProgramState = normalizeProgramState(data);
 
       setProgramState(normalizedProgramState);
       setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
@@ -953,7 +1365,9 @@ export default function Control() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sceneId })
       });
-      await fetchProgramState(activeProgramId);
+      if (!isProgramRealtimeConnected) {
+        await fetchProgramState(activeProgramId);
+      }
     } catch (err) {
       console.error('Failed to assign scene to program:', err);
     }
@@ -970,7 +1384,9 @@ export default function Control() {
         body: JSON.stringify({ sceneId, transitionId: selectedTransitionId })
       });
       setSelectedScene(sceneId);
-      await fetchProgramState(activeProgramId);
+      if (!isProgramRealtimeConnected) {
+        await fetchProgramState(activeProgramId);
+      }
     } catch (err) {
       console.error('Failed to activate scene:', err);
     }
@@ -1215,7 +1631,9 @@ export default function Control() {
       }
 
       await fetchScenes();
-      await fetchProgramState(activeProgramId);
+      if (!isProgramRealtimeConnected) {
+        await fetchProgramState(activeProgramId);
+      }
     } catch (err) {
       console.error('Failed to update scene attributes:', err);
     } finally {
@@ -1506,7 +1924,9 @@ export default function Control() {
         setSelectedScene(null);
       }
       fetchScenes();
-      fetchProgramState(activeProgramId);
+      if (!isProgramRealtimeConnected) {
+        fetchProgramState(activeProgramId);
+      }
     } catch (err) {
       console.error('Failed to delete scene:', err);
     }
@@ -1580,26 +2000,105 @@ export default function Control() {
         return;
       }
 
+      if (isProgramRealtimeConnected) {
+        return;
+      }
+
+      if (data.type === 'broadcast_settings_update') {
+        const nextMixerLevels = {
+          mainMasterVolume: normalizeMasterVolume(data?.settings?.mainMasterVolume, 1),
+          songMasterVolume: normalizeMasterVolume(data?.settings?.songMasterVolume, 1),
+          instantMasterVolume: normalizeMasterVolume(data?.settings?.instantMasterVolume, 1),
+          songMuted: normalizeMixerToggle(data?.settings?.songMuted, false),
+          instantMuted: normalizeMixerToggle(data?.settings?.instantMuted, false),
+          songSolo: normalizeMixerToggle(data?.settings?.songSolo, false),
+          instantSolo: normalizeMixerToggle(data?.settings?.instantSolo, false)
+        };
+        mixerLevelsRef.current = nextMixerLevels;
+        setMixerLevels(nextMixerLevels);
+        return;
+      }
+
+      const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+      if (eventProgramId && eventProgramId !== activeProgramId) {
+        return;
+      }
+
+      if (data.type === 'scene_change' || data.type === 'program_scenes_changed') {
+        const normalizedProgramState = normalizeProgramState(data.state);
+        setProgramState(normalizedProgramState);
+        setSelectedScene(normalizedProgramState?.activeSceneId ?? null);
+        return;
+      }
+
+      if (data.type === 'scene_update') {
+        setProgramState((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          const nextScenes = prev.scenes.map((entry) =>
+            entry.sceneId === data.scene?.id ? { ...entry, scene: data.scene } : entry
+          );
+          return {
+            ...prev,
+            scenes: nextScenes
+          };
+        });
+        return;
+      }
+
+      if (data.type === 'scene_cleared') {
+        setProgramState((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          return {
+            ...prev,
+            activeSceneId: null
+          };
+        });
+        setSelectedScene(null);
+        return;
+      }
+
+      if (data.type === 'audio_bus_update') {
+        const normalizedSongSequence = normalizeProgramSongPlaylist(
+          normalizeProgramSongSequence(data?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+        );
+        setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+        return;
+      }
+
       if (data.type === 'audio_meter_update') {
-        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
-        if (eventProgramId !== activeProgramId) {
-          return;
-        }
-        setProgramAudioMeterLevels(normalizeProgramAudioMeter(data.levels));
+        setProgramAudioMeterLevels((previous) => reconcileProgramAudioMeter(previous, normalizeProgramAudioMeter(data.levels)));
+        return;
+      }
+
+      if (data.type === 'song_playback_update') {
+        setProgramSongPlaybackState((previous) =>
+          reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(data.playback))
+        );
       }
     },
-    [activeProgramId]
+    [activeProgramId, isProgramRealtimeConnected]
   );
 
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
-    onMessage: handleProgramEvent
+    onMessage: handleProgramEvent,
+    enabled: !isProgramRealtimeConnected
   });
 
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
     ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
   );
   const selectedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
+  const selectedSceneSummaryText = useMemo(() => {
+    if (!selectedSceneData) {
+      return '';
+    }
+    return getSceneSummaryText(selectedSceneData);
+  }, [selectedSceneData?.id, selectedSceneData?.metadata]);
   const programAudioBusSongSequence = useMemo(
     () =>
       normalizeProgramSongPlaylist(
@@ -1615,9 +2114,15 @@ export default function Control() {
   const instantsChannelGain = instantsAudible ? faderToGain(mixerLevels.instantMasterVolume) : 0;
   const songOutputGain = songChannelGain * mainMixGain;
   const instantsOutputGain = instantsChannelGain * mainMixGain;
-  const songMeterFill = gainToMeterFill(programAudioMeterLevels.song);
-  const instantsMeterFill = gainToMeterFill(programAudioMeterLevels.instants);
-  const mainMixMeterFill = gainToMeterFill(programAudioMeterLevels.main);
+  const songMeterFill = meterLevelToFill(programAudioMeterLevels.song.vu);
+  const songPeakFill = meterLevelToFill(programAudioMeterLevels.song.peak);
+  const songPeakHoldFill = meterLevelToFill(programAudioMeterLevels.song.peakHold);
+  const instantsMeterFill = meterLevelToFill(programAudioMeterLevels.instants.vu);
+  const instantsPeakFill = meterLevelToFill(programAudioMeterLevels.instants.peak);
+  const instantsPeakHoldFill = meterLevelToFill(programAudioMeterLevels.instants.peakHold);
+  const mainMixMeterFill = meterLevelToFill(programAudioMeterLevels.main.vu);
+  const mainMixPeakFill = meterLevelToFill(programAudioMeterLevels.main.peak);
+  const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
       <style>
@@ -1697,7 +2202,7 @@ export default function Control() {
                 {selectedSceneData ? (
                   <p className='text-xs text-text-secondary dark:text-text-secondary'>
                     Active: <span className='font-semibold text-text-primary dark:text-text-primary'>{selectedSceneData.name}</span> · Text:{' '}
-                    {getSceneSummaryText(selectedSceneData)}
+                    {selectedSceneSummaryText}
                   </p>
                 ) : null}
               </>
@@ -1706,13 +2211,13 @@ export default function Control() {
 
           <Card className='space-y-4'>
             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Program Audio Bus Playlist</h2>
+              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Playlist</h2>
               {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
             </div>
-            <p className='text-sm text-text-secondary dark:text-text-secondary'>Independent from scene component metadata, including `modoitaliano-clock`.</p>
             <ProgramSongSequenceEditor
               sequence={programAudioBusSongSequence}
               songCatalog={songCatalog}
+              programSongPlayback={programSongPlaybackState}
               onChange={(nextSequence) => {
                 void saveProgramAudioBusSongSequence(nextSequence);
               }}
@@ -1734,10 +2239,6 @@ export default function Control() {
                 <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
               ) : null}
             </div>
-
-            <p className='text-sm text-text-secondary dark:text-text-secondary'>
-              Console strips: vertical faders with channel mute/solo plus a final Main Mix bus.
-            </p>
 
             <div className='flex gap-6 rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-inner'>
               {/* --- SCROLLABLE INPUTS SECTION --- */}
@@ -1787,7 +2288,15 @@ export default function Control() {
                       </div>
 
                       <div className='ml-4 flex gap-3 h-full'>
-                        <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                        <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                          <div
+                            className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                            style={{ bottom: `${Math.round(songPeakFill * 100)}%` }}
+                          />
+                          <div
+                            className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                            style={{ bottom: `${Math.round(songPeakHoldFill * 100)}%` }}
+                          />
                           <div
                             className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
                             style={{ height: `${Math.round(songMeterFill * 100)}%` }}
@@ -1874,7 +2383,15 @@ export default function Control() {
                       </div>
 
                       <div className='ml-4 flex gap-3 h-full'>
-                        <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                        <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                          <div
+                            className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                            style={{ bottom: `${Math.round(instantsPeakFill * 100)}%` }}
+                          />
+                          <div
+                            className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                            style={{ bottom: `${Math.round(instantsPeakHoldFill * 100)}%` }}
+                          />
                           <div
                             className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
                             style={{ height: `${Math.round(instantsMeterFill * 100)}%` }}
@@ -1946,13 +2463,29 @@ export default function Control() {
 
                   <div className='ml-4 flex gap-4 h-full'>
                     <div className='flex gap-1 h-full'>
-                      <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                      <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                        <div
+                          className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                          style={{ bottom: `${Math.round(mainMixPeakFill * 100)}%` }}
+                        />
+                        <div
+                          className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                          style={{ bottom: `${Math.round(mainMixPeakHoldFill * 100)}%` }}
+                        />
                         <div
                           className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
                           style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
                         />
                       </div>
-                      <div className='flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                      <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                        <div
+                          className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                          style={{ bottom: `${Math.round(mainMixPeakFill * 100)}%` }}
+                        />
+                        <div
+                          className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                          style={{ bottom: `${Math.round(mainMixPeakHoldFill * 100)}%` }}
+                        />
                         <div
                           className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
                           style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
@@ -2156,7 +2689,13 @@ function ComponentPropsFields({
   commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
   songCatalog: SongCatalogItem[];
 }) {
-  const timezoneOptions = getTimezonesSortedByOffset();
+  const timezoneOptions = useMemo(() => {
+    const baseDate = new Date();
+    return getTimezonesSortedByOffset(baseDate).map((timezone) => ({
+      value: timezone,
+      label: getTimezoneOptionLabel(timezone, baseDate)
+    }));
+  }, []);
   const toBoolean = (value: unknown, fallback: boolean): boolean => {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'number') return value !== 0;
@@ -2330,9 +2869,9 @@ function ComponentPropsFields({
               onChange={(e) => updateProp(componentType, 'clockTimezone', e.target.value)}
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
             >
-              {timezoneOptions.map((timezone) => (
-                <option key={timezone} value={timezone}>
-                  {getTimezoneOptionLabel(timezone)}
+              {timezoneOptions.map((timezoneOption) => (
+                <option key={timezoneOption.value} value={timezoneOption.value}>
+                  {timezoneOption.label}
                 </option>
               ))}
             </select>
@@ -2348,9 +2887,9 @@ function ComponentPropsFields({
             onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
             className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
           >
-            {timezoneOptions.map((timezone) => (
-              <option key={timezone} value={timezone}>
-                {getTimezoneOptionLabel(timezone)}
+            {timezoneOptions.map((timezoneOption) => (
+              <option key={timezoneOption.value} value={timezoneOption.value}>
+                {timezoneOption.label}
               </option>
             ))}
           </select>
@@ -2365,9 +2904,9 @@ function ComponentPropsFields({
             onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
             className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
           >
-            {timezoneOptions.map((timezone) => (
-              <option key={timezone} value={timezone}>
-                {getTimezoneOptionLabel(timezone)}
+            {timezoneOptions.map((timezoneOption) => (
+              <option key={timezoneOption.value} value={timezoneOption.value}>
+                {timezoneOption.label}
               </option>
             ))}
           </select>
@@ -2383,9 +2922,9 @@ function ComponentPropsFields({
               onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
             >
-              {timezoneOptions.map((timezone) => (
-                <option key={timezone} value={timezone}>
-                  {getTimezoneOptionLabel(timezone)}
+              {timezoneOptions.map((timezoneOption) => (
+                <option key={timezoneOption.value} value={timezoneOption.value}>
+                  {timezoneOption.label}
                 </option>
               ))}
             </select>
@@ -4177,6 +4716,7 @@ function ProgramTextSequenceEditor({
 function ProgramSongSequenceEditor({
   sequence,
   songCatalog = [],
+  programSongPlayback = null,
   onChange,
   onTakeSelection,
   onTakeOffAir,
@@ -4184,6 +4724,7 @@ function ProgramSongSequenceEditor({
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
+  programSongPlayback?: ProgramSongPlaybackState | null;
   onChange: (nextSequence: ProgramSongSequence) => void;
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onTakeOffAir?: () => Promise<void> | void;
@@ -4194,7 +4735,6 @@ function ProgramSongSequenceEditor({
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [addSongValue, setAddSongValue] = useState('');
   const songDurationByUrlRef = useRef<Record<string, number | null>>({});
-  const songAnimInitialElapsedRef = useRef<Record<string, number>>({});
   const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
   const isNested = depth > 0;
@@ -4289,11 +4829,16 @@ function ProgramSongSequenceEditor({
       return;
     }
 
+    const isAutoplay = sequence.mode === 'autoplay';
+    const anchorActiveItemId = isAutoplay
+      ? effectiveActiveItemId ?? sequence.activeItemId ?? nextItem.id
+      : sequence.activeItemId ?? nextItem.id;
+
     applySequence({
       ...sequence,
       items: [...sequence.items, nextItem],
-      activeItemId: sequence.activeItemId ?? nextItem.id,
-      startedAt: Date.now()
+      activeItemId: anchorActiveItemId,
+      startedAt: isAutoplay ? resolveAutoplayStartedAt() : Date.now()
     });
   };
 
@@ -4319,7 +4864,10 @@ function ProgramSongSequenceEditor({
     applySequence({
       ...sequence,
       items: [...sequence.items, filledItem],
-      activeItemId: sequence.mode === 'autoplay' ? (sequence.activeItemId ?? filledItem.id) : sequence.activeItemId
+      activeItemId:
+        sequence.mode === 'autoplay'
+          ? effectiveActiveItemId ?? sequence.activeItemId ?? filledItem.id
+          : sequence.activeItemId
     });
   };
 
@@ -4330,11 +4878,33 @@ function ProgramSongSequenceEditor({
     }
 
     const nextItems = sequence.items.filter((_, itemIndex) => itemIndex !== index);
+    const isAutoplay = sequence.mode === 'autoplay';
+    const runtimeActiveItemId = isAutoplay
+      ? effectiveActiveItemId ?? sequence.activeItemId
+      : sequence.activeItemId;
+    const removedCurrentRuntimeItem =
+      runtimeActiveItemId !== null && runtimeActiveItemId === removedItem.id;
+    let nextActiveItemId: string | null;
+
+    if (nextItems.length === 0) {
+      nextActiveItemId = null;
+    } else if (removedCurrentRuntimeItem) {
+      nextActiveItemId = nextItems[Math.min(index, nextItems.length - 1)]?.id ?? null;
+    } else {
+      nextActiveItemId =
+        runtimeActiveItemId && nextItems.some((item) => item.id === runtimeActiveItemId)
+          ? runtimeActiveItemId
+          : (nextItems[0]?.id ?? null);
+    }
+
     applySequence({
       ...sequence,
       items: nextItems,
-      activeItemId: sequence.activeItemId === removedItem.id ? (nextItems[0]?.id ?? null) : sequence.activeItemId,
-      startedAt: Date.now()
+      activeItemId: nextActiveItemId,
+      startedAt:
+        isAutoplay && !removedCurrentRuntimeItem
+          ? resolveAutoplayStartedAt()
+          : Date.now()
     });
   };
 
@@ -4466,8 +5036,6 @@ function ProgramSongSequenceEditor({
 
   const clearActiveItem = async () => {
     clearAutoTakeOffTimer();
-    // Clear the animation offset cache so the fill restarts correctly on next play
-    songAnimInitialElapsedRef.current = {};
 
     const nextSequence = {
       ...sequence,
@@ -4526,6 +5094,42 @@ function ProgramSongSequenceEditor({
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   };
 
+  const resolveAutoplayStartedAt = (): number => {
+    const now = Date.now();
+    if (isNested || !programSongPlayback) {
+      return now;
+    }
+
+    const targetItemId =
+      sequence.mode === 'autoplay'
+        ? effectiveActiveItemId ?? sequence.activeItemId ?? null
+        : sequence.activeItemId ?? null;
+    if (!targetItemId) {
+      return now;
+    }
+
+    const targetItem = sequence.items.find((item) => item.id === targetItemId);
+    if (!targetItem || targetItem.kind !== 'preset') {
+      return now;
+    }
+
+    const itemAudioUrl = targetItem.audioUrl?.trim() || '';
+    const playbackAudioUrl = programSongPlayback.audioUrl.trim();
+    const playbackToken = programSongPlayback.token;
+    const matchesPlayback =
+      (itemAudioUrl && playbackAudioUrl && itemAudioUrl === playbackAudioUrl) ||
+      (targetItem.id && playbackToken.startsWith(`${targetItem.id}:`));
+    if (!matchesPlayback) {
+      return now;
+    }
+
+    const playbackOffsetMs = Math.max(
+      0,
+      Math.round(programSongPlayback.currentTimeMs),
+    );
+    return now - playbackOffsetMs;
+  };
+
   return (
     <div className={`flex flex-col overflow-hidden rounded-xl ${isNested ? 'border border-zinc-800 bg-zinc-900' : 'bg-zinc-950'}`}>
       {/* Two-column layout container */}
@@ -4579,8 +5183,8 @@ function ProgramSongSequenceEditor({
                         : null;
                     const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
                     const titleText =
-                      displayItem.kind === 'preset' ? displayItem.title.trim() || 'Untitled Song' : displayItem.label.trim() || 'Nested Sequence';
-                    const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() || 'Unknown Artist' : 'Nested playlist';
+                      displayItem.kind === 'preset' ? displayItem.title.trim() : displayItem.label.trim();
+                    const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() : '';
                     const rowDuration = displayItem.kind === 'preset' ? formatDurationFromMs(displayItem.durationMs) : '—';
                     const coverUrl = displayItem.kind === 'preset' ? displayItem.coverUrl.trim() : '';
 
@@ -4906,11 +5510,24 @@ function ProgramSongSequenceEditor({
               const displayItem = sequence.items.find((i) => i.id === effectiveActiveItemId);
               if (!displayItem || displayItem.kind !== 'preset') return null;
 
+              const displayAudioUrl = displayItem.audioUrl?.trim() || '';
+              const playbackAudioUrl = programSongPlayback?.audioUrl?.trim() || '';
+              const playbackToken = programSongPlayback?.token || '';
+              const playbackMatchesDisplaySong =
+                !isNested &&
+                !!programSongPlayback &&
+                ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
+                  (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
+                  (sequence.activeItemId === displayItem.id && programSongPlayback.isPlaying));
+
               // Compute how far into the current song we are
               let songElapsedMs = 0;
               let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
 
-              if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
+              if (playbackMatchesDisplaySong && programSongPlayback) {
+                songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
+                songStartedAt = Math.max(0, nowMs - songElapsedMs);
+              } else if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
                 const seqStartedAt = sequence.startedAt;
                 const totalElapsed = Math.max(0, nowMs - seqStartedAt);
                 const baseIndex = sequence.items.findIndex((i) => i.id === sequence.activeItemId);
@@ -4944,15 +5561,15 @@ function ProgramSongSequenceEditor({
                 songElapsedMs = Math.max(0, nowMs - songStartedAt);
               }
 
-              const totalMs = typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0 ? displayItem.durationMs : null;
-              const isWithinDuration = totalMs !== null && songElapsedMs < totalMs;
-
-              // Capture animation delay offset once per song instance to avoid restarting animation on each tick
-              const animKey = `${displayItem.id}-${songStartedAt}`;
-              if (isWithinDuration && !(animKey in songAnimInitialElapsedRef.current)) {
-                songAnimInitialElapsedRef.current[animKey] = Math.max(0, Date.now() - songStartedAt);
-              }
-              const animationDelayMs = songAnimInitialElapsedRef.current[animKey] ?? 0;
+              const totalMs =
+                playbackMatchesDisplaySong && programSongPlayback && typeof programSongPlayback.durationMs === 'number'
+                  ? programSongPlayback.durationMs
+                  : typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0
+                    ? displayItem.durationMs
+                    : null;
+              const hasProgressTimeline = totalMs !== null && totalMs > 0;
+              const clampedSongElapsedMs = hasProgressTimeline ? Math.max(0, Math.min(songElapsedMs, totalMs)) : Math.max(0, songElapsedMs);
+              const progressRatio = hasProgressTimeline ? Math.max(0, Math.min(1, clampedSongElapsedMs / totalMs)) : 0;
 
               const fmt = (ms: number) => {
                 const s = Math.floor(ms / 1000);
@@ -4960,14 +5577,13 @@ function ProgramSongSequenceEditor({
               };
               return (
                 <div className='relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/60'>
-                  {/* Fill progress — only while song is actively within its known duration */}
-                  {isWithinDuration && (
+                  {/* Fill progress from direct playback ratio (avoids animation jitter). */}
+                  {hasProgressTimeline && (
                     <div
-                      key={`${displayItem.id}-${songStartedAt}`}
                       className='pointer-events-none absolute inset-0 origin-left bg-sky-500/20'
                       style={{
-                        animation: `${SONG_PROGRESS_FILL_ANIMATION} ${totalMs}ms linear forwards`,
-                        animationDelay: `-${animationDelayMs}ms`
+                        transform: `scaleX(${progressRatio})`,
+                        transition: 'transform 90ms linear'
                       }}
                     />
                   )}
@@ -4980,13 +5596,13 @@ function ProgramSongSequenceEditor({
                       </div>
                     )}
                     <div className='min-w-0 flex-1'>
-                      <div className='truncate text-xs font-semibold text-sky-400'>{displayItem.title || 'Untitled'}</div>
-                      <div className='truncate text-[10px] text-zinc-400'>{displayItem.artist || 'Unknown Artist'}</div>
+                      <div className='truncate text-xs font-semibold text-sky-400'>{displayItem.title || ''}</div>
+                      <div className='truncate text-[10px] text-zinc-400'>{displayItem.artist || ''}</div>
                     </div>
                     <div className='shrink-0 text-right text-[10px] tabular-nums text-zinc-500'>
-                      {totalMs && isWithinDuration && (
+                      {hasProgressTimeline && (
                         <span>
-                          {fmt(songElapsedMs)}
+                          {fmt(clampedSongElapsedMs)}
                           <span className='text-zinc-700'> / {fmt(totalMs)}</span>
                         </span>
                       )}
@@ -5021,7 +5637,17 @@ function ProgramSongSequenceEditor({
             </button>
             <button
               type='button'
-              onClick={() => applySequence({ ...sequence, mode: 'autoplay', startedAt: Date.now() })}
+              onClick={() =>
+                applySequence({
+                  ...sequence,
+                  mode: 'autoplay',
+                  activeItemId:
+                    sequence.mode === 'autoplay'
+                      ? effectiveActiveItemId ?? sequence.activeItemId
+                      : sequence.activeItemId,
+                  startedAt: resolveAutoplayStartedAt()
+                })
+              }
               className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 sequence.mode === 'autoplay' ? 'bg-sky-500/20 text-sky-400' : 'text-zinc-500 hover:text-zinc-300'
               }`}

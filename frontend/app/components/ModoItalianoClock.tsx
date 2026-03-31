@@ -8,7 +8,6 @@ import {
   type ProgramSongSequence
 } from '../utils/programSequence';
 import {
-  ensureProgramAudioBusTrack,
   getProgramAudioBusSnapshot,
   subscribeProgramAudioBus
 } from '../utils/programAudioBus';
@@ -314,12 +313,9 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
 
   const activeSongPayload = resolvedSequenceSong;
   const [audioBusSnapshot, setAudioBusSnapshot] = useState(() => getProgramAudioBusSnapshot(programId));
-  const fallbackSongAudioUrl = activeSongPayload?.audioUrl?.trim() || '';
   const fallbackSongArtist = activeSongPayload?.artist?.trim() || '';
   const fallbackSongTitle = activeSongPayload?.title?.trim() || '';
   const fallbackSongCoverUrl = activeSongPayload?.coverUrl?.trim() || '';
-  const fallbackSongIdentity = activeSongPayload?.id?.trim() || `${fallbackSongArtist}|${fallbackSongTitle}`.trim();
-  const fallbackPlaybackToken = fallbackSongAudioUrl ? `${fallbackSongIdentity}:${fallbackSongAudioUrl}` : '';
   const songGateEnabled = typeof playingSong === 'boolean' ? playingSong : true;
   const audioBusSong = songGateEnabled ? audioBusSnapshot.track : null;
   const normalizedSongArtist = (audioBusSong?.artist ?? fallbackSongArtist).trim();
@@ -341,36 +337,6 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
       setAudioBusSnapshot(snapshot);
     });
   }, [programId]);
-
-  useEffect(() => {
-    if (!songGateEnabled || !fallbackSongAudioUrl || !fallbackPlaybackToken) {
-      return;
-    }
-
-    ensureProgramAudioBusTrack(programId, {
-      token: fallbackPlaybackToken,
-      audioUrl: fallbackSongAudioUrl,
-      durationMs: activeSongPayload?.durationMs,
-      artist: fallbackSongArtist,
-      title: fallbackSongTitle,
-      coverUrl: fallbackSongCoverUrl,
-      earoneSongId: activeSongPayload?.earoneSongId,
-      earoneRank: activeSongPayload?.earoneRank,
-      earoneSpins: activeSongPayload?.earoneSpins
-    });
-  }, [
-    programId,
-    songGateEnabled,
-    fallbackSongAudioUrl,
-    fallbackPlaybackToken,
-    fallbackSongArtist,
-    fallbackSongTitle,
-    fallbackSongCoverUrl,
-    activeSongPayload?.durationMs,
-    activeSongPayload?.earoneSongId,
-    activeSongPayload?.earoneRank,
-    activeSongPayload?.earoneSpins
-  ]);
 
   useEffect(() => {
     if (hasLiveSongPayload) {

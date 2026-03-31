@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -25,12 +25,24 @@ import RelojLoopClock from '../components/RelojLoopClock';
 import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
-import { getProgramAudioBusSignalLevel, setProgramAudioBusMasterVolume, stopProgramAudioBus } from '../utils/programAudioBus';
+import {
+  ensureProgramAudioBusTrack,
+  getProgramAudioBusSignalSnapshot,
+  getProgramAudioBusSnapshot,
+  setProgramAudioBusMasterVolume,
+  stopProgramAudioBus
+} from '../utils/programAudioBus';
 import { faderToGain } from '../utils/audioTaper';
-import { normalizeProgramSongSequence, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
+import {
+  normalizeProgramSongSequence,
+  resolveProgramSongLeaf,
+  type ProgramSongSequence,
+  type ProgramSongSequenceItem
+} from '../utils/programSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
+import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 
 interface Layout {
   id: number;
@@ -117,8 +129,58 @@ interface AudioBusUpdateEvent {
   updatedAt: string;
 }
 
+interface MeterChannelPayload {
+  vu: number;
+  peak: number;
+  peakHold: number;
+}
+
+interface ProgramAudioMeterPayload {
+  song: MeterChannelPayload;
+  instants: MeterChannelPayload;
+  main: MeterChannelPayload;
+}
+
+interface MeterChannelBallistics {
+  vu: number;
+  peak: number;
+  peakHold: number;
+  peakHoldAtMs: number;
+}
+
+interface ProgramMeterBallisticsState {
+  song: MeterChannelBallistics;
+  instants: MeterChannelBallistics;
+  main: MeterChannelBallistics;
+  lastTickAtMs: number | null;
+}
+
+const VU_ATTACK_MS = 300;
+const VU_RELEASE_MS = 300;
+const PEAK_RELEASE_MS = 300;
+const PEAK_HOLD_MS = 900;
+const METER_TICK_INTERVAL_MS = 60;
+
 const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner']);
 const FIFTHBELL_LAYOUT_COMPONENT_TYPES = new Set([...FIFTHBELL_DRIVER_COMPONENT_TYPES, 'toni-clock']);
+
+function createMeterChannelBallistics(): MeterChannelBallistics {
+  return {
+    vu: 0,
+    peak: 0,
+    peakHold: 0,
+    peakHoldAtMs: 0
+  };
+}
+
+function createProgramMeterBallisticsState(): ProgramMeterBallisticsState {
+  return {
+    song: createMeterChannelBallistics(),
+    instants: createMeterChannelBallistics(),
+    main: createMeterChannelBallistics(),
+    lastTickAtMs: null
+  };
+}
 
 function createInstantAudioMeterContext(): AudioContext | null {
   if (typeof window === 'undefined') {
@@ -226,10 +288,32 @@ function SceneProgram({ programId }: { programId: string }) {
   const transitionSequenceRef = useRef(0);
   const activeInstantAudiosRef = useRef<Map<HTMLAudioElement, InstantAudioRuntimeState>>(new Map());
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
-  const lastMeterPayloadRef = useRef<{ song: number; instants: number; main: number }>({
-    song: 0,
-    instants: 0,
-    main: 0
+  const meterSocketRef = useRef<WebSocket | null>(null);
+  const meterSocketReadyRef = useRef(false);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const handleProgramEventRef = useRef<(data: any) => void>(() => {
+    // no-op until handler is initialized
+  });
+  const meterBallisticsRef = useRef<ProgramMeterBallisticsState>(createProgramMeterBallisticsState());
+  const lastMeterPayloadRef = useRef<ProgramAudioMeterPayload>({
+    song: { vu: 0, peak: 0, peakHold: 0 },
+    instants: { vu: 0, peak: 0, peakHold: 0 },
+    main: { vu: 0, peak: 0, peakHold: 0 }
+  });
+  const lastSongPlaybackPayloadRef = useRef<{
+    token: string;
+    audioUrl: string;
+    progress: number;
+    currentTimeMs: number;
+    durationMs: number | null;
+    isPlaying: boolean;
+  }>({
+    token: '',
+    audioUrl: '',
+    progress: 0,
+    currentTimeMs: 0,
+    durationMs: null,
+    isPlaying: false
   });
   const mainMasterFader = normalizeMasterVolume(broadcastSettings?.mainMasterVolume, 1);
   const songMasterVolume = normalizeMasterVolume(broadcastSettings?.songMasterVolume, 1);
@@ -241,6 +325,21 @@ function SceneProgram({ programId }: { programId: string }) {
   const hasSoloChannel = songSolo || instantSolo;
   const effectiveSongMasterFader = hasSoloChannel ? (songSolo ? songMasterVolume : 0) : songMasterVolume;
   const effectiveInstantMasterFader = hasSoloChannel ? (instantSolo ? instantMasterVolume : 0) : instantMasterVolume;
+  const normalizedSongSequence = useMemo(
+    () => normalizeProgramSongSequence(audioBusSettings?.songSequence),
+    [audioBusSettings?.songSequence]
+  );
+  const [songSequenceNowMs, setSongSequenceNowMs] = useState(() => Date.now());
+  const resolvedSongPayload = useMemo(
+    () =>
+      resolveProgramSongLeaf(
+        {
+          sequence: normalizedSongSequence
+        },
+        songSequenceNowMs
+      ),
+    [normalizedSongSequence, songSequenceNowMs]
+  );
   const resolvedSongChannelGain = songMuted ? 0 : faderToGain(effectiveSongMasterFader);
   const resolvedInstantChannelGain = instantMuted ? 0 : faderToGain(effectiveInstantMasterFader);
   const mainMasterGain = faderToGain(mainMasterFader);
@@ -339,29 +438,40 @@ function SceneProgram({ programId }: { programId: string }) {
     }
   }, []);
 
-  const readInstantSignalLevel = useCallback((): number => {
+  const readInstantSignalSnapshot = useCallback((): { rms: number; peak: number } => {
+    let rmsPeak = 0;
     let peak = 0;
     for (const [audio, runtime] of activeInstantAudiosRef.current) {
       if (audio.paused || audio.ended) {
         continue;
       }
       if (!runtime.meterAnalyser || !runtime.meterBuffer) {
+        const fallbackLevel = normalizeMasterVolume(audio.volume, 0);
+        rmsPeak = Math.max(rmsPeak, fallbackLevel);
+        peak = Math.max(peak, fallbackLevel);
         continue;
       }
 
       runtime.meterAnalyser.getFloatTimeDomainData(runtime.meterBuffer);
       let sumSquares = 0;
+      let peakSample = 0;
       for (let index = 0; index < runtime.meterBuffer.length; index += 1) {
         const sample = runtime.meterBuffer[index];
         sumSquares += sample * sample;
+        const absSample = Math.abs(sample);
+        if (absSample > peakSample) {
+          peakSample = absSample;
+        }
       }
       const rms = Math.sqrt(sumSquares / runtime.meterBuffer.length);
-      if (rms > peak) {
-        peak = rms;
-      }
+      rmsPeak = Math.max(rmsPeak, rms);
+      peak = Math.max(peak, peakSample);
     }
 
-    return Math.max(0, Math.min(1, peak));
+    return {
+      rms: Math.max(0, Math.min(1, rmsPeak)),
+      peak: Math.max(0, Math.min(1, peak))
+    };
   }, []);
 
   const stopAllInstantAudio = () => {
@@ -448,162 +558,12 @@ function SceneProgram({ programId }: { programId: string }) {
     }
   };
 
-  useEffect(() => {
-    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    transitionTimersRef.current = [];
-    setActiveTransition(null);
-    setState(null);
-    setAudioBusSettings(null);
-    stopAllInstantAudio();
-
-    fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
-      .then((res) => res.json())
-      .then((data) => setState(data))
-      .catch((err) => console.error('Failed to fetch initial state:', err));
-
-    fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
-      .then((res) => res.json())
-      .then((data) => setAudioBusSettings(normalizeProgramAudioBusSettings(data)))
-      .catch((err) => console.error('Failed to fetch audio bus settings:', err));
-  }, [programId]);
-
-  useEffect(() => {
-    return () => {
-      transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      transitionTimersRef.current = [];
-      stopAllInstantAudio();
-      const context = instantAudioMeterContextRef.current;
-      instantAudioMeterContextRef.current = null;
-      if (context && context.state !== 'closed') {
-        void context.close().catch(() => {
-          // no-op
-        });
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    fetch(apiUrl('/program/broadcast-settings'))
-      .then((res) => res.json())
-      .then((data) => setBroadcastSettings(normalizeBroadcastSettings(data)))
-      .catch((err) => console.error('Failed to fetch broadcast settings:', err));
-  }, []);
-
-  useEffect(() => {
-    setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
-  }, [programId, resolvedSongMasterVolume]);
-
-  useEffect(() => {
-    for (const [audio, runtime] of activeInstantAudiosRef.current) {
-      audio.volume = normalizeMasterVolume(runtime.baseVolume * resolvedInstantMasterVolume, 1);
-    }
-  }, [resolvedInstantMasterVolume]);
-
-  useEffect(() => {
-    let isDisposed = false;
-    let requestInFlight = false;
-
-    const sendMeterPayload = async (payload: { song: number; instants: number; main: number }) => {
-      if (requestInFlight || isDisposed) {
-        return;
-      }
-      requestInFlight = true;
-
-      try {
-        await fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-meter`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } catch {
-        // silent fail: meter updates are best effort only
-      } finally {
-        requestInFlight = false;
-      }
-    };
-
-    const tick = () => {
-      const songSignal = getProgramAudioBusSignalLevel(programId);
-      const instantsSignal = readInstantSignalLevel();
-      const mainSignal = Math.max(0, Math.min(1, Math.sqrt(songSignal * songSignal + instantsSignal * instantsSignal)));
-      const nextPayload = {
-        song: songSignal,
-        instants: instantsSignal,
-        main: mainSignal
-      };
-      const previousPayload = lastMeterPayloadRef.current;
-      const changed =
-        Math.abs(nextPayload.song - previousPayload.song) > 0.012 ||
-        Math.abs(nextPayload.instants - previousPayload.instants) > 0.012 ||
-        Math.abs(nextPayload.main - previousPayload.main) > 0.012;
-
-      if (!changed) {
+  const handleProgramEvent = useCallback(
+    (data: any) => {
+      if (!data || typeof data !== 'object') {
         return;
       }
 
-      lastMeterPayloadRef.current = nextPayload;
-      void sendMeterPayload(nextPayload);
-    };
-
-    tick();
-    const meterTimer = window.setInterval(tick, 120);
-
-    return () => {
-      isDisposed = true;
-      window.clearInterval(meterTimer);
-      const silentPayload = { song: 0, instants: 0, main: 0 };
-      lastMeterPayloadRef.current = silentPayload;
-      void fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-meter`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(silentPayload),
-        keepalive: true
-      }).catch(() => {
-        // ignore cleanup reporting errors
-      });
-    };
-  }, [programId, readInstantSignalLevel]);
-
-  useEffect(() => {
-    const componentTypes = state?.activeScene?.layout.componentType.split(',').filter(Boolean) || [];
-    const needsEaroneRealtime = componentTypes.includes('earone');
-
-    if (!needsEaroneRealtime) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadEarone = async () => {
-      try {
-        const res = await fetch(BACKEND_SANREMO_REALTIME_URL);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
-        if (!cancelled) {
-          setEaroneLookup(buildEaroneRealtimeLookup(payload));
-        }
-      } catch (err) {
-        console.error('Failed to fetch EarOne realtime data:', err);
-      }
-    };
-
-    void loadEarone();
-    const timer = window.setInterval(() => {
-      void loadEarone();
-    }, 15000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [state?.activeScene?.id, state?.activeScene?.layout.componentType]);
-
-  useSSE({
-    url: apiUrl(`/program/${encodeURIComponent(programId)}/events`),
-    onMessage: (data) => {
       if (data.type === 'scene_change') {
         const event = data as SceneChangeEvent;
         const preset = getSceneTransitionPreset(event.transitionId);
@@ -669,7 +629,590 @@ function SceneProgram({ programId }: { programId: string }) {
           setAudioBusSettings(normalizeProgramAudioBusSettings(event.settings));
         }
       }
+    },
+    [programId, state?.activeScene, state?.activeSceneId, playInstantAudio, stopAllInstantAudio, clearTransitionTimers]
+  );
+
+  useEffect(() => {
+    handleProgramEventRef.current = handleProgramEvent;
+  }, [handleProgramEvent]);
+
+  useEffect(() => {
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
+    setActiveTransition(null);
+    setState(null);
+    setAudioBusSettings(null);
+    setBroadcastSettings(null);
+    stopAllInstantAudio();
+  }, [programId]);
+
+  useEffect(() => {
+    return () => {
+      transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      transitionTimersRef.current = [];
+      stopAllInstantAudio();
+      const context = instantAudioMeterContextRef.current;
+      instantAudioMeterContextRef.current = null;
+      if (context && context.state !== 'closed') {
+        void context.close().catch(() => {
+          // no-op
+        });
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isRealtimeConnected) {
+      return;
     }
+
+    let cancelled = false;
+    const fallbackTimer = window.setTimeout(() => {
+      if (cancelled || meterSocketReadyRef.current) {
+        return;
+      }
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled) {
+            setState(data);
+          }
+        })
+        .catch((err) => console.error('Failed to fetch initial state:', err));
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled) {
+            setAudioBusSettings(normalizeProgramAudioBusSettings(data));
+          }
+        })
+        .catch((err) => console.error('Failed to fetch audio bus settings:', err));
+
+      fetch(apiUrl('/program/broadcast-settings'))
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled) {
+            setBroadcastSettings(normalizeBroadcastSettings(data));
+          }
+        })
+        .catch((err) => console.error('Failed to fetch broadcast settings:', err));
+    }, 900);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(fallbackTimer);
+    };
+  }, [programId, isRealtimeConnected]);
+
+  useEffect(() => {
+    setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
+  }, [programId, resolvedSongMasterVolume]);
+
+  useEffect(() => {
+    setSongSequenceNowMs(Date.now());
+  }, [normalizedSongSequence]);
+
+  useEffect(() => {
+    if (!normalizedSongSequence || normalizedSongSequence.mode !== 'autoplay') {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setSongSequenceNowMs(Date.now());
+    }, 250);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [
+    normalizedSongSequence?.mode,
+    normalizedSongSequence?.startedAt,
+    normalizedSongSequence?.intervalMs,
+    normalizedSongSequence?.loop,
+    normalizedSongSequence?.items.length
+  ]);
+
+  useEffect(() => {
+    if (!audioBusSettings) {
+      return;
+    }
+
+    const songAudioUrl = resolvedSongPayload?.audioUrl?.trim() || '';
+    const songArtist = resolvedSongPayload?.artist?.trim() || '';
+    const songTitle = resolvedSongPayload?.title?.trim() || '';
+    const songCoverUrl = resolvedSongPayload?.coverUrl?.trim() || '';
+    const songIdentity = resolvedSongPayload?.id?.trim() || `${songArtist}|${songTitle}`.trim();
+
+    if (!songAudioUrl) {
+      const snapshot = getProgramAudioBusSnapshot(programId);
+      if (snapshot.track) {
+        stopProgramAudioBus(programId);
+      }
+      return;
+    }
+
+    const playbackToken = `${songIdentity || 'song'}:${songAudioUrl}`;
+    const snapshot = getProgramAudioBusSnapshot(programId);
+    const hasSameToken = snapshot.track?.token === playbackToken;
+
+    if (hasSameToken && snapshot.isPlaying) {
+      return;
+    }
+
+    ensureProgramAudioBusTrack(programId, {
+      token: playbackToken,
+      audioUrl: songAudioUrl,
+      durationMs: resolvedSongPayload?.durationMs,
+      artist: songArtist,
+      title: songTitle,
+      coverUrl: songCoverUrl,
+      earoneSongId: resolvedSongPayload?.earoneSongId,
+      earoneRank: resolvedSongPayload?.earoneRank,
+      earoneSpins: resolvedSongPayload?.earoneSpins
+    });
+  }, [
+    programId,
+    audioBusSettings,
+    resolvedSongPayload?.id,
+    resolvedSongPayload?.audioUrl,
+    resolvedSongPayload?.artist,
+    resolvedSongPayload?.title,
+    resolvedSongPayload?.coverUrl,
+    resolvedSongPayload?.durationMs,
+    resolvedSongPayload?.earoneSongId,
+    resolvedSongPayload?.earoneRank,
+    resolvedSongPayload?.earoneSpins
+  ]);
+
+  useEffect(() => {
+    for (const [audio, runtime] of activeInstantAudiosRef.current) {
+      audio.volume = normalizeMasterVolume(runtime.baseVolume * resolvedInstantMasterVolume, 1);
+    }
+  }, [resolvedInstantMasterVolume]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let disposed = false;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (disposed) {
+        return;
+      }
+
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(getProgramRealtimeSocketUrl(programId, 'program'));
+      } catch {
+        reconnectTimer = window.setTimeout(connect, 1500);
+        return;
+      }
+
+      meterSocketRef.current = socket;
+      meterSocketReadyRef.current = false;
+      setIsRealtimeConnected(false);
+
+      socket.addEventListener('open', () => {
+        if (disposed || meterSocketRef.current !== socket) {
+          try {
+            socket.close();
+          } catch {
+            // no-op
+          }
+          return;
+        }
+        meterSocketReadyRef.current = true;
+        setIsRealtimeConnected(true);
+      });
+
+      socket.addEventListener('message', (event) => {
+        let payload: any;
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (!payload || typeof payload !== 'object') {
+          return;
+        }
+
+        if (payload.type === 'program_state_snapshot') {
+          setState(payload.state ?? null);
+          return;
+        }
+
+        if (payload.type === 'audio_bus_snapshot') {
+          setAudioBusSettings(normalizeProgramAudioBusSettings(payload.settings));
+          return;
+        }
+
+        if (payload.type === 'broadcast_settings_snapshot') {
+          setBroadcastSettings(normalizeBroadcastSettings(payload.settings));
+          return;
+        }
+
+        if (payload.type === 'audio_meter_update' || payload.type === 'song_playback_update') {
+          return;
+        }
+
+        handleProgramEventRef.current(payload);
+      });
+
+      socket.addEventListener('close', () => {
+        if (meterSocketRef.current === socket) {
+          meterSocketRef.current = null;
+          meterSocketReadyRef.current = false;
+        }
+        setIsRealtimeConnected(false);
+        if (!disposed) {
+          reconnectTimer = window.setTimeout(connect, 1500);
+        }
+      });
+
+      socket.addEventListener('error', () => {
+        try {
+          socket.close();
+        } catch {
+          // no-op
+        }
+      });
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      meterSocketReadyRef.current = false;
+      setIsRealtimeConnected(false);
+
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+
+      const socket = meterSocketRef.current;
+      meterSocketRef.current = null;
+
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.close();
+        } catch {
+          // no-op
+        }
+      }
+    };
+  }, [programId]);
+
+  useEffect(() => {
+    let isDisposed = false;
+    let meterRequestInFlight = false;
+    let songPlaybackRequestInFlight = false;
+
+    const sendMeterPayload = async (payload: ProgramAudioMeterPayload) => {
+      if (isDisposed) {
+        return;
+      }
+
+      const socket = meterSocketRef.current;
+      if (
+        socket &&
+        meterSocketReadyRef.current &&
+        socket.readyState === WebSocket.OPEN
+      ) {
+        try {
+          socket.send(
+            JSON.stringify({
+              type: 'audio_meter_update',
+              levels: payload,
+            }),
+          );
+          return;
+        } catch {
+          meterSocketReadyRef.current = false;
+        }
+      }
+
+      if (meterRequestInFlight) {
+        return;
+      }
+      meterRequestInFlight = true;
+
+      try {
+        await fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-meter`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        // silent fail: meter updates are best effort only
+      } finally {
+        meterRequestInFlight = false;
+      }
+    };
+
+    const sendSongPlaybackPayload = async (payload: {
+      token: string;
+      audioUrl: string;
+      progress: number;
+      currentTimeMs: number;
+      durationMs: number | null;
+      isPlaying: boolean;
+    }) => {
+      if (isDisposed) {
+        return;
+      }
+
+      const socket = meterSocketRef.current;
+      if (
+        socket &&
+        meterSocketReadyRef.current &&
+        socket.readyState === WebSocket.OPEN
+      ) {
+        try {
+          socket.send(
+            JSON.stringify({
+              type: 'song_playback_update',
+              playback: payload
+            }),
+          );
+          return;
+        } catch {
+          meterSocketReadyRef.current = false;
+        }
+      }
+
+      if (songPlaybackRequestInFlight) {
+        return;
+      }
+      songPlaybackRequestInFlight = true;
+
+      try {
+        await fetch(apiUrl(`/program/${encodeURIComponent(programId)}/song-playback`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        // silent fail: song playback updates are best effort only
+      } finally {
+        songPlaybackRequestInFlight = false;
+      }
+    };
+
+    const tick = () => {
+      const nowMs = performance.now();
+      const meterState = meterBallisticsRef.current;
+      const previousTickAtMs = meterState.lastTickAtMs;
+      const deltaMs = previousTickAtMs === null ? METER_TICK_INTERVAL_MS : Math.max(1, nowMs - previousTickAtMs);
+      meterState.lastTickAtMs = nowMs;
+
+      const songSignal = getProgramAudioBusSignalSnapshot(programId);
+      const instantsSignal = readInstantSignalSnapshot();
+      const mainRmsSignal = Math.max(0, Math.min(1, Math.sqrt(songSignal.rms * songSignal.rms + instantsSignal.rms * instantsSignal.rms)));
+      const mainPeakSignal = Math.max(songSignal.peak, instantsSignal.peak);
+
+      const applyBallistics = (
+        channel: MeterChannelBallistics,
+        inputRms: number,
+        inputPeak: number
+      ): MeterChannelPayload => {
+        const vuTimeConstantMs = inputRms >= channel.vu ? VU_ATTACK_MS : VU_RELEASE_MS;
+        const vuAlpha = 1 - Math.exp(-deltaMs / Math.max(1, vuTimeConstantMs));
+        const nextVu = channel.vu + (inputRms - channel.vu) * vuAlpha;
+
+        let nextPeak = channel.peak;
+        if (inputPeak >= channel.peak) {
+          nextPeak = inputPeak;
+        } else {
+          const peakReleaseAlpha = 1 - Math.exp(-deltaMs / Math.max(1, PEAK_RELEASE_MS));
+          nextPeak = channel.peak + (inputPeak - channel.peak) * peakReleaseAlpha;
+        }
+
+        let nextPeakHold = channel.peakHold;
+        let nextPeakHoldAtMs = channel.peakHoldAtMs;
+        if (inputPeak >= nextPeakHold) {
+          nextPeakHold = inputPeak;
+          nextPeakHoldAtMs = nowMs;
+        } else if (nowMs - channel.peakHoldAtMs > PEAK_HOLD_MS) {
+          const holdReleaseAlpha = 1 - Math.exp(-deltaMs / Math.max(1, PEAK_RELEASE_MS));
+          nextPeakHold = channel.peakHold + (nextPeak - channel.peakHold) * holdReleaseAlpha;
+        }
+
+        channel.vu = Math.max(0, Math.min(1, nextVu));
+        channel.peak = Math.max(channel.vu, Math.max(0, Math.min(1, nextPeak)));
+        channel.peakHold = Math.max(channel.peak, Math.max(0, Math.min(1, nextPeakHold)));
+        channel.peakHoldAtMs = nextPeakHoldAtMs;
+
+        return {
+          vu: channel.vu,
+          peak: channel.peak,
+          peakHold: channel.peakHold
+        };
+      };
+
+      const nextPayload = {
+        song: applyBallistics(meterState.song, songSignal.rms, songSignal.peak),
+        instants: applyBallistics(meterState.instants, instantsSignal.rms, instantsSignal.peak),
+        main: applyBallistics(meterState.main, mainRmsSignal, mainPeakSignal)
+      };
+      const previousPayload = lastMeterPayloadRef.current;
+      const changed =
+        Math.abs(nextPayload.song.vu - previousPayload.song.vu) > 0.0035 ||
+        Math.abs(nextPayload.song.peak - previousPayload.song.peak) > 0.0035 ||
+        Math.abs(nextPayload.song.peakHold - previousPayload.song.peakHold) > 0.0035 ||
+        Math.abs(nextPayload.instants.vu - previousPayload.instants.vu) > 0.0035 ||
+        Math.abs(nextPayload.instants.peak - previousPayload.instants.peak) > 0.0035 ||
+        Math.abs(nextPayload.instants.peakHold - previousPayload.instants.peakHold) > 0.0035 ||
+        Math.abs(nextPayload.main.vu - previousPayload.main.vu) > 0.0035 ||
+        Math.abs(nextPayload.main.peak - previousPayload.main.peak) > 0.0035 ||
+        Math.abs(nextPayload.main.peakHold - previousPayload.main.peakHold) > 0.0035;
+
+      if (changed) {
+        lastMeterPayloadRef.current = nextPayload;
+        void sendMeterPayload(nextPayload);
+      }
+
+      const snapshot = getProgramAudioBusSnapshot(programId);
+      const nextSongPlaybackPayload = {
+        token: snapshot.track?.token ?? '',
+        audioUrl: snapshot.track?.audioUrl ?? '',
+        progress: Math.max(0, Math.min(1, snapshot.progress)),
+        currentTimeMs: Math.max(0, Math.round(snapshot.currentTimeMs)),
+        durationMs:
+          typeof snapshot.durationMs === 'number' && Number.isFinite(snapshot.durationMs) && snapshot.durationMs > 0
+            ? Math.round(snapshot.durationMs)
+            : null,
+        isPlaying: Boolean(snapshot.track && snapshot.isPlaying)
+      };
+      const previousSongPlayback = lastSongPlaybackPayloadRef.current;
+      const songPlaybackChanged =
+        nextSongPlaybackPayload.token !== previousSongPlayback.token ||
+        nextSongPlaybackPayload.audioUrl !== previousSongPlayback.audioUrl ||
+        nextSongPlaybackPayload.isPlaying !== previousSongPlayback.isPlaying ||
+        nextSongPlaybackPayload.durationMs !== previousSongPlayback.durationMs ||
+        Math.abs(nextSongPlaybackPayload.currentTimeMs - previousSongPlayback.currentTimeMs) > 80 ||
+        Math.abs(nextSongPlaybackPayload.progress - previousSongPlayback.progress) > 0.004;
+
+      if (songPlaybackChanged) {
+        lastSongPlaybackPayloadRef.current = nextSongPlaybackPayload;
+        void sendSongPlaybackPayload(nextSongPlaybackPayload);
+      }
+    };
+
+    tick();
+    const meterTimer = window.setInterval(tick, METER_TICK_INTERVAL_MS);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(meterTimer);
+      const silentPayload: ProgramAudioMeterPayload = {
+        song: { vu: 0, peak: 0, peakHold: 0 },
+        instants: { vu: 0, peak: 0, peakHold: 0 },
+        main: { vu: 0, peak: 0, peakHold: 0 }
+      };
+      const silentSongPlaybackPayload = {
+        token: '',
+        audioUrl: '',
+        progress: 0,
+        currentTimeMs: 0,
+        durationMs: null as number | null,
+        isPlaying: false
+      };
+      lastMeterPayloadRef.current = silentPayload;
+      meterBallisticsRef.current = createProgramMeterBallisticsState();
+      lastSongPlaybackPayloadRef.current = silentSongPlaybackPayload;
+
+      const socket = meterSocketRef.current;
+      if (
+        socket &&
+        meterSocketReadyRef.current &&
+        socket.readyState === WebSocket.OPEN
+      ) {
+        try {
+          socket.send(
+            JSON.stringify({
+              type: 'audio_meter_update',
+              levels: silentPayload,
+            }),
+          );
+          socket.send(
+            JSON.stringify({
+              type: 'song_playback_update',
+              playback: silentSongPlaybackPayload
+            }),
+          );
+          return;
+        } catch {
+          meterSocketReadyRef.current = false;
+        }
+      }
+
+      void Promise.allSettled([
+        fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-meter`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(silentPayload),
+          keepalive: true
+        }),
+        fetch(apiUrl(`/program/${encodeURIComponent(programId)}/song-playback`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(silentSongPlaybackPayload),
+          keepalive: true
+        })
+      ]).catch(() => {
+        // ignore cleanup reporting errors
+      });
+    };
+  }, [programId, readInstantSignalSnapshot]);
+
+  useEffect(() => {
+    const componentTypes = state?.activeScene?.layout.componentType.split(',').filter(Boolean) || [];
+    const needsEaroneRealtime = componentTypes.includes('earone');
+
+    if (!needsEaroneRealtime) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadEarone = async () => {
+      try {
+        const res = await fetch(BACKEND_SANREMO_REALTIME_URL);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const payload = await res.json();
+        if (!cancelled) {
+          setEaroneLookup(buildEaroneRealtimeLookup(payload));
+        }
+      } catch (err) {
+        console.error('Failed to fetch EarOne realtime data:', err);
+      }
+    };
+
+    void loadEarone();
+    const timer = window.setInterval(() => {
+      void loadEarone();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [state?.activeScene?.id, state?.activeScene?.layout.componentType]);
+
+  useSSE({
+    url: apiUrl(`/program/${encodeURIComponent(programId)}/events`),
+    onMessage: handleProgramEvent,
+    enabled: !isRealtimeConnected
   });
 
   const globalTimeOverride: GlobalTimeOverride | null =

@@ -4,7 +4,8 @@ interface TaperPoint {
 }
 
 const CONSOLE_SILENCE_DB = -80;
-const METER_FLOOR_DB = -50;
+const METER_FLOOR_DB = -24;
+const METER_VISUAL_CURVE = 1.6;
 const CONSOLE_TAPER: TaperPoint[] = [
   { fader: 0.03, db: -70 },
   { fader: 0.12, db: -45 },
@@ -89,7 +90,8 @@ export function gainToMeterFill(value: number): number {
   if (!Number.isFinite(db)) {
     return 0;
   }
-  return clampUnit((db - METER_FLOOR_DB) / (0 - METER_FLOOR_DB));
+  const normalized = clampUnit((db - METER_FLOOR_DB) / (0 - METER_FLOOR_DB));
+  return clampUnit(Math.pow(normalized, METER_VISUAL_CURVE));
 }
 
 export function interpolateGainLog(from: number, to: number, ratio: number): number {

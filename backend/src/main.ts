@@ -1,11 +1,13 @@
 import 'dotenv/config';
 import multipart from '@fastify/multipart';
 import { NestFactory } from '@nestjs/core';
+import type { Server as HttpServer } from 'http';
 import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import { ProgramRealtimeService } from './program/program.realtime.service';
 
 function getAllowedOrigins(): Set<string> {
   const configuredOrigins = (
@@ -65,5 +67,15 @@ async function bootstrap() {
   });
 
   await app.listen(port, '0.0.0.0');
+
+  const programRealtimeService = app.get(ProgramRealtimeService);
+  const fastifyInstance = app.getHttpAdapter().getInstance() as {
+    server?: HttpServer;
+  };
+  const upgradeServer =
+    fastifyInstance?.server && typeof fastifyInstance.server.on === 'function'
+      ? fastifyInstance.server
+      : app.getHttpServer();
+  programRealtimeService.attachToServer(upgradeServer as HttpServer);
 }
 bootstrap();
