@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router';
 import type { Route } from './+types/instants';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { uploadFileToMediaBucket } from '../services/uploads';
+import { useGlobalProgramId } from '../utils/globalProgram';
 
 interface InstantItem {
   id: number;
@@ -58,6 +59,7 @@ export function meta({}: Route.MetaArgs) {
 
 export default function InstantsAdmin() {
   const navigate = useNavigate();
+  const [activeProgramId] = useGlobalProgramId();
   const [instants, setInstants] = useState<InstantItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -134,7 +136,7 @@ export default function InstantsAdmin() {
 
   const playInstant = async (instantId: number) => {
     try {
-      const res = await fetch(apiUrl(`/instants/${instantId}/play`), {
+      const res = await fetch(apiUrl(`/instants/${instantId}/play?programId=${encodeURIComponent(activeProgramId)}`), {
         method: 'POST'
       });
       if (!res.ok) {
@@ -150,7 +152,7 @@ export default function InstantsAdmin() {
 
   const stopAllInstants = async () => {
     try {
-      const res = await fetch(apiUrl('/instants/stop-all'), {
+      const res = await fetch(apiUrl(`/instants/stop-all?programId=${encodeURIComponent(activeProgramId)}`), {
         method: 'POST'
       });
       if (!res.ok) {

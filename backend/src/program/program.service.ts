@@ -1546,7 +1546,10 @@ export class ProgramService {
     return { deletedInstantId: instant.id };
   }
 
-  async playInstant(instantId: number) {
+  async playInstant(
+    instantId: number,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
     const instant = await this.prisma.instant.findUnique({
       where: { id: instantId },
     });
@@ -1558,7 +1561,9 @@ export class ProgramService {
       throw new BadRequestException('Instant is disabled');
     }
 
-    this.broadcastGlobalUpdate({
+    const normalizedProgramId = this.normalizeProgramId(programId);
+
+    this.broadcastUpdate(normalizedProgramId, {
       type: 'instant_play',
       instant: {
         id: instant.id,
@@ -1572,8 +1577,12 @@ export class ProgramService {
     return { ok: true };
   }
 
-  async stopAllInstants() {
-    this.broadcastGlobalUpdate({
+  async stopAllInstants(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+
+    this.broadcastUpdate(normalizedProgramId, {
       type: 'instant_stop_all',
       triggeredAt: new Date().toISOString(),
     });

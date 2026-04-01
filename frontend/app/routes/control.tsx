@@ -158,6 +158,9 @@ interface ProgramSongPlaybackState {
 }
 const SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
 const AUDIO_METER_UI_EPSILON = 0.0075;
+const TAKE_VOLUME_PRESET_MIN_DB = -80;
+const TAKE_VOLUME_PRESET_MAX_DB = 12;
+const TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS = 220;
 
 const INSTANT_PLAYBACK_SWEEP_ANIMATION = 'alcantaraInstantPlaybackSweep';
 const INSTANT_PLAYBACK_PULSE_ANIMATION = 'alcantaraInstantPlaybackPulse';
@@ -165,6 +168,50 @@ const SONG_PROGRESS_FILL_ANIMATION = 'alcantaraSongProgressFill';
 const INSTANT_SHORTCUT_KEYS = 'qwertyuiopasdfghjklzxcvbnm';
 
 type ComponentPropsMap = Record<string, any>;
+type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'main';
+type MixerTakePresetSide = 'a' | 'b';
+type MixerTakePresetDbMap = Record<
+  MixerTakeChannelKey,
+  {
+    aDb: number;
+    bDb: number;
+  }
+>;
+type MixerTakeSideMap = Record<MixerTakeChannelKey, MixerTakePresetSide>;
+type MixerTakeApplyingMap = Record<MixerTakeChannelKey, boolean>;
+type MixerTakeTimerMap = Record<MixerTakeChannelKey, number | null>;
+type MixerTakeRunIdMap = Record<MixerTakeChannelKey, number>;
+const DEFAULT_MIXER_TAKE_PRESETS_DB: MixerTakePresetDbMap = {
+  song: { aDb: -15, bDb: -30 },
+  stream: { aDb: -15, bDb: -30 },
+  instants: { aDb: -15, bDb: -30 },
+  main: { aDb: -15, bDb: -30 }
+};
+const MIXER_TAKE_CHANNELS: MixerTakeChannelKey[] = ['song', 'stream', 'instants', 'main'];
+const DEFAULT_MIXER_TAKE_TARGET_SIDE: MixerTakeSideMap = {
+  song: 'a',
+  stream: 'a',
+  instants: 'a',
+  main: 'a'
+};
+const DEFAULT_MIXER_TAKE_APPLYING: MixerTakeApplyingMap = {
+  song: false,
+  stream: false,
+  instants: false,
+  main: false
+};
+const DEFAULT_MIXER_TAKE_TIMERS: MixerTakeTimerMap = {
+  song: null,
+  stream: null,
+  instants: null,
+  main: null
+};
+const DEFAULT_MIXER_TAKE_RUN_IDS: MixerTakeRunIdMap = {
+  song: 0,
+  stream: 0,
+  instants: 0,
+  main: 0
+};
 const FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
   'New York',
   'San Juan',
@@ -244,6 +291,22 @@ function normalizeMasterVolume(value: unknown, fallback: number = 1): number {
     return Math.max(0, Math.min(1, value));
   }
   return fallback;
+}
+
+function normalizeTakeVolumePresetDb(value: unknown, fallback: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(TAKE_VOLUME_PRESET_MIN_DB, Math.min(TAKE_VOLUME_PRESET_MAX_DB, numeric));
+}
+
+function normalizeTakeVolumeFadeMs(value: unknown, fallback: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(20000, Math.round(numeric)));
 }
 
 function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolean {
@@ -885,6 +948,12 @@ export default function Control() {
   const [isLoadingMixerLevels, setIsLoadingMixerLevels] = useState(false);
   const [isSavingMixerLevels, setIsSavingMixerLevels] = useState(false);
   const mixerSaveTimeoutRef = useRef<number | null>(null);
+  const takeVolumeFadeTimerRef = useRef<MixerTakeTimerMap>({ ...DEFAULT_MIXER_TAKE_TIMERS });
+  const takeVolumeFadeRunIdRef = useRef<MixerTakeRunIdMap>({ ...DEFAULT_MIXER_TAKE_RUN_IDS });
+  const [mixerTakePresetsDb, setMixerTakePresetsDb] = useState<MixerTakePresetDbMap>({ ...DEFAULT_MIXER_TAKE_PRESETS_DB });
+  const [mixerTakeTargetSide, setMixerTakeTargetSide] = useState<MixerTakeSideMap>({ ...DEFAULT_MIXER_TAKE_TARGET_SIDE });
+  const [takePresetFadeMs, setTakePresetFadeMs] = useState<number>(1200);
+  const [isApplyingTakePresetByChannel, setIsApplyingTakePresetByChannel] = useState<MixerTakeApplyingMap>({ ...DEFAULT_MIXER_TAKE_APPLYING });
   const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
     song: createEmptyMeterChannel(),
     instants: createEmptyMeterChannel(),
@@ -1373,6 +1442,128 @@ export default function Control() {
     commitMixerLevels(nextMixerLevels);
   };
 
+  const getChannelMasterVolume = (mixerState: BroadcastSettings, channelId: MixerTakeChannelKey): number => {
+    switch (channelId) {
+      case 'song':
+        return mixerState.songMasterVolume;
+      case 'stream':
+        return mixerState.streamMasterVolume;
+      case 'instants':
+        return mixerState.instantMasterVolume;
+      case 'main':
+      default:
+        return mixerState.mainMasterVolume;
+    }
+  };
+
+  const setChannelMasterVolume = (channelId: MixerTakeChannelKey, nextValue: number) => {
+    switch (channelId) {
+      case 'song':
+        setSongMasterVolume(nextValue);
+        return;
+      case 'stream':
+        setStreamMasterVolume(nextValue);
+        return;
+      case 'instants':
+        setInstantMasterVolume(nextValue);
+        return;
+      case 'main':
+      default:
+        setMainMasterVolume(nextValue);
+    }
+  };
+
+  const updateChannelTakePresetDb = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide, rawValue: number) => {
+    setMixerTakePresetsDb((prev) => {
+      const next = { ...prev };
+      const key = presetSide === 'a' ? 'aDb' : 'bDb';
+      const fallback = next[channelId][key];
+      next[channelId] = {
+        ...next[channelId],
+        [key]: normalizeTakeVolumePresetDb(rawValue, fallback)
+      };
+      return next;
+    });
+  };
+
+  const clearTakeVolumeFadeTimer = (channelId?: MixerTakeChannelKey) => {
+    if (channelId) {
+      const timerId = takeVolumeFadeTimerRef.current[channelId];
+      if (timerId !== null) {
+        window.clearInterval(timerId);
+        takeVolumeFadeTimerRef.current[channelId] = null;
+      }
+      return;
+    }
+
+    for (const channel of MIXER_TAKE_CHANNELS) {
+      const timerId = takeVolumeFadeTimerRef.current[channel];
+      if (timerId !== null) {
+        window.clearInterval(timerId);
+        takeVolumeFadeTimerRef.current[channel] = null;
+      }
+    }
+  };
+
+  const applyTakePresetToChannel = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide, fadeMs: number = takePresetFadeMs) => {
+    const preset = mixerTakePresetsDb[channelId];
+    const presetDb = presetSide === 'a' ? preset.aDb : preset.bDb;
+    const normalizedPresetDb = normalizeTakeVolumePresetDb(presetDb, -15);
+    const normalizedFadeMs = normalizeTakeVolumeFadeMs(fadeMs, 0);
+    const currentFader = getChannelMasterVolume(mixerLevelsRef.current, channelId);
+    const targetFader = normalizeMasterVolume(dbToFader(normalizedPresetDb), currentFader);
+
+    clearTakeVolumeFadeTimer(channelId);
+    takeVolumeFadeRunIdRef.current[channelId] += 1;
+    const runId = takeVolumeFadeRunIdRef.current[channelId];
+
+    if (Math.abs(targetFader - currentFader) <= 0.0001 || normalizedFadeMs <= 0) {
+      setChannelMasterVolume(channelId, targetFader);
+      setIsApplyingTakePresetByChannel((prev) => ({ ...prev, [channelId]: false }));
+      return;
+    }
+
+    setIsApplyingTakePresetByChannel((prev) => ({ ...prev, [channelId]: true }));
+    const stepIntervalMs = TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS;
+    const stepCount = Math.max(1, Math.ceil(normalizedFadeMs / stepIntervalMs));
+    let step = 0;
+
+    const advanceStep = () => {
+      if (runId !== takeVolumeFadeRunIdRef.current[channelId]) {
+        return;
+      }
+
+      step += 1;
+      const ratio = Math.min(1, step / stepCount);
+      const easedRatio = ratio < 0.5 ? 2 * ratio * ratio : 1 - Math.pow(-2 * ratio + 2, 2) / 2;
+      const nextFader = currentFader + (targetFader - currentFader) * easedRatio;
+      setChannelMasterVolume(channelId, Number(nextFader.toFixed(4)));
+
+      if (ratio >= 1) {
+        clearTakeVolumeFadeTimer(channelId);
+        if (runId === takeVolumeFadeRunIdRef.current[channelId]) {
+          setIsApplyingTakePresetByChannel((prev) => ({ ...prev, [channelId]: false }));
+        }
+      }
+    };
+
+    advanceStep();
+    if (step >= stepCount) {
+      return;
+    }
+
+    takeVolumeFadeTimerRef.current[channelId] = window.setInterval(advanceStep, stepIntervalMs);
+  };
+
+  const triggerChannelTake = (channelId: MixerTakeChannelKey) => {
+    const targetPresetSide = mixerTakeTargetSide[channelId];
+    applyTakePresetToChannel(channelId, targetPresetSide, takePresetFadeMs);
+    setMixerTakeTargetSide((prev) => ({
+      ...prev,
+      [channelId]: targetPresetSide === 'a' ? 'b' : 'a'
+    }));
+  };
+
   const toggleSongMuted = () => {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
@@ -1645,12 +1836,13 @@ export default function Control() {
     if (!selectedScene) {
       return;
     }
+
     await activateScene(selectedScene);
   };
 
   const triggerInstant = async (instantId: number) => {
     try {
-      const res = await fetch(apiUrl(`/instants/${instantId}/play`), {
+      const res = await fetch(apiUrl(`/instants/${instantId}/play?programId=${encodeURIComponent(activeProgramId)}`), {
         method: 'POST'
       });
 
@@ -1694,7 +1886,7 @@ export default function Control() {
 
   const stopAllInstants = async () => {
     try {
-      const res = await fetch(apiUrl('/instants/stop-all'), {
+      const res = await fetch(apiUrl(`/instants/stop-all?programId=${encodeURIComponent(activeProgramId)}`), {
         method: 'POST'
       });
 
@@ -1823,6 +2015,7 @@ export default function Control() {
         window.clearTimeout(timeoutId);
       });
       instantPlaybackTimeoutsRef.current = {};
+      clearTakeVolumeFadeTimer();
       if (mixerSaveTimeoutRef.current !== null) {
         window.clearTimeout(mixerSaveTimeoutRef.current);
         mixerSaveTimeoutRef.current = null;
@@ -2396,6 +2589,18 @@ export default function Control() {
   const songOutputGain = songChannelGain * mainMixGain;
   const instantsOutputGain = instantsChannelGain * mainMixGain;
   const streamOutputGain = streamChannelGain * mainMixGain;
+  const songPresetAFader = dbToFader(mixerTakePresetsDb.song.aDb);
+  const songPresetBFader = dbToFader(mixerTakePresetsDb.song.bDb);
+  const streamPresetAFader = dbToFader(mixerTakePresetsDb.stream.aDb);
+  const streamPresetBFader = dbToFader(mixerTakePresetsDb.stream.bDb);
+  const instantsPresetAFader = dbToFader(mixerTakePresetsDb.instants.aDb);
+  const instantsPresetBFader = dbToFader(mixerTakePresetsDb.instants.bDb);
+  const mainPresetAFader = dbToFader(mixerTakePresetsDb.main.aDb);
+  const mainPresetBFader = dbToFader(mixerTakePresetsDb.main.bDb);
+  const songTakeTargetSide = mixerTakeTargetSide.song;
+  const streamTakeTargetSide = mixerTakeTargetSide.stream;
+  const instantsTakeTargetSide = mixerTakeTargetSide.instants;
+  const mainTakeTargetSide = mixerTakeTargetSide.main;
   const activeSceneComponentTypes = (programState?.activeScene?.layout.componentType || '').split(',').filter(Boolean);
   const stagedSceneComponentTypes = (stagedSceneData?.layout.componentType || '').split(',').filter(Boolean);
   const shouldShowStreamStrip = activeSceneComponentTypes.includes('video-stream') || stagedSceneComponentTypes.includes('video-stream');
@@ -2543,7 +2748,6 @@ export default function Control() {
                 <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
               ) : null}
             </div>
-
             <div className='flex gap-6 rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-inner'>
               {/* --- SCROLLABLE INPUTS SECTION --- */}
               <div className='flex overflow-x-auto pb-4 custom-scrollbar flex-1'>
@@ -2578,6 +2782,32 @@ export default function Control() {
                         Solo
                       </button>
                     </div>
+                    <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
+                      <label className='text-[10px] font-mono text-sky-300'>
+                        <span className='mb-1 block text-center'>A</span>
+                        <input
+                          type='number'
+                          step={0.1}
+                          min={TAKE_VOLUME_PRESET_MIN_DB}
+                          max={TAKE_VOLUME_PRESET_MAX_DB}
+                          value={mixerTakePresetsDb.song.aDb}
+                          onChange={(event) => updateChannelTakePresetDb('song', 'a', Number(event.target.value))}
+                          className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                        />
+                      </label>
+                      <label className='text-[10px] font-mono text-amber-300'>
+                        <span className='mb-1 block text-center'>B</span>
+                        <input
+                          type='number'
+                          step={0.1}
+                          min={TAKE_VOLUME_PRESET_MIN_DB}
+                          max={TAKE_VOLUME_PRESET_MAX_DB}
+                          value={mixerTakePresetsDb.song.bDb}
+                          onChange={(event) => updateChannelTakePresetDb('song', 'b', Number(event.target.value))}
+                          className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                        />
+                      </label>
+                    </div>
 
                     <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
                       <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
@@ -2608,6 +2838,26 @@ export default function Control() {
                         </div>
 
                         <div className='relative h-full w-10 flex flex-col justify-center'>
+                          <div
+                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                            style={{ bottom: `${Math.round(songPresetAFader * 100)}%` }}
+                          />
+                          <span
+                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                            style={{ bottom: `calc(${Math.round(songPresetAFader * 100)}% - 6px)` }}
+                          >
+                            A
+                          </span>
+                          <div
+                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                            style={{ bottom: `${Math.round(songPresetBFader * 100)}%` }}
+                          />
+                          <span
+                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                            style={{ bottom: `calc(${Math.round(songPresetBFader * 100)}% - 6px)` }}
+                          >
+                            B
+                          </span>
                           {/* Fader Track Line */}
                           <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                           {/* Wrapper for rotation */}
@@ -2664,6 +2914,14 @@ export default function Control() {
                       />
                       <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{songOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                     </div>
+                    <button
+                      type='button'
+                      onClick={() => triggerChannelTake('song')}
+                      disabled={isApplyingTakePresetByChannel.song}
+                      className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
+                    >
+                      TAKE {songTakeTargetSide.toUpperCase()}
+                    </button>
                   </div>
 
                   {shouldShowStreamStrip ? (
@@ -2698,6 +2956,32 @@ export default function Control() {
                             Solo
                           </button>
                         </div>
+                        <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
+                          <label className='text-[10px] font-mono text-sky-300'>
+                            <span className='mb-1 block text-center'>A</span>
+                            <input
+                              type='number'
+                              step={0.1}
+                              min={TAKE_VOLUME_PRESET_MIN_DB}
+                              max={TAKE_VOLUME_PRESET_MAX_DB}
+                              value={mixerTakePresetsDb.stream.aDb}
+                              onChange={(event) => updateChannelTakePresetDb('stream', 'a', Number(event.target.value))}
+                              className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                            />
+                          </label>
+                          <label className='text-[10px] font-mono text-amber-300'>
+                            <span className='mb-1 block text-center'>B</span>
+                            <input
+                              type='number'
+                              step={0.1}
+                              min={TAKE_VOLUME_PRESET_MIN_DB}
+                              max={TAKE_VOLUME_PRESET_MAX_DB}
+                              value={mixerTakePresetsDb.stream.bDb}
+                              onChange={(event) => updateChannelTakePresetDb('stream', 'b', Number(event.target.value))}
+                              className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                            />
+                          </label>
+                        </div>
 
                         <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
                           <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
@@ -2715,6 +2999,26 @@ export default function Control() {
                             <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]' />
 
                             <div className='relative h-full w-10 flex flex-col justify-center'>
+                              <div
+                                className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                                style={{ bottom: `${Math.round(streamPresetAFader * 100)}%` }}
+                              />
+                              <span
+                                className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                                style={{ bottom: `calc(${Math.round(streamPresetAFader * 100)}% - 6px)` }}
+                              >
+                                A
+                              </span>
+                              <div
+                                className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                style={{ bottom: `${Math.round(streamPresetBFader * 100)}%` }}
+                              />
+                              <span
+                                className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                style={{ bottom: `calc(${Math.round(streamPresetBFader * 100)}% - 6px)` }}
+                              >
+                                B
+                              </span>
                               <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                               <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
                                 <input
@@ -2769,6 +3073,14 @@ export default function Control() {
                           />
                           <span className='font-mono text-[9px] tracking-wider text-cyan-700'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                         </div>
+                        <button
+                          type='button'
+                          onClick={() => triggerChannelTake('stream')}
+                          disabled={isApplyingTakePresetByChannel.stream}
+                          className='mt-2 w-4/5 rounded border border-cyan-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-cyan-300 transition hover:bg-cyan-900/20 disabled:opacity-50'
+                        >
+                          TAKE {streamTakeTargetSide.toUpperCase()}
+                        </button>
                       </div>
                     </>
                   ) : null}
@@ -2803,6 +3115,32 @@ export default function Control() {
                         Solo
                       </button>
                     </div>
+                    <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
+                      <label className='text-[10px] font-mono text-sky-300'>
+                        <span className='mb-1 block text-center'>A</span>
+                        <input
+                          type='number'
+                          step={0.1}
+                          min={TAKE_VOLUME_PRESET_MIN_DB}
+                          max={TAKE_VOLUME_PRESET_MAX_DB}
+                          value={mixerTakePresetsDb.instants.aDb}
+                          onChange={(event) => updateChannelTakePresetDb('instants', 'a', Number(event.target.value))}
+                          className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                        />
+                      </label>
+                      <label className='text-[10px] font-mono text-amber-300'>
+                        <span className='mb-1 block text-center'>B</span>
+                        <input
+                          type='number'
+                          step={0.1}
+                          min={TAKE_VOLUME_PRESET_MIN_DB}
+                          max={TAKE_VOLUME_PRESET_MAX_DB}
+                          value={mixerTakePresetsDb.instants.bDb}
+                          onChange={(event) => updateChannelTakePresetDb('instants', 'b', Number(event.target.value))}
+                          className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                        />
+                      </label>
+                    </div>
 
                     <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
                       <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
@@ -2833,6 +3171,26 @@ export default function Control() {
                         </div>
 
                         <div className='relative h-full w-10 flex flex-col justify-center'>
+                          <div
+                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                            style={{ bottom: `${Math.round(instantsPresetAFader * 100)}%` }}
+                          />
+                          <span
+                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                            style={{ bottom: `calc(${Math.round(instantsPresetAFader * 100)}% - 6px)` }}
+                          >
+                            A
+                          </span>
+                          <div
+                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                            style={{ bottom: `${Math.round(instantsPresetBFader * 100)}%` }}
+                          />
+                          <span
+                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                            style={{ bottom: `calc(${Math.round(instantsPresetBFader * 100)}% - 6px)` }}
+                          >
+                            B
+                          </span>
                           {/* Fader Track Line */}
                           <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                           {/* Wrapper for rotation */}
@@ -2889,6 +3247,14 @@ export default function Control() {
                       />
                       <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{instantsOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                     </div>
+                    <button
+                      type='button'
+                      onClick={() => triggerChannelTake('instants')}
+                      disabled={isApplyingTakePresetByChannel.instants}
+                      className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
+                    >
+                      TAKE {instantsTakeTargetSide.toUpperCase()}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2900,9 +3266,45 @@ export default function Control() {
                 </div>
 
                 <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                  {/* Spacer to match Mute/Solo button height exactly */}
-                  <div className='flex h-[82px] w-full items-center justify-center rounded border border-red-900/20 bg-zinc-900/50 shadow-inner'>
-                    <span className='font-mono text-[9px] font-bold tracking-widest text-red-900/40'>MASTER BUS</span>
+                  <div className='flex h-[82px] w-full flex-col justify-center rounded border border-red-900/20 bg-zinc-900/50 px-2 py-2 shadow-inner'>
+                    <label className='text-[10px] font-mono text-red-300'>
+                      <span className='mb-1 block text-center'>TAKE FADE (ms)</span>
+                      <input
+                        type='number'
+                        step={100}
+                        min={0}
+                        max={20000}
+                        value={takePresetFadeMs}
+                        onChange={(event) => setTakePresetFadeMs(normalizeTakeVolumeFadeMs(Number(event.target.value), takePresetFadeMs))}
+                        className='w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-red-200 outline-none focus:border-red-400'
+                      />
+                    </label>
+                    <div className='mt-2 grid grid-cols-2 gap-2'>
+                      <label className='text-[10px] font-mono text-sky-300'>
+                        <span className='mb-1 block text-center'>A</span>
+                        <input
+                          type='number'
+                          step={0.1}
+                          min={TAKE_VOLUME_PRESET_MIN_DB}
+                          max={TAKE_VOLUME_PRESET_MAX_DB}
+                          value={mixerTakePresetsDb.main.aDb}
+                          onChange={(event) => updateChannelTakePresetDb('main', 'a', Number(event.target.value))}
+                          className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                        />
+                      </label>
+                      <label className='text-[10px] font-mono text-amber-300'>
+                        <span className='mb-1 block text-center'>B</span>
+                        <input
+                          type='number'
+                          step={0.1}
+                          min={TAKE_VOLUME_PRESET_MIN_DB}
+                          max={TAKE_VOLUME_PRESET_MAX_DB}
+                          value={mixerTakePresetsDb.main.bDb}
+                          onChange={(event) => updateChannelTakePresetDb('main', 'b', Number(event.target.value))}
+                          className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -2951,6 +3353,26 @@ export default function Control() {
                     </div>
 
                     <div className='relative h-full w-10 flex flex-col justify-center'>
+                      <div
+                        className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                        style={{ bottom: `${Math.round(mainPresetAFader * 100)}%` }}
+                      />
+                      <span
+                        className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                        style={{ bottom: `calc(${Math.round(mainPresetAFader * 100)}% - 6px)` }}
+                      >
+                        A
+                      </span>
+                      <div
+                        className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                        style={{ bottom: `${Math.round(mainPresetBFader * 100)}%` }}
+                      />
+                      <span
+                        className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                        style={{ bottom: `calc(${Math.round(mainPresetBFader * 100)}% - 6px)` }}
+                      >
+                        B
+                      </span>
                       {/* Fader Track Line */}
                       <div className='absolute left-1/2 top-0 h-full w-2 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                       {/* Wrapper for rotation */}
@@ -3007,6 +3429,14 @@ export default function Control() {
                   />
                   <span className='font-mono text-[9px] tracking-wider text-red-700'>{mainMixGain > 0 ? 'LIVE' : 'CUT'}</span>
                 </div>
+                <button
+                  type='button'
+                  onClick={() => triggerChannelTake('main')}
+                  disabled={isApplyingTakePresetByChannel.main}
+                  className='mt-2 w-4/5 rounded border border-red-900/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-red-300 transition hover:bg-red-900/20 disabled:opacity-50'
+                >
+                  TAKE {mainTakeTargetSide.toUpperCase()}
+                </button>
               </div>
             </div>
 

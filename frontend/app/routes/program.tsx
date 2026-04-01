@@ -106,6 +106,7 @@ interface SceneChangeEvent {
 
 interface InstantPlayEvent {
   type: 'instant_play';
+  programId?: string;
   instant: {
     id: number;
     name: string;
@@ -754,8 +755,16 @@ function SceneProgram({ programId }: { programId: string }) {
       } else if (data.type === 'broadcast_settings_update') {
         setBroadcastSettings(normalizeBroadcastSettings(data.settings));
       } else if (data.type === 'instant_play') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
         playInstantAudio(data as InstantPlayEvent);
       } else if (data.type === 'instant_stop_all') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
         stopAllInstantAudio();
       } else if (data.type === 'song_off_air') {
         const event = data as SongOffAirEvent;

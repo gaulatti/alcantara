@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ProgramService } from '../program/program.service';
 
 @Controller('instants')
@@ -43,12 +43,21 @@ export class InstantsController {
   }
 
   @Post(':instantId/play')
-  async playInstant(@Param('instantId') instantId: string) {
-    return this.programService.playInstant(Number(instantId));
+  async playInstant(
+    @Param('instantId') instantId: string,
+    @Query('programId') programIdQuery?: string,
+    @Body() data?: { programId?: string },
+  ) {
+    const programId = programIdQuery ?? data?.programId;
+    return this.programService.playInstant(Number(instantId), programId);
   }
 
   @Post('stop-all')
-  async stopAllInstants() {
-    return this.programService.stopAllInstants();
+  async stopAllInstants(
+    @Query('programId') programIdQuery?: string,
+    @Body() data?: { programId?: string },
+  ) {
+    const programId = programIdQuery ?? data?.programId;
+    return this.programService.stopAllInstants(programId);
   }
 }

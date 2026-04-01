@@ -313,6 +313,7 @@ export default function Layout() {
   const commandActions = useMemo<CommandSpotlightAction[]>(() => {
     const selectedProgramPath = `/program/${encodeURIComponent(selectedProgramId)}`;
     const selectedProgramTitle = `Open Program Output (${selectedProgramId})`;
+    const selectedProgramQuery = `programId=${encodeURIComponent(selectedProgramId)}`;
 
     const baseActions: CommandSpotlightAction[] = [
       {
@@ -416,7 +417,7 @@ export default function Layout() {
         group: 'Instants',
         icon: <Volume2 size={16} />,
         onSelect: async () => {
-          const res = await fetch(apiUrl('/instants/stop-all'), {
+          const res = await fetch(apiUrl(`/instants/stop-all?${selectedProgramQuery}`), {
             method: 'POST'
           });
           if (!res.ok) {
@@ -519,7 +520,7 @@ export default function Layout() {
         icon: <Volume2 size={16} />,
         keywords: [instant.audioUrl],
         onSelect: async () => {
-          const res = await fetch(apiUrl(`/instants/${instant.id}/play`), {
+          const res = await fetch(apiUrl(`/instants/${instant.id}/play?${selectedProgramQuery}`), {
             method: 'POST'
           });
           if (!res.ok) {
