@@ -82,7 +82,12 @@ export class LayoutsService {
     },
     {
       type: 'toni-chyron',
-      name: 'Toni Chyron',
+      name: 'FifthBell Chyron (Legacy)',
+      description: 'Legacy alias for FifthBell chyron component',
+    },
+    {
+      type: 'fifthbell-chyron',
+      name: 'FifthBell Chyron',
       description: 'Lower-third style chyron with optional marquee behavior',
     },
     {
@@ -129,6 +134,12 @@ export class LayoutsService {
       type: 'fifthbell-marquee',
       name: 'FifthBell Marquee',
       description: 'FifthBell bottom marquee controls',
+    },
+    {
+      type: 'fifthbell-clock',
+      name: 'FifthBell Clock',
+      description:
+        'FifthBell standalone corner clock component (layout-selectable)',
     },
     {
       type: 'fifthbell-corner',

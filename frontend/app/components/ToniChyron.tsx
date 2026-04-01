@@ -9,29 +9,42 @@ import {
 const LABELS = ['EN VIVO', 'LIVE'];
 const LABEL_INTERVAL_MS = 4000;
 const LABEL_FADE_MS = 350;
-const SOCIALS = ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'];
+const DEFAULT_SOCIAL_HANDLES = ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'];
 const SOCIAL_INTERVAL_MS = 4000;
 
-interface ToniChyronProps {
+interface FifthBellChyronProps {
   text?: string;
   show?: boolean;
   useMarquee?: boolean;
   label?: string;
   contentMode?: 'text' | 'sequence';
   sequence?: unknown;
+  socialHandles?: unknown;
 }
 
-export const ToniChyron: React.FC<ToniChyronProps> = ({
+function normalizeSocialHandles(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return DEFAULT_SOCIAL_HANDLES;
+  }
+
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+}
+
+export const FifthBellChyron: React.FC<FifthBellChyronProps> = ({
   text = '',
   show = false,
   useMarquee,
   label,
   contentMode,
-  sequence
+  sequence,
+  socialHandles: socialHandlesProp
 }) => {
   const [visible, setVisible] = React.useState(show);
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const normalizedSequence = normalizeToniChyronSequence(sequence);
+  const socialHandles = React.useMemo(() => normalizeSocialHandles(socialHandlesProp), [socialHandlesProp]);
   const isSequenceMode =
     getToniChyronContentMode(contentMode, normalizedSequence) === 'sequence';
   const resolvedContent = resolveToniChyronContent(
@@ -96,13 +109,21 @@ export const ToniChyron: React.FC<ToniChyronProps> = ({
 
   // Cycle social handles
   React.useEffect(() => {
+    setSocialIndex(0);
+    socialIndexRef.current = 0;
+
+    if (socialHandles.length <= 1) {
+      return;
+    }
+
     const timer = setInterval(() => {
-      const next = (socialIndexRef.current + 1) % SOCIALS.length;
+      const next = (socialIndexRef.current + 1) % socialHandles.length;
       socialIndexRef.current = next;
       setSocialIndex(next);
     }, SOCIAL_INTERVAL_MS);
+
     return () => clearInterval(timer);
-  }, []);
+  }, [socialHandles]);
 
   if (!visible || !resolvedContent.text) {
     return null;
@@ -119,14 +140,19 @@ export const ToniChyron: React.FC<ToniChyronProps> = ({
       <div className='toni-chyron-divider' aria-hidden='true' />
       <div className='toni-chyron-content'>
         <div className={`toni-chyron-text ${isChanging ? 'is-changing' : ''} ${scrolling ? 'marquee' : ''}`}>{displayText}</div>
-        <div className='toni-chyron-social-stack'>
-          {SOCIALS.map((handle, i) => (
-            <div key={handle} className={`toni-chyron-social${i === socialIndex ? ' toni-chyron-social--active' : ''}`}>
-              {handle}
-            </div>
-          ))}
-        </div>
+        {socialHandles.length > 0 ? (
+          <div className='toni-chyron-social-stack'>
+            {socialHandles.map((handle, i) => (
+              <div key={`${handle}-${i}`} className={`toni-chyron-social${i === socialIndex ? ' toni-chyron-social--active' : ''}`}>
+                {handle}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 };
+
+// Legacy alias to avoid breaking existing imports while exposing the FifthBell rebrand.
+export const ToniChyron = FifthBellChyron;

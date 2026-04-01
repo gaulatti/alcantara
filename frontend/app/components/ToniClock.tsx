@@ -20,6 +20,7 @@ interface ToniClockProps {
   language?: SupportedLanguage;
   showWorldClocks?: boolean;
   showBellIcon?: boolean;
+  bellLogoUrl?: string;
   bellSize?: number;
   inline?: boolean;
 }
@@ -44,6 +45,7 @@ export const ToniClock: React.FC<ToniClockProps> = ({
   language = 'en',
   showWorldClocks = true,
   showBellIcon = false,
+  bellLogoUrl,
   bellSize = 64,
   inline = false
 }) => {
@@ -69,7 +71,16 @@ export const ToniClock: React.FC<ToniClockProps> = ({
       )}
       {showBellIcon && (
         <div className='toni-clock-bell'>
-          <BellRing size={bellSize} strokeWidth={2} />
+          {bellLogoUrl ? (
+            <img
+              src={bellLogoUrl}
+              alt='FifthBell logo'
+              className='toni-clock-bell-logo'
+              style={{ width: `${bellSize}px`, height: `${bellSize}px` }}
+            />
+          ) : (
+            <BellRing size={bellSize} strokeWidth={2} />
+          )}
         </div>
       )}
     </div>

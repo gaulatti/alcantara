@@ -56,12 +56,15 @@ export class ProgramController {
       songMasterVolume?: number;
       instantMasterVolume?: number;
       streamMasterVolume?: number;
+      sceneInstantMasterVolume?: number;
       songMuted?: boolean;
       instantMuted?: boolean;
       streamMuted?: boolean;
+      sceneInstantMuted?: boolean;
       songSolo?: boolean;
       instantSolo?: boolean;
       streamSolo?: boolean;
+      sceneInstantSolo?: boolean;
     },
   ) {
     return this.programService.updateBroadcastSettings(data);
@@ -89,10 +92,33 @@ export class ProgramController {
     data: {
       song?: unknown;
       instants?: unknown;
+      sceneInstant?: unknown;
       main?: unknown;
     },
   ) {
     return this.programService.updateProgramAudioMeter(data, programId);
+  }
+
+  @Get(':programId/scene-instant')
+  async getProgramSceneInstantById(@Param('programId') programId: string) {
+    return this.programService.getProgramSceneInstantPlayback(programId);
+  }
+
+  @Post(':programId/scene-instant/take')
+  async takeProgramSceneInstantById(
+    @Param('programId') programId: string,
+    @Body() data?: { sceneId?: number | null },
+  ) {
+    const sceneId =
+      typeof data?.sceneId === 'number' && Number.isFinite(data.sceneId)
+        ? data.sceneId
+        : null;
+    return this.programService.takeProgramSceneInstant(sceneId, programId);
+  }
+
+  @Post(':programId/scene-instant/stop')
+  async stopProgramSceneInstantById(@Param('programId') programId: string) {
+    return this.programService.stopProgramSceneInstant(programId);
   }
 
   @Get(':programId/song-playback')

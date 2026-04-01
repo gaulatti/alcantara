@@ -24,6 +24,11 @@ interface ProgramAudioMeterLevels {
     peak: number;
     peakHold: number;
   };
+  sceneInstant: {
+    vu: number;
+    peak: number;
+    peakHold: number;
+  };
   main: {
     vu: number;
     peak: number;
@@ -217,6 +222,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     this.sendInitialBroadcastSettingsSnapshot(client);
     this.sendInitialMeterSnapshot(client);
     this.sendInitialSongPlaybackSnapshot(client);
+    this.sendInitialSceneInstantSnapshot(client);
 
     socket.on('message', (rawData) => {
       void this.handleMessage(client, rawData);
@@ -305,6 +311,23 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       );
       this.sendJson(client.socket, {
         type: 'song_playback_update',
+        programId: client.programId,
+        playback,
+      });
+    } catch {
+      // no-op
+    }
+  }
+
+  private async sendInitialSceneInstantSnapshot(
+    client: ProgramRealtimeClient,
+  ): Promise<void> {
+    try {
+      const playback = await this.programService.getProgramSceneInstantPlayback(
+        client.programId,
+      );
+      this.sendJson(client.socket, {
+        type: 'scene_instant_state',
         programId: client.programId,
         playback,
       });

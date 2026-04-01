@@ -131,12 +131,15 @@ interface BroadcastSettings {
   mainMasterVolume: number;
   songMasterVolume: number;
   instantMasterVolume: number;
+  sceneInstantMasterVolume: number;
   streamMasterVolume: number;
   songMuted: boolean;
   instantMuted: boolean;
+  sceneInstantMuted: boolean;
   streamMuted: boolean;
   songSolo: boolean;
   instantSolo: boolean;
+  sceneInstantSolo: boolean;
   streamSolo: boolean;
   mixerChannels: MixerChannelSetting[];
 }
@@ -160,11 +163,24 @@ interface ProgramAudioMeterLevels {
     peak: number;
     peakHold: number;
   };
+  sceneInstant: {
+    vu: number;
+    peak: number;
+    peakHold: number;
+  };
   main: {
     vu: number;
     peak: number;
     peakHold: number;
   };
+  updatedAt: string;
+}
+
+interface SceneInstantPlaybackState {
+  sceneId: number | null;
+  instantId: number | null;
+  instantName: string;
+  isPlaying: boolean;
   updatedAt: string;
 }
 
@@ -189,7 +205,7 @@ const SONG_PROGRESS_FILL_ANIMATION = 'alcantaraSongProgressFill';
 const INSTANT_SHORTCUT_KEYS = 'qwertyuiopasdfghjklzxcvbnm';
 
 type ComponentPropsMap = Record<string, any>;
-type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'main';
+type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'sceneInstant' | 'main';
 type MixerTakePresetSide = 'a' | 'b';
 type MixerTakePresetDbMap = Record<
   MixerTakeChannelKey,
@@ -206,31 +222,36 @@ const DEFAULT_MIXER_TAKE_PRESETS_DB: MixerTakePresetDbMap = {
   song: { aDb: -15, bDb: -30 },
   stream: { aDb: -15, bDb: -30 },
   instants: { aDb: -15, bDb: -30 },
+  sceneInstant: { aDb: -15, bDb: -30 },
   main: { aDb: -15, bDb: -30 }
 };
-const MIXER_TAKE_CHANNELS: MixerTakeChannelKey[] = ['song', 'stream', 'instants', 'main'];
+const MIXER_TAKE_CHANNELS: MixerTakeChannelKey[] = ['song', 'stream', 'instants', 'sceneInstant', 'main'];
 const DEFAULT_MIXER_TAKE_TARGET_SIDE: MixerTakeSideMap = {
   song: 'a',
   stream: 'a',
   instants: 'a',
+  sceneInstant: 'a',
   main: 'a'
 };
 const DEFAULT_MIXER_TAKE_APPLYING: MixerTakeApplyingMap = {
   song: false,
   stream: false,
   instants: false,
+  sceneInstant: false,
   main: false
 };
 const DEFAULT_MIXER_TAKE_TIMERS: MixerTakeTimerMap = {
   song: null,
   stream: null,
   instants: null,
+  sceneInstant: null,
   main: null
 };
 const DEFAULT_MIXER_TAKE_RUN_IDS: MixerTakeRunIdMap = {
   song: 0,
   stream: 0,
   instants: 0,
+  sceneInstant: 0,
   main: 0
 };
 const FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
@@ -272,7 +293,9 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'reloj-clock':
     case 'reloj-loop-clock':
     case 'toni-chyron':
+    case 'fifthbell-chyron':
     case 'toni-clock':
+    case 'fifthbell-clock':
     case 'modoitaliano-chyron':
     case 'modoitaliano-disclaimer':
     case 'earone':
@@ -340,12 +363,15 @@ function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolea
 function defaultMixerChannelsFromScalars(source: {
   songMasterVolume: number;
   instantMasterVolume: number;
+  sceneInstantMasterVolume: number;
   streamMasterVolume: number;
   songMuted: boolean;
   instantMuted: boolean;
+  sceneInstantMuted: boolean;
   streamMuted: boolean;
   songSolo: boolean;
   instantSolo: boolean;
+  sceneInstantSolo: boolean;
   streamSolo: boolean;
 }): MixerChannelSetting[] {
   return [
@@ -369,6 +395,13 @@ function defaultMixerChannelsFromScalars(source: {
       volume: source.instantMasterVolume,
       muted: source.instantMuted,
       solo: source.instantSolo
+    },
+    {
+      id: 'sceneInstant',
+      name: 'Scene Instant',
+      volume: source.sceneInstantMasterVolume,
+      muted: source.sceneInstantMuted,
+      solo: source.sceneInstantSolo
     }
   ];
 }
@@ -425,29 +458,36 @@ function normalizeBroadcastSettingsPayload(value: unknown): BroadcastSettings {
   const scalarFallback = {
     songMasterVolume: normalizeMasterVolume(record.songMasterVolume, 1),
     instantMasterVolume: normalizeMasterVolume(record.instantMasterVolume, 1),
+    sceneInstantMasterVolume: normalizeMasterVolume(record.sceneInstantMasterVolume, 1),
     streamMasterVolume: normalizeMasterVolume(record.streamMasterVolume, 1),
     songMuted: normalizeMixerToggle(record.songMuted, false),
     instantMuted: normalizeMixerToggle(record.instantMuted, false),
+    sceneInstantMuted: normalizeMixerToggle(record.sceneInstantMuted, false),
     streamMuted: normalizeMixerToggle(record.streamMuted, false),
     songSolo: normalizeMixerToggle(record.songSolo, false),
     instantSolo: normalizeMixerToggle(record.instantSolo, false),
+    sceneInstantSolo: normalizeMixerToggle(record.sceneInstantSolo, false),
     streamSolo: normalizeMixerToggle(record.streamSolo, false)
   };
   const mixerChannels = normalizeMixerChannelsPayload(record.mixerChannels, defaultMixerChannelsFromScalars(scalarFallback));
   const songChannel = getMixerChannelById(mixerChannels, 'song');
   const streamChannel = getMixerChannelById(mixerChannels, 'stream');
   const instantsChannel = getMixerChannelById(mixerChannels, 'instants');
+  const sceneInstantChannel = getMixerChannelById(mixerChannels, 'sceneInstant');
 
   return {
     mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
     songMasterVolume: songChannel.volume,
     instantMasterVolume: instantsChannel.volume,
+    sceneInstantMasterVolume: sceneInstantChannel.volume,
     streamMasterVolume: streamChannel.volume,
     songMuted: songChannel.muted,
     instantMuted: instantsChannel.muted,
+    sceneInstantMuted: sceneInstantChannel.muted,
     streamMuted: streamChannel.muted,
     songSolo: songChannel.solo,
     instantSolo: instantsChannel.solo,
+    sceneInstantSolo: sceneInstantChannel.solo,
     streamSolo: streamChannel.solo,
     mixerChannels
   };
@@ -513,6 +553,7 @@ function normalizeProgramAudioMeter(value: unknown): ProgramAudioMeterLevels {
     return {
       song: createEmptyMeterChannel(),
       instants: createEmptyMeterChannel(),
+      sceneInstant: createEmptyMeterChannel(),
       main: createEmptyMeterChannel(),
       updatedAt: new Date(0).toISOString()
     };
@@ -522,6 +563,7 @@ function normalizeProgramAudioMeter(value: unknown): ProgramAudioMeterLevels {
   return {
     song: normalizeProgramMeterChannel(record.song),
     instants: normalizeProgramMeterChannel(record.instants),
+    sceneInstant: normalizeProgramMeterChannel(record.sceneInstant),
     main: normalizeProgramMeterChannel(record.main),
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
   };
@@ -560,6 +602,32 @@ function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybackState 
   };
 }
 
+function normalizeSceneInstantPlayback(value: unknown): SceneInstantPlaybackState {
+  if (!value || typeof value !== 'object') {
+    return {
+      sceneId: null,
+      instantId: null,
+      instantName: '',
+      isPlaying: false,
+      updatedAt: new Date(0).toISOString()
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  const instant =
+    record.instant && typeof record.instant === 'object' && !Array.isArray(record.instant)
+      ? (record.instant as Record<string, unknown>)
+      : null;
+
+  return {
+    sceneId: normalizeSceneInstantId(record.sceneId),
+    instantId: normalizeSceneInstantId(record.instantId ?? instant?.id),
+    instantName: typeof instant?.name === 'string' ? instant.name : '',
+    isPlaying: Boolean(record.isPlaying),
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
+  };
+}
+
 function reconcileProgramSongPlayback(previous: ProgramSongPlaybackState, next: ProgramSongPlaybackState): ProgramSongPlaybackState {
   if (previous.token && next.token && previous.token === next.token && previous.audioUrl === next.audioUrl && previous.isPlaying) {
     const backwardDriftMs = previous.currentTimeMs - next.currentTimeMs;
@@ -579,6 +647,9 @@ function reconcileProgramAudioMeter(previous: ProgramAudioMeterLevels, next: Pro
     Math.abs(previous.instants.vu - next.instants.vu),
     Math.abs(previous.instants.peak - next.instants.peak),
     Math.abs(previous.instants.peakHold - next.instants.peakHold),
+    Math.abs(previous.sceneInstant.vu - next.sceneInstant.vu),
+    Math.abs(previous.sceneInstant.peak - next.sceneInstant.peak),
+    Math.abs(previous.sceneInstant.peakHold - next.sceneInstant.peakHold),
     Math.abs(previous.main.vu - next.main.vu),
     Math.abs(previous.main.peak - next.main.peak),
     Math.abs(previous.main.peakHold - next.main.peakHold)
@@ -673,6 +744,14 @@ function normalizeSlideshowImageList(value: unknown): string[] {
 }
 
 function normalizeSlideshowMediaGroupId(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0 || !Number.isInteger(numeric)) {
+    return null;
+  }
+  return numeric;
+}
+
+function normalizeSceneInstantId(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0 || !Number.isInteger(numeric)) {
     return null;
@@ -917,7 +996,10 @@ function withIndependentProgramClockMetadata(metadata: ComponentPropsMap): Compo
 function getSceneSummaryText(scene: Scene): string {
   try {
     const metadata = parseSceneMetadata(scene.metadata);
-    const toniProps = metadata?.['toni-chyron'];
+    const toniProps = {
+      ...(metadata?.['toni-chyron'] || {}),
+      ...(metadata?.['fifthbell-chyron'] || {})
+    };
 
     if (toniProps && typeof toniProps === 'object') {
       const sequence = normalizeToniChyronSequence(toniProps.sequence);
@@ -987,22 +1069,28 @@ export default function Control() {
     mainMasterVolume: 1,
     songMasterVolume: 1,
     instantMasterVolume: 1,
+    sceneInstantMasterVolume: 1,
     streamMasterVolume: 1,
     songMuted: false,
     instantMuted: false,
+    sceneInstantMuted: false,
     streamMuted: false,
     songSolo: false,
     instantSolo: false,
+    sceneInstantSolo: false,
     streamSolo: false,
     mixerChannels: defaultMixerChannelsFromScalars({
       songMasterVolume: 1,
       instantMasterVolume: 1,
+      sceneInstantMasterVolume: 1,
       streamMasterVolume: 1,
       songMuted: false,
       instantMuted: false,
+      sceneInstantMuted: false,
       streamMuted: false,
       songSolo: false,
       instantSolo: false,
+      sceneInstantSolo: false,
       streamSolo: false
     })
   });
@@ -1010,22 +1098,28 @@ export default function Control() {
     mainMasterVolume: 1,
     songMasterVolume: 1,
     instantMasterVolume: 1,
+    sceneInstantMasterVolume: 1,
     streamMasterVolume: 1,
     songMuted: false,
     instantMuted: false,
+    sceneInstantMuted: false,
     streamMuted: false,
     songSolo: false,
     instantSolo: false,
+    sceneInstantSolo: false,
     streamSolo: false,
     mixerChannels: defaultMixerChannelsFromScalars({
       songMasterVolume: 1,
       instantMasterVolume: 1,
+      sceneInstantMasterVolume: 1,
       streamMasterVolume: 1,
       songMuted: false,
       instantMuted: false,
+      sceneInstantMuted: false,
       streamMuted: false,
       songSolo: false,
       instantSolo: false,
+      sceneInstantSolo: false,
       streamSolo: false
     })
   });
@@ -1041,6 +1135,7 @@ export default function Control() {
   const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
     song: createEmptyMeterChannel(),
     instants: createEmptyMeterChannel(),
+    sceneInstant: createEmptyMeterChannel(),
     main: createEmptyMeterChannel(),
     updatedAt: new Date(0).toISOString()
   });
@@ -1050,6 +1145,13 @@ export default function Control() {
     progress: 0,
     currentTimeMs: 0,
     durationMs: null,
+    isPlaying: false,
+    updatedAt: new Date(0).toISOString()
+  });
+  const [sceneInstantPlayback, setSceneInstantPlayback] = useState<SceneInstantPlaybackState>({
+    sceneId: null,
+    instantId: null,
+    instantName: '',
     isPlaying: false,
     updatedAt: new Date(0).toISOString()
   });
@@ -1074,6 +1176,7 @@ export default function Control() {
     setProgramAudioMeterLevels({
       song: createEmptyMeterChannel(),
       instants: createEmptyMeterChannel(),
+      sceneInstant: createEmptyMeterChannel(),
       main: createEmptyMeterChannel(),
       updatedAt: new Date(0).toISOString()
     });
@@ -1083,6 +1186,13 @@ export default function Control() {
       progress: 0,
       currentTimeMs: 0,
       durationMs: null,
+      isPlaying: false,
+      updatedAt: new Date(0).toISOString()
+    });
+    setSceneInstantPlayback({
+      sceneId: null,
+      instantId: null,
+      instantName: '',
       isPlaying: false,
       updatedAt: new Date(0).toISOString()
     });
@@ -1102,6 +1212,7 @@ export default function Control() {
       void fetchProgramAudioBusSettings(activeProgramId);
       void fetchProgramAudioMeter(activeProgramId);
       void fetchProgramSongPlayback(activeProgramId);
+      void fetchSceneInstantPlayback(activeProgramId);
       void fetchBroadcastSettings();
     }, 900);
 
@@ -1309,6 +1420,43 @@ export default function Control() {
             return;
           }
           setProgramSongPlaybackState((previous) => reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(payload.playback)));
+          return;
+        }
+
+        if (payload.type === 'scene_instant_state') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setSceneInstantPlayback(normalizeSceneInstantPlayback(payload.playback));
+          return;
+        }
+
+        if (payload.type === 'scene_instant_take') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setSceneInstantPlayback({
+            sceneId: normalizeSceneInstantId(payload.sceneId),
+            instantId: normalizeSceneInstantId(payload.instant?.id),
+            instantName: typeof payload.instant?.name === 'string' ? payload.instant.name : '',
+            isPlaying: true,
+            updatedAt: typeof payload.triggeredAt === 'string' ? payload.triggeredAt : new Date().toISOString()
+          });
+          return;
+        }
+
+        if (payload.type === 'scene_instant_stop') {
+          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setSceneInstantPlayback((previous) => ({
+            ...previous,
+            isPlaying: false,
+            updatedAt: typeof payload.triggeredAt === 'string' ? payload.triggeredAt : new Date().toISOString()
+          }));
         }
       });
 
@@ -1449,12 +1597,15 @@ export default function Control() {
         mainMasterVolume: 1,
         songMasterVolume: 1,
         instantMasterVolume: 1,
+        sceneInstantMasterVolume: 1,
         streamMasterVolume: 1,
         songMuted: false,
         instantMuted: false,
+        sceneInstantMuted: false,
         streamMuted: false,
         songSolo: false,
         instantSolo: false,
+        sceneInstantSolo: false,
         streamSolo: false
       });
       mixerLevelsRef.current = fallbackMixerLevels;
@@ -1535,6 +1686,18 @@ export default function Control() {
     commitMixerLevels(nextMixerLevels);
   };
 
+  const setSceneInstantMasterVolume = (nextValue: number) => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    const nextMixerLevels = {
+      ...currentMixerLevels,
+      sceneInstantMasterVolume: normalizeMasterVolume(
+        nextValue,
+        currentMixerLevels.sceneInstantMasterVolume
+      )
+    };
+    commitMixerLevels(nextMixerLevels);
+  };
+
   const setStreamMasterVolume = (nextValue: number) => {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
@@ -1552,6 +1715,8 @@ export default function Control() {
         return mixerState.streamMasterVolume;
       case 'instants':
         return mixerState.instantMasterVolume;
+      case 'sceneInstant':
+        return mixerState.sceneInstantMasterVolume;
       case 'main':
       default:
         return mixerState.mainMasterVolume;
@@ -1568,6 +1733,9 @@ export default function Control() {
         return;
       case 'instants':
         setInstantMasterVolume(nextValue);
+        return;
+      case 'sceneInstant':
+        setSceneInstantMasterVolume(nextValue);
         return;
       case 'main':
       default:
@@ -1690,6 +1858,14 @@ export default function Control() {
     });
   };
 
+  const toggleSceneInstantMuted = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      sceneInstantMuted: !currentMixerLevels.sceneInstantMuted
+    });
+  };
+
   const toggleSongSolo = () => {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
@@ -1714,6 +1890,14 @@ export default function Control() {
     });
   };
 
+  const toggleSceneInstantSolo = () => {
+    const currentMixerLevels = mixerLevelsRef.current;
+    commitMixerLevels({
+      ...currentMixerLevels,
+      sceneInstantSolo: !currentMixerLevels.sceneInstantSolo
+    });
+  };
+
   const fetchProgramAudioMeter = async (targetProgramId: string) => {
     try {
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-meter`));
@@ -1728,6 +1912,7 @@ export default function Control() {
       setProgramAudioMeterLevels({
         song: createEmptyMeterChannel(),
         instants: createEmptyMeterChannel(),
+        sceneInstant: createEmptyMeterChannel(),
         main: createEmptyMeterChannel(),
         updatedAt: new Date(0).toISOString()
       });
@@ -1751,6 +1936,26 @@ export default function Control() {
         progress: 0,
         currentTimeMs: 0,
         durationMs: null,
+        isPlaying: false,
+        updatedAt: new Date(0).toISOString()
+      });
+    }
+  };
+
+  const fetchSceneInstantPlayback = async (targetProgramId: string) => {
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/scene-instant`));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await res.json();
+      setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
+    } catch (err) {
+      console.error('Failed to fetch scene instant playback:', err);
+      setSceneInstantPlayback({
+        sceneId: null,
+        instantId: null,
+        instantName: '',
         isPlaying: false,
         updatedAt: new Date(0).toISOString()
       });
@@ -1852,8 +2057,20 @@ export default function Control() {
       const compatibleMetadata =
         componentType === 'fifthbell-content' || componentType === 'fifthbell-marquee'
           ? { ...legacyFifthBell, ...(metadata[componentType] || {}) }
-          : componentType === 'toni-clock' || componentType === 'fifthbell-corner'
-            ? { ...legacyFifthBell, ...(metadata['fifthbell-corner'] || {}), ...(metadata['toni-clock'] || {}), ...(metadata[componentType] || {}) }
+          : componentType === 'toni-chyron' || componentType === 'fifthbell-chyron'
+            ? {
+                ...(metadata['toni-chyron'] || {}),
+                ...(metadata['fifthbell-chyron'] || {}),
+                ...(metadata[componentType] || {})
+              }
+          : componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
+            ? {
+                ...legacyFifthBell,
+                ...(metadata['fifthbell-corner'] || {}),
+                ...(metadata['fifthbell-clock'] || {}),
+                ...(metadata['toni-clock'] || {}),
+                ...(metadata[componentType] || {})
+              }
             : metadata[componentType] || {};
 
       combined[componentType] = {
@@ -1861,6 +2078,14 @@ export default function Control() {
         ...compatibleMetadata
       };
     }
+
+    const sceneInstantConfig =
+      metadata?.sceneInstant && typeof metadata.sceneInstant === 'object' && !Array.isArray(metadata.sceneInstant)
+        ? (metadata.sceneInstant as Record<string, unknown>)
+        : null;
+    combined.sceneInstant = {
+      instantId: normalizeSceneInstantId(sceneInstantConfig?.instantId) ?? null
+    };
 
     return combined;
   };
@@ -1940,6 +2165,44 @@ export default function Control() {
     }
 
     await activateScene(selectedScene);
+  };
+
+  const takeSceneInstant = async (sceneId: number | null = selectedScene) => {
+    const normalizedSceneId = typeof sceneId === 'number' && Number.isFinite(sceneId) ? sceneId : null;
+    if (normalizedSceneId === null) {
+      return;
+    }
+
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scene-instant/take`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId: normalizedSceneId })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = await res.json();
+      setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
+    } catch (err) {
+      console.error('Failed to take scene instant:', err);
+    }
+  };
+
+  const stopSceneInstant = async () => {
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scene-instant/stop`), {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await res.json();
+      setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
+    } catch (err) {
+      console.error('Failed to stop scene instant:', err);
+    }
   };
 
   const triggerInstant = async (instantId: number) => {
@@ -2315,11 +2578,13 @@ export default function Control() {
       case 'reloj-loop-clock':
         return { timezone: 'Europe/Madrid' };
       case 'toni-chyron':
-        return { text: '', useMarquee: false };
+      case 'fifthbell-chyron':
+        return { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] };
       case 'toni-clock':
+      case 'fifthbell-clock':
         return {
           showWorldClocks: true,
-          showBellIcon: false,
+          showBellIcon: componentType === 'fifthbell-clock',
           worldClockRotateIntervalMs: 5000,
           worldClockTransitionMs: 300,
           worldClockShuffle: false,
@@ -2650,6 +2915,31 @@ export default function Control() {
 
       if (data.type === 'song_playback_update') {
         setProgramSongPlaybackState((previous) => reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(data.playback)));
+        return;
+      }
+
+      if (data.type === 'scene_instant_state') {
+        setSceneInstantPlayback(normalizeSceneInstantPlayback(data.playback));
+        return;
+      }
+
+      if (data.type === 'scene_instant_take') {
+        setSceneInstantPlayback({
+          sceneId: normalizeSceneInstantId(data.sceneId),
+          instantId: normalizeSceneInstantId(data.instant?.id),
+          instantName: typeof data.instant?.name === 'string' ? data.instant.name : '',
+          isPlaying: true,
+          updatedAt: typeof data.triggeredAt === 'string' ? data.triggeredAt : new Date().toISOString()
+        });
+        return;
+      }
+
+      if (data.type === 'scene_instant_stop') {
+        setSceneInstantPlayback((previous) => ({
+          ...previous,
+          isPlaying: false,
+          updatedAt: typeof data.triggeredAt === 'string' ? data.triggeredAt : new Date().toISOString()
+        }));
       }
     },
     [activeProgramId, isProgramRealtimeConnected, syncProgramStateAndStagedScene]
@@ -2673,6 +2963,10 @@ export default function Control() {
     }
     return getSceneSummaryText(stagedSceneData);
   }, [stagedSceneData?.id, stagedSceneData?.metadata]);
+  const selectedSceneInstantId = normalizeSceneInstantId(sceneEditorProps?.sceneInstant?.instantId);
+  const selectedSceneInstant = selectedSceneInstantId
+    ? instants.find((instant) => instant.id === selectedSceneInstantId) ?? null
+    : null;
   const stagedIsOnAir = selectedScene !== null && selectedScene === activeSceneId;
   const programAudioBusSongSequence = useMemo(
     () =>
@@ -2681,16 +2975,26 @@ export default function Control() {
       ),
     [programAudioBusSettings.songSequence]
   );
-  const hasSoloChannel = mixerLevels.songSolo || mixerLevels.instantSolo || mixerLevels.streamSolo;
+  const hasSoloChannel =
+    mixerLevels.songSolo ||
+    mixerLevels.instantSolo ||
+    mixerLevels.sceneInstantSolo ||
+    mixerLevels.streamSolo;
   const streamAudible = (hasSoloChannel ? mixerLevels.streamSolo : true) && !mixerLevels.streamMuted;
   const songAudible = (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
   const instantsAudible = (hasSoloChannel ? mixerLevels.instantSolo : true) && !mixerLevels.instantMuted;
+  const sceneInstantAudible =
+    (hasSoloChannel ? mixerLevels.sceneInstantSolo : true) && !mixerLevels.sceneInstantMuted;
   const mainMixGain = faderToGain(mixerLevels.mainMasterVolume);
   const songChannelGain = songAudible ? faderToGain(mixerLevels.songMasterVolume) : 0;
   const instantsChannelGain = instantsAudible ? faderToGain(mixerLevels.instantMasterVolume) : 0;
+  const sceneInstantChannelGain = sceneInstantAudible
+    ? faderToGain(mixerLevels.sceneInstantMasterVolume)
+    : 0;
   const streamChannelGain = streamAudible ? faderToGain(mixerLevels.streamMasterVolume) : 0;
   const songOutputGain = songChannelGain * mainMixGain;
   const instantsOutputGain = instantsChannelGain * mainMixGain;
+  const sceneInstantOutputGain = sceneInstantChannelGain * mainMixGain;
   const streamOutputGain = streamChannelGain * mainMixGain;
   const songPresetAFader = dbToFader(mixerTakePresetsDb.song.aDb);
   const songPresetBFader = dbToFader(mixerTakePresetsDb.song.bDb);
@@ -2698,11 +3002,14 @@ export default function Control() {
   const streamPresetBFader = dbToFader(mixerTakePresetsDb.stream.bDb);
   const instantsPresetAFader = dbToFader(mixerTakePresetsDb.instants.aDb);
   const instantsPresetBFader = dbToFader(mixerTakePresetsDb.instants.bDb);
+  const sceneInstantPresetAFader = dbToFader(mixerTakePresetsDb.sceneInstant.aDb);
+  const sceneInstantPresetBFader = dbToFader(mixerTakePresetsDb.sceneInstant.bDb);
   const mainPresetAFader = dbToFader(mixerTakePresetsDb.main.aDb);
   const mainPresetBFader = dbToFader(mixerTakePresetsDb.main.bDb);
   const songTakeTargetSide = mixerTakeTargetSide.song;
   const streamTakeTargetSide = mixerTakeTargetSide.stream;
   const instantsTakeTargetSide = mixerTakeTargetSide.instants;
+  const sceneInstantTakeTargetSide = mixerTakeTargetSide.sceneInstant;
   const mainTakeTargetSide = mixerTakeTargetSide.main;
   const activeSceneComponentTypes = (programState?.activeScene?.layout.componentType || '').split(',').filter(Boolean);
   const stagedSceneComponentTypes = (stagedSceneData?.layout.componentType || '').split(',').filter(Boolean);
@@ -2713,6 +3020,9 @@ export default function Control() {
   const instantsMeterFill = meterLevelToFill(programAudioMeterLevels.instants.vu);
   const instantsPeakFill = meterLevelToFill(programAudioMeterLevels.instants.peak);
   const instantsPeakHoldFill = meterLevelToFill(programAudioMeterLevels.instants.peakHold);
+  const sceneInstantMeterFill = meterLevelToFill(programAudioMeterLevels.sceneInstant.vu);
+  const sceneInstantPeakFill = meterLevelToFill(programAudioMeterLevels.sceneInstant.peak);
+  const sceneInstantPeakHoldFill = meterLevelToFill(programAudioMeterLevels.sceneInstant.peakHold);
   const mainMixMeterFill = meterLevelToFill(programAudioMeterLevels.main.vu);
   const mainMixPeakFill = meterLevelToFill(programAudioMeterLevels.main.peak);
   const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
@@ -2850,6 +3160,107 @@ export default function Control() {
               ) : isSavingMixerLevels ? (
                 <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
               ) : null}
+            </div>
+            <div className='rounded-xl border border-zinc-700 bg-zinc-900/70 p-4'>
+              <div className='flex flex-wrap items-end gap-3'>
+                <div className='min-w-[180px]'>
+                  <p className='text-[11px] font-bold tracking-widest text-violet-300'>SCENE INSTANT CHANNEL</p>
+                  <p className='mt-1 text-[11px] text-zinc-400'>
+                    Independent gain for scene-scoped background instant.
+                  </p>
+                </div>
+                <div className='flex gap-2'>
+                  <button
+                    type='button'
+                    onClick={toggleSceneInstantMuted}
+                    className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
+                      mixerLevels.sceneInstantMuted
+                        ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                        : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                    }`}
+                  >
+                    Mute
+                  </button>
+                  <button
+                    type='button'
+                    onClick={toggleSceneInstantSolo}
+                    className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
+                      mixerLevels.sceneInstantSolo
+                        ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                        : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                    }`}
+                  >
+                    Solo
+                  </button>
+                </div>
+                <label className='text-[10px] font-mono text-sky-300'>
+                  <span className='mb-1 block text-center'>A (dB)</span>
+                  <input
+                    type='number'
+                    step={0.1}
+                    min={TAKE_VOLUME_PRESET_MIN_DB}
+                    max={TAKE_VOLUME_PRESET_MAX_DB}
+                    value={mixerTakePresetsDb.sceneInstant.aDb}
+                    onChange={(event) => updateChannelTakePresetDb('sceneInstant', 'a', Number(event.target.value))}
+                    className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                  />
+                </label>
+                <label className='text-[10px] font-mono text-amber-300'>
+                  <span className='mb-1 block text-center'>B (dB)</span>
+                  <input
+                    type='number'
+                    step={0.1}
+                    min={TAKE_VOLUME_PRESET_MIN_DB}
+                    max={TAKE_VOLUME_PRESET_MAX_DB}
+                    value={mixerTakePresetsDb.sceneInstant.bDb}
+                    onChange={(event) => updateChannelTakePresetDb('sceneInstant', 'b', Number(event.target.value))}
+                    className='w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                  />
+                </label>
+                <div className='h-9 w-36 self-end rounded bg-zinc-950'>
+                  <input
+                    type='range'
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={mixerLevels.sceneInstantMasterVolume}
+                    onChange={(event) => setSceneInstantMasterVolume(Number(event.target.value))}
+                    className='h-full w-full cursor-pointer'
+                  />
+                </div>
+                <input
+                  key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
+                  type='text'
+                  inputMode='decimal'
+                  defaultValue={formatMixerLevelInputValue(mixerLevels.sceneInstantMasterVolume)}
+                  aria-label='Scene instant channel level in dB'
+                  onBlur={(event) => {
+                    const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.sceneInstantMasterVolume);
+                    setSceneInstantMasterVolume(nextValue);
+                    event.target.value = formatMixerLevelInputValue(nextValue);
+                  }}
+                  className='h-9 w-24 rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-sm font-bold text-violet-300 outline-none'
+                />
+                <button
+                  type='button'
+                  onClick={() => triggerChannelTake('sceneInstant')}
+                  disabled={isApplyingTakePresetByChannel.sceneInstant}
+                  className='h-9 rounded border border-violet-800/50 bg-zinc-900 px-3 text-[10px] font-bold tracking-wider text-violet-300 transition hover:bg-violet-900/20 disabled:opacity-50'
+                >
+                  TAKE {sceneInstantTakeTargetSide.toUpperCase()}
+                </button>
+                <div className='min-w-[120px] text-right'>
+                  <p className='text-[11px] text-zinc-400'>
+                    Meter {Math.round(sceneInstantMeterFill * 100)}% / {Math.round(sceneInstantPeakFill * 100)}%
+                  </p>
+                  <p className='text-[11px] text-zinc-500'>
+                    Peak Hold {Math.round(sceneInstantPeakHoldFill * 100)}% · {sceneInstantOutputGain > 0 ? 'LIVE' : 'CUT'}
+                  </p>
+                  <p className='text-[10px] text-zinc-500'>
+                    A {Math.round(sceneInstantPresetAFader * 100)}% · B {Math.round(sceneInstantPresetBFader * 100)}%
+                  </p>
+                </div>
+              </div>
             </div>
             <div className='flex gap-6 rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-inner'>
               {/* --- SCROLLABLE INPUTS SECTION --- */}
@@ -3544,8 +3955,8 @@ export default function Control() {
             </div>
 
             <p className='text-xs text-text-secondary dark:text-text-secondary'>
-              Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Stream/Instants. Instant channel
-              still controls all instants together.
+              Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Stream/Instants/Scene Instant.
+              Instant channel still controls all catalog instants together, while Scene Instant controls only scene background instant playback.
             </p>
           </Card>
 
@@ -3652,9 +4063,54 @@ export default function Control() {
                 </p>
                 {activeProgramId === 'fifthbell' && (
                   <p className='text-xs text-text-secondary dark:text-text-secondary'>
-                    FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `toni-clock`).
+                    FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` / `toni-clock`).
                   </p>
                 )}
+                <div className='space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
+                  <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
+                    <div className='flex-1'>
+                      <label className='block text-xs text-gray-600 mb-1'>Scene Background Instant</label>
+                      <select
+                        value={selectedSceneInstantId ? String(selectedSceneInstantId) : ''}
+                        onChange={(event) => {
+                          const nextInstantId = normalizeSceneInstantId(event.target.value);
+                          updateSceneEditorProp('sceneInstant', 'instantId', nextInstantId);
+                        }}
+                        className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
+                      >
+                        <option value=''>No background instant</option>
+                        {instants
+                          .filter((instant) => instant.enabled)
+                          .map((instant) => (
+                            <option key={instant.id} value={instant.id}>
+                              {instant.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className='flex flex-wrap gap-2'>
+                      <Button
+                        size='sm'
+                        onClick={() => {
+                          void takeSceneInstant(selectedScene);
+                        }}
+                        disabled={!selectedScene || selectedSceneInstantId === null || !selectedSceneInstant}
+                      >
+                        TAKE BG
+                      </Button>
+                      <Button size='sm' variant='secondary' onClick={() => void stopSceneInstant()} disabled={!sceneInstantPlayback.isPlaying}>
+                        STOP BG
+                      </Button>
+                    </div>
+                  </div>
+                  <p className='text-xs text-text-secondary dark:text-text-secondary'>
+                    {sceneInstantPlayback.isPlaying
+                      ? `Playing: ${sceneInstantPlayback.instantName || 'Scene instant'}`
+                      : selectedSceneInstant
+                        ? `Ready: ${selectedSceneInstant.name}`
+                        : 'Select an instant, save scene attributes, then TAKE BG.'}
+                  </p>
+                </div>
                 <div className='space-y-4 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
                   {editableSceneComponentEntries.length === 0 && (
                     <p className='text-sm text-text-secondary dark:text-text-secondary'>No configurable component attributes for this scene.</p>
@@ -4031,6 +4487,7 @@ function ComponentPropsFields({
         </div>
       );
     case 'toni-chyron':
+    case 'fifthbell-chyron':
       return (
         <ToniChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
@@ -4040,8 +4497,10 @@ function ComponentPropsFields({
       );
     case 'modoitaliano-clock':
       return null;
-    case 'toni-clock': {
+    case 'toni-clock':
+    case 'fifthbell-clock': {
       const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
+      const canToggleBellIcon = componentType === 'toni-clock';
 
       return (
         <div className='space-y-4'>
@@ -4055,15 +4514,21 @@ function ComponentPropsFields({
               />
               Show World Clocks
             </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
-                type='checkbox'
-                checked={toBoolean(props.showBellIcon, false)}
-                onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
-                className='h-4 w-4'
-              />
-              Show Bell Icon
-            </label>
+            {canToggleBellIcon ? (
+              <label className='flex items-center gap-2 text-sm text-gray-700'>
+                <input
+                  type='checkbox'
+                  checked={toBoolean(props.showBellIcon, false)}
+                  onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
+                  className='h-4 w-4'
+                />
+                Show Bell Icon
+              </label>
+            ) : (
+              <div className='text-sm text-gray-600'>
+                FifthBell clock icon is always enabled.
+              </div>
+            )}
             <label className='flex items-center gap-2 text-sm text-gray-700'>
               <input
                 type='checkbox'
@@ -4359,15 +4824,9 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsCorner && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
-                  type='checkbox'
-                  checked={toBoolean(props.showBellIcon, true)}
-                  onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
-                  className='h-4 w-4'
-                />
-                Show Bell Icon
-              </label>
+              <div className='text-sm text-gray-600'>
+                FifthBell clock icon is always enabled.
+              </div>
             )}
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-gray-700'>
@@ -4764,6 +5223,11 @@ function ToniChyronEditorFields({
 }) {
   const normalizedSequence = normalizeToniChyronSequence(props.sequence);
   const contentMode = getToniChyronContentMode(props.contentMode, normalizedSequence);
+  const socialHandlesValue = Array.isArray(props.socialHandles)
+    ? props.socialHandles
+        .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry: string) => entry.length > 0)
+    : ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'];
 
   const applyProps = (nextProps: any) => {
     replaceProps(componentType, nextProps);
@@ -4877,6 +5341,27 @@ function ToniChyronEditorFields({
           </label>
         </div>
       )}
+
+      <div className='space-y-1'>
+        <label className='block text-xs text-gray-600'>Social Handles (comma-separated)</label>
+        <input
+          type='text'
+          value={socialHandlesValue.join(', ')}
+          onChange={(e) =>
+            updateProp(
+              componentType,
+              'socialHandles',
+              e.target.value
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.length > 0)
+            )
+          }
+          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+          placeholder='@modoitaliano.oficial, @fifth.bell, @hnmages'
+        />
+        <p className='text-xs text-gray-500'>Set an empty value to hide social handles.</p>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { ToniChyron, ToniClock, ToniLogo } from '../components';
+import { FifthBellChyron, ToniClock, ToniLogo } from '../components';
 
 /**
  * Overlay page — renders the Toni-style broadcast overlay components
@@ -15,7 +15,7 @@ export default function Overlay() {
       <ToniLogo callsign='MR' subtitle='MODORADIO' />
 
       {/* Bottom: lower-third chyron */}
-      <ToniChyron text='Bienvenidos a Modoradio' show={true} />
+      <FifthBellChyron text='Bienvenidos a Modoradio' show={true} />
     </div>
   );
 }

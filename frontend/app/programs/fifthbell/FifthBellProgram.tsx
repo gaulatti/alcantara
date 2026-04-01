@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ToniClock } from '../../components/ToniClock';
 import { useSSE } from '../../hooks/useSSE';
 import { apiUrl } from '../../utils/apiBaseUrl';
 import { FIFTHBELL_ASSETS } from './assets';
@@ -262,8 +261,7 @@ function parseSceneMetadata(scene: Scene | null): Record<string, unknown> {
 function resolveFifthBellLayerAvailability(activeComponents?: string[]) {
   const defaultAvailability = {
     content: true,
-    marquee: true,
-    corner: true
+    marquee: true
   };
 
   if (!activeComponents || activeComponents.length === 0) {
@@ -276,8 +274,7 @@ function resolveFifthBellLayerAvailability(activeComponents?: string[]) {
 
   return {
     content: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CONTENT),
-    marquee: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_MARQUEE),
-    corner: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_TONI_CLOCK) || activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CORNER)
+    marquee: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_MARQUEE)
   };
 }
 
@@ -325,7 +322,7 @@ function extractConfigFromMetadata(metadataInput: Record<string, unknown> | null
     earthquakesDurationMs: clampNumber(contentProps.earthquakesDurationMs, DEFAULT_FIFTHBELL_CONFIG.earthquakesDurationMs, 1000, 120000),
     marketsDurationMs: clampNumber(contentProps.marketsDurationMs, DEFAULT_FIFTHBELL_CONFIG.marketsDurationMs, 1000, 120000),
     showWorldClocks: normalizeBoolean(cornerProps.showWorldClocks, DEFAULT_FIFTHBELL_CONFIG.showWorldClocks),
-    showBellIcon: normalizeBoolean(cornerProps.showBellIcon, DEFAULT_FIFTHBELL_CONFIG.showBellIcon),
+    showBellIcon: true,
     worldClockRotateIntervalMs: clampNumber(cornerProps.worldClockRotateIntervalMs, DEFAULT_FIFTHBELL_CONFIG.worldClockRotateIntervalMs, 500, 120000),
     worldClockTransitionMs: clampNumber(cornerProps.worldClockTransitionMs, DEFAULT_FIFTHBELL_CONFIG.worldClockTransitionMs, 0, 10000),
     worldClockShuffle: normalizeBoolean(cornerProps.worldClockShuffle, DEFAULT_FIFTHBELL_CONFIG.worldClockShuffle),
@@ -696,19 +693,6 @@ export default function FifthBellProgram({ programId = 'fifthbell', embedded = f
 
   const liveStage = (
     <div className={stageContainerClass} style={stageContainerStyle}>
-      {layerAvailability.corner && !showLogoSlide && (
-        <ToniClock
-          language={currentLanguage}
-          cities={config.worldClockCities}
-          rotationIntervalMs={config.worldClockRotateIntervalMs}
-          transitionDurationMs={config.worldClockTransitionMs}
-          shuffleCities={config.worldClockShuffle}
-          widthPx={config.worldClockWidthPx}
-          showWorldClocks={config.showWorldClocks}
-          showBellIcon={config.showBellIcon}
-        />
-      )}
-
       {layerAvailability.content ? (
         showLogoSlide ? (
           <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />

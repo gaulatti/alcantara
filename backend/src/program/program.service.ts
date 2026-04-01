@@ -17,6 +17,7 @@ export interface ProgramAudioMeterChannel {
 export interface ProgramAudioMeterLevels {
   song: ProgramAudioMeterChannel;
   instants: ProgramAudioMeterChannel;
+  sceneInstant: ProgramAudioMeterChannel;
   main: ProgramAudioMeterChannel;
   updatedAt: string;
 }
@@ -29,6 +30,21 @@ interface BroadcastMixerChannel {
   solo: boolean;
 }
 
+export interface ProgramSceneInstantPlayback {
+  programId: string;
+  sceneId: number | null;
+  instantId: number | null;
+  isPlaying: boolean;
+  instant: {
+    id: number;
+    name: string;
+    audioUrl: string;
+    volume: number;
+  } | null;
+  startedAt: string | null;
+  updatedAt: string;
+}
+
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -38,6 +54,10 @@ export class ProgramService {
   private eventSubjects = new Map<string, Subject<any>>();
   private stagedSceneByProgramId = new Map<string, number | null>();
   private programAudioMeterByProgramId = new Map<string, ProgramAudioMeterLevels>();
+  private programSceneInstantPlaybackByProgramId = new Map<
+    string,
+    ProgramSceneInstantPlayback
+  >();
   private programSongPlaybackByProgramId = new Map<
     string,
     {
@@ -65,7 +85,28 @@ export class ProgramService {
       { id: 'song', name: 'Song', volume: 1, muted: false, solo: false },
       { id: 'stream', name: 'Stream', volume: 1, muted: false, solo: false },
       { id: 'instants', name: 'Instants', volume: 1, muted: false, solo: false },
+      {
+        id: 'sceneInstant',
+        name: 'Scene Instant',
+        volume: 1,
+        muted: false,
+        solo: false,
+      },
     ];
+  }
+
+  private createEmptyProgramSceneInstantPlayback(
+    programId: string,
+  ): ProgramSceneInstantPlayback {
+    return {
+      programId,
+      sceneId: null,
+      instantId: null,
+      isPlaying: false,
+      instant: null,
+      startedAt: null,
+      updatedAt: new Date(0).toISOString(),
+    };
   }
 
   private coerceMasterVolume(value: unknown, fallback: number): number {
@@ -157,6 +198,16 @@ export class ProgramService {
         muted: this.coerceMixerToggle(settings.instantMuted, false),
         solo: this.coerceMixerToggle(settings.instantSolo, false),
       },
+      {
+        id: 'sceneInstant',
+        name: 'Scene Instant',
+        volume: this.coerceMasterVolume(
+          settings.sceneInstantMasterVolume,
+          1,
+        ),
+        muted: this.coerceMixerToggle(settings.sceneInstantMuted, false),
+        solo: this.coerceMixerToggle(settings.sceneInstantSolo, false),
+      },
     ];
 
     const normalizedChannels = this.normalizeBroadcastMixerChannels(
@@ -166,6 +217,10 @@ export class ProgramService {
     const song = this.getBroadcastMixerChannel(normalizedChannels, 'song');
     const stream = this.getBroadcastMixerChannel(normalizedChannels, 'stream');
     const instants = this.getBroadcastMixerChannel(normalizedChannels, 'instants');
+    const sceneInstant = this.getBroadcastMixerChannel(
+      normalizedChannels,
+      'sceneInstant',
+    );
 
     return {
       ...settings,
@@ -173,12 +228,15 @@ export class ProgramService {
       songMasterVolume: song.volume,
       streamMasterVolume: stream.volume,
       instantMasterVolume: instants.volume,
+      sceneInstantMasterVolume: sceneInstant.volume,
       songMuted: song.muted,
       streamMuted: stream.muted,
       instantMuted: instants.muted,
+      sceneInstantMuted: sceneInstant.muted,
       songSolo: song.solo,
       streamSolo: stream.solo,
       instantSolo: instants.solo,
+      sceneInstantSolo: sceneInstant.solo,
     };
   }
 
@@ -242,7 +300,8 @@ export class ProgramService {
       | 'mainMasterVolume'
       | 'songMasterVolume'
       | 'instantMasterVolume'
-      | 'streamMasterVolume',
+      | 'streamMasterVolume'
+      | 'sceneInstantMasterVolume',
   ): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new BadRequestException(`${fieldName} must be a finite number`);
@@ -256,9 +315,11 @@ export class ProgramService {
       | 'songMuted'
       | 'instantMuted'
       | 'streamMuted'
+      | 'sceneInstantMuted'
       | 'songSolo'
       | 'instantSolo'
-      | 'streamSolo',
+      | 'streamSolo'
+      | 'sceneInstantSolo',
   ): boolean {
     if (typeof value !== 'boolean') {
       throw new BadRequestException(`${fieldName} must be a boolean`);
@@ -274,12 +335,15 @@ export class ProgramService {
     songMasterVolume?: number;
     instantMasterVolume?: number;
     streamMasterVolume?: number;
+    sceneInstantMasterVolume?: number;
     songMuted?: boolean;
     instantMuted?: boolean;
     streamMuted?: boolean;
+    sceneInstantMuted?: boolean;
     songSolo?: boolean;
     instantSolo?: boolean;
     streamSolo?: boolean;
+    sceneInstantSolo?: boolean;
   }) {
     const currentRaw = await this.ensureBroadcastSettings();
     const current = this.withResolvedBroadcastMixerChannels(currentRaw as any);
@@ -308,6 +372,10 @@ export class ProgramService {
       data,
       'streamMasterVolume',
     );
+    const hasSceneInstantVolumeUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'sceneInstantMasterVolume',
+    );
     const hasSongMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'songMuted',
@@ -319,6 +387,10 @@ export class ProgramService {
     const hasStreamMutedUpdate = Object.prototype.hasOwnProperty.call(
       data,
       'streamMuted',
+    );
+    const hasSceneInstantMutedUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'sceneInstantMuted',
     );
     const hasSongSoloUpdate = Object.prototype.hasOwnProperty.call(
       data,
@@ -332,6 +404,10 @@ export class ProgramService {
       data,
       'streamSolo',
     );
+    const hasSceneInstantSoloUpdate = Object.prototype.hasOwnProperty.call(
+      data,
+      'sceneInstantSolo',
+    );
 
     if (
       !hasEnabledUpdate &&
@@ -341,12 +417,15 @@ export class ProgramService {
       !hasSongVolumeUpdate &&
       !hasInstantVolumeUpdate &&
       !hasStreamVolumeUpdate &&
+      !hasSceneInstantVolumeUpdate &&
       !hasSongMutedUpdate &&
       !hasInstantMutedUpdate &&
       !hasStreamMutedUpdate &&
+      !hasSceneInstantMutedUpdate &&
       !hasSongSoloUpdate &&
       !hasInstantSoloUpdate &&
-      !hasStreamSoloUpdate
+      !hasStreamSoloUpdate &&
+      !hasSceneInstantSoloUpdate
     ) {
       return current;
     }
@@ -401,7 +480,7 @@ export class ProgramService {
     }
 
     const applyChannelPatch = (
-      channelId: 'song' | 'stream' | 'instants',
+      channelId: 'song' | 'stream' | 'instants' | 'sceneInstant',
       patch: { volume?: number; muted?: boolean; solo?: boolean },
     ) => {
       mixerChannels = mixerChannels.map((channel) => {
@@ -430,6 +509,14 @@ export class ProgramService {
         volume: this.normalizeMasterVolume(data.streamMasterVolume, 'streamMasterVolume'),
       });
     }
+    if (hasSceneInstantVolumeUpdate) {
+      applyChannelPatch('sceneInstant', {
+        volume: this.normalizeMasterVolume(
+          data.sceneInstantMasterVolume,
+          'sceneInstantMasterVolume',
+        ),
+      });
+    }
     if (hasSongMutedUpdate) {
       applyChannelPatch('song', {
         muted: this.normalizeMixerToggle(data.songMuted, 'songMuted'),
@@ -445,6 +532,14 @@ export class ProgramService {
         muted: this.normalizeMixerToggle(data.streamMuted, 'streamMuted'),
       });
     }
+    if (hasSceneInstantMutedUpdate) {
+      applyChannelPatch('sceneInstant', {
+        muted: this.normalizeMixerToggle(
+          data.sceneInstantMuted,
+          'sceneInstantMuted',
+        ),
+      });
+    }
     if (hasSongSoloUpdate) {
       applyChannelPatch('song', {
         solo: this.normalizeMixerToggle(data.songSolo, 'songSolo'),
@@ -458,6 +553,11 @@ export class ProgramService {
     if (hasStreamSoloUpdate) {
       applyChannelPatch('stream', {
         solo: this.normalizeMixerToggle(data.streamSolo, 'streamSolo'),
+      });
+    }
+    if (hasSceneInstantSoloUpdate) {
+      applyChannelPatch('sceneInstant', {
+        solo: this.normalizeMixerToggle(data.sceneInstantSolo, 'sceneInstantSolo'),
       });
     }
 
@@ -688,6 +788,15 @@ export class ProgramService {
       this.programSongPlaybackByProgramId.set(next, currentSongPlayback);
       this.programSongPlaybackByProgramId.delete(current);
     }
+    const currentSceneInstantPlayback =
+      this.programSceneInstantPlaybackByProgramId.get(current);
+    if (currentSceneInstantPlayback) {
+      this.programSceneInstantPlaybackByProgramId.set(next, {
+        ...currentSceneInstantPlayback,
+        programId: next,
+      });
+      this.programSceneInstantPlaybackByProgramId.delete(current);
+    }
     if (this.stagedSceneByProgramId.has(current)) {
       this.stagedSceneByProgramId.set(
         next,
@@ -721,6 +830,7 @@ export class ProgramService {
     }
     this.programAudioMeterByProgramId.delete(normalized);
     this.programSongPlaybackByProgramId.delete(normalized);
+    this.programSceneInstantPlaybackByProgramId.delete(normalized);
     this.stagedSceneByProgramId.delete(normalized);
 
     return { deletedProgramId: normalized };
@@ -825,6 +935,7 @@ export class ProgramService {
       this.programAudioMeterByProgramId.get(normalizedProgramId) ?? {
         song: { vu: 0, peak: 0, peakHold: 0 },
         instants: { vu: 0, peak: 0, peakHold: 0 },
+        sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
         main: { vu: 0, peak: 0, peakHold: 0 },
         updatedAt: new Date(0).toISOString(),
       }
@@ -840,7 +951,7 @@ export class ProgramService {
 
   private normalizeAudioMeterChannel(
     value: unknown,
-    fieldName: 'song' | 'instants' | 'main',
+    fieldName: 'song' | 'instants' | 'sceneInstant' | 'main',
   ): ProgramAudioMeterChannel {
     if (typeof value === 'number' && Number.isFinite(value)) {
       const normalized = Math.max(0, Math.min(1, value));
@@ -922,6 +1033,7 @@ export class ProgramService {
       | {
           song?: unknown;
           instants?: unknown;
+          sceneInstant?: unknown;
           main?: unknown;
         }
       | null
@@ -937,9 +1049,13 @@ export class ProgramService {
 
     const song = this.normalizeAudioMeterChannel(data.song, 'song');
     const instants = this.normalizeAudioMeterChannel(data.instants, 'instants');
+    const sceneInstant = this.normalizeAudioMeterChannel(
+      data.sceneInstant ?? 0,
+      'sceneInstant',
+    );
     const main = this.normalizeAudioMeterChannel(data.main, 'main');
     const updatedAt = new Date().toISOString();
-    const levels = { song, instants, main, updatedAt };
+    const levels = { song, instants, sceneInstant, main, updatedAt };
 
     this.programAudioMeterByProgramId.set(normalizedProgramId, levels);
     this.broadcastUpdate(normalizedProgramId, {
@@ -1038,6 +1154,170 @@ export class ProgramService {
       type: 'song_playback_update',
       programId: normalizedProgramId,
       playback,
+    });
+
+    return playback;
+  }
+
+  async getProgramSceneInstantPlayback(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    return (
+      this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId) ??
+      this.createEmptyProgramSceneInstantPlayback(normalizedProgramId)
+    );
+  }
+
+  private parseSceneInstantIdFromSceneMetadata(sceneMetadata: unknown): number | null {
+    if (typeof sceneMetadata !== 'string' || !sceneMetadata.trim()) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(sceneMetadata);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      const sceneInstant =
+        'sceneInstant' in parsed
+          ? (parsed as Record<string, unknown>).sceneInstant
+          : null;
+      if (!sceneInstant || typeof sceneInstant !== 'object' || Array.isArray(sceneInstant)) {
+        return null;
+      }
+      const instantIdRaw = (sceneInstant as Record<string, unknown>).instantId;
+      const instantIdNumeric =
+        typeof instantIdRaw === 'number' ? instantIdRaw : Number(instantIdRaw);
+      if (
+        !Number.isFinite(instantIdNumeric) ||
+        instantIdNumeric <= 0 ||
+        !Number.isInteger(instantIdNumeric)
+      ) {
+        return null;
+      }
+      return instantIdNumeric;
+    } catch {
+      return null;
+    }
+  }
+
+  async takeProgramSceneInstant(
+    sceneId: number | null | undefined,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      include: {
+        activeScene: true,
+        scenes: {
+          include: {
+            scene: true,
+          },
+        },
+      },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    const requestedSceneId =
+      typeof sceneId === 'number' && Number.isFinite(sceneId)
+        ? Math.round(sceneId)
+        : null;
+    const targetSceneId =
+      requestedSceneId !== null ? requestedSceneId : state.activeSceneId ?? null;
+
+    if (targetSceneId === null) {
+      throw new BadRequestException('No target scene selected');
+    }
+
+    const assignedSceneEntry = state.scenes.find(
+      (entry) => entry.sceneId === targetSceneId,
+    );
+    if (!assignedSceneEntry) {
+      throw new BadRequestException('Scene is not assigned to this program');
+    }
+
+    const sceneInstantId = this.parseSceneInstantIdFromSceneMetadata(
+      assignedSceneEntry.scene.metadata,
+    );
+    if (sceneInstantId === null) {
+      throw new BadRequestException(
+        'Scene has no configured background instant',
+      );
+    }
+
+    const instant = await this.prisma.instant.findUnique({
+      where: { id: sceneInstantId },
+    });
+    if (!instant) {
+      throw new NotFoundException('Configured scene instant not found');
+    }
+    if (!instant.enabled) {
+      throw new BadRequestException('Configured scene instant is disabled');
+    }
+
+    const nowIso = new Date().toISOString();
+    const playback: ProgramSceneInstantPlayback = {
+      programId: normalizedProgramId,
+      sceneId: targetSceneId,
+      instantId: instant.id,
+      isPlaying: true,
+      instant: {
+        id: instant.id,
+        name: instant.name,
+        audioUrl: instant.audioUrl,
+        volume: instant.volume,
+      },
+      startedAt: nowIso,
+      updatedAt: nowIso,
+    };
+    this.programSceneInstantPlaybackByProgramId.set(
+      normalizedProgramId,
+      playback,
+    );
+
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'scene_instant_take',
+      sceneId: targetSceneId,
+      instant: playback.instant,
+      loop: true,
+      triggeredAt: nowIso,
+    });
+
+    return playback;
+  }
+
+  async stopProgramSceneInstant(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+
+    const nowIso = new Date().toISOString();
+    const previous =
+      this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId) ??
+      this.createEmptyProgramSceneInstantPlayback(normalizedProgramId);
+    const playback: ProgramSceneInstantPlayback = {
+      ...previous,
+      isPlaying: false,
+      startedAt: null,
+      updatedAt: nowIso,
+    };
+    this.programSceneInstantPlaybackByProgramId.set(
+      normalizedProgramId,
+      playback,
+    );
+
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'scene_instant_stop',
+      sceneId: previous.sceneId ?? null,
+      instantId: previous.instantId ?? null,
+      triggeredAt: nowIso,
     });
 
     return playback;
@@ -1151,6 +1431,12 @@ export class ProgramService {
 
     if ((this.stagedSceneByProgramId.get(normalizedProgramId) ?? null) === sceneId) {
       this.stagedSceneByProgramId.set(normalizedProgramId, null);
+    }
+
+    const sceneInstantPlayback =
+      this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
+    if (sceneInstantPlayback?.isPlaying && sceneInstantPlayback.sceneId === sceneId) {
+      await this.stopProgramSceneInstant(normalizedProgramId);
     }
 
     if (state.activeSceneId === sceneId) {
@@ -1269,6 +1555,15 @@ export class ProgramService {
         : null;
     this.stagedSceneByProgramId.set(normalizedProgramId, sceneId);
 
+    const sceneInstantPlayback =
+      this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
+    if (
+      sceneInstantPlayback?.isPlaying &&
+      sceneInstantPlayback.sceneId !== sceneId
+    ) {
+      await this.stopProgramSceneInstant(normalizedProgramId);
+    }
+
     this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_change',
       transitionId: normalizedTransitionId,
@@ -1311,6 +1606,12 @@ export class ProgramService {
         },
       },
     });
+
+    const sceneInstantPlayback =
+      this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
+    if (sceneInstantPlayback?.isPlaying) {
+      await this.stopProgramSceneInstant(normalizedProgramId);
+    }
 
     this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_change',
@@ -1404,6 +1705,14 @@ export class ProgramService {
       where: { activeSceneId: sceneId },
       data: { activeSceneId: null },
     });
+
+    for (const programId of programIds) {
+      const sceneInstantPlayback =
+        this.programSceneInstantPlaybackByProgramId.get(programId);
+      if (sceneInstantPlayback?.isPlaying && sceneInstantPlayback.sceneId === sceneId) {
+        await this.stopProgramSceneInstant(programId);
+      }
+    }
 
     return programIds;
   }

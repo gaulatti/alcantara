@@ -11,7 +11,7 @@ import {
   QRCodeWidget,
   LiveIndicator,
   LogoWidget,
-  ToniChyron,
+  FifthBellChyron,
   ToniClock,
   ToniLogo,
   Earone,
@@ -79,12 +79,15 @@ interface BroadcastSettings {
   mainMasterVolume: number;
   songMasterVolume: number;
   instantMasterVolume: number;
+  sceneInstantMasterVolume: number;
   streamMasterVolume: number;
   songMuted: boolean;
   instantMuted: boolean;
+  sceneInstantMuted: boolean;
   streamMuted: boolean;
   songSolo: boolean;
   instantSolo: boolean;
+  sceneInstantSolo: boolean;
   streamSolo: boolean;
   mixerChannels: ProgramMixerChannel[];
   updatedAt: string;
@@ -114,6 +117,38 @@ interface InstantPlayEvent {
     volume: number;
   };
   triggeredAt: string;
+}
+
+interface SceneInstantTakeEvent {
+  type: 'scene_instant_take';
+  programId?: string;
+  sceneId?: number | null;
+  instant: {
+    id: number;
+    name: string;
+    audioUrl: string;
+    volume: number;
+  };
+  loop?: boolean;
+  triggeredAt: string;
+}
+
+interface SceneInstantStateEvent {
+  type: 'scene_instant_state';
+  programId?: string;
+  playback?: {
+    sceneId?: number | null;
+    instantId?: number | null;
+    isPlaying?: boolean;
+    instant?: {
+      id: number;
+      name: string;
+      audioUrl: string;
+      volume: number;
+    } | null;
+    startedAt?: string | null;
+    updatedAt?: string;
+  } | null;
 }
 
 interface ActiveTransition {
@@ -176,6 +211,7 @@ interface MeterChannelPayload {
 interface ProgramAudioMeterPayload {
   song: MeterChannelPayload;
   instants: MeterChannelPayload;
+  sceneInstant: MeterChannelPayload;
   main: MeterChannelPayload;
 }
 
@@ -189,6 +225,7 @@ interface MeterChannelBallistics {
 interface ProgramMeterBallisticsState {
   song: MeterChannelBallistics;
   instants: MeterChannelBallistics;
+  sceneInstant: MeterChannelBallistics;
   main: MeterChannelBallistics;
   lastTickAtMs: number | null;
 }
@@ -199,8 +236,7 @@ const PEAK_RELEASE_MS = 300;
 const PEAK_HOLD_MS = 900;
 const METER_TICK_INTERVAL_MS = 60;
 
-const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner']);
-const FIFTHBELL_LAYOUT_COMPONENT_TYPES = new Set([...FIFTHBELL_DRIVER_COMPONENT_TYPES, 'toni-clock']);
+const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner', 'fifthbell-clock']);
 
 function createMeterChannelBallistics(): MeterChannelBallistics {
   return {
@@ -215,6 +251,7 @@ function createProgramMeterBallisticsState(): ProgramMeterBallisticsState {
   return {
     song: createMeterChannelBallistics(),
     instants: createMeterChannelBallistics(),
+    sceneInstant: createMeterChannelBallistics(),
     main: createMeterChannelBallistics(),
     lastTickAtMs: null
   };
@@ -379,12 +416,20 @@ function normalizeBroadcastSettings(value: unknown): BroadcastSettings | null {
       volume: normalizeMasterVolume(record.instantMasterVolume, 1),
       muted: normalizeMixerToggle(record.instantMuted, false),
       solo: normalizeMixerToggle(record.instantSolo, false)
+    },
+    {
+      id: 'sceneInstant',
+      name: 'Scene Instant',
+      volume: normalizeMasterVolume(record.sceneInstantMasterVolume, 1),
+      muted: normalizeMixerToggle(record.sceneInstantMuted, false),
+      solo: normalizeMixerToggle(record.sceneInstantSolo, false)
     }
   ];
   const mixerChannels = normalizeProgramMixerChannels(record.mixerChannels, fallbackChannels);
   const songChannel = getProgramMixerChannel(mixerChannels, 'song');
   const streamChannel = getProgramMixerChannel(mixerChannels, 'stream');
   const instantsChannel = getProgramMixerChannel(mixerChannels, 'instants');
+  const sceneInstantChannel = getProgramMixerChannel(mixerChannels, 'sceneInstant');
   return {
     id,
     timeOverrideEnabled: Boolean(record.timeOverrideEnabled),
@@ -393,12 +438,15 @@ function normalizeBroadcastSettings(value: unknown): BroadcastSettings | null {
     mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
     songMasterVolume: songChannel.volume,
     instantMasterVolume: instantsChannel.volume,
+    sceneInstantMasterVolume: sceneInstantChannel.volume,
     streamMasterVolume: streamChannel.volume,
     songMuted: songChannel.muted,
     instantMuted: instantsChannel.muted,
+    sceneInstantMuted: sceneInstantChannel.muted,
     streamMuted: streamChannel.muted,
     songSolo: songChannel.solo,
     instantSolo: instantsChannel.solo,
+    sceneInstantSolo: sceneInstantChannel.solo,
     streamSolo: streamChannel.solo,
     mixerChannels,
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
@@ -433,6 +481,10 @@ function SceneProgram({ programId }: { programId: string }) {
   const transitionTimersRef = useRef<number[]>([]);
   const transitionSequenceRef = useRef(0);
   const activeInstantAudiosRef = useRef<Map<HTMLAudioElement, InstantAudioRuntimeState>>(new Map());
+  const activeSceneInstantAudioRef = useRef<{
+    audio: HTMLAudioElement;
+    runtime: InstantAudioRuntimeState;
+  } | null>(null);
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
   const meterSocketRef = useRef<WebSocket | null>(null);
   const meterSocketReadyRef = useRef(false);
@@ -444,6 +496,7 @@ function SceneProgram({ programId }: { programId: string }) {
   const lastMeterPayloadRef = useRef<ProgramAudioMeterPayload>({
     song: { vu: 0, peak: 0, peakHold: 0 },
     instants: { vu: 0, peak: 0, peakHold: 0 },
+    sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
     main: { vu: 0, peak: 0, peakHold: 0 }
   });
   const lastSongPlaybackPayloadRef = useRef<{
@@ -464,16 +517,22 @@ function SceneProgram({ programId }: { programId: string }) {
   const mainMasterFader = normalizeMasterVolume(broadcastSettings?.mainMasterVolume, 1);
   const songMasterVolume = normalizeMasterVolume(broadcastSettings?.songMasterVolume, 1);
   const instantMasterVolume = normalizeMasterVolume(broadcastSettings?.instantMasterVolume, 1);
+  const sceneInstantMasterVolume = normalizeMasterVolume(broadcastSettings?.sceneInstantMasterVolume, 1);
   const streamMasterVolume = normalizeMasterVolume(broadcastSettings?.streamMasterVolume, 1);
   const songMuted = Boolean(broadcastSettings?.songMuted);
   const instantMuted = Boolean(broadcastSettings?.instantMuted);
+  const sceneInstantMuted = Boolean(broadcastSettings?.sceneInstantMuted);
   const streamMuted = Boolean(broadcastSettings?.streamMuted);
   const songSolo = Boolean(broadcastSettings?.songSolo);
   const instantSolo = Boolean(broadcastSettings?.instantSolo);
+  const sceneInstantSolo = Boolean(broadcastSettings?.sceneInstantSolo);
   const streamSolo = Boolean(broadcastSettings?.streamSolo);
-  const hasSoloChannel = songSolo || instantSolo || streamSolo;
+  const hasSoloChannel = songSolo || instantSolo || sceneInstantSolo || streamSolo;
   const effectiveSongMasterFader = hasSoloChannel ? (songSolo ? songMasterVolume : 0) : songMasterVolume;
   const effectiveInstantMasterFader = hasSoloChannel ? (instantSolo ? instantMasterVolume : 0) : instantMasterVolume;
+  const effectiveSceneInstantMasterFader = hasSoloChannel
+    ? (sceneInstantSolo ? sceneInstantMasterVolume : 0)
+    : sceneInstantMasterVolume;
   const effectiveStreamMasterFader = hasSoloChannel ? (streamSolo ? streamMasterVolume : 0) : streamMasterVolume;
   const normalizedSongSequence = useMemo(
     () => normalizeProgramSongSequence(audioBusSettings?.songSequence),
@@ -492,10 +551,17 @@ function SceneProgram({ programId }: { programId: string }) {
   );
   const resolvedSongChannelGain = songMuted ? 0 : faderToGain(effectiveSongMasterFader);
   const resolvedInstantChannelGain = instantMuted ? 0 : faderToGain(effectiveInstantMasterFader);
+  const resolvedSceneInstantChannelGain = sceneInstantMuted
+    ? 0
+    : faderToGain(effectiveSceneInstantMasterFader);
   const resolvedStreamChannelGain = streamMuted ? 0 : faderToGain(effectiveStreamMasterFader);
   const mainMasterGain = faderToGain(mainMasterFader);
   const resolvedSongMasterVolume = normalizeMasterVolume(resolvedSongChannelGain * mainMasterGain, 0);
   const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain, 0);
+  const resolvedSceneInstantMasterVolume = normalizeMasterVolume(
+    resolvedSceneInstantChannelGain * mainMasterGain,
+    0
+  );
   const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain, 0);
   const activeSlideshowMediaGroupId = useMemo(() => {
     const activeScene = state?.activeScene;
@@ -666,6 +732,78 @@ function SceneProgram({ programId }: { programId: string }) {
     };
   }, []);
 
+  const readSceneInstantSignalSnapshot = useCallback((): { rms: number; peak: number } => {
+    const current = activeSceneInstantAudioRef.current;
+    if (!current) {
+      return { rms: 0, peak: 0 };
+    }
+
+    const { audio, runtime } = current;
+    if (audio.paused || audio.ended) {
+      return { rms: 0, peak: 0 };
+    }
+
+    if (!runtime.meterAnalyser || !runtime.meterBuffer) {
+      const fallbackLevel = normalizeMasterVolume(audio.volume, 0);
+      return {
+        rms: fallbackLevel,
+        peak: fallbackLevel
+      };
+    }
+
+    runtime.meterAnalyser.getFloatTimeDomainData(runtime.meterBuffer);
+    let sumSquares = 0;
+    let peakSample = 0;
+    for (let index = 0; index < runtime.meterBuffer.length; index += 1) {
+      const sample = runtime.meterBuffer[index];
+      sumSquares += sample * sample;
+      const absSample = Math.abs(sample);
+      if (absSample > peakSample) {
+        peakSample = absSample;
+      }
+    }
+
+    const rms = Math.sqrt(sumSquares / runtime.meterBuffer.length);
+    return {
+      rms: Math.max(0, Math.min(1, rms)),
+      peak: Math.max(0, Math.min(1, peakSample))
+    };
+  }, []);
+
+  const stopSceneInstantAudio = useCallback(() => {
+    const current = activeSceneInstantAudioRef.current;
+    if (!current) {
+      return;
+    }
+    const { audio, runtime } = current;
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // no-op for unsupported media
+    }
+    audio.onended = null;
+    audio.onerror = null;
+    if (runtime.meterSource) {
+      try {
+        runtime.meterSource.disconnect();
+      } catch {
+        // no-op
+      }
+    }
+    if (runtime.meterAnalyser) {
+      try {
+        runtime.meterAnalyser.disconnect();
+      } catch {
+        // no-op
+      }
+    }
+    if (runtime.meterUsesMediaElementFallback) {
+      audio.muted = false;
+    }
+    activeSceneInstantAudioRef.current = null;
+  }, []);
+
   const stopAllInstantAudio = () => {
     for (const [audio, runtime] of activeInstantAudiosRef.current) {
       audio.pause();
@@ -696,6 +834,69 @@ function SceneProgram({ programId }: { programId: string }) {
     }
     activeInstantAudiosRef.current.clear();
   };
+
+  const takeSceneInstantAudio = useCallback(
+    (event: SceneInstantTakeEvent) => {
+      stopSceneInstantAudio();
+
+      const audio = new Audio(event.instant.audioUrl);
+      audio.preload = 'auto';
+      audio.loop = event.loop !== false;
+      const baseVolume = normalizeMasterVolume(event.instant.volume, 1);
+      audio.volume = normalizeMasterVolume(baseVolume * resolvedSceneInstantMasterVolume, 1);
+      const runtime: InstantAudioRuntimeState = {
+        baseVolume,
+        meterSource: null,
+        meterAnalyser: null,
+        meterBuffer: null,
+        meterUsesMediaElementFallback: false
+      };
+      ensureInstantAudioMeter(audio, runtime);
+
+      const cleanup = () => {
+        audio.onended = null;
+        audio.onerror = null;
+        if (runtime.meterSource) {
+          try {
+            runtime.meterSource.disconnect();
+          } catch {
+            // no-op
+          }
+        }
+        if (runtime.meterAnalyser) {
+          try {
+            runtime.meterAnalyser.disconnect();
+          } catch {
+            // no-op
+          }
+        }
+        if (runtime.meterUsesMediaElementFallback) {
+          audio.muted = false;
+        }
+        if (activeSceneInstantAudioRef.current?.audio === audio) {
+          activeSceneInstantAudioRef.current = null;
+        }
+      };
+
+      audio.onended = cleanup;
+      audio.onerror = () => {
+        console.error(
+          `Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`
+        );
+        cleanup();
+      };
+      activeSceneInstantAudioRef.current = { audio, runtime };
+
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((err) => {
+          console.error(`Failed to play scene instant "${event.instant.name}":`, err);
+          cleanup();
+        });
+      }
+    },
+    [ensureInstantAudioMeter, resolvedSceneInstantMasterVolume, stopSceneInstantAudio]
+  );
 
   const playInstantAudio = (event: InstantPlayEvent) => {
     const audio = new Audio(event.instant.audioUrl);
@@ -836,6 +1037,49 @@ function SceneProgram({ programId }: { programId: string }) {
           return;
         }
         stopAllInstantAudio();
+      } else if (data.type === 'scene_instant_take') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
+        takeSceneInstantAudio(data as SceneInstantTakeEvent);
+      } else if (data.type === 'scene_instant_stop') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
+        stopSceneInstantAudio();
+      } else if (data.type === 'scene_instant_state') {
+        const event = data as SceneInstantStateEvent;
+        const eventProgramId = typeof event.programId === 'string' ? event.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
+        const playback = event.playback;
+        if (
+          playback &&
+          playback.isPlaying &&
+          playback.instant &&
+          typeof playback.instant.audioUrl === 'string' &&
+          playback.instant.audioUrl.trim().length > 0
+        ) {
+          takeSceneInstantAudio({
+            type: 'scene_instant_take',
+            programId,
+            sceneId:
+              typeof playback.sceneId === 'number' && Number.isFinite(playback.sceneId)
+                ? playback.sceneId
+                : null,
+            instant: playback.instant,
+            loop: true,
+            triggeredAt:
+              typeof playback.updatedAt === 'string'
+                ? playback.updatedAt
+                : new Date().toISOString()
+          });
+        } else {
+          stopSceneInstantAudio();
+        }
       } else if (data.type === 'song_off_air') {
         const event = data as SongOffAirEvent;
         if (event.programId === programId) {
@@ -848,7 +1092,16 @@ function SceneProgram({ programId }: { programId: string }) {
         }
       }
     },
-    [programId, state?.activeScene, state?.activeSceneId, playInstantAudio, stopAllInstantAudio, clearTransitionTimers]
+    [
+      programId,
+      state?.activeScene,
+      state?.activeSceneId,
+      playInstantAudio,
+      stopAllInstantAudio,
+      stopSceneInstantAudio,
+      takeSceneInstantAudio,
+      clearTransitionTimers
+    ]
   );
 
   useEffect(() => {
@@ -863,13 +1116,15 @@ function SceneProgram({ programId }: { programId: string }) {
     setAudioBusSettings(null);
     setBroadcastSettings(null);
     stopAllInstantAudio();
-  }, [programId]);
+    stopSceneInstantAudio();
+  }, [programId, stopSceneInstantAudio]);
 
   useEffect(() => {
     return () => {
       transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       transitionTimersRef.current = [];
       stopAllInstantAudio();
+      stopSceneInstantAudio();
       const context = instantAudioMeterContextRef.current;
       instantAudioMeterContextRef.current = null;
       if (context && context.state !== 'closed') {
@@ -878,7 +1133,7 @@ function SceneProgram({ programId }: { programId: string }) {
         });
       }
     };
-  }, []);
+  }, [stopSceneInstantAudio]);
 
   useEffect(() => {
     if (isRealtimeConnected) {
@@ -917,6 +1172,21 @@ function SceneProgram({ programId }: { programId: string }) {
           }
         })
         .catch((err) => console.error('Failed to fetch broadcast settings:', err));
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
+        .then((res) => res.json())
+        .then((playback) => {
+          if (!cancelled) {
+            handleProgramEventRef.current({
+              type: 'scene_instant_state',
+              programId,
+              playback
+            });
+          }
+        })
+        .catch((err) =>
+          console.error('Failed to fetch scene instant playback:', err)
+        );
     }, 900);
 
     return () => {
@@ -1010,6 +1280,17 @@ function SceneProgram({ programId }: { programId: string }) {
       audio.volume = normalizeMasterVolume(runtime.baseVolume * resolvedInstantMasterVolume, 1);
     }
   }, [resolvedInstantMasterVolume]);
+
+  useEffect(() => {
+    const current = activeSceneInstantAudioRef.current;
+    if (!current) {
+      return;
+    }
+    current.audio.volume = normalizeMasterVolume(
+      current.runtime.baseVolume * resolvedSceneInstantMasterVolume,
+      1
+    );
+  }, [resolvedSceneInstantMasterVolume]);
 
   useEffect(() => {
     if (activeSlideshowMediaGroupId === null) {
@@ -1264,8 +1545,23 @@ function SceneProgram({ programId }: { programId: string }) {
 
       const songSignal = getProgramAudioBusSignalSnapshot(programId);
       const instantsSignal = readInstantSignalSnapshot();
-      const mainRmsSignal = Math.max(0, Math.min(1, Math.sqrt(songSignal.rms * songSignal.rms + instantsSignal.rms * instantsSignal.rms)));
-      const mainPeakSignal = Math.max(songSignal.peak, instantsSignal.peak);
+      const sceneInstantSignal = readSceneInstantSignalSnapshot();
+      const mainRmsSignal = Math.max(
+        0,
+        Math.min(
+          1,
+          Math.sqrt(
+            songSignal.rms * songSignal.rms +
+              instantsSignal.rms * instantsSignal.rms +
+              sceneInstantSignal.rms * sceneInstantSignal.rms
+          )
+        )
+      );
+      const mainPeakSignal = Math.max(
+        songSignal.peak,
+        instantsSignal.peak,
+        sceneInstantSignal.peak
+      );
 
       const applyBallistics = (
         channel: MeterChannelBallistics,
@@ -1309,6 +1605,11 @@ function SceneProgram({ programId }: { programId: string }) {
       const nextPayload = {
         song: applyBallistics(meterState.song, songSignal.rms, songSignal.peak),
         instants: applyBallistics(meterState.instants, instantsSignal.rms, instantsSignal.peak),
+        sceneInstant: applyBallistics(
+          meterState.sceneInstant,
+          sceneInstantSignal.rms,
+          sceneInstantSignal.peak
+        ),
         main: applyBallistics(meterState.main, mainRmsSignal, mainPeakSignal)
       };
       const previousPayload = lastMeterPayloadRef.current;
@@ -1319,6 +1620,9 @@ function SceneProgram({ programId }: { programId: string }) {
         Math.abs(nextPayload.instants.vu - previousPayload.instants.vu) > 0.0035 ||
         Math.abs(nextPayload.instants.peak - previousPayload.instants.peak) > 0.0035 ||
         Math.abs(nextPayload.instants.peakHold - previousPayload.instants.peakHold) > 0.0035 ||
+        Math.abs(nextPayload.sceneInstant.vu - previousPayload.sceneInstant.vu) > 0.0035 ||
+        Math.abs(nextPayload.sceneInstant.peak - previousPayload.sceneInstant.peak) > 0.0035 ||
+        Math.abs(nextPayload.sceneInstant.peakHold - previousPayload.sceneInstant.peakHold) > 0.0035 ||
         Math.abs(nextPayload.main.vu - previousPayload.main.vu) > 0.0035 ||
         Math.abs(nextPayload.main.peak - previousPayload.main.peak) > 0.0035 ||
         Math.abs(nextPayload.main.peakHold - previousPayload.main.peakHold) > 0.0035;
@@ -1364,6 +1668,7 @@ function SceneProgram({ programId }: { programId: string }) {
       const silentPayload: ProgramAudioMeterPayload = {
         song: { vu: 0, peak: 0, peakHold: 0 },
         instants: { vu: 0, peak: 0, peakHold: 0 },
+        sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
         main: { vu: 0, peak: 0, peakHold: 0 }
       };
       const silentSongPlaybackPayload = {
@@ -1420,7 +1725,7 @@ function SceneProgram({ programId }: { programId: string }) {
         // ignore cleanup reporting errors
       });
     };
-  }, [programId, readInstantSignalSnapshot]);
+  }, [programId, readInstantSignalSnapshot, readSceneInstantSignalSnapshot]);
 
   useEffect(() => {
     const componentTypes = state?.activeScene?.layout.componentType.split(',').filter(Boolean) || [];
@@ -1493,15 +1798,24 @@ function SceneProgram({ programId }: { programId: string }) {
       console.error('Failed to parse scene metadata:', err);
     }
 
-    const activeToniLeaf = resolveToniChyronLeaf(metadata['toni-chyron'] || {});
+    const mergedFifthBellChyronProps = {
+      ...(metadata['toni-chyron'] || {}),
+      ...(metadata['fifthbell-chyron'] || {})
+    } as Record<string, unknown>;
+    const activeToniLeaf = resolveToniChyronLeaf(mergedFifthBellChyronProps);
     const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
       earoneSongId: activeToniLeaf?.earoneSongId || null,
       text: activeToniLeaf?.text || null
     });
-    const hasOnlyFifthBellComponents =
-      components.length > 0 &&
-      components.every((componentType) => FIFTHBELL_LAYOUT_COMPONENT_TYPES.has(componentType)) &&
-      components.some((componentType) => FIFTHBELL_DRIVER_COMPONENT_TYPES.has(componentType));
+    const firstClockComponentType = components.find(
+      (componentType) => componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
+    );
+    const fifthBellClockProps = {
+      ...(metadata['fifthbell'] || {}),
+      ...(metadata['fifthbell-corner'] || {}),
+      ...(metadata['fifthbell-clock'] || {}),
+      ...(metadata['toni-clock'] || {})
+    } as Record<string, unknown>;
     const hasProgramClockComponent = components.includes('modoitaliano-clock');
     const hasProgramChyronComponent = components.includes('modoitaliano-chyron');
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
@@ -1526,14 +1840,6 @@ function SceneProgram({ programId }: { programId: string }) {
       !shouldShowProgramChyronComponent &&
       toBoolean(modoItalianoDisclaimerProps.show, true) &&
       !!modoItalianoDisclaimerText;
-
-    if (hasOnlyFifthBellComponents) {
-      return (
-        <div className='absolute inset-0'>
-          <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} />
-        </div>
-      );
-    }
 
     // Handle legacy single-component layouts
     if (components.length === 1) {
@@ -1630,28 +1936,51 @@ function SceneProgram({ programId }: { programId: string }) {
             case 'reloj-loop-clock':
               return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
             case 'toni-chyron':
+            case 'fifthbell-chyron': {
+              const fifthBellChyronProps = {
+                ...(metadata['toni-chyron'] || {}),
+                ...(metadata['fifthbell-chyron'] || {}),
+                ...(metadata[componentType] || {})
+              } as Record<string, unknown>;
               return (
-                <ToniChyron
+                <FifthBellChyron
                   key={componentType}
-                  text={props.text || ''}
+                  text={typeof fifthBellChyronProps.text === 'string' ? fifthBellChyronProps.text : ''}
                   show={true}
-                  useMarquee={props.useMarquee}
-                  contentMode={props.contentMode}
-                  sequence={props.sequence}
+                  useMarquee={typeof fifthBellChyronProps.useMarquee === 'boolean' ? fifthBellChyronProps.useMarquee : undefined}
+                  contentMode={
+                    fifthBellChyronProps.contentMode === 'text' || fifthBellChyronProps.contentMode === 'sequence'
+                      ? fifthBellChyronProps.contentMode
+                      : undefined
+                  }
+                  sequence={fifthBellChyronProps.sequence}
+                  socialHandles={fifthBellChyronProps.socialHandles}
                 />
               );
+            }
             case 'toni-clock':
+            case 'fifthbell-clock':
+            case 'fifthbell-corner':
+              if (firstClockComponentType !== componentType) {
+                return null;
+              }
+              const resolvedShowBellIcon =
+                componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
+                  ? true
+                  : typeof fifthBellClockProps.showBellIcon === 'boolean'
+                    ? fifthBellClockProps.showBellIcon
+                    : undefined;
               return (
                 <ToniClock
                   key={componentType}
                   timeOverride={globalTimeOverride}
-                  cities={Array.isArray(props.worldClockCities) ? props.worldClockCities : undefined}
-                  rotationIntervalMs={typeof props.worldClockRotateIntervalMs === 'number' ? props.worldClockRotateIntervalMs : undefined}
-                  transitionDurationMs={typeof props.worldClockTransitionMs === 'number' ? props.worldClockTransitionMs : undefined}
-                  shuffleCities={typeof props.worldClockShuffle === 'boolean' ? props.worldClockShuffle : undefined}
-                  widthPx={typeof props.worldClockWidthPx === 'number' ? props.worldClockWidthPx : undefined}
-                  showWorldClocks={typeof props.showWorldClocks === 'boolean' ? props.showWorldClocks : undefined}
-                  showBellIcon={typeof props.showBellIcon === 'boolean' ? props.showBellIcon : undefined}
+                  cities={Array.isArray(fifthBellClockProps.worldClockCities) ? fifthBellClockProps.worldClockCities : undefined}
+                  rotationIntervalMs={typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined}
+                  transitionDurationMs={typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined}
+                  shuffleCities={typeof fifthBellClockProps.worldClockShuffle === 'boolean' ? fifthBellClockProps.worldClockShuffle : undefined}
+                  widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
+                  showWorldClocks={typeof fifthBellClockProps.showWorldClocks === 'boolean' ? fifthBellClockProps.showWorldClocks : undefined}
+                  showBellIcon={resolvedShowBellIcon}
                 />
               );
             case 'modoitaliano-clock': {
@@ -1714,7 +2043,6 @@ function SceneProgram({ programId }: { programId: string }) {
             case 'fifthbell':
             case 'fifthbell-content':
             case 'fifthbell-marquee':
-            case 'fifthbell-corner':
               if (firstFifthBellComponentType !== componentType) {
                 return null;
               }
