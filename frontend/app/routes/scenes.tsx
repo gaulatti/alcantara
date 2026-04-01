@@ -1,4 +1,4 @@
-import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, Select, showAlert } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -176,11 +176,7 @@ export default function ScenesAdmin() {
             <Empty
               title='Create a layout first'
               description='Scenes require a layout. Create at least one layout before creating scenes.'
-              action={
-                <Button onClick={() => navigate('/layouts')}>
-                  Go to Layouts
-                </Button>
-              }
+              action={<Button onClick={() => navigate('/layouts')}>Go to Layouts</Button>}
             />
           </Card>
         ) : (
@@ -236,41 +232,30 @@ export default function ScenesAdmin() {
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Scene Name</label>
-              <input
-                type='text'
+              <Input
                 value={nameInput}
                 onChange={(e) => {
                   setNameInput(e.target.value);
                   if (error) setError('');
                 }}
                 placeholder='Morning Headlines'
-                className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors dark:bg-dark-sand ${
-                  error
-                    ? 'border-terracotta focus:ring-2 focus:ring-terracotta'
-                    : 'border-sand/40 focus:border-sea focus:ring-2 focus:ring-sea dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                }`}
+                error={!!error}
                 autoFocus
               />
             </div>
 
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Layout</label>
-              <select
-                value={layoutIdInput ?? ''}
-                onChange={(e) => {
-                  const numeric = Number(e.target.value);
+              <Select
+                value={layoutIdInput ? String(layoutIdInput) : ''}
+                onChange={(val) => {
+                  const numeric = Number(val);
                   setLayoutIdInput(Number.isFinite(numeric) && numeric > 0 ? numeric : null);
                   if (error) setError('');
                 }}
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              >
-                <option value=''>Select layout</option>
-                {layouts.map((layout) => (
-                  <option key={layout.id} value={layout.id}>
-                    {layout.name}
-                  </option>
-                ))}
-              </select>
+                placeholder='Select layout'
+                options={layouts.map((l) => ({ value: String(l.id), label: l.name }))}
+              />
             </div>
 
             {error ? <p className='text-sm text-terracotta'>{error}</p> : null}

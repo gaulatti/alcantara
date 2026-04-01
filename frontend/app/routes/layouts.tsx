@@ -1,4 +1,4 @@
-import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -251,8 +251,7 @@ export default function LayoutsAdmin() {
           <div className='space-y-6'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Layout Name</label>
-              <input
-                type='text'
+              <Input
                 value={layoutName}
                 onChange={(e) => {
                   setLayoutName(e.target.value);
@@ -261,11 +260,7 @@ export default function LayoutsAdmin() {
                   }
                 }}
                 placeholder='Enter layout name'
-                className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors dark:bg-dark-sand ${
-                  errors.name
-                    ? 'border-terracotta focus:ring-2 focus:ring-terracotta'
-                    : 'border-sand/40 focus:border-sea focus:ring-2 focus:ring-sea dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                }`}
+                error={!!errors.name}
                 autoFocus
               />
               {errors.name ? <p className='mt-1 text-sm text-terracotta'>{errors.name}</p> : null}
@@ -291,8 +286,7 @@ export default function LayoutsAdmin() {
                     }}
                   >
                     <div className='flex items-start gap-3'>
-                      <input
-                        type='checkbox'
+                      <Checkbox
                         checked={selectedComponents.includes(ct.type)}
                         onChange={() => {
                           toggleComponent(ct.type);
@@ -300,8 +294,7 @@ export default function LayoutsAdmin() {
                             setErrors((prev) => ({ ...prev, components: '' }));
                           }
                         }}
-                        className='mt-0.5 h-4 w-4 rounded border-sand/30 accent-sea'
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
                       />
                       <div className='min-w-0 flex-1'>
                         <p className='font-semibold text-text-primary dark:text-text-primary'>{ct.name}</p>

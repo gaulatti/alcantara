@@ -4,6 +4,8 @@ import {
   Footer as BleeckerFooter,
   Header as BleeckerHeader,
   HeaderSelect,
+  Input,
+  Button,
   Modal,
   ThemeToggle,
   type CommandSpotlightAction,
@@ -631,7 +633,7 @@ export default function Layout() {
             <label htmlFor='globalBroadcastTimeOverride' className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>
               Start Time (HH:mm)
             </label>
-            <input
+            <Input
               id='globalBroadcastTimeOverride'
               type='text'
               value={broadcastTimeInput}
@@ -642,33 +644,19 @@ export default function Layout() {
                 }
               }}
               placeholder='19:55'
-              className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors dark:bg-dark-sand ${
-                broadcastTimeError
-                  ? 'border-terracotta focus:ring-2 focus:ring-terracotta'
-                  : 'border-sand/40 focus:border-sea focus:ring-2 focus:ring-sea dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-              }`}
+              error={!!broadcastTimeError}
               autoFocus
             />
             {broadcastTimeError ? <p className='mt-2 text-sm text-terracotta'>{broadcastTimeError}</p> : null}
           </div>
 
           <div className='flex justify-end gap-3'>
-            <button
-              type='button'
-              onClick={clearBroadcastTimeOverride}
-              disabled={isSavingBroadcastTime || !broadcastSettings?.timeOverrideEnabled}
-              className='inline-flex items-center justify-center rounded-full border border-sand/30 bg-white px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-sand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sand/40 dark:bg-dark-sand dark:hover:bg-sand/10'
-            >
+            <Button variant='secondary' onClick={clearBroadcastTimeOverride} disabled={isSavingBroadcastTime || !broadcastSettings?.timeOverrideEnabled}>
               Disable
-            </button>
-            <button
-              type='button'
-              onClick={saveBroadcastTimeOverride}
-              disabled={isSavingBroadcastTime}
-              className='inline-flex items-center justify-center rounded-full bg-sea px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sea/90 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-accent-blue dark:text-dark-sand dark:hover:bg-accent-blue/85'
-            >
+            </Button>
+            <Button onClick={saveBroadcastTimeOverride} disabled={isSavingBroadcastTime}>
               {isSavingBroadcastTime ? 'Saving...' : 'Apply'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

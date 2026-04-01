@@ -1,4 +1,17 @@
-import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import {
+  AlertContainer,
+  Button,
+  Card,
+  Checkbox,
+  Empty,
+  FileInput,
+  IconButton,
+  Input,
+  LoadingSpinner,
+  Modal,
+  SectionHeader,
+  showAlert
+} from '@gaulatti/bleecker';
 import { Play, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -122,7 +135,7 @@ export default function InstantsAdmin() {
   const playInstant = async (instantId: number) => {
     try {
       const res = await fetch(apiUrl(`/instants/${instantId}/play`), {
-        method: 'POST',
+        method: 'POST'
       });
       if (!res.ok) {
         const text = await res.text();
@@ -138,7 +151,7 @@ export default function InstantsAdmin() {
   const stopAllInstants = async () => {
     try {
       const res = await fetch(apiUrl('/instants/stop-all'), {
-        method: 'POST',
+        method: 'POST'
       });
       if (!res.ok) {
         const text = await res.text();
@@ -182,9 +195,7 @@ export default function InstantsAdmin() {
       }
 
       const isEditing = !!editingInstant;
-      const endpoint = isEditing
-        ? apiUrl(`/instants/${editingInstant.id}`)
-        : apiUrl('/instants');
+      const endpoint = isEditing ? apiUrl(`/instants/${editingInstant.id}`) : apiUrl('/instants');
       const method = isEditing ? 'PUT' : 'POST';
 
       const res = await fetch(endpoint, {
@@ -194,8 +205,8 @@ export default function InstantsAdmin() {
           name: normalizedName,
           audioUrl: nextAudioUrl,
           volume: parsedVolume,
-          enabled: enabledInput,
-        }),
+          enabled: enabledInput
+        })
       });
 
       if (!res.ok) {
@@ -221,7 +232,7 @@ export default function InstantsAdmin() {
 
     try {
       const res = await fetch(apiUrl(`/instants/${instant.id}`), {
-        method: 'DELETE',
+        method: 'DELETE'
       });
 
       if (!res.ok) {
@@ -242,10 +253,7 @@ export default function InstantsAdmin() {
       <AlertContainer />
       <div className='mx-auto max-w-6xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader
-            title='Instants'
-            description='Audio trigger cart shared across the app.'
-          />
+          <SectionHeader title='Instants' description='Audio trigger cart shared across the app.' />
           <div className='flex flex-wrap items-center gap-3'>
             <Button variant='secondary' onClick={() => navigate('/control')}>
               Back to Control
@@ -267,7 +275,11 @@ export default function InstantsAdmin() {
               <p>Loading instants...</p>
             </div>
           ) : sortedInstants.length === 0 ? (
-            <Empty title='No instants yet' description='Create your first instant trigger.' action={<Button onClick={openCreateModal}>Create Instant</Button>} />
+            <Empty
+              title='No instants yet'
+              description='Create your first instant trigger.'
+              action={<Button onClick={openCreateModal}>Create Instant</Button>}
+            />
           ) : (
             <div className='space-y-3'>
               {sortedInstants.map((instant) => (
@@ -329,56 +341,43 @@ export default function InstantsAdmin() {
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Name</label>
-              <input
-                type='text'
+              <Input
                 value={nameInput}
                 onChange={(e) => {
                   setNameInput(e.target.value);
                   if (error) setError('');
                 }}
                 placeholder='Hit FX'
-                className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
                 autoFocus
+                error={!!error && !nameInput}
               />
             </div>
 
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Audio File</label>
-              <div className='mt-2 flex flex-wrap items-center gap-2'>
-                <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
-                  <input
-                    type='file'
-                    accept='audio/*'
-                    className='hidden'
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      event.target.value = '';
-                      setSelectedAudioFile(file);
-                      if (error) {
-                        setError('');
-                      }
-                    }}
-                    disabled={isUploadingAudio}
-                  />
-                  Choose Audio File
-                </label>
+              <div className='mt-2 flex flex-col gap-2'>
+                <FileInput
+                  accept='audio/*'
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    event.target.value = '';
+                    setSelectedAudioFile(file);
+                    if (error) setError('');
+                  }}
+                  disabled={isUploadingAudio}
+                  error={!!error && !selectedAudioFile && !uploadedAudioUrl}
+                />
                 <span className='text-xs text-text-secondary dark:text-text-secondary'>
-                  {selectedAudioFile
-                    ? `Selected: ${selectedAudioFile.name}`
-                    : uploadedAudioUrl
-                      ? 'Using existing uploaded audio.'
-                      : 'No audio selected yet.'}
+                  {selectedAudioFile ? `Selected: ${selectedAudioFile.name}` : uploadedAudioUrl ? 'Using existing uploaded audio.' : 'No audio selected yet.'}
                 </span>
               </div>
-              {uploadedAudioUrl ? (
-                <p className='mt-2 truncate text-xs text-text-secondary dark:text-text-secondary'>Stored URL: {uploadedAudioUrl}</p>
-              ) : null}
+              {uploadedAudioUrl ? <p className='mt-2 truncate text-xs text-text-secondary dark:text-text-secondary'>Stored URL: {uploadedAudioUrl}</p> : null}
             </div>
 
             <div className='grid gap-4 sm:grid-cols-2'>
               <div>
                 <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Volume (0-1)</label>
-                <input
+                <Input
                   type='number'
                   min='0'
                   max='1'
@@ -388,18 +387,12 @@ export default function InstantsAdmin() {
                     setVolumeInput(e.target.value);
                     if (error) setError('');
                   }}
-                  className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
                 />
               </div>
 
-              <label className='mt-7 inline-flex items-center gap-2 text-sm text-text-primary dark:text-text-primary'>
-                <input
-                  type='checkbox'
-                  checked={enabledInput}
-                  onChange={(e) => setEnabledInput(e.target.checked)}
-                />
-                Enabled
-              </label>
+              <div className='mt-7 flex items-center'>
+                <Checkbox checked={enabledInput} onChange={(e) => setEnabledInput(e.target.checked)} label='Enabled' />
+              </div>
             </div>
 
             {error ? <p className='text-sm text-terracotta'>{error}</p> : null}

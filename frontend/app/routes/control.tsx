@@ -289,10 +289,7 @@ function defaultMixerChannelsFromScalars(source: {
   ];
 }
 
-function normalizeMixerChannelsPayload(
-  value: unknown,
-  fallbackChannels: MixerChannelSetting[]
-): MixerChannelSetting[] {
+function normalizeMixerChannelsPayload(value: unknown, fallbackChannels: MixerChannelSetting[]): MixerChannelSetting[] {
   if (!Array.isArray(value)) {
     return fallbackChannels;
   }
@@ -312,7 +309,7 @@ function normalizeMixerChannelsPayload(
       continue;
     }
     const previous = byId.get(id);
-    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : previous?.name ?? id;
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : (previous?.name ?? id);
     byId.set(id, {
       id,
       name,
@@ -352,10 +349,7 @@ function normalizeBroadcastSettingsPayload(value: unknown): BroadcastSettings {
     instantSolo: normalizeMixerToggle(record.instantSolo, false),
     streamSolo: normalizeMixerToggle(record.streamSolo, false)
   };
-  const mixerChannels = normalizeMixerChannelsPayload(
-    record.mixerChannels,
-    defaultMixerChannelsFromScalars(scalarFallback)
-  );
+  const mixerChannels = normalizeMixerChannelsPayload(record.mixerChannels, defaultMixerChannelsFromScalars(scalarFallback));
   const songChannel = getMixerChannelById(mixerChannels, 'song');
   const streamChannel = getMixerChannelById(mixerChannels, 'stream');
   const instantsChannel = getMixerChannelById(mixerChannels, 'instants');
@@ -482,17 +476,8 @@ function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybackState 
   };
 }
 
-function reconcileProgramSongPlayback(
-  previous: ProgramSongPlaybackState,
-  next: ProgramSongPlaybackState
-): ProgramSongPlaybackState {
-  if (
-    previous.token &&
-    next.token &&
-    previous.token === next.token &&
-    previous.audioUrl === next.audioUrl &&
-    previous.isPlaying
-  ) {
+function reconcileProgramSongPlayback(previous: ProgramSongPlaybackState, next: ProgramSongPlaybackState): ProgramSongPlaybackState {
+  if (previous.token && next.token && previous.token === next.token && previous.audioUrl === next.audioUrl && previous.isPlaying) {
     const backwardDriftMs = previous.currentTimeMs - next.currentTimeMs;
     if (backwardDriftMs > SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS) {
       return previous;
@@ -534,14 +519,8 @@ function normalizeProgramState(value: unknown): ProgramState | null {
     scenes: Array.isArray(record.scenes) ? record.scenes : [],
     activeSceneId: typeof record.activeSceneId === 'number' ? record.activeSceneId : null,
     stagedSceneId: typeof record.stagedSceneId === 'number' ? record.stagedSceneId : null,
-    activeScene:
-      record.activeScene && typeof record.activeScene === 'object'
-        ? (record.activeScene as Scene)
-        : null,
-    stagedScene:
-      record.stagedScene && typeof record.stagedScene === 'object'
-        ? (record.stagedScene as Scene)
-        : null
+    activeScene: record.activeScene && typeof record.activeScene === 'object' ? (record.activeScene as Scene) : null,
+    stagedScene: record.stagedScene && typeof record.stagedScene === 'object' ? (record.stagedScene as Scene) : null
   };
 }
 
@@ -967,8 +946,7 @@ export default function Control() {
       }
 
       const nextStagedSceneId =
-        typeof nextProgramState.stagedSceneId === 'number' &&
-        nextProgramState.scenes.some((entry) => entry.sceneId === nextProgramState.stagedSceneId)
+        typeof nextProgramState.stagedSceneId === 'number' && nextProgramState.scenes.some((entry) => entry.sceneId === nextProgramState.stagedSceneId)
           ? nextProgramState.stagedSceneId
           : null;
 
@@ -976,10 +954,7 @@ export default function Control() {
         return nextStagedSceneId;
       }
 
-      if (
-        previousStagedSceneId !== null &&
-        nextProgramState.scenes.some((entry) => entry.sceneId === previousStagedSceneId)
-      ) {
+      if (previousStagedSceneId !== null && nextProgramState.scenes.some((entry) => entry.sceneId === previousStagedSceneId)) {
         return previousStagedSceneId;
       }
 
@@ -1079,10 +1054,7 @@ export default function Control() {
             return {
               ...previous,
               stagedSceneId: nextStagedSceneId,
-              stagedScene:
-                payload.scene && typeof payload.scene === 'object'
-                  ? (payload.scene as Scene)
-                  : null,
+              stagedScene: payload.scene && typeof payload.scene === 'object' ? (payload.scene as Scene) : null
             };
           });
           return;
@@ -1107,9 +1079,7 @@ export default function Control() {
             if (!prev) {
               return prev;
             }
-            const nextScenes = prev.scenes.map((entry) =>
-              entry.sceneId === payload.scene?.id ? { ...entry, scene: payload.scene } : entry
-            );
+            const nextScenes = prev.scenes.map((entry) => (entry.sceneId === payload.scene?.id ? { ...entry, scene: payload.scene } : entry));
             return {
               ...prev,
               scenes: nextScenes
@@ -1161,9 +1131,7 @@ export default function Control() {
           if (eventProgramId !== activeProgramId) {
             return;
           }
-          setProgramSongPlaybackState((previous) =>
-            reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(payload.playback))
-          );
+          setProgramSongPlaybackState((previous) => reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(payload.playback)));
         }
       });
 
@@ -2315,10 +2283,7 @@ export default function Control() {
           return {
             ...previous,
             stagedSceneId: nextStagedSceneId,
-            stagedScene:
-              data.scene && typeof data.scene === 'object'
-                ? (data.scene as Scene)
-                : null,
+            stagedScene: data.scene && typeof data.scene === 'object' ? (data.scene as Scene) : null
           };
         });
         return;
@@ -2329,9 +2294,7 @@ export default function Control() {
           if (!prev) {
             return prev;
           }
-          const nextScenes = prev.scenes.map((entry) =>
-            entry.sceneId === data.scene?.id ? { ...entry, scene: data.scene } : entry
-          );
+          const nextScenes = prev.scenes.map((entry) => (entry.sceneId === data.scene?.id ? { ...entry, scene: data.scene } : entry));
           return {
             ...prev,
             scenes: nextScenes
@@ -2367,9 +2330,7 @@ export default function Control() {
       }
 
       if (data.type === 'song_playback_update') {
-        setProgramSongPlaybackState((previous) =>
-          reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(data.playback))
-        );
+        setProgramSongPlaybackState((previous) => reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(data.playback)));
       }
     },
     [activeProgramId, isProgramRealtimeConnected, syncProgramStateAndStagedScene]
@@ -2414,8 +2375,7 @@ export default function Control() {
   const streamOutputGain = streamChannelGain * mainMixGain;
   const activeSceneComponentTypes = (programState?.activeScene?.layout.componentType || '').split(',').filter(Boolean);
   const stagedSceneComponentTypes = (stagedSceneData?.layout.componentType || '').split(',').filter(Boolean);
-  const shouldShowStreamStrip =
-    activeSceneComponentTypes.includes('video-stream') || stagedSceneComponentTypes.includes('video-stream');
+  const shouldShowStreamStrip = activeSceneComponentTypes.includes('video-stream') || stagedSceneComponentTypes.includes('video-stream');
   const songMeterFill = meterLevelToFill(programAudioMeterLevels.song.vu);
   const songPeakFill = meterLevelToFill(programAudioMeterLevels.song.peak);
   const songPeakHoldFill = meterLevelToFill(programAudioMeterLevels.song.peakHold);
@@ -2497,7 +2457,7 @@ export default function Control() {
                                 ? 'border-red-500 bg-red-500/10 ring-2 ring-red-500/30 dark:border-red-400 dark:bg-red-400/10 dark:ring-red-400/20'
                                 : isStaged
                                   ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
-                              : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
+                                  : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
                           }`}
                           title={scene.name}
                         >
@@ -2523,12 +2483,7 @@ export default function Control() {
                   </p>
                   <p>
                     Staged: <span className='font-semibold text-text-primary dark:text-text-primary'>{stagedSceneData?.name ?? 'None'}</span>
-                    {stagedSceneData ? (
-                      <>
-                        {' '}
-                        · Text: {stagedSceneSummaryText}
-                      </>
-                    ) : null}
+                    {stagedSceneData ? <> · Text: {stagedSceneSummaryText}</> : null}
                   </p>
                 </div>
               </>
@@ -5311,9 +5266,7 @@ function ProgramSongSequenceEditor({
     }
 
     const isAutoplay = sequence.mode === 'autoplay';
-    const anchorActiveItemId = isAutoplay
-      ? effectiveActiveItemId ?? sequence.activeItemId ?? nextItem.id
-      : sequence.activeItemId ?? nextItem.id;
+    const anchorActiveItemId = isAutoplay ? (effectiveActiveItemId ?? sequence.activeItemId ?? nextItem.id) : (sequence.activeItemId ?? nextItem.id);
 
     applySequence({
       ...sequence,
@@ -5345,10 +5298,7 @@ function ProgramSongSequenceEditor({
     applySequence({
       ...sequence,
       items: [...sequence.items, filledItem],
-      activeItemId:
-        sequence.mode === 'autoplay'
-          ? effectiveActiveItemId ?? sequence.activeItemId ?? filledItem.id
-          : sequence.activeItemId
+      activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId ?? filledItem.id) : sequence.activeItemId
     });
   };
 
@@ -5360,11 +5310,8 @@ function ProgramSongSequenceEditor({
 
     const nextItems = sequence.items.filter((_, itemIndex) => itemIndex !== index);
     const isAutoplay = sequence.mode === 'autoplay';
-    const runtimeActiveItemId = isAutoplay
-      ? effectiveActiveItemId ?? sequence.activeItemId
-      : sequence.activeItemId;
-    const removedCurrentRuntimeItem =
-      runtimeActiveItemId !== null && runtimeActiveItemId === removedItem.id;
+    const runtimeActiveItemId = isAutoplay ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId;
+    const removedCurrentRuntimeItem = runtimeActiveItemId !== null && runtimeActiveItemId === removedItem.id;
     let nextActiveItemId: string | null;
 
     if (nextItems.length === 0) {
@@ -5372,20 +5319,14 @@ function ProgramSongSequenceEditor({
     } else if (removedCurrentRuntimeItem) {
       nextActiveItemId = nextItems[Math.min(index, nextItems.length - 1)]?.id ?? null;
     } else {
-      nextActiveItemId =
-        runtimeActiveItemId && nextItems.some((item) => item.id === runtimeActiveItemId)
-          ? runtimeActiveItemId
-          : (nextItems[0]?.id ?? null);
+      nextActiveItemId = runtimeActiveItemId && nextItems.some((item) => item.id === runtimeActiveItemId) ? runtimeActiveItemId : (nextItems[0]?.id ?? null);
     }
 
     applySequence({
       ...sequence,
       items: nextItems,
       activeItemId: nextActiveItemId,
-      startedAt:
-        isAutoplay && !removedCurrentRuntimeItem
-          ? resolveAutoplayStartedAt()
-          : Date.now()
+      startedAt: isAutoplay && !removedCurrentRuntimeItem ? resolveAutoplayStartedAt() : Date.now()
     });
   };
 
@@ -5581,10 +5522,7 @@ function ProgramSongSequenceEditor({
       return now;
     }
 
-    const targetItemId =
-      sequence.mode === 'autoplay'
-        ? effectiveActiveItemId ?? sequence.activeItemId ?? null
-        : sequence.activeItemId ?? null;
+    const targetItemId = sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId ?? null) : (sequence.activeItemId ?? null);
     if (!targetItemId) {
       return now;
     }
@@ -5598,16 +5536,12 @@ function ProgramSongSequenceEditor({
     const playbackAudioUrl = programSongPlayback.audioUrl.trim();
     const playbackToken = programSongPlayback.token;
     const matchesPlayback =
-      (itemAudioUrl && playbackAudioUrl && itemAudioUrl === playbackAudioUrl) ||
-      (targetItem.id && playbackToken.startsWith(`${targetItem.id}:`));
+      (itemAudioUrl && playbackAudioUrl && itemAudioUrl === playbackAudioUrl) || (targetItem.id && playbackToken.startsWith(`${targetItem.id}:`));
     if (!matchesPlayback) {
       return now;
     }
 
-    const playbackOffsetMs = Math.max(
-      0,
-      Math.round(programSongPlayback.currentTimeMs),
-    );
+    const playbackOffsetMs = Math.max(0, Math.round(programSongPlayback.currentTimeMs));
     return now - playbackOffsetMs;
   };
 
@@ -5663,8 +5597,7 @@ function ProgramSongSequenceEditor({
                           })
                         : null;
                     const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
-                    const titleText =
-                      displayItem.kind === 'preset' ? displayItem.title.trim() : displayItem.label.trim();
+                    const titleText = displayItem.kind === 'preset' ? displayItem.title.trim() : displayItem.label.trim();
                     const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() : '';
                     const rowDuration = displayItem.kind === 'preset' ? formatDurationFromMs(displayItem.durationMs) : '—';
                     const coverUrl = displayItem.kind === 'preset' ? displayItem.coverUrl.trim() : '';
@@ -6122,10 +6055,7 @@ function ProgramSongSequenceEditor({
                 applySequence({
                   ...sequence,
                   mode: 'autoplay',
-                  activeItemId:
-                    sequence.mode === 'autoplay'
-                      ? effectiveActiveItemId ?? sequence.activeItemId
-                      : sequence.activeItemId,
+                  activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
                   startedAt: resolveAutoplayStartedAt()
                 })
               }

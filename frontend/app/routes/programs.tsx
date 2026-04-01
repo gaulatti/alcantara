@@ -1,4 +1,4 @@
-import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -288,12 +288,7 @@ export default function ProgramsAdmin() {
                         </p>
                       </div>
                       <div className='flex items-start gap-2'>
-                        <Button
-                          size='sm'
-                          variant={isSelected ? 'secondary' : 'ghost'}
-                          onClick={() => setSelectedProgramId(program.programId)}
-                          className='px-3'
-                        >
+                        <Button size='sm' variant={isSelected ? 'secondary' : 'ghost'} onClick={() => setSelectedProgramId(program.programId)} className='px-3'>
                           Select
                         </Button>
                         <IconButton
@@ -327,8 +322,7 @@ export default function ProgramsAdmin() {
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program ID</label>
-              <input
-                type='text'
+              <Input
                 value={programIdInput}
                 onChange={(e) => {
                   setProgramIdInput(e.target.value);
@@ -337,11 +331,7 @@ export default function ProgramsAdmin() {
                   }
                 }}
                 placeholder='main'
-                className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors dark:bg-dark-sand ${
-                  error
-                    ? 'border-terracotta focus:ring-2 focus:ring-terracotta'
-                    : 'border-sand/40 focus:border-sea focus:ring-2 focus:ring-sea dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                }`}
+                error={!!error}
                 autoFocus
               />
             </div>
@@ -361,12 +351,7 @@ export default function ProgramsAdmin() {
                     const checked = selectedSceneIds.includes(scene.id);
                     return (
                       <label key={scene.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
-                        <input
-                          type='checkbox'
-                          checked={checked}
-                          onChange={() => toggleSceneSelection(scene.id)}
-                          className='mt-0.5'
-                        />
+                        <Checkbox checked={checked} onChange={() => toggleSceneSelection(scene.id)} />
                         <span className='min-w-0'>
                           <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{scene.name}</span>
                           <span className='block text-xs text-text-secondary dark:text-text-secondary'>{scene.layout?.name || 'No layout'}</span>

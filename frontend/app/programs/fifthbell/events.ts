@@ -1,3 +1,5 @@
+import type { SupportedLanguage } from './i18n';
+
 export interface EventPost {
   id: number;
   uuid: string;
@@ -28,23 +30,129 @@ interface EventsResponse {
   total: number;
 }
 
-let cachedEvents: Event[] | null = null;
-let lastFetchTime: Date | null = null;
+interface EventWithLanguage extends Event {
+  language?: unknown;
+  lang?: unknown;
+  locale?: unknown;
+}
 
-export async function fetchEvents(): Promise<Event[]> {
-  const eventsApiUrl = 'https://api.monitor.fifthbell.com/events';
+interface EventPostWithLanguage extends EventPost {
+  language?: unknown;
+  lang?: unknown;
+  locale?: unknown;
+}
 
-  const response = await fetch(eventsApiUrl);
+interface FetchEventsOptions {
+  language?: SupportedLanguage;
+  allowedLanguages?: SupportedLanguage[];
+}
+
+interface EventCacheEntry {
+  events: Event[];
+  lastFetchTime: Date;
+}
+
+const SUPPORTED_LANGUAGE_SET = new Set<SupportedLanguage>(['en', 'es', 'it']);
+const eventCacheByKey = new Map<string, EventCacheEntry>();
+let activeCacheKey = '__default__';
+
+function normalizeLanguageToken(value: unknown): SupportedLanguage | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.split('-')[0] as SupportedLanguage;
+  if (!SUPPORTED_LANGUAGE_SET.has(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeAllowedLanguages(value: SupportedLanguage[] | undefined): SupportedLanguage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Set<SupportedLanguage>();
+  for (const item of value) {
+    const normalized = normalizeLanguageToken(item);
+    if (normalized) {
+      deduped.add(normalized);
+    }
+  }
+
+  return [...deduped];
+}
+
+function getEventLanguage(event: Event): SupportedLanguage | null {
+  const eventRecord = event as EventWithLanguage;
+  const direct = normalizeLanguageToken(eventRecord.language) ?? normalizeLanguageToken(eventRecord.lang) ?? normalizeLanguageToken(eventRecord.locale);
+  if (direct) {
+    return direct;
+  }
+
+  for (const post of event.posts || []) {
+    const postRecord = post as EventPostWithLanguage;
+    const postLanguage = normalizeLanguageToken(postRecord.language) ?? normalizeLanguageToken(postRecord.lang) ?? normalizeLanguageToken(postRecord.locale);
+    if (postLanguage) {
+      return postLanguage;
+    }
+  }
+
+  return null;
+}
+
+function filterEventsByLanguage(events: Event[], allowedLanguages: SupportedLanguage[]): Event[] {
+  if (allowedLanguages.length === 0) {
+    return events;
+  }
+
+  const allowed = new Set<SupportedLanguage>(allowedLanguages);
+  return events.filter((event) => {
+    const eventLanguage = getEventLanguage(event);
+    if (!eventLanguage) {
+      return true;
+    }
+    return allowed.has(eventLanguage);
+  });
+}
+
+function buildCacheKey(language: SupportedLanguage | undefined, allowedLanguages: SupportedLanguage[]): string {
+  const languagePart = language ?? 'any';
+  const allowedPart = allowedLanguages.length > 0 ? [...allowedLanguages].sort().join(',') : 'all';
+  return `${languagePart}__${allowedPart}`;
+}
+
+export async function fetchEvents(options: FetchEventsOptions = {}): Promise<Event[]> {
+  const allowedLanguages = normalizeAllowedLanguages(options.allowedLanguages);
+  const preferredLanguage = normalizeLanguageToken(options.language);
+  const cacheKey = buildCacheKey(preferredLanguage ?? undefined, allowedLanguages);
+  const eventsApiUrl = new URL('https://api.monitor.fifthbell.com/events');
+  if (preferredLanguage) {
+    eventsApiUrl.searchParams.set('language', preferredLanguage);
+  }
+
+  const response = await fetch(eventsApiUrl.toString());
   if (!response.ok) {
     throw new Error(`Failed to fetch events: ${response.status}`);
   }
 
   const data: EventsResponse = await response.json();
-  const newEvents = data.events || [];
+  const newEvents = filterEventsByLanguage(data.events || [], allowedLanguages);
+  const previousCacheEntry = eventCacheByKey.get(cacheKey);
+  const previousEvents = previousCacheEntry?.events ?? null;
 
-  if (cachedEvents && cachedEvents.length > 0) {
+  let nextEvents: Event[];
+
+  if (previousEvents && previousEvents.length > 0) {
     const eventMap = new Map<string, Event>();
-    cachedEvents.forEach((event) => {
+    previousEvents.forEach((event) => {
       eventMap.set(event.uuid, event);
     });
 
@@ -74,28 +182,32 @@ export async function fetchEvents(): Promise<Event[]> {
       });
     });
 
-    cachedEvents = Array.from(eventMap.values()).sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    );
+    nextEvents = Array.from(eventMap.values()).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   } else {
-    cachedEvents = newEvents;
+    nextEvents = newEvents;
   }
 
-  lastFetchTime = new Date();
-  return cachedEvents;
+  const nextFetchTime = new Date();
+  eventCacheByKey.set(cacheKey, {
+    events: nextEvents,
+    lastFetchTime: nextFetchTime
+  });
+  activeCacheKey = cacheKey;
+
+  return nextEvents;
 }
 
 export function getCachedEvents(): Event[] | null {
-  return cachedEvents;
+  return eventCacheByKey.get(activeCacheKey)?.events ?? null;
 }
 
 export function getLastFetchTime(): Date | null {
-  return lastFetchTime;
+  return eventCacheByKey.get(activeCacheKey)?.lastFetchTime ?? null;
 }
 
 export function clearCachedEvents(): void {
-  cachedEvents = null;
-  lastFetchTime = null;
+  eventCacheByKey.clear();
+  activeCacheKey = '__default__';
 }
 
 export function hasEventChanges(oldEvents: Event[], newEvents: Event[]): boolean {

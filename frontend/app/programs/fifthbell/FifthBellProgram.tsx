@@ -277,9 +277,7 @@ function resolveFifthBellLayerAvailability(activeComponents?: string[]) {
   return {
     content: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CONTENT),
     marquee: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_MARQUEE),
-    corner:
-      activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_TONI_CLOCK) ||
-      activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CORNER)
+    corner: activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_TONI_CLOCK) || activeComponents.includes(FIFTHBELL_COMPONENT_TYPE_CORNER)
   };
 }
 
@@ -360,12 +358,7 @@ function normalizeLaunchDate(rawDate: string): Date {
   return parsed;
 }
 
-export default function FifthBellProgram({
-  programId = 'fifthbell',
-  embedded = false,
-  sceneMetadata,
-  activeComponents
-}: FifthBellProgramProps) {
+export default function FifthBellProgram({ programId = 'fifthbell', embedded = false, sceneMetadata, activeComponents }: FifthBellProgramProps) {
   const encodedProgramId = encodeURIComponent(programId);
   const [state, setState] = useState<ProgramState | null>(null);
   const [showLogoSlide, setShowLogoSlide] = useState(false);
@@ -428,7 +421,10 @@ export default function FifthBellProgram({
       fetchWeatherData(),
       fetchEarthquakes(currentLanguage),
       fetchMarketData(),
-      fetchEvents()
+      fetchEvents({
+        language: currentLanguage,
+        allowedLanguages: [currentLanguage]
+      })
     ]);
 
     setArticles(articlesData);
@@ -489,7 +485,10 @@ export default function FifthBellProgram({
   }, [dataLoaded, config.dataLoadTimeoutMs]);
 
   const refreshEvents = useCallback(async () => {
-    await fetchEvents();
+    await fetchEvents({
+      language: currentLanguage,
+      allowedLanguages: [currentLanguage]
+    });
     const cachedEvents = getCachedEvents();
     if (!cachedEvents) {
       return;
@@ -500,7 +499,7 @@ export default function FifthBellProgram({
       const nextJson = JSON.stringify(cachedEvents);
       return prevJson === nextJson ? prevStage : cachedEvents;
     });
-  }, []);
+  }, [currentLanguage]);
 
   useEffect(() => {
     if (stageEvents.length > 0 && programEvents.length > 0 && hasEventChanges(programEvents, stageEvents) && !showCurtain && !updatePending) {
@@ -677,7 +676,9 @@ export default function FifthBellProgram({
     ? { width: '100%', height: '100%' }
     : { width: '1920px', height: '1080px', transform: 'scale(min(1, min(100vw / 1920, 100vh / 1080)))', transformOrigin: 'center center' };
 
-  const stageContainerClass = embedded ? 'relative bg-black text-white overflow-hidden w-full h-full' : 'relative bg-black text-white overflow-hidden shadow-2xl';
+  const stageContainerClass = embedded
+    ? 'relative bg-black text-white overflow-hidden w-full h-full'
+    : 'relative bg-black text-white overflow-hidden shadow-2xl';
 
   const loadingStage = (
     <div className={stageContainerClass} style={stageContainerStyle}>
@@ -686,56 +687,60 @@ export default function FifthBellProgram({
   );
 
   if (!dataLoaded) {
-    return embedded ? <div className='w-full h-full bg-black overflow-hidden'>{loadingStage}</div> : <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>{loadingStage}</div>;
+    return embedded ? (
+      <div className='w-full h-full bg-black overflow-hidden'>{loadingStage}</div>
+    ) : (
+      <div className='min-h-screen bg-black flex items-center justify-center overflow-hidden'>{loadingStage}</div>
+    );
   }
 
   const liveStage = (
     <div className={stageContainerClass} style={stageContainerStyle}>
-        {layerAvailability.corner && !showLogoSlide && (
-          <ToniClock
-            language={currentLanguage}
-            cities={config.worldClockCities}
-            rotationIntervalMs={config.worldClockRotateIntervalMs}
-            transitionDurationMs={config.worldClockTransitionMs}
-            shuffleCities={config.worldClockShuffle}
-            widthPx={config.worldClockWidthPx}
-            showWorldClocks={config.showWorldClocks}
-            showBellIcon={config.showBellIcon}
-          />
-        )}
+      {layerAvailability.corner && !showLogoSlide && (
+        <ToniClock
+          language={currentLanguage}
+          cities={config.worldClockCities}
+          rotationIntervalMs={config.worldClockRotateIntervalMs}
+          transitionDurationMs={config.worldClockTransitionMs}
+          shuffleCities={config.worldClockShuffle}
+          widthPx={config.worldClockWidthPx}
+          showWorldClocks={config.showWorldClocks}
+          showBellIcon={config.showBellIcon}
+        />
+      )}
 
-        {layerAvailability.content ? (
-          showLogoSlide ? (
-            <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
-          ) : currentSegment ? (
-            currentSegment.render(playlistState.currentItemIndex, playlistState.progress)
-          ) : (
-            <div className='absolute inset-0 bg-black' />
-          )
+      {layerAvailability.content ? (
+        showLogoSlide ? (
+          <CallsignSlide currentTime={callsignTime} audioRef={audioRef} />
+        ) : currentSegment ? (
+          currentSegment.render(playlistState.currentItemIndex, playlistState.progress)
         ) : (
           <div className='absolute inset-0 bg-black' />
-        )}
+        )
+      ) : (
+        <div className='absolute inset-0 bg-black' />
+      )}
 
-        {isMarqueeVisible && (
-          <div className='absolute bottom-0 left-0 right-0 z-100 transition-transform duration-1000 ease-in-out translate-y-0'>
-            {!showLogoSlide &&
-              (showCurtain ? (
-                <MarqueeCurtain onComplete={handleCurtainComplete} />
-              ) : (
-                <Marquee
-                  events={programEvents}
-                  onCycleComplete={handleMarqueeCycleComplete}
-                  minPostsCount={config.marqueeMinPostsCount}
-                  minAverageRelevance={config.marqueeMinAverageRelevance}
-                  minMedianRelevance={config.marqueeMinMedianRelevance}
-                  pixelsPerSecond={config.marqueePixelsPerSecond}
-                  minDurationSeconds={config.marqueeMinDurationSeconds}
-                  heightPx={config.marqueeHeightPx}
-                />
-              ))}
-          </div>
-        )}
-      </div>
+      {isMarqueeVisible && (
+        <div className='absolute bottom-0 left-0 right-0 z-100 transition-transform duration-1000 ease-in-out translate-y-0'>
+          {!showLogoSlide &&
+            (showCurtain ? (
+              <MarqueeCurtain onComplete={handleCurtainComplete} />
+            ) : (
+              <Marquee
+                events={programEvents}
+                onCycleComplete={handleMarqueeCycleComplete}
+                minPostsCount={config.marqueeMinPostsCount}
+                minAverageRelevance={config.marqueeMinAverageRelevance}
+                minMedianRelevance={config.marqueeMinMedianRelevance}
+                pixelsPerSecond={config.marqueePixelsPerSecond}
+                minDurationSeconds={config.marqueeMinDurationSeconds}
+                heightPx={config.marqueeHeightPx}
+              />
+            ))}
+        </div>
+      )}
+    </div>
   );
 
   return (

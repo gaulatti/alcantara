@@ -1,4 +1,4 @@
-import { AlertContainer, Button, Card, Empty, IconButton, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
@@ -464,20 +464,18 @@ export default function SongsCatalog() {
           </div>
 
           <div className='flex flex-col gap-3 md:flex-row md:items-center'>
-            <label className='relative block flex-1'>
-              <Search size={14} className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary dark:text-text-secondary' />
-              <input
+            <div className='flex-1'>
+              <Input
                 type='text'
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder='Search by artist, title, or EarOne ID'
-                className='w-full rounded-xl border border-sand/40 bg-white py-2.5 pl-9 pr-3 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
+                startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
               />
-            </label>
-            <label className='inline-flex items-center gap-2 rounded-xl border border-sand/30 bg-white/70 px-3 py-2 text-sm text-text-primary dark:border-sand/45 dark:bg-dark-sand/55 dark:text-text-primary'>
-              <input type='checkbox' checked={showDisabledSongs} onChange={(event) => setShowDisabledSongs(event.target.checked)} />
-              Show disabled songs
-            </label>
+            </div>
+            <div className='inline-flex items-center gap-2 rounded-xl border border-sand/30 bg-white/70 px-3 py-2 text-sm text-text-primary dark:border-sand/45 dark:bg-dark-sand/55 dark:text-text-primary'>
+              <Checkbox checked={showDisabledSongs} onChange={(event) => setShowDisabledSongs(event.target.checked)} label='Show disabled songs' />
+            </div>
           </div>
 
           {isLoading ? (
@@ -685,44 +683,28 @@ export default function SongsCatalog() {
               <div className='grid gap-3 sm:grid-cols-2'>
                 <div>
                   <label className='mb-1 block text-xs text-gray-600'>Artist</label>
-                  <input
-                    type='text'
-                    value={artistInput}
-                    onChange={(event) => setArtistInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='text' value={artistInput} onChange={(event) => setArtistInput(event.target.value)} />
                 </div>
                 <div>
                   <label className='mb-1 block text-xs text-gray-600'>Title</label>
-                  <input
-                    type='text'
-                    value={titleInput}
-                    onChange={(event) => setTitleInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='text' value={titleInput} onChange={(event) => setTitleInput(event.target.value)} />
                 </div>
               </div>
 
               <div>
                 <label className='mb-1 block text-xs text-gray-600'>Audio URL</label>
-                <input
+                <Input
                   type='text'
                   value={audioUrlInput}
                   onChange={(event) => setAudioUrlInput(event.target.value)}
-                  className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
                   placeholder='Uploaded automatically after song upload'
                 />
               </div>
 
               <div className='grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end'>
-                <div>
+                <div className='flex-1'>
                   <label className='mb-1 block text-xs text-gray-600'>Cover URL</label>
-                  <input
-                    type='text'
-                    value={coverUrlInput}
-                    onChange={(event) => setCoverUrlInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='text' value={coverUrlInput} onChange={(event) => setCoverUrlInput(event.target.value)} />
                 </div>
                 <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
                   <input
@@ -743,47 +725,25 @@ export default function SongsCatalog() {
               <div className='grid gap-3 sm:grid-cols-2'>
                 <div>
                   <label className='mb-1 block text-xs text-gray-600'>Duration (ms)</label>
-                  <input
-                    type='number'
-                    min={1}
-                    value={durationMsInput}
-                    onChange={(event) => setDurationMsInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='number' min={1} value={durationMsInput} onChange={(event) => setDurationMsInput(event.target.value)} />
                 </div>
-                <label className='mt-7 inline-flex items-center gap-2 text-sm text-text-primary dark:text-text-primary'>
-                  <input type='checkbox' checked={enabledInput} onChange={(event) => setEnabledInput(event.target.checked)} />
-                  Enabled
-                </label>
+                <div className='mt-7 flex items-center'>
+                  <Checkbox checked={enabledInput} onChange={(event) => setEnabledInput(event.target.checked)} label='Enabled' />
+                </div>
               </div>
 
               <div className='grid gap-3 sm:grid-cols-3'>
                 <div>
                   <label className='mb-1 block text-xs text-gray-600'>EarOne Song ID</label>
-                  <input
-                    type='text'
-                    value={earoneSongIdInput}
-                    onChange={(event) => setEaroneSongIdInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='text' value={earoneSongIdInput} onChange={(event) => setEaroneSongIdInput(event.target.value)} />
                 </div>
                 <div>
                   <label className='mb-1 block text-xs text-gray-600'>EarOne Rank</label>
-                  <input
-                    type='text'
-                    value={earoneRankInput}
-                    onChange={(event) => setEaroneRankInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='text' value={earoneRankInput} onChange={(event) => setEaroneRankInput(event.target.value)} />
                 </div>
                 <div>
                   <label className='mb-1 block text-xs text-gray-600'>EarOne Spins</label>
-                  <input
-                    type='text'
-                    value={earoneSpinsInput}
-                    onChange={(event) => setEaroneSpinsInput(event.target.value)}
-                    className='w-full rounded-xl border border-sand/40 bg-white px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-sea focus:ring-2 focus:ring-sea dark:border-sand/50 dark:bg-dark-sand dark:focus:border-accent-blue dark:focus:ring-accent-blue'
-                  />
+                  <Input type='text' value={earoneSpinsInput} onChange={(event) => setEaroneSpinsInput(event.target.value)} />
                 </div>
               </div>
 
