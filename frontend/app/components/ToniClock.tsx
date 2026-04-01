@@ -72,12 +72,7 @@ export const ToniClock: React.FC<ToniClockProps> = ({
       {showBellIcon && (
         <div className='toni-clock-bell'>
           {bellLogoUrl ? (
-            <img
-              src={bellLogoUrl}
-              alt='FifthBell logo'
-              className='toni-clock-bell-logo'
-              style={{ width: `${bellSize}px`, height: `${bellSize}px` }}
-            />
+            <img src={bellLogoUrl} alt='FifthBell logo' className='toni-clock-bell-logo' style={{ width: `${bellSize}px`, height: `${bellSize}px` }} />
           ) : (
             <BellRing size={bellSize} strokeWidth={2} />
           )}

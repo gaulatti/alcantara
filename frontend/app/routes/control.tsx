@@ -614,10 +614,7 @@ function normalizeSceneInstantPlayback(value: unknown): SceneInstantPlaybackStat
   }
 
   const record = value as Record<string, unknown>;
-  const instant =
-    record.instant && typeof record.instant === 'object' && !Array.isArray(record.instant)
-      ? (record.instant as Record<string, unknown>)
-      : null;
+  const instant = record.instant && typeof record.instant === 'object' && !Array.isArray(record.instant) ? (record.instant as Record<string, unknown>) : null;
 
   return {
     sceneId: normalizeSceneInstantId(record.sceneId),
@@ -789,7 +786,7 @@ function SlideshowEditorFields({
     updateProp(componentType, 'images', nextImages);
   };
   const selectedMediaGroupId = normalizeSlideshowMediaGroupId(props.mediaGroupId);
-  const selectedMediaGroup = selectedMediaGroupId !== null ? mediaGroups.find((group) => group.id === selectedMediaGroupId) ?? null : null;
+  const selectedMediaGroup = selectedMediaGroupId !== null ? (mediaGroups.find((group) => group.id === selectedMediaGroupId) ?? null) : null;
   const mediaGroupImages = selectedMediaGroup ? selectedMediaGroup.items.map((item) => item.media.imageUrl).filter(Boolean) : [];
   const usesMediaGroup = selectedMediaGroupId !== null;
 
@@ -932,9 +929,7 @@ function SlideshowEditorFields({
 
       {usesMediaGroup ? (
         <div className='space-y-2'>
-          <p className='text-xs text-gray-600'>
-            {selectedMediaGroup ? `Using group "${selectedMediaGroup.name}"` : 'Selected group not found.'}
-          </p>
+          <p className='text-xs text-gray-600'>{selectedMediaGroup ? `Using group "${selectedMediaGroup.name}"` : 'Selected group not found.'}</p>
           {selectedMediaGroup && mediaGroupImages.length > 0 ? (
             <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>
               {mediaGroupImages.map((url, index) => (
@@ -1690,10 +1685,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
       ...currentMixerLevels,
-      sceneInstantMasterVolume: normalizeMasterVolume(
-        nextValue,
-        currentMixerLevels.sceneInstantMasterVolume
-      )
+      sceneInstantMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.sceneInstantMasterVolume)
     };
     commitMixerLevels(nextMixerLevels);
   };
@@ -2063,15 +2055,15 @@ export default function Control() {
                 ...(metadata['fifthbell-chyron'] || {}),
                 ...(metadata[componentType] || {})
               }
-          : componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
-            ? {
-                ...legacyFifthBell,
-                ...(metadata['fifthbell-corner'] || {}),
-                ...(metadata['fifthbell-clock'] || {}),
-                ...(metadata['toni-clock'] || {}),
-                ...(metadata[componentType] || {})
-              }
-            : metadata[componentType] || {};
+            : componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
+              ? {
+                  ...legacyFifthBell,
+                  ...(metadata['fifthbell-corner'] || {}),
+                  ...(metadata['fifthbell-clock'] || {}),
+                  ...(metadata['toni-clock'] || {}),
+                  ...(metadata[componentType] || {})
+                }
+              : metadata[componentType] || {};
 
       combined[componentType] = {
         ...getDefaultPropsForComponent(componentType),
@@ -2964,9 +2956,7 @@ export default function Control() {
     return getSceneSummaryText(stagedSceneData);
   }, [stagedSceneData?.id, stagedSceneData?.metadata]);
   const selectedSceneInstantId = normalizeSceneInstantId(sceneEditorProps?.sceneInstant?.instantId);
-  const selectedSceneInstant = selectedSceneInstantId
-    ? instants.find((instant) => instant.id === selectedSceneInstantId) ?? null
-    : null;
+  const selectedSceneInstant = selectedSceneInstantId ? (instants.find((instant) => instant.id === selectedSceneInstantId) ?? null) : null;
   const stagedIsOnAir = selectedScene !== null && selectedScene === activeSceneId;
   const programAudioBusSongSequence = useMemo(
     () =>
@@ -2975,22 +2965,15 @@ export default function Control() {
       ),
     [programAudioBusSettings.songSequence]
   );
-  const hasSoloChannel =
-    mixerLevels.songSolo ||
-    mixerLevels.instantSolo ||
-    mixerLevels.sceneInstantSolo ||
-    mixerLevels.streamSolo;
+  const hasSoloChannel = mixerLevels.songSolo || mixerLevels.instantSolo || mixerLevels.sceneInstantSolo || mixerLevels.streamSolo;
   const streamAudible = (hasSoloChannel ? mixerLevels.streamSolo : true) && !mixerLevels.streamMuted;
   const songAudible = (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
   const instantsAudible = (hasSoloChannel ? mixerLevels.instantSolo : true) && !mixerLevels.instantMuted;
-  const sceneInstantAudible =
-    (hasSoloChannel ? mixerLevels.sceneInstantSolo : true) && !mixerLevels.sceneInstantMuted;
+  const sceneInstantAudible = (hasSoloChannel ? mixerLevels.sceneInstantSolo : true) && !mixerLevels.sceneInstantMuted;
   const mainMixGain = faderToGain(mixerLevels.mainMasterVolume);
   const songChannelGain = songAudible ? faderToGain(mixerLevels.songMasterVolume) : 0;
   const instantsChannelGain = instantsAudible ? faderToGain(mixerLevels.instantMasterVolume) : 0;
-  const sceneInstantChannelGain = sceneInstantAudible
-    ? faderToGain(mixerLevels.sceneInstantMasterVolume)
-    : 0;
+  const sceneInstantChannelGain = sceneInstantAudible ? faderToGain(mixerLevels.sceneInstantMasterVolume) : 0;
   const streamChannelGain = streamAudible ? faderToGain(mixerLevels.streamMasterVolume) : 0;
   const songOutputGain = songChannelGain * mainMixGain;
   const instantsOutputGain = instantsChannelGain * mainMixGain;
@@ -3165,9 +3148,7 @@ export default function Control() {
               <div className='flex flex-wrap items-end gap-3'>
                 <div className='min-w-[180px]'>
                   <p className='text-[11px] font-bold tracking-widest text-violet-300'>SCENE INSTANT CHANNEL</p>
-                  <p className='mt-1 text-[11px] text-zinc-400'>
-                    Independent gain for scene-scoped background instant.
-                  </p>
+                  <p className='mt-1 text-[11px] text-zinc-400'>Independent gain for scene-scoped background instant.</p>
                 </div>
                 <div className='flex gap-2'>
                   <button
@@ -4525,9 +4506,7 @@ function ComponentPropsFields({
                 Show Bell Icon
               </label>
             ) : (
-              <div className='text-sm text-gray-600'>
-                FifthBell clock icon is always enabled.
-              </div>
+              <div className='text-sm text-gray-600'>FifthBell clock icon is always enabled.</div>
             )}
             <label className='flex items-center gap-2 text-sm text-gray-700'>
               <input
@@ -4823,11 +4802,7 @@ function ComponentPropsFields({
                 Show World Clocks
               </label>
             )}
-            {supportsCorner && (
-              <div className='text-sm text-gray-600'>
-                FifthBell clock icon is always enabled.
-              </div>
-            )}
+            {supportsCorner && <div className='text-sm text-gray-600'>FifthBell clock icon is always enabled.</div>}
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-gray-700'>
                 <input
@@ -5224,9 +5199,7 @@ function ToniChyronEditorFields({
   const normalizedSequence = normalizeToniChyronSequence(props.sequence);
   const contentMode = getToniChyronContentMode(props.contentMode, normalizedSequence);
   const socialHandlesValue = Array.isArray(props.socialHandles)
-    ? props.socialHandles
-        .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
-        .filter((entry: string) => entry.length > 0)
+    ? props.socialHandles.map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : '')).filter((entry: string) => entry.length > 0)
     : ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'];
 
   const applyProps = (nextProps: any) => {

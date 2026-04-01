@@ -34,12 +34,7 @@ import {
   stopProgramAudioBus
 } from '../utils/programAudioBus';
 import { faderToGain } from '../utils/audioTaper';
-import {
-  normalizeProgramSongSequence,
-  resolveProgramSongLeaf,
-  type ProgramSongSequence,
-  type ProgramSongSequenceItem
-} from '../utils/programSequence';
+import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
@@ -338,10 +333,7 @@ function normalizeSlideshowMediaGroupId(value: unknown): number | null {
   return numeric;
 }
 
-function normalizeProgramMixerChannels(
-  value: unknown,
-  fallback: ProgramMixerChannel[]
-): ProgramMixerChannel[] {
+function normalizeProgramMixerChannels(value: unknown, fallback: ProgramMixerChannel[]): ProgramMixerChannel[] {
   if (!Array.isArray(value)) {
     return fallback;
   }
@@ -361,7 +353,7 @@ function normalizeProgramMixerChannels(
       continue;
     }
     const previous = byId.get(id);
-    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : previous?.name ?? id;
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : (previous?.name ?? id);
     byId.set(id, {
       id,
       name,
@@ -530,14 +522,9 @@ function SceneProgram({ programId }: { programId: string }) {
   const hasSoloChannel = songSolo || instantSolo || sceneInstantSolo || streamSolo;
   const effectiveSongMasterFader = hasSoloChannel ? (songSolo ? songMasterVolume : 0) : songMasterVolume;
   const effectiveInstantMasterFader = hasSoloChannel ? (instantSolo ? instantMasterVolume : 0) : instantMasterVolume;
-  const effectiveSceneInstantMasterFader = hasSoloChannel
-    ? (sceneInstantSolo ? sceneInstantMasterVolume : 0)
-    : sceneInstantMasterVolume;
+  const effectiveSceneInstantMasterFader = hasSoloChannel ? (sceneInstantSolo ? sceneInstantMasterVolume : 0) : sceneInstantMasterVolume;
   const effectiveStreamMasterFader = hasSoloChannel ? (streamSolo ? streamMasterVolume : 0) : streamMasterVolume;
-  const normalizedSongSequence = useMemo(
-    () => normalizeProgramSongSequence(audioBusSettings?.songSequence),
-    [audioBusSettings?.songSequence]
-  );
+  const normalizedSongSequence = useMemo(() => normalizeProgramSongSequence(audioBusSettings?.songSequence), [audioBusSettings?.songSequence]);
   const [songSequenceNowMs, setSongSequenceNowMs] = useState(() => Date.now());
   const resolvedSongPayload = useMemo(
     () =>
@@ -551,17 +538,12 @@ function SceneProgram({ programId }: { programId: string }) {
   );
   const resolvedSongChannelGain = songMuted ? 0 : faderToGain(effectiveSongMasterFader);
   const resolvedInstantChannelGain = instantMuted ? 0 : faderToGain(effectiveInstantMasterFader);
-  const resolvedSceneInstantChannelGain = sceneInstantMuted
-    ? 0
-    : faderToGain(effectiveSceneInstantMasterFader);
+  const resolvedSceneInstantChannelGain = sceneInstantMuted ? 0 : faderToGain(effectiveSceneInstantMasterFader);
   const resolvedStreamChannelGain = streamMuted ? 0 : faderToGain(effectiveStreamMasterFader);
   const mainMasterGain = faderToGain(mainMasterFader);
   const resolvedSongMasterVolume = normalizeMasterVolume(resolvedSongChannelGain * mainMasterGain, 0);
   const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain, 0);
-  const resolvedSceneInstantMasterVolume = normalizeMasterVolume(
-    resolvedSceneInstantChannelGain * mainMasterGain,
-    0
-  );
+  const resolvedSceneInstantMasterVolume = normalizeMasterVolume(resolvedSceneInstantChannelGain * mainMasterGain, 0);
   const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain, 0);
   const activeSlideshowMediaGroupId = useMemo(() => {
     const activeScene = state?.activeScene;
@@ -621,9 +603,7 @@ function SceneProgram({ programId }: { programId: string }) {
 
     try {
       const attachFromStream = (): boolean => {
-        const stream =
-          audio.captureStream?.() ||
-          (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.();
+        const stream = audio.captureStream?.() || (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.();
         if (!stream) {
           return false;
         }
@@ -880,9 +860,7 @@ function SceneProgram({ programId }: { programId: string }) {
 
       audio.onended = cleanup;
       audio.onerror = () => {
-        console.error(
-          `Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`
-        );
+        console.error(`Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
         cleanup();
       };
       activeSceneInstantAudioRef.current = { audio, runtime };
@@ -962,8 +940,7 @@ function SceneProgram({ programId }: { programId: string }) {
         if (eventProgramId && eventProgramId !== programId) {
           return;
         }
-        const nextStagedSceneId =
-          typeof data.stagedSceneId === 'number' && Number.isFinite(data.stagedSceneId) ? data.stagedSceneId : null;
+        const nextStagedSceneId = typeof data.stagedSceneId === 'number' && Number.isFinite(data.stagedSceneId) ? data.stagedSceneId : null;
         const nextStagedScene = data.scene && typeof data.scene === 'object' ? (data.scene as Scene) : null;
         setState((prev) => {
           if (!prev) {
@@ -1066,16 +1043,10 @@ function SceneProgram({ programId }: { programId: string }) {
           takeSceneInstantAudio({
             type: 'scene_instant_take',
             programId,
-            sceneId:
-              typeof playback.sceneId === 'number' && Number.isFinite(playback.sceneId)
-                ? playback.sceneId
-                : null,
+            sceneId: typeof playback.sceneId === 'number' && Number.isFinite(playback.sceneId) ? playback.sceneId : null,
             instant: playback.instant,
             loop: true,
-            triggeredAt:
-              typeof playback.updatedAt === 'string'
-                ? playback.updatedAt
-                : new Date().toISOString()
+            triggeredAt: typeof playback.updatedAt === 'string' ? playback.updatedAt : new Date().toISOString()
           });
         } else {
           stopSceneInstantAudio();
@@ -1184,9 +1155,7 @@ function SceneProgram({ programId }: { programId: string }) {
             });
           }
         })
-        .catch((err) =>
-          console.error('Failed to fetch scene instant playback:', err)
-        );
+        .catch((err) => console.error('Failed to fetch scene instant playback:', err));
     }, 900);
 
     return () => {
@@ -1286,10 +1255,7 @@ function SceneProgram({ programId }: { programId: string }) {
     if (!current) {
       return;
     }
-    current.audio.volume = normalizeMasterVolume(
-      current.runtime.baseVolume * resolvedSceneInstantMasterVolume,
-      1
-    );
+    current.audio.volume = normalizeMasterVolume(current.runtime.baseVolume * resolvedSceneInstantMasterVolume, 1);
   }, [resolvedSceneInstantMasterVolume]);
 
   useEffect(() => {
@@ -1451,17 +1417,13 @@ function SceneProgram({ programId }: { programId: string }) {
       }
 
       const socket = meterSocketRef.current;
-      if (
-        socket &&
-        meterSocketReadyRef.current &&
-        socket.readyState === WebSocket.OPEN
-      ) {
+      if (socket && meterSocketReadyRef.current && socket.readyState === WebSocket.OPEN) {
         try {
           socket.send(
             JSON.stringify({
               type: 'audio_meter_update',
-              levels: payload,
-            }),
+              levels: payload
+            })
           );
           return;
         } catch {
@@ -1500,17 +1462,13 @@ function SceneProgram({ programId }: { programId: string }) {
       }
 
       const socket = meterSocketRef.current;
-      if (
-        socket &&
-        meterSocketReadyRef.current &&
-        socket.readyState === WebSocket.OPEN
-      ) {
+      if (socket && meterSocketReadyRef.current && socket.readyState === WebSocket.OPEN) {
         try {
           socket.send(
             JSON.stringify({
               type: 'song_playback_update',
               playback: payload
-            }),
+            })
           );
           return;
         } catch {
@@ -1548,26 +1506,11 @@ function SceneProgram({ programId }: { programId: string }) {
       const sceneInstantSignal = readSceneInstantSignalSnapshot();
       const mainRmsSignal = Math.max(
         0,
-        Math.min(
-          1,
-          Math.sqrt(
-            songSignal.rms * songSignal.rms +
-              instantsSignal.rms * instantsSignal.rms +
-              sceneInstantSignal.rms * sceneInstantSignal.rms
-          )
-        )
+        Math.min(1, Math.sqrt(songSignal.rms * songSignal.rms + instantsSignal.rms * instantsSignal.rms + sceneInstantSignal.rms * sceneInstantSignal.rms))
       );
-      const mainPeakSignal = Math.max(
-        songSignal.peak,
-        instantsSignal.peak,
-        sceneInstantSignal.peak
-      );
+      const mainPeakSignal = Math.max(songSignal.peak, instantsSignal.peak, sceneInstantSignal.peak);
 
-      const applyBallistics = (
-        channel: MeterChannelBallistics,
-        inputRms: number,
-        inputPeak: number
-      ): MeterChannelPayload => {
+      const applyBallistics = (channel: MeterChannelBallistics, inputRms: number, inputPeak: number): MeterChannelPayload => {
         const vuTimeConstantMs = inputRms >= channel.vu ? VU_ATTACK_MS : VU_RELEASE_MS;
         const vuAlpha = 1 - Math.exp(-deltaMs / Math.max(1, vuTimeConstantMs));
         const nextVu = channel.vu + (inputRms - channel.vu) * vuAlpha;
@@ -1605,11 +1548,7 @@ function SceneProgram({ programId }: { programId: string }) {
       const nextPayload = {
         song: applyBallistics(meterState.song, songSignal.rms, songSignal.peak),
         instants: applyBallistics(meterState.instants, instantsSignal.rms, instantsSignal.peak),
-        sceneInstant: applyBallistics(
-          meterState.sceneInstant,
-          sceneInstantSignal.rms,
-          sceneInstantSignal.peak
-        ),
+        sceneInstant: applyBallistics(meterState.sceneInstant, sceneInstantSignal.rms, sceneInstantSignal.peak),
         main: applyBallistics(meterState.main, mainRmsSignal, mainPeakSignal)
       };
       const previousPayload = lastMeterPayloadRef.current;
@@ -1639,9 +1578,7 @@ function SceneProgram({ programId }: { programId: string }) {
         progress: Math.max(0, Math.min(1, snapshot.progress)),
         currentTimeMs: Math.max(0, Math.round(snapshot.currentTimeMs)),
         durationMs:
-          typeof snapshot.durationMs === 'number' && Number.isFinite(snapshot.durationMs) && snapshot.durationMs > 0
-            ? Math.round(snapshot.durationMs)
-            : null,
+          typeof snapshot.durationMs === 'number' && Number.isFinite(snapshot.durationMs) && snapshot.durationMs > 0 ? Math.round(snapshot.durationMs) : null,
         isPlaying: Boolean(snapshot.track && snapshot.isPlaying)
       };
       const previousSongPlayback = lastSongPlaybackPayloadRef.current;
@@ -1684,23 +1621,19 @@ function SceneProgram({ programId }: { programId: string }) {
       lastSongPlaybackPayloadRef.current = silentSongPlaybackPayload;
 
       const socket = meterSocketRef.current;
-      if (
-        socket &&
-        meterSocketReadyRef.current &&
-        socket.readyState === WebSocket.OPEN
-      ) {
+      if (socket && meterSocketReadyRef.current && socket.readyState === WebSocket.OPEN) {
         try {
           socket.send(
             JSON.stringify({
               type: 'audio_meter_update',
-              levels: silentPayload,
-            }),
+              levels: silentPayload
+            })
           );
           socket.send(
             JSON.stringify({
               type: 'song_playback_update',
               playback: silentSongPlaybackPayload
-            }),
+            })
           );
           return;
         } catch {
@@ -1975,7 +1908,9 @@ function SceneProgram({ programId }: { programId: string }) {
                   key={componentType}
                   timeOverride={globalTimeOverride}
                   cities={Array.isArray(fifthBellClockProps.worldClockCities) ? fifthBellClockProps.worldClockCities : undefined}
-                  rotationIntervalMs={typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined}
+                  rotationIntervalMs={
+                    typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined
+                  }
                   transitionDurationMs={typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined}
                   shuffleCities={typeof fifthBellClockProps.worldClockShuffle === 'boolean' ? fifthBellClockProps.worldClockShuffle : undefined}
                   widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
@@ -2111,20 +2046,12 @@ function SceneProgram({ programId }: { programId: string }) {
   const activeScene = state?.activeScene ?? null;
   const stagedScene = state?.stagedScene ?? null;
   const stagedSceneHasVideoStream = sceneIncludesVideoStream(stagedScene);
-  const stagedSceneIsOnAir =
-    stagedSceneHasVideoStream &&
-    stagedScene !== null &&
-    activeScene !== null &&
-    stagedScene.id === activeScene.id;
+  const stagedSceneIsOnAir = stagedSceneHasVideoStream && stagedScene !== null && activeScene !== null && stagedScene.id === activeScene.id;
 
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
       {stagedSceneHasVideoStream && stagedScene ? (
-        <div
-          className='pointer-events-none absolute inset-0 opacity-0'
-          aria-hidden='true'
-          style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}
-        >
+        <div className='pointer-events-none absolute inset-0 opacity-0' aria-hidden='true' style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}>
           {renderScene(stagedScene, { forceStreamMuted: !stagedSceneIsOnAir })}
         </div>
       ) : null}

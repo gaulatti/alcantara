@@ -78,7 +78,8 @@ export class LayoutsService {
     {
       type: 'reloj-loop-clock',
       name: 'Reloj Loop Clock',
-      description: 'Digital clock rotating Madrid, Sanremo, New York, Santiago every 30s',
+      description:
+        'Digital clock rotating Madrid, Sanremo, New York, Santiago every 30s',
     },
     {
       type: 'toni-chyron',
