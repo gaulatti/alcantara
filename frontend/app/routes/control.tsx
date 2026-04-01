@@ -34,7 +34,7 @@ import {
   type ProgramTextSequence,
   type ProgramTextSequenceItem
 } from '../utils/programSequence';
-import { faderToGain, formatGainDb } from '../utils/audioTaper';
+import { dbToFader, faderToDb, faderToGain } from '../utils/audioTaper';
 
 interface Layout {
   id: number;
@@ -529,8 +529,31 @@ function meterLevelToFill(value: unknown): number {
   return Math.max(0, Math.min(1, Math.pow(normalized, 0.6)));
 }
 
-function formatVolumeDb(value: number): string {
-  return formatGainDb(faderToGain(value));
+function formatMixerLevelInputValue(value: number): string {
+  const db = faderToDb(value);
+  if (!Number.isFinite(db)) {
+    return '-inf';
+  }
+  return db.toFixed(1);
+}
+
+function parseMixerLevelInputToFader(rawValue: string, fallbackValue: number): number {
+  const normalized = rawValue.trim().toLowerCase();
+  if (!normalized) {
+    return fallbackValue;
+  }
+
+  if (normalized === '-inf' || normalized === '-infinity' || normalized === '-∞') {
+    return 0;
+  }
+
+  const withoutUnit = normalized.replace(/db$/i, '').trim();
+  const parsedDb = Number.parseFloat(withoutUnit);
+  if (!Number.isFinite(parsedDb)) {
+    return fallbackValue;
+  }
+
+  return dbToFader(parsedDb);
 }
 
 function normalizeSlideshowImageList(value: unknown): string[] {
@@ -2615,7 +2638,30 @@ export default function Control() {
                     </div>
 
                     <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
-                      <span className='font-mono text-sm font-bold text-emerald-500'>{formatVolumeDb(mixerLevels.songMasterVolume)}</span>
+                      <input
+                        key={`song-level-${mixerLevels.songMasterVolume}`}
+                        type='text'
+                        inputMode='decimal'
+                        defaultValue={formatMixerLevelInputValue(mixerLevels.songMasterVolume)}
+                        aria-label='Song channel level in dB'
+                        onBlur={(event) => {
+                          const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.songMasterVolume);
+                          setSongMasterVolume(nextValue);
+                          event.target.value = formatMixerLevelInputValue(nextValue);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur();
+                            return;
+                          }
+
+                          if (event.key === 'Escape') {
+                            event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.songMasterVolume);
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
+                      />
                       <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{songOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                     </div>
                   </div>
@@ -2697,7 +2743,30 @@ export default function Control() {
                         </div>
 
                         <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-cyan-900/30 bg-[#07161a] text-center shadow-inner'>
-                          <span className='font-mono text-sm font-bold text-cyan-300'>{formatVolumeDb(mixerLevels.streamMasterVolume)}</span>
+                          <input
+                            key={`stream-level-${mixerLevels.streamMasterVolume}`}
+                            type='text'
+                            inputMode='decimal'
+                            defaultValue={formatMixerLevelInputValue(mixerLevels.streamMasterVolume)}
+                            aria-label='Stream channel level in dB'
+                            onBlur={(event) => {
+                              const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.streamMasterVolume);
+                              setStreamMasterVolume(nextValue);
+                              event.target.value = formatMixerLevelInputValue(nextValue);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.currentTarget.blur();
+                                return;
+                              }
+
+                              if (event.key === 'Escape') {
+                                event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.streamMasterVolume);
+                                event.currentTarget.blur();
+                              }
+                            }}
+                            className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-cyan-300 outline-none'
+                          />
                           <span className='font-mono text-[9px] tracking-wider text-cyan-700'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                         </div>
                       </div>
@@ -2794,7 +2863,30 @@ export default function Control() {
                     </div>
 
                     <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
-                      <span className='font-mono text-sm font-bold text-emerald-500'>{formatVolumeDb(mixerLevels.instantMasterVolume)}</span>
+                      <input
+                        key={`instants-level-${mixerLevels.instantMasterVolume}`}
+                        type='text'
+                        inputMode='decimal'
+                        defaultValue={formatMixerLevelInputValue(mixerLevels.instantMasterVolume)}
+                        aria-label='Instants channel level in dB'
+                        onBlur={(event) => {
+                          const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.instantMasterVolume);
+                          setInstantMasterVolume(nextValue);
+                          event.target.value = formatMixerLevelInputValue(nextValue);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur();
+                            return;
+                          }
+
+                          if (event.key === 'Escape') {
+                            event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.instantMasterVolume);
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
+                      />
                       <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{instantsOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                     </div>
                   </div>
@@ -2889,7 +2981,30 @@ export default function Control() {
                 </div>
 
                 <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-red-950/50 bg-[#1a0a0a] text-center shadow-inner'>
-                  <span className='font-mono text-sm font-bold text-red-500'>{formatVolumeDb(mixerLevels.mainMasterVolume)}</span>
+                  <input
+                    key={`main-level-${mixerLevels.mainMasterVolume}`}
+                    type='text'
+                    inputMode='decimal'
+                    defaultValue={formatMixerLevelInputValue(mixerLevels.mainMasterVolume)}
+                    aria-label='Main mix level in dB'
+                    onBlur={(event) => {
+                      const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.mainMasterVolume);
+                      setMainMasterVolume(nextValue);
+                      event.target.value = formatMixerLevelInputValue(nextValue);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.currentTarget.blur();
+                        return;
+                      }
+
+                      if (event.key === 'Escape') {
+                        event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.mainMasterVolume);
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-500 outline-none'
+                  />
                   <span className='font-mono text-[9px] tracking-wider text-red-700'>{mainMixGain > 0 ? 'LIVE' : 'CUT'}</span>
                 </div>
               </div>

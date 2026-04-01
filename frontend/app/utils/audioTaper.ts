@@ -69,6 +69,37 @@ export function faderToDb(value: number): number {
   return 0;
 }
 
+export function dbToFader(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  if (value <= CONSOLE_SILENCE_DB) {
+    return 0;
+  }
+
+  if (value >= 0) {
+    return 1;
+  }
+
+  const firstPoint = CONSOLE_TAPER[0];
+  if (value <= firstPoint.db) {
+    const ratio = (value - CONSOLE_SILENCE_DB) / (firstPoint.db - CONSOLE_SILENCE_DB);
+    return clampUnit(interpolateLinear(0, firstPoint.fader, ratio));
+  }
+
+  for (let index = 1; index < CONSOLE_TAPER.length; index += 1) {
+    const previous = CONSOLE_TAPER[index - 1];
+    const next = CONSOLE_TAPER[index];
+    if (value <= next.db) {
+      const ratio = (value - previous.db) / (next.db - previous.db);
+      return clampUnit(interpolateLinear(previous.fader, next.fader, ratio));
+    }
+  }
+
+  return 1;
+}
+
 export function faderToGain(value: number): number {
   const db = faderToDb(value);
   if (!Number.isFinite(db)) {
