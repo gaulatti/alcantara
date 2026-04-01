@@ -139,6 +139,27 @@ interface ProgramAudioBusSettings {
   songSequence?: unknown;
 }
 
+interface SlideshowMediaItem {
+  id: number;
+  name: string;
+  imageUrl: string;
+}
+
+interface SlideshowMediaGroupItem {
+  id: number;
+  mediaGroupId: number;
+  mediaId: number;
+  position: number;
+  media: SlideshowMediaItem;
+}
+
+interface SlideshowMediaGroup {
+  id: number;
+  name: string;
+  description: string | null;
+  items: SlideshowMediaGroupItem[];
+}
+
 interface AudioBusUpdateEvent {
   type: 'audio_bus_update';
   programId: string;
@@ -272,6 +293,14 @@ function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolea
   return fallback;
 }
 
+function normalizeSlideshowMediaGroupId(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0 || !Number.isInteger(numeric)) {
+    return null;
+  }
+  return numeric;
+}
+
 function normalizeProgramMixerChannels(
   value: unknown,
   fallback: ProgramMixerChannel[]
@@ -398,6 +427,7 @@ function SceneProgram({ programId }: { programId: string }) {
   const [state, setState] = useState<ProgramState | null>(null);
   const [audioBusSettings, setAudioBusSettings] = useState<ProgramAudioBusSettings | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
+  const [slideshowMediaGroupsById, setSlideshowMediaGroupsById] = useState<Record<number, SlideshowMediaGroup>>({});
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
   const transitionTimersRef = useRef<number[]>([]);
@@ -467,6 +497,46 @@ function SceneProgram({ programId }: { programId: string }) {
   const resolvedSongMasterVolume = normalizeMasterVolume(resolvedSongChannelGain * mainMasterGain, 0);
   const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain, 0);
   const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain, 0);
+  const activeSlideshowMediaGroupId = useMemo(() => {
+    const activeScene = state?.activeScene;
+    if (!activeScene?.layout?.componentType?.includes('slideshow')) {
+      return null;
+    }
+
+    try {
+      const parsed = activeScene.metadata ? JSON.parse(activeScene.metadata) : {};
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      const slideshowProps = (parsed as Record<string, unknown>).slideshow;
+      if (!slideshowProps || typeof slideshowProps !== 'object' || Array.isArray(slideshowProps)) {
+        return null;
+      }
+      return normalizeSlideshowMediaGroupId((slideshowProps as Record<string, unknown>).mediaGroupId);
+    } catch {
+      return null;
+    }
+  }, [state?.activeScene?.id, state?.activeScene?.metadata, state?.activeScene?.layout?.componentType]);
+
+  const resolveSlideshowImages = useCallback(
+    (slideshowProps: Record<string, unknown>): unknown => {
+      const mediaGroupId = normalizeSlideshowMediaGroupId(slideshowProps.mediaGroupId);
+      if (mediaGroupId === null) {
+        return slideshowProps.images;
+      }
+
+      const group = slideshowMediaGroupsById[mediaGroupId];
+      if (!group) {
+        return slideshowProps.images;
+      }
+
+      return [...group.items]
+        .sort((a, b) => a.position - b.position)
+        .map((item) => item.media?.imageUrl)
+        .filter((imageUrl): imageUrl is string => typeof imageUrl === 'string' && imageUrl.trim().length > 0);
+    },
+    [slideshowMediaGroupsById]
+  );
 
   const clearTransitionTimers = () => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -940,6 +1010,38 @@ function SceneProgram({ programId }: { programId: string }) {
       audio.volume = normalizeMasterVolume(runtime.baseVolume * resolvedInstantMasterVolume, 1);
     }
   }, [resolvedInstantMasterVolume]);
+
+  useEffect(() => {
+    if (activeSlideshowMediaGroupId === null) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(apiUrl(`/media-groups/${activeSlideshowMediaGroupId}`))
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        return (await res.json()) as SlideshowMediaGroup;
+      })
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setSlideshowMediaGroupsById((prev) => ({
+          ...prev,
+          [payload.id]: payload
+        }));
+      })
+      .catch((err) => {
+        console.error('Failed to load slideshow media group:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSlideshowMediaGroupId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1502,7 +1604,7 @@ function SceneProgram({ programId }: { programId: string }) {
               return (
                 <Slideshow
                   key={componentType}
-                  images={props.images}
+                  images={resolveSlideshowImages(props as Record<string, unknown>)}
                   intervalMs={props.intervalMs}
                   transitionMs={props.transitionMs}
                   shuffle={props.shuffle}

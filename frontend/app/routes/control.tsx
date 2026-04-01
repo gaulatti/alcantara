@@ -102,6 +102,27 @@ interface SongCatalogItem {
   enabled: boolean;
 }
 
+interface MediaItem {
+  id: number;
+  name: string;
+  imageUrl: string;
+}
+
+interface MediaGroupItem {
+  id: number;
+  mediaGroupId: number;
+  mediaId: number;
+  position: number;
+  media: MediaItem;
+}
+
+interface MediaGroup {
+  id: number;
+  name: string;
+  description: string | null;
+  items: MediaGroupItem[];
+}
+
 interface ProgramAudioBusSettings {
   songSequence: unknown | null;
 }
@@ -651,14 +672,26 @@ function normalizeSlideshowImageList(value: unknown): string[] {
   });
 }
 
+function normalizeSlideshowMediaGroupId(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0 || !Number.isInteger(numeric)) {
+    return null;
+  }
+  return numeric;
+}
+
 function SlideshowEditorFields({
   componentType,
   props,
-  updateProp
+  updateProp,
+  mediaGroups,
+  isLoadingMediaGroups
 }: {
   componentType: string;
   props: any;
   updateProp: (componentType: string, propName: string, value: any) => void;
+  mediaGroups: MediaGroup[];
+  isLoadingMediaGroups: boolean;
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -676,6 +709,10 @@ function SlideshowEditorFields({
   const setImages = (nextImages: string[]) => {
     updateProp(componentType, 'images', nextImages);
   };
+  const selectedMediaGroupId = normalizeSlideshowMediaGroupId(props.mediaGroupId);
+  const selectedMediaGroup = selectedMediaGroupId !== null ? mediaGroups.find((group) => group.id === selectedMediaGroupId) ?? null : null;
+  const mediaGroupImages = selectedMediaGroup ? selectedMediaGroup.items.map((item) => item.media.imageUrl).filter(Boolean) : [];
+  const usesMediaGroup = selectedMediaGroupId !== null;
 
   const uploadImages = async (files: File[]) => {
     if (!files.length) {
@@ -768,25 +805,70 @@ function SlideshowEditorFields({
       </div>
 
       <div className='space-y-2'>
-        <label className='block text-xs text-gray-600'>Upload images</label>
-        <input
-          type='file'
-          accept='image/*'
-          multiple
-          disabled={isUploading}
+        <label className='block text-xs text-gray-600'>Media Group Source</label>
+        <select
+          value={selectedMediaGroupId !== null ? String(selectedMediaGroupId) : ''}
           onChange={(event) => {
-            const files = event.target.files ? Array.from(event.target.files) : [];
-            event.target.value = '';
-            void uploadImages(files);
+            const nextGroupId = normalizeSlideshowMediaGroupId(event.target.value);
+            updateProp(componentType, 'mediaGroupId', nextGroupId);
           }}
-          className='block w-full text-xs text-gray-500 file:mr-3 file:rounded file:border file:border-slate-300 file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-100'
-        />
-        <p className='text-xs text-gray-500 mt-1'>1920x1080 images are recommended. Upload one or many files.</p>
-        {isUploading ? <p className='text-xs text-gray-500'>Uploading image...</p> : null}
-        {uploadError ? <p className='text-xs text-red-500'>{uploadError}</p> : null}
+          className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
+        >
+          <option value=''>Manual images in scene metadata</option>
+          {mediaGroups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name} ({group.items.length} images)
+            </option>
+          ))}
+        </select>
+        <p className='text-xs text-gray-500'>
+          {isLoadingMediaGroups
+            ? 'Loading media groups...'
+            : usesMediaGroup
+              ? 'This slideshow now follows the selected media group.'
+              : 'Tip: select a media group to reuse image sets across scenes.'}
+        </p>
       </div>
 
-      {images.length > 0 ? (
+      {!usesMediaGroup ? (
+        <div className='space-y-2'>
+          <label className='block text-xs text-gray-600'>Upload images</label>
+          <input
+            type='file'
+            accept='image/*'
+            multiple
+            disabled={isUploading}
+            onChange={(event) => {
+              const files = event.target.files ? Array.from(event.target.files) : [];
+              event.target.value = '';
+              void uploadImages(files);
+            }}
+            className='block w-full text-xs text-gray-500 file:mr-3 file:rounded file:border file:border-slate-300 file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-100'
+          />
+          <p className='text-xs text-gray-500 mt-1'>1920x1080 images are recommended. Upload one or many files.</p>
+          {isUploading ? <p className='text-xs text-gray-500'>Uploading image...</p> : null}
+          {uploadError ? <p className='text-xs text-red-500'>{uploadError}</p> : null}
+        </div>
+      ) : null}
+
+      {usesMediaGroup ? (
+        <div className='space-y-2'>
+          <p className='text-xs text-gray-600'>
+            {selectedMediaGroup ? `Using group "${selectedMediaGroup.name}"` : 'Selected group not found.'}
+          </p>
+          {selectedMediaGroup && mediaGroupImages.length > 0 ? (
+            <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>
+              {mediaGroupImages.map((url, index) => (
+                <div key={`${url}_${index}`} className='rounded border border-slate-200 bg-white p-2'>
+                  <img src={url} alt={`Media group image ${index + 1}`} className='h-20 w-full rounded object-cover bg-slate-100' />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className='text-xs text-gray-500'>No images in this group yet. Add assets in the Media page.</p>
+          )}
+        </div>
+      ) : images.length > 0 ? (
         <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>
           {images.map((url, index) => (
             <div key={`${url}_${index}`} className='rounded border border-slate-200 bg-white p-2 space-y-2'>
@@ -877,6 +959,8 @@ export default function Control() {
   const [instants, setInstants] = useState<InstantItem[]>([]);
   const [isLoadingInstants, setIsLoadingInstants] = useState(false);
   const [songCatalog, setSongCatalog] = useState<SongCatalogItem[]>([]);
+  const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
+  const [isLoadingMediaGroups, setIsLoadingMediaGroups] = useState(false);
   const [instantDurationsMs, setInstantDurationsMs] = useState<Record<number, number | null>>({});
   const [instantPlayback, setInstantPlayback] = useState<Record<number, InstantPlaybackState>>({});
   const instantDurationByUrlRef = useRef<Record<string, number | null>>({});
@@ -977,6 +1061,7 @@ export default function Control() {
     fetchLayouts();
     fetchComponentTypes();
     fetchSongCatalog();
+    fetchMediaGroups();
   }, []);
 
   useEffect(() => {
@@ -1326,6 +1411,23 @@ export default function Control() {
     } catch (err) {
       console.error('Failed to fetch songs catalog:', err);
       setSongCatalog([]);
+    }
+  };
+
+  const fetchMediaGroups = async () => {
+    try {
+      setIsLoadingMediaGroups(true);
+      const res = await fetch(apiUrl('/media-groups'));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as MediaGroup[];
+      setMediaGroups(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch media groups:', err);
+      setMediaGroups([]);
+    } finally {
+      setIsLoadingMediaGroups(false);
     }
   };
 
@@ -2179,6 +2281,7 @@ export default function Control() {
         return { logoUrl: '', position: 'bottom-right' };
       case 'slideshow':
         return {
+          mediaGroupId: null,
           images: [],
           intervalMs: 5000,
           transitionMs: 900,
@@ -3568,6 +3671,8 @@ export default function Control() {
                           replaceProps={replaceSceneEditorComponentProps}
                           commitProps={commitSceneEditorComponentProps}
                           songCatalog={songCatalog}
+                          mediaGroups={mediaGroups}
+                          isLoadingMediaGroups={isLoadingMediaGroups}
                         />
                       </div>
                     );
@@ -3593,7 +3698,9 @@ function ComponentPropsFields({
   updateProp,
   replaceProps,
   commitProps,
-  songCatalog
+  songCatalog,
+  mediaGroups,
+  isLoadingMediaGroups
 }: {
   componentType: string;
   props: any;
@@ -3601,6 +3708,8 @@ function ComponentPropsFields({
   replaceProps: (componentType: string, nextProps: any) => void;
   commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
   songCatalog: SongCatalogItem[];
+  mediaGroups: MediaGroup[];
+  isLoadingMediaGroups: boolean;
 }) {
   const timezoneOptions = useMemo(() => {
     const baseDate = new Date();
@@ -3698,7 +3807,15 @@ function ComponentPropsFields({
         </div>
       );
     case 'slideshow':
-      return <SlideshowEditorFields componentType={componentType} props={props} updateProp={updateProp} />;
+      return (
+        <SlideshowEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          mediaGroups={mediaGroups}
+          isLoadingMediaGroups={isLoadingMediaGroups}
+        />
+      );
     case 'video-stream':
       return (
         <div className='space-y-3'>

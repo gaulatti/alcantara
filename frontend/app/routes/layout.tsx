@@ -12,7 +12,7 @@ import {
   type NavItem,
   type RenderLinkProps
 } from '@gaulatti/bleecker';
-import { Blend, CircleOff, Clock3, Clapperboard, Eye, Home, LayoutTemplate, Music, Radio, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
+import { Blend, CircleOff, Clock3, Clapperboard, Eye, Home, Images, LayoutTemplate, Music, Radio, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -253,6 +253,7 @@ export default function Layout() {
     { href: '/control', label: 'Control' },
     { href: '/instants', label: 'Instants' },
     { href: '/songs', label: 'Songs' },
+    { href: '/media', label: 'Media' },
     { href: '/scenes', label: 'Scenes' },
     { href: '/programs', label: 'Programs' },
     { href: '/preview', label: 'Preview' },
@@ -267,6 +268,7 @@ export default function Layout() {
         { href: '/control', label: 'Control' },
         { href: '/instants', label: 'Instants' },
         { href: '/songs', label: 'Songs' },
+        { href: '/media', label: 'Media' },
         { href: '/scenes', label: 'Scenes' },
         { href: '/programs', label: 'Programs' }
       ]
@@ -347,6 +349,14 @@ export default function Layout() {
         group: 'Navigation',
         icon: <Music size={16} />,
         onSelect: () => navigate('/songs')
+      },
+      {
+        id: 'nav-media',
+        title: 'Go to Media',
+        description: 'Manage image media and media groups for slideshow scenes',
+        group: 'Navigation',
+        icon: <Images size={16} />,
+        onSelect: () => navigate('/media')
       },
       {
         id: 'nav-programs',

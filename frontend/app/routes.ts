@@ -6,6 +6,7 @@ export default [
     route('control', 'routes/control.tsx'),
     route('instants', 'routes/instants.tsx'),
     route('songs', 'routes/songs.tsx'),
+    route('media', 'routes/media.tsx'),
     route('scenes', 'routes/scenes.tsx'),
     route('programs', 'routes/programs.tsx'),
     route('layouts', 'routes/layouts.tsx'),

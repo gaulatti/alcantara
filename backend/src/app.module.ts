@@ -9,6 +9,8 @@ import { ChartsModule } from './charts/charts.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { SongsModule } from './songs/songs.module';
 import { InstantsModule } from './instants/instants.module';
+import { MediaModule } from './media/media.module';
+import { MediaGroupsModule } from './media-groups/media-groups.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { InstantsModule } from './instants/instants.module';
     UploadsModule,
     SongsModule,
     InstantsModule,
+    MediaModule,
+    MediaGroupsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

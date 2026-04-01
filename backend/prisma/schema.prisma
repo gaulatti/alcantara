@@ -98,3 +98,33 @@ model Song {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model Media {
+  id         Int              @id @default(autoincrement())
+  name       String
+  imageUrl   String
+  groupItems MediaGroupItem[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+model MediaGroup {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique
+  description String?
+  mediaItems  MediaGroupItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model MediaGroupItem {
+  id           Int        @id @default(autoincrement())
+  mediaGroupId Int
+  mediaId      Int
+  position     Int
+  mediaGroup   MediaGroup @relation(fields: [mediaGroupId], references: [id], onDelete: Cascade)
+  media        Media      @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaGroupId, mediaId])
+  @@unique([mediaGroupId, position])
+}
