@@ -456,6 +456,30 @@ function sceneIncludesVideoStream(scene: Scene | null | undefined): boolean {
     .includes('video-stream');
 }
 
+function normalizeSceneInstantNumericId(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  const rounded = Math.round(value);
+  return rounded > 0 ? rounded : null;
+}
+
+function normalizeSceneInstantTimestamp(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim();
+}
+
+function buildSceneInstantPlaybackToken(
+  sceneId: number | null,
+  instantId: number | null,
+  audioUrl: string,
+  timestamp: string
+): string {
+  return `${sceneId ?? 'none'}|${instantId ?? 'none'}|${audioUrl.trim()}|${timestamp || 'none'}`;
+}
+
 export default function Program() {
   const { id } = useParams();
   const programId = id ?? 'main';
@@ -476,6 +500,7 @@ function SceneProgram({ programId }: { programId: string }) {
   const activeSceneInstantAudioRef = useRef<{
     audio: HTMLAudioElement;
     runtime: InstantAudioRuntimeState;
+    playbackToken: string;
   } | null>(null);
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
   const meterSocketRef = useRef<WebSocket | null>(null);
@@ -817,6 +842,22 @@ function SceneProgram({ programId }: { programId: string }) {
 
   const takeSceneInstantAudio = useCallback(
     (event: SceneInstantTakeEvent) => {
+      const sceneId = normalizeSceneInstantNumericId(event.sceneId);
+      const instantId = normalizeSceneInstantNumericId(event.instant?.id);
+      const timestamp = normalizeSceneInstantTimestamp(event.triggeredAt);
+      const audioUrl = typeof event.instant?.audioUrl === 'string' ? event.instant.audioUrl.trim() : '';
+      const playbackToken = buildSceneInstantPlaybackToken(sceneId, instantId, audioUrl, timestamp);
+      const currentlyPlayingSceneInstant = activeSceneInstantAudioRef.current;
+
+      if (
+        currentlyPlayingSceneInstant &&
+        currentlyPlayingSceneInstant.playbackToken === playbackToken &&
+        !currentlyPlayingSceneInstant.audio.paused &&
+        !currentlyPlayingSceneInstant.audio.ended
+      ) {
+        return;
+      }
+
       stopSceneInstantAudio();
 
       const audio = new Audio(event.instant.audioUrl);
@@ -863,7 +904,7 @@ function SceneProgram({ programId }: { programId: string }) {
         console.error(`Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
         cleanup();
       };
-      activeSceneInstantAudioRef.current = { audio, runtime };
+      activeSceneInstantAudioRef.current = { audio, runtime, playbackToken };
 
       const playPromise = audio.play();
       if (playPromise && typeof playPromise.catch === 'function') {
@@ -1040,13 +1081,27 @@ function SceneProgram({ programId }: { programId: string }) {
           typeof playback.instant.audioUrl === 'string' &&
           playback.instant.audioUrl.trim().length > 0
         ) {
+          const sceneId = normalizeSceneInstantNumericId(playback.sceneId);
+          const instantId = normalizeSceneInstantNumericId(playback.instant.id);
+          const timestamp = normalizeSceneInstantTimestamp(playback.startedAt) || normalizeSceneInstantTimestamp(playback.updatedAt);
+          const playbackToken = buildSceneInstantPlaybackToken(sceneId, instantId, playback.instant.audioUrl, timestamp);
+          const currentlyPlayingSceneInstant = activeSceneInstantAudioRef.current;
+          if (
+            currentlyPlayingSceneInstant &&
+            currentlyPlayingSceneInstant.playbackToken === playbackToken &&
+            !currentlyPlayingSceneInstant.audio.paused &&
+            !currentlyPlayingSceneInstant.audio.ended
+          ) {
+            return;
+          }
+
           takeSceneInstantAudio({
             type: 'scene_instant_take',
             programId,
-            sceneId: typeof playback.sceneId === 'number' && Number.isFinite(playback.sceneId) ? playback.sceneId : null,
+            sceneId,
             instant: playback.instant,
             loop: true,
-            triggeredAt: typeof playback.updatedAt === 'string' ? playback.updatedAt : new Date().toISOString()
+            triggeredAt: timestamp || new Date().toISOString()
           });
         } else {
           stopSceneInstantAudio();
