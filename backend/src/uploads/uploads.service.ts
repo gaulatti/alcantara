@@ -32,7 +32,7 @@ export interface UploadResult {
   };
 }
 
-const MAX_INSTANT_BYTES = 30 * 1024 * 1024;
+const MAX_INSTANT_BYTES = 100 * 1024 * 1024;
 const MAX_ARTWORK_BYTES = 10 * 1024 * 1024;
 const MAX_SONG_BYTES = 100 * 1024 * 1024;
 
@@ -91,12 +91,15 @@ export class UploadsService {
   private readonly region: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.bucket = (this.configService.get<string>('MEDIA_S3_BUCKET') ?? '').trim();
+    this.bucket = (
+      this.configService.get<string>('MEDIA_S3_BUCKET') ?? ''
+    ).trim();
     this.region =
-      (this.configService.get<string>('AWS_REGION') ??
+      (
+        this.configService.get<string>('AWS_REGION') ??
         this.configService.get<string>('AWS_DEFAULT_REGION') ??
-        'us-east-1')
-        .trim() || 'us-east-1';
+        'us-east-1'
+      ).trim() || 'us-east-1';
 
     this.s3 = new S3Client({
       region: this.region,
@@ -113,7 +116,11 @@ export class UploadsService {
     const contentType = this.normalizeMimeType(payload.mimeType)
       ? payload.mimeType.trim().toLowerCase()
       : this.defaultContentTypeForKind(payload.kind);
-    const key = this.buildObjectKey(payload.kind, payload.originalFilename, extension);
+    const key = this.buildObjectKey(
+      payload.kind,
+      payload.originalFilename,
+      extension,
+    );
 
     try {
       await this.uploadObjectToS3(key, payload.buffer, contentType);
@@ -151,15 +158,15 @@ export class UploadsService {
     }
 
     const mimeType = this.normalizeMimeType(payload.mimeType);
-    const extension = this.normalizeExtension(extname(payload.originalFilename));
+    const extension = this.normalizeExtension(
+      extname(payload.originalFilename),
+    );
     const isAudioUpload = payload.kind === 'instant' || payload.kind === 'song';
     const { maxBytes, allowedMimeTypes, allowedExtensions, fileTypeLabel } =
       isAudioUpload
         ? {
             maxBytes:
-              payload.kind === 'song'
-                ? MAX_SONG_BYTES
-                : MAX_INSTANT_BYTES,
+              payload.kind === 'song' ? MAX_SONG_BYTES : MAX_INSTANT_BYTES,
             allowedMimeTypes: INSTANT_MIME_TYPES,
             allowedExtensions: INSTANT_EXTENSIONS,
             fileTypeLabel: 'audio',
@@ -298,9 +305,7 @@ export class UploadsService {
     };
   }
 
-  private async parseSongMetadata(
-    payload: UploadPayload,
-  ): Promise<{
+  private async parseSongMetadata(payload: UploadPayload): Promise<{
     artist?: string;
     title?: string;
     durationMs?: number;
@@ -308,9 +313,13 @@ export class UploadsService {
     coverMimeType?: string;
   } | null> {
     try {
-      const metadata = await parseBuffer(payload.buffer, payload.mimeType || '', {
-        duration: true,
-      });
+      const metadata = await parseBuffer(
+        payload.buffer,
+        payload.mimeType || '',
+        {
+          duration: true,
+        },
+      );
 
       const artist =
         typeof metadata.common.artist === 'string' &&
@@ -380,5 +389,4 @@ export class UploadsService {
         return null;
     }
   }
-
 }
