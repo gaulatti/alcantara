@@ -1,9 +1,14 @@
 import { BleeckerThemeScript, ThemeProvider } from '@gaulatti/bleecker';
+import { Provider } from 'react-redux';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { ReactNode } from 'react';
+import 'aws-amplify/auth/enable-oauth-listener';
 
 import type { Route } from './+types/root';
 import './app.css';
+import './services/auth';
+import AuthListener from './components/common/AuthListener';
+import { getStore } from './state';
 
 export const links: Route.LinksFunction = () => [
   { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
@@ -39,10 +44,15 @@ export function Layout({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  const { store } = getStore();
+
   return (
-    <ThemeProvider defaultTheme='system' storageKey='theme'>
-      <Outlet />
-    </ThemeProvider>
+    <Provider store={store}>
+      <ThemeProvider defaultTheme='system' storageKey='theme'>
+        <AuthListener />
+        <Outlet />
+      </ThemeProvider>
+    </Provider>
   );
 }
 

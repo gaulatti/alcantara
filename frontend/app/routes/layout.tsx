@@ -12,13 +12,14 @@ import {
   type NavItem,
   type RenderLinkProps
 } from '@gaulatti/bleecker';
-import { Blend, CircleOff, Clock3, Clapperboard, Eye, Home, Images, LayoutTemplate, Music, Radio, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
+import { Blend, CircleOff, Clock3, Clapperboard, Eye, Home, Images, LayoutTemplate, LogOut, Music, Radio, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
+import { useLogout } from '../hooks/useAuth';
 
 const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
 
@@ -69,6 +70,7 @@ function renderAppLink({ children, className, item, onClick }: RenderLinkProps<N
 
 export default function Layout() {
   const navigate = useNavigate();
+  const { logout } = useLogout();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
   const [knownInstants, setKnownInstants] = useState<InstantSummary[]>([]);
@@ -310,6 +312,13 @@ export default function Layout() {
     >
       Open Program
     </a>
+  );
+
+  const renderLogoutButton = () => (
+    <Button variant='destructive' size='sm' onClick={logout}>
+      <LogOut size={15} strokeWidth={1.5} />
+      <span>Logout</span>
+    </Button>
   );
 
   const commandActions = useMemo<CommandSpotlightAction[]>(() => {
@@ -578,6 +587,7 @@ export default function Layout() {
                 {renderHeaderProgramSelector()}
                 {renderOpenProgramButton()}
                 <ThemeToggle />
+                {renderLogoutButton()}
               </>
             }
             mobileActions={
@@ -585,6 +595,7 @@ export default function Layout() {
                 {renderHeaderProgramSelector()}
                 {renderOpenProgramButton()}
                 <ThemeToggle />
+                {renderLogoutButton()}
               </>
             }
             renderLink={renderAppLink}
