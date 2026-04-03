@@ -30,6 +30,23 @@ interface BroadcastMixerChannel {
   solo: boolean;
 }
 
+export interface ProgramAudioMixerSettings {
+  mainMasterVolume: number;
+  songMasterVolume: number;
+  instantMasterVolume: number;
+  sceneInstantMasterVolume: number;
+  streamMasterVolume: number;
+  songMuted: boolean;
+  instantMuted: boolean;
+  sceneInstantMuted: boolean;
+  streamMuted: boolean;
+  songSolo: boolean;
+  instantSolo: boolean;
+  sceneInstantSolo: boolean;
+  streamSolo: boolean;
+  mixerChannels: BroadcastMixerChannel[];
+}
+
 export interface ProgramSceneInstantPlayback {
   programId: string;
   sceneId: number | null;
@@ -93,6 +110,25 @@ export class ProgramService {
         solo: false,
       },
     ];
+  }
+
+  private createDefaultProgramAudioMixerSettings(): ProgramAudioMixerSettings {
+    return {
+      mainMasterVolume: 1,
+      songMasterVolume: 1,
+      instantMasterVolume: 1,
+      sceneInstantMasterVolume: 1,
+      streamMasterVolume: 1,
+      songMuted: false,
+      instantMuted: false,
+      sceneInstantMuted: false,
+      streamMuted: false,
+      songSolo: false,
+      instantSolo: false,
+      sceneInstantSolo: false,
+      streamSolo: false,
+      mixerChannels: this.createDefaultBroadcastMixerChannels(),
+    };
   }
 
   private createEmptyProgramSceneInstantPlayback(
@@ -237,6 +273,147 @@ export class ProgramService {
       streamSolo: stream.solo,
       instantSolo: instants.solo,
       sceneInstantSolo: sceneInstant.solo,
+    };
+  }
+
+  private withResolvedProgramAudioMixerSettings(
+    value: unknown,
+    fallback: ProgramAudioMixerSettings = this.createDefaultProgramAudioMixerSettings(),
+  ): ProgramAudioMixerSettings {
+    const record =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+
+    const fallbackChannels = this.normalizeBroadcastMixerChannels(
+      fallback.mixerChannels,
+      this.createDefaultBroadcastMixerChannels(),
+    );
+    let mixerChannels = this.normalizeBroadcastMixerChannels(
+      record.mixerChannels,
+      fallbackChannels,
+    );
+
+    const applyChannelPatch = (
+      channelId: 'song' | 'stream' | 'instants' | 'sceneInstant',
+      patch: { volume?: number; muted?: boolean; solo?: boolean },
+    ) => {
+      mixerChannels = mixerChannels.map((channel) => {
+        if (channel.id !== channelId) {
+          return channel;
+        }
+        return {
+          ...channel,
+          ...patch,
+        };
+      });
+    };
+
+    if ('songMasterVolume' in record) {
+      applyChannelPatch('song', {
+        volume: this.coerceMasterVolume(
+          record.songMasterVolume,
+          fallback.songMasterVolume,
+        ),
+      });
+    }
+    if ('instantMasterVolume' in record) {
+      applyChannelPatch('instants', {
+        volume: this.coerceMasterVolume(
+          record.instantMasterVolume,
+          fallback.instantMasterVolume,
+        ),
+      });
+    }
+    if ('streamMasterVolume' in record) {
+      applyChannelPatch('stream', {
+        volume: this.coerceMasterVolume(
+          record.streamMasterVolume,
+          fallback.streamMasterVolume,
+        ),
+      });
+    }
+    if ('sceneInstantMasterVolume' in record) {
+      applyChannelPatch('sceneInstant', {
+        volume: this.coerceMasterVolume(
+          record.sceneInstantMasterVolume,
+          fallback.sceneInstantMasterVolume,
+        ),
+      });
+    }
+    if ('songMuted' in record) {
+      applyChannelPatch('song', {
+        muted: this.coerceMixerToggle(record.songMuted, fallback.songMuted),
+      });
+    }
+    if ('instantMuted' in record) {
+      applyChannelPatch('instants', {
+        muted: this.coerceMixerToggle(record.instantMuted, fallback.instantMuted),
+      });
+    }
+    if ('streamMuted' in record) {
+      applyChannelPatch('stream', {
+        muted: this.coerceMixerToggle(record.streamMuted, fallback.streamMuted),
+      });
+    }
+    if ('sceneInstantMuted' in record) {
+      applyChannelPatch('sceneInstant', {
+        muted: this.coerceMixerToggle(
+          record.sceneInstantMuted,
+          fallback.sceneInstantMuted,
+        ),
+      });
+    }
+    if ('songSolo' in record) {
+      applyChannelPatch('song', {
+        solo: this.coerceMixerToggle(record.songSolo, fallback.songSolo),
+      });
+    }
+    if ('instantSolo' in record) {
+      applyChannelPatch('instants', {
+        solo: this.coerceMixerToggle(record.instantSolo, fallback.instantSolo),
+      });
+    }
+    if ('streamSolo' in record) {
+      applyChannelPatch('stream', {
+        solo: this.coerceMixerToggle(record.streamSolo, fallback.streamSolo),
+      });
+    }
+    if ('sceneInstantSolo' in record) {
+      applyChannelPatch('sceneInstant', {
+        solo: this.coerceMixerToggle(
+          record.sceneInstantSolo,
+          fallback.sceneInstantSolo,
+        ),
+      });
+    }
+
+    const song = this.getBroadcastMixerChannel(mixerChannels, 'song');
+    const stream = this.getBroadcastMixerChannel(mixerChannels, 'stream');
+    const instants = this.getBroadcastMixerChannel(mixerChannels, 'instants');
+    const sceneInstant = this.getBroadcastMixerChannel(
+      mixerChannels,
+      'sceneInstant',
+    );
+
+    return {
+      mainMasterVolume: this.coerceMasterVolume(
+        record.mainMasterVolume,
+        fallback.mainMasterVolume,
+      ),
+      songMasterVolume: song.volume,
+      instantMasterVolume: instants.volume,
+      sceneInstantMasterVolume: sceneInstant.volume,
+      streamMasterVolume: stream.volume,
+      songMuted: song.muted,
+      instantMuted: instants.muted,
+      sceneInstantMuted: sceneInstant.muted,
+      streamMuted: stream.muted,
+      songSolo: song.solo,
+      instantSolo: instants.solo,
+      sceneInstantSolo: sceneInstant.solo,
+      streamSolo: stream.solo,
+      mixerChannels,
     };
   }
 
@@ -736,7 +913,11 @@ export class ProgramService {
     }
 
     await this.prisma.programState.create({
-      data: { programId: normalized, activeSceneId: null },
+      data: {
+        programId: normalized,
+        activeSceneId: null,
+        audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+      },
     });
     this.stagedSceneByProgramId.set(normalized, null);
 
@@ -877,43 +1058,85 @@ export class ProgramService {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { songSequence: true },
+      select: { songSequence: true, audioMixer: true },
     });
     if (!state) {
       throw new Error('Program not found');
     }
 
+    const mixerSettings = this.withResolvedProgramAudioMixerSettings(
+      state.audioMixer,
+    );
+
     return {
       songSequence: state.songSequence ?? null,
+      mixerSettings,
     };
   }
 
   async updateProgramAudioBus(
-    data: { songSequence?: unknown } | null | undefined,
+    data: { songSequence?: unknown; mixerSettings?: unknown } | null | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
-    await this.getProgramStateRecord(normalizedProgramId);
-
-    if (data !== null && data !== undefined && typeof data !== 'object') {
+    if (
+      data !== null &&
+      data !== undefined &&
+      (typeof data !== 'object' || Array.isArray(data))
+    ) {
       throw new BadRequestException('audio bus payload must be an object');
     }
 
-    const songSequence =
-      data && 'songSequence' in data
-        ? ((data as { songSequence?: unknown }).songSequence ?? null)
-        : null;
+    const currentState = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { songSequence: true, audioMixer: true },
+    });
+    if (!currentState) {
+      throw new Error('Program not found');
+    }
+
+    const hasSongSequenceUpdate = Boolean(
+      data && Object.prototype.hasOwnProperty.call(data, 'songSequence'),
+    );
+    const hasMixerSettingsUpdate = Boolean(
+      data && Object.prototype.hasOwnProperty.call(data, 'mixerSettings'),
+    );
+    const currentMixerSettings = this.withResolvedProgramAudioMixerSettings(
+      currentState.audioMixer,
+    );
+
+    if (!hasSongSequenceUpdate && !hasMixerSettingsUpdate) {
+      return {
+        songSequence: currentState.songSequence ?? null,
+        mixerSettings: currentMixerSettings,
+      };
+    }
+
+    const nextSongSequence = hasSongSequenceUpdate
+      ? ((data as { songSequence?: unknown }).songSequence ?? null)
+      : currentState.songSequence ?? null;
+    const nextMixerSettings = hasMixerSettingsUpdate
+      ? this.withResolvedProgramAudioMixerSettings(
+          (data as { mixerSettings?: unknown }).mixerSettings,
+          currentMixerSettings,
+        )
+      : currentMixerSettings;
 
     const updatedState = await this.prisma.programState.update({
       where: { programId: normalizedProgramId },
       data: {
-        songSequence: songSequence as any,
+        songSequence: nextSongSequence as any,
+        audioMixer: nextMixerSettings as any,
       },
-      select: { songSequence: true },
+      select: { songSequence: true, audioMixer: true },
     });
 
     const nextSettings = {
       songSequence: updatedState.songSequence ?? null,
+      mixerSettings: this.withResolvedProgramAudioMixerSettings(
+        updatedState.audioMixer,
+        nextMixerSettings,
+      ),
     };
     this.broadcastUpdate(normalizedProgramId, {
       type: 'audio_bus_update',
@@ -1630,11 +1853,14 @@ export class ProgramService {
 
     const currentState = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { songSequence: true },
+      select: { songSequence: true, audioMixer: true },
     });
     if (!currentState) {
       throw new Error('Program not found');
     }
+    const currentMixerSettings = this.withResolvedProgramAudioMixerSettings(
+      currentState.audioMixer,
+    );
 
     if (
       currentState.songSequence &&
@@ -1656,6 +1882,7 @@ export class ProgramService {
         programId: normalizedProgramId,
         settings: {
           songSequence: updatedSequence,
+          mixerSettings: currentMixerSettings,
         },
         updatedAt,
       });

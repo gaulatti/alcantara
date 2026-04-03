@@ -219,7 +219,7 @@ export class ProgramController {
   @Put(':programId/audio-bus')
   async updateProgramAudioBusById(
     @Param('programId') programId: string,
-    @Body() data: { songSequence?: unknown },
+    @Body() data: { songSequence?: unknown; mixerSettings?: unknown },
   ) {
     return this.programService.updateProgramAudioBus(data, programId);
   }

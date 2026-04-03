@@ -125,6 +125,7 @@ interface MediaGroup {
 
 interface ProgramAudioBusSettings {
   songSequence: unknown | null;
+  mixerSettings?: unknown | null;
 }
 
 interface BroadcastSettings {
@@ -1208,7 +1209,6 @@ export default function Control() {
       void fetchProgramAudioMeter(activeProgramId);
       void fetchProgramSongPlayback(activeProgramId);
       void fetchSceneInstantPlayback(activeProgramId);
-      void fetchBroadcastSettings();
     }, 900);
 
     return () => {
@@ -1308,18 +1308,19 @@ export default function Control() {
           if (eventProgramId !== activeProgramId) {
             return;
           }
+          const nextMixerSource =
+            payload.settings && typeof payload.settings === 'object'
+              ? (payload.settings as { mixerSettings?: unknown }).mixerSettings
+              : undefined;
+          if (nextMixerSource !== undefined) {
+            const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
+            mixerLevelsRef.current = nextMixerLevels;
+            setMixerLevels(nextMixerLevels);
+          }
           const normalizedSongSequence = normalizeProgramSongPlaylist(
             normalizeProgramSongSequence(payload?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
           );
           setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
-          return;
-        }
-
-        if (payload.type === 'broadcast_settings_snapshot' || payload.type === 'broadcast_settings_update') {
-          const source = payload.settings;
-          const nextMixerLevels = normalizeBroadcastSettingsPayload(source);
-          mixerLevelsRef.current = nextMixerLevels;
-          setMixerLevels(nextMixerLevels);
           return;
         }
 
@@ -1392,6 +1393,15 @@ export default function Control() {
           const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
           if (eventProgramId !== activeProgramId) {
             return;
+          }
+          const nextMixerSource =
+            payload.settings && typeof payload.settings === 'object'
+              ? (payload.settings as { mixerSettings?: unknown }).mixerSettings
+              : undefined;
+          if (nextMixerSource !== undefined) {
+            const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
+            mixerLevelsRef.current = nextMixerLevels;
+            setMixerLevels(nextMixerLevels);
           }
           const normalizedSongSequence = normalizeProgramSongPlaylist(
             normalizeProgramSongSequence(payload?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
@@ -1574,59 +1584,25 @@ export default function Control() {
     }
   };
 
-  const fetchBroadcastSettings = async () => {
-    try {
-      setIsLoadingMixerLevels(true);
-      const res = await fetch(apiUrl('/program/broadcast-settings'));
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const payload = (await res.json()) as unknown;
-      const nextMixerLevels = normalizeBroadcastSettingsPayload(payload);
-      mixerLevelsRef.current = nextMixerLevels;
-      setMixerLevels(nextMixerLevels);
-    } catch (err) {
-      console.error('Failed to fetch broadcast mixer settings:', err);
-      const fallbackMixerLevels = normalizeBroadcastSettingsPayload({
-        mainMasterVolume: 1,
-        songMasterVolume: 1,
-        instantMasterVolume: 1,
-        sceneInstantMasterVolume: 1,
-        streamMasterVolume: 1,
-        songMuted: false,
-        instantMuted: false,
-        sceneInstantMuted: false,
-        streamMuted: false,
-        songSolo: false,
-        instantSolo: false,
-        sceneInstantSolo: false,
-        streamSolo: false
-      });
-      mixerLevelsRef.current = fallbackMixerLevels;
-      setMixerLevels(fallbackMixerLevels);
-    } finally {
-      setIsLoadingMixerLevels(false);
-    }
-  };
-
   const persistMixerLevels = async (nextMixerLevels: BroadcastSettings) => {
     setIsSavingMixerLevels(true);
     try {
-      const res = await fetch(apiUrl('/program/broadcast-settings'), {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mainMasterVolume: nextMixerLevels.mainMasterVolume,
-          mixerChannels: nextMixerLevels.mixerChannels
+          mixerSettings: {
+            mainMasterVolume: nextMixerLevels.mainMasterVolume,
+            mixerChannels: nextMixerLevels.mixerChannels
+          }
         })
       });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const payload = (await res.json()) as unknown;
-      const persistedMixerLevels = normalizeBroadcastSettingsPayload(payload);
+      const payload = (await res.json()) as ProgramAudioBusSettings | null;
+      const persistedMixerLevels = normalizeBroadcastSettingsPayload(payload?.mixerSettings ?? nextMixerLevels);
       mixerLevelsRef.current = persistedMixerLevels;
       setMixerLevels(persistedMixerLevels);
     } catch (err) {
@@ -1973,21 +1949,30 @@ export default function Control() {
 
   const fetchProgramAudioBusSettings = async (targetProgramId: string) => {
     try {
+      setIsLoadingMixerLevels(true);
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      const nextMixerLevels = normalizeBroadcastSettingsPayload(payload?.mixerSettings);
+      mixerLevelsRef.current = nextMixerLevels;
+      setMixerLevels(nextMixerLevels);
       const normalizedSongSequence = normalizeProgramSongPlaylist(
         normalizeProgramSongSequence(payload?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
       );
       setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     } catch (err) {
       console.error('Failed to fetch program audio bus settings:', err);
+      const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
+      mixerLevelsRef.current = fallbackMixerLevels;
+      setMixerLevels(fallbackMixerLevels);
       setProgramAudioBusSettings({
         songSequence: { ...createProgramSongSequence('manual'), activeItemId: null }
       });
+    } finally {
+      setIsLoadingMixerLevels(false);
     }
   };
 
@@ -2011,6 +1996,11 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (payload && Object.prototype.hasOwnProperty.call(payload, 'mixerSettings')) {
+        const nextMixerLevels = normalizeBroadcastSettingsPayload(payload.mixerSettings);
+        mixerLevelsRef.current = nextMixerLevels;
+        setMixerLevels(nextMixerLevels);
+      }
       const persistedSongSequence = normalizeProgramSongPlaylist(normalizeProgramSongSequence(payload?.songSequence) ?? normalizedSongSequence);
       setProgramAudioBusSettings({ songSequence: persistedSongSequence });
     } catch (err) {
@@ -2831,13 +2821,6 @@ export default function Control() {
         return;
       }
 
-      if (data.type === 'broadcast_settings_update') {
-        const nextMixerLevels = normalizeBroadcastSettingsPayload(data?.settings);
-        mixerLevelsRef.current = nextMixerLevels;
-        setMixerLevels(nextMixerLevels);
-        return;
-      }
-
       const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
       if (eventProgramId && eventProgramId !== activeProgramId) {
         return;
@@ -2893,6 +2876,15 @@ export default function Control() {
       }
 
       if (data.type === 'audio_bus_update') {
+        const nextMixerSource =
+          data.settings && typeof data.settings === 'object'
+            ? (data.settings as { mixerSettings?: unknown }).mixerSettings
+            : undefined;
+        if (nextMixerSource !== undefined) {
+          const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
+          mixerLevelsRef.current = nextMixerLevels;
+          setMixerLevels(nextMixerLevels);
+        }
         const normalizedSongSequence = normalizeProgramSongPlaylist(
           normalizeProgramSongSequence(data?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
         );

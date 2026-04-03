@@ -167,6 +167,24 @@ interface SongOffAirEvent {
 
 interface ProgramAudioBusSettings {
   songSequence?: unknown;
+  mixerSettings?: ProgramAudioMixerSettings | null;
+}
+
+interface ProgramAudioMixerSettings {
+  mainMasterVolume: number;
+  songMasterVolume: number;
+  instantMasterVolume: number;
+  sceneInstantMasterVolume: number;
+  streamMasterVolume: number;
+  songMuted: boolean;
+  instantMuted: boolean;
+  sceneInstantMuted: boolean;
+  streamMuted: boolean;
+  songSolo: boolean;
+  instantSolo: boolean;
+  sceneInstantSolo: boolean;
+  streamSolo: boolean;
+  mixerChannels: ProgramMixerChannel[];
 }
 
 interface SlideshowMediaItem {
@@ -300,14 +318,19 @@ function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSon
 
 function normalizeProgramAudioBusSettings(value: unknown): ProgramAudioBusSettings {
   if (!value || typeof value !== 'object') {
-    return { songSequence: null };
+    return {
+      songSequence: null,
+      mixerSettings: null
+    };
   }
 
   const record = value as Record<string, unknown>;
   const normalizedSongSequence = normalizeProgramSongSequence(record.songSequence);
+  const hasMixerSettings = Object.prototype.hasOwnProperty.call(record, 'mixerSettings');
 
   return {
-    songSequence: normalizedSongSequence ? normalizeProgramSongPlaylist(normalizedSongSequence) : null
+    songSequence: normalizedSongSequence ? normalizeProgramSongPlaylist(normalizedSongSequence) : null,
+    mixerSettings: hasMixerSettings ? normalizeProgramAudioMixerSettings(record.mixerSettings) : null
   };
 }
 
@@ -377,6 +400,79 @@ function getProgramMixerChannel(channels: ProgramMixerChannel[], id: string): Pr
     volume: 1,
     muted: false,
     solo: false
+  };
+}
+
+function normalizeProgramAudioMixerSettings(value: unknown): ProgramAudioMixerSettings {
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const scalarFallback = {
+    songMasterVolume: normalizeMasterVolume(record.songMasterVolume, 1),
+    instantMasterVolume: normalizeMasterVolume(record.instantMasterVolume, 1),
+    sceneInstantMasterVolume: normalizeMasterVolume(record.sceneInstantMasterVolume, 1),
+    streamMasterVolume: normalizeMasterVolume(record.streamMasterVolume, 1),
+    songMuted: normalizeMixerToggle(record.songMuted, false),
+    instantMuted: normalizeMixerToggle(record.instantMuted, false),
+    sceneInstantMuted: normalizeMixerToggle(record.sceneInstantMuted, false),
+    streamMuted: normalizeMixerToggle(record.streamMuted, false),
+    songSolo: normalizeMixerToggle(record.songSolo, false),
+    instantSolo: normalizeMixerToggle(record.instantSolo, false),
+    sceneInstantSolo: normalizeMixerToggle(record.sceneInstantSolo, false),
+    streamSolo: normalizeMixerToggle(record.streamSolo, false)
+  };
+  const fallbackChannels: ProgramMixerChannel[] = [
+    {
+      id: 'song',
+      name: 'Song',
+      volume: scalarFallback.songMasterVolume,
+      muted: scalarFallback.songMuted,
+      solo: scalarFallback.songSolo
+    },
+    {
+      id: 'stream',
+      name: 'Stream',
+      volume: scalarFallback.streamMasterVolume,
+      muted: scalarFallback.streamMuted,
+      solo: scalarFallback.streamSolo
+    },
+    {
+      id: 'instants',
+      name: 'Instants',
+      volume: scalarFallback.instantMasterVolume,
+      muted: scalarFallback.instantMuted,
+      solo: scalarFallback.instantSolo
+    },
+    {
+      id: 'sceneInstant',
+      name: 'Scene Instant',
+      volume: scalarFallback.sceneInstantMasterVolume,
+      muted: scalarFallback.sceneInstantMuted,
+      solo: scalarFallback.sceneInstantSolo
+    }
+  ];
+  const mixerChannels = normalizeProgramMixerChannels(
+    record.mixerChannels,
+    fallbackChannels
+  );
+  const songChannel = getProgramMixerChannel(mixerChannels, 'song');
+  const streamChannel = getProgramMixerChannel(mixerChannels, 'stream');
+  const instantsChannel = getProgramMixerChannel(mixerChannels, 'instants');
+  const sceneInstantChannel = getProgramMixerChannel(mixerChannels, 'sceneInstant');
+
+  return {
+    mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
+    songMasterVolume: songChannel.volume,
+    instantMasterVolume: instantsChannel.volume,
+    sceneInstantMasterVolume: sceneInstantChannel.volume,
+    streamMasterVolume: streamChannel.volume,
+    songMuted: songChannel.muted,
+    instantMuted: instantsChannel.muted,
+    sceneInstantMuted: sceneInstantChannel.muted,
+    streamMuted: streamChannel.muted,
+    songSolo: songChannel.solo,
+    instantSolo: instantsChannel.solo,
+    sceneInstantSolo: sceneInstantChannel.solo,
+    streamSolo: streamChannel.solo,
+    mixerChannels
   };
 }
 
@@ -531,19 +627,26 @@ function SceneProgram({ programId }: { programId: string }) {
     durationMs: null,
     isPlaying: false
   });
-  const mainMasterFader = normalizeMasterVolume(broadcastSettings?.mainMasterVolume, 1);
-  const songMasterVolume = normalizeMasterVolume(broadcastSettings?.songMasterVolume, 1);
-  const instantMasterVolume = normalizeMasterVolume(broadcastSettings?.instantMasterVolume, 1);
-  const sceneInstantMasterVolume = normalizeMasterVolume(broadcastSettings?.sceneInstantMasterVolume, 1);
-  const streamMasterVolume = normalizeMasterVolume(broadcastSettings?.streamMasterVolume, 1);
-  const songMuted = Boolean(broadcastSettings?.songMuted);
-  const instantMuted = Boolean(broadcastSettings?.instantMuted);
-  const sceneInstantMuted = Boolean(broadcastSettings?.sceneInstantMuted);
-  const streamMuted = Boolean(broadcastSettings?.streamMuted);
-  const songSolo = Boolean(broadcastSettings?.songSolo);
-  const instantSolo = Boolean(broadcastSettings?.instantSolo);
-  const sceneInstantSolo = Boolean(broadcastSettings?.sceneInstantSolo);
-  const streamSolo = Boolean(broadcastSettings?.streamSolo);
+  const programMixerSettings = useMemo(
+    () =>
+      audioBusSettings?.mixerSettings
+        ? normalizeProgramAudioMixerSettings(audioBusSettings.mixerSettings)
+        : normalizeProgramAudioMixerSettings(null),
+    [audioBusSettings?.mixerSettings]
+  );
+  const mainMasterFader = normalizeMasterVolume(programMixerSettings.mainMasterVolume, 1);
+  const songMasterVolume = normalizeMasterVolume(programMixerSettings.songMasterVolume, 1);
+  const instantMasterVolume = normalizeMasterVolume(programMixerSettings.instantMasterVolume, 1);
+  const sceneInstantMasterVolume = normalizeMasterVolume(programMixerSettings.sceneInstantMasterVolume, 1);
+  const streamMasterVolume = normalizeMasterVolume(programMixerSettings.streamMasterVolume, 1);
+  const songMuted = Boolean(programMixerSettings.songMuted);
+  const instantMuted = Boolean(programMixerSettings.instantMuted);
+  const sceneInstantMuted = Boolean(programMixerSettings.sceneInstantMuted);
+  const streamMuted = Boolean(programMixerSettings.streamMuted);
+  const songSolo = Boolean(programMixerSettings.songSolo);
+  const instantSolo = Boolean(programMixerSettings.instantSolo);
+  const sceneInstantSolo = Boolean(programMixerSettings.sceneInstantSolo);
+  const streamSolo = Boolean(programMixerSettings.streamSolo);
   const hasSoloChannel = songSolo || instantSolo || sceneInstantSolo || streamSolo;
   const effectiveSongMasterFader = hasSoloChannel ? (songSolo ? songMasterVolume : 0) : songMasterVolume;
   const effectiveInstantMasterFader = hasSoloChannel ? (instantSolo ? instantMasterVolume : 0) : instantMasterVolume;
