@@ -1131,7 +1131,7 @@ export default function Control() {
   const takeVolumeFadeRunIdRef = useRef<MixerTakeRunIdMap>({ ...DEFAULT_MIXER_TAKE_RUN_IDS });
   const [mixerTakePresetsDb, setMixerTakePresetsDb] = useState<MixerTakePresetDbMap>({ ...DEFAULT_MIXER_TAKE_PRESETS_DB });
   const [mixerTakeTargetSide, setMixerTakeTargetSide] = useState<MixerTakeSideMap>({ ...DEFAULT_MIXER_TAKE_TARGET_SIDE });
-  const [takePresetFadeMs, setTakePresetFadeMs] = useState<number>(1200);
+  const [takePresetFadeMs, setTakePresetFadeMs] = useState<number>(5000);
   const [isApplyingTakePresetByChannel, setIsApplyingTakePresetByChannel] = useState<MixerTakeApplyingMap>({ ...DEFAULT_MIXER_TAKE_APPLYING });
   const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
     song: createEmptyMeterChannel(),
@@ -1723,6 +1723,25 @@ export default function Control() {
       };
       return next;
     });
+  };
+
+  const formatTakePresetDbInputValue = (value: number): string => {
+    if (!Number.isFinite(value)) {
+      return '-15.0';
+    }
+    return value.toFixed(1);
+  };
+
+  const commitTakePresetDbInput = (
+    channelId: MixerTakeChannelKey,
+    presetSide: MixerTakePresetSide,
+    rawValue: string,
+    fallbackValue: number
+  ): number => {
+    const parsed = Number.parseFloat(rawValue.trim());
+    const nextValue = Number.isFinite(parsed) ? normalizeTakeVolumePresetDb(parsed, fallbackValue) : fallbackValue;
+    updateChannelTakePresetDb(channelId, presetSide, nextValue);
+    return nextValue;
   };
 
   const clearTakeVolumeFadeTimer = (channelId?: MixerTakeChannelKey) => {
@@ -3038,7 +3057,9 @@ export default function Control() {
   const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
   const assignedScenesCount = assignedScenes.length;
   const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
-  const onlineStatusTone = isProgramRealtimeConnected ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/40' : 'text-amber-200 bg-amber-500/15 border-amber-300/40';
+  const onlineStatusTone = isProgramRealtimeConnected
+    ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/40'
+    : 'text-amber-200 bg-amber-500/15 border-amber-300/40';
   const activeSceneLabel = activeSceneData?.name ?? 'Off Air';
   const stagedSceneLabel = stagedSceneData?.name ?? 'None';
   const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
@@ -3065,110 +3086,1257 @@ export default function Control() {
         `}
       </style>
       <div className='flex min-h-0 flex-1 overflow-y-auto pb-20'>
-      <PanelLayout className='flex-1 min-h-0 w-full' padding='p-0'>
-        <Panel title='Scenes' accent='#22c55e' width={360} className='min-w-0'>
-        <section className='h-full bg-transparent text-text-primary'>
-          <div className='space-y-4 p-4'>
-            <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <Button size='sm' onClick={() => void takeStagedSceneLive()} disabled={!selectedScene || stagedIsOnAir}>
-                  TAKE
-                </Button>
-                <Button size='sm' variant='secondary' onClick={() => window.location.assign('/scenes')}>
-                  Manage Scenes
-                </Button>
+        <PanelLayout className='flex-1 min-h-0 w-full' padding='p-0'>
+          <Panel title='Scenes' accent='#22c55e' width={360} className='min-w-0'>
+            <section className='h-full bg-transparent text-text-primary'>
+              <div className='space-y-4 p-4'>
+                <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <Button size='sm' onClick={() => void takeStagedSceneLive()} disabled={!selectedScene || stagedIsOnAir}>
+                      TAKE
+                    </Button>
+                    <Button size='sm' variant='secondary' onClick={() => window.location.assign('/scenes')}>
+                      Manage Scenes
+                    </Button>
+                  </div>
+                </div>
+                <p className='flex items-center gap-2 text-xs text-text-secondary dark:text-text-secondary'>
+                  Hotkeys:
+                  <Kbd keys={['Ctrl', 'S']} />
+                  then
+                  <span>1-9 (0 for #10) to stage</span>
+                  <span>·</span>
+                  <Kbd keys={['Ctrl', 'Enter']} />
+                  <span>to TAKE</span>
+                </p>
+                {assignedScenes.length === 0 ? (
+                  <div className='py-8 text-center text-text-secondary dark:text-text-secondary'>No scenes assigned to this program.</div>
+                ) : (
+                  <>
+                    <div className='grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(120px,1fr))]'>
+                      {assignedScenes.map((scene, index) => {
+                        const isStaged = selectedScene === scene.id;
+                        const isActive = activeSceneId === scene.id;
+
+                        return (
+                          <button
+                            key={scene.id}
+                            type='button'
+                            onClick={() => {
+                              setSelectedScene(scene.id);
+                              void stageSceneForProgram(scene.id);
+                            }}
+                            onDoubleClick={() => {
+                              void activateScene(scene.id);
+                            }}
+                            className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
+                              isActive && isStaged
+                                ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30 dark:border-emerald-400 dark:bg-emerald-400/10 dark:ring-emerald-400/20'
+                                : isActive
+                                  ? 'border-red-500 bg-red-500/10 ring-2 ring-red-500/30 dark:border-red-400 dark:bg-red-400/10 dark:ring-red-400/20'
+                                  : isStaged
+                                    ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
+                                    : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
+                            }`}
+                            title={scene.name}
+                          >
+                            <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
+                              {index + 1}
+                            </span>
+                            <div className='absolute right-2 top-2 flex gap-1'>
+                              {isActive ? <span className='rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>PGM</span> : null}
+                              {isStaged ? <span className='rounded bg-cyan-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>STG</span> : null}
+                            </div>
+                            <div className='mt-6'>
+                              <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>{scene.name}</div>
+                              <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>{scene.layout.name}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className='text-xs text-text-secondary dark:text-text-secondary space-y-1'>
+                      <p>
+                        Program: <span className='font-semibold text-text-primary dark:text-text-primary'>{activeSceneData?.name ?? 'Off Air'}</span>
+                      </p>
+                      <p>
+                        Staged: <span className='font-semibold text-text-primary dark:text-text-primary'>{stagedSceneData?.name ?? 'None'}</span>
+                        {stagedSceneData ? <> · Text: {stagedSceneSummaryText}</> : null}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-            <p className='flex items-center gap-2 text-xs text-text-secondary dark:text-text-secondary'>
-              Hotkeys:
-              <Kbd keys={['Ctrl', 'S']} />
-              then
-              <span>1-9 (0 for #10) to stage</span>
-              <span>·</span>
-              <Kbd keys={['Ctrl', 'Enter']} />
-              <span>to TAKE</span>
-            </p>
-            {assignedScenes.length === 0 ? (
-              <div className='py-8 text-center text-text-secondary dark:text-text-secondary'>No scenes assigned to this program.</div>
-            ) : (
-              <>
-                <div className='grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(120px,1fr))]'>
-                    {assignedScenes.map((scene, index) => {
-                      const isStaged = selectedScene === scene.id;
-                      const isActive = activeSceneId === scene.id;
+            </section>
+          </Panel>
 
-                      return (
-                        <button
-                          key={scene.id}
-                          type='button'
-                          onClick={() => {
-                            setSelectedScene(scene.id);
-                            void stageSceneForProgram(scene.id);
-                          }}
-                          onDoubleClick={() => {
-                            void activateScene(scene.id);
-                          }}
-                          className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
-                            isActive && isStaged
-                              ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30 dark:border-emerald-400 dark:bg-emerald-400/10 dark:ring-emerald-400/20'
-                              : isActive
-                                ? 'border-red-500 bg-red-500/10 ring-2 ring-red-500/30 dark:border-red-400 dark:bg-red-400/10 dark:ring-red-400/20'
-                                : isStaged
-                                  ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
-                                  : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
-                          }`}
-                          title={scene.name}
-                        >
-                          <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
-                            {index + 1}
-                          </span>
-                          <div className='absolute right-2 top-2 flex gap-1'>
-                            {isActive ? <span className='rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>PGM</span> : null}
-                            {isStaged ? <span className='rounded bg-cyan-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>STG</span> : null}
+          <Panel title='Control Deck' accent='#38bdf8' className='min-w-0' {...controlDeckGrowProps}>
+            {/* Main Control Accordion */}
+            <Accordion
+              className='h-full bg-transparent'
+              defaultExpandedId='playlist'
+              items={[
+                {
+                  id: 'playlist',
+                  title: 'Songs Catalog',
+                  content: (
+                    <div className='space-y-4'>
+                      <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                        {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
+                      </div>
+                      <ProgramSongSequenceEditor
+                        sequence={programAudioBusSongSequence}
+                        songCatalog={songCatalog}
+                        programSongPlayback={programSongPlaybackState}
+                        view='catalog'
+                        showPlaybackBar={false}
+                        onChange={(nextSequence) => {
+                          void saveProgramAudioBusSongSequence(nextSequence);
+                        }}
+                        onTakeSelection={async (nextSequence) => {
+                          await saveProgramAudioBusSongSequence(nextSequence);
+                        }}
+                        onTakeOffAir={async () => {
+                          await takeProgramSongOffAir(activeProgramId);
+                        }}
+                      />
+                    </div>
+                  )
+                },
+                {
+                  id: 'mixer',
+                  title: 'Mixer',
+                  content: (
+                    <div className='space-y-4'>
+                      <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+                        {isLoadingMixerLevels ? (
+                          <span className='text-xs font-mono text-amber-500 animate-pulse'>LOADING STATE...</span>
+                        ) : isSavingMixerLevels ? (
+                          <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
+                        ) : null}
+                      </div>
+                      <div className='rounded-xl border border-zinc-700 bg-zinc-900/70 p-4'>
+                        <div className='flex flex-wrap items-end gap-3'>
+                          <div className='min-w-[180px]'>
+                            <p className='text-[11px] font-bold tracking-widest text-violet-300'>SCENE INSTANT CHANNEL</p>
+                            <p className='mt-1 text-[11px] text-zinc-400'>Independent gain for scene-scoped background instant.</p>
                           </div>
-                          <div className='mt-6'>
-                            <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>{scene.name}</div>
-                            <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>{scene.layout.name}</div>
+                          <div className='flex gap-2'>
+                            <button
+                              type='button'
+                              onClick={toggleSceneInstantMuted}
+                              className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                mixerLevels.sceneInstantMuted
+                                  ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                                  : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                              }`}
+                            >
+                              Mute
+                            </button>
+                            <button
+                              type='button'
+                              onClick={toggleSceneInstantSolo}
+                              className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                mixerLevels.sceneInstantSolo
+                                  ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                                  : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                              }`}
+                            >
+                              Solo
+                            </button>
                           </div>
-                        </button>
-                      );
-                    })}
-                </div>
-                <div className='text-xs text-text-secondary dark:text-text-secondary space-y-1'>
-                  <p>
-                    Program: <span className='font-semibold text-text-primary dark:text-text-primary'>{activeSceneData?.name ?? 'Off Air'}</span>
-                  </p>
-                  <p>
-                    Staged: <span className='font-semibold text-text-primary dark:text-text-primary'>{stagedSceneData?.name ?? 'None'}</span>
-                    {stagedSceneData ? <> · Text: {stagedSceneSummaryText}</> : null}
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
-        </section>
-        </Panel>
+                          <label className='text-[10px] font-mono text-sky-300'>
+                            <span className='mb-1 block text-center'>A (dB)</span>
+                            <input
+                              key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
+                              type='text'
+                              inputMode='decimal'
+                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.aDb)}
+                              onBlur={(event) => {
+                                const nextValue = commitTakePresetDbInput('sceneInstant', 'a', event.target.value, mixerTakePresetsDb.sceneInstant.aDb);
+                                event.target.value = formatTakePresetDbInputValue(nextValue);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.currentTarget.blur();
+                                  return;
+                                }
+                                if (event.key === 'Escape') {
+                                  event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.aDb);
+                                  event.currentTarget.blur();
+                                }
+                              }}
+                              className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                            />
+                          </label>
+                          <label className='text-[10px] font-mono text-amber-300'>
+                            <span className='mb-1 block text-center'>B (dB)</span>
+                            <input
+                              key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
+                              type='text'
+                              inputMode='decimal'
+                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.bDb)}
+                              onBlur={(event) => {
+                                const nextValue = commitTakePresetDbInput('sceneInstant', 'b', event.target.value, mixerTakePresetsDb.sceneInstant.bDb);
+                                event.target.value = formatTakePresetDbInputValue(nextValue);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.currentTarget.blur();
+                                  return;
+                                }
+                                if (event.key === 'Escape') {
+                                  event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.bDb);
+                                  event.currentTarget.blur();
+                                }
+                              }}
+                              className='w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                            />
+                          </label>
+                          <div className='h-9 w-36 self-end rounded bg-zinc-950'>
+                            <input
+                              type='range'
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={mixerLevels.sceneInstantMasterVolume}
+                              onChange={(event) => setSceneInstantMasterVolume(Number(event.target.value))}
+                              className='h-full w-full cursor-pointer'
+                            />
+                          </div>
+                          <input
+                            key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
+                            type='text'
+                            inputMode='decimal'
+                            defaultValue={formatMixerLevelInputValue(mixerLevels.sceneInstantMasterVolume)}
+                            aria-label='Scene instant channel level in dB'
+                            onBlur={(event) => {
+                              const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.sceneInstantMasterVolume);
+                              setSceneInstantMasterVolume(nextValue);
+                              event.target.value = formatMixerLevelInputValue(nextValue);
+                            }}
+                            className='h-9 w-24 rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-sm font-bold text-violet-300 outline-none'
+                          />
+                          <button
+                            type='button'
+                            onClick={() => triggerChannelTake('sceneInstant')}
+                            disabled={isApplyingTakePresetByChannel.sceneInstant}
+                            className='h-9 rounded border border-violet-800/50 bg-zinc-900 px-3 text-[10px] font-bold tracking-wider text-violet-300 transition hover:bg-violet-900/20 disabled:opacity-50'
+                          >
+                            TAKE {sceneInstantTakeTargetSide.toUpperCase()}
+                          </button>
+                          <div className='min-w-[120px] text-right'>
+                            <p className='text-[11px] text-zinc-400'>
+                              Meter {Math.round(sceneInstantMeterFill * 100)}% / {Math.round(sceneInstantPeakFill * 100)}%
+                            </p>
+                            <p className='text-[11px] text-zinc-500'>
+                              Peak Hold {Math.round(sceneInstantPeakHoldFill * 100)}% · {sceneInstantOutputGain > 0 ? 'LIVE' : 'CUT'}
+                            </p>
+                            <p className='text-[10px] text-zinc-500'>
+                              A {Math.round(sceneInstantPresetAFader * 100)}% · B {Math.round(sceneInstantPresetBFader * 100)}%
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className='flex gap-6 rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-inner'>
+                        {/* --- SCROLLABLE INPUTS SECTION --- */}
+                        <div className='flex overflow-x-auto pb-4 custom-scrollbar flex-1'>
+                          <div className='flex min-w-max items-stretch gap-4 pr-6'>
+                            {/* --- SONG STRIP --- */}
+                            <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl shrink-0'>
+                              <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
+                                <span className='text-[11px] font-bold tracking-widest text-zinc-400'>SONG</span>
+                              </div>
 
-        <Panel title='Control Deck' accent='#38bdf8' className='min-w-0' {...controlDeckGrowProps}>
-          {/* Main Control Accordion */}
-          <Accordion
-            className='h-full bg-transparent'
-            defaultExpandedId='playlist'
-            items={[
-              {
-                id: 'playlist',
-                title: 'Songs Catalog',
-                content: (
-                  <div className='space-y-4'>
-            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-              {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
-            </div>
+                              <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                                <button
+                                  type='button'
+                                  onClick={toggleSongMuted}
+                                  className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                    mixerLevels.songMuted
+                                      ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                                      : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                                  }`}
+                                >
+                                  Mute
+                                </button>
+                                <button
+                                  type='button'
+                                  onClick={toggleSongSolo}
+                                  className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                    mixerLevels.songSolo
+                                      ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                                      : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                                  }`}
+                                >
+                                  Solo
+                                </button>
+                              </div>
+                              <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
+                                <label className='text-[10px] font-mono text-sky-300'>
+                                  <span className='mb-1 block text-center'>A</span>
+                                  <input
+                                    key={`song-preset-a-${mixerTakePresetsDb.song.aDb}`}
+                                    type='text'
+                                    inputMode='decimal'
+                                    defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.song.aDb)}
+                                    onBlur={(event) => {
+                                      const nextValue = commitTakePresetDbInput('song', 'a', event.target.value, mixerTakePresetsDb.song.aDb);
+                                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                        return;
+                                      }
+                                      if (event.key === 'Escape') {
+                                        event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.song.aDb);
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                                  />
+                                </label>
+                                <label className='text-[10px] font-mono text-amber-300'>
+                                  <span className='mb-1 block text-center'>B</span>
+                                  <input
+                                    key={`song-preset-b-${mixerTakePresetsDb.song.bDb}`}
+                                    type='text'
+                                    inputMode='decimal'
+                                    defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.song.bDb)}
+                                    onBlur={(event) => {
+                                      const nextValue = commitTakePresetDbInput('song', 'b', event.target.value, mixerTakePresetsDb.song.bDb);
+                                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                        return;
+                                      }
+                                      if (event.key === 'Escape') {
+                                        event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.song.bDb);
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                                  />
+                                </label>
+                              </div>
+
+                              <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                                <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                                  <span className='translate-y-[-50%]'>10</span>
+                                  <span className='translate-y-[-50%]'>5</span>
+                                  <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                                  <span className='translate-y-[-50%]'>-5</span>
+                                  <span className='translate-y-[-50%]'>-10</span>
+                                  <span className='translate-y-[-50%]'>-20</span>
+                                  <span className='translate-y-[-50%]'>-40</span>
+                                  <span className='translate-y-[-50%]'>-∞</span>
+                                </div>
+
+                                <div className='ml-4 flex gap-3 h-full'>
+                                  <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                                    <div
+                                      className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                                      style={{ bottom: `${Math.round(songPeakFill * 100)}%` }}
+                                    />
+                                    <div
+                                      className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                                      style={{ bottom: `${Math.round(songPeakHoldFill * 100)}%` }}
+                                    />
+                                    <div
+                                      className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
+                                      style={{ height: `${Math.round(songMeterFill * 100)}%` }}
+                                    />
+                                  </div>
+
+                                  <div className='relative h-full w-10 flex flex-col justify-center'>
+                                    <div
+                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                                      style={{ bottom: `${Math.round(songPresetAFader * 100)}%` }}
+                                    />
+                                    <span
+                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                                      style={{ bottom: `calc(${Math.round(songPresetAFader * 100)}% - 6px)` }}
+                                    >
+                                      A
+                                    </span>
+                                    <div
+                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                      style={{ bottom: `${Math.round(songPresetBFader * 100)}%` }}
+                                    />
+                                    <span
+                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                      style={{ bottom: `calc(${Math.round(songPresetBFader * 100)}% - 6px)` }}
+                                    >
+                                      B
+                                    </span>
+                                    {/* Fader Track Line */}
+                                    <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                                    {/* Wrapper for rotation */}
+                                    <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                                      <input
+                                        type='range'
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
+                                        value={mixerLevels.songMasterVolume}
+                                        onChange={(event) => setSongMasterVolume(Number(event.target.value))}
+                                        onMouseEnter={() => {
+                                          document.body.style.overflow = 'hidden';
+                                        }}
+                                        onMouseLeave={() => {
+                                          document.body.style.overflow = '';
+                                        }}
+                                        onWheel={(e) => {
+                                          const step = 0.02;
+                                          const delta = e.deltaY > 0 ? step : -step;
+                                          setSongMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.songMasterVolume + delta)).toFixed(2)));
+                                        }}
+                                        className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
+                                <input
+                                  key={`song-level-${mixerLevels.songMasterVolume}`}
+                                  type='text'
+                                  inputMode='decimal'
+                                  defaultValue={formatMixerLevelInputValue(mixerLevels.songMasterVolume)}
+                                  aria-label='Song channel level in dB'
+                                  onBlur={(event) => {
+                                    const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.songMasterVolume);
+                                    setSongMasterVolume(nextValue);
+                                    event.target.value = formatMixerLevelInputValue(nextValue);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.currentTarget.blur();
+                                      return;
+                                    }
+
+                                    if (event.key === 'Escape') {
+                                      event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.songMasterVolume);
+                                      event.currentTarget.blur();
+                                    }
+                                  }}
+                                  className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
+                                />
+                                <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{songOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                              </div>
+                              <button
+                                type='button'
+                                onClick={() => triggerChannelTake('song')}
+                                disabled={isApplyingTakePresetByChannel.song}
+                                className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
+                              >
+                                TAKE {songTakeTargetSide.toUpperCase()}
+                              </button>
+                            </div>
+
+                            {shouldShowStreamStrip ? (
+                              <>
+                                {/* --- STREAM STRIP --- */}
+                                <div className='flex w-36 flex-col items-center rounded-lg border border-cyan-900/50 bg-zinc-800/80 pb-6 shadow-xl'>
+                                  <div className='w-full rounded-t-lg border-b border-cyan-900/60 bg-cyan-950/20 py-2.5 text-center shadow-sm'>
+                                    <span className='text-[11px] font-bold tracking-widest text-cyan-300'>STREAM</span>
+                                  </div>
+
+                                  <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                                    <button
+                                      type='button'
+                                      onClick={toggleStreamMuted}
+                                      className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                        mixerLevels.streamMuted
+                                          ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                                          : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                                      }`}
+                                    >
+                                      Mute
+                                    </button>
+                                    <button
+                                      type='button'
+                                      onClick={toggleStreamSolo}
+                                      className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                        mixerLevels.streamSolo
+                                          ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                                          : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                                      }`}
+                                    >
+                                      Solo
+                                    </button>
+                                  </div>
+                                  <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
+                                    <label className='text-[10px] font-mono text-sky-300'>
+                                      <span className='mb-1 block text-center'>A</span>
+                                      <input
+                                        key={`stream-preset-a-${mixerTakePresetsDb.stream.aDb}`}
+                                        type='text'
+                                        inputMode='decimal'
+                                        defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.stream.aDb)}
+                                        onBlur={(event) => {
+                                          const nextValue = commitTakePresetDbInput('stream', 'a', event.target.value, mixerTakePresetsDb.stream.aDb);
+                                          event.target.value = formatTakePresetDbInputValue(nextValue);
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter') {
+                                            event.currentTarget.blur();
+                                            return;
+                                          }
+                                          if (event.key === 'Escape') {
+                                            event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.stream.aDb);
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                                      />
+                                    </label>
+                                    <label className='text-[10px] font-mono text-amber-300'>
+                                      <span className='mb-1 block text-center'>B</span>
+                                      <input
+                                        key={`stream-preset-b-${mixerTakePresetsDb.stream.bDb}`}
+                                        type='text'
+                                        inputMode='decimal'
+                                        defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.stream.bDb)}
+                                        onBlur={(event) => {
+                                          const nextValue = commitTakePresetDbInput('stream', 'b', event.target.value, mixerTakePresetsDb.stream.bDb);
+                                          event.target.value = formatTakePresetDbInputValue(nextValue);
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter') {
+                                            event.currentTarget.blur();
+                                            return;
+                                          }
+                                          if (event.key === 'Escape') {
+                                            event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.stream.bDb);
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                                    <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                                      <span className='translate-y-[-50%]'>10</span>
+                                      <span className='translate-y-[-50%]'>5</span>
+                                      <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                                      <span className='translate-y-[-50%]'>-5</span>
+                                      <span className='translate-y-[-50%]'>-10</span>
+                                      <span className='translate-y-[-50%]'>-20</span>
+                                      <span className='translate-y-[-50%]'>-40</span>
+                                      <span className='translate-y-[-50%]'>-∞</span>
+                                    </div>
+
+                                    <div className='ml-4 flex gap-3 h-full'>
+                                      <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]' />
+
+                                      <div className='relative h-full w-10 flex flex-col justify-center'>
+                                        <div
+                                          className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                                          style={{ bottom: `${Math.round(streamPresetAFader * 100)}%` }}
+                                        />
+                                        <span
+                                          className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                                          style={{ bottom: `calc(${Math.round(streamPresetAFader * 100)}% - 6px)` }}
+                                        >
+                                          A
+                                        </span>
+                                        <div
+                                          className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                          style={{ bottom: `${Math.round(streamPresetBFader * 100)}%` }}
+                                        />
+                                        <span
+                                          className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                          style={{ bottom: `calc(${Math.round(streamPresetBFader * 100)}% - 6px)` }}
+                                        >
+                                          B
+                                        </span>
+                                        <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                                        <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                                          <input
+                                            type='range'
+                                            min={0}
+                                            max={1}
+                                            step={0.01}
+                                            value={mixerLevels.streamMasterVolume}
+                                            onChange={(event) => setStreamMasterVolume(Number(event.target.value))}
+                                            onMouseEnter={() => {
+                                              document.body.style.overflow = 'hidden';
+                                            }}
+                                            onMouseLeave={() => {
+                                              document.body.style.overflow = '';
+                                            }}
+                                            onWheel={(e) => {
+                                              const step = 0.02;
+                                              const delta = e.deltaY > 0 ? step : -step;
+                                              setStreamMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.streamMasterVolume + delta)).toFixed(2)));
+                                            }}
+                                            className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-cyan-900/30 bg-[#07161a] text-center shadow-inner'>
+                                    <input
+                                      key={`stream-level-${mixerLevels.streamMasterVolume}`}
+                                      type='text'
+                                      inputMode='decimal'
+                                      defaultValue={formatMixerLevelInputValue(mixerLevels.streamMasterVolume)}
+                                      aria-label='Stream channel level in dB'
+                                      onBlur={(event) => {
+                                        const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.streamMasterVolume);
+                                        setStreamMasterVolume(nextValue);
+                                        event.target.value = formatMixerLevelInputValue(nextValue);
+                                      }}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                          event.currentTarget.blur();
+                                          return;
+                                        }
+
+                                        if (event.key === 'Escape') {
+                                          event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.streamMasterVolume);
+                                          event.currentTarget.blur();
+                                        }
+                                      }}
+                                      className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-cyan-300 outline-none'
+                                    />
+                                    <span className='font-mono text-[9px] tracking-wider text-cyan-700'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                                  </div>
+                                  <button
+                                    type='button'
+                                    onClick={() => triggerChannelTake('stream')}
+                                    disabled={isApplyingTakePresetByChannel.stream}
+                                    className='mt-2 w-4/5 rounded border border-cyan-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-cyan-300 transition hover:bg-cyan-900/20 disabled:opacity-50'
+                                  >
+                                    TAKE {streamTakeTargetSide.toUpperCase()}
+                                  </button>
+                                </div>
+                              </>
+                            ) : null}
+
+                            {/* --- INSTANTS STRIP --- */}
+                            <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl'>
+                              <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
+                                <span className='text-[11px] font-bold tracking-widest text-zinc-400'>INSTANTS</span>
+                              </div>
+
+                              <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                                <button
+                                  type='button'
+                                  onClick={toggleInstantMuted}
+                                  className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                    mixerLevels.instantMuted
+                                      ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                                      : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                                  }`}
+                                >
+                                  Mute
+                                </button>
+                                <button
+                                  type='button'
+                                  onClick={toggleInstantSolo}
+                                  className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                                    mixerLevels.instantSolo
+                                      ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                                      : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
+                                  }`}
+                                >
+                                  Solo
+                                </button>
+                              </div>
+                              <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
+                                <label className='text-[10px] font-mono text-sky-300'>
+                                  <span className='mb-1 block text-center'>A</span>
+                                  <input
+                                    key={`instants-preset-a-${mixerTakePresetsDb.instants.aDb}`}
+                                    type='text'
+                                    inputMode='decimal'
+                                    defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.instants.aDb)}
+                                    onBlur={(event) => {
+                                      const nextValue = commitTakePresetDbInput('instants', 'a', event.target.value, mixerTakePresetsDb.instants.aDb);
+                                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                        return;
+                                      }
+                                      if (event.key === 'Escape') {
+                                        event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.instants.aDb);
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                                  />
+                                </label>
+                                <label className='text-[10px] font-mono text-amber-300'>
+                                  <span className='mb-1 block text-center'>B</span>
+                                  <input
+                                    key={`instants-preset-b-${mixerTakePresetsDb.instants.bDb}`}
+                                    type='text'
+                                    inputMode='decimal'
+                                    defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.instants.bDb)}
+                                    onBlur={(event) => {
+                                      const nextValue = commitTakePresetDbInput('instants', 'b', event.target.value, mixerTakePresetsDb.instants.bDb);
+                                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                        return;
+                                      }
+                                      if (event.key === 'Escape') {
+                                        event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.instants.bDb);
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                                  />
+                                </label>
+                              </div>
+
+                              <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                                <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                                  <span className='translate-y-[-50%]'>10</span>
+                                  <span className='translate-y-[-50%]'>5</span>
+                                  <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                                  <span className='translate-y-[-50%]'>-5</span>
+                                  <span className='translate-y-[-50%]'>-10</span>
+                                  <span className='translate-y-[-50%]'>-20</span>
+                                  <span className='translate-y-[-50%]'>-40</span>
+                                  <span className='translate-y-[-50%]'>-∞</span>
+                                </div>
+
+                                <div className='ml-4 flex gap-3 h-full'>
+                                  <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                                    <div
+                                      className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                                      style={{ bottom: `${Math.round(instantsPeakFill * 100)}%` }}
+                                    />
+                                    <div
+                                      className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                                      style={{ bottom: `${Math.round(instantsPeakHoldFill * 100)}%` }}
+                                    />
+                                    <div
+                                      className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
+                                      style={{ height: `${Math.round(instantsMeterFill * 100)}%` }}
+                                    />
+                                  </div>
+
+                                  <div className='relative h-full w-10 flex flex-col justify-center'>
+                                    <div
+                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                                      style={{ bottom: `${Math.round(instantsPresetAFader * 100)}%` }}
+                                    />
+                                    <span
+                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                                      style={{ bottom: `calc(${Math.round(instantsPresetAFader * 100)}% - 6px)` }}
+                                    >
+                                      A
+                                    </span>
+                                    <div
+                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                      style={{ bottom: `${Math.round(instantsPresetBFader * 100)}%` }}
+                                    />
+                                    <span
+                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                      style={{ bottom: `calc(${Math.round(instantsPresetBFader * 100)}% - 6px)` }}
+                                    >
+                                      B
+                                    </span>
+                                    {/* Fader Track Line */}
+                                    <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                                    {/* Wrapper for rotation */}
+                                    <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                                      <input
+                                        type='range'
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
+                                        value={mixerLevels.instantMasterVolume}
+                                        onChange={(event) => setInstantMasterVolume(Number(event.target.value))}
+                                        onMouseEnter={() => {
+                                          document.body.style.overflow = 'hidden';
+                                        }}
+                                        onMouseLeave={() => {
+                                          document.body.style.overflow = '';
+                                        }}
+                                        onWheel={(e) => {
+                                          const step = 0.02;
+                                          const delta = e.deltaY > 0 ? step : -step;
+                                          setInstantMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.instantMasterVolume + delta)).toFixed(2)));
+                                        }}
+                                        className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
+                                <input
+                                  key={`instants-level-${mixerLevels.instantMasterVolume}`}
+                                  type='text'
+                                  inputMode='decimal'
+                                  defaultValue={formatMixerLevelInputValue(mixerLevels.instantMasterVolume)}
+                                  aria-label='Instants channel level in dB'
+                                  onBlur={(event) => {
+                                    const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.instantMasterVolume);
+                                    setInstantMasterVolume(nextValue);
+                                    event.target.value = formatMixerLevelInputValue(nextValue);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.currentTarget.blur();
+                                      return;
+                                    }
+
+                                    if (event.key === 'Escape') {
+                                      event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.instantMasterVolume);
+                                      event.currentTarget.blur();
+                                    }
+                                  }}
+                                  className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
+                                />
+                                <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{instantsOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                              </div>
+                              <button
+                                type='button'
+                                onClick={() => triggerChannelTake('instants')}
+                                disabled={isApplyingTakePresetByChannel.instants}
+                                className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
+                              >
+                                TAKE {instantsTakeTargetSide.toUpperCase()}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* --- MASTER STRIP (FIXED TO RIGHT) --- */}
+                        <div className='flex w-44 flex-col items-center rounded-lg border border-red-900/30 bg-zinc-800 pb-6 shadow-2xl shrink-0'>
+                          <div className='w-full rounded-t-lg border-b border-red-900/50 bg-red-950/20 py-2.5 text-center shadow-sm'>
+                            <span className='text-[11px] font-bold tracking-widest text-red-500'>MAIN MIX</span>
+                          </div>
+
+                          <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
+                            <div className='flex h-[82px] w-full flex-col justify-center rounded border border-red-900/20 bg-zinc-900/50 px-2 py-2 shadow-inner'>
+                              <label className='text-[10px] font-mono text-red-300'>
+                                <span className='mb-1 block text-center'>TAKE FADE (ms)</span>
+                                <input
+                                  type='number'
+                                  step={100}
+                                  min={0}
+                                  max={20000}
+                                  value={takePresetFadeMs}
+                                  onChange={(event) => setTakePresetFadeMs(normalizeTakeVolumeFadeMs(Number(event.target.value), takePresetFadeMs))}
+                                  className='w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-red-200 outline-none focus:border-red-400'
+                                />
+                              </label>
+                              <div className='mt-2 grid grid-cols-2 gap-2'>
+                                <label className='text-[10px] font-mono text-sky-300'>
+                                  <span className='mb-1 block text-center'>A</span>
+                                  <input
+                                    key={`main-preset-a-${mixerTakePresetsDb.main.aDb}`}
+                                    type='text'
+                                    inputMode='decimal'
+                                    defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.main.aDb)}
+                                    onBlur={(event) => {
+                                      const nextValue = commitTakePresetDbInput('main', 'a', event.target.value, mixerTakePresetsDb.main.aDb);
+                                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                        return;
+                                      }
+                                      if (event.key === 'Escape') {
+                                        event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.main.aDb);
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                                  />
+                                </label>
+                                <label className='text-[10px] font-mono text-amber-300'>
+                                  <span className='mb-1 block text-center'>B</span>
+                                  <input
+                                    key={`main-preset-b-${mixerTakePresetsDb.main.bDb}`}
+                                    type='text'
+                                    inputMode='decimal'
+                                    defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.main.bDb)}
+                                    onBlur={(event) => {
+                                      const nextValue = commitTakePresetDbInput('main', 'b', event.target.value, mixerTakePresetsDb.main.bDb);
+                                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                        return;
+                                      }
+                                      if (event.key === 'Escape') {
+                                        event.currentTarget.value = formatTakePresetDbInputValue(mixerTakePresetsDb.main.bDb);
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
+                            <div className='absolute left-4 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
+                              <span className='translate-y-[-50%] text-red-400'>10</span>
+                              <span className='translate-y-[-50%] text-red-400'>5</span>
+                              <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
+                              <span className='translate-y-[-50%]'>-5</span>
+                              <span className='translate-y-[-50%]'>-10</span>
+                              <span className='translate-y-[-50%]'>-20</span>
+                              <span className='translate-y-[-50%]'>-40</span>
+                              <span className='translate-y-[-50%]'>-∞</span>
+                            </div>
+
+                            <div className='ml-4 flex gap-4 h-full'>
+                              <div className='flex gap-1 h-full'>
+                                <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                                  <div
+                                    className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                                    style={{ bottom: `${Math.round(mainMixPeakFill * 100)}%` }}
+                                  />
+                                  <div
+                                    className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                                    style={{ bottom: `${Math.round(mainMixPeakHoldFill * 100)}%` }}
+                                  />
+                                  <div
+                                    className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
+                                    style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
+                                  />
+                                </div>
+                                <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                                  <div
+                                    className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
+                                    style={{ bottom: `${Math.round(mainMixPeakFill * 100)}%` }}
+                                  />
+                                  <div
+                                    className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
+                                    style={{ bottom: `${Math.round(mainMixPeakHoldFill * 100)}%` }}
+                                  />
+                                  <div
+                                    className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
+                                    style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className='relative h-full w-10 flex flex-col justify-center'>
+                                <div
+                                  className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
+                                  style={{ bottom: `${Math.round(mainPresetAFader * 100)}%` }}
+                                />
+                                <span
+                                  className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
+                                  style={{ bottom: `calc(${Math.round(mainPresetAFader * 100)}% - 6px)` }}
+                                >
+                                  A
+                                </span>
+                                <div
+                                  className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                  style={{ bottom: `${Math.round(mainPresetBFader * 100)}%` }}
+                                />
+                                <span
+                                  className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                  style={{ bottom: `calc(${Math.round(mainPresetBFader * 100)}% - 6px)` }}
+                                >
+                                  B
+                                </span>
+                                {/* Fader Track Line */}
+                                <div className='absolute left-1/2 top-0 h-full w-2 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
+                                {/* Wrapper for rotation */}
+                                <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
+                                  <input
+                                    type='range'
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    value={mixerLevels.mainMasterVolume}
+                                    onChange={(event) => setMainMasterVolume(Number(event.target.value))}
+                                    onMouseEnter={() => {
+                                      document.body.style.overflow = 'hidden';
+                                    }}
+                                    onMouseLeave={() => {
+                                      document.body.style.overflow = '';
+                                    }}
+                                    onWheel={(e) => {
+                                      const step = 0.02;
+                                      const delta = e.deltaY > 0 ? step : -step;
+                                      setMainMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.mainMasterVolume + delta)).toFixed(2)));
+                                    }}
+                                    className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-red-950 [&::-webkit-slider-thumb]:bg-red-700 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-red-600 [&::-webkit-slider-thumb]:to-red-800 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.4),-5px_0_0_rgba(100,0,0,0.5),0_0_0_rgba(100,0,0,0.5),5px_0_0_rgba(100,0,0,0.5)]'
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-red-950/50 bg-[#1a0a0a] text-center shadow-inner'>
+                            <input
+                              key={`main-level-${mixerLevels.mainMasterVolume}`}
+                              type='text'
+                              inputMode='decimal'
+                              defaultValue={formatMixerLevelInputValue(mixerLevels.mainMasterVolume)}
+                              aria-label='Main mix level in dB'
+                              onBlur={(event) => {
+                                const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.mainMasterVolume);
+                                setMainMasterVolume(nextValue);
+                                event.target.value = formatMixerLevelInputValue(nextValue);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.currentTarget.blur();
+                                  return;
+                                }
+
+                                if (event.key === 'Escape') {
+                                  event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.mainMasterVolume);
+                                  event.currentTarget.blur();
+                                }
+                              }}
+                              className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-500 outline-none'
+                            />
+                            <span className='font-mono text-[9px] tracking-wider text-red-700'>{mainMixGain > 0 ? 'LIVE' : 'CUT'}</span>
+                          </div>
+                          <button
+                            type='button'
+                            onClick={() => triggerChannelTake('main')}
+                            disabled={isApplyingTakePresetByChannel.main}
+                            className='mt-2 w-4/5 rounded border border-red-900/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-red-300 transition hover:bg-red-900/20 disabled:opacity-50'
+                          >
+                            TAKE {mainTakeTargetSide.toUpperCase()}
+                          </button>
+                        </div>
+                      </div>
+
+                      <p className='text-xs text-text-secondary dark:text-text-secondary'>
+                        Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Stream/Instants/Scene
+                        Instant. Instant channel still controls all catalog instants together, while Scene Instant controls only scene background instant
+                        playback.
+                      </p>
+                    </div>
+                  )
+                },
+                {
+                  id: 'instants',
+                  title: 'Instants',
+                  content: (
+                    <div className='space-y-4'>
+                      <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+                        <div className='flex flex-wrap items-center gap-2'>
+                          <Button size='sm' variant='secondary' onClick={() => window.location.assign('/instants')}>
+                            Manage Instants
+                          </Button>
+                          <Button size='sm' variant='secondary' onClick={() => void stopAllInstants()}>
+                            Stop All
+                          </Button>
+                        </div>
+                      </div>
+                      <p className='flex items-center gap-2 text-xs text-text-secondary dark:text-text-secondary'>
+                        Hotkeys:
+                        <Kbd keys={['Ctrl', 'Q..M']} />
+                        <span>(QWERTY order, first 26 instants)</span>
+                      </p>
+                      {isLoadingInstants ? (
+                        <p className='text-sm text-text-secondary dark:text-text-secondary'>Loading instants...</p>
+                      ) : instants.length === 0 ? (
+                        <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants in catalog. Create some in Instants.</p>
+                      ) : (
+                        <div className='overflow-x-auto'>
+                          <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
+                            {instants.map((instant, index) => {
+                              const playbackState = instantPlayback[instant.id] ?? null;
+                              const isPlaying = playbackState !== null;
+                              const durationMs = instantDurationsMs[instant.id] ?? null;
+                              const shortcutLetter = getInstantShortcutLetter(index);
+
+                              return (
+                                <button
+                                  key={instant.id}
+                                  type='button'
+                                  onClick={() => {
+                                    void triggerInstant(instant.id);
+                                  }}
+                                  disabled={!instant.enabled}
+                                  className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
+                                    !instant.enabled
+                                      ? 'cursor-not-allowed border-sand/20 bg-sand/10 opacity-60 dark:border-sand/40 dark:bg-sand/10'
+                                      : isPlaying
+                                        ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
+                                        : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
+                                  }`}
+                                  title={instant.name}
+                                >
+                                  <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
+                                    {shortcutLetter || index + 1}
+                                  </span>
+                                  <div className='mt-6'>
+                                    <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>
+                                      {instant.name}
+                                    </div>
+                                    <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>Vol {instant.volume}</div>
+                                    {isPlaying ? (
+                                      <div className='mt-1 line-clamp-1 text-[11px] font-semibold text-sea dark:text-accent-blue'>Playing</div>
+                                    ) : durationMs !== null ? (
+                                      <div className='mt-1 line-clamp-1 text-[11px] text-text-secondary dark:text-text-secondary'>
+                                        {`Length ${Math.max(0.1, durationMs / 1000).toFixed(1)}s`}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  {isPlaying ? (
+                                    <div className='pointer-events-none absolute inset-0 overflow-hidden rounded-xl'>
+                                      {playbackState && playbackState.endsAtMs !== null ? (
+                                        <div
+                                          key={`${instant.id}-${playbackState.startedAtMs}`}
+                                          className='absolute inset-0 origin-left bg-sea dark:bg-accent-blue'
+                                          style={{
+                                            animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`
+                                          }}
+                                        />
+                                      ) : (
+                                        <div
+                                          className='absolute inset-0 bg-sea dark:bg-accent-blue'
+                                          style={{
+                                            animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                },
+                {
+                  id: 'scene-attributes',
+                  title: 'Stage Attributes',
+                  content: (
+                    <div className='space-y-4'>
+                      {!selectedScene ? (
+                        <p className='text-sm text-text-secondary dark:text-text-secondary'>
+                          Stage a scene above to edit its attributes before taking it live.
+                        </p>
+                      ) : (
+                        <div className='space-y-4'>
+                          <p className='text-sm text-sea dark:text-accent-blue'>
+                            Editing staged scene: {scenes.find((s) => s.id === selectedScene)?.name}
+                            {stagedIsOnAir ? ' (ON AIR)' : ''}
+                          </p>
+                          {activeProgramId === 'fifthbell' && (
+                            <p className='text-xs text-text-secondary dark:text-text-secondary'>
+                              FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` /
+                              `toni-clock`).
+                            </p>
+                          )}
+                          <div className='space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
+                            <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
+                              <div className='flex-1'>
+                                <label className='block text-xs text-gray-600 mb-1'>Scene Background Instant</label>
+                                <select
+                                  value={selectedSceneInstantId ? String(selectedSceneInstantId) : ''}
+                                  onChange={(event) => {
+                                    const nextInstantId = normalizeSceneInstantId(event.target.value);
+                                    updateSceneEditorProp('sceneInstant', 'instantId', nextInstantId);
+                                  }}
+                                  className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
+                                >
+                                  <option value=''>No background instant</option>
+                                  {instants
+                                    .filter((instant) => instant.enabled)
+                                    .map((instant) => (
+                                      <option key={instant.id} value={instant.id}>
+                                        {instant.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                              <div className='flex flex-wrap gap-2'>
+                                <Button
+                                  size='sm'
+                                  onClick={() => {
+                                    void takeSceneInstant(selectedScene);
+                                  }}
+                                  disabled={!selectedScene || selectedSceneInstantId === null || !selectedSceneInstant}
+                                >
+                                  TAKE BG
+                                </Button>
+                                <Button size='sm' variant='secondary' onClick={() => void stopSceneInstant()} disabled={!sceneInstantPlayback.isPlaying}>
+                                  STOP BG
+                                </Button>
+                              </div>
+                            </div>
+                            <p className='text-xs text-text-secondary dark:text-text-secondary'>
+                              {sceneInstantPlayback.isPlaying
+                                ? `Playing: ${sceneInstantPlayback.instantName || 'Scene instant'}`
+                                : selectedSceneInstant
+                                  ? `Ready: ${selectedSceneInstant.name}`
+                                  : 'Select an instant (changes save automatically), then TAKE BG.'}
+                            </p>
+                          </div>
+                          <div className='space-y-4 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
+                            {editableSceneComponentEntries.length === 0 && (
+                              <p className='text-sm text-text-secondary dark:text-text-secondary'>No configurable component attributes for this scene.</p>
+                            )}
+                            {editableSceneComponentEntries.map(([componentType, props]) => {
+                              const compInfo = componentTypes.find((ct) => ct.type === componentType);
+                              return (
+                                <div key={componentType} className='border-b border-sand/20 pb-4 last:border-b-0 dark:border-sand/40'>
+                                  <h4 className='mb-2 text-md font-semibold text-text-primary dark:text-text-primary'>{compInfo?.name || componentType}</h4>
+                                  <ComponentPropsFields
+                                    componentType={componentType}
+                                    props={props}
+                                    updateProp={updateSceneEditorProp}
+                                    replaceProps={replaceSceneEditorComponentProps}
+                                    commitProps={commitSceneEditorComponentProps}
+                                    songCatalog={songCatalog}
+                                    mediaGroups={mediaGroups}
+                                    isLoadingMediaGroups={isLoadingMediaGroups}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {isSavingSceneAttributes ? (
+                            <p className='text-xs text-text-secondary dark:text-text-secondary text-right'>Autosaving scene attributes…</p>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+              ]}
+            />
+          </Panel>
+
+          <Panel title='Current Queue' accent='#8b5cf6' width={520} className='min-w-0 h-full'>
             <ProgramSongSequenceEditor
               sequence={programAudioBusSongSequence}
               songCatalog={songCatalog}
               programSongPlayback={programSongPlaybackState}
-              view='catalog'
-              showPlaybackBar={false}
+              view='queue'
+              showPlaybackBar
               onChange={(nextSequence) => {
                 void saveProgramAudioBusSongSequence(nextSequence);
               }}
@@ -3179,1029 +4347,8 @@ export default function Control() {
                 await takeProgramSongOffAir(activeProgramId);
               }}
             />
-                  </div>
-                )
-              },
-              {
-                id: 'mixer',
-                title: 'Mixer',
-                content: (
-                  <div className='space-y-4'>
-            <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-              {isLoadingMixerLevels ? (
-                <span className='text-xs font-mono text-amber-500 animate-pulse'>LOADING STATE...</span>
-              ) : isSavingMixerLevels ? (
-                <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
-              ) : null}
-            </div>
-            <div className='rounded-xl border border-zinc-700 bg-zinc-900/70 p-4'>
-              <div className='flex flex-wrap items-end gap-3'>
-                <div className='min-w-[180px]'>
-                  <p className='text-[11px] font-bold tracking-widest text-violet-300'>SCENE INSTANT CHANNEL</p>
-                  <p className='mt-1 text-[11px] text-zinc-400'>Independent gain for scene-scoped background instant.</p>
-                </div>
-                <div className='flex gap-2'>
-                  <button
-                    type='button'
-                    onClick={toggleSceneInstantMuted}
-                    className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
-                      mixerLevels.sceneInstantMuted
-                        ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
-                        : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                    }`}
-                  >
-                    Mute
-                  </button>
-                  <button
-                    type='button'
-                    onClick={toggleSceneInstantSolo}
-                    className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
-                      mixerLevels.sceneInstantSolo
-                        ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
-                        : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                    }`}
-                  >
-                    Solo
-                  </button>
-                </div>
-                <label className='text-[10px] font-mono text-sky-300'>
-                  <span className='mb-1 block text-center'>A (dB)</span>
-                  <input
-                    type='number'
-                    step={0.1}
-                    min={TAKE_VOLUME_PRESET_MIN_DB}
-                    max={TAKE_VOLUME_PRESET_MAX_DB}
-                    value={mixerTakePresetsDb.sceneInstant.aDb}
-                    onChange={(event) => updateChannelTakePresetDb('sceneInstant', 'a', Number(event.target.value))}
-                    className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                  />
-                </label>
-                <label className='text-[10px] font-mono text-amber-300'>
-                  <span className='mb-1 block text-center'>B (dB)</span>
-                  <input
-                    type='number'
-                    step={0.1}
-                    min={TAKE_VOLUME_PRESET_MIN_DB}
-                    max={TAKE_VOLUME_PRESET_MAX_DB}
-                    value={mixerTakePresetsDb.sceneInstant.bDb}
-                    onChange={(event) => updateChannelTakePresetDb('sceneInstant', 'b', Number(event.target.value))}
-                    className='w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                  />
-                </label>
-                <div className='h-9 w-36 self-end rounded bg-zinc-950'>
-                  <input
-                    type='range'
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={mixerLevels.sceneInstantMasterVolume}
-                    onChange={(event) => setSceneInstantMasterVolume(Number(event.target.value))}
-                    className='h-full w-full cursor-pointer'
-                  />
-                </div>
-                <input
-                  key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
-                  type='text'
-                  inputMode='decimal'
-                  defaultValue={formatMixerLevelInputValue(mixerLevels.sceneInstantMasterVolume)}
-                  aria-label='Scene instant channel level in dB'
-                  onBlur={(event) => {
-                    const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.sceneInstantMasterVolume);
-                    setSceneInstantMasterVolume(nextValue);
-                    event.target.value = formatMixerLevelInputValue(nextValue);
-                  }}
-                  className='h-9 w-24 rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-sm font-bold text-violet-300 outline-none'
-                />
-                <button
-                  type='button'
-                  onClick={() => triggerChannelTake('sceneInstant')}
-                  disabled={isApplyingTakePresetByChannel.sceneInstant}
-                  className='h-9 rounded border border-violet-800/50 bg-zinc-900 px-3 text-[10px] font-bold tracking-wider text-violet-300 transition hover:bg-violet-900/20 disabled:opacity-50'
-                >
-                  TAKE {sceneInstantTakeTargetSide.toUpperCase()}
-                </button>
-                <div className='min-w-[120px] text-right'>
-                  <p className='text-[11px] text-zinc-400'>
-                    Meter {Math.round(sceneInstantMeterFill * 100)}% / {Math.round(sceneInstantPeakFill * 100)}%
-                  </p>
-                  <p className='text-[11px] text-zinc-500'>
-                    Peak Hold {Math.round(sceneInstantPeakHoldFill * 100)}% · {sceneInstantOutputGain > 0 ? 'LIVE' : 'CUT'}
-                  </p>
-                  <p className='text-[10px] text-zinc-500'>
-                    A {Math.round(sceneInstantPresetAFader * 100)}% · B {Math.round(sceneInstantPresetBFader * 100)}%
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className='flex gap-6 rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-inner'>
-              {/* --- SCROLLABLE INPUTS SECTION --- */}
-              <div className='flex overflow-x-auto pb-4 custom-scrollbar flex-1'>
-                <div className='flex min-w-max items-stretch gap-4 pr-6'>
-                  {/* --- SONG STRIP --- */}
-                  <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl shrink-0'>
-                    <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
-                      <span className='text-[11px] font-bold tracking-widest text-zinc-400'>SONG</span>
-                    </div>
-
-                    <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                      <button
-                        type='button'
-                        onClick={toggleSongMuted}
-                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                          mixerLevels.songMuted
-                            ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
-                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                        }`}
-                      >
-                        Mute
-                      </button>
-                      <button
-                        type='button'
-                        onClick={toggleSongSolo}
-                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                          mixerLevels.songSolo
-                            ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
-                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                        }`}
-                      >
-                        Solo
-                      </button>
-                    </div>
-                    <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
-                      <label className='text-[10px] font-mono text-sky-300'>
-                        <span className='mb-1 block text-center'>A</span>
-                        <input
-                          type='number'
-                          step={0.1}
-                          min={TAKE_VOLUME_PRESET_MIN_DB}
-                          max={TAKE_VOLUME_PRESET_MAX_DB}
-                          value={mixerTakePresetsDb.song.aDb}
-                          onChange={(event) => updateChannelTakePresetDb('song', 'a', Number(event.target.value))}
-                          className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                        />
-                      </label>
-                      <label className='text-[10px] font-mono text-amber-300'>
-                        <span className='mb-1 block text-center'>B</span>
-                        <input
-                          type='number'
-                          step={0.1}
-                          min={TAKE_VOLUME_PRESET_MIN_DB}
-                          max={TAKE_VOLUME_PRESET_MAX_DB}
-                          value={mixerTakePresetsDb.song.bDb}
-                          onChange={(event) => updateChannelTakePresetDb('song', 'b', Number(event.target.value))}
-                          className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                        />
-                      </label>
-                    </div>
-
-                    <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
-                      <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
-                        <span className='translate-y-[-50%]'>10</span>
-                        <span className='translate-y-[-50%]'>5</span>
-                        <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
-                        <span className='translate-y-[-50%]'>-5</span>
-                        <span className='translate-y-[-50%]'>-10</span>
-                        <span className='translate-y-[-50%]'>-20</span>
-                        <span className='translate-y-[-50%]'>-40</span>
-                        <span className='translate-y-[-50%]'>-∞</span>
-                      </div>
-
-                      <div className='ml-4 flex gap-3 h-full'>
-                        <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
-                          <div
-                            className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
-                            style={{ bottom: `${Math.round(songPeakFill * 100)}%` }}
-                          />
-                          <div
-                            className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
-                            style={{ bottom: `${Math.round(songPeakHoldFill * 100)}%` }}
-                          />
-                          <div
-                            className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
-                            style={{ height: `${Math.round(songMeterFill * 100)}%` }}
-                          />
-                        </div>
-
-                        <div className='relative h-full w-10 flex flex-col justify-center'>
-                          <div
-                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
-                            style={{ bottom: `${Math.round(songPresetAFader * 100)}%` }}
-                          />
-                          <span
-                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
-                            style={{ bottom: `calc(${Math.round(songPresetAFader * 100)}% - 6px)` }}
-                          >
-                            A
-                          </span>
-                          <div
-                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
-                            style={{ bottom: `${Math.round(songPresetBFader * 100)}%` }}
-                          />
-                          <span
-                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
-                            style={{ bottom: `calc(${Math.round(songPresetBFader * 100)}% - 6px)` }}
-                          >
-                            B
-                          </span>
-                          {/* Fader Track Line */}
-                          <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
-                          {/* Wrapper for rotation */}
-                          <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                            <input
-                              type='range'
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={mixerLevels.songMasterVolume}
-                              onChange={(event) => setSongMasterVolume(Number(event.target.value))}
-                              onMouseEnter={() => {
-                                document.body.style.overflow = 'hidden';
-                              }}
-                              onMouseLeave={() => {
-                                document.body.style.overflow = '';
-                              }}
-                              onWheel={(e) => {
-                                const step = 0.02;
-                                const delta = e.deltaY > 0 ? step : -step;
-                                setSongMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.songMasterVolume + delta)).toFixed(2)));
-                              }}
-                              className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
-                      <input
-                        key={`song-level-${mixerLevels.songMasterVolume}`}
-                        type='text'
-                        inputMode='decimal'
-                        defaultValue={formatMixerLevelInputValue(mixerLevels.songMasterVolume)}
-                        aria-label='Song channel level in dB'
-                        onBlur={(event) => {
-                          const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.songMasterVolume);
-                          setSongMasterVolume(nextValue);
-                          event.target.value = formatMixerLevelInputValue(nextValue);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.currentTarget.blur();
-                            return;
-                          }
-
-                          if (event.key === 'Escape') {
-                            event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.songMasterVolume);
-                            event.currentTarget.blur();
-                          }
-                        }}
-                        className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
-                      />
-                      <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{songOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
-                    </div>
-                    <button
-                      type='button'
-                      onClick={() => triggerChannelTake('song')}
-                      disabled={isApplyingTakePresetByChannel.song}
-                      className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
-                    >
-                      TAKE {songTakeTargetSide.toUpperCase()}
-                    </button>
-                  </div>
-
-                  {shouldShowStreamStrip ? (
-                    <>
-                      {/* --- STREAM STRIP --- */}
-                      <div className='flex w-36 flex-col items-center rounded-lg border border-cyan-900/50 bg-zinc-800/80 pb-6 shadow-xl'>
-                        <div className='w-full rounded-t-lg border-b border-cyan-900/60 bg-cyan-950/20 py-2.5 text-center shadow-sm'>
-                          <span className='text-[11px] font-bold tracking-widest text-cyan-300'>STREAM</span>
-                        </div>
-
-                        <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                          <button
-                            type='button'
-                            onClick={toggleStreamMuted}
-                            className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                              mixerLevels.streamMuted
-                                ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
-                                : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                            }`}
-                          >
-                            Mute
-                          </button>
-                          <button
-                            type='button'
-                            onClick={toggleStreamSolo}
-                            className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                              mixerLevels.streamSolo
-                                ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
-                                : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                            }`}
-                          >
-                            Solo
-                          </button>
-                        </div>
-                        <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
-                          <label className='text-[10px] font-mono text-sky-300'>
-                            <span className='mb-1 block text-center'>A</span>
-                            <input
-                              type='number'
-                              step={0.1}
-                              min={TAKE_VOLUME_PRESET_MIN_DB}
-                              max={TAKE_VOLUME_PRESET_MAX_DB}
-                              value={mixerTakePresetsDb.stream.aDb}
-                              onChange={(event) => updateChannelTakePresetDb('stream', 'a', Number(event.target.value))}
-                              className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                            />
-                          </label>
-                          <label className='text-[10px] font-mono text-amber-300'>
-                            <span className='mb-1 block text-center'>B</span>
-                            <input
-                              type='number'
-                              step={0.1}
-                              min={TAKE_VOLUME_PRESET_MIN_DB}
-                              max={TAKE_VOLUME_PRESET_MAX_DB}
-                              value={mixerTakePresetsDb.stream.bDb}
-                              onChange={(event) => updateChannelTakePresetDb('stream', 'b', Number(event.target.value))}
-                              className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                            />
-                          </label>
-                        </div>
-
-                        <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
-                          <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
-                            <span className='translate-y-[-50%]'>10</span>
-                            <span className='translate-y-[-50%]'>5</span>
-                            <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
-                            <span className='translate-y-[-50%]'>-5</span>
-                            <span className='translate-y-[-50%]'>-10</span>
-                            <span className='translate-y-[-50%]'>-20</span>
-                            <span className='translate-y-[-50%]'>-40</span>
-                            <span className='translate-y-[-50%]'>-∞</span>
-                          </div>
-
-                          <div className='ml-4 flex gap-3 h-full'>
-                            <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]' />
-
-                            <div className='relative h-full w-10 flex flex-col justify-center'>
-                              <div
-                                className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
-                                style={{ bottom: `${Math.round(streamPresetAFader * 100)}%` }}
-                              />
-                              <span
-                                className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
-                                style={{ bottom: `calc(${Math.round(streamPresetAFader * 100)}% - 6px)` }}
-                              >
-                                A
-                              </span>
-                              <div
-                                className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
-                                style={{ bottom: `${Math.round(streamPresetBFader * 100)}%` }}
-                              />
-                              <span
-                                className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
-                                style={{ bottom: `calc(${Math.round(streamPresetBFader * 100)}% - 6px)` }}
-                              >
-                                B
-                              </span>
-                              <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
-                              <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                                <input
-                                  type='range'
-                                  min={0}
-                                  max={1}
-                                  step={0.01}
-                                  value={mixerLevels.streamMasterVolume}
-                                  onChange={(event) => setStreamMasterVolume(Number(event.target.value))}
-                                  onMouseEnter={() => {
-                                    document.body.style.overflow = 'hidden';
-                                  }}
-                                  onMouseLeave={() => {
-                                    document.body.style.overflow = '';
-                                  }}
-                                  onWheel={(e) => {
-                                    const step = 0.02;
-                                    const delta = e.deltaY > 0 ? step : -step;
-                                    setStreamMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.streamMasterVolume + delta)).toFixed(2)));
-                                  }}
-                                  className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-cyan-900/30 bg-[#07161a] text-center shadow-inner'>
-                          <input
-                            key={`stream-level-${mixerLevels.streamMasterVolume}`}
-                            type='text'
-                            inputMode='decimal'
-                            defaultValue={formatMixerLevelInputValue(mixerLevels.streamMasterVolume)}
-                            aria-label='Stream channel level in dB'
-                            onBlur={(event) => {
-                              const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.streamMasterVolume);
-                              setStreamMasterVolume(nextValue);
-                              event.target.value = formatMixerLevelInputValue(nextValue);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.currentTarget.blur();
-                                return;
-                              }
-
-                              if (event.key === 'Escape') {
-                                event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.streamMasterVolume);
-                                event.currentTarget.blur();
-                              }
-                            }}
-                            className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-cyan-300 outline-none'
-                          />
-                          <span className='font-mono text-[9px] tracking-wider text-cyan-700'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
-                        </div>
-                        <button
-                          type='button'
-                          onClick={() => triggerChannelTake('stream')}
-                          disabled={isApplyingTakePresetByChannel.stream}
-                          className='mt-2 w-4/5 rounded border border-cyan-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-cyan-300 transition hover:bg-cyan-900/20 disabled:opacity-50'
-                        >
-                          TAKE {streamTakeTargetSide.toUpperCase()}
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-
-                  {/* --- INSTANTS STRIP --- */}
-                  <div className='flex w-36 flex-col items-center rounded-lg border border-zinc-700 bg-zinc-800/80 pb-6 shadow-xl'>
-                    <div className='w-full rounded-t-lg border-b border-zinc-700 bg-zinc-900 py-2.5 text-center shadow-sm'>
-                      <span className='text-[11px] font-bold tracking-widest text-zinc-400'>INSTANTS</span>
-                    </div>
-
-                    <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                      <button
-                        type='button'
-                        onClick={toggleInstantMuted}
-                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                          mixerLevels.instantMuted
-                            ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
-                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                        }`}
-                      >
-                        Mute
-                      </button>
-                      <button
-                        type='button'
-                        onClick={toggleInstantSolo}
-                        className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                          mixerLevels.instantSolo
-                            ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
-                            : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'
-                        }`}
-                      >
-                        Solo
-                      </button>
-                    </div>
-                    <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
-                      <label className='text-[10px] font-mono text-sky-300'>
-                        <span className='mb-1 block text-center'>A</span>
-                        <input
-                          type='number'
-                          step={0.1}
-                          min={TAKE_VOLUME_PRESET_MIN_DB}
-                          max={TAKE_VOLUME_PRESET_MAX_DB}
-                          value={mixerTakePresetsDb.instants.aDb}
-                          onChange={(event) => updateChannelTakePresetDb('instants', 'a', Number(event.target.value))}
-                          className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                        />
-                      </label>
-                      <label className='text-[10px] font-mono text-amber-300'>
-                        <span className='mb-1 block text-center'>B</span>
-                        <input
-                          type='number'
-                          step={0.1}
-                          min={TAKE_VOLUME_PRESET_MIN_DB}
-                          max={TAKE_VOLUME_PRESET_MAX_DB}
-                          value={mixerTakePresetsDb.instants.bDb}
-                          onChange={(event) => updateChannelTakePresetDb('instants', 'b', Number(event.target.value))}
-                          className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                        />
-                      </label>
-                    </div>
-
-                    <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
-                      <div className='absolute left-3 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
-                        <span className='translate-y-[-50%]'>10</span>
-                        <span className='translate-y-[-50%]'>5</span>
-                        <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
-                        <span className='translate-y-[-50%]'>-5</span>
-                        <span className='translate-y-[-50%]'>-10</span>
-                        <span className='translate-y-[-50%]'>-20</span>
-                        <span className='translate-y-[-50%]'>-40</span>
-                        <span className='translate-y-[-50%]'>-∞</span>
-                      </div>
-
-                      <div className='ml-4 flex gap-3 h-full'>
-                        <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
-                          <div
-                            className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
-                            style={{ bottom: `${Math.round(instantsPeakFill * 100)}%` }}
-                          />
-                          <div
-                            className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
-                            style={{ bottom: `${Math.round(instantsPeakHoldFill * 100)}%` }}
-                          />
-                          <div
-                            className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
-                            style={{ height: `${Math.round(instantsMeterFill * 100)}%` }}
-                          />
-                        </div>
-
-                        <div className='relative h-full w-10 flex flex-col justify-center'>
-                          <div
-                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
-                            style={{ bottom: `${Math.round(instantsPresetAFader * 100)}%` }}
-                          />
-                          <span
-                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
-                            style={{ bottom: `calc(${Math.round(instantsPresetAFader * 100)}% - 6px)` }}
-                          >
-                            A
-                          </span>
-                          <div
-                            className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
-                            style={{ bottom: `${Math.round(instantsPresetBFader * 100)}%` }}
-                          />
-                          <span
-                            className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
-                            style={{ bottom: `calc(${Math.round(instantsPresetBFader * 100)}% - 6px)` }}
-                          >
-                            B
-                          </span>
-                          {/* Fader Track Line */}
-                          <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
-                          {/* Wrapper for rotation */}
-                          <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                            <input
-                              type='range'
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={mixerLevels.instantMasterVolume}
-                              onChange={(event) => setInstantMasterVolume(Number(event.target.value))}
-                              onMouseEnter={() => {
-                                document.body.style.overflow = 'hidden';
-                              }}
-                              onMouseLeave={() => {
-                                document.body.style.overflow = '';
-                              }}
-                              onWheel={(e) => {
-                                const step = 0.02;
-                                const delta = e.deltaY > 0 ? step : -step;
-                                setInstantMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.instantMasterVolume + delta)).toFixed(2)));
-                              }}
-                              className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-zinc-800 [&::-webkit-slider-thumb]:bg-zinc-300 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-zinc-200 [&::-webkit-slider-thumb]:to-zinc-400 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.8),-5px_0_0_rgba(150,150,150,0.4),0_0_0_rgba(150,150,150,0.4),5px_0_0_rgba(150,150,150,0.4)]'
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
-                      <input
-                        key={`instants-level-${mixerLevels.instantMasterVolume}`}
-                        type='text'
-                        inputMode='decimal'
-                        defaultValue={formatMixerLevelInputValue(mixerLevels.instantMasterVolume)}
-                        aria-label='Instants channel level in dB'
-                        onBlur={(event) => {
-                          const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.instantMasterVolume);
-                          setInstantMasterVolume(nextValue);
-                          event.target.value = formatMixerLevelInputValue(nextValue);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.currentTarget.blur();
-                            return;
-                          }
-
-                          if (event.key === 'Escape') {
-                            event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.instantMasterVolume);
-                            event.currentTarget.blur();
-                          }
-                        }}
-                        className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
-                      />
-                      <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{instantsOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
-                    </div>
-                    <button
-                      type='button'
-                      onClick={() => triggerChannelTake('instants')}
-                      disabled={isApplyingTakePresetByChannel.instants}
-                      className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
-                    >
-                      TAKE {instantsTakeTargetSide.toUpperCase()}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* --- MASTER STRIP (FIXED TO RIGHT) --- */}
-              <div className='flex w-44 flex-col items-center rounded-lg border border-red-900/30 bg-zinc-800 pb-6 shadow-2xl shrink-0'>
-                <div className='w-full rounded-t-lg border-b border-red-900/50 bg-red-950/20 py-2.5 text-center shadow-sm'>
-                  <span className='text-[11px] font-bold tracking-widest text-red-500'>MAIN MIX</span>
-                </div>
-
-                <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                  <div className='flex h-[82px] w-full flex-col justify-center rounded border border-red-900/20 bg-zinc-900/50 px-2 py-2 shadow-inner'>
-                    <label className='text-[10px] font-mono text-red-300'>
-                      <span className='mb-1 block text-center'>TAKE FADE (ms)</span>
-                      <input
-                        type='number'
-                        step={100}
-                        min={0}
-                        max={20000}
-                        value={takePresetFadeMs}
-                        onChange={(event) => setTakePresetFadeMs(normalizeTakeVolumeFadeMs(Number(event.target.value), takePresetFadeMs))}
-                        className='w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-red-200 outline-none focus:border-red-400'
-                      />
-                    </label>
-                    <div className='mt-2 grid grid-cols-2 gap-2'>
-                      <label className='text-[10px] font-mono text-sky-300'>
-                        <span className='mb-1 block text-center'>A</span>
-                        <input
-                          type='number'
-                          step={0.1}
-                          min={TAKE_VOLUME_PRESET_MIN_DB}
-                          max={TAKE_VOLUME_PRESET_MAX_DB}
-                          value={mixerTakePresetsDb.main.aDb}
-                          onChange={(event) => updateChannelTakePresetDb('main', 'a', Number(event.target.value))}
-                          className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                        />
-                      </label>
-                      <label className='text-[10px] font-mono text-amber-300'>
-                        <span className='mb-1 block text-center'>B</span>
-                        <input
-                          type='number'
-                          step={0.1}
-                          min={TAKE_VOLUME_PRESET_MIN_DB}
-                          max={TAKE_VOLUME_PRESET_MAX_DB}
-                          value={mixerTakePresetsDb.main.bDb}
-                          onChange={(event) => updateChannelTakePresetDb('main', 'b', Number(event.target.value))}
-                          className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className='relative mt-12 flex h-64 w-full justify-center px-4'>
-                  <div className='absolute left-4 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] text-zinc-500'>
-                    <span className='translate-y-[-50%] text-red-400'>10</span>
-                    <span className='translate-y-[-50%] text-red-400'>5</span>
-                    <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
-                    <span className='translate-y-[-50%]'>-5</span>
-                    <span className='translate-y-[-50%]'>-10</span>
-                    <span className='translate-y-[-50%]'>-20</span>
-                    <span className='translate-y-[-50%]'>-40</span>
-                    <span className='translate-y-[-50%]'>-∞</span>
-                  </div>
-
-                  <div className='ml-4 flex gap-4 h-full'>
-                    <div className='flex gap-1 h-full'>
-                      <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
-                        <div
-                          className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
-                          style={{ bottom: `${Math.round(mainMixPeakFill * 100)}%` }}
-                        />
-                        <div
-                          className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
-                          style={{ bottom: `${Math.round(mainMixPeakHoldFill * 100)}%` }}
-                        />
-                        <div
-                          className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
-                          style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
-                        />
-                      </div>
-                      <div className='relative flex h-full w-2.5 flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
-                        <div
-                          className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
-                          style={{ bottom: `${Math.round(mainMixPeakFill * 100)}%` }}
-                        />
-                        <div
-                          className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
-                          style={{ bottom: `${Math.round(mainMixPeakHoldFill * 100)}%` }}
-                        />
-                        <div
-                          className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
-                          style={{ height: `${Math.round(mainMixMeterFill * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className='relative h-full w-10 flex flex-col justify-center'>
-                      <div
-                        className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
-                        style={{ bottom: `${Math.round(mainPresetAFader * 100)}%` }}
-                      />
-                      <span
-                        className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
-                        style={{ bottom: `calc(${Math.round(mainPresetAFader * 100)}% - 6px)` }}
-                      >
-                        A
-                      </span>
-                      <div
-                        className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
-                        style={{ bottom: `${Math.round(mainPresetBFader * 100)}%` }}
-                      />
-                      <span
-                        className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
-                        style={{ bottom: `calc(${Math.round(mainPresetBFader * 100)}% - 6px)` }}
-                      >
-                        B
-                      </span>
-                      {/* Fader Track Line */}
-                      <div className='absolute left-1/2 top-0 h-full w-2 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
-                      {/* Wrapper for rotation */}
-                      <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                        <input
-                          type='range'
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={mixerLevels.mainMasterVolume}
-                          onChange={(event) => setMainMasterVolume(Number(event.target.value))}
-                          onMouseEnter={() => {
-                            document.body.style.overflow = 'hidden';
-                          }}
-                          onMouseLeave={() => {
-                            document.body.style.overflow = '';
-                          }}
-                          onWheel={(e) => {
-                            const step = 0.02;
-                            const delta = e.deltaY > 0 ? step : -step;
-                            setMainMasterVolume(Number(Math.max(0, Math.min(1, mixerLevels.mainMasterVolume + delta)).toFixed(2)));
-                          }}
-                          className='w-full h-full cursor-grab appearance-none bg-transparent active:cursor-grabbing focus:outline-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-10 [&::-webkit-slider-thumb]:w-14 [&::-webkit-slider-thumb]:rounded [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-red-950 [&::-webkit-slider-thumb]:bg-red-700 [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-red-600 [&::-webkit-slider-thumb]:to-red-800 [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_0_rgba(255,255,255,0.4),-5px_0_0_rgba(100,0,0,0.5),0_0_0_rgba(100,0,0,0.5),5px_0_0_rgba(100,0,0,0.5)]'
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-red-950/50 bg-[#1a0a0a] text-center shadow-inner'>
-                  <input
-                    key={`main-level-${mixerLevels.mainMasterVolume}`}
-                    type='text'
-                    inputMode='decimal'
-                    defaultValue={formatMixerLevelInputValue(mixerLevels.mainMasterVolume)}
-                    aria-label='Main mix level in dB'
-                    onBlur={(event) => {
-                      const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.mainMasterVolume);
-                      setMainMasterVolume(nextValue);
-                      event.target.value = formatMixerLevelInputValue(nextValue);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.currentTarget.blur();
-                        return;
-                      }
-
-                      if (event.key === 'Escape') {
-                        event.currentTarget.value = formatMixerLevelInputValue(mixerLevels.mainMasterVolume);
-                        event.currentTarget.blur();
-                      }
-                    }}
-                    className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-500 outline-none'
-                  />
-                  <span className='font-mono text-[9px] tracking-wider text-red-700'>{mainMixGain > 0 ? 'LIVE' : 'CUT'}</span>
-                </div>
-                <button
-                  type='button'
-                  onClick={() => triggerChannelTake('main')}
-                  disabled={isApplyingTakePresetByChannel.main}
-                  className='mt-2 w-4/5 rounded border border-red-900/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-red-300 transition hover:bg-red-900/20 disabled:opacity-50'
-                >
-                  TAKE {mainTakeTargetSide.toUpperCase()}
-                </button>
-              </div>
-            </div>
-
-            <p className='text-xs text-text-secondary dark:text-text-secondary'>
-              Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Stream/Instants/Scene Instant.
-              Instant channel still controls all catalog instants together, while Scene Instant controls only scene background instant playback.
-            </p>
-                  </div>
-                )
-              },
-              {
-                id: 'instants',
-                title: 'Instants',
-                content: (
-                  <div className='space-y-4'>
-            <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <Button size='sm' variant='secondary' onClick={() => window.location.assign('/instants')}>
-                  Manage Instants
-                </Button>
-                <Button size='sm' variant='secondary' onClick={() => void stopAllInstants()}>
-                  Stop All
-                </Button>
-              </div>
-            </div>
-            <p className='flex items-center gap-2 text-xs text-text-secondary dark:text-text-secondary'>
-              Hotkeys:
-              <Kbd keys={['Ctrl', 'Q..M']} />
-              <span>(QWERTY order, first 26 instants)</span>
-            </p>
-            {isLoadingInstants ? (
-              <p className='text-sm text-text-secondary dark:text-text-secondary'>Loading instants...</p>
-            ) : instants.length === 0 ? (
-              <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants in catalog. Create some in Instants.</p>
-            ) : (
-              <div className='overflow-x-auto'>
-                <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
-                  {instants.map((instant, index) => {
-                    const playbackState = instantPlayback[instant.id] ?? null;
-                    const isPlaying = playbackState !== null;
-                    const durationMs = instantDurationsMs[instant.id] ?? null;
-                    const shortcutLetter = getInstantShortcutLetter(index);
-
-                    return (
-                      <button
-                        key={instant.id}
-                        type='button'
-                        onClick={() => {
-                          void triggerInstant(instant.id);
-                        }}
-                        disabled={!instant.enabled}
-                        className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
-                          !instant.enabled
-                            ? 'cursor-not-allowed border-sand/20 bg-sand/10 opacity-60 dark:border-sand/40 dark:bg-sand/10'
-                            : isPlaying
-                              ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
-                              : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
-                        }`}
-                        title={instant.name}
-                      >
-                        <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
-                          {shortcutLetter || index + 1}
-                        </span>
-                        <div className='mt-6'>
-                          <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>{instant.name}</div>
-                          <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>Vol {instant.volume}</div>
-                          {isPlaying ? (
-                            <div className='mt-1 line-clamp-1 text-[11px] font-semibold text-sea dark:text-accent-blue'>Playing</div>
-                          ) : durationMs !== null ? (
-                            <div className='mt-1 line-clamp-1 text-[11px] text-text-secondary dark:text-text-secondary'>
-                              {`Length ${Math.max(0.1, durationMs / 1000).toFixed(1)}s`}
-                            </div>
-                          ) : null}
-                        </div>
-                        {isPlaying ? (
-                          <div className='pointer-events-none absolute inset-0 overflow-hidden rounded-xl'>
-                            {playbackState && playbackState.endsAtMs !== null ? (
-                              <div
-                                key={`${instant.id}-${playbackState.startedAtMs}`}
-                                className='absolute inset-0 origin-left bg-sea dark:bg-accent-blue'
-                                style={{
-                                  animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`
-                                }}
-                              />
-                            ) : (
-                              <div
-                                className='absolute inset-0 bg-sea dark:bg-accent-blue'
-                                style={{
-                                  animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`
-                                }}
-                              />
-                            )}
-                          </div>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-                  </div>
-                )
-              },
-              {
-                id: 'scene-attributes',
-                title: 'Stage Attributes',
-                content: (
-                  <div className='space-y-4'>
-            {!selectedScene ? (
-              <p className='text-sm text-text-secondary dark:text-text-secondary'>Stage a scene above to edit its attributes before taking it live.</p>
-            ) : (
-              <div className='space-y-4'>
-                <p className='text-sm text-sea dark:text-accent-blue'>
-                  Editing staged scene: {scenes.find((s) => s.id === selectedScene)?.name}
-                  {stagedIsOnAir ? ' (ON AIR)' : ''}
-                </p>
-                {activeProgramId === 'fifthbell' && (
-                  <p className='text-xs text-text-secondary dark:text-text-secondary'>
-                    FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` / `toni-clock`).
-                  </p>
-                )}
-                <div className='space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
-                  <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
-                    <div className='flex-1'>
-                      <label className='block text-xs text-gray-600 mb-1'>Scene Background Instant</label>
-                      <select
-                        value={selectedSceneInstantId ? String(selectedSceneInstantId) : ''}
-                        onChange={(event) => {
-                          const nextInstantId = normalizeSceneInstantId(event.target.value);
-                          updateSceneEditorProp('sceneInstant', 'instantId', nextInstantId);
-                        }}
-                        className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
-                      >
-                        <option value=''>No background instant</option>
-                        {instants
-                          .filter((instant) => instant.enabled)
-                          .map((instant) => (
-                            <option key={instant.id} value={instant.id}>
-                              {instant.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                    <div className='flex flex-wrap gap-2'>
-                      <Button
-                        size='sm'
-                        onClick={() => {
-                          void takeSceneInstant(selectedScene);
-                        }}
-                        disabled={!selectedScene || selectedSceneInstantId === null || !selectedSceneInstant}
-                      >
-                        TAKE BG
-                      </Button>
-                      <Button size='sm' variant='secondary' onClick={() => void stopSceneInstant()} disabled={!sceneInstantPlayback.isPlaying}>
-                        STOP BG
-                      </Button>
-                    </div>
-                  </div>
-                  <p className='text-xs text-text-secondary dark:text-text-secondary'>
-                    {sceneInstantPlayback.isPlaying
-                      ? `Playing: ${sceneInstantPlayback.instantName || 'Scene instant'}`
-                      : selectedSceneInstant
-                        ? `Ready: ${selectedSceneInstant.name}`
-                        : 'Select an instant (changes save automatically), then TAKE BG.'}
-                  </p>
-                </div>
-                <div className='space-y-4 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
-                  {editableSceneComponentEntries.length === 0 && (
-                    <p className='text-sm text-text-secondary dark:text-text-secondary'>No configurable component attributes for this scene.</p>
-                  )}
-                  {editableSceneComponentEntries.map(([componentType, props]) => {
-                    const compInfo = componentTypes.find((ct) => ct.type === componentType);
-                    return (
-                      <div key={componentType} className='border-b border-sand/20 pb-4 last:border-b-0 dark:border-sand/40'>
-                        <h4 className='mb-2 text-md font-semibold text-text-primary dark:text-text-primary'>{compInfo?.name || componentType}</h4>
-                        <ComponentPropsFields
-                          componentType={componentType}
-                          props={props}
-                          updateProp={updateSceneEditorProp}
-                          replaceProps={replaceSceneEditorComponentProps}
-                          commitProps={commitSceneEditorComponentProps}
-                          songCatalog={songCatalog}
-                          mediaGroups={mediaGroups}
-                          isLoadingMediaGroups={isLoadingMediaGroups}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-                {isSavingSceneAttributes ? (
-                  <p className='text-xs text-text-secondary dark:text-text-secondary text-right'>Autosaving scene attributes…</p>
-                ) : null}
-              </div>
-            )}
-                  </div>
-                )
-              }
-            ]}
-          />
-        </Panel>
-
-        <Panel title='Current Queue' accent='#8b5cf6' width={520} className='min-w-0 h-full'>
-          <ProgramSongSequenceEditor
-            sequence={programAudioBusSongSequence}
-            songCatalog={songCatalog}
-            programSongPlayback={programSongPlaybackState}
-            view='queue'
-            showPlaybackBar
-            onChange={(nextSequence) => {
-              void saveProgramAudioBusSongSequence(nextSequence);
-            }}
-            onTakeSelection={async (nextSequence) => {
-              await saveProgramAudioBusSongSequence(nextSequence);
-            }}
-            onTakeOffAir={async () => {
-              await takeProgramSongOffAir(activeProgramId);
-            }}
-          />
-        </Panel>
-      </PanelLayout>
+          </Panel>
+        </PanelLayout>
       </div>
     </div>
   );
@@ -6411,6 +6558,7 @@ function ProgramSongSequenceEditor({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [addSongValue, setAddSongValue] = useState('');
+  const [stickyPlaybackItemId, setStickyPlaybackItemId] = useState<string | null>(null);
   const songDurationByUrlRef = useRef<Record<string, number | null>>({});
   const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
@@ -6419,6 +6567,66 @@ function ProgramSongSequenceEditor({
   const showCatalog = view !== 'queue';
   const hasFixedPlaybackBar = showPlaybackBar && !isNested;
   const effectiveActiveItemId = getProgramSongSequenceSelectedItemId(sequence, nowMs);
+  const playbackActiveItemId = useMemo(() => {
+    if (!programSongPlayback?.isPlaying) {
+      return null;
+    }
+
+    const playbackToken = (programSongPlayback.token || '').trim();
+    const playbackAudioUrl = (programSongPlayback.audioUrl || '').trim();
+
+    if (playbackToken) {
+      const tokenMatch = sequence.items.find((item) => item.id && playbackToken.startsWith(`${item.id}:`));
+      if (tokenMatch) {
+        return tokenMatch.id;
+      }
+    }
+
+    if (playbackAudioUrl) {
+      const urlMatches = sequence.items.filter((item) => item.kind === 'preset' && (item.audioUrl || '').trim() === playbackAudioUrl);
+      if (urlMatches.length === 1) {
+        return urlMatches[0]?.id ?? null;
+      }
+      if (urlMatches.length > 1) {
+        if (sequence.activeItemId && urlMatches.some((item) => item.id === sequence.activeItemId)) {
+          return sequence.activeItemId;
+        }
+        if (effectiveActiveItemId && urlMatches.some((item) => item.id === effectiveActiveItemId)) {
+          return effectiveActiveItemId;
+        }
+      }
+    }
+
+    return null;
+  }, [effectiveActiveItemId, programSongPlayback?.audioUrl, programSongPlayback?.isPlaying, programSongPlayback?.token, sequence.activeItemId, sequence.items]);
+
+  useEffect(() => {
+    if (programSongPlayback?.isPlaying) {
+      if (playbackActiveItemId && sequence.items.some((item) => item.id === playbackActiveItemId)) {
+        if (stickyPlaybackItemId !== playbackActiveItemId) {
+          setStickyPlaybackItemId(playbackActiveItemId);
+        }
+        return;
+      }
+
+      if (stickyPlaybackItemId && !sequence.items.some((item) => item.id === stickyPlaybackItemId)) {
+        setStickyPlaybackItemId(null);
+      }
+      return;
+    }
+
+    if (stickyPlaybackItemId !== null) {
+      setStickyPlaybackItemId(null);
+    }
+  }, [playbackActiveItemId, programSongPlayback?.isPlaying, sequence.items, stickyPlaybackItemId]);
+
+  const runtimeActiveItemId = useMemo(() => {
+    if (programSongPlayback?.isPlaying) {
+      return stickyPlaybackItemId ?? playbackActiveItemId ?? sequence.activeItemId ?? (sequence.mode === 'autoplay' ? effectiveActiveItemId : null) ?? null;
+    }
+    return sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId ?? null) : (sequence.activeItemId ?? null);
+  }, [effectiveActiveItemId, playbackActiveItemId, programSongPlayback?.isPlaying, sequence.activeItemId, sequence.mode, stickyPlaybackItemId]);
+  const runtimeActiveItemIndex = runtimeActiveItemId ? sequence.items.findIndex((item) => item.id === runtimeActiveItemId) : -1;
   const availableSongCatalog = useMemo(
     () =>
       songCatalog
@@ -6453,7 +6661,7 @@ function ProgramSongSequenceEditor({
   }, [sequence.items, expandedItemId]);
 
   useEffect(() => {
-    if (!sequence.activeItemId) {
+    if (!sequence.activeItemId && !programSongPlayback?.isPlaying) {
       return;
     }
 
@@ -6462,7 +6670,7 @@ function ProgramSongSequenceEditor({
     }, 250);
 
     return () => clearInterval(timer);
-  }, [sequence.activeItemId, sequence.startedAt]);
+  }, [programSongPlayback?.isPlaying, sequence.activeItemId, sequence.startedAt]);
 
   const applySequence = (nextSequence: ProgramSongSequence) => {
     onChange({
@@ -6510,7 +6718,7 @@ function ProgramSongSequenceEditor({
     }
 
     const isAutoplay = sequence.mode === 'autoplay';
-    const anchorActiveItemId = isAutoplay ? (effectiveActiveItemId ?? sequence.activeItemId ?? nextItem.id) : (sequence.activeItemId ?? nextItem.id);
+    const anchorActiveItemId = isAutoplay ? (runtimeActiveItemId ?? sequence.activeItemId ?? nextItem.id) : (runtimeActiveItemId ?? nextItem.id);
 
     applySequence({
       ...sequence,
@@ -6542,7 +6750,7 @@ function ProgramSongSequenceEditor({
     applySequence({
       ...sequence,
       items: [...sequence.items, filledItem],
-      activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId ?? filledItem.id) : sequence.activeItemId
+      activeItemId: sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId ?? filledItem.id) : runtimeActiveItemId
     });
   };
 
@@ -6554,8 +6762,8 @@ function ProgramSongSequenceEditor({
 
     const nextItems = sequence.items.filter((_, itemIndex) => itemIndex !== index);
     const isAutoplay = sequence.mode === 'autoplay';
-    const runtimeActiveItemId = isAutoplay ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId;
-    const removedCurrentRuntimeItem = runtimeActiveItemId !== null && runtimeActiveItemId === removedItem.id;
+    const currentRuntimeActiveItemId = isAutoplay ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId);
+    const removedCurrentRuntimeItem = currentRuntimeActiveItemId !== null && currentRuntimeActiveItemId === removedItem.id;
     let nextActiveItemId: string | null;
 
     if (nextItems.length === 0) {
@@ -6563,7 +6771,10 @@ function ProgramSongSequenceEditor({
     } else if (removedCurrentRuntimeItem) {
       nextActiveItemId = nextItems[Math.min(index, nextItems.length - 1)]?.id ?? null;
     } else {
-      nextActiveItemId = runtimeActiveItemId && nextItems.some((item) => item.id === runtimeActiveItemId) ? runtimeActiveItemId : (nextItems[0]?.id ?? null);
+      nextActiveItemId =
+        currentRuntimeActiveItemId && nextItems.some((item) => item.id === currentRuntimeActiveItemId)
+          ? currentRuntimeActiveItemId
+          : (nextItems[0]?.id ?? null);
     }
 
     applySequence({
@@ -6766,7 +6977,7 @@ function ProgramSongSequenceEditor({
       return now;
     }
 
-    const targetItemId = sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId ?? null) : (sequence.activeItemId ?? null);
+    const targetItemId = sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId ?? null) : (runtimeActiveItemId ?? sequence.activeItemId ?? null);
     if (!targetItemId) {
       return now;
     }
@@ -6796,149 +7007,172 @@ function ProgramSongSequenceEditor({
         {/* Left Column: Playlist Queue */}
         {showQueue ? (
           <div className={`flex min-h-0 flex-1 flex-col ${showCatalog ? 'border-r-0 border-zinc-800/60 md:border-r' : ''}`}>
-          <div className='flex items-center justify-between border-b border-zinc-800/60 bg-zinc-900/20 px-4 py-2 border-t'>
-            <span className='text-[10px] font-semibold uppercase tracking-widest text-zinc-500'>Current Queue</span>
-            <span className='text-[10px] text-zinc-500'>
-              {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
-            </span>
-          </div>
-
-          {sequence.items.length === 0 ? (
-            <div className='flex flex-1 flex-col items-center justify-center px-4 py-16 text-center'>
-              <Music2 size={32} className='mb-3 text-zinc-700' />
-              <p className='text-sm font-medium text-zinc-400'>Queue is empty</p>
-              <p className='mt-1 text-xs text-zinc-600'>Search and add songs from the catalog panel.</p>
+            <div className='flex items-center justify-between border-b border-zinc-800/60 bg-zinc-900/20 px-4 py-2 border-t'>
+              <span className='text-[10px] font-semibold uppercase tracking-widest text-zinc-500'>Current Queue</span>
+              <span className='text-[10px] text-zinc-500'>
+                {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
+              </span>
             </div>
-          ) : (
-            <div className='min-h-0 flex-1 overflow-auto'>
-              <div className='min-w-100'>
-                {/* Column header */}
-                <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-zinc-800/60 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-700'>
-                  <span />
-                  <span className='text-center'>#</span>
-                  <span style={{ paddingLeft: '50px' }}>Title</span>
-                  <span className='flex items-center justify-end pr-3'>
-                    <Clock size={10} />
-                  </span>
-                  <span />
-                </div>
 
-                <div className='divide-y divide-zinc-800/40'>
-                  {sequence.items.map((item, index) => {
-                    const displayItem = item;
-                    const isActive = displayItem.id === effectiveActiveItemId;
-                    const isExpanded = displayItem.kind === 'preset' && expandedItemId === displayItem.id;
-                    const selectedCatalogSong =
-                      displayItem.kind === 'preset'
-                        ? availableSongCatalog.find((song) => {
-                            if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) {
-                              return true;
-                            }
+            {sequence.items.length === 0 ? (
+              <div className='flex flex-1 flex-col items-center justify-center px-4 py-16 text-center'>
+                <Music2 size={32} className='mb-3 text-zinc-700' />
+                <p className='text-sm font-medium text-zinc-400'>Queue is empty</p>
+                <p className='mt-1 text-xs text-zinc-600'>Search and add songs from the catalog panel.</p>
+              </div>
+            ) : (
+              <div className='min-h-0 flex-1 overflow-auto'>
+                <div className='min-w-100'>
+                  {/* Column header */}
+                  <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-zinc-800/60 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-700'>
+                    <span />
+                    <span className='text-center'>#</span>
+                    <span style={{ paddingLeft: '50px' }}>Title</span>
+                    <span className='flex items-center justify-end pr-3'>
+                      <Clock size={10} />
+                    </span>
+                    <span />
+                  </div>
 
-                            const sameArtist = (song.artist || '').trim() === displayItem.artist.trim();
-                            const sameTitle = (song.title || '').trim() === displayItem.title.trim();
-                            const sameCover = (song.coverUrl || '').trim() === displayItem.coverUrl.trim();
-                            return sameArtist && sameTitle && sameCover;
-                          })
-                        : null;
-                    const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
-                    const titleText = displayItem.kind === 'preset' ? displayItem.title.trim() : displayItem.label.trim();
-                    const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() : '';
-                    const rowDuration = displayItem.kind === 'preset' ? formatDurationFromMs(displayItem.durationMs) : '—';
-                    const coverUrl = displayItem.kind === 'preset' ? displayItem.coverUrl.trim() : '';
+                  <div className='divide-y divide-zinc-800/40'>
+                    {sequence.items.map((item, index) => {
+                      const displayItem = item;
+                      const isActive = displayItem.id === runtimeActiveItemId;
+                      const isExpanded = displayItem.kind === 'preset' && expandedItemId === displayItem.id;
+                      const selectedCatalogSong =
+                        displayItem.kind === 'preset'
+                          ? availableSongCatalog.find((song) => {
+                              if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) {
+                                return true;
+                              }
 
-                    return (
-                      <div
-                        key={displayItem.id}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          if (draggingIndex !== null) {
-                            reorderItems(draggingIndex, index);
-                          }
-                          setDraggingIndex(null);
-                        }}
-                      >
-                        {/* Main track row */}
+                              const sameArtist = (song.artist || '').trim() === displayItem.artist.trim();
+                              const sameTitle = (song.title || '').trim() === displayItem.title.trim();
+                              const sameCover = (song.coverUrl || '').trim() === displayItem.coverUrl.trim();
+                              return sameArtist && sameTitle && sameCover;
+                            })
+                          : null;
+                      const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
+                      const titleText = displayItem.kind === 'preset' ? displayItem.title.trim() : displayItem.label.trim();
+                      const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() : '';
+                      const rowDuration = displayItem.kind === 'preset' ? formatDurationFromMs(displayItem.durationMs) : '—';
+                      const coverUrl = displayItem.kind === 'preset' ? displayItem.coverUrl.trim() : '';
+
+                      return (
                         <div
-                          className={`group grid grid-cols-[28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${
-                            isActive ? 'bg-sky-500/10' : 'hover:bg-white/3'
-                          }`}
+                          key={displayItem.id}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (draggingIndex !== null) {
+                              reorderItems(draggingIndex, index);
+                            }
+                            setDraggingIndex(null);
+                          }}
                         >
-                          {/* Drag handle — hidden until hover */}
-                          <span
-                            draggable
-                            onDragStart={() => setDraggingIndex(index)}
-                            onDragEnd={() => setDraggingIndex(null)}
-                            className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100'
-                            title='Drag to reorder'
-                            aria-label='Drag to reorder'
+                          {/* Main track row */}
+                          <div
+                            className={`group grid grid-cols-[28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${
+                              isActive ? 'bg-sky-500/10' : 'hover:bg-white/3'
+                            }`}
                           >
-                            <GripVertical size={12} strokeWidth={2} />
-                          </span>
-
-                          {/* Track number / eq bars / take-on-hover */}
-                          <button
-                            type='button'
-                            onClick={() => {
-                              void activateItem(displayItem.id);
-                            }}
-                            className='relative flex h-6 w-6 shrink-0 items-center justify-center'
-                            title='Take on air'
-                          >
-                            {/* Number — visible by default when not active, hidden on hover */}
-                            <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-zinc-500 group-hover:opacity-0'}`}>
-                              {index + 1}
+                            {/* Drag handle — hidden until hover */}
+                            <span
+                              draggable
+                              onDragStart={() => setDraggingIndex(index)}
+                              onDragEnd={() => setDraggingIndex(null)}
+                              className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100'
+                              title='Drag to reorder'
+                              aria-label='Drag to reorder'
+                            >
+                              <GripVertical size={12} strokeWidth={2} />
                             </span>
-                            {/* EQ bars — only when active */}
-                            {isActive && (
-                              <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
-                                <span
-                                  className='w-0.75 rounded-sm bg-sky-400 opacity-100'
-                                  style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }}
-                                />
-                                <span
-                                  className='w-0.75 rounded-sm bg-sky-400 opacity-100'
-                                  style={{ animation: 'eq-bar2 0.8s ease-in-out 0.15s infinite alternate' }}
-                                />
-                                <span
-                                  className='w-0.75 rounded-sm bg-sky-400 opacity-100'
-                                  style={{ animation: 'eq-bar1 0.8s ease-in-out 0.3s infinite alternate' }}
-                                />
+
+                            {/* Track number / eq bars / take-on-hover */}
+                            <button
+                              type='button'
+                              onClick={() => {
+                                void activateItem(displayItem.id);
+                              }}
+                              className='relative flex h-6 w-6 shrink-0 items-center justify-center'
+                              title='Take on air'
+                            >
+                              {/* Number — visible by default when not active, hidden on hover */}
+                              <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-zinc-500 group-hover:opacity-0'}`}>
+                                {index + 1}
                               </span>
-                            )}
-                            {/* Play icon — shows on hover always */}
-                            <span className='absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100'>
-                              <Play size={11} className='fill-zinc-100 text-zinc-100' />
-                            </span>
-                          </button>
+                              {/* EQ bars — only when active */}
+                              {isActive && (
+                                <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
+                                  <span
+                                    className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                    style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }}
+                                  />
+                                  <span
+                                    className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                    style={{ animation: 'eq-bar2 0.8s ease-in-out 0.15s infinite alternate' }}
+                                  />
+                                  <span
+                                    className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                    style={{ animation: 'eq-bar1 0.8s ease-in-out 0.3s infinite alternate' }}
+                                  />
+                                </span>
+                              )}
+                              {/* Play icon — shows on hover always */}
+                              <span className='absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100'>
+                                <Play size={11} className='fill-zinc-100 text-zinc-100' />
+                              </span>
+                            </button>
 
-                          {/* Cover art + title + artist */}
-                          <div className='flex min-w-0 items-center gap-2.5 pl-1'>
-                            {coverUrl ? (
-                              <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
-                            ) : (
-                              <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-xs font-bold text-zinc-600'>
-                                {titleText.slice(0, 1).toUpperCase() || '?'}
+                            {/* Cover art + title + artist */}
+                            <div className='flex min-w-0 items-center gap-2.5 pl-1'>
+                              {coverUrl ? (
+                                <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
+                              ) : (
+                                <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-xs font-bold text-zinc-600'>
+                                  {titleText.slice(0, 1).toUpperCase() || '?'}
+                                </div>
+                              )}
+                              <div className='min-w-0'>
+                                <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sky-400' : 'text-zinc-100'}`}>
+                                  {titleText}
+                                </div>
+                                <div className='truncate text-[11px] leading-tight text-zinc-500 mt-0.5'>{artistText}</div>
                               </div>
-                            )}
-                            <div className='min-w-0'>
-                              <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sky-400' : 'text-zinc-100'}`}>{titleText}</div>
-                              <div className='truncate text-[11px] leading-tight text-zinc-500 mt-0.5'>{artistText}</div>
                             </div>
-                          </div>
 
-                          {/* Duration */}
-                          <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{rowDuration}</span>
+                            {/* Duration */}
+                            <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{rowDuration}</span>
 
-                          {/* Hover actions */}
-                          <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
-                            {displayItem.kind === 'preset' ? (
+                            {/* Hover actions */}
+                            <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                              {displayItem.kind === 'preset' ? (
+                                <button
+                                  type='button'
+                                  onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
+                                  className='flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:text-zinc-200'
+                                  title='Edit song'
+                                >
+                                  <svg
+                                    width='13'
+                                    height='13'
+                                    viewBox='0 0 24 24'
+                                    fill='none'
+                                    stroke='currentColor'
+                                    strokeWidth='2'
+                                    strokeLinecap='round'
+                                    strokeLinejoin='round'
+                                  >
+                                    <path d='M12 20h9' />
+                                    <path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
+                                  </svg>
+                                </button>
+                              ) : null}
                               <button
                                 type='button'
-                                onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
-                                className='flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:text-zinc-200'
-                                title='Edit song'
+                                onClick={() => removeItem(index)}
+                                className='flex h-6 w-6 items-center justify-center rounded text-zinc-600 transition-colors hover:text-red-400'
+                                title='Remove'
                               >
                                 <svg
                                   width='13'
@@ -6950,154 +7184,131 @@ function ProgramSongSequenceEditor({
                                   strokeLinecap='round'
                                   strokeLinejoin='round'
                                 >
-                                  <path d='M12 20h9' />
-                                  <path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
+                                  <polyline points='3 6 5 6 21 6' />
+                                  <path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' />
+                                  <path d='M10 11v6' />
+                                  <path d='M14 11v6' />
+                                  <path d='M9 6V4h6v2' />
                                 </svg>
                               </button>
-                            ) : null}
-                            <button
-                              type='button'
-                              onClick={() => removeItem(index)}
-                              className='flex h-6 w-6 items-center justify-center rounded text-zinc-600 transition-colors hover:text-red-400'
-                              title='Remove'
-                            >
-                              <svg
-                                width='13'
-                                height='13'
-                                viewBox='0 0 24 24'
-                                fill='none'
-                                stroke='currentColor'
-                                strokeWidth='2'
-                                strokeLinecap='round'
-                                strokeLinejoin='round'
-                              >
-                                <polyline points='3 6 5 6 21 6' />
-                                <path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' />
-                                <path d='M10 11v6' />
-                                <path d='M14 11v6' />
-                                <path d='M9 6V4h6v2' />
-                              </svg>
-                            </button>
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Expanded edit panel */}
-                        {displayItem.kind === 'preset' && isExpanded ? (
-                          <div className='border-t border-zinc-800 bg-zinc-900/40 px-3 py-2'>
-                            <div className='flex items-center rounded'>
-                              <Select
-                                value={selectedCatalogSongValue}
-                                options={catalogOptions}
-                                placeholder='Swap song...'
-                                onChange={(value) => {
-                                  const songId = Number(value);
-                                  if (!Number.isFinite(songId) || songId <= 0) return;
-                                  const selectedSong = availableSongCatalog.find((song) => song.id === songId);
-                                  if (!selectedSong) return;
-                                  applyCatalogSongToItem(index, displayItem, selectedSong);
-                                  setExpandedItemId(null);
+                          {/* Expanded edit panel */}
+                          {displayItem.kind === 'preset' && isExpanded ? (
+                            <div className='border-t border-zinc-800 bg-zinc-900/40 px-3 py-2'>
+                              <div className='flex items-center rounded'>
+                                <Select
+                                  value={selectedCatalogSongValue}
+                                  options={catalogOptions}
+                                  placeholder='Swap song...'
+                                  onChange={(value) => {
+                                    const songId = Number(value);
+                                    if (!Number.isFinite(songId) || songId <= 0) return;
+                                    const selectedSong = availableSongCatalog.find((song) => song.id === songId);
+                                    if (!selectedSong) return;
+                                    applyCatalogSongToItem(index, displayItem, selectedSong);
+                                    setExpandedItemId(null);
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {displayItem.kind === 'sequence' ? (
+                            <div className='border-t border-zinc-800 bg-zinc-900/50 px-4 py-3'>
+                              <p className='mb-2 text-xs text-zinc-600'>Legacy nested sequence. Flatten if possible.</p>
+                              <ProgramSongSequenceEditor
+                                sequence={displayItem.sequence}
+                                songCatalog={songCatalog}
+                                depth={depth + 1}
+                                onChange={(nextNestedSequence) =>
+                                  updateItem(index, {
+                                    ...displayItem,
+                                    sequence: nextNestedSequence
+                                  })
+                                }
+                                onTakeSelection={async (nextNestedSequence) => {
+                                  const nextSequence = {
+                                    ...sequence,
+                                    items: sequence.items.map((entry, sequenceIndex) =>
+                                      sequenceIndex === index ? { ...displayItem, sequence: nextNestedSequence } : entry
+                                    )
+                                  };
+                                  applySequence(nextSequence);
+                                  if (onTakeSelection) {
+                                    await onTakeSelection(nextSequence);
+                                  }
+                                  scheduleAutoTakeOffForSequence(nextSequence);
                                 }}
                               />
                             </div>
-                          </div>
-                        ) : null}
-
-                        {displayItem.kind === 'sequence' ? (
-                          <div className='border-t border-zinc-800 bg-zinc-900/50 px-4 py-3'>
-                            <p className='mb-2 text-xs text-zinc-600'>Legacy nested sequence. Flatten if possible.</p>
-                            <ProgramSongSequenceEditor
-                              sequence={displayItem.sequence}
-                              songCatalog={songCatalog}
-                              depth={depth + 1}
-                              onChange={(nextNestedSequence) =>
-                                updateItem(index, {
-                                  ...displayItem,
-                                  sequence: nextNestedSequence
-                                })
-                              }
-                              onTakeSelection={async (nextNestedSequence) => {
-                                const nextSequence = {
-                                  ...sequence,
-                                  items: sequence.items.map((entry, sequenceIndex) =>
-                                    sequenceIndex === index ? { ...displayItem, sequence: nextNestedSequence } : entry
-                                  )
-                                };
-                                applySequence(nextSequence);
-                                if (onTakeSelection) {
-                                  await onTakeSelection(nextSequence);
-                                }
-                                scheduleAutoTakeOffForSequence(nextSequence);
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
           </div>
         ) : null}
 
         {/* Right Column: Catalog Inventory */}
         {showCatalog ? (
           <div
-            className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-900/30 ${
-              showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'
-            }`}
+            className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-900/30 ${showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'}`}
           >
-          <div className='border-b border-zinc-800/60 bg-zinc-900/40 p-2'>
-            <input
-              type='text'
-              placeholder='Search catalog to add...'
-              value={addSongValue}
-              onChange={(e) => setAddSongValue(e.target.value)}
-              className='w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/50'
-            />
-          </div>
-          <div className={showQueue ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-125 overflow-y-auto'}>
-            {availableSongCatalog
-              .filter((song) => {
-                if (!addSongValue) return true;
-                const search = addSongValue.toLowerCase();
-                return song.title?.toLowerCase().includes(search) || song.artist?.toLowerCase().includes(search);
-              })
-              .slice(0, 80)
-              .map((song) => (
-                <div key={song.id} className='group flex items-center justify-between border-b border-zinc-800/40 px-3 py-2 hover:bg-white/5'>
-                  <div className='flex min-w-0 items-center gap-2'>
-                    {song.coverUrl ? (
-                      <img src={song.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover opacity-80' />
-                    ) : (
-                      <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-zinc-500'>
-                        {song.title?.charAt(0) || <Music2 size={12} />}
+            <div className='border-b border-zinc-800/60 bg-zinc-900/40 p-2'>
+              <input
+                type='text'
+                placeholder='Search catalog to add...'
+                value={addSongValue}
+                onChange={(e) => setAddSongValue(e.target.value)}
+                className='w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/50'
+              />
+            </div>
+            <div className={showQueue ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-125 overflow-y-auto'}>
+              {availableSongCatalog
+                .filter((song) => {
+                  if (!addSongValue) return true;
+                  const search = addSongValue.toLowerCase();
+                  return song.title?.toLowerCase().includes(search) || song.artist?.toLowerCase().includes(search);
+                })
+                .slice(0, 80)
+                .map((song) => (
+                  <div key={song.id} className='group flex items-center justify-between border-b border-zinc-800/40 px-3 py-2 hover:bg-white/5'>
+                    <div className='flex min-w-0 items-center gap-2'>
+                      {song.coverUrl ? (
+                        <img src={song.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover opacity-80' />
+                      ) : (
+                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-zinc-500'>
+                          {song.title?.charAt(0) || <Music2 size={12} />}
+                        </div>
+                      )}
+                      <div className='min-w-0 pr-2'>
+                        <div className='truncate text-[11px] font-medium text-zinc-200'>{song.title}</div>
+                        <div className='truncate text-[10px] text-zinc-500'>{song.artist}</div>
                       </div>
-                    )}
-                    <div className='min-w-0 pr-2'>
-                      <div className='truncate text-[11px] font-medium text-zinc-200'>{song.title}</div>
-                      <div className='truncate text-[10px] text-zinc-500'>{song.artist}</div>
                     </div>
+                    <button
+                      type='button'
+                      onClick={() => addItemFromCatalog(song.id)}
+                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-zinc-500 opacity-0 transition-all hover:bg-sky-500/20 hover:text-sky-400 group-hover:opacity-100'
+                      title='Add to queue'
+                    >
+                      <Plus size={14} />
+                    </button>
                   </div>
-                  <button
-                    type='button'
-                    onClick={() => addItemFromCatalog(song.id)}
-                    className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-zinc-500 opacity-0 transition-all hover:bg-sky-500/20 hover:text-sky-400 group-hover:opacity-100'
-                    title='Add to queue'
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              ))}
-            {availableSongCatalog.length > 0 &&
-              availableSongCatalog.filter(
-                (song) =>
-                  !addSongValue ||
-                  song.title?.toLowerCase().includes(addSongValue.toLowerCase()) ||
-                  song.artist?.toLowerCase().includes(addSongValue.toLowerCase())
-              ).length === 0 && <div className='p-4 text-center text-xs text-zinc-500'>No matches found</div>}
-          </div>
+                ))}
+              {availableSongCatalog.length > 0 &&
+                availableSongCatalog.filter(
+                  (song) =>
+                    !addSongValue ||
+                    song.title?.toLowerCase().includes(addSongValue.toLowerCase()) ||
+                    song.artist?.toLowerCase().includes(addSongValue.toLowerCase())
+                ).length === 0 && <div className='p-4 text-center text-xs text-zinc-500'>No matches found</div>}
+            </div>
           </div>
         ) : null}
       </div>
@@ -7113,233 +7324,236 @@ function ProgramSongSequenceEditor({
               : ''
           }`}
         >
-        {/* Transport controls */}
-        <div className='flex items-center gap-2'>
-          <button
-            type='button'
-            title='Previous'
-            disabled={sequence.items.findIndex((i) => i.id === effectiveActiveItemId) <= 0}
-            onClick={() => {
-              const idx = sequence.items.findIndex((i) => i.id === effectiveActiveItemId);
-              if (idx > 0) {
-                void activateItem(sequence.items[idx - 1].id);
-              }
-            }}
-            className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
-          >
-            <SkipBack size={16} fill='currentColor' />
-          </button>
+          {/* Transport controls */}
+          <div className='flex items-center gap-2'>
+            <button
+              type='button'
+              title='Previous'
+              disabled={runtimeActiveItemIndex <= 0}
+              onClick={() => {
+                const idx = runtimeActiveItemIndex;
+                if (idx > 0) {
+                  void activateItem(sequence.items[idx - 1].id);
+                }
+              }}
+              className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
+            >
+              <SkipBack size={16} fill='currentColor' />
+            </button>
 
-          <button
-            type='button'
-            title={sequence.activeItemId ? 'Next / Advance' : 'Play'}
-            onClick={() => {
-              if (!sequence.activeItemId && sequence.items.length > 0) {
-                void activateItem(sequence.items[0].id);
-              } else if (sequence.activeItemId) {
-                const idx = sequence.items.findIndex((i) => i.id === sequence.activeItemId);
+            <button
+              type='button'
+              title={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
+              onClick={() => {
+                if (!runtimeActiveItemId && sequence.items.length > 0) {
+                  void activateItem(sequence.items[0].id);
+                } else if (runtimeActiveItemId) {
+                  const idx = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
+                  if (idx < sequence.items.length - 1) {
+                    void activateItem(sequence.items[idx + 1].id);
+                  } else {
+                    void activateItem(sequence.items[0].id);
+                  }
+                }
+              }}
+              className='flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-zinc-950 shadow-lg transition-transform hover:scale-105 hover:bg-sky-400 active:scale-95'
+            >
+              <Play size={18} fill='currentColor' className='ml-0.5' />
+            </button>
+
+            <button
+              type='button'
+              title='Stop / Take Off Air'
+              onClick={() => {
+                void clearActiveItem();
+              }}
+              className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200'
+            >
+              <Square size={16} fill='currentColor' />
+            </button>
+
+            <button
+              type='button'
+              title='Next'
+              disabled={runtimeActiveItemIndex < 0 || runtimeActiveItemIndex >= sequence.items.length - 1}
+              onClick={() => {
+                const idx = runtimeActiveItemIndex;
                 if (idx < sequence.items.length - 1) {
                   void activateItem(sequence.items[idx + 1].id);
-                } else {
-                  void activateItem(sequence.items[0].id);
                 }
-              }
-            }}
-            className='flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-zinc-950 shadow-lg transition-transform hover:scale-105 hover:bg-sky-400 active:scale-95'
-          >
-            <Play size={18} fill='currentColor' className='ml-0.5' />
-          </button>
-
-          <button
-            type='button'
-            title='Stop / Take Off Air'
-            onClick={() => {
-              void clearActiveItem();
-            }}
-            className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200'
-          >
-            <Square size={16} fill='currentColor' />
-          </button>
-
-          <button
-            type='button'
-            title='Next'
-            disabled={!effectiveActiveItemId || sequence.items.findIndex((i) => i.id === effectiveActiveItemId) >= sequence.items.length - 1}
-            onClick={() => {
-              const idx = sequence.items.findIndex((i) => i.id === effectiveActiveItemId);
-              if (idx < sequence.items.length - 1) {
-                void activateItem(sequence.items[idx + 1].id);
-              }
-            }}
-            className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
-          >
-            <SkipForward size={16} fill='currentColor' />
-          </button>
-        </div>
-
-        {/* Now playing info + progress */}
-        <div className='hidden min-w-0 flex-1 px-4 md:block'>
-          {sequence.activeItemId ? (
-            (() => {
-              // In autoplay, effectiveActiveItemId walks the sequence by elapsed time
-              const displayItem = sequence.items.find((i) => i.id === effectiveActiveItemId);
-              if (!displayItem || displayItem.kind !== 'preset') return null;
-
-              const displayAudioUrl = displayItem.audioUrl?.trim() || '';
-              const playbackAudioUrl = programSongPlayback?.audioUrl?.trim() || '';
-              const playbackToken = programSongPlayback?.token || '';
-              const playbackMatchesDisplaySong =
-                !isNested &&
-                !!programSongPlayback &&
-                ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
-                  (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
-                  (sequence.activeItemId === displayItem.id && programSongPlayback.isPlaying));
-
-              // Compute how far into the current song we are
-              let songElapsedMs = 0;
-              let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
-
-              if (playbackMatchesDisplaySong && programSongPlayback) {
-                songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
-                songStartedAt = Math.max(0, nowMs - songElapsedMs);
-              } else if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
-                const seqStartedAt = sequence.startedAt;
-                const totalElapsed = Math.max(0, nowMs - seqStartedAt);
-                const baseIndex = sequence.items.findIndex((i) => i.id === sequence.activeItemId);
-                const startIdx = baseIndex >= 0 ? baseIndex : 0;
-                const itemDurations = sequence.items.map((item) =>
-                  item.kind === 'preset' && typeof item.durationMs === 'number' && item.durationMs > 0 ? item.durationMs : null
-                );
-                const allKnown = itemDurations.every((d) => d !== null);
-                let remaining = totalElapsed;
-                let cycleOffset = 0;
-                if (allKnown && sequence.loop !== false) {
-                  const cycleDuration = itemDurations.reduce((s, d) => s + (d ?? 0), 0);
-                  if (cycleDuration > 0) {
-                    remaining = totalElapsed % cycleDuration;
-                    cycleOffset = totalElapsed - remaining;
-                  }
-                }
-                let cumulativeOffset = 0;
-                for (let step = 0; step < sequence.items.length; step++) {
-                  const idx = (startIdx + step) % sequence.items.length;
-                  const dur = itemDurations[idx];
-                  if (dur === null || remaining < dur) {
-                    songStartedAt = seqStartedAt + cycleOffset + cumulativeOffset;
-                    songElapsedMs = remaining;
-                    break;
-                  }
-                  remaining -= dur;
-                  cumulativeOffset += dur;
-                }
-              } else {
-                songElapsedMs = Math.max(0, nowMs - songStartedAt);
-              }
-
-              const totalMs =
-                playbackMatchesDisplaySong && programSongPlayback && typeof programSongPlayback.durationMs === 'number'
-                  ? programSongPlayback.durationMs
-                  : typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0
-                    ? displayItem.durationMs
-                    : null;
-              const hasProgressTimeline = totalMs !== null && totalMs > 0;
-              const clampedSongElapsedMs = hasProgressTimeline ? Math.max(0, Math.min(songElapsedMs, totalMs)) : Math.max(0, songElapsedMs);
-              const progressRatio = hasProgressTimeline ? Math.max(0, Math.min(1, clampedSongElapsedMs / totalMs)) : 0;
-
-              const fmt = (ms: number) => {
-                const s = Math.floor(ms / 1000);
-                return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-              };
-              return (
-                <div className='relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/60'>
-                  {/* Fill progress from direct playback ratio (avoids animation jitter). */}
-                  {hasProgressTimeline && (
-                    <div
-                      className='pointer-events-none absolute inset-0 origin-left bg-sky-500/20'
-                      style={{
-                        transform: `scaleX(${progressRatio})`,
-                        transition: 'transform 90ms linear'
-                      }}
-                    />
-                  )}
-                  <div className='relative flex items-center gap-2 px-3 py-2'>
-                    {displayItem.coverUrl ? (
-                      <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
-                    ) : (
-                      <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800'>
-                        <Music2 size={11} className='text-zinc-500' />
-                      </div>
-                    )}
-                    <div className='min-w-0 flex-1'>
-                      <div className='truncate text-xs font-semibold text-sky-400'>{displayItem.title || ''}</div>
-                      <div className='truncate text-[10px] text-zinc-400'>{displayItem.artist || ''}</div>
-                    </div>
-                    <div className='shrink-0 text-right text-[10px] tabular-nums text-zinc-500'>
-                      {hasProgressTimeline && (
-                        <span>
-                          {fmt(clampedSongElapsedMs)}
-                          <span className='text-zinc-700'> / {fmt(totalMs)}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()
-          ) : (
-            <p className='text-[11px] text-zinc-600'>Nothing on air</p>
-          )}
-        </div>
-
-        {/* Mode and loop toggles */}
-        <div className='flex items-center gap-3'>
-          <div className='flex items-center gap-0.5 rounded-lg border border-zinc-800 bg-zinc-950/60 p-0.5'>
-            <button
-              type='button'
-              onClick={() =>
-                applySequence({
-                  ...sequence,
-                  mode: 'manual',
-                  activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
-                  startedAt: Date.now()
-                })
-              }
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                sequence.mode === 'manual' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
+              }}
+              className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
             >
-              Manual
-            </button>
-            <button
-              type='button'
-              onClick={() =>
-                applySequence({
-                  ...sequence,
-                  mode: 'autoplay',
-                  activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId,
-                  startedAt: resolveAutoplayStartedAt()
-                })
-              }
-              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                sequence.mode === 'autoplay' ? 'bg-sky-500/20 text-sky-400' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              <Play size={9} fill='currentColor' />
-              Autoplay
+              <SkipForward size={16} fill='currentColor' />
             </button>
           </div>
 
-          <button
-            type='button'
-            title='Loop'
-            onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-              sequence.loop !== false ? 'text-sky-400 bg-sky-500/10' : 'text-zinc-600 hover:text-zinc-300'
-            }`}
-          >
-            <Repeat2 size={16} />
-          </button>
-        </div>
+          {/* Now playing info + progress */}
+          <div className='hidden min-w-0 flex-1 px-4 md:block'>
+            {runtimeActiveItemId ? (
+              (() => {
+                // Prefer real playback identity, then sequence timing fallback.
+                const displayItem = sequence.items.find((i) => i.id === runtimeActiveItemId);
+                if (!displayItem || displayItem.kind !== 'preset') return null;
+
+                const displayAudioUrl = displayItem.audioUrl?.trim() || '';
+                const playbackAudioUrl = programSongPlayback?.audioUrl?.trim() || '';
+                const playbackToken = programSongPlayback?.token || '';
+                const playbackMatchesDisplaySong =
+                    !isNested &&
+                    !!programSongPlayback &&
+                    ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
+                      (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
+                      (runtimeActiveItemId === displayItem.id && programSongPlayback.isPlaying));
+
+                // Compute how far into the current song we are
+                let songElapsedMs = 0;
+                let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
+
+                if (playbackMatchesDisplaySong && programSongPlayback) {
+                  songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
+                  songStartedAt = Math.max(0, nowMs - songElapsedMs);
+                } else if (programSongPlayback?.isPlaying) {
+                  songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
+                  songStartedAt = Math.max(0, nowMs - songElapsedMs);
+                } else if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
+                  const seqStartedAt = sequence.startedAt;
+                  const totalElapsed = Math.max(0, nowMs - seqStartedAt);
+                  const baseIndex = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
+                  const startIdx = baseIndex >= 0 ? baseIndex : 0;
+                  const itemDurations = sequence.items.map((item) =>
+                    item.kind === 'preset' && typeof item.durationMs === 'number' && item.durationMs > 0 ? item.durationMs : null
+                  );
+                  const allKnown = itemDurations.every((d) => d !== null);
+                  let remaining = totalElapsed;
+                  let cycleOffset = 0;
+                  if (allKnown && sequence.loop !== false) {
+                    const cycleDuration = itemDurations.reduce((s, d) => s + (d ?? 0), 0);
+                    if (cycleDuration > 0) {
+                      remaining = totalElapsed % cycleDuration;
+                      cycleOffset = totalElapsed - remaining;
+                    }
+                  }
+                  let cumulativeOffset = 0;
+                  for (let step = 0; step < sequence.items.length; step++) {
+                    const idx = (startIdx + step) % sequence.items.length;
+                    const dur = itemDurations[idx];
+                    if (dur === null || remaining < dur) {
+                      songStartedAt = seqStartedAt + cycleOffset + cumulativeOffset;
+                      songElapsedMs = remaining;
+                      break;
+                    }
+                    remaining -= dur;
+                    cumulativeOffset += dur;
+                  }
+                } else {
+                  songElapsedMs = Math.max(0, nowMs - songStartedAt);
+                }
+
+                const totalMs =
+                  programSongPlayback?.isPlaying && typeof programSongPlayback.durationMs === 'number'
+                    ? programSongPlayback.durationMs
+                    : typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0
+                      ? displayItem.durationMs
+                      : null;
+                const hasProgressTimeline = totalMs !== null && totalMs > 0;
+                const clampedSongElapsedMs = hasProgressTimeline ? Math.max(0, Math.min(songElapsedMs, totalMs)) : Math.max(0, songElapsedMs);
+                const progressRatio = hasProgressTimeline ? Math.max(0, Math.min(1, clampedSongElapsedMs / totalMs)) : 0;
+
+                const fmt = (ms: number) => {
+                  const s = Math.floor(ms / 1000);
+                  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+                };
+                return (
+                  <div className='relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/60'>
+                    {/* Fill progress from direct playback ratio (avoids animation jitter). */}
+                    {hasProgressTimeline && (
+                      <div
+                        className='pointer-events-none absolute inset-0 origin-left bg-sky-500/20'
+                        style={{
+                          transform: `scaleX(${progressRatio})`,
+                          transition: 'transform 90ms linear'
+                        }}
+                      />
+                    )}
+                    <div className='relative flex items-center gap-2 px-3 py-2'>
+                      {displayItem.coverUrl ? (
+                        <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
+                      ) : (
+                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800'>
+                          <Music2 size={11} className='text-zinc-500' />
+                        </div>
+                      )}
+                      <div className='min-w-0 flex-1'>
+                        <div className='truncate text-xs font-semibold text-sky-400'>{displayItem.title || ''}</div>
+                        <div className='truncate text-[10px] text-zinc-400'>{displayItem.artist || ''}</div>
+                      </div>
+                      <div className='shrink-0 text-right text-[10px] tabular-nums text-zinc-500'>
+                        {hasProgressTimeline && (
+                          <span>
+                            {fmt(clampedSongElapsedMs)}
+                            <span className='text-zinc-700'> / {fmt(totalMs)}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <p className='text-[11px] text-zinc-600'>Nothing on air</p>
+            )}
+          </div>
+
+          {/* Mode and loop toggles */}
+          <div className='flex items-center gap-3'>
+            <div className='flex items-center gap-0.5 rounded-lg border border-zinc-800 bg-zinc-950/60 p-0.5'>
+              <button
+                type='button'
+                onClick={() =>
+                  applySequence({
+                    ...sequence,
+                    mode: 'manual',
+                    activeItemId: sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                    startedAt: Date.now()
+                  })
+                }
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  sequence.mode === 'manual' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Manual
+              </button>
+              <button
+                type='button'
+                onClick={() =>
+                  applySequence({
+                    ...sequence,
+                    mode: 'autoplay',
+                    activeItemId: sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                    startedAt: resolveAutoplayStartedAt()
+                  })
+                }
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  sequence.mode === 'autoplay' ? 'bg-sky-500/20 text-sky-400' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Play size={9} fill='currentColor' />
+                Autoplay
+              </button>
+            </div>
+
+            <button
+              type='button'
+              title='Loop'
+              onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
+              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                sequence.loop !== false ? 'text-sky-400 bg-sky-500/10' : 'text-zinc-600 hover:text-zinc-300'
+              }`}
+            >
+              <Repeat2 size={16} />
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
