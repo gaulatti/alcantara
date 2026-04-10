@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Kbd, SectionHeader, Select, Switch } from '@gaulatti/bleecker';
+import { Accordion, Button, Kbd, SectionHeader, Select, Switch } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -3061,10 +3061,16 @@ export default function Control() {
         <SectionHeader title='Control' description='Stage scenes, take them live, and edit staged scene attributes for the selected program.' />
 
         <div className='space-y-6'>
-          {/* Scenes Panel */}
-          <Card className='space-y-4'>
+          {/* Main Control Accordion */}
+          <Accordion
+            defaultExpandedId='scenes'
+            items={[
+              {
+                id: 'scenes',
+                title: 'Scenes',
+                content: (
+                  <div className='space-y-4'>
             <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Scenes</h2>
               <div className='flex flex-wrap items-center gap-2'>
                 <Button size='sm' onClick={() => void takeStagedSceneLive()} disabled={!selectedScene || stagedIsOnAir}>
                   TAKE
@@ -3139,11 +3145,15 @@ export default function Control() {
                 </div>
               </>
             )}
-          </Card>
-
-          <Card className='space-y-4'>
+                  </div>
+                )
+              },
+              {
+                id: 'playlist',
+                title: 'Playlist',
+                content: (
+                  <div className='space-y-4'>
             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Playlist</h2>
               {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
             </div>
             <ProgramSongSequenceEditor
@@ -3160,11 +3170,15 @@ export default function Control() {
                 await takeProgramSongOffAir(activeProgramId);
               }}
             />
-          </Card>
-
-          <Card className='space-y-4'>
+                  </div>
+                )
+              },
+              {
+                id: 'mixer',
+                title: 'Mixer',
+                content: (
+                  <div className='space-y-4'>
             <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Mixer</h2>
               {isLoadingMixerLevels ? (
                 <span className='text-xs font-mono text-amber-500 animate-pulse'>LOADING STATE...</span>
               ) : isSavingMixerLevels ? (
@@ -3966,12 +3980,15 @@ export default function Control() {
               Solo follows mixer behavior: when any channel is soloed, non-soloed channels are cut. Main Mix applies after Song/Stream/Instants/Scene Instant.
               Instant channel still controls all catalog instants together, while Scene Instant controls only scene background instant playback.
             </p>
-          </Card>
-
-          {/* Instants Panel */}
-          <Card className='space-y-4'>
+                  </div>
+                )
+              },
+              {
+                id: 'instants',
+                title: 'Instants',
+                content: (
+                  <div className='space-y-4'>
             <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-              <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Instants</h2>
               <div className='flex flex-wrap items-center gap-2'>
                 <Button size='sm' variant='secondary' onClick={() => window.location.assign('/instants')}>
                   Manage Instants
@@ -4056,11 +4073,14 @@ export default function Control() {
                 </div>
               </div>
             )}
-          </Card>
-
-          {/* Scene Attributes Panel */}
-          <Card className='space-y-4'>
-            <h2 className='text-2xl font-semibold text-text-primary dark:text-text-primary'>Edit Staged Scene Attributes</h2>
+                  </div>
+                )
+              },
+              {
+                id: 'scene-attributes',
+                title: 'Stage Attributes',
+                content: (
+                  <div className='space-y-4'>
             {!selectedScene ? (
               <p className='text-sm text-text-secondary dark:text-text-secondary'>Stage a scene above to edit its attributes before taking it live.</p>
             ) : (
@@ -4147,7 +4167,11 @@ export default function Control() {
                 ) : null}
               </div>
             )}
-          </Card>
+                  </div>
+                )
+              }
+            ]}
+          />
         </div>
       </div>
     </div>
