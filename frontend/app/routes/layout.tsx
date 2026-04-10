@@ -76,7 +76,7 @@ export default function Layout() {
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
   const [knownInstants, setKnownInstants] = useState<InstantSummary[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useGlobalProgramId();
-  const [selectedTransitionId, setSelectedTransitionId] = useGlobalTransitionId();
+  const [selectedTransitionId, setSelectedTransitionId] = useGlobalTransitionId(selectedProgramId);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
   const [showBroadcastTimeModal, setShowBroadcastTimeModal] = useState(false);
   const [broadcastTimeInput, setBroadcastTimeInput] = useState('');

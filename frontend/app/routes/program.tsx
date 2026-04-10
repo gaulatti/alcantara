@@ -168,6 +168,12 @@ interface SongOffAirEvent {
   triggeredAt: string;
 }
 
+interface ProgramReloadEvent {
+  type: 'program_reload';
+  programId?: string;
+  triggeredAt?: string;
+}
+
 interface ProgramAudioBusSettings {
   songSequence?: unknown;
   mixerSettings?: ProgramAudioMixerSettings | null;
@@ -1130,6 +1136,33 @@ function SceneProgram({ programId }: { programId: string }) {
     }
   };
 
+  const performProgramFullReload = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const reloadWithCacheBust = () => {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set('_reload', Date.now().toString());
+      window.location.replace(nextUrl.toString());
+    };
+
+    if (!('caches' in window)) {
+      reloadWithCacheBust();
+      return;
+    }
+
+    void window.caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => window.caches.delete(key))))
+      .catch((err) => {
+        console.warn('Failed to clear CacheStorage before program reload:', err);
+      })
+      .finally(() => {
+        reloadWithCacheBust();
+      });
+  }, []);
+
   const handleProgramEvent = useCallback(
     (data: any) => {
       if (!data || typeof data !== 'object') {
@@ -1266,6 +1299,13 @@ function SceneProgram({ programId }: { programId: string }) {
         } else {
           stopSceneInstantAudio();
         }
+      } else if (data.type === 'program_reload') {
+        const event = data as ProgramReloadEvent;
+        const eventProgramId = typeof event.programId === 'string' ? event.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
+        performProgramFullReload();
       } else if (data.type === 'song_off_air') {
         const event = data as SongOffAirEvent;
         if (event.programId === programId) {
@@ -1286,7 +1326,8 @@ function SceneProgram({ programId }: { programId: string }) {
       stopAllInstantAudio,
       stopSceneInstantAudio,
       takeSceneInstantAudio,
-      clearTransitionTimers
+      clearTransitionTimers,
+      performProgramFullReload
     ]
   );
 
@@ -2275,12 +2316,10 @@ function SceneProgram({ programId }: { programId: string }) {
 
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
-      {stagedSceneHasVideoStream && stagedScene ? (
-        <div className='pointer-events-none absolute inset-0 opacity-0' aria-hidden='true' style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}>
-          {renderScene(stagedScene, { forceStreamMuted: !stagedSceneIsOnAir })}
-        </div>
-      ) : null}
-      {!stagedSceneIsOnAir ? renderScene(activeScene, { forceStreamMuted: false }) : null}
+      <div className='pointer-events-none absolute inset-0 opacity-0' aria-hidden='true' style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}>
+        {stagedSceneHasVideoStream && stagedScene ? renderScene(stagedScene, { forceStreamMuted: !stagedSceneIsOnAir }) : null}
+      </div>
+      <div className='absolute inset-0'>{!stagedSceneIsOnAir ? renderScene(activeScene, { forceStreamMuted: false }) : null}</div>
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
     </div>
   );

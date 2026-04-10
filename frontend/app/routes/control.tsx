@@ -1061,11 +1061,12 @@ export default function Control() {
   const [sceneComponentProps, setSceneComponentProps] = useState<Record<string, any>>({});
   const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
   const [isCreatingScene, setIsCreatingScene] = useState(false);
-  const [selectedTransitionId] = useGlobalTransitionId();
+  const [selectedTransitionId] = useGlobalTransitionId(activeProgramId);
   const [programAudioBusSettings, setProgramAudioBusSettings] = useState<ProgramAudioBusSettings>({
     songSequence: createProgramSongSequence('manual')
   });
   const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
+  const [isTriggeringProgramReload, setIsTriggeringProgramReload] = useState(false);
   const [mixerLevels, setMixerLevels] = useState<BroadcastSettings>({
     mainMasterVolume: 1,
     songMasterVolume: 1,
@@ -2041,6 +2042,27 @@ export default function Control() {
       }
     } catch (err) {
       console.error('Failed to take song off air:', err);
+    }
+  };
+
+  const triggerProgramReload = async (targetProgramId: string = activeProgramId) => {
+    if (!targetProgramId.trim()) {
+      return;
+    }
+
+    setIsTriggeringProgramReload(true);
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/reload`), {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.error('Failed to request program reload:', err);
+    } finally {
+      setIsTriggeringProgramReload(false);
     }
   };
 
@@ -3098,17 +3120,22 @@ export default function Control() {
                     <Button size='sm' variant='secondary' onClick={() => window.location.assign('/scenes')}>
                       Manage Scenes
                     </Button>
+                    <Button size='sm' variant='secondary' onClick={() => void triggerProgramReload()} disabled={isTriggeringProgramReload}>
+                      {isTriggeringProgramReload ? 'Refreshing...' : 'Refresh Program'}
+                    </Button>
                   </div>
                 </div>
-                <p className='flex items-center gap-2 text-xs text-text-secondary dark:text-text-secondary'>
-                  Hotkeys:
-                  <Kbd keys={['Ctrl', 'S']} />
-                  then
-                  <span>1-9 (0 for #10) to stage</span>
-                  <span>·</span>
-                  <Kbd keys={['Ctrl', 'Enter']} />
-                  <span>to TAKE</span>
-                </p>
+                <div className='space-y-1 text-xs text-text-secondary dark:text-text-secondary'>
+                  <p className='font-medium'>Hotkeys</p>
+                  <p className='flex flex-wrap items-center gap-2'>
+                    <Kbd keys={['Ctrl', 'S']} />
+                    <span>then 1-9 (0 for #10) to stage</span>
+                  </p>
+                  <p className='flex flex-wrap items-center gap-2'>
+                    <Kbd keys={['Ctrl', 'Enter']} />
+                    <span>to TAKE</span>
+                  </p>
+                </div>
                 {assignedScenes.length === 0 ? (
                   <div className='py-8 text-center text-text-secondary dark:text-text-secondary'>No scenes assigned to this program.</div>
                 ) : (

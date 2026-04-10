@@ -216,6 +216,11 @@ export class ProgramController {
     return this.programService.takeProgramSongOffAir(programId);
   }
 
+  @Post(':programId/reload')
+  async reloadProgramById(@Param('programId') programId: string) {
+    return this.programService.requestProgramReload(programId);
+  }
+
   @Put(':programId/audio-bus')
   async updateProgramAudioBusById(
     @Param('programId') programId: string,
@@ -243,6 +248,11 @@ export class ProgramController {
   @Post('song/off-air')
   async takeProgramSongOffAir() {
     return this.programService.takeProgramSongOffAir();
+  }
+
+  @Post('reload')
+  async reloadProgram() {
+    return this.programService.requestProgramReload();
   }
 
   @Sse(':programId/events')

@@ -2008,6 +2008,26 @@ export class ProgramService {
     return { ok: true, programId: normalizedProgramId };
   }
 
+  async requestProgramReload(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    await this.getProgramStateRecord(normalizedProgramId);
+    const triggeredAt = new Date().toISOString();
+
+    this.broadcastUpdate(normalizedProgramId, {
+      type: 'program_reload',
+      programId: normalizedProgramId,
+      triggeredAt,
+    });
+
+    return {
+      ok: true,
+      programId: normalizedProgramId,
+      triggeredAt,
+    };
+  }
+
   async getProgramIdsByActiveScene(sceneId: number) {
     const states = await this.prisma.programState.findMany({
       where: { activeSceneId: sceneId },
