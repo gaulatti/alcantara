@@ -70,7 +70,10 @@ export class ProgramService {
   private broadcastSettingsColumnsEnsured = false;
   private eventSubjects = new Map<string, Subject<any>>();
   private stagedSceneByProgramId = new Map<string, number | null>();
-  private programAudioMeterByProgramId = new Map<string, ProgramAudioMeterLevels>();
+  private programAudioMeterByProgramId = new Map<
+    string,
+    ProgramAudioMeterLevels
+  >();
   private programSceneInstantPlaybackByProgramId = new Map<
     string,
     ProgramSceneInstantPlayback
@@ -101,7 +104,13 @@ export class ProgramService {
     return [
       { id: 'song', name: 'Song', volume: 1, muted: false, solo: false },
       { id: 'stream', name: 'Stream', volume: 1, muted: false, solo: false },
-      { id: 'instants', name: 'Instants', volume: 1, muted: false, solo: false },
+      {
+        id: 'instants',
+        name: 'Instants',
+        volume: 1,
+        muted: false,
+        solo: false,
+      },
       {
         id: 'sceneInstant',
         name: 'Scene Instant',
@@ -181,10 +190,22 @@ export class ProgramService {
       if (!id) {
         continue;
       }
-      const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : byId.get(id)?.name ?? id;
-      const volume = this.coerceMasterVolume(record.volume, byId.get(id)?.volume ?? 1);
-      const muted = this.coerceMixerToggle(record.muted, byId.get(id)?.muted ?? false);
-      const solo = this.coerceMixerToggle(record.solo, byId.get(id)?.solo ?? false);
+      const name =
+        typeof record.name === 'string' && record.name.trim()
+          ? record.name.trim()
+          : (byId.get(id)?.name ?? id);
+      const volume = this.coerceMasterVolume(
+        record.volume,
+        byId.get(id)?.volume ?? 1,
+      );
+      const muted = this.coerceMixerToggle(
+        record.muted,
+        byId.get(id)?.muted ?? false,
+      );
+      const solo = this.coerceMixerToggle(
+        record.solo,
+        byId.get(id)?.solo ?? false,
+      );
       byId.set(id, { id, name, volume, muted, solo });
     }
 
@@ -237,10 +258,7 @@ export class ProgramService {
       {
         id: 'sceneInstant',
         name: 'Scene Instant',
-        volume: this.coerceMasterVolume(
-          settings.sceneInstantMasterVolume,
-          1,
-        ),
+        volume: this.coerceMasterVolume(settings.sceneInstantMasterVolume, 1),
         muted: this.coerceMixerToggle(settings.sceneInstantMuted, false),
         solo: this.coerceMixerToggle(settings.sceneInstantSolo, false),
       },
@@ -252,7 +270,10 @@ export class ProgramService {
     );
     const song = this.getBroadcastMixerChannel(normalizedChannels, 'song');
     const stream = this.getBroadcastMixerChannel(normalizedChannels, 'stream');
-    const instants = this.getBroadcastMixerChannel(normalizedChannels, 'instants');
+    const instants = this.getBroadcastMixerChannel(
+      normalizedChannels,
+      'instants',
+    );
     const sceneInstant = this.getBroadcastMixerChannel(
       normalizedChannels,
       'sceneInstant',
@@ -348,7 +369,10 @@ export class ProgramService {
     }
     if ('instantMuted' in record) {
       applyChannelPatch('instants', {
-        muted: this.coerceMixerToggle(record.instantMuted, fallback.instantMuted),
+        muted: this.coerceMixerToggle(
+          record.instantMuted,
+          fallback.instantMuted,
+        ),
       });
     }
     if ('streamMuted' in record) {
@@ -673,17 +697,26 @@ export class ProgramService {
 
     if (hasSongVolumeUpdate) {
       applyChannelPatch('song', {
-        volume: this.normalizeMasterVolume(data.songMasterVolume, 'songMasterVolume'),
+        volume: this.normalizeMasterVolume(
+          data.songMasterVolume,
+          'songMasterVolume',
+        ),
       });
     }
     if (hasInstantVolumeUpdate) {
       applyChannelPatch('instants', {
-        volume: this.normalizeMasterVolume(data.instantMasterVolume, 'instantMasterVolume'),
+        volume: this.normalizeMasterVolume(
+          data.instantMasterVolume,
+          'instantMasterVolume',
+        ),
       });
     }
     if (hasStreamVolumeUpdate) {
       applyChannelPatch('stream', {
-        volume: this.normalizeMasterVolume(data.streamMasterVolume, 'streamMasterVolume'),
+        volume: this.normalizeMasterVolume(
+          data.streamMasterVolume,
+          'streamMasterVolume',
+        ),
       });
     }
     if (hasSceneInstantVolumeUpdate) {
@@ -734,7 +767,10 @@ export class ProgramService {
     }
     if (hasSceneInstantSoloUpdate) {
       applyChannelPatch('sceneInstant', {
-        solo: this.normalizeMixerToggle(data.sceneInstantSolo, 'sceneInstantSolo'),
+        solo: this.normalizeMixerToggle(
+          data.sceneInstantSolo,
+          'sceneInstantSolo',
+        ),
       });
     }
 
@@ -865,8 +901,10 @@ export class ProgramService {
   ): T & { stagedSceneId: number | null; stagedScene: any | null } {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const sceneEntries = Array.isArray(state.scenes) ? state.scenes : [];
-    const currentStagedSceneId = this.stagedSceneByProgramId.get(normalizedProgramId);
-    const stagedSceneId = typeof currentStagedSceneId === 'number' ? currentStagedSceneId : null;
+    const currentStagedSceneId =
+      this.stagedSceneByProgramId.get(normalizedProgramId);
+    const stagedSceneId =
+      typeof currentStagedSceneId === 'number' ? currentStagedSceneId : null;
     const stagedSceneEntry =
       stagedSceneId === null
         ? null
@@ -895,7 +933,7 @@ export class ProgramService {
         typeof stagedSceneEntry === 'object' &&
         !Array.isArray(stagedSceneEntry) &&
         'scene' in stagedSceneEntry
-          ? (stagedSceneEntry as { scene?: unknown }).scene ?? null
+          ? ((stagedSceneEntry as { scene?: unknown }).scene ?? null)
           : null,
     };
   }
@@ -1075,7 +1113,10 @@ export class ProgramService {
   }
 
   async updateProgramAudioBus(
-    data: { songSequence?: unknown; mixerSettings?: unknown } | null | undefined,
+    data:
+      | { songSequence?: unknown; mixerSettings?: unknown }
+      | null
+      | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
@@ -1114,7 +1155,7 @@ export class ProgramService {
 
     const nextSongSequence = hasSongSequenceUpdate
       ? ((data as { songSequence?: unknown }).songSequence ?? null)
-      : currentState.songSequence ?? null;
+      : (currentState.songSequence ?? null);
     const nextMixerSettings = hasMixerSettingsUpdate
       ? this.withResolvedProgramAudioMixerSettings(
           (data as { mixerSettings?: unknown }).mixerSettings,
@@ -1239,7 +1280,9 @@ export class ProgramService {
       return null;
     }
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-      throw new BadRequestException('durationMs must be a positive number or null');
+      throw new BadRequestException(
+        'durationMs must be a positive number or null',
+      );
     }
     return Math.round(value);
   }
@@ -1353,8 +1396,7 @@ export class ProgramService {
       previousPlayback.audioUrl === audioUrl &&
       previousPlayback.isPlaying
     ) {
-      const backwardDriftMs =
-        previousPlayback.currentTimeMs - currentTimeMs;
+      const backwardDriftMs = previousPlayback.currentTimeMs - currentTimeMs;
       if (
         backwardDriftMs > ProgramService.SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS
       ) {
@@ -1394,7 +1436,9 @@ export class ProgramService {
     );
   }
 
-  private parseSceneInstantIdFromSceneMetadata(sceneMetadata: unknown): number | null {
+  private parseSceneInstantIdFromSceneMetadata(
+    sceneMetadata: unknown,
+  ): number | null {
     if (typeof sceneMetadata !== 'string' || !sceneMetadata.trim()) {
       return null;
     }
@@ -1408,7 +1452,11 @@ export class ProgramService {
         'sceneInstant' in parsed
           ? (parsed as Record<string, unknown>).sceneInstant
           : null;
-      if (!sceneInstant || typeof sceneInstant !== 'object' || Array.isArray(sceneInstant)) {
+      if (
+        !sceneInstant ||
+        typeof sceneInstant !== 'object' ||
+        Array.isArray(sceneInstant)
+      ) {
         return null;
       }
       const instantIdRaw = (sceneInstant as Record<string, unknown>).instantId;
@@ -1452,7 +1500,9 @@ export class ProgramService {
         ? Math.round(sceneId)
         : null;
     const targetSceneId =
-      requestedSceneId !== null ? requestedSceneId : state.activeSceneId ?? null;
+      requestedSceneId !== null
+        ? requestedSceneId
+        : (state.activeSceneId ?? null);
 
     if (targetSceneId === null) {
       throw new BadRequestException('No target scene selected');
@@ -1517,6 +1567,7 @@ export class ProgramService {
 
   async stopProgramSceneInstant(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    fadeMs: number = 0,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
@@ -1541,12 +1592,15 @@ export class ProgramService {
       sceneId: previous.sceneId ?? null,
       instantId: previous.instantId ?? null,
       triggeredAt: nowIso,
+      fadeMs,
     });
 
     return playback;
   }
 
-  async proxyAudio(url: unknown): Promise<{ buffer: Buffer; contentType: string }> {
+  async proxyAudio(
+    url: unknown,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
     if (typeof url !== 'string' || !url.trim()) {
       throw new BadRequestException('url is required');
     }
@@ -1558,7 +1612,10 @@ export class ProgramService {
       throw new BadRequestException('url must be an absolute URL');
     }
 
-    if (normalizedUrl.protocol !== 'http:' && normalizedUrl.protocol !== 'https:') {
+    if (
+      normalizedUrl.protocol !== 'http:' &&
+      normalizedUrl.protocol !== 'https:'
+    ) {
       throw new BadRequestException('url must use http or https');
     }
 
@@ -1570,7 +1627,9 @@ export class ProgramService {
     }
 
     if (!response.ok) {
-      throw new BadGatewayException(`remote audio returned HTTP ${response.status}`);
+      throw new BadGatewayException(
+        `remote audio returned HTTP ${response.status}`,
+      );
     }
 
     const arrayBuffer = await response.arrayBuffer();
@@ -1581,7 +1640,8 @@ export class ProgramService {
 
     return {
       buffer: Buffer.from(arrayBuffer),
-      contentType: response.headers.get('content-type') || 'application/octet-stream',
+      contentType:
+        response.headers.get('content-type') || 'application/octet-stream',
     };
   }
 
@@ -1652,13 +1712,18 @@ export class ProgramService {
       },
     });
 
-    if ((this.stagedSceneByProgramId.get(normalizedProgramId) ?? null) === sceneId) {
+    if (
+      (this.stagedSceneByProgramId.get(normalizedProgramId) ?? null) === sceneId
+    ) {
       this.stagedSceneByProgramId.set(normalizedProgramId, null);
     }
 
     const sceneInstantPlayback =
       this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
-    if (sceneInstantPlayback?.isPlaying && sceneInstantPlayback.sceneId === sceneId) {
+    if (
+      sceneInstantPlayback?.isPlaying &&
+      sceneInstantPlayback.sceneId === sceneId
+    ) {
       await this.stopProgramSceneInstant(normalizedProgramId);
     }
 
@@ -1707,9 +1772,7 @@ export class ProgramService {
         (programScene) => programScene.sceneId === sceneId,
       );
       if (!assignedSceneEntry) {
-        throw new BadRequestException(
-          'Scene is not assigned to this program',
-        );
+        throw new BadRequestException('Scene is not assigned to this program');
       }
       nextStagedSceneId = sceneId;
       stagedScene = assignedSceneEntry.scene;
@@ -1778,13 +1841,41 @@ export class ProgramService {
         : null;
     this.stagedSceneByProgramId.set(normalizedProgramId, sceneId);
 
-    const sceneInstantPlayback =
+    const sceneInstantId = updatedState.activeScene?.metadata
+      ? this.parseSceneInstantIdFromSceneMetadata(
+          updatedState.activeScene.metadata,
+        )
+      : null;
+    const currentSceneInstantPlayback =
       this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
-    if (
-      sceneInstantPlayback?.isPlaying &&
-      sceneInstantPlayback.sceneId !== sceneId
-    ) {
-      await this.stopProgramSceneInstant(normalizedProgramId);
+    const shouldFadeOutPreviousSceneInstant =
+      currentSceneInstantPlayback?.isPlaying &&
+      currentSceneInstantPlayback.sceneId !== sceneId;
+
+    if (sceneInstantId !== null) {
+      try {
+        if (shouldFadeOutPreviousSceneInstant) {
+          await this.stopProgramSceneInstant(normalizedProgramId, 1500);
+          await new Promise<void>((resolve) => {
+            setTimeout(() => resolve(), 1500);
+          });
+        }
+        await this.takeProgramSceneInstant(sceneId, normalizedProgramId);
+      } catch (err) {
+        console.warn(
+          `Could not play background instant for scene ${sceneId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    } else {
+      const sceneInstantPlayback =
+        this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
+      if (
+        sceneInstantPlayback?.isPlaying &&
+        sceneInstantPlayback.sceneId !== sceneId
+      ) {
+        await this.stopProgramSceneInstant(normalizedProgramId, 1500);
+      }
     }
 
     this.broadcastUpdate(normalizedProgramId, {
@@ -1833,7 +1924,7 @@ export class ProgramService {
     const sceneInstantPlayback =
       this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
     if (sceneInstantPlayback?.isPlaying) {
-      await this.stopProgramSceneInstant(normalizedProgramId);
+      await this.stopProgramSceneInstant(normalizedProgramId, 1500);
     }
 
     this.broadcastUpdate(normalizedProgramId, {
@@ -1897,7 +1988,10 @@ export class ProgramService {
       isPlaying: false,
       updatedAt,
     };
-    this.programSongPlaybackByProgramId.set(normalizedProgramId, stoppedPlayback);
+    this.programSongPlaybackByProgramId.set(
+      normalizedProgramId,
+      stoppedPlayback,
+    );
 
     this.broadcastUpdate(normalizedProgramId, {
       type: 'song_off_air',
@@ -1936,8 +2030,11 @@ export class ProgramService {
     for (const programId of programIds) {
       const sceneInstantPlayback =
         this.programSceneInstantPlaybackByProgramId.get(programId);
-      if (sceneInstantPlayback?.isPlaying && sceneInstantPlayback.sceneId === sceneId) {
-        await this.stopProgramSceneInstant(programId);
+      if (
+        sceneInstantPlayback?.isPlaying &&
+        sceneInstantPlayback.sceneId === sceneId
+      ) {
+        await this.stopProgramSceneInstant(programId, 1500);
       }
     }
 
@@ -2113,9 +2210,7 @@ export class ProgramService {
     return { ok: true };
   }
 
-  async stopAllInstants(
-    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
-  ) {
+  async stopAllInstants(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
     const normalizedProgramId = this.normalizeProgramId(programId);
 
     this.broadcastUpdate(normalizedProgramId, {

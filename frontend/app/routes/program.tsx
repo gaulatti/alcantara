@@ -18,6 +18,9 @@ import {
   ModoItalianoClock,
   ModoItalianoChyron,
   ModoItalianoDisclaimer,
+  CronicaChyron,
+  CronicaBackground,
+  CronicaReiteramos,
   Slideshow,
   VideoStream
 } from '../components';
@@ -248,6 +251,7 @@ const VU_RELEASE_MS = 300;
 const PEAK_RELEASE_MS = 300;
 const PEAK_HOLD_MS = 900;
 const METER_TICK_INTERVAL_MS = 60;
+const SCENE_INSTANT_SWITCH_FADE_MS = 1500;
 
 const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner', 'fifthbell-clock']);
 
@@ -449,10 +453,7 @@ function normalizeProgramAudioMixerSettings(value: unknown): ProgramAudioMixerSe
       solo: scalarFallback.sceneInstantSolo
     }
   ];
-  const mixerChannels = normalizeProgramMixerChannels(
-    record.mixerChannels,
-    fallbackChannels
-  );
+  const mixerChannels = normalizeProgramMixerChannels(record.mixerChannels, fallbackChannels);
   const songChannel = getProgramMixerChannel(mixerChannels, 'song');
   const streamChannel = getProgramMixerChannel(mixerChannels, 'stream');
   const instantsChannel = getProgramMixerChannel(mixerChannels, 'instants');
@@ -567,12 +568,7 @@ function normalizeSceneInstantTimestamp(value: unknown): string {
   return value.trim();
 }
 
-function buildSceneInstantPlaybackToken(
-  sceneId: number | null,
-  instantId: number | null,
-  audioUrl: string,
-  timestamp: string
-): string {
+function buildSceneInstantPlaybackToken(sceneId: number | null, instantId: number | null, audioUrl: string, timestamp: string): string {
   return `${sceneId ?? 'none'}|${instantId ?? 'none'}|${audioUrl.trim()}|${timestamp || 'none'}`;
 }
 
@@ -598,6 +594,7 @@ function SceneProgram({ programId }: { programId: string }) {
     runtime: InstantAudioRuntimeState;
     playbackToken: string;
   } | null>(null);
+  const sceneInstantTakeSequenceRef = useRef(0);
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
   const meterSocketRef = useRef<WebSocket | null>(null);
   const meterSocketReadyRef = useRef(false);
@@ -628,10 +625,7 @@ function SceneProgram({ programId }: { programId: string }) {
     isPlaying: false
   });
   const programMixerSettings = useMemo(
-    () =>
-      audioBusSettings?.mixerSettings
-        ? normalizeProgramAudioMixerSettings(audioBusSettings.mixerSettings)
-        : normalizeProgramAudioMixerSettings(null),
+    () => (audioBusSettings?.mixerSettings ? normalizeProgramAudioMixerSettings(audioBusSettings.mixerSettings) : normalizeProgramAudioMixerSettings(null)),
     [audioBusSettings?.mixerSettings]
   );
   const mainMasterFader = normalizeMasterVolume(programMixerSettings.mainMasterVolume, 1);
@@ -878,12 +872,58 @@ function SceneProgram({ programId }: { programId: string }) {
     };
   }, []);
 
-  const stopSceneInstantAudio = useCallback(() => {
+  const stopSceneInstantAudio = useCallback((fadeMs = 0) => {
     const current = activeSceneInstantAudioRef.current;
     if (!current) {
       return;
     }
     const { audio, runtime } = current;
+
+    if (fadeMs > 0) {
+      if (activeSceneInstantAudioRef.current === current) {
+        activeSceneInstantAudioRef.current = null; // Detach immediately to prevent volume jumps from settings changes
+      }
+
+      const initialVolume = audio.volume;
+      const startTime = performance.now();
+
+      const fadeStep = (timestamp: number) => {
+        const elapsed = timestamp - startTime;
+        if (elapsed >= fadeMs) {
+          audio.volume = 0;
+          audio.pause();
+          try {
+            audio.currentTime = 0;
+          } catch {
+            // no-op
+          }
+          audio.onended = null;
+          audio.onerror = null;
+          if (runtime.meterSource) {
+            try {
+              runtime.meterSource.disconnect();
+            } catch {
+              // ignore
+            }
+          }
+          if (runtime.meterAnalyser) {
+            try {
+              runtime.meterAnalyser.disconnect();
+            } catch {
+              // no-op
+            }
+          }
+          return;
+        }
+
+        audio.volume = Math.max(0, initialVolume * (1 - elapsed / fadeMs));
+        requestAnimationFrame(fadeStep);
+      };
+
+      requestAnimationFrame(fadeStep);
+      return;
+    }
+
     audio.pause();
     try {
       audio.currentTime = 0;
@@ -945,6 +985,8 @@ function SceneProgram({ programId }: { programId: string }) {
 
   const takeSceneInstantAudio = useCallback(
     (event: SceneInstantTakeEvent) => {
+      sceneInstantTakeSequenceRef.current += 1;
+      const takeSequence = sceneInstantTakeSequenceRef.current;
       const sceneId = normalizeSceneInstantNumericId(event.sceneId);
       const instantId = normalizeSceneInstantNumericId(event.instant?.id);
       const timestamp = normalizeSceneInstantTimestamp(event.triggeredAt);
@@ -961,61 +1003,76 @@ function SceneProgram({ programId }: { programId: string }) {
         return;
       }
 
-      stopSceneInstantAudio();
+      const startSceneInstantPlayback = () => {
+        if (sceneInstantTakeSequenceRef.current !== takeSequence) {
+          return;
+        }
 
-      const audio = new Audio(event.instant.audioUrl);
-      audio.preload = 'auto';
-      audio.loop = event.loop !== false;
-      const baseVolume = normalizeMasterVolume(event.instant.volume, 1);
-      audio.volume = normalizeMasterVolume(baseVolume * resolvedSceneInstantMasterVolume, 1);
-      const runtime: InstantAudioRuntimeState = {
-        baseVolume,
-        meterSource: null,
-        meterAnalyser: null,
-        meterBuffer: null,
-        meterUsesMediaElementFallback: false
-      };
-      ensureInstantAudioMeter(audio, runtime);
+        const audio = new Audio(event.instant.audioUrl);
+        audio.preload = 'auto';
+        audio.loop = event.loop !== false;
+        const baseVolume = normalizeMasterVolume(event.instant.volume, 1);
+        audio.volume = normalizeMasterVolume(baseVolume * resolvedSceneInstantMasterVolume, 1);
+        const runtime: InstantAudioRuntimeState = {
+          baseVolume,
+          meterSource: null,
+          meterAnalyser: null,
+          meterBuffer: null,
+          meterUsesMediaElementFallback: false
+        };
+        ensureInstantAudioMeter(audio, runtime);
 
-      const cleanup = () => {
-        audio.onended = null;
-        audio.onerror = null;
-        if (runtime.meterSource) {
-          try {
-            runtime.meterSource.disconnect();
-          } catch {
-            // no-op
+        const cleanup = () => {
+          audio.onended = null;
+          audio.onerror = null;
+          if (runtime.meterSource) {
+            try {
+              runtime.meterSource.disconnect();
+            } catch {
+              // no-op
+            }
           }
-        }
-        if (runtime.meterAnalyser) {
-          try {
-            runtime.meterAnalyser.disconnect();
-          } catch {
-            // no-op
+          if (runtime.meterAnalyser) {
+            try {
+              runtime.meterAnalyser.disconnect();
+            } catch {
+              // no-op
+            }
           }
-        }
-        if (runtime.meterUsesMediaElementFallback) {
-          audio.muted = false;
-        }
-        if (activeSceneInstantAudioRef.current?.audio === audio) {
-          activeSceneInstantAudioRef.current = null;
-        }
-      };
+          if (runtime.meterUsesMediaElementFallback) {
+            audio.muted = false;
+          }
+          if (activeSceneInstantAudioRef.current?.audio === audio) {
+            activeSceneInstantAudioRef.current = null;
+          }
+        };
 
-      audio.onended = cleanup;
-      audio.onerror = () => {
-        console.error(`Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
-        cleanup();
-      };
-      activeSceneInstantAudioRef.current = { audio, runtime, playbackToken };
-
-      const playPromise = audio.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch((err) => {
-          console.error(`Failed to play scene instant "${event.instant.name}":`, err);
+        audio.onended = cleanup;
+        audio.onerror = () => {
+          console.error(`Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
           cleanup();
-        });
+        };
+        activeSceneInstantAudioRef.current = { audio, runtime, playbackToken };
+
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch((err) => {
+            console.error(`Failed to play scene instant "${event.instant.name}":`, err);
+            cleanup();
+          });
+        }
+      };
+
+      if (currentlyPlayingSceneInstant && !currentlyPlayingSceneInstant.audio.paused && !currentlyPlayingSceneInstant.audio.ended) {
+        stopSceneInstantAudio(SCENE_INSTANT_SWITCH_FADE_MS);
+        window.setTimeout(() => {
+          startSceneInstantPlayback();
+        }, SCENE_INSTANT_SWITCH_FADE_MS);
+        return;
       }
+
+      stopSceneInstantAudio();
+      startSceneInstantPlayback();
     },
     [ensureInstantAudioMeter, resolvedSceneInstantMasterVolume, stopSceneInstantAudio]
   );
@@ -1169,7 +1226,7 @@ function SceneProgram({ programId }: { programId: string }) {
         if (eventProgramId && eventProgramId !== programId) {
           return;
         }
-        stopSceneInstantAudio();
+        stopSceneInstantAudio(data.fadeMs || 0);
       } else if (data.type === 'scene_instant_state') {
         const event = data as SceneInstantStateEvent;
         const eventProgramId = typeof event.programId === 'string' ? event.programId : '';
@@ -1879,7 +1936,10 @@ function SceneProgram({ programId }: { programId: string }) {
       return <div className='w-full h-full flex items-center justify-center text-white text-4xl'>No Active Scene</div>;
     }
 
-    const components = scene.layout.componentType.split(',').filter(Boolean);
+    const components = scene.layout.componentType
+      .split(',')
+      .map((componentType) => componentType.trim())
+      .filter(Boolean);
 
     // Parse metadata
     let metadata: any = {};
@@ -1910,7 +1970,8 @@ function SceneProgram({ programId }: { programId: string }) {
     const hasProgramClockComponent = components.includes('modoitaliano-clock');
     const hasProgramChyronComponent = components.includes('modoitaliano-chyron');
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
-    const shouldRenderProgramRow = hasProgramClockComponent && (hasProgramChyronComponent || hasProgramDisclaimerComponent);
+    const hasCronicaChyronComponent = components.includes('cronica-chyron');
+    const shouldRenderProgramRow = hasProgramClockComponent && (hasProgramChyronComponent || hasProgramDisclaimerComponent || hasCronicaChyronComponent);
     const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
     const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
     const toBoolean = (value: unknown, fallback: boolean): boolean => {
@@ -2150,6 +2211,12 @@ function SceneProgram({ programId }: { programId: string }) {
                   <CornerBug text={props.text} />
                 </div>
               );
+            case 'cronica-background':
+              return <CronicaBackground key={componentType} />;
+            case 'cronica-chyron':
+              return <CronicaChyron key={componentType} text={props.text} />;
+            case 'cronica-reiteramos':
+              return <CronicaReiteramos key={componentType} text={props.text} show={props.show} />;
             default:
               console.warn('Unknown component type:', componentType);
               return (

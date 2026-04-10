@@ -299,6 +299,9 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'fifthbell-clock':
     case 'modoitaliano-chyron':
     case 'modoitaliano-disclaimer':
+    case 'cronica-background':
+    case 'cronica-chyron':
+    case 'cronica-reiteramos':
     case 'earone':
     case 'fifthbell-content':
     case 'fifthbell-marquee':
@@ -1048,6 +1051,8 @@ export default function Control() {
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
   const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
   const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
+  const sceneEditorAutosaveTimerRef = useRef<number | null>(null);
+  const sceneEditorAutosaveSignatureRef = useRef<string>('');
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
 
   const [showSceneModal, setShowSceneModal] = useState(false);
@@ -1309,9 +1314,7 @@ export default function Control() {
             return;
           }
           const nextMixerSource =
-            payload.settings && typeof payload.settings === 'object'
-              ? (payload.settings as { mixerSettings?: unknown }).mixerSettings
-              : undefined;
+            payload.settings && typeof payload.settings === 'object' ? (payload.settings as { mixerSettings?: unknown }).mixerSettings : undefined;
           if (nextMixerSource !== undefined) {
             const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
             mixerLevelsRef.current = nextMixerLevels;
@@ -1395,9 +1398,7 @@ export default function Control() {
             return;
           }
           const nextMixerSource =
-            payload.settings && typeof payload.settings === 'object'
-              ? (payload.settings as { mixerSettings?: unknown }).mixerSettings
-              : undefined;
+            payload.settings && typeof payload.settings === 'object' ? (payload.settings as { mixerSettings?: unknown }).mixerSettings : undefined;
           if (nextMixerSource !== undefined) {
             const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
             mixerLevelsRef.current = nextMixerLevels;
@@ -2367,22 +2368,29 @@ export default function Control() {
         window.clearTimeout(mixerSaveTimeoutRef.current);
         mixerSaveTimeoutRef.current = null;
       }
+      if (sceneEditorAutosaveTimerRef.current !== null) {
+        window.clearTimeout(sceneEditorAutosaveTimerRef.current);
+        sceneEditorAutosaveTimerRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
     if (!selectedScene) {
+      sceneEditorAutosaveSignatureRef.current = '';
       setSceneEditorProps({});
       return;
     }
 
     const scene = scenes.find((s) => s.id === selectedScene);
     if (!scene) {
+      sceneEditorAutosaveSignatureRef.current = '';
       setSceneEditorProps({});
       return;
     }
 
     const nextProps = buildComponentPropsForScene(scene);
+    sceneEditorAutosaveSignatureRef.current = JSON.stringify(nextProps);
     setSceneEditorProps(nextProps);
   }, [selectedScene, scenes]);
 
@@ -2426,20 +2434,11 @@ export default function Control() {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      await fetchScenes();
-      if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
-      }
     } catch (err) {
       console.error('Failed to update scene attributes:', err);
     } finally {
       setIsSavingSceneAttributes(false);
     }
-  };
-
-  const saveSceneAttributes = async () => {
-    await persistSceneAttributes(sceneEditorProps);
   };
 
   const commitSceneEditorComponentProps = async (componentType: string, nextProps: any) => {
@@ -2450,6 +2449,39 @@ export default function Control() {
     setSceneEditorProps(nextSceneProps);
     await persistSceneAttributes(nextSceneProps);
   };
+
+  useEffect(() => {
+    if (!selectedScene) {
+      return;
+    }
+
+    const serializedProps = JSON.stringify(sceneEditorProps);
+    if (serializedProps === sceneEditorAutosaveSignatureRef.current) {
+      return;
+    }
+
+    if (sceneEditorAutosaveTimerRef.current !== null) {
+      window.clearTimeout(sceneEditorAutosaveTimerRef.current);
+    }
+
+    sceneEditorAutosaveTimerRef.current = window.setTimeout(() => {
+      sceneEditorAutosaveTimerRef.current = null;
+      const latestSerializedProps = JSON.stringify(sceneEditorProps);
+      if (latestSerializedProps === sceneEditorAutosaveSignatureRef.current) {
+        return;
+      }
+
+      sceneEditorAutosaveSignatureRef.current = latestSerializedProps;
+      void persistSceneAttributes(sceneEditorProps);
+    }, 350);
+
+    return () => {
+      if (sceneEditorAutosaveTimerRef.current !== null) {
+        window.clearTimeout(sceneEditorAutosaveTimerRef.current);
+        sceneEditorAutosaveTimerRef.current = null;
+      }
+    };
+  }, [selectedScene, sceneEditorProps]);
 
   const openSceneModal = () => {
     if (layouts.length === 0) {
@@ -2596,6 +2628,12 @@ export default function Control() {
           fontSizePx: 20,
           opacity: 0.82
         };
+      case 'cronica-background':
+        return {};
+      case 'cronica-chyron':
+        return { text: '' };
+      case 'cronica-reiteramos':
+        return { text: 'REITERAMOS', show: true };
       case 'toni-logo':
         return {};
       case 'earone':
@@ -2876,10 +2914,7 @@ export default function Control() {
       }
 
       if (data.type === 'audio_bus_update') {
-        const nextMixerSource =
-          data.settings && typeof data.settings === 'object'
-            ? (data.settings as { mixerSettings?: unknown }).mixerSettings
-            : undefined;
+        const nextMixerSource = data.settings && typeof data.settings === 'object' ? (data.settings as { mixerSettings?: unknown }).mixerSettings : undefined;
         if (nextMixerSource !== undefined) {
           const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
           mixerLevelsRef.current = nextMixerLevels;
@@ -4081,7 +4116,7 @@ export default function Control() {
                       ? `Playing: ${sceneInstantPlayback.instantName || 'Scene instant'}`
                       : selectedSceneInstant
                         ? `Ready: ${selectedSceneInstant.name}`
-                        : 'Select an instant, save scene attributes, then TAKE BG.'}
+                        : 'Select an instant (changes save automatically), then TAKE BG.'}
                   </p>
                 </div>
                 <div className='space-y-4 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
@@ -4107,11 +4142,9 @@ export default function Control() {
                     );
                   })}
                 </div>
-                <div className='flex justify-end'>
-                  <Button onClick={saveSceneAttributes} disabled={isSavingSceneAttributes}>
-                    {isSavingSceneAttributes ? 'Saving...' : 'Save Scene Attributes'}
-                  </Button>
-                </div>
+                {isSavingSceneAttributes ? (
+                  <p className='text-xs text-text-secondary dark:text-text-secondary text-right'>Autosaving scene attributes…</p>
+                ) : null}
               </div>
             )}
           </Card>
@@ -4655,6 +4688,45 @@ function ComponentPropsFields({
               onChange={(e) => updateProp(componentType, 'opacity', Number(e.target.value))}
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
             />
+          </label>
+        </div>
+      );
+    case 'cronica-background':
+      return <p className='text-xs text-gray-500 italic'>No configurable fields for Cronica background.</p>;
+    case 'cronica-chyron':
+      return (
+        <div className='space-y-3'>
+          <label className='block text-sm text-gray-700'>
+            Text (Multi-line supported)
+            <textarea
+              value={props.text || ''}
+              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+              className='mt-1 w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500 h-24'
+              placeholder='Enter chyron text...'
+            />
+          </label>
+        </div>
+      );
+    case 'cronica-reiteramos':
+      return (
+        <div className='space-y-3'>
+          <label className='block text-sm text-gray-700'>
+            Text
+            <input
+              type='text'
+              value={props.text || 'REITERAMOS'}
+              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
+              className='mt-1 w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            />
+          </label>
+          <label className='flex items-center gap-2 text-sm text-gray-700'>
+            <input
+              type='checkbox'
+              checked={toBoolean(props.show, true)}
+              onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
+              className='h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded'
+            />
+            Show banner
           </label>
         </div>
       );

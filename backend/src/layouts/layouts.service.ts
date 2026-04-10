@@ -126,6 +126,21 @@ export class LayoutsService {
         'ModoItaliano legal/disclaimer text block with alignment and sizing',
     },
     {
+      type: 'cronica-background',
+      name: 'Cronica Background',
+      description: 'Cronica full-screen branded background layer',
+    },
+    {
+      type: 'cronica-chyron',
+      name: 'Cronica Chyron',
+      description: 'Cronica multi-line chyron text block',
+    },
+    {
+      type: 'cronica-reiteramos',
+      name: 'Cronica Reiteramos',
+      description: 'Cronica reiteramos banner strip',
+    },
+    {
       type: 'fifthbell-content',
       name: 'FifthBell Content',
       description:
