@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Accordion, Button, Kbd, SectionHeader, Select, Switch } from '@gaulatti/bleecker';
+import { Accordion, Button, Kbd, Panel, PanelLayout, Select, Switch } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -3036,8 +3036,15 @@ export default function Control() {
   const mainMixMeterFill = meterLevelToFill(programAudioMeterLevels.main.vu);
   const mainMixPeakFill = meterLevelToFill(programAudioMeterLevels.main.peak);
   const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
+  const assignedScenesCount = assignedScenes.length;
+  const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
+  const onlineStatusTone = isProgramRealtimeConnected ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/40' : 'text-amber-200 bg-amber-500/15 border-amber-300/40';
+  const activeSceneLabel = activeSceneData?.name ?? 'Off Air';
+  const stagedSceneLabel = stagedSceneData?.name ?? 'None';
+  const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
+  const controlDeckGrowProps = { grow: true } as any;
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <div className='flex h-full w-full min-h-0 flex-col bg-light-sand/30 text-text-primary dark:bg-black/20'>
       <style>
         {`
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
@@ -3057,19 +3064,11 @@ export default function Control() {
           }
         `}
       </style>
-      <div className='mx-auto max-w-7xl space-y-6'>
-        <SectionHeader title='Control' description='Stage scenes, take them live, and edit staged scene attributes for the selected program.' />
-
-        <div className='space-y-6'>
-          {/* Main Control Accordion */}
-          <Accordion
-            defaultExpandedId='scenes'
-            items={[
-              {
-                id: 'scenes',
-                title: 'Scenes',
-                content: (
-                  <div className='space-y-4'>
+      <div className='flex min-h-0 flex-1 overflow-y-auto pb-20'>
+      <PanelLayout className='flex-1 min-h-0 w-full' padding='p-0'>
+        <Panel title='Scenes' accent='#22c55e' width={360} className='min-w-0'>
+        <section className='h-full bg-transparent text-text-primary'>
+          <div className='space-y-4 p-4'>
             <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
               <div className='flex flex-wrap items-center gap-2'>
                 <Button size='sm' onClick={() => void takeStagedSceneLive()} disabled={!selectedScene || stagedIsOnAir}>
@@ -3093,8 +3092,7 @@ export default function Control() {
               <div className='py-8 text-center text-text-secondary dark:text-text-secondary'>No scenes assigned to this program.</div>
             ) : (
               <>
-                <div className='overflow-x-auto'>
-                  <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
+                <div className='grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(120px,1fr))]'>
                     {assignedScenes.map((scene, index) => {
                       const isStaged = selectedScene === scene.id;
                       const isActive = activeSceneId === scene.id;
@@ -3106,6 +3104,9 @@ export default function Control() {
                           onClick={() => {
                             setSelectedScene(scene.id);
                             void stageSceneForProgram(scene.id);
+                          }}
+                          onDoubleClick={() => {
+                            void activateScene(scene.id);
                           }}
                           className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
                             isActive && isStaged
@@ -3132,7 +3133,6 @@ export default function Control() {
                         </button>
                       );
                     })}
-                  </div>
                 </div>
                 <div className='text-xs text-text-secondary dark:text-text-secondary space-y-1'>
                   <p>
@@ -3145,12 +3145,19 @@ export default function Control() {
                 </div>
               </>
             )}
-                  </div>
-                )
-              },
+          </div>
+        </section>
+        </Panel>
+
+        <Panel title='Control Deck' accent='#38bdf8' className='min-w-0' {...controlDeckGrowProps}>
+          {/* Main Control Accordion */}
+          <Accordion
+            className='h-full bg-transparent'
+            defaultExpandedId='playlist'
+            items={[
               {
                 id: 'playlist',
-                title: 'Playlist',
+                title: 'Songs Catalog',
                 content: (
                   <div className='space-y-4'>
             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
@@ -3160,6 +3167,8 @@ export default function Control() {
               sequence={programAudioBusSongSequence}
               songCatalog={songCatalog}
               programSongPlayback={programSongPlaybackState}
+              view='catalog'
+              showPlaybackBar={false}
               onChange={(nextSequence) => {
                 void saveProgramAudioBusSongSequence(nextSequence);
               }}
@@ -4172,7 +4181,27 @@ export default function Control() {
               }
             ]}
           />
-        </div>
+        </Panel>
+
+        <Panel title='Current Queue' accent='#8b5cf6' width={520} className='min-w-0 h-full'>
+          <ProgramSongSequenceEditor
+            sequence={programAudioBusSongSequence}
+            songCatalog={songCatalog}
+            programSongPlayback={programSongPlaybackState}
+            view='queue'
+            showPlaybackBar
+            onChange={(nextSequence) => {
+              void saveProgramAudioBusSongSequence(nextSequence);
+            }}
+            onTakeSelection={async (nextSequence) => {
+              await saveProgramAudioBusSongSequence(nextSequence);
+            }}
+            onTakeOffAir={async () => {
+              await takeProgramSongOffAir(activeProgramId);
+            }}
+          />
+        </Panel>
+      </PanelLayout>
       </div>
     </div>
   );
@@ -6364,7 +6393,9 @@ function ProgramSongSequenceEditor({
   onChange,
   onTakeSelection,
   onTakeOffAir,
-  depth = 0
+  depth = 0,
+  view = 'full',
+  showPlaybackBar = true
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
@@ -6373,6 +6404,8 @@ function ProgramSongSequenceEditor({
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onTakeOffAir?: () => Promise<void> | void;
   depth?: number;
+  view?: 'full' | 'catalog' | 'queue';
+  showPlaybackBar?: boolean;
 }) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -6382,6 +6415,9 @@ function ProgramSongSequenceEditor({
   const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
   const isNested = depth > 0;
+  const showQueue = view !== 'catalog';
+  const showCatalog = view !== 'queue';
+  const hasFixedPlaybackBar = showPlaybackBar && !isNested;
   const effectiveActiveItemId = getProgramSongSequenceSelectedItemId(sequence, nowMs);
   const availableSongCatalog = useMemo(
     () =>
@@ -6754,11 +6790,12 @@ function ProgramSongSequenceEditor({
   };
 
   return (
-    <div className={`flex flex-col overflow-hidden rounded-xl ${isNested ? 'border border-zinc-800 bg-zinc-900' : 'bg-zinc-950'}`}>
+    <div className={`flex flex-col overflow-hidden rounded-xl ${isNested ? 'border border-zinc-800 bg-zinc-900' : 'h-full min-h-0 bg-zinc-950'}`}>
       {/* Two-column layout container */}
-      <div className='flex flex-col md:flex-row'>
+      <div className='flex min-h-0 flex-1 flex-col md:flex-row'>
         {/* Left Column: Playlist Queue */}
-        <div className='flex-1 border-r-0 border-zinc-800/60 md:border-r'>
+        {showQueue ? (
+          <div className={`flex min-h-0 flex-1 flex-col ${showCatalog ? 'border-r-0 border-zinc-800/60 md:border-r' : ''}`}>
           <div className='flex items-center justify-between border-b border-zinc-800/60 bg-zinc-900/20 px-4 py-2 border-t'>
             <span className='text-[10px] font-semibold uppercase tracking-widest text-zinc-500'>Current Queue</span>
             <span className='text-[10px] text-zinc-500'>
@@ -6767,13 +6804,13 @@ function ProgramSongSequenceEditor({
           </div>
 
           {sequence.items.length === 0 ? (
-            <div className='flex flex-col items-center justify-center px-4 py-16 text-center'>
+            <div className='flex flex-1 flex-col items-center justify-center px-4 py-16 text-center'>
               <Music2 size={32} className='mb-3 text-zinc-700' />
               <p className='text-sm font-medium text-zinc-400'>Queue is empty</p>
               <p className='mt-1 text-xs text-zinc-600'>Search and add songs from the catalog panel.</p>
             </div>
           ) : (
-            <div className='overflow-x-auto'>
+            <div className='min-h-0 flex-1 overflow-auto'>
               <div className='min-w-100'>
                 {/* Column header */}
                 <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-zinc-800/60 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-700'>
@@ -7001,10 +7038,16 @@ function ProgramSongSequenceEditor({
               </div>
             </div>
           )}
-        </div>
+          </div>
+        ) : null}
 
         {/* Right Column: Catalog Inventory */}
-        <div className='hidden w-[320px] shrink-0 flex-col border-t border-zinc-800/60 bg-zinc-900/30 md:flex'>
+        {showCatalog ? (
+          <div
+            className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-900/30 ${
+              showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'
+            }`}
+          >
           <div className='border-b border-zinc-800/60 bg-zinc-900/40 p-2'>
             <input
               type='text'
@@ -7014,7 +7057,7 @@ function ProgramSongSequenceEditor({
               className='w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/50'
             />
           </div>
-          <div className='max-h-125 flex-1 overflow-y-auto'>
+          <div className={showQueue ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-125 overflow-y-auto'}>
             {availableSongCatalog
               .filter((song) => {
                 if (!addSongValue) return true;
@@ -7055,11 +7098,21 @@ function ProgramSongSequenceEditor({
                   song.artist?.toLowerCase().includes(addSongValue.toLowerCase())
               ).length === 0 && <div className='p-4 text-center text-xs text-zinc-500'>No matches found</div>}
           </div>
-        </div>
+          </div>
+        ) : null}
       </div>
 
+      {hasFixedPlaybackBar ? <div aria-hidden='true' className='h-20 shrink-0' /> : null}
+
       {/* Playback Bar */}
-      <div className='flex items-center justify-between border-t border-zinc-800 bg-zinc-900/80 px-4 py-3'>
+      {showPlaybackBar ? (
+        <div
+          className={`flex items-center justify-between border-t border-zinc-800 bg-zinc-900/80 px-4 py-3 ${
+            hasFixedPlaybackBar
+              ? 'fixed inset-x-0 bottom-0 z-40 bg-zinc-950/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80'
+              : ''
+          }`}
+        >
         {/* Transport controls */}
         <div className='flex items-center gap-2'>
           <button
@@ -7287,7 +7340,8 @@ function ProgramSongSequenceEditor({
             <Repeat2 size={16} />
           </button>
         </div>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

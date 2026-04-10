@@ -14,7 +14,7 @@ import {
 } from '@gaulatti/bleecker';
 import { Blend, CircleOff, Clock3, Clapperboard, Eye, Home, Images, LayoutTemplate, LogOut, Music, Radio, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
@@ -70,6 +70,7 @@ function renderAppLink({ children, className, item, onClick }: RenderLinkProps<N
 
 export default function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout } = useLogout();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
@@ -287,6 +288,7 @@ export default function Layout() {
       ]
     }
   ];
+  const hideFooter = location.pathname === '/control';
 
   const renderHeaderProgramSelector = () => (
     <HeaderSelect
@@ -602,31 +604,33 @@ export default function Layout() {
           />
         }
         footer={
-          <BleeckerFooter
-            brand={{
-              href: '/',
-              logoAlt: 'alcantara',
-              logoSrc: '/logo.svg',
-              name: 'alcantara',
-              description: 'Advanced broadcast control.'
-            }}
-            sections={footerSections}
-            bottomLeft={
-              <>
-                © {new Date().getFullYear()}{' '}
-                <a href='https://gaulatti.com' target='_blank' rel='noopener noreferrer' className='font-semibold hover:underline underline-offset-4'>
-                  gaulatti
+          hideFooter ? undefined : (
+            <BleeckerFooter
+              brand={{
+                href: '/',
+                logoAlt: 'alcantara',
+                logoSrc: '/logo.svg',
+                name: 'alcantara',
+                description: 'Advanced broadcast control.'
+              }}
+              sections={footerSections}
+              bottomLeft={
+                <>
+                  © {new Date().getFullYear()}{' '}
+                  <a href='https://gaulatti.com' target='_blank' rel='noopener noreferrer' className='font-semibold hover:underline underline-offset-4'>
+                    gaulatti
+                  </a>
+                  . All rights reserved.
+                </>
+              }
+              bottomRight={
+                <a href={GITHUB_REPO_URL} target='_blank' rel='noopener noreferrer' className='hover:underline underline-offset-4'>
+                  View source on GitHub
                 </a>
-                . All rights reserved.
-              </>
-            }
-            bottomRight={
-              <a href={GITHUB_REPO_URL} target='_blank' rel='noopener noreferrer' className='hover:underline underline-offset-4'>
-                View source on GitHub
-              </a>
-            }
-            renderLink={renderAppLink}
-          />
+              }
+              renderLink={renderAppLink}
+            />
+          )
         }
       >
         <Outlet />
