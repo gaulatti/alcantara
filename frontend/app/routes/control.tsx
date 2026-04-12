@@ -211,6 +211,7 @@ type SceneAttributeSavePayload = {
   props: ComponentPropsMap;
   signature: string;
 };
+type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlayback' | 'sceneInstant';
 type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'sceneInstant' | 'main';
 type MixerTakePresetSide = 'a' | 'b';
 type MixerTakePresetDbMap = Record<
@@ -632,6 +633,75 @@ function normalizeSceneInstantPlayback(value: unknown): SceneInstantPlaybackStat
     isPlaying: Boolean(record.isPlaying),
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
   };
+}
+
+function normalizeUpdateVersion(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  const normalized = Math.floor(numeric);
+  if (normalized < 0) {
+    return null;
+  }
+  return normalized;
+}
+
+function resolveControlUpdateTopicFromType(type: unknown): ProgramUpdateTopic | null {
+  if (typeof type !== 'string') {
+    return null;
+  }
+
+  switch (type) {
+    case 'program_state_snapshot':
+    case 'scene_change':
+    case 'scene_staged':
+    case 'scene_update':
+    case 'scene_cleared':
+    case 'program_scenes_changed':
+      return 'state';
+    case 'audio_bus_snapshot':
+    case 'audio_bus_update':
+      return 'audioBus';
+    case 'audio_meter_update':
+      return 'audioMeter';
+    case 'song_playback_update':
+    case 'song_off_air':
+      return 'songPlayback';
+    case 'scene_instant_state':
+    case 'scene_instant_take':
+    case 'scene_instant_stop':
+      return 'sceneInstant';
+    default:
+      return null;
+  }
+}
+
+function readControlUpdateVersion(topic: ProgramUpdateTopic, payload: unknown): number | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const topLevel = normalizeUpdateVersion(record.version);
+  if (topLevel !== null) {
+    return topLevel;
+  }
+
+  switch (topic) {
+    case 'state':
+      return normalizeUpdateVersion((record.state as Record<string, unknown> | undefined)?.version ?? record.stateVersion);
+    case 'audioBus':
+      return normalizeUpdateVersion((record.settings as Record<string, unknown> | undefined)?.version ?? record.audioBusVersion);
+    case 'audioMeter':
+      return normalizeUpdateVersion((record.levels as Record<string, unknown> | undefined)?.version ?? record.audioMeterVersion);
+    case 'songPlayback':
+      return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.songPlaybackVersion);
+    case 'sceneInstant':
+      return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.sceneInstantVersion);
+    default:
+      return null;
+  }
 }
 
 function reconcileProgramSongPlayback(previous: ProgramSongPlaybackState, next: ProgramSongPlaybackState): ProgramSongPlaybackState {
@@ -1173,6 +1243,13 @@ export default function Control() {
   });
   const programRealtimeSocketRef = useRef<WebSocket | null>(null);
   const [isProgramRealtimeConnected, setIsProgramRealtimeConnected] = useState(false);
+  const latestControlVersionByTopicRef = useRef<Record<ProgramUpdateTopic, number>>({
+    state: -1,
+    audioBus: -1,
+    audioMeter: -1,
+    songPlayback: -1,
+    sceneInstant: -1
+  });
 
   const applySceneUpdateLocally = useCallback((nextScene: Scene) => {
     if (!nextScene || typeof nextScene !== 'object' || typeof nextScene.id !== 'number') {
@@ -1226,6 +1303,30 @@ export default function Control() {
     });
   }, []);
 
+  const shouldApplyControlUpdatePayload = useCallback((payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
+    const topic =
+      topicOverride ??
+      (payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? resolveControlUpdateTopicFromType((payload as Record<string, unknown>).type)
+        : null);
+    if (!topic) {
+      return true;
+    }
+
+    const nextVersion = readControlUpdateVersion(topic, payload);
+    if (nextVersion === null) {
+      return true;
+    }
+
+    const previousVersion = latestControlVersionByTopicRef.current[topic] ?? -1;
+    if (nextVersion <= previousVersion) {
+      return false;
+    }
+
+    latestControlVersionByTopicRef.current[topic] = nextVersion;
+    return true;
+  }, []);
+
   useEffect(() => {
     fetchScenes();
     fetchLayouts();
@@ -1235,6 +1336,13 @@ export default function Control() {
   }, []);
 
   useEffect(() => {
+    latestControlVersionByTopicRef.current = {
+      state: -1,
+      audioBus: -1,
+      audioMeter: -1,
+      songPlayback: -1,
+      sceneInstant: -1
+    };
     void fetchInstants();
     Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
       window.clearTimeout(timeoutId);
@@ -1385,6 +1493,10 @@ export default function Control() {
         }
 
         if (!payload || typeof payload !== 'object') {
+          return;
+        }
+
+        if (!shouldApplyControlUpdatePayload(payload)) {
           return;
         }
 
@@ -1588,7 +1700,7 @@ export default function Control() {
         }
       }
     };
-  }, [activeProgramId, applySceneUpdateLocally, syncProgramStateAndStagedScene]);
+  }, [activeProgramId, applySceneUpdateLocally, shouldApplyControlUpdatePayload, syncProgramStateAndStagedScene]);
 
   const fetchScenes = async () => {
     try {
@@ -1686,6 +1798,9 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as ProgramAudioBusSettings | null;
+      if (!shouldApplyControlUpdatePayload(payload, 'audioBus')) {
+        return;
+      }
       const persistedMixerLevels = normalizeBroadcastSettingsPayload(payload?.mixerSettings ?? nextMixerLevels);
       mixerLevelsRef.current = persistedMixerLevels;
       setMixerLevels(persistedMixerLevels);
@@ -1977,6 +2092,9 @@ export default function Control() {
       }
 
       const payload = await res.json();
+      if (!shouldApplyControlUpdatePayload(payload, 'audioMeter')) {
+        return;
+      }
       setProgramAudioMeterLevels(normalizeProgramAudioMeter(payload));
     } catch (err) {
       console.error('Failed to fetch program audio meter levels:', err);
@@ -1998,6 +2116,9 @@ export default function Control() {
       }
 
       const payload = await res.json();
+      if (!shouldApplyControlUpdatePayload(payload, 'songPlayback')) {
+        return;
+      }
       setProgramSongPlaybackState(normalizeProgramSongPlayback(payload));
     } catch (err) {
       console.error('Failed to fetch program song playback:', err);
@@ -2020,6 +2141,9 @@ export default function Control() {
         throw new Error(`HTTP ${res.status}`);
       }
       const payload = await res.json();
+      if (!shouldApplyControlUpdatePayload(payload, 'sceneInstant')) {
+        return;
+      }
       setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
     } catch (err) {
       console.error('Failed to fetch scene instant playback:', err);
@@ -2041,12 +2165,14 @@ export default function Control() {
       }
 
       const data = (await res.json()) as unknown;
+      if (!shouldApplyControlUpdatePayload(data, 'state')) {
+        return;
+      }
       const normalizedProgramState = normalizeProgramState(data);
 
       syncProgramStateAndStagedScene(normalizedProgramState);
     } catch (err) {
       console.error('Failed to fetch program state:', err);
-      syncProgramStateAndStagedScene(null);
     }
   };
 
@@ -2059,6 +2185,9 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (!shouldApplyControlUpdatePayload(payload, 'audioBus')) {
+        return;
+      }
       const nextMixerLevels = normalizeBroadcastSettingsPayload(payload?.mixerSettings);
       mixerLevelsRef.current = nextMixerLevels;
       setMixerLevels(nextMixerLevels);
@@ -2099,6 +2228,9 @@ export default function Control() {
       }
 
       const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (!shouldApplyControlUpdatePayload(payload, 'audioBus')) {
+        return;
+      }
       if (payload && Object.prototype.hasOwnProperty.call(payload, 'mixerSettings')) {
         const nextMixerLevels = normalizeBroadcastSettingsPayload(payload.mixerSettings);
         mixerLevelsRef.current = nextMixerLevels;
@@ -3153,6 +3285,10 @@ export default function Control() {
         return;
       }
 
+      if (!shouldApplyControlUpdatePayload(data)) {
+        return;
+      }
+
       if (data.type === 'scene_change' || data.type === 'program_scenes_changed') {
         const normalizedProgramState = normalizeProgramState(data.state);
         syncProgramStateAndStagedScene(normalizedProgramState);
@@ -3243,7 +3379,7 @@ export default function Control() {
         }));
       }
     },
-    [activeProgramId, applySceneUpdateLocally, isProgramRealtimeConnected, syncProgramStateAndStagedScene]
+    [activeProgramId, applySceneUpdateLocally, isProgramRealtimeConnected, shouldApplyControlUpdatePayload, syncProgramStateAndStagedScene]
   );
 
   useSSE({

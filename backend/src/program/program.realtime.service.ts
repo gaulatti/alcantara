@@ -217,12 +217,14 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     };
 
     this.clients.add(client);
-    this.sendInitialProgramStateSnapshot(client);
-    this.sendInitialAudioBusSnapshot(client);
-    this.sendInitialBroadcastSettingsSnapshot(client);
-    this.sendInitialMeterSnapshot(client);
-    this.sendInitialSongPlaybackSnapshot(client);
-    this.sendInitialSceneInstantSnapshot(client);
+    if (role === 'control') {
+      this.sendInitialProgramStateSnapshot(client);
+      this.sendInitialAudioBusSnapshot(client);
+      this.sendInitialBroadcastSettingsSnapshot(client);
+      this.sendInitialMeterSnapshot(client);
+      this.sendInitialSongPlaybackSnapshot(client);
+      this.sendInitialSceneInstantSnapshot(client);
+    }
 
     socket.on('message', (rawData) => {
       void this.handleMessage(client, rawData);
@@ -245,10 +247,15 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       const levels = await this.programService.getProgramAudioMeter(
         client.programId,
       );
+      const version =
+        levels && typeof levels === 'object' && 'version' in levels
+          ? Number((levels as Record<string, unknown>).version)
+          : NaN;
       this.sendJson(client.socket, {
         type: 'audio_meter_update',
         programId: client.programId,
         levels,
+        version: Number.isFinite(version) ? version : undefined,
       });
     } catch {
       // no-op
@@ -260,10 +267,15 @@ export class ProgramRealtimeService implements OnModuleDestroy {
   ): Promise<void> {
     try {
       const state = await this.programService.getState(client.programId);
+      const version =
+        state && typeof state === 'object' && 'version' in state
+          ? Number((state as Record<string, unknown>).version)
+          : NaN;
       this.sendJson(client.socket, {
         type: 'program_state_snapshot',
         programId: client.programId,
         state,
+        version: Number.isFinite(version) ? version : undefined,
       });
     } catch {
       // no-op
@@ -277,11 +289,16 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       const settings = await this.programService.getProgramAudioBus(
         client.programId,
       );
+      const version =
+        settings && typeof settings === 'object' && 'version' in settings
+          ? Number((settings as Record<string, unknown>).version)
+          : NaN;
       this.sendJson(client.socket, {
         type: 'audio_bus_snapshot',
         programId: client.programId,
         settings,
         updatedAt: new Date().toISOString(),
+        version: Number.isFinite(version) ? version : undefined,
       });
     } catch {
       // no-op
@@ -293,9 +310,14 @@ export class ProgramRealtimeService implements OnModuleDestroy {
   ): Promise<void> {
     try {
       const settings = await this.programService.getBroadcastSettings();
+      const version =
+        settings && typeof settings === 'object' && 'version' in settings
+          ? Number((settings as Record<string, unknown>).version)
+          : NaN;
       this.sendJson(client.socket, {
         type: 'broadcast_settings_snapshot',
         settings,
+        version: Number.isFinite(version) ? version : undefined,
       });
     } catch {
       // no-op
@@ -309,10 +331,15 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       const playback = await this.programService.getProgramSongPlayback(
         client.programId,
       );
+      const version =
+        playback && typeof playback === 'object' && 'version' in playback
+          ? Number((playback as Record<string, unknown>).version)
+          : NaN;
       this.sendJson(client.socket, {
         type: 'song_playback_update',
         programId: client.programId,
         playback,
+        version: Number.isFinite(version) ? version : undefined,
       });
     } catch {
       // no-op
@@ -326,10 +353,15 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       const playback = await this.programService.getProgramSceneInstantPlayback(
         client.programId,
       );
+      const version =
+        playback && typeof playback === 'object' && 'version' in playback
+          ? Number((playback as Record<string, unknown>).version)
+          : NaN;
       this.sendJson(client.socket, {
         type: 'scene_instant_state',
         programId: client.programId,
         playback,
+        version: Number.isFinite(version) ? version : undefined,
       });
     } catch {
       // no-op
@@ -470,6 +502,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     for (const client of this.clients) {
       if (
         client.programId !== programId ||
+        client.role === 'program' ||
         client.socket.readyState !== WebSocket.OPEN
       ) {
         continue;
@@ -481,7 +514,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
   private broadcastGlobalEvent(payload: any): void {
     const encoded = JSON.stringify(payload);
     for (const client of this.clients) {
-      if (client.socket.readyState !== WebSocket.OPEN) {
+      if (client.role === 'program' || client.socket.readyState !== WebSocket.OPEN) {
         continue;
       }
       client.socket.send(encoded);

@@ -62,6 +62,13 @@ export interface ProgramSceneInstantPlayback {
   updatedAt: string;
 }
 
+type ProgramUpdateTopic =
+  | 'state'
+  | 'audioBus'
+  | 'audioMeter'
+  | 'songPlayback'
+  | 'sceneInstant';
+
 @Injectable()
 export class ProgramService {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
@@ -69,6 +76,17 @@ export class ProgramService {
   private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
   private broadcastSettingsColumnsEnsured = false;
   private eventSubjects = new Map<string, Subject<any>>();
+  private readonly topicVersionByProgramId: Record<
+    ProgramUpdateTopic,
+    Map<string, number>
+  > = {
+    state: new Map<string, number>(),
+    audioBus: new Map<string, number>(),
+    audioMeter: new Map<string, number>(),
+    songPlayback: new Map<string, number>(),
+    sceneInstant: new Map<string, number>(),
+  };
+  private globalBroadcastVersion = 0;
   private stagedSceneByProgramId = new Map<string, number | null>();
   private programAudioMeterByProgramId = new Map<
     string,
@@ -483,7 +501,10 @@ export class ProgramService {
 
   async getBroadcastSettings() {
     const settings = await this.ensureBroadcastSettings();
-    return this.withResolvedBroadcastMixerChannels(settings as any);
+    return {
+      ...this.withResolvedBroadcastMixerChannels(settings as any),
+      version: this.getGlobalBroadcastVersion(),
+    };
   }
 
   private normalizeOverrideTime(startTime: string): string {
@@ -828,12 +849,18 @@ export class ProgramService {
       settings as any,
     );
 
-    this.broadcastGlobalUpdate({
+    const broadcastPayload = this.broadcastGlobalUpdate({
       type: 'broadcast_settings_update',
       settings: resolvedSettings,
     });
 
-    return resolvedSettings;
+    return {
+      ...resolvedSettings,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getGlobalBroadcastVersion(),
+    };
   }
 
   private getEventSubject(programId: string) {
@@ -845,6 +872,123 @@ export class ProgramService {
     const subject = new Subject<any>();
     this.eventSubjects.set(programId, subject);
     return subject;
+  }
+
+  private getTopicVersionMap(topic: ProgramUpdateTopic): Map<string, number> {
+    return this.topicVersionByProgramId[topic];
+  }
+
+  private getProgramTopicVersion(
+    programId: string,
+    topic: ProgramUpdateTopic,
+  ): number {
+    return this.getTopicVersionMap(topic).get(programId) ?? 0;
+  }
+
+  private bumpProgramTopicVersion(
+    programId: string,
+    topic: ProgramUpdateTopic,
+  ): number {
+    const nextVersion = this.getProgramTopicVersion(programId, topic) + 1;
+    this.getTopicVersionMap(topic).set(programId, nextVersion);
+    return nextVersion;
+  }
+
+  getProgramUpdateVersion(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    topic: ProgramUpdateTopic,
+  ): number {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    return this.getProgramTopicVersion(normalizedProgramId, topic);
+  }
+
+  getGlobalBroadcastVersion(): number {
+    return this.globalBroadcastVersion;
+  }
+
+  private resolveProgramTopicForEventType(
+    eventType: unknown,
+  ): ProgramUpdateTopic | null {
+    if (typeof eventType !== 'string' || !eventType.trim()) {
+      return null;
+    }
+
+    switch (eventType) {
+      case 'scene_change':
+      case 'scene_staged':
+      case 'scene_update':
+      case 'scene_cleared':
+      case 'program_scenes_changed':
+        return 'state';
+      case 'audio_bus_update':
+        return 'audioBus';
+      case 'audio_meter_update':
+        return 'audioMeter';
+      case 'song_playback_update':
+      case 'song_off_air':
+        return 'songPlayback';
+      case 'scene_instant_take':
+      case 'scene_instant_stop':
+      case 'scene_instant_state':
+        return 'sceneInstant';
+      default:
+        return null;
+    }
+  }
+
+  private withProgramVersionEnvelope(
+    programId: string,
+    payload: any,
+    options?: {
+      bumpVersion?: boolean;
+    },
+  ): any {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return payload;
+    }
+
+    const topic = this.resolveProgramTopicForEventType(payload.type);
+    if (!topic) {
+      return payload;
+    }
+
+    const shouldBumpVersion = options?.bumpVersion ?? true;
+    const version = shouldBumpVersion
+      ? this.bumpProgramTopicVersion(programId, topic)
+      : this.getProgramTopicVersion(programId, topic);
+
+    return {
+      ...payload,
+      version,
+    };
+  }
+
+  private withGlobalVersionEnvelope(
+    payload: any,
+    options?: {
+      bumpVersion?: boolean;
+    },
+  ): any {
+    const shouldBumpVersion = options?.bumpVersion ?? true;
+    const version = shouldBumpVersion
+      ? this.globalBroadcastVersion + 1
+      : this.globalBroadcastVersion;
+    if (shouldBumpVersion) {
+      this.globalBroadcastVersion = version;
+    }
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {
+        type: 'global_update',
+        payload,
+        version,
+      };
+    }
+
+    return {
+      ...payload,
+      version,
+    };
   }
 
   private normalizeProgramId(programId: string): string {
@@ -1078,15 +1222,22 @@ export class ProgramService {
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
-    return this.getProgramStateWithScenes(programId);
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.getProgramStateWithScenes(normalizedProgramId);
+    return {
+      ...state,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
   }
 
   async getStagedScene(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
-    const state = await this.getProgramStateWithScenes(programId);
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.getProgramStateWithScenes(normalizedProgramId);
     return {
       programId: state.programId,
       stagedSceneId: state.stagedSceneId ?? null,
       stagedScene: state.stagedScene ?? null,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'state'),
     };
   }
 
@@ -1109,6 +1260,7 @@ export class ProgramService {
     return {
       songSequence: state.songSequence ?? null,
       mixerSettings,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
     };
   }
 
@@ -1150,6 +1302,7 @@ export class ProgramService {
       return {
         songSequence: currentState.songSequence ?? null,
         mixerSettings: currentMixerSettings,
+        version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
       };
     }
 
@@ -1179,14 +1332,20 @@ export class ProgramService {
         nextMixerSettings,
       ),
     };
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'audio_bus_update',
       programId: normalizedProgramId,
       settings: nextSettings,
       updatedAt: new Date().toISOString(),
     });
 
-    return nextSettings;
+    return {
+      ...nextSettings,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
   }
 
   async getProgramAudioMeter(
@@ -1195,15 +1354,18 @@ export class ProgramService {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
 
-    return (
+    const levels =
       this.programAudioMeterByProgramId.get(normalizedProgramId) ?? {
         song: { vu: 0, peak: 0, peakHold: 0 },
         instants: { vu: 0, peak: 0, peakHold: 0 },
         sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
         main: { vu: 0, peak: 0, peakHold: 0 },
         updatedAt: new Date(0).toISOString(),
-      }
-    );
+      };
+    return {
+      ...levels,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'audioMeter'),
+    };
   }
 
   private normalizeAudioMeterLevel(value: unknown, fieldName: string): number {
@@ -1324,13 +1486,19 @@ export class ProgramService {
     const levels = { song, instants, sceneInstant, main, updatedAt };
 
     this.programAudioMeterByProgramId.set(normalizedProgramId, levels);
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'audio_meter_update',
       programId: normalizedProgramId,
       levels,
     });
 
-    return levels;
+    return {
+      ...levels,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'audioMeter'),
+    };
   }
 
   async getProgramSongPlayback(
@@ -1339,7 +1507,7 @@ export class ProgramService {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
 
-    return (
+    const playback =
       this.programSongPlaybackByProgramId.get(normalizedProgramId) ?? {
         token: '',
         audioUrl: '',
@@ -1348,8 +1516,11 @@ export class ProgramService {
         durationMs: null,
         isPlaying: false,
         updatedAt: new Date(0).toISOString(),
-      }
-    );
+      };
+    return {
+      ...playback,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'songPlayback'),
+    };
   }
 
   async updateProgramSongPlayback(
@@ -1400,7 +1571,13 @@ export class ProgramService {
       if (
         backwardDriftMs > ProgramService.SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS
       ) {
-        return previousPlayback;
+        return {
+          ...previousPlayback,
+          version: this.getProgramTopicVersion(
+            normalizedProgramId,
+            'songPlayback',
+          ),
+        };
       }
     }
 
@@ -1415,13 +1592,19 @@ export class ProgramService {
     };
 
     this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'song_playback_update',
       programId: normalizedProgramId,
       playback,
     });
 
-    return playback;
+    return {
+      ...playback,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'songPlayback'),
+    };
   }
 
   async getProgramSceneInstantPlayback(
@@ -1430,10 +1613,13 @@ export class ProgramService {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
 
-    return (
+    const playback =
       this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId) ??
-      this.createEmptyProgramSceneInstantPlayback(normalizedProgramId)
-    );
+      this.createEmptyProgramSceneInstantPlayback(normalizedProgramId);
+    return {
+      ...playback,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'sceneInstant'),
+    };
   }
 
   private parseSceneInstantIdFromSceneMetadata(
@@ -1554,7 +1740,7 @@ export class ProgramService {
       playback,
     );
 
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_instant_take',
       sceneId: targetSceneId,
       instant: playback.instant,
@@ -1562,7 +1748,13 @@ export class ProgramService {
       triggeredAt: nowIso,
     });
 
-    return playback;
+    return {
+      ...playback,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'sceneInstant'),
+    };
   }
 
   async stopProgramSceneInstant(
@@ -1587,7 +1779,7 @@ export class ProgramService {
       playback,
     );
 
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_instant_stop',
       sceneId: previous.sceneId ?? null,
       instantId: previous.instantId ?? null,
@@ -1595,7 +1787,13 @@ export class ProgramService {
       fadeMs,
     });
 
-    return playback;
+    return {
+      ...playback,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'sceneInstant'),
+    };
   }
 
   async proxyAudio(
@@ -1683,12 +1881,19 @@ export class ProgramService {
       });
     }
 
-    const updated = await this.getProgramStateWithScenes(programId);
-    this.broadcastUpdate(programId, {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const updated = await this.getProgramStateWithScenes(normalizedProgramId);
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'program_scenes_changed',
       state: updated,
     });
-    return updated;
+    return {
+      ...updated,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
   }
 
   async removeSceneFromProgram(
@@ -1735,11 +1940,17 @@ export class ProgramService {
     }
 
     const updated = await this.getProgramStateWithScenes(normalizedProgramId);
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'program_scenes_changed',
       state: updated,
     });
-    return updated;
+    return {
+      ...updated,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
   }
 
   async stageScene(
@@ -1787,12 +1998,16 @@ export class ProgramService {
       scene: stagedScene,
       updatedAt: new Date().toISOString(),
     };
-    this.broadcastUpdate(normalizedProgramId, payload);
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, payload);
 
     return {
       programId: normalizedProgramId,
       stagedSceneId: nextStagedSceneId,
       stagedScene: stagedScene ?? null,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
     };
   }
 
@@ -1878,13 +2093,19 @@ export class ProgramService {
       }
     }
 
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_change',
       transitionId: normalizedTransitionId,
       state: updatedState,
     });
 
-    return updatedState;
+    return {
+      ...updatedState,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
   }
 
   async takeProgramOffAir(
@@ -1900,7 +2121,13 @@ export class ProgramService {
     }
 
     if (!state.activeSceneId) {
-      return this.getProgramStateWithScenes(normalizedProgramId);
+      const currentState = await this.getProgramStateWithScenes(
+        normalizedProgramId,
+      );
+      return {
+        ...currentState,
+        version: this.getProgramTopicVersion(normalizedProgramId, 'state'),
+      };
     }
 
     const updatedState = await this.prisma.programState.update({
@@ -1927,13 +2154,19 @@ export class ProgramService {
       await this.stopProgramSceneInstant(normalizedProgramId, 1500);
     }
 
-    this.broadcastUpdate(normalizedProgramId, {
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'scene_change',
       transitionId: null,
       state: updatedState,
     });
 
-    return updatedState;
+    return {
+      ...updatedState,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
   }
 
   async takeProgramSongOffAir(
@@ -2245,23 +2478,35 @@ export class ProgramService {
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
     data: any,
   ) {
-    this.getEventSubject(programId).next(data);
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const payload = this.withProgramVersionEnvelope(
+      normalizedProgramId,
+      data,
+      {
+        bumpVersion: true,
+      },
+    );
+
+    this.getEventSubject(normalizedProgramId).next(payload);
     this.notifyEventListeners({
       scope: 'program',
-      programId,
-      data,
+      programId: normalizedProgramId,
+      data: payload,
     });
+    return payload;
   }
 
   private broadcastGlobalUpdate(data: any) {
+    const payload = this.withGlobalVersionEnvelope(data, { bumpVersion: true });
     for (const subject of this.eventSubjects.values()) {
-      subject.next(data);
+      subject.next(payload);
     }
     this.notifyEventListeners({
       scope: 'global',
       programId: null,
-      data,
+      data: payload,
     });
+    return payload;
   }
 
   addEventListener(

@@ -235,6 +235,7 @@ interface ProgramAudioMeterPayload {
   instants: MeterChannelPayload;
   sceneInstant: MeterChannelPayload;
   main: MeterChannelPayload;
+  version?: number;
 }
 
 interface MeterChannelBallistics {
@@ -252,6 +253,14 @@ interface ProgramMeterBallisticsState {
   lastTickAtMs: number | null;
 }
 
+type ProgramUpdateTopic =
+  | 'state'
+  | 'audioBus'
+  | 'audioMeter'
+  | 'songPlayback'
+  | 'sceneInstant'
+  | 'broadcastSettings';
+
 const VU_ATTACK_MS = 300;
 const VU_RELEASE_MS = 300;
 const PEAK_RELEASE_MS = 300;
@@ -260,6 +269,80 @@ const METER_TICK_INTERVAL_MS = 60;
 const SCENE_INSTANT_SWITCH_FADE_MS = 1500;
 
 const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner', 'fifthbell-clock']);
+
+function normalizeUpdateVersion(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  const normalized = Math.floor(numeric);
+  if (normalized < 0) {
+    return null;
+  }
+  return normalized;
+}
+
+function resolveProgramUpdateTopicFromType(type: unknown): ProgramUpdateTopic | null {
+  if (typeof type !== 'string') {
+    return null;
+  }
+
+  switch (type) {
+    case 'program_state_snapshot':
+    case 'scene_change':
+    case 'scene_staged':
+    case 'scene_update':
+    case 'scene_cleared':
+    case 'program_scenes_changed':
+      return 'state';
+    case 'audio_bus_snapshot':
+    case 'audio_bus_update':
+      return 'audioBus';
+    case 'audio_meter_update':
+      return 'audioMeter';
+    case 'song_playback_update':
+    case 'song_off_air':
+      return 'songPlayback';
+    case 'scene_instant_state':
+    case 'scene_instant_take':
+    case 'scene_instant_stop':
+      return 'sceneInstant';
+    case 'broadcast_settings_snapshot':
+    case 'broadcast_settings_update':
+      return 'broadcastSettings';
+    default:
+      return null;
+  }
+}
+
+function readProgramTopicVersion(topic: ProgramUpdateTopic, payload: unknown): number | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const topLevel = normalizeUpdateVersion(record.version);
+  if (topLevel !== null) {
+    return topLevel;
+  }
+
+  switch (topic) {
+    case 'state':
+      return normalizeUpdateVersion((record.state as Record<string, unknown> | undefined)?.version ?? record.stateVersion);
+    case 'audioBus':
+      return normalizeUpdateVersion((record.settings as Record<string, unknown> | undefined)?.version ?? record.audioBusVersion);
+    case 'audioMeter':
+      return normalizeUpdateVersion((record.levels as Record<string, unknown> | undefined)?.version ?? record.audioMeterVersion);
+    case 'songPlayback':
+      return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.songPlaybackVersion);
+    case 'sceneInstant':
+      return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.sceneInstantVersion);
+    case 'broadcastSettings':
+      return normalizeUpdateVersion((record.settings as Record<string, unknown> | undefined)?.version ?? record.broadcastSettingsVersion);
+    default:
+      return null;
+  }
+}
 
 function createMeterChannelBallistics(): MeterChannelBallistics {
   return {
@@ -608,6 +691,24 @@ function SceneProgram({ programId }: { programId: string }) {
   const handleProgramEventRef = useRef<(data: any) => void>(() => {
     // no-op until handler is initialized
   });
+  const latestProgramVersionByTopicRef = useRef<Record<ProgramUpdateTopic, number>>({
+    state: -1,
+    audioBus: -1,
+    audioMeter: -1,
+    songPlayback: -1,
+    sceneInstant: -1,
+    broadcastSettings: -1
+  });
+  useEffect(() => {
+    latestProgramVersionByTopicRef.current = {
+      state: -1,
+      audioBus: -1,
+      audioMeter: -1,
+      songPlayback: -1,
+      sceneInstant: -1,
+      broadcastSettings: -1
+    };
+  }, [programId]);
   const meterBallisticsRef = useRef<ProgramMeterBallisticsState>(createProgramMeterBallisticsState());
   const lastMeterPayloadRef = useRef<ProgramAudioMeterPayload>({
     song: { vu: 0, peak: 0, peakHold: 0 },
@@ -1163,9 +1264,37 @@ function SceneProgram({ programId }: { programId: string }) {
       });
   }, []);
 
+  const shouldApplyProgramUpdatePayload = useCallback((payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
+    const topic =
+      topicOverride ??
+      (payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? resolveProgramUpdateTopicFromType((payload as Record<string, unknown>).type)
+        : null);
+    if (!topic) {
+      return true;
+    }
+
+    const nextVersion = readProgramTopicVersion(topic, payload);
+    if (nextVersion === null) {
+      return true;
+    }
+
+    const previousVersion = latestProgramVersionByTopicRef.current[topic] ?? -1;
+    if (nextVersion <= previousVersion) {
+      return false;
+    }
+
+    latestProgramVersionByTopicRef.current[topic] = nextVersion;
+    return true;
+  }, []);
+
   const handleProgramEvent = useCallback(
     (data: any) => {
       if (!data || typeof data !== 'object') {
+        return;
+      }
+
+      if (!shouldApplyProgramUpdatePayload(data)) {
         return;
       }
 
@@ -1327,7 +1456,8 @@ function SceneProgram({ programId }: { programId: string }) {
       stopSceneInstantAudio,
       takeSceneInstantAudio,
       clearTransitionTimers,
-      performProgramFullReload
+      performProgramFullReload,
+      shouldApplyProgramUpdatePayload
     ]
   );
 
@@ -1363,20 +1493,16 @@ function SceneProgram({ programId }: { programId: string }) {
   }, [stopSceneInstantAudio]);
 
   useEffect(() => {
-    if (isRealtimeConnected) {
-      return;
-    }
-
     let cancelled = false;
     const fallbackTimer = window.setTimeout(() => {
-      if (cancelled || meterSocketReadyRef.current) {
+      if (cancelled) {
         return;
       }
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled) {
+          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'state')) {
             setState(data);
           }
         })
@@ -1385,7 +1511,7 @@ function SceneProgram({ programId }: { programId: string }) {
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled) {
+          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'audioBus')) {
             setAudioBusSettings(normalizeProgramAudioBusSettings(data));
           }
         })
@@ -1394,7 +1520,7 @@ function SceneProgram({ programId }: { programId: string }) {
       fetch(apiUrl('/program/broadcast-settings'))
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled) {
+          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'broadcastSettings')) {
             setBroadcastSettings(normalizeBroadcastSettings(data));
           }
         })
@@ -1404,10 +1530,15 @@ function SceneProgram({ programId }: { programId: string }) {
         .then((res) => res.json())
         .then((playback) => {
           if (!cancelled) {
+            const sceneInstantVersion =
+              playback && typeof playback === 'object' && !Array.isArray(playback)
+                ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
+                : null;
             handleProgramEventRef.current({
               type: 'scene_instant_state',
               programId,
-              playback
+              playback,
+              version: sceneInstantVersion ?? undefined
             });
           }
         })
@@ -1418,7 +1549,70 @@ function SceneProgram({ programId }: { programId: string }) {
       cancelled = true;
       window.clearTimeout(fallbackTimer);
     };
-  }, [programId, isRealtimeConnected]);
+  }, [programId, shouldApplyProgramUpdatePayload]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollSnapshots = () => {
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'state')) {
+            setState(data);
+          }
+        })
+        .catch((err) => console.error('Failed to poll program state snapshot:', err));
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'audioBus')) {
+            setAudioBusSettings(normalizeProgramAudioBusSettings(data));
+          }
+        })
+        .catch((err) => console.error('Failed to poll audio bus snapshot:', err));
+
+      fetch(apiUrl('/program/broadcast-settings'))
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'broadcastSettings')) {
+            setBroadcastSettings(normalizeBroadcastSettings(data));
+          }
+        })
+        .catch((err) => console.error('Failed to poll broadcast settings snapshot:', err));
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
+        .then((res) => res.json())
+        .then((playback) => {
+          if (!cancelled) {
+            const sceneInstantVersion =
+              playback && typeof playback === 'object' && !Array.isArray(playback)
+                ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
+                : null;
+            handleProgramEventRef.current({
+              type: 'scene_instant_state',
+              programId,
+              playback,
+              version: sceneInstantVersion ?? undefined
+            });
+          }
+        })
+        .catch((err) => console.error('Failed to poll scene instant snapshot:', err));
+    };
+
+    const pollTimer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      pollSnapshots();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollTimer);
+    };
+  }, [programId, shouldApplyProgramUpdatePayload]);
 
   useEffect(() => {
     setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
@@ -1585,37 +1779,9 @@ function SceneProgram({ programId }: { programId: string }) {
       });
 
       socket.addEventListener('message', (event) => {
-        let payload: any;
-        try {
-          payload = JSON.parse(event.data);
-        } catch {
-          return;
-        }
-
-        if (!payload || typeof payload !== 'object') {
-          return;
-        }
-
-        if (payload.type === 'program_state_snapshot') {
-          setState(payload.state ?? null);
-          return;
-        }
-
-        if (payload.type === 'audio_bus_snapshot') {
-          setAudioBusSettings(normalizeProgramAudioBusSettings(payload.settings));
-          return;
-        }
-
-        if (payload.type === 'broadcast_settings_snapshot') {
-          setBroadcastSettings(normalizeBroadcastSettings(payload.settings));
-          return;
-        }
-
-        if (payload.type === 'audio_meter_update' || payload.type === 'song_playback_update') {
-          return;
-        }
-
-        handleProgramEventRef.current(payload);
+        // Program WS is telemetry uplink only (meter/song-playback).
+        // Downstream program control/events are consumed via SSE.
+        void event;
       });
 
       socket.addEventListener('close', () => {
@@ -1956,7 +2122,7 @@ function SceneProgram({ programId }: { programId: string }) {
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(programId)}/events`),
     onMessage: handleProgramEvent,
-    enabled: !isRealtimeConnected
+    enabled: true
   });
 
   const globalTimeOverride: GlobalTimeOverride | null =
