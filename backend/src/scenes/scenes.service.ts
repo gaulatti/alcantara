@@ -53,7 +53,7 @@ export class ScenesService {
       include: { layout: true },
     });
 
-    const programIds = await this.programService.getProgramIdsByActiveScene(id);
+    const programIds = await this.programService.getProgramIdsByAssignedScene(id);
     for (const programId of programIds) {
       this.programService.broadcastUpdate(programId, {
         type: 'scene_update',
