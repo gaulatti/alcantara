@@ -1056,6 +1056,7 @@ export default function Control() {
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
   const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
   const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
+  const [sceneAttributeSaveError, setSceneAttributeSaveError] = useState<string | null>(null);
   const sceneEditorAutosaveTimerRef = useRef<number | null>(null);
   const sceneEditorAutosaveSignatureRef = useRef<string>('');
   const selectedSceneRef = useRef<number | null>(null);
@@ -1064,6 +1065,8 @@ export default function Control() {
   const sceneMetadataCacheRef = useRef<Record<number, ComponentPropsMap>>({});
   const pendingSceneAttributeSaveRef = useRef<SceneAttributeSavePayload | null>(null);
   const sceneAttributeSaveDrainPromiseRef = useRef<Promise<void> | null>(null);
+  const sceneAttributeRetryTimerRef = useRef<number | null>(null);
+  const sceneAttributeRetryDelayMsRef = useRef<number>(800);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
 
   const [showSceneModal, setShowSceneModal] = useState(false);
@@ -1285,6 +1288,21 @@ export default function Control() {
       window.clearTimeout(fallbackTimer);
     };
   }, [activeProgramId, isProgramRealtimeConnected]);
+
+  useEffect(() => {
+    const resyncInterval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+
+      void fetchProgramState(activeProgramId);
+      void fetchSceneInstantPlayback(activeProgramId);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(resyncInterval);
+    };
+  }, [activeProgramId]);
 
   useEffect(() => {
     mixerLevelsRef.current = mixerLevels;
@@ -2252,8 +2270,12 @@ export default function Control() {
       return;
     }
 
-    await flushSceneAttributeAutosaveForScene(selectedScene);
-    await activateScene(selectedScene);
+    try {
+      await flushSceneAttributeAutosaveForScene(selectedScene);
+      await activateScene(selectedScene);
+    } catch (err) {
+      console.error('Could not save staged scene attributes before taking live:', err);
+    }
   };
 
   const takeSceneInstant = async (sceneId: number | null = selectedScene) => {
@@ -2479,6 +2501,12 @@ export default function Control() {
         window.clearTimeout(sceneEditorAutosaveTimerRef.current);
         sceneEditorAutosaveTimerRef.current = null;
       }
+      if (sceneAttributeRetryTimerRef.current !== null) {
+        window.clearTimeout(sceneAttributeRetryTimerRef.current);
+        sceneAttributeRetryTimerRef.current = null;
+      }
+      sceneAttributeRetryDelayMsRef.current = 800;
+      setSceneAttributeSaveError(null);
       pendingSceneAttributeSaveRef.current = null;
       sceneAttributeSaveDrainPromiseRef.current = null;
     };
@@ -2538,7 +2566,13 @@ export default function Control() {
     }
 
     const drainPromise = (async () => {
+      if (sceneAttributeRetryTimerRef.current !== null) {
+        window.clearTimeout(sceneAttributeRetryTimerRef.current);
+        sceneAttributeRetryTimerRef.current = null;
+      }
+
       setIsSavingSceneAttributes(true);
+      let lastError: unknown = null;
       try {
         while (pendingSceneAttributeSaveRef.current) {
           const payload = pendingSceneAttributeSaveRef.current;
@@ -2546,18 +2580,38 @@ export default function Control() {
 
           try {
             await persistSceneAttributes(payload.sceneId, payload.props);
+            sceneAttributeRetryDelayMsRef.current = 800;
+            setSceneAttributeSaveError(null);
             if (selectedSceneRef.current === payload.sceneId && JSON.stringify(sceneEditorPropsRef.current) === payload.signature) {
               sceneEditorAutosaveSignatureRef.current = payload.signature;
             }
           } catch (err) {
             pendingSceneAttributeSaveRef.current = payload;
+            setSceneAttributeSaveError('Scene save failed. Retrying...');
             console.error('Failed to update scene attributes:', err);
+            lastError = err;
             break;
           }
         }
       } finally {
         setIsSavingSceneAttributes(false);
       }
+
+      if (lastError) {
+        if (pendingSceneAttributeSaveRef.current && sceneAttributeRetryTimerRef.current === null) {
+          const retryDelayMs = sceneAttributeRetryDelayMsRef.current;
+          sceneAttributeRetryTimerRef.current = window.setTimeout(() => {
+            sceneAttributeRetryTimerRef.current = null;
+            void flushQueuedSceneAttributeSaves().catch(() => {
+              // no-op, retry timer is rescheduled in flush on failure
+            });
+          }, retryDelayMs);
+          sceneAttributeRetryDelayMsRef.current = Math.min(8000, Math.round(retryDelayMs * 1.8));
+        }
+        throw lastError;
+      }
+
+      setSceneAttributeSaveError(null);
     })();
 
     sceneAttributeSaveDrainPromiseRef.current = drainPromise.finally(() => {
@@ -2578,7 +2632,9 @@ export default function Control() {
         props: JSON.parse(signature) as ComponentPropsMap
       };
       pendingSceneAttributeSaveRef.current = payload;
-      void flushQueuedSceneAttributeSaves();
+      void flushQueuedSceneAttributeSaves().catch(() => {
+        // no-op, retry timer is scheduled by flush
+      });
     },
     [flushQueuedSceneAttributeSaves]
   );
@@ -2615,7 +2671,11 @@ export default function Control() {
     setSceneEditorProps(nextSceneProps);
     if (selectedScene) {
       queueSceneAttributePersist(selectedScene, nextSceneProps);
-      await flushQueuedSceneAttributeSaves();
+      try {
+        await flushQueuedSceneAttributeSaves();
+      } catch (err) {
+        console.error('Failed to commit scene editor component props:', err);
+      }
     }
   };
 
@@ -2639,6 +2699,7 @@ export default function Control() {
 
     if (!selectedScene) {
       sceneEditorAutosaveSignatureRef.current = '';
+      setSceneAttributeSaveError(null);
       setSceneEditorProps({});
       return;
     }
@@ -2646,6 +2707,7 @@ export default function Control() {
     const scene = assignedScenes.find((entry) => entry.id === selectedScene) ?? scenes.find((entry) => entry.id === selectedScene);
     if (!scene) {
       sceneEditorAutosaveSignatureRef.current = '';
+      setSceneAttributeSaveError(null);
       setSceneEditorProps({});
       return;
     }
@@ -2653,6 +2715,7 @@ export default function Control() {
     sceneMetadataCacheRef.current[selectedScene] = parseSceneMetadata(scene.metadata);
     const nextProps = buildComponentPropsForScene(scene);
     sceneEditorAutosaveSignatureRef.current = JSON.stringify(nextProps);
+    setSceneAttributeSaveError(null);
     setSceneEditorProps(nextProps);
   }, [assignedScenes, queueSceneAttributePersist, scenes, selectedScene]);
 
@@ -2685,6 +2748,29 @@ export default function Control() {
       }
     };
   }, [queueSceneAttributePersist, sceneEditorProps, selectedScene]);
+
+  useEffect(() => {
+    const flushPendingSceneSaves = () => {
+      const sceneId = selectedSceneRef.current;
+      if (sceneId !== null) {
+        void flushSceneAttributeAutosaveForScene(sceneId).catch(() => {
+          // no-op
+        });
+        return;
+      }
+
+      void flushQueuedSceneAttributeSaves().catch(() => {
+        // no-op
+      });
+    };
+
+    window.addEventListener('pagehide', flushPendingSceneSaves);
+    window.addEventListener('beforeunload', flushPendingSceneSaves);
+    return () => {
+      window.removeEventListener('pagehide', flushPendingSceneSaves);
+      window.removeEventListener('beforeunload', flushPendingSceneSaves);
+    };
+  }, [flushQueuedSceneAttributeSaves, flushSceneAttributeAutosaveForScene]);
 
   const openSceneModal = () => {
     if (layouts.length === 0) {
@@ -4440,7 +4526,12 @@ export default function Control() {
                                   value={selectedSceneInstantId ? String(selectedSceneInstantId) : ''}
                                   onChange={(event) => {
                                     const nextInstantId = normalizeSceneInstantId(event.target.value);
-                                    updateSceneEditorProp('sceneInstant', 'instantId', nextInstantId);
+                                    const currentSceneInstantProps =
+                                      sceneEditorProps?.sceneInstant && typeof sceneEditorProps.sceneInstant === 'object' ? sceneEditorProps.sceneInstant : {};
+                                    void commitSceneEditorComponentProps('sceneInstant', {
+                                      ...currentSceneInstantProps,
+                                      instantId: nextInstantId
+                                    });
                                   }}
                                   className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
                                 >
@@ -4502,6 +4593,8 @@ export default function Control() {
                           </div>
                           {isSavingSceneAttributes ? (
                             <p className='text-xs text-text-secondary dark:text-text-secondary text-right'>Autosaving scene attributes…</p>
+                          ) : sceneAttributeSaveError ? (
+                            <p className='text-xs text-red-500 text-right'>{sceneAttributeSaveError}</p>
                           ) : null}
                         </div>
                       )}
