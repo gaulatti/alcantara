@@ -57,7 +57,7 @@ function formatTimeAgo(timestamp: number, language: SupportedLanguage = 'en'): s
 
 export async function fetchEarthquakes(language: SupportedLanguage = 'en'): Promise<EarthquakeData[]> {
   try {
-    const response = await fetch(`https://api.monitor.fifthbell.com/earthquakes?_=${Date.now()}`);
+    const response = await fetch(`https://api.monitor.gaulatti.com/earthquakes?_=${Date.now()}`);
     if (!response.ok) {
       return [];
     }

@@ -133,7 +133,7 @@ export async function fetchEvents(options: FetchEventsOptions = {}): Promise<Eve
   const allowedLanguages = normalizeAllowedLanguages(options.allowedLanguages);
   const preferredLanguage = normalizeLanguageToken(options.language);
   const cacheKey = buildCacheKey(preferredLanguage ?? undefined, allowedLanguages);
-  const eventsApiUrl = new URL('https://api.monitor.fifthbell.com/events');
+  const eventsApiUrl = new URL('https://api.monitor.gaulatti.com/events');
   if (preferredLanguage) {
     eventsApiUrl.searchParams.set('language', preferredLanguage);
   }
