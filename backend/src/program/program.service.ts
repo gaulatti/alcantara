@@ -919,6 +919,7 @@ export class ProgramService {
       case 'scene_update':
       case 'scene_cleared':
       case 'program_scenes_changed':
+      case 'program_media_groups_changed':
         return 'state';
       case 'audio_bus_update':
         return 'audioBus';
@@ -1026,6 +1027,19 @@ export class ProgramService {
           include: {
             scene: {
               include: { layout: true },
+            },
+          },
+        },
+        mediaGroups: {
+          orderBy: { position: 'asc' },
+          include: {
+            mediaGroup: {
+              include: {
+                mediaItems: {
+                  include: { media: true },
+                  orderBy: { position: 'asc' },
+                },
+              },
             },
           },
         },
@@ -1211,6 +1225,19 @@ export class ProgramService {
           include: {
             scene: {
               include: { layout: true },
+            },
+          },
+        },
+        mediaGroups: {
+          orderBy: { position: 'asc' },
+          include: {
+            mediaGroup: {
+              include: {
+                mediaItems: {
+                  include: { media: true },
+                  orderBy: { position: 'asc' },
+                },
+              },
             },
           },
         },
@@ -1625,12 +1652,17 @@ export class ProgramService {
   private parseSceneInstantIdFromSceneMetadata(
     sceneMetadata: unknown,
   ): number | null {
-    if (typeof sceneMetadata !== 'string' || !sceneMetadata.trim()) {
+    if (sceneMetadata === null || sceneMetadata === undefined) {
       return null;
     }
 
     try {
-      const parsed = JSON.parse(sceneMetadata);
+      const parsed =
+        typeof sceneMetadata === 'string'
+          ? sceneMetadata.trim()
+            ? JSON.parse(sceneMetadata)
+            : null
+          : sceneMetadata;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return null;
       }
@@ -1664,6 +1696,7 @@ export class ProgramService {
   async takeProgramSceneInstant(
     sceneId: number | null | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    instantIdOverride: number | null | undefined = null,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.prisma.programState.findUnique({
@@ -1701,9 +1734,16 @@ export class ProgramService {
       throw new BadRequestException('Scene is not assigned to this program');
     }
 
-    const sceneInstantId = this.parseSceneInstantIdFromSceneMetadata(
-      assignedSceneEntry.scene.metadata,
-    );
+    const normalizedOverrideInstantId =
+      typeof instantIdOverride === 'number' &&
+      Number.isFinite(instantIdOverride) &&
+      Number.isInteger(instantIdOverride) &&
+      instantIdOverride > 0
+        ? instantIdOverride
+        : null;
+    const sceneInstantId =
+      normalizedOverrideInstantId ??
+      this.parseSceneInstantIdFromSceneMetadata(assignedSceneEntry.scene.metadata);
     if (sceneInstantId === null) {
       throw new BadRequestException(
         'Scene has no configured background instant',
@@ -1885,6 +1925,7 @@ export class ProgramService {
     const updated = await this.getProgramStateWithScenes(normalizedProgramId);
     const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'program_scenes_changed',
+      programId: normalizedProgramId,
       state: updated,
     });
     return {
@@ -1942,6 +1983,147 @@ export class ProgramService {
     const updated = await this.getProgramStateWithScenes(normalizedProgramId);
     const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'program_scenes_changed',
+      programId: normalizedProgramId,
+      state: updated,
+    });
+    return {
+      ...updated,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
+  }
+
+  async listProgramMediaGroups(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      include: {
+        mediaGroups: {
+          orderBy: { position: 'asc' },
+          include: {
+            mediaGroup: {
+              include: {
+                mediaItems: {
+                  include: { media: true },
+                  orderBy: { position: 'asc' },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    return state.mediaGroups.map((entry) => {
+      const group = entry.mediaGroup;
+      return {
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        createdAt: group.createdAt,
+        updatedAt: group.updatedAt,
+        items: group.mediaItems.map((item) => ({
+          id: item.id,
+          mediaGroupId: item.mediaGroupId,
+          mediaId: item.mediaId,
+          position: item.position,
+          media: {
+            id: item.media.id,
+            name: item.media.name,
+            imageUrl: item.media.imageUrl,
+            createdAt: item.media.createdAt,
+            updatedAt: item.media.updatedAt,
+          },
+        })),
+      };
+    });
+  }
+
+  async addMediaGroupToProgram(
+    mediaGroupId: number,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const mediaGroup = await this.prisma.mediaGroup.findUnique({
+      where: { id: mediaGroupId },
+      select: { id: true },
+    });
+    if (!mediaGroup) {
+      throw new Error('Media group not found');
+    }
+
+    const state = await this.getProgramStateRecord(programId);
+    const existing = await this.prisma.programMediaGroup.findUnique({
+      where: {
+        programStateId_mediaGroupId: {
+          programStateId: state.id,
+          mediaGroupId,
+        },
+      },
+    });
+
+    if (!existing) {
+      const currentMaxPosition = await this.prisma.programMediaGroup.aggregate({
+        where: { programStateId: state.id },
+        _max: { position: true },
+      });
+      const nextPosition = (currentMaxPosition._max.position ?? -1) + 1;
+
+      await this.prisma.programMediaGroup.create({
+        data: {
+          programStateId: state.id,
+          mediaGroupId,
+          position: nextPosition,
+        },
+      });
+    }
+
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const updated = await this.getProgramStateWithScenes(normalizedProgramId);
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'program_media_groups_changed',
+      programId: normalizedProgramId,
+      state: updated,
+    });
+    return {
+      ...updated,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
+  }
+
+  async removeMediaGroupFromProgram(
+    mediaGroupId: number,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { id: true },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    await this.prisma.programMediaGroup.deleteMany({
+      where: {
+        programStateId: state.id,
+        mediaGroupId,
+      },
+    });
+
+    const updated = await this.getProgramStateWithScenes(normalizedProgramId);
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'program_media_groups_changed',
+      programId: normalizedProgramId,
       state: updated,
     });
     return {

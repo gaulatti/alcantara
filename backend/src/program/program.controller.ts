@@ -107,13 +107,21 @@ export class ProgramController {
   @Post(':programId/scene-instant/take')
   async takeProgramSceneInstantById(
     @Param('programId') programId: string,
-    @Body() data?: { sceneId?: number | null },
+    @Body() data?: { sceneId?: number | null; instantId?: number | null },
   ) {
     const sceneId =
       typeof data?.sceneId === 'number' && Number.isFinite(data.sceneId)
         ? data.sceneId
         : null;
-    return this.programService.takeProgramSceneInstant(sceneId, programId);
+    const instantId =
+      typeof data?.instantId === 'number' && Number.isFinite(data.instantId)
+        ? data.instantId
+        : null;
+    return this.programService.takeProgramSceneInstant(
+      sceneId,
+      programId,
+      instantId,
+    );
   }
 
   @Post(':programId/scene-instant/stop')
@@ -173,6 +181,33 @@ export class ProgramController {
   ) {
     return this.programService.removeSceneFromProgram(
       Number(sceneId),
+      programId,
+    );
+  }
+
+  @Get(':programId/media-groups')
+  async listProgramMediaGroups(@Param('programId') programId: string) {
+    return this.programService.listProgramMediaGroups(programId);
+  }
+
+  @Post(':programId/media-groups')
+  async addMediaGroupToProgram(
+    @Param('programId') programId: string,
+    @Body() data: { mediaGroupId: number },
+  ) {
+    return this.programService.addMediaGroupToProgram(
+      data.mediaGroupId,
+      programId,
+    );
+  }
+
+  @Delete(':programId/media-groups/:mediaGroupId')
+  async removeMediaGroupFromProgram(
+    @Param('programId') programId: string,
+    @Param('mediaGroupId') mediaGroupId: string,
+  ) {
+    return this.programService.removeMediaGroupFromProgram(
+      Number(mediaGroupId),
       programId,
     );
   }

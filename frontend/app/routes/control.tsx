@@ -65,6 +65,13 @@ interface ProgramSceneEntry {
   scene: Scene;
 }
 
+interface ProgramMediaGroupEntry {
+  id: number;
+  mediaGroupId: number;
+  position: number;
+  mediaGroup: MediaGroup;
+}
+
 interface ProgramState {
   id: number;
   programId: string;
@@ -73,6 +80,7 @@ interface ProgramState {
   stagedSceneId?: number | null;
   stagedScene?: Scene | null;
   scenes: ProgramSceneEntry[];
+  mediaGroups: ProgramMediaGroupEntry[];
 }
 
 interface InstantItem {
@@ -210,6 +218,7 @@ type SceneAttributeSavePayload = {
   sceneId: number;
   props: ComponentPropsMap;
   signature: string;
+  revision: number;
 };
 type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlayback' | 'sceneInstant';
 type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'sceneInstant' | 'main';
@@ -659,6 +668,7 @@ function resolveControlUpdateTopicFromType(type: unknown): ProgramUpdateTopic | 
     case 'scene_update':
     case 'scene_cleared':
     case 'program_scenes_changed':
+    case 'program_media_groups_changed':
       return 'state';
     case 'audio_bus_snapshot':
     case 'audio_bus_update':
@@ -748,6 +758,7 @@ function normalizeProgramState(value: unknown): ProgramState | null {
   return {
     ...(record as ProgramState),
     scenes: Array.isArray(record.scenes) ? record.scenes : [],
+    mediaGroups: Array.isArray(record.mediaGroups) ? record.mediaGroups : [],
     activeSceneId: typeof record.activeSceneId === 'number' ? record.activeSceneId : null,
     stagedSceneId: typeof record.stagedSceneId === 'number' ? record.stagedSceneId : null,
     activeScene: record.activeScene && typeof record.activeScene === 'object' ? (record.activeScene as Scene) : null,
@@ -1129,6 +1140,8 @@ export default function Control() {
   const [sceneAttributeSaveError, setSceneAttributeSaveError] = useState<string | null>(null);
   const sceneEditorAutosaveTimerRef = useRef<number | null>(null);
   const sceneEditorAutosaveSignatureRef = useRef<string>('');
+  const sceneEditorDirtyRef = useRef<boolean>(false);
+  const sceneEditorRevisionRef = useRef<number>(0);
   const selectedSceneRef = useRef<number | null>(null);
   const previousSelectedSceneRef = useRef<number | null>(null);
   const sceneEditorPropsRef = useRef<ComponentPropsMap>({});
@@ -1136,6 +1149,7 @@ export default function Control() {
   const pendingSceneAttributeSaveRef = useRef<SceneAttributeSavePayload | null>(null);
   const sceneAttributeSaveDrainPromiseRef = useRef<Promise<void> | null>(null);
   const sceneAttributeRetryTimerRef = useRef<number | null>(null);
+  const sceneAttributeFlushKickTimerRef = useRef<number | null>(null);
   const sceneAttributeRetryDelayMsRef = useRef<number>(800);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
 
@@ -1332,7 +1346,6 @@ export default function Control() {
     fetchLayouts();
     fetchComponentTypes();
     fetchSongCatalog();
-    fetchMediaGroups();
   }, []);
 
   useEffect(() => {
@@ -1372,6 +1385,7 @@ export default function Control() {
       isPlaying: false,
       updatedAt: new Date(0).toISOString()
     });
+    void fetchMediaGroups(activeProgramId);
   }, [activeProgramId]);
 
   useEffect(() => {
@@ -1549,13 +1563,20 @@ export default function Control() {
           return;
         }
 
-        if (payload.type === 'scene_change' || payload.type === 'program_scenes_changed') {
+        if (
+          payload.type === 'scene_change' ||
+          payload.type === 'program_scenes_changed' ||
+          payload.type === 'program_media_groups_changed'
+        ) {
           const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
           if (eventProgramId !== activeProgramId) {
             return;
           }
           const normalizedProgramState = normalizeProgramState(payload.state);
           syncProgramStateAndStagedScene(normalizedProgramState);
+          if (payload.type === 'program_media_groups_changed') {
+            void fetchMediaGroups(activeProgramId);
+          }
           return;
         }
 
@@ -1763,10 +1784,10 @@ export default function Control() {
     }
   };
 
-  const fetchMediaGroups = async () => {
+  const fetchMediaGroups = async (targetProgramId: string = activeProgramId) => {
     try {
       setIsLoadingMediaGroups(true);
-      const res = await fetch(apiUrl('/media-groups'));
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/media-groups`));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -2410,8 +2431,40 @@ export default function Control() {
     }
   };
 
-  const takeSceneInstant = async (sceneId: number | null = selectedScene) => {
+  const saveStagedSceneAttributes = async () => {
+    const sceneId = selectedSceneRef.current;
+    if (sceneId === null) {
+      return;
+    }
+
+    if (sceneEditorAutosaveTimerRef.current !== null) {
+      window.clearTimeout(sceneEditorAutosaveTimerRef.current);
+      sceneEditorAutosaveTimerRef.current = null;
+    }
+
+    const nextSceneProps = sceneEditorPropsRef.current;
+    const nextSignature = JSON.stringify(nextSceneProps);
+
+    setIsSavingSceneAttributes(true);
+    setSceneAttributeSaveError(null);
+    try {
+      await persistSceneAttributes(sceneId, nextSceneProps);
+      sceneEditorAutosaveSignatureRef.current = nextSignature;
+      sceneEditorDirtyRef.current = false;
+      if (pendingSceneAttributeSaveRef.current?.sceneId === sceneId) {
+        pendingSceneAttributeSaveRef.current = null;
+      }
+    } catch (err) {
+      setSceneAttributeSaveError('Scene save failed. Please try again.');
+      console.error('Failed to save staged scene attributes:', err);
+    } finally {
+      setIsSavingSceneAttributes(false);
+    }
+  };
+
+  const takeSceneInstant = async (sceneId: number | null = selectedScene, instantIdOverride?: number | null) => {
     const normalizedSceneId = typeof sceneId === 'number' && Number.isFinite(sceneId) ? sceneId : null;
+    const normalizedInstantId = normalizeSceneInstantId(instantIdOverride);
     if (normalizedSceneId === null) {
       return;
     }
@@ -2421,7 +2474,10 @@ export default function Control() {
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scene-instant/take`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId: normalizedSceneId })
+        body: JSON.stringify({
+          sceneId: normalizedSceneId,
+          instantId: normalizedInstantId
+        })
       });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -2637,6 +2693,10 @@ export default function Control() {
         window.clearTimeout(sceneAttributeRetryTimerRef.current);
         sceneAttributeRetryTimerRef.current = null;
       }
+      if (sceneAttributeFlushKickTimerRef.current !== null) {
+        window.clearTimeout(sceneAttributeFlushKickTimerRef.current);
+        sceneAttributeFlushKickTimerRef.current = null;
+      }
       sceneAttributeRetryDelayMsRef.current = 800;
       setSceneAttributeSaveError(null);
       pendingSceneAttributeSaveRef.current = null;
@@ -2645,20 +2705,32 @@ export default function Control() {
   }, []);
 
   const updateSceneEditorProp = (componentType: string, propName: string, value: any) => {
-    setSceneEditorProps((prev) => ({
-      ...prev,
+    const nextSceneProps = {
+      ...sceneEditorPropsRef.current,
       [componentType]: {
-        ...prev[componentType],
+        ...sceneEditorPropsRef.current[componentType],
         [propName]: value
       }
-    }));
+    };
+    sceneEditorDirtyRef.current = true;
+    sceneEditorPropsRef.current = nextSceneProps;
+    setSceneEditorProps(nextSceneProps);
+    if (selectedSceneRef.current) {
+      queueSceneAttributePersist(selectedSceneRef.current, nextSceneProps);
+    }
   };
 
   const replaceSceneEditorComponentProps = (componentType: string, nextProps: any) => {
-    setSceneEditorProps((prev) => ({
-      ...prev,
+    const nextSceneProps = {
+      ...sceneEditorPropsRef.current,
       [componentType]: nextProps
-    }));
+    };
+    sceneEditorDirtyRef.current = true;
+    sceneEditorPropsRef.current = nextSceneProps;
+    setSceneEditorProps(nextSceneProps);
+    if (selectedSceneRef.current) {
+      queueSceneAttributePersist(selectedSceneRef.current, nextSceneProps);
+    }
   };
 
   const persistSceneAttributes = useCallback(
@@ -2674,8 +2746,7 @@ export default function Control() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           metadata: nextMetadata
-        }),
-        keepalive: true
+        })
       });
 
       if (!response.ok) {
@@ -2714,8 +2785,11 @@ export default function Control() {
             await persistSceneAttributes(payload.sceneId, payload.props);
             sceneAttributeRetryDelayMsRef.current = 800;
             setSceneAttributeSaveError(null);
-            if (selectedSceneRef.current === payload.sceneId && JSON.stringify(sceneEditorPropsRef.current) === payload.signature) {
+            if (selectedSceneRef.current === payload.sceneId) {
               sceneEditorAutosaveSignatureRef.current = payload.signature;
+              if (payload.revision >= sceneEditorRevisionRef.current) {
+                sceneEditorDirtyRef.current = false;
+              }
             }
           } catch (err) {
             pendingSceneAttributeSaveRef.current = payload;
@@ -2750,6 +2824,18 @@ export default function Control() {
       if (sceneAttributeSaveDrainPromiseRef.current === drainPromise) {
         sceneAttributeSaveDrainPromiseRef.current = null;
       }
+
+      // If a new payload was queued while the previous drain promise was
+      // still resolving, guarantee we kick off another drain pass.
+      if (
+        pendingSceneAttributeSaveRef.current &&
+        !sceneAttributeSaveDrainPromiseRef.current &&
+        sceneAttributeRetryTimerRef.current === null
+      ) {
+        void flushQueuedSceneAttributeSaves().catch(() => {
+          // no-op, retry timer is scheduled by flush
+        });
+      }
     });
 
     return sceneAttributeSaveDrainPromiseRef.current;
@@ -2761,12 +2847,28 @@ export default function Control() {
       const payload: SceneAttributeSavePayload = {
         sceneId,
         signature,
-        props: JSON.parse(signature) as ComponentPropsMap
+        props: JSON.parse(signature) as ComponentPropsMap,
+        revision: ++sceneEditorRevisionRef.current
       };
       pendingSceneAttributeSaveRef.current = payload;
       void flushQueuedSceneAttributeSaves().catch(() => {
         // no-op, retry timer is scheduled by flush
       });
+
+      if (sceneAttributeFlushKickTimerRef.current === null) {
+        sceneAttributeFlushKickTimerRef.current = window.setTimeout(() => {
+          sceneAttributeFlushKickTimerRef.current = null;
+          if (
+            pendingSceneAttributeSaveRef.current &&
+            !sceneAttributeSaveDrainPromiseRef.current &&
+            sceneAttributeRetryTimerRef.current === null
+          ) {
+            void flushQueuedSceneAttributeSaves().catch(() => {
+              // no-op, retry timer is scheduled by flush
+            });
+          }
+        }, 0);
+      }
     },
     [flushQueuedSceneAttributeSaves]
   );
@@ -2784,8 +2886,7 @@ export default function Control() {
 
       if (selectedSceneRef.current === sceneId) {
         const latestProps = sceneEditorPropsRef.current;
-        const latestSignature = JSON.stringify(latestProps);
-        if (latestSignature !== sceneEditorAutosaveSignatureRef.current) {
+        if (sceneEditorDirtyRef.current) {
           queueSceneAttributePersist(sceneId, latestProps);
         }
       }
@@ -2797,12 +2898,14 @@ export default function Control() {
 
   const commitSceneEditorComponentProps = async (componentType: string, nextProps: any) => {
     const nextSceneProps = {
-      ...sceneEditorProps,
+      ...sceneEditorPropsRef.current,
       [componentType]: nextProps
     };
+    sceneEditorDirtyRef.current = true;
+    sceneEditorPropsRef.current = nextSceneProps;
     setSceneEditorProps(nextSceneProps);
-    if (selectedScene) {
-      queueSceneAttributePersist(selectedScene, nextSceneProps);
+    if (selectedSceneRef.current) {
+      queueSceneAttributePersist(selectedSceneRef.current, nextSceneProps);
       try {
         await flushQueuedSceneAttributeSaves();
       } catch (err) {
@@ -2815,23 +2918,26 @@ export default function Control() {
     const previousSelectedSceneId = previousSelectedSceneRef.current;
     if (previousSelectedSceneId !== null && previousSelectedSceneId !== selectedScene) {
       const previousProps = sceneEditorPropsRef.current;
-      const previousSignature = JSON.stringify(previousProps);
-      if (previousSignature !== sceneEditorAutosaveSignatureRef.current) {
+      if (sceneEditorDirtyRef.current) {
         queueSceneAttributePersist(previousSelectedSceneId, previousProps);
       }
     }
     previousSelectedSceneRef.current = selectedScene;
 
-    if (previousSelectedSceneId !== null && previousSelectedSceneId === selectedScene) {
-      const localSignature = JSON.stringify(sceneEditorPropsRef.current);
-      if (localSignature !== sceneEditorAutosaveSignatureRef.current) {
-        return;
-      }
+    if (
+      previousSelectedSceneId !== null &&
+      previousSelectedSceneId === selectedScene &&
+      (sceneEditorDirtyRef.current || pendingSceneAttributeSaveRef.current || sceneAttributeSaveDrainPromiseRef.current)
+    ) {
+      return;
     }
 
     if (!selectedScene) {
       sceneEditorAutosaveSignatureRef.current = '';
+      sceneEditorDirtyRef.current = false;
+      sceneEditorRevisionRef.current = 0;
       setSceneAttributeSaveError(null);
+      sceneEditorPropsRef.current = {};
       setSceneEditorProps({});
       return;
     }
@@ -2839,7 +2945,10 @@ export default function Control() {
     const scene = assignedScenes.find((entry) => entry.id === selectedScene) ?? scenes.find((entry) => entry.id === selectedScene);
     if (!scene) {
       sceneEditorAutosaveSignatureRef.current = '';
+      sceneEditorDirtyRef.current = false;
+      sceneEditorRevisionRef.current = 0;
       setSceneAttributeSaveError(null);
+      sceneEditorPropsRef.current = {};
       setSceneEditorProps({});
       return;
     }
@@ -2847,7 +2956,10 @@ export default function Control() {
     sceneMetadataCacheRef.current[selectedScene] = parseSceneMetadata(scene.metadata);
     const nextProps = buildComponentPropsForScene(scene);
     sceneEditorAutosaveSignatureRef.current = JSON.stringify(nextProps);
+    sceneEditorDirtyRef.current = false;
+    sceneEditorRevisionRef.current = 0;
     setSceneAttributeSaveError(null);
+    sceneEditorPropsRef.current = nextProps;
     setSceneEditorProps(nextProps);
   }, [assignedScenes, queueSceneAttributePersist, scenes, selectedScene]);
 
@@ -2856,8 +2968,7 @@ export default function Control() {
       return;
     }
 
-    const serializedProps = JSON.stringify(sceneEditorProps);
-    if (serializedProps === sceneEditorAutosaveSignatureRef.current) {
+    if (!sceneEditorDirtyRef.current) {
       return;
     }
 
@@ -3289,9 +3400,16 @@ export default function Control() {
         return;
       }
 
-      if (data.type === 'scene_change' || data.type === 'program_scenes_changed') {
+      if (
+        data.type === 'scene_change' ||
+        data.type === 'program_scenes_changed' ||
+        data.type === 'program_media_groups_changed'
+      ) {
         const normalizedProgramState = normalizeProgramState(data.state);
         syncProgramStateAndStagedScene(normalizedProgramState);
+        if (data.type === 'program_media_groups_changed') {
+          void fetchMediaGroups(activeProgramId);
+        }
         return;
       }
 
@@ -4643,11 +4761,32 @@ export default function Control() {
                           Stage a scene above to edit its attributes before taking it live.
                         </p>
                       ) : (
-                        <div className='space-y-4'>
-                          <p className='text-sm text-sea dark:text-accent-blue'>
-                            Editing staged scene: {scenes.find((s) => s.id === selectedScene)?.name}
-                            {stagedIsOnAir ? ' (ON AIR)' : ''}
-                          </p>
+                        <div
+                          className='space-y-4'
+                          onBlurCapture={(event) => {
+                            if (selectedSceneRef.current !== null) {
+                              void flushSceneAttributeAutosaveForScene(selectedSceneRef.current).catch(() => {
+                                // no-op
+                              });
+                            }
+                          }}
+                        >
+                          <div className='flex flex-wrap items-center justify-between gap-2'>
+                            <p className='text-sm text-sea dark:text-accent-blue'>
+                              Editing staged scene: {scenes.find((s) => s.id === selectedScene)?.name}
+                              {stagedIsOnAir ? ' (ON AIR)' : ''}
+                            </p>
+                            <Button
+                              size='sm'
+                              variant='secondary'
+                              onClick={() => {
+                                void saveStagedSceneAttributes();
+                              }}
+                              disabled={!selectedScene || isSavingSceneAttributes}
+                            >
+                              {isSavingSceneAttributes ? 'SAVING…' : 'SAVE'}
+                            </Button>
+                          </div>
                           {activeProgramId === 'fifthbell' && (
                             <p className='text-xs text-text-secondary dark:text-text-secondary'>
                               FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` /
@@ -4685,7 +4824,7 @@ export default function Control() {
                                 <Button
                                   size='sm'
                                   onClick={() => {
-                                    void takeSceneInstant(selectedScene);
+                                    void takeSceneInstant(selectedScene, selectedSceneInstantId);
                                   }}
                                   disabled={!selectedScene || selectedSceneInstantId === null || !selectedSceneInstant}
                                 >
@@ -4701,7 +4840,7 @@ export default function Control() {
                                 ? `Playing: ${sceneInstantPlayback.instantName || 'Scene instant'}`
                                 : selectedSceneInstant
                                   ? `Ready: ${selectedSceneInstant.name}`
-                                  : 'Select an instant (changes save automatically), then TAKE BG.'}
+                                  : 'Select an instant, then press SAVE (or TAKE BG).'}
                             </p>
                           </div>
                           <div className='space-y-4 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>

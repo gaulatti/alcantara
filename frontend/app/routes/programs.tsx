@@ -21,11 +21,25 @@ interface ProgramSceneEntry {
   scene?: SceneSummary;
 }
 
+interface MediaGroupSummary {
+  id: number;
+  name: string;
+  description?: string | null;
+}
+
+interface ProgramMediaGroupEntry {
+  id: number;
+  mediaGroupId: number;
+  position: number;
+  mediaGroup?: MediaGroupSummary;
+}
+
 interface ProgramState {
   id: number;
   programId: string;
   activeSceneId: number | null;
   scenes: ProgramSceneEntry[];
+  mediaGroups: ProgramMediaGroupEntry[];
 }
 
 export function meta({}: Route.MetaArgs) {
@@ -38,12 +52,16 @@ export default function ProgramsAdmin() {
 
   const [programs, setPrograms] = useState<ProgramState[]>([]);
   const [allScenes, setAllScenes] = useState<SceneSummary[]>([]);
+  const [allMediaGroups, setAllMediaGroups] = useState<MediaGroupSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [programIdInput, setProgramIdInput] = useState('');
   const [selectedSceneIds, setSelectedSceneIds] = useState<number[]>([]);
+  const [selectedMediaGroupIds, setSelectedMediaGroupIds] = useState<number[]>(
+    [],
+  );
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -63,11 +81,21 @@ export default function ProgramsAdmin() {
     return data;
   };
 
+  const fetchMediaGroups = async (): Promise<MediaGroupSummary[]> => {
+    const res = await fetch(apiUrl('/media-groups'));
+    if (!res.ok) {
+      throw new Error(`Failed to fetch media groups: ${res.status}`);
+    }
+    const data = (await res.json()) as MediaGroupSummary[];
+    setAllMediaGroups(data);
+    return data;
+  };
+
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([fetchPrograms(), fetchScenes()]);
+        await Promise.all([fetchPrograms(), fetchScenes(), fetchMediaGroups()]);
       } catch (err) {
         console.error(err);
         showAlert('Failed to load programs. Please refresh and try again.', 'error');
@@ -86,10 +114,15 @@ export default function ProgramsAdmin() {
     return [...allScenes].sort((a, b) => a.name.localeCompare(b.name));
   }, [allScenes]);
 
+  const sortedMediaGroups = useMemo(() => {
+    return [...allMediaGroups].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allMediaGroups]);
+
   const openCreateModal = () => {
     setEditingProgramId(null);
     setProgramIdInput('');
     setSelectedSceneIds([]);
+    setSelectedMediaGroupIds([]);
     setError('');
     setShowModal(true);
   };
@@ -98,6 +131,9 @@ export default function ProgramsAdmin() {
     setEditingProgramId(program.programId);
     setProgramIdInput(program.programId);
     setSelectedSceneIds(program.scenes.map((entry) => entry.sceneId));
+    setSelectedMediaGroupIds(
+      (program.mediaGroups || []).map((entry) => entry.mediaGroupId),
+    );
     setError('');
     setShowModal(true);
   };
@@ -107,6 +143,7 @@ export default function ProgramsAdmin() {
     setEditingProgramId(null);
     setProgramIdInput('');
     setSelectedSceneIds([]);
+    setSelectedMediaGroupIds([]);
     setError('');
   };
 
@@ -116,6 +153,15 @@ export default function ProgramsAdmin() {
         return current.filter((id) => id !== sceneId);
       }
       return [...current, sceneId];
+    });
+  };
+
+  const toggleMediaGroupSelection = (mediaGroupId: number) => {
+    setSelectedMediaGroupIds((current) => {
+      if (current.includes(mediaGroupId)) {
+        return current.filter((id) => id !== mediaGroupId);
+      }
+      return [...current, mediaGroupId];
     });
   };
 
@@ -149,6 +195,56 @@ export default function ProgramsAdmin() {
     }
   };
 
+  const syncProgramMediaGroups = async (
+    programId: string,
+    currentMediaGroupIds: number[],
+    nextMediaGroupIds: number[],
+  ) => {
+    const currentSet = new Set(currentMediaGroupIds);
+    const nextSet = new Set(nextMediaGroupIds);
+
+    const mediaGroupIdsToRemove = currentMediaGroupIds.filter(
+      (mediaGroupId) => !nextSet.has(mediaGroupId),
+    );
+    const mediaGroupIdsToAdd = nextMediaGroupIds.filter(
+      (mediaGroupId) => !currentSet.has(mediaGroupId),
+    );
+
+    await Promise.all(
+      mediaGroupIdsToRemove.map(async (mediaGroupId) => {
+        const res = await fetch(
+          apiUrl(
+            `/program/${encodeURIComponent(programId)}/media-groups/${mediaGroupId}`,
+          ),
+          {
+            method: 'DELETE',
+          },
+        );
+        if (!res.ok) {
+          throw new Error(
+            `Failed to remove media group ${mediaGroupId} from ${programId} (${res.status})`,
+          );
+        }
+      }),
+    );
+
+    for (const mediaGroupId of mediaGroupIdsToAdd) {
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(programId)}/media-groups`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mediaGroupId }),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(
+          `Failed to add media group ${mediaGroupId} to ${programId} (${res.status})`,
+        );
+      }
+    }
+  };
+
   const saveProgram = async () => {
     const nextProgramId = programIdInput.trim();
     if (!nextProgramId) {
@@ -176,7 +272,14 @@ export default function ProgramsAdmin() {
         }
 
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
+        const currentMediaGroupIds =
+          editingProgram?.mediaGroups.map((entry) => entry.mediaGroupId) || [];
         await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
+        await syncProgramMediaGroups(
+          nextProgramId,
+          currentMediaGroupIds,
+          selectedMediaGroupIds,
+        );
       } else {
         const createRes = await fetch(apiUrl('/program'), {
           method: 'POST',
@@ -189,6 +292,7 @@ export default function ProgramsAdmin() {
         }
 
         await syncProgramScenes(nextProgramId, [], selectedSceneIds);
+        await syncProgramMediaGroups(nextProgramId, [], selectedMediaGroupIds);
       }
 
       if (isEditing && editingProgramId === selectedProgramId) {
@@ -239,7 +343,10 @@ export default function ProgramsAdmin() {
       <AlertContainer />
       <div className='mx-auto max-w-5xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader title='Programs' description='Create, rename, and delete broadcast programs. Assign scenes per program in edit mode.' />
+          <SectionHeader
+            title='Programs'
+            description='Create, rename, and delete broadcast programs. Assign scenes and media groups per program in edit mode.'
+          />
           <div className='flex flex-wrap items-center gap-3'>
             <Button variant='secondary' onClick={() => navigate('/control')}>
               Back to Control
@@ -284,7 +391,8 @@ export default function ProgramsAdmin() {
                           ) : null}
                         </div>
                         <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>
-                          Scenes assigned: {program.scenes.length} · Active scene: {program.activeSceneId ?? 'none'}
+                          Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Active scene:{' '}
+                          {program.activeSceneId ?? 'none'}
                         </p>
                       </div>
                       <div className='flex items-start gap-2'>
@@ -355,6 +463,41 @@ export default function ProgramsAdmin() {
                         <span className='min-w-0'>
                           <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{scene.name}</span>
                           <span className='block text-xs text-text-secondary dark:text-text-secondary'>{scene.layout?.name || 'No layout'}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className='mb-2 flex items-center justify-between'>
+                <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Media Groups</label>
+                <Button size='sm' variant='ghost' onClick={() => navigate('/media')}>
+                  Manage Media
+                </Button>
+              </div>
+              {sortedMediaGroups.length === 0 ? (
+                <p className='text-sm text-text-secondary dark:text-text-secondary'>No media groups available. Create media groups first.</p>
+              ) : (
+                <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
+                  {sortedMediaGroups.map((mediaGroup) => {
+                    const checked = selectedMediaGroupIds.includes(mediaGroup.id);
+                    return (
+                      <label
+                        key={mediaGroup.id}
+                        className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onChange={() => toggleMediaGroupSelection(mediaGroup.id)}
+                        />
+                        <span className='min-w-0'>
+                          <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{mediaGroup.name}</span>
+                          <span className='block text-xs text-text-secondary dark:text-text-secondary'>
+                            {mediaGroup.description || 'No description'}
+                          </span>
                         </span>
                       </label>
                     );
