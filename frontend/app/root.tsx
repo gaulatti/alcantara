@@ -1,4 +1,3 @@
-import { BleeckerThemeScript, ThemeProvider } from '@gaulatti/bleecker';
 import { Provider } from 'react-redux';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { ReactNode } from 'react';
@@ -26,15 +25,14 @@ export const links: Route.LinksFunction = () => [
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang='en'>
+    <html lang='en' className='dark'>
       <head>
         <meta charSet='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1' />
         <Meta />
         <Links />
-        <BleeckerThemeScript storageKey='theme' />
       </head>
-      <body className='bg-light-sand text-text-primary'>
+      <body className='bg-dark-sand text-text-primary'>
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -48,10 +46,8 @@ export default function App() {
 
   return (
     <Provider store={store}>
-      <ThemeProvider defaultTheme='system' storageKey='theme'>
-        <AuthListener />
-        <Outlet />
-      </ThemeProvider>
+      <AuthListener />
+      <Outlet />
     </Provider>
   );
 }

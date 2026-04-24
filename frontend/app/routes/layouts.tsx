@@ -166,7 +166,7 @@ export default function LayoutsAdmin() {
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Layouts' description='Create and manage reusable scene layouts.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/control')}>
+            <Button variant='secondary' onClick={() => navigate('/')}>
               Back to Control
             </Button>
             <Button onClick={openCreateModal}>

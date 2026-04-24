@@ -7,12 +7,11 @@ import {
   Input,
   Button,
   Modal,
-  ThemeToggle,
   type CommandSpotlightAction,
   type NavItem,
   type RenderLinkProps
 } from '@gaulatti/bleecker';
-import { Blend, CircleOff, Clock3, Clapperboard, Eye, Home, Images, LayoutTemplate, LogOut, Music, Radio, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
+import { Blend, CircleOff, Clock3, Clapperboard, Eye, ExternalLink, Images, LayoutTemplate, LogOut, Music, Radio, RefreshCw, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -82,6 +81,7 @@ export default function Layout() {
   const [broadcastTimeInput, setBroadcastTimeInput] = useState('');
   const [broadcastTimeError, setBroadcastTimeError] = useState('');
   const [isSavingBroadcastTime, setIsSavingBroadcastTime] = useState(false);
+  const [isTriggeringProgramReload, setIsTriggeringProgramReload] = useState(false);
   const selectedTransition = getSceneTransitionPreset(selectedTransitionId);
 
   const loadBroadcastSettings = useCallback(async () => {
@@ -252,8 +252,7 @@ export default function Layout() {
   }, [knownPrograms, selectedProgramId]);
 
   const navigation: NavItem[] = [
-    { href: '/', label: 'Home' },
-    { href: '/control', label: 'Control' },
+    { href: '/', label: 'Control' },
     { href: '/instants', label: 'Instants' },
     { href: '/songs', label: 'Songs' },
     { href: '/media', label: 'Media' },
@@ -267,8 +266,7 @@ export default function Layout() {
     {
       title: 'Navigation',
       items: [
-        { href: '/', label: 'Home' },
-        { href: '/control', label: 'Control' },
+        { href: '/', label: 'Control' },
         { href: '/instants', label: 'Instants' },
         { href: '/songs', label: 'Songs' },
         { href: '/media', label: 'Media' },
@@ -288,7 +286,7 @@ export default function Layout() {
       ]
     }
   ];
-  const hideFooter = location.pathname === '/control';
+  const hideFooter = location.pathname === '/' || location.pathname === '/control';
 
   const renderHeaderProgramSelector = () => (
     <HeaderSelect
@@ -305,15 +303,52 @@ export default function Layout() {
   );
 
   const openProgramUrl = `/program/${encodeURIComponent(selectedProgramId)}`;
+  const triggerProgramReload = useCallback(async () => {
+    if (!selectedProgramId.trim()) {
+      return;
+    }
+
+    setIsTriggeringProgramReload(true);
+    try {
+      const res = await fetch(apiUrl(`/program/${encodeURIComponent(selectedProgramId)}/reload`), {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.error('Failed to request program reload from header:', err);
+    } finally {
+      setIsTriggeringProgramReload(false);
+    }
+  }, [selectedProgramId]);
+
   const renderOpenProgramButton = () => (
     <a
       href={openProgramUrl}
       target='_blank'
       rel='noopener noreferrer'
-      className='inline-flex items-center rounded-full border border-sand/20 bg-white px-3 py-1.5 text-sm text-text-primary transition-colors hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
+      title='Open Program Output'
+      aria-label='Open Program Output'
+      className='inline-flex h-9 w-9 items-center justify-center rounded-full border border-sand/20 bg-white text-text-primary transition-colors hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
     >
-      Open Program
+      <ExternalLink size={16} strokeWidth={1.8} />
     </a>
+  );
+
+  const renderRefreshProgramButton = () => (
+    <button
+      type='button'
+      title='Refresh Program'
+      aria-label='Refresh Program'
+      onClick={() => {
+        void triggerProgramReload();
+      }}
+      disabled={isTriggeringProgramReload}
+      className='inline-flex h-9 w-9 items-center justify-center rounded-full border border-sand/20 bg-white text-text-primary transition-colors hover:bg-sand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
+    >
+      <RefreshCw size={16} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} />
+    </button>
   );
 
   const renderLogoutButton = () => (
@@ -330,20 +365,12 @@ export default function Layout() {
 
     const baseActions: CommandSpotlightAction[] = [
       {
-        id: 'nav-home',
-        title: 'Go to Home',
-        description: 'Return to dashboard home',
-        group: 'Navigation',
-        icon: <Home size={16} />,
-        onSelect: () => navigate('/')
-      },
-      {
         id: 'nav-control',
         title: 'Go to Control',
         description: 'Open the live control panel',
         group: 'Navigation',
         icon: <SlidersHorizontal size={16} />,
-        onSelect: () => navigate('/control')
+        onSelect: () => navigate('/')
       },
       {
         id: 'nav-instants',
@@ -452,7 +479,7 @@ export default function Layout() {
         description: `Current transition: ${selectedTransition.name}`,
         group: 'Transitions',
         icon: <Blend size={16} />,
-        onSelect: () => navigate('/control')
+        onSelect: () => navigate('/')
       },
       {
         id: 'open-broadcast-time-override',
@@ -588,7 +615,7 @@ export default function Layout() {
               <>
                 {renderHeaderProgramSelector()}
                 {renderOpenProgramButton()}
-                <ThemeToggle />
+                {renderRefreshProgramButton()}
                 {renderLogoutButton()}
               </>
             }
@@ -596,7 +623,7 @@ export default function Layout() {
               <>
                 {renderHeaderProgramSelector()}
                 {renderOpenProgramButton()}
-                <ThemeToggle />
+                {renderRefreshProgramButton()}
                 {renderLogoutButton()}
               </>
             }

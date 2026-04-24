@@ -586,7 +586,7 @@ export default function MediaRoute() {
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Media & Media Groups' description='Create image assets once, then reuse them across slideshow scenes via groups.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/control')}>
+            <Button variant='secondary' onClick={() => navigate('/')}>
               Back to Control
             </Button>
             <Button variant='secondary' onClick={openCreateGroupModal}>

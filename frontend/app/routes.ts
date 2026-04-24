@@ -5,8 +5,8 @@ export default [
   route('logout', 'routes/logout.tsx'),
   layout('routes/protected.tsx', [
     layout('routes/layout.tsx', [
-      index('routes/home.tsx'),
-      route('control', 'routes/control.tsx'),
+      index('routes/control.tsx'),
+      route('control', 'routes/control-legacy.tsx'),
       route('instants', 'routes/instants.tsx'),
       route('songs', 'routes/songs.tsx'),
       route('media', 'routes/media.tsx'),

@@ -250,7 +250,7 @@ export default function Preview() {
         </div>
         <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #ddd' }}>
           <a
-            href='/control'
+            href='/'
             style={{
               display: 'block',
               padding: '0.75rem',

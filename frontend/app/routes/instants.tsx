@@ -257,7 +257,7 @@ export default function InstantsAdmin() {
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Instants' description='Audio trigger cart shared across the app.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/control')}>
+            <Button variant='secondary' onClick={() => navigate('/')}>
               Back to Control
             </Button>
             <Button variant='secondary' onClick={() => void stopAllInstants()}>

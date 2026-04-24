@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Accordion, Button, Kbd, Panel, PanelLayout, Select, Switch } from '@gaulatti/bleecker';
+import { Accordion, Button, Panel, PanelLayout, Select, Sheet, Switch } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -1078,41 +1078,22 @@ function withIndependentProgramClockMetadata(metadata: ComponentPropsMap): Compo
   };
 }
 
-function getSceneSummaryText(scene: Scene): string {
-  try {
-    const metadata = parseSceneMetadata(scene.metadata);
-    const toniProps = {
-      ...(metadata?.['toni-chyron'] || {}),
-      ...(metadata?.['fifthbell-chyron'] || {})
-    };
-
-    if (toniProps && typeof toniProps === 'object') {
-      const sequence = normalizeToniChyronSequence(toniProps.sequence);
-      const contentMode = getToniChyronContentMode(toniProps.contentMode, sequence);
-
-      if (contentMode === 'sequence' && sequence) {
-        return `Sequence (${countSequenceLeafItems(sequence)} items)`;
-      }
-
-      if (typeof toniProps.text === 'string' && toniProps.text.trim()) {
-        return toniProps.text;
-      }
-    }
-
-    const chyronProps = metadata?.chyron;
-    if (chyronProps && typeof chyronProps === 'object' && typeof chyronProps.text === 'string' && chyronProps.text.trim()) {
-      return chyronProps.text;
-    }
-
-    const broadcastProps = metadata?.['broadcast-layout'];
-    if (broadcastProps && typeof broadcastProps === 'object' && typeof broadcastProps.chyronText === 'string' && broadcastProps.chyronText.trim()) {
-      return broadcastProps.chyronText;
-    }
-  } catch (err) {
-    console.error('Failed to parse scene metadata for summary:', err);
-  }
-
-  return '(none)';
+function PanelColumn({
+  children,
+  grow: _grow,
+  style,
+  className
+}: {
+  children: React.ReactNode;
+  grow?: boolean;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  return (
+    <div className={`flex h-full min-h-0 flex-col${className ? ` ${className}` : ''}`} style={style}>
+      {children}
+    </div>
+  );
 }
 
 export function meta({}: Route.MetaArgs) {
@@ -1125,6 +1106,7 @@ export default function Control() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [instants, setInstants] = useState<InstantItem[]>([]);
   const [isLoadingInstants, setIsLoadingInstants] = useState(false);
+  const [instantSearch, setInstantSearch] = useState('');
   const [songCatalog, setSongCatalog] = useState<SongCatalogItem[]>([]);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
   const [isLoadingMediaGroups, setIsLoadingMediaGroups] = useState(false);
@@ -1164,7 +1146,7 @@ export default function Control() {
     songSequence: createProgramSongSequence('manual')
   });
   const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
-  const [isTriggeringProgramReload, setIsTriggeringProgramReload] = useState(false);
+  const [isPlaylistSheetOpen, setIsPlaylistSheetOpen] = useState(false);
   const [mixerLevels, setMixerLevels] = useState<BroadcastSettings>({
     mainMasterVolume: 1,
     songMasterVolume: 1,
@@ -1320,9 +1302,7 @@ export default function Control() {
   const shouldApplyControlUpdatePayload = useCallback((payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
     const topic =
       topicOverride ??
-      (payload && typeof payload === 'object' && !Array.isArray(payload)
-        ? resolveControlUpdateTopicFromType((payload as Record<string, unknown>).type)
-        : null);
+      (payload && typeof payload === 'object' && !Array.isArray(payload) ? resolveControlUpdateTopicFromType((payload as Record<string, unknown>).type) : null);
     if (!topic) {
       return true;
     }
@@ -1563,11 +1543,7 @@ export default function Control() {
           return;
         }
 
-        if (
-          payload.type === 'scene_change' ||
-          payload.type === 'program_scenes_changed' ||
-          payload.type === 'program_media_groups_changed'
-        ) {
+        if (payload.type === 'scene_change' || payload.type === 'program_scenes_changed' || payload.type === 'program_media_groups_changed') {
           const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
           if (eventProgramId !== activeProgramId) {
             return;
@@ -1951,12 +1927,7 @@ export default function Control() {
     return value.toFixed(1);
   };
 
-  const commitTakePresetDbInput = (
-    channelId: MixerTakeChannelKey,
-    presetSide: MixerTakePresetSide,
-    rawValue: string,
-    fallbackValue: number
-  ): number => {
+  const commitTakePresetDbInput = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide, rawValue: string, fallbackValue: number): number => {
     const parsed = Number.parseFloat(rawValue.trim());
     const nextValue = Number.isFinite(parsed) ? normalizeTakeVolumePresetDb(parsed, fallbackValue) : fallbackValue;
     updateChannelTakePresetDb(channelId, presetSide, nextValue);
@@ -2277,27 +2248,6 @@ export default function Control() {
       }
     } catch (err) {
       console.error('Failed to take song off air:', err);
-    }
-  };
-
-  const triggerProgramReload = async (targetProgramId: string = activeProgramId) => {
-    if (!targetProgramId.trim()) {
-      return;
-    }
-
-    setIsTriggeringProgramReload(true);
-    try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/reload`), {
-        method: 'POST'
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-    } catch (err) {
-      console.error('Failed to request program reload:', err);
-    } finally {
-      setIsTriggeringProgramReload(false);
     }
   };
 
@@ -2827,11 +2777,7 @@ export default function Control() {
 
       // If a new payload was queued while the previous drain promise was
       // still resolving, guarantee we kick off another drain pass.
-      if (
-        pendingSceneAttributeSaveRef.current &&
-        !sceneAttributeSaveDrainPromiseRef.current &&
-        sceneAttributeRetryTimerRef.current === null
-      ) {
+      if (pendingSceneAttributeSaveRef.current && !sceneAttributeSaveDrainPromiseRef.current && sceneAttributeRetryTimerRef.current === null) {
         void flushQueuedSceneAttributeSaves().catch(() => {
           // no-op, retry timer is scheduled by flush
         });
@@ -2858,11 +2804,7 @@ export default function Control() {
       if (sceneAttributeFlushKickTimerRef.current === null) {
         sceneAttributeFlushKickTimerRef.current = window.setTimeout(() => {
           sceneAttributeFlushKickTimerRef.current = null;
-          if (
-            pendingSceneAttributeSaveRef.current &&
-            !sceneAttributeSaveDrainPromiseRef.current &&
-            sceneAttributeRetryTimerRef.current === null
-          ) {
+          if (pendingSceneAttributeSaveRef.current && !sceneAttributeSaveDrainPromiseRef.current && sceneAttributeRetryTimerRef.current === null) {
             void flushQueuedSceneAttributeSaves().catch(() => {
               // no-op, retry timer is scheduled by flush
             });
@@ -3400,11 +3342,7 @@ export default function Control() {
         return;
       }
 
-      if (
-        data.type === 'scene_change' ||
-        data.type === 'program_scenes_changed' ||
-        data.type === 'program_media_groups_changed'
-      ) {
+      if (data.type === 'scene_change' || data.type === 'program_scenes_changed' || data.type === 'program_media_groups_changed') {
         const normalizedProgramState = normalizeProgramState(data.state);
         syncProgramStateAndStagedScene(normalizedProgramState);
         if (data.type === 'program_media_groups_changed') {
@@ -3511,13 +3449,6 @@ export default function Control() {
   );
   const stagedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
   const activeSceneId = programState?.activeSceneId ?? null;
-  const activeSceneData = activeSceneId ? (assignedScenes.find((scene) => scene.id === activeSceneId) ?? null) : null;
-  const stagedSceneSummaryText = useMemo(() => {
-    if (!stagedSceneData) {
-      return '';
-    }
-    return getSceneSummaryText(stagedSceneData);
-  }, [stagedSceneData?.id, stagedSceneData?.metadata]);
   const selectedSceneInstantId = normalizeSceneInstantId(sceneEditorProps?.sceneInstant?.instantId);
   const selectedSceneInstant = selectedSceneInstantId ? (instants.find((instant) => instant.id === selectedSceneInstantId) ?? null) : null;
   const stagedIsOnAir = selectedScene !== null && selectedScene === activeSceneId;
@@ -3572,13 +3503,10 @@ export default function Control() {
   const mainMixMeterFill = meterLevelToFill(programAudioMeterLevels.main.vu);
   const mainMixPeakFill = meterLevelToFill(programAudioMeterLevels.main.peak);
   const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
-  const assignedScenesCount = assignedScenes.length;
   const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
   const onlineStatusTone = isProgramRealtimeConnected
     ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/40'
     : 'text-amber-200 bg-amber-500/15 border-amber-300/40';
-  const activeSceneLabel = activeSceneData?.name ?? 'Off Air';
-  const stagedSceneLabel = stagedSceneData?.name ?? 'None';
   const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
   const controlDeckGrowProps = { grow: true } as any;
   return (
@@ -3604,127 +3532,12 @@ export default function Control() {
       </style>
       <div className='flex min-h-0 flex-1 overflow-y-auto pb-20'>
         <PanelLayout className='flex-1 min-h-0 w-full' padding='p-0'>
-          <Panel title='Scenes' accent='#22c55e' width={360} className='min-w-0'>
-            <section className='h-full bg-transparent text-text-primary'>
-              <div className='space-y-4 p-4'>
-                <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-                  <div className='flex flex-wrap items-center gap-2'>
-                    <Button size='sm' onClick={() => void takeStagedSceneLive()} disabled={!selectedScene || stagedIsOnAir}>
-                      TAKE
-                    </Button>
-                    <Button size='sm' variant='secondary' onClick={() => window.location.assign('/scenes')}>
-                      Manage Scenes
-                    </Button>
-                    <Button size='sm' variant='secondary' onClick={() => void triggerProgramReload()} disabled={isTriggeringProgramReload}>
-                      {isTriggeringProgramReload ? 'Refreshing...' : 'Refresh Program'}
-                    </Button>
-                  </div>
-                </div>
-                <div className='space-y-1 text-xs text-text-secondary dark:text-text-secondary'>
-                  <p className='font-medium'>Hotkeys</p>
-                  <p className='flex flex-wrap items-center gap-2'>
-                    <Kbd keys={['Ctrl', 'S']} />
-                    <span>then 1-9 (0 for #10) to stage</span>
-                  </p>
-                  <p className='flex flex-wrap items-center gap-2'>
-                    <Kbd keys={['Ctrl', 'Enter']} />
-                    <span>to TAKE</span>
-                  </p>
-                </div>
-                {assignedScenes.length === 0 ? (
-                  <div className='py-8 text-center text-text-secondary dark:text-text-secondary'>No scenes assigned to this program.</div>
-                ) : (
-                  <>
-                    <div className='grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(120px,1fr))]'>
-                      {assignedScenes.map((scene, index) => {
-                        const isStaged = selectedScene === scene.id;
-                        const isActive = activeSceneId === scene.id;
-
-                        return (
-                          <button
-                            key={scene.id}
-                            type='button'
-                            onClick={() => {
-                              setSelectedScene(scene.id);
-                              void stageSceneForProgram(scene.id);
-                            }}
-                            onDoubleClick={() => {
-                              void activateScene(scene.id);
-                            }}
-                            className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
-                              isActive && isStaged
-                                ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30 dark:border-emerald-400 dark:bg-emerald-400/10 dark:ring-emerald-400/20'
-                                : isActive
-                                  ? 'border-red-500 bg-red-500/10 ring-2 ring-red-500/30 dark:border-red-400 dark:bg-red-400/10 dark:ring-red-400/20'
-                                  : isStaged
-                                    ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
-                                    : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
-                            }`}
-                            title={scene.name}
-                          >
-                            <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
-                              {index + 1}
-                            </span>
-                            <div className='absolute right-2 top-2 flex gap-1'>
-                              {isActive ? <span className='rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>PGM</span> : null}
-                              {isStaged ? <span className='rounded bg-cyan-600 px-1.5 py-0.5 text-[10px] font-bold text-white'>STG</span> : null}
-                            </div>
-                            <div className='mt-6'>
-                              <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>{scene.name}</div>
-                              <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>{scene.layout.name}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className='text-xs text-text-secondary dark:text-text-secondary space-y-1'>
-                      <p>
-                        Program: <span className='font-semibold text-text-primary dark:text-text-primary'>{activeSceneData?.name ?? 'Off Air'}</span>
-                      </p>
-                      <p>
-                        Staged: <span className='font-semibold text-text-primary dark:text-text-primary'>{stagedSceneData?.name ?? 'None'}</span>
-                        {stagedSceneData ? <> · Text: {stagedSceneSummaryText}</> : null}
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </section>
-          </Panel>
-
           <Panel title='Control Deck' accent='#38bdf8' className='min-w-0' {...controlDeckGrowProps}>
             {/* Main Control Accordion */}
             <Accordion
               className='h-full bg-transparent'
-              defaultExpandedId='playlist'
+              defaultExpandedId='mixer'
               items={[
-                {
-                  id: 'playlist',
-                  title: 'Songs Catalog',
-                  content: (
-                    <div className='space-y-4'>
-                      <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                        {isSavingProgramAudioBus ? <span className='text-xs text-text-secondary dark:text-text-secondary'>Saving…</span> : null}
-                      </div>
-                      <ProgramSongSequenceEditor
-                        sequence={programAudioBusSongSequence}
-                        songCatalog={songCatalog}
-                        programSongPlayback={programSongPlaybackState}
-                        view='catalog'
-                        showPlaybackBar={false}
-                        onChange={(nextSequence) => {
-                          void saveProgramAudioBusSongSequence(nextSequence);
-                        }}
-                        onTakeSelection={async (nextSequence) => {
-                          await saveProgramAudioBusSongSequence(nextSequence);
-                        }}
-                        onTakeOffAir={async () => {
-                          await takeProgramSongOffAir(activeProgramId);
-                        }}
-                      />
-                    </div>
-                  )
-                },
                 {
                   id: 'mixer',
                   title: 'Mixer',
@@ -4657,101 +4470,6 @@ export default function Control() {
                   )
                 },
                 {
-                  id: 'instants',
-                  title: 'Instants',
-                  content: (
-                    <div className='space-y-4'>
-                      <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-                        <div className='flex flex-wrap items-center gap-2'>
-                          <Button size='sm' variant='secondary' onClick={() => window.location.assign('/instants')}>
-                            Manage Instants
-                          </Button>
-                          <Button size='sm' variant='secondary' onClick={() => void stopAllInstants()}>
-                            Stop All
-                          </Button>
-                        </div>
-                      </div>
-                      <p className='flex items-center gap-2 text-xs text-text-secondary dark:text-text-secondary'>
-                        Hotkeys:
-                        <Kbd keys={['Ctrl', 'Q..M']} />
-                        <span>(QWERTY order, first 26 instants)</span>
-                      </p>
-                      {isLoadingInstants ? (
-                        <p className='text-sm text-text-secondary dark:text-text-secondary'>Loading instants...</p>
-                      ) : instants.length === 0 ? (
-                        <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants in catalog. Create some in Instants.</p>
-                      ) : (
-                        <div className='overflow-x-auto'>
-                          <div className='grid grid-flow-col auto-cols-[120px] grid-rows-1 gap-3 pb-1'>
-                            {instants.map((instant, index) => {
-                              const playbackState = instantPlayback[instant.id] ?? null;
-                              const isPlaying = playbackState !== null;
-                              const durationMs = instantDurationsMs[instant.id] ?? null;
-                              const shortcutLetter = getInstantShortcutLetter(index);
-
-                              return (
-                                <button
-                                  key={instant.id}
-                                  type='button'
-                                  onClick={() => {
-                                    void triggerInstant(instant.id);
-                                  }}
-                                  disabled={!instant.enabled}
-                                  className={`relative aspect-square min-h-[120px] rounded-xl border p-3 text-left transition-colors ${
-                                    !instant.enabled
-                                      ? 'cursor-not-allowed border-sand/20 bg-sand/10 opacity-60 dark:border-sand/40 dark:bg-sand/10'
-                                      : isPlaying
-                                        ? 'border-sea bg-sea/10 ring-2 ring-sea/20 dark:border-accent-blue dark:bg-accent-blue/10 dark:ring-accent-blue/20'
-                                        : 'border-sand/20 bg-white/80 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
-                                  }`}
-                                  title={instant.name}
-                                >
-                                  <span className='absolute left-2 top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-sea px-1 text-xs font-bold text-white dark:bg-accent-blue'>
-                                    {shortcutLetter || index + 1}
-                                  </span>
-                                  <div className='mt-6'>
-                                    <div className='line-clamp-2 text-sm font-semibold leading-tight text-text-primary dark:text-text-primary'>
-                                      {instant.name}
-                                    </div>
-                                    <div className='mt-1 line-clamp-1 text-xs text-text-secondary dark:text-text-secondary'>Vol {instant.volume}</div>
-                                    {isPlaying ? (
-                                      <div className='mt-1 line-clamp-1 text-[11px] font-semibold text-sea dark:text-accent-blue'>Playing</div>
-                                    ) : durationMs !== null ? (
-                                      <div className='mt-1 line-clamp-1 text-[11px] text-text-secondary dark:text-text-secondary'>
-                                        {`Length ${Math.max(0.1, durationMs / 1000).toFixed(1)}s`}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                  {isPlaying ? (
-                                    <div className='pointer-events-none absolute inset-0 overflow-hidden rounded-xl'>
-                                      {playbackState && playbackState.endsAtMs !== null ? (
-                                        <div
-                                          key={`${instant.id}-${playbackState.startedAtMs}`}
-                                          className='absolute inset-0 origin-left bg-sea dark:bg-accent-blue'
-                                          style={{
-                                            animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`
-                                          }}
-                                        />
-                                      ) : (
-                                        <div
-                                          className='absolute inset-0 bg-sea dark:bg-accent-blue'
-                                          style={{
-                                            animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`
-                                          }}
-                                        />
-                                      )}
-                                    </div>
-                                  ) : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                },
-                {
                   id: 'scene-attributes',
                   title: 'Stage Attributes',
                   content: (
@@ -4880,26 +4598,178 @@ export default function Control() {
             />
           </Panel>
 
-          <Panel title='Current Queue' accent='#8b5cf6' width={520} className='min-w-0 h-full'>
-            <ProgramSongSequenceEditor
-              sequence={programAudioBusSongSequence}
-              songCatalog={songCatalog}
-              programSongPlayback={programSongPlaybackState}
-              view='queue'
-              showPlaybackBar
-              onChange={(nextSequence) => {
-                void saveProgramAudioBusSongSequence(nextSequence);
-              }}
-              onTakeSelection={async (nextSequence) => {
-                await saveProgramAudioBusSongSequence(nextSequence);
-              }}
-              onTakeOffAir={async () => {
-                await takeProgramSongOffAir(activeProgramId);
-              }}
-            />
-          </Panel>
+          <PanelColumn style={{ width: 520, minWidth: 520 }}>
+            <Panel
+              title='Playlist'
+              accent='#8b5cf6'
+              variant='monitor'
+              className='flex-1 min-h-0 h-auto'
+              toolbar={
+                <div className='flex w-full items-center justify-start'>
+                  <Button
+                    size='sm'
+                    variant='secondary'
+                    onClick={() => {
+                      setIsPlaylistSheetOpen(true);
+                    }}
+                  >
+                    Add to Playlist
+                  </Button>
+                </div>
+              }
+            >
+              <ProgramSongSequenceEditor
+                sequence={programAudioBusSongSequence}
+                songCatalog={songCatalog}
+                programSongPlayback={programSongPlaybackState}
+                view='queue'
+                showPlaybackBar
+                sceneQuickActions={assignedScenes.map((scene, index) => ({
+                  id: scene.id,
+                  name: scene.name,
+                  isActive: activeSceneId === scene.id,
+                  isStaged: selectedScene === scene.id,
+                  shortcutLabel: String(index + 1)
+                }))}
+                onStageScene={(sceneId) => {
+                  setSelectedScene(sceneId);
+                  void stageSceneForProgram(sceneId);
+                }}
+                onTakeScene={(sceneId) => {
+                  void activateScene(sceneId);
+                }}
+                onChange={(nextSequence) => {
+                  void saveProgramAudioBusSongSequence(nextSequence);
+                }}
+                onTakeSelection={async (nextSequence) => {
+                  await saveProgramAudioBusSongSequence(nextSequence);
+                }}
+                onTakeOffAir={async () => {
+                  await takeProgramSongOffAir(activeProgramId);
+                }}
+              />
+            </Panel>
+            <Panel
+              title='Instants'
+              accent='#f59e0b'
+              variant='monitor'
+              className='shrink-0 h-auto'
+              toolbar={
+                <div className='flex w-full items-center gap-2'>
+                  <input
+                    type='text'
+                    placeholder='Search instants…'
+                    value={instantSearch}
+                    onChange={(e) => setInstantSearch(e.target.value)}
+                    className='min-w-0 flex-1 rounded border border-sand/30 bg-white/60 px-2 py-1 text-xs text-text-primary placeholder-text-secondary focus:border-amber-400/60 focus:outline-none dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:placeholder-text-secondary dark:focus:border-amber-400/40'
+                  />
+                  <Button size='sm' variant='secondary' onClick={() => void stopAllInstants()}>
+                    Stop All
+                  </Button>
+                  <Button size='sm' variant='secondary' onClick={() => window.location.assign('/instants')}>
+                    Manage
+                  </Button>
+                </div>
+              }
+            >
+              <div className='p-3'>
+                {isLoadingInstants ? (
+                  <p className='text-sm text-text-secondary dark:text-text-secondary'>Loading instants...</p>
+                ) : instants.length === 0 ? (
+                  <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants in catalog.</p>
+                ) : (
+                  (() => {
+                    const filtered = instants.filter((i) => !instantSearch.trim() || i.name.toLowerCase().includes(instantSearch.trim().toLowerCase()));
+                    return filtered.length === 0 ? (
+                      <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants match &ldquo;{instantSearch}&rdquo;.</p>
+                    ) : (
+                      <div className='grid grid-cols-4 gap-1.5'>
+                        {filtered.map((instant) => {
+                          const originalIndex = instants.indexOf(instant);
+                          const playbackState = instantPlayback[instant.id] ?? null;
+                          const isPlaying = playbackState !== null;
+                          const shortcutLetter = getInstantShortcutLetter(originalIndex);
+
+                          return (
+                            <button
+                              key={instant.id}
+                              type='button'
+                              onClick={() => void triggerInstant(instant.id)}
+                              disabled={!instant.enabled}
+                              title={`${instant.name}${shortcutLetter ? ` (Ctrl+${shortcutLetter})` : ''}`}
+                              className={`relative overflow-hidden rounded border px-1.5 py-2 text-left text-[11px] font-medium leading-tight transition-colors ${
+                                !instant.enabled
+                                  ? 'cursor-not-allowed border-sand/20 bg-sand/10 opacity-50 dark:border-sand/40'
+                                  : isPlaying
+                                    ? 'border-amber-400/60 bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/30'
+                                    : 'border-sand/25 bg-white/50 text-text-primary hover:border-amber-400/40 hover:bg-amber-500/10 dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:hover:border-amber-400/30'
+                              }`}
+                            >
+                              {shortcutLetter ? <span className='mb-0.5 block font-mono text-[9px] opacity-40'>{shortcutLetter}</span> : null}
+                              <span className='line-clamp-2'>{instant.name}</span>
+                              {isPlaying ? (
+                                <div className='pointer-events-none absolute inset-0 overflow-hidden rounded'>
+                                  {playbackState && playbackState.endsAtMs !== null ? (
+                                    <div
+                                      key={`${instant.id}-${playbackState.startedAtMs}`}
+                                      className='absolute inset-0 origin-left bg-amber-400/20'
+                                      style={{
+                                        animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      className='absolute inset-0 bg-amber-400/15'
+                                      style={{
+                                        animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            </Panel>
+          </PanelColumn>
         </PanelLayout>
       </div>
+      <Sheet
+        isOpen={isPlaylistSheetOpen}
+        onClose={() => {
+          setIsPlaylistSheetOpen(false);
+        }}
+        side='right'
+        className='w-full max-w-4xl'
+        scrollContent={false}
+      >
+        <div className='h-full min-h-0'>
+          <div className='mb-2 text-xs text-text-secondary dark:text-text-secondary'>
+            {isSavingProgramAudioBus ? 'Saving…' : ''}
+          </div>
+          <ProgramSongSequenceEditor
+            sequence={programAudioBusSongSequence}
+            songCatalog={songCatalog}
+            programSongPlayback={programSongPlaybackState}
+            view='catalog'
+            showPlaybackBar={false}
+            onChange={(nextSequence) => {
+              void saveProgramAudioBusSongSequence(nextSequence);
+            }}
+            onTakeSelection={async (nextSequence) => {
+              await saveProgramAudioBusSongSequence(nextSequence);
+            }}
+            onTakeOffAir={async () => {
+              await takeProgramSongOffAir(activeProgramId);
+            }}
+          />
+        </div>
+      </Sheet>
     </div>
   );
 }
@@ -7090,6 +6960,9 @@ function ProgramSongSequenceEditor({
   onChange,
   onTakeSelection,
   onTakeOffAir,
+  sceneQuickActions = [],
+  onStageScene,
+  onTakeScene,
   depth = 0,
   view = 'full',
   showPlaybackBar = true
@@ -7100,6 +6973,15 @@ function ProgramSongSequenceEditor({
   onChange: (nextSequence: ProgramSongSequence) => void;
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onTakeOffAir?: () => Promise<void> | void;
+  sceneQuickActions?: Array<{
+    id: number;
+    name: string;
+    isActive: boolean;
+    isStaged: boolean;
+    shortcutLabel: string;
+  }>;
+  onStageScene?: (sceneId: number) => void;
+  onTakeScene?: (sceneId: number) => void;
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   showPlaybackBar?: boolean;
@@ -7115,7 +6997,9 @@ function ProgramSongSequenceEditor({
   const isNested = depth > 0;
   const showQueue = view !== 'catalog';
   const showCatalog = view !== 'queue';
+  const showQueueHeading = view === 'full';
   const hasFixedPlaybackBar = showPlaybackBar && !isNested;
+  const showSceneQuickBar = hasFixedPlaybackBar && sceneQuickActions.length > 0;
   const effectiveActiveItemId = getProgramSongSequenceSelectedItemId(sequence, nowMs);
   const playbackActiveItemId = useMemo(() => {
     if (!programSongPlayback?.isPlaying) {
@@ -7527,7 +7411,8 @@ function ProgramSongSequenceEditor({
       return now;
     }
 
-    const targetItemId = sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId ?? null) : (runtimeActiveItemId ?? sequence.activeItemId ?? null);
+    const targetItemId =
+      sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId ?? null) : (runtimeActiveItemId ?? sequence.activeItemId ?? null);
     if (!targetItemId) {
       return now;
     }
@@ -7551,30 +7436,36 @@ function ProgramSongSequenceEditor({
   };
 
   return (
-    <div className={`flex flex-col overflow-hidden rounded-xl ${isNested ? 'border border-zinc-800 bg-zinc-900' : 'h-full min-h-0 bg-zinc-950'}`}>
+    <div
+      className={`flex flex-col overflow-hidden rounded-xl ${
+        isNested ? 'border border-sand/30 bg-dark-sand/70' : 'h-full min-h-0 bg-dark-sand'
+      }`}
+    >
       {/* Two-column layout container */}
       <div className='flex min-h-0 flex-1 flex-col md:flex-row'>
         {/* Left Column: Playlist Queue */}
         {showQueue ? (
-          <div className={`flex min-h-0 flex-1 flex-col ${showCatalog ? 'border-r-0 border-zinc-800/60 md:border-r' : ''}`}>
-            <div className='flex items-center justify-between border-b border-zinc-800/60 bg-zinc-900/20 px-4 py-2 border-t'>
-              <span className='text-[10px] font-semibold uppercase tracking-widest text-zinc-500'>Current Queue</span>
-              <span className='text-[10px] text-zinc-500'>
-                {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
-              </span>
-            </div>
+          <div className={`flex min-h-0 flex-1 flex-col ${showCatalog ? 'border-r-0 border-sand/30 md:border-r' : ''}`}>
+            {showQueueHeading ? (
+              <div className='flex items-center justify-between border-b border-sand/30 bg-dark-sand/70 px-4 py-2 border-t border-sand/20'>
+                <span className='text-[10px] font-semibold uppercase tracking-widest text-text-secondary'>Playlist</span>
+                <span className='text-[10px] text-text-secondary'>
+                  {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
+                </span>
+              </div>
+            ) : null}
 
             {sequence.items.length === 0 ? (
               <div className='flex flex-1 flex-col items-center justify-center px-4 py-16 text-center'>
-                <Music2 size={32} className='mb-3 text-zinc-700' />
-                <p className='text-sm font-medium text-zinc-400'>Queue is empty</p>
-                <p className='mt-1 text-xs text-zinc-600'>Search and add songs from the catalog panel.</p>
+                <Music2 size={32} className='mb-3 text-text-secondary' />
+                <p className='text-sm font-medium text-text-primary'>Queue is empty</p>
+                <p className='mt-1 text-xs text-text-secondary'>Search and add songs from the catalog panel.</p>
               </div>
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
                 <div className='min-w-100'>
                   {/* Column header */}
-                  <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-zinc-800/60 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-700'>
+                  <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
                     <span />
                     <span className='text-center'>#</span>
                     <span style={{ paddingLeft: '50px' }}>Title</span>
@@ -7584,7 +7475,7 @@ function ProgramSongSequenceEditor({
                     <span />
                   </div>
 
-                  <div className='divide-y divide-zinc-800/40'>
+                  <div className='divide-y divide-sand/20'>
                     {sequence.items.map((item, index) => {
                       const displayItem = item;
                       const isActive = displayItem.id === runtimeActiveItemId;
@@ -7623,7 +7514,7 @@ function ProgramSongSequenceEditor({
                           {/* Main track row */}
                           <div
                             className={`group grid grid-cols-[28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${
-                              isActive ? 'bg-sky-500/10' : 'hover:bg-white/3'
+                              isActive ? 'bg-sea/15' : 'hover:bg-white/5'
                             }`}
                           >
                             {/* Drag handle — hidden until hover */}
@@ -7631,7 +7522,7 @@ function ProgramSongSequenceEditor({
                               draggable
                               onDragStart={() => setDraggingIndex(index)}
                               onDragEnd={() => setDraggingIndex(null)}
-                              className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100'
+                              className='inline-flex h-6 w-6 cursor-grab select-none items-center justify-center text-text-secondary opacity-0 transition-opacity group-hover:opacity-100'
                               title='Drag to reorder'
                               aria-label='Drag to reorder'
                             >
@@ -7648,29 +7539,29 @@ function ProgramSongSequenceEditor({
                               title='Take on air'
                             >
                               {/* Number — visible by default when not active, hidden on hover */}
-                              <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-zinc-500 group-hover:opacity-0'}`}>
+                              <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}>
                                 {index + 1}
                               </span>
                               {/* EQ bars — only when active */}
                               {isActive && (
                                 <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
                                   <span
-                                    className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                    className='w-0.75 rounded-sm bg-sea opacity-100'
                                     style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }}
                                   />
                                   <span
-                                    className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                    className='w-0.75 rounded-sm bg-sea opacity-100'
                                     style={{ animation: 'eq-bar2 0.8s ease-in-out 0.15s infinite alternate' }}
                                   />
                                   <span
-                                    className='w-0.75 rounded-sm bg-sky-400 opacity-100'
+                                    className='w-0.75 rounded-sm bg-sea opacity-100'
                                     style={{ animation: 'eq-bar1 0.8s ease-in-out 0.3s infinite alternate' }}
                                   />
                                 </span>
                               )}
                               {/* Play icon — shows on hover always */}
                               <span className='absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100'>
-                                <Play size={11} className='fill-zinc-100 text-zinc-100' />
+                                <Play size={11} className='fill-text-primary text-text-primary' />
                               </span>
                             </button>
 
@@ -7679,20 +7570,20 @@ function ProgramSongSequenceEditor({
                               {coverUrl ? (
                                 <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
                               ) : (
-                                <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-xs font-bold text-zinc-600'>
+                                <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-dark-sand text-xs font-bold text-text-secondary'>
                                   {titleText.slice(0, 1).toUpperCase() || '?'}
                                 </div>
                               )}
                               <div className='min-w-0'>
-                                <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sky-400' : 'text-zinc-100'}`}>
+                                <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
                                   {titleText}
                                 </div>
-                                <div className='truncate text-[11px] leading-tight text-zinc-500 mt-0.5'>{artistText}</div>
+                                <div className='truncate text-[11px] leading-tight text-text-secondary mt-0.5'>{artistText}</div>
                               </div>
                             </div>
 
                             {/* Duration */}
-                            <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{rowDuration}</span>
+                            <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
 
                             {/* Hover actions */}
                             <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
@@ -7700,7 +7591,7 @@ function ProgramSongSequenceEditor({
                                 <button
                                   type='button'
                                   onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
-                                  className='flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:text-zinc-200'
+                                  className='flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:text-text-primary'
                                   title='Edit song'
                                 >
                                   <svg
@@ -7721,7 +7612,7 @@ function ProgramSongSequenceEditor({
                               <button
                                 type='button'
                                 onClick={() => removeItem(index)}
-                                className='flex h-6 w-6 items-center justify-center rounded text-zinc-600 transition-colors hover:text-red-400'
+                                className='flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:text-terracotta'
                                 title='Remove'
                               >
                                 <svg
@@ -7746,7 +7637,7 @@ function ProgramSongSequenceEditor({
 
                           {/* Expanded edit panel */}
                           {displayItem.kind === 'preset' && isExpanded ? (
-                            <div className='border-t border-zinc-800 bg-zinc-900/40 px-3 py-2'>
+                            <div className='border-t border-sand/30 bg-dark-sand/60 px-3 py-2'>
                               <div className='flex items-center rounded'>
                                 <Select
                                   value={selectedCatalogSongValue}
@@ -7766,8 +7657,8 @@ function ProgramSongSequenceEditor({
                           ) : null}
 
                           {displayItem.kind === 'sequence' ? (
-                            <div className='border-t border-zinc-800 bg-zinc-900/50 px-4 py-3'>
-                              <p className='mb-2 text-xs text-zinc-600'>Legacy nested sequence. Flatten if possible.</p>
+                            <div className='border-t border-sand/30 bg-dark-sand/70 px-4 py-3'>
+                              <p className='mb-2 text-xs text-text-secondary'>Legacy nested sequence. Flatten if possible.</p>
                               <ProgramSongSequenceEditor
                                 sequence={displayItem.sequence}
                                 songCatalog={songCatalog}
@@ -7807,15 +7698,15 @@ function ProgramSongSequenceEditor({
         {/* Right Column: Catalog Inventory */}
         {showCatalog ? (
           <div
-            className={`flex min-h-0 flex-col border-t border-zinc-800/60 bg-zinc-900/30 ${showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'}`}
+            className={`flex min-h-0 flex-col border-t border-sand/30 bg-dark-sand/70 ${showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'}`}
           >
-            <div className='border-b border-zinc-800/60 bg-zinc-900/40 p-2'>
+            <div className='border-b border-sand/30 bg-dark-sand/80 p-2'>
               <input
                 type='text'
                 placeholder='Search catalog to add...'
                 value={addSongValue}
                 onChange={(e) => setAddSongValue(e.target.value)}
-                className='w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/50'
+                className='w-full rounded-md border border-sand/30 bg-dark-sand px-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-sea/60 focus:outline-none focus:ring-1 focus:ring-sea/40'
               />
             </div>
             <div className={showQueue ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-125 overflow-y-auto'}>
@@ -7827,24 +7718,24 @@ function ProgramSongSequenceEditor({
                 })
                 .slice(0, 80)
                 .map((song) => (
-                  <div key={song.id} className='group flex items-center justify-between border-b border-zinc-800/40 px-3 py-2 hover:bg-white/5'>
+                  <div key={song.id} className='group flex items-center justify-between border-b border-sand/20 px-3 py-2 hover:bg-white/5'>
                     <div className='flex min-w-0 items-center gap-2'>
                       {song.coverUrl ? (
                         <img src={song.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover opacity-80' />
                       ) : (
-                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800 text-zinc-500'>
+                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-dark-sand text-text-secondary'>
                           {song.title?.charAt(0) || <Music2 size={12} />}
                         </div>
                       )}
                       <div className='min-w-0 pr-2'>
-                        <div className='truncate text-[11px] font-medium text-zinc-200'>{song.title}</div>
-                        <div className='truncate text-[10px] text-zinc-500'>{song.artist}</div>
+                        <div className='truncate text-[11px] font-medium text-text-primary'>{song.title}</div>
+                        <div className='truncate text-[10px] text-text-secondary'>{song.artist}</div>
                       </div>
                     </div>
                     <button
                       type='button'
                       onClick={() => addItemFromCatalog(song.id)}
-                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-zinc-500 opacity-0 transition-all hover:bg-sky-500/20 hover:text-sky-400 group-hover:opacity-100'
+                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-secondary opacity-0 transition-all hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
                       title='Add to queue'
                     >
                       <Plus size={14} />
@@ -7857,23 +7748,55 @@ function ProgramSongSequenceEditor({
                     !addSongValue ||
                     song.title?.toLowerCase().includes(addSongValue.toLowerCase()) ||
                     song.artist?.toLowerCase().includes(addSongValue.toLowerCase())
-                ).length === 0 && <div className='p-4 text-center text-xs text-zinc-500'>No matches found</div>}
+                ).length === 0 && <div className='p-4 text-center text-xs text-text-secondary'>No matches found</div>}
             </div>
           </div>
         ) : null}
       </div>
 
-      {hasFixedPlaybackBar ? <div aria-hidden='true' className='h-20 shrink-0' /> : null}
+      {hasFixedPlaybackBar ? <div aria-hidden='true' className={`${showSceneQuickBar ? 'h-32' : 'h-20'} shrink-0`} /> : null}
 
       {/* Playback Bar */}
       {showPlaybackBar ? (
         <div
-          className={`flex items-center justify-between border-t border-zinc-800 bg-zinc-900/80 px-4 py-3 ${
+          className={
             hasFixedPlaybackBar
-              ? 'fixed inset-x-0 bottom-0 z-40 bg-zinc-950/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80'
+              ? 'fixed inset-x-0 bottom-0 z-40 bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90'
               : ''
-          }`}
+          }
         >
+          {showSceneQuickBar ? (
+            <div className='border-t border-sand/30 bg-dark-sand/90 px-4 py-2'>
+              <div className='flex items-center gap-2 overflow-x-auto'>
+                {sceneQuickActions.map((sceneAction) => (
+                  <button
+                    key={sceneAction.id}
+                    type='button'
+                    onClick={() => onStageScene?.(sceneAction.id)}
+                    onDoubleClick={() => onTakeScene?.(sceneAction.id)}
+                    title={`${sceneAction.name} (click to stage, double-click to take)`}
+                    className={`relative min-w-[150px] max-w-[240px] shrink-0 overflow-hidden rounded border px-2 py-1.5 text-left text-[11px] font-medium leading-tight transition-colors ${
+                      sceneAction.isActive && sceneAction.isStaged
+                        ? 'border-sea/80 bg-sea/20 text-text-primary ring-1 ring-sea/40'
+                        : sceneAction.isActive
+                          ? 'border-terracotta/80 bg-terracotta/20 text-text-primary ring-1 ring-terracotta/40'
+                          : sceneAction.isStaged
+                            ? 'border-accent-blue/80 bg-accent-blue/20 text-text-primary ring-1 ring-accent-blue/40'
+                            : 'border-sand/25 bg-white/50 text-text-primary hover:border-sea/40 hover:bg-sea/10 dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:hover:border-sea/40'
+                    }`}
+                  >
+                    <span className='mb-0.5 block font-mono text-[9px] opacity-50'>{sceneAction.shortcutLabel}</span>
+                    <div className='absolute right-1 top-1 flex gap-1'>
+                      {sceneAction.isActive ? <span className='rounded bg-terracotta px-1 py-0.5 text-[9px] font-bold text-white'>PGM</span> : null}
+                      {sceneAction.isStaged ? <span className='rounded bg-sea px-1 py-0.5 text-[9px] font-bold text-white'>STG</span> : null}
+                    </div>
+                    <span className='line-clamp-2'>{sceneAction.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className='flex items-center justify-between border-t border-sand/30 bg-dark-sand/85 px-4 py-3'>
           {/* Transport controls */}
           <div className='flex items-center gap-2'>
             <button
@@ -7886,7 +7809,7 @@ function ProgramSongSequenceEditor({
                   void activateItem(sequence.items[idx - 1].id);
                 }
               }}
-              className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
+              className='flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary disabled:opacity-30'
             >
               <SkipBack size={16} fill='currentColor' />
             </button>
@@ -7906,7 +7829,7 @@ function ProgramSongSequenceEditor({
                   }
                 }
               }}
-              className='flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-zinc-950 shadow-lg transition-transform hover:scale-105 hover:bg-sky-400 active:scale-95'
+              className='flex h-10 w-10 items-center justify-center rounded-full bg-sea text-white shadow-lg transition-transform hover:scale-105 hover:bg-accent-blue active:scale-95'
             >
               <Play size={18} fill='currentColor' className='ml-0.5' />
             </button>
@@ -7917,7 +7840,7 @@ function ProgramSongSequenceEditor({
               onClick={() => {
                 void clearActiveItem();
               }}
-              className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200'
+              className='flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary'
             >
               <Square size={16} fill='currentColor' />
             </button>
@@ -7932,7 +7855,7 @@ function ProgramSongSequenceEditor({
                   void activateItem(sequence.items[idx + 1].id);
                 }
               }}
-              className='flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30'
+              className='flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary disabled:opacity-30'
             >
               <SkipForward size={16} fill='currentColor' />
             </button>
@@ -7950,11 +7873,11 @@ function ProgramSongSequenceEditor({
                 const playbackAudioUrl = programSongPlayback?.audioUrl?.trim() || '';
                 const playbackToken = programSongPlayback?.token || '';
                 const playbackMatchesDisplaySong =
-                    !isNested &&
-                    !!programSongPlayback &&
-                    ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
-                      (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
-                      (runtimeActiveItemId === displayItem.id && programSongPlayback.isPlaying));
+                  !isNested &&
+                  !!programSongPlayback &&
+                  ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
+                    (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
+                    (runtimeActiveItemId === displayItem.id && programSongPlayback.isPlaying));
 
                 // Compute how far into the current song we are
                 let songElapsedMs = 0;
@@ -8015,11 +7938,11 @@ function ProgramSongSequenceEditor({
                   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
                 };
                 return (
-                  <div className='relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/60'>
+                  <div className='relative overflow-hidden rounded-lg border border-sand/30 bg-dark-sand/80'>
                     {/* Fill progress from direct playback ratio (avoids animation jitter). */}
                     {hasProgressTimeline && (
                       <div
-                        className='pointer-events-none absolute inset-0 origin-left bg-sky-500/20'
+                        className='pointer-events-none absolute inset-0 origin-left bg-sea/20'
                         style={{
                           transform: `scaleX(${progressRatio})`,
                           transition: 'transform 90ms linear'
@@ -8030,19 +7953,19 @@ function ProgramSongSequenceEditor({
                       {displayItem.coverUrl ? (
                         <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
                       ) : (
-                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-zinc-800'>
-                          <Music2 size={11} className='text-zinc-500' />
+                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-dark-sand'>
+                          <Music2 size={11} className='text-text-secondary' />
                         </div>
                       )}
                       <div className='min-w-0 flex-1'>
-                        <div className='truncate text-xs font-semibold text-sky-400'>{displayItem.title || ''}</div>
-                        <div className='truncate text-[10px] text-zinc-400'>{displayItem.artist || ''}</div>
+                        <div className='truncate text-xs font-semibold text-sea'>{displayItem.title || ''}</div>
+                        <div className='truncate text-[10px] text-text-secondary'>{displayItem.artist || ''}</div>
                       </div>
-                      <div className='shrink-0 text-right text-[10px] tabular-nums text-zinc-500'>
+                      <div className='shrink-0 text-right text-[10px] tabular-nums text-text-secondary'>
                         {hasProgressTimeline && (
                           <span>
                             {fmt(clampedSongElapsedMs)}
-                            <span className='text-zinc-700'> / {fmt(totalMs)}</span>
+                            <span className='text-text-secondary/70'> / {fmt(totalMs)}</span>
                           </span>
                         )}
                       </div>
@@ -8051,25 +7974,26 @@ function ProgramSongSequenceEditor({
                 );
               })()
             ) : (
-              <p className='text-[11px] text-zinc-600'>Nothing on air</p>
+              <p className='text-[11px] text-text-secondary'>Nothing on air</p>
             )}
           </div>
 
           {/* Mode and loop toggles */}
           <div className='flex items-center gap-3'>
-            <div className='flex items-center gap-0.5 rounded-lg border border-zinc-800 bg-zinc-950/60 p-0.5'>
+            <div className='flex items-center gap-0.5 rounded-lg border border-sand/30 bg-dark-sand/80 p-0.5'>
               <button
                 type='button'
                 onClick={() =>
                   applySequence({
                     ...sequence,
                     mode: 'manual',
-                    activeItemId: sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                    activeItemId:
+                      sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
                     startedAt: Date.now()
                   })
                 }
                 className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  sequence.mode === 'manual' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                  sequence.mode === 'manual' ? 'bg-sea/20 text-sea shadow-sm' : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
                 Manual
@@ -8080,12 +8004,13 @@ function ProgramSongSequenceEditor({
                   applySequence({
                     ...sequence,
                     mode: 'autoplay',
-                    activeItemId: sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                    activeItemId:
+                      sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
                     startedAt: resolveAutoplayStartedAt()
                   })
                 }
                 className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  sequence.mode === 'autoplay' ? 'bg-sky-500/20 text-sky-400' : 'text-zinc-500 hover:text-zinc-300'
+                  sequence.mode === 'autoplay' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
                 <Play size={9} fill='currentColor' />
@@ -8098,11 +8023,12 @@ function ProgramSongSequenceEditor({
               title='Loop'
               onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
               className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                sequence.loop !== false ? 'text-sky-400 bg-sky-500/10' : 'text-zinc-600 hover:text-zinc-300'
+                sequence.loop !== false ? 'text-sea bg-sea/10' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
               <Repeat2 size={16} />
             </button>
+          </div>
           </div>
         </div>
       ) : null}

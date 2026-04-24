@@ -348,7 +348,7 @@ export default function ProgramsAdmin() {
             description='Create, rename, and delete broadcast programs. Assign scenes and media groups per program in edit mode.'
           />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/control')}>
+            <Button variant='secondary' onClick={() => navigate('/')}>
               Back to Control
             </Button>
             <Button onClick={openCreateModal}>

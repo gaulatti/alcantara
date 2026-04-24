@@ -161,7 +161,7 @@ export default function ScenesAdmin() {
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Scenes' description='Create and manage scenes.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/control')}>
+            <Button variant='secondary' onClick={() => navigate('/')}>
               Back to Control
             </Button>
             <Button onClick={openCreateModal} disabled={layouts.length === 0}>

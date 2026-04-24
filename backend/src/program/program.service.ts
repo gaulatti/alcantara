@@ -2586,30 +2586,32 @@ export class ProgramService {
   async deleteInstant(instantId: number) {
     const instant = await this.prisma.instant.findUnique({
       where: { id: instantId },
-      select: { id: true },
+      select: { id: true, position: true },
     });
 
     if (!instant) {
       throw new NotFoundException('Instant not found');
     }
 
-    await this.prisma.instant.delete({
-      where: { id: instant.id },
-    });
+    const positionShiftOffset = 1_000_000;
 
-    const remaining = await this.prisma.instant.findMany({
-      orderBy: [{ position: 'asc' }, { id: 'asc' }],
-      select: { id: true },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.instant.delete({
+        where: { id: instant.id },
+      });
 
-    await Promise.all(
-      remaining.map((item, index) =>
-        this.prisma.instant.update({
-          where: { id: item.id },
-          data: { position: index },
-        }),
-      ),
-    );
+      // Move trailing rows far away first, then shift them down to close the gap.
+      // This avoids transient uniqueness collisions on Instant.position.
+      await tx.instant.updateMany({
+        where: { position: { gt: instant.position } },
+        data: { position: { increment: positionShiftOffset } },
+      });
+
+      await tx.instant.updateMany({
+        where: { position: { gt: instant.position + positionShiftOffset } },
+        data: { position: { decrement: positionShiftOffset + 1 } },
+      });
+    });
 
     return { deletedInstantId: instant.id };
   }
