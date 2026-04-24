@@ -253,13 +253,7 @@ interface ProgramMeterBallisticsState {
   lastTickAtMs: number | null;
 }
 
-type ProgramUpdateTopic =
-  | 'state'
-  | 'audioBus'
-  | 'audioMeter'
-  | 'songPlayback'
-  | 'sceneInstant'
-  | 'broadcastSettings';
+type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlayback' | 'sceneInstant' | 'broadcastSettings';
 
 const VU_ATTACK_MS = 300;
 const VU_RELEASE_MS = 300;
@@ -1267,9 +1261,7 @@ function SceneProgram({ programId }: { programId: string }) {
   const shouldApplyProgramUpdatePayload = useCallback((payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
     const topic =
       topicOverride ??
-      (payload && typeof payload === 'object' && !Array.isArray(payload)
-        ? resolveProgramUpdateTopicFromType((payload as Record<string, unknown>).type)
-        : null);
+      (payload && typeof payload === 'object' && !Array.isArray(payload) ? resolveProgramUpdateTopicFromType((payload as Record<string, unknown>).type) : null);
     if (!topic) {
       return true;
     }
@@ -2245,195 +2237,197 @@ function SceneProgram({ programId }: { programId: string }) {
 
           const renderComponent = (): React.ReactNode => {
             switch (componentType) {
-            case 'ticker':
-              return (
-                <div key={componentType} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
-                  <Ticker hashtag={props.hashtag || '#Default'} url={props.url || 'website.com'} />
-                </div>
-              );
-            case 'chyron':
-              return (
-                <div key={componentType} style={{ position: 'absolute', bottom: '120px', left: 0, right: 0 }}>
-                  <ChyronHolder text={props.text || 'Chyron'} show={true} />
-                </div>
-              );
-            case 'header':
-              return <Header key={componentType} title={props.title || 'Header'} date={props.date || new Date().toLocaleDateString()} />;
-            case 'clock-widget':
-              return <ClockWidget key={componentType} iconUrl={props.iconUrl} timezone={props.timezone} timeOverride={globalTimeOverride} />;
-            case 'qr-code':
-              return <QRCodeWidget key={componentType} content={props.content || 'https://example.com'} />;
-            case 'live-indicator':
-              return <LiveIndicator key={componentType} animate={props.animate ?? true} />;
-            case 'logo-widget':
-              return <LogoWidget key={componentType} logoUrl={props.logoUrl} position={props.position} />;
-            case 'slideshow':
-              return (
-                <Slideshow
-                  key={componentType}
-                  images={resolveSlideshowImages(props as Record<string, unknown>)}
-                  intervalMs={props.intervalMs}
-                  transitionMs={props.transitionMs}
-                  shuffle={props.shuffle}
-                  fitMode={props.fitMode}
-                  kenBurns={props.kenBurns}
-                />
-              );
-            case 'video-stream':
-              return (
-                <VideoStream
-                  key={componentType}
-                  sourceUrl={props.sourceUrl}
-                  posterUrl={props.posterUrl}
-                  channelGain={options?.forceStreamMuted ? 0 : resolvedStreamMasterVolume}
-                  showControls={props.showControls}
-                  loop={props.loop}
-                  autoPlay={props.autoPlay}
-                  objectFit={props.objectFit}
-                />
-              );
-            case 'reloj-clock':
-              return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
-            case 'reloj-loop-clock':
-              return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
-            case 'toni-chyron':
-            case 'fifthbell-chyron': {
-              const fifthBellChyronProps = {
-                ...(metadata['toni-chyron'] || {}),
-                ...(metadata['fifthbell-chyron'] || {}),
-                ...(metadata[componentType] || {})
-              } as Record<string, unknown>;
-              return (
-                <FifthBellChyron
-                  key={componentType}
-                  text={typeof fifthBellChyronProps.text === 'string' ? fifthBellChyronProps.text : ''}
-                  show={true}
-                  useMarquee={typeof fifthBellChyronProps.useMarquee === 'boolean' ? fifthBellChyronProps.useMarquee : undefined}
-                  contentMode={
-                    fifthBellChyronProps.contentMode === 'text' || fifthBellChyronProps.contentMode === 'sequence'
-                      ? fifthBellChyronProps.contentMode
-                      : undefined
-                  }
-                  sequence={fifthBellChyronProps.sequence}
-                  socialHandles={fifthBellChyronProps.socialHandles}
-                />
-              );
+              case 'ticker':
+                return (
+                  <div key={componentType} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+                    <Ticker hashtag={props.hashtag || '#Default'} url={props.url || 'website.com'} />
+                  </div>
+                );
+              case 'chyron':
+                return (
+                  <div key={componentType} style={{ position: 'absolute', bottom: '120px', left: 0, right: 0 }}>
+                    <ChyronHolder text={props.text || 'Chyron'} show={true} />
+                  </div>
+                );
+              case 'header':
+                return <Header key={componentType} title={props.title || 'Header'} date={props.date || new Date().toLocaleDateString()} />;
+              case 'clock-widget':
+                return <ClockWidget key={componentType} iconUrl={props.iconUrl} timezone={props.timezone} timeOverride={globalTimeOverride} />;
+              case 'qr-code':
+                return <QRCodeWidget key={componentType} content={props.content || 'https://example.com'} />;
+              case 'live-indicator':
+                return <LiveIndicator key={componentType} animate={props.animate ?? true} />;
+              case 'logo-widget':
+                return <LogoWidget key={componentType} logoUrl={props.logoUrl} position={props.position} />;
+              case 'slideshow':
+                return (
+                  <Slideshow
+                    key={componentType}
+                    images={resolveSlideshowImages(props as Record<string, unknown>)}
+                    intervalMs={props.intervalMs}
+                    transitionMs={props.transitionMs}
+                    shuffle={props.shuffle}
+                    fitMode={props.fitMode}
+                    kenBurns={props.kenBurns}
+                  />
+                );
+              case 'video-stream':
+                return (
+                  <VideoStream
+                    key={componentType}
+                    sourceUrl={props.sourceUrl}
+                    posterUrl={props.posterUrl}
+                    channelGain={options?.forceStreamMuted ? 0 : resolvedStreamMasterVolume}
+                    showControls={props.showControls}
+                    loop={props.loop}
+                    autoPlay={props.autoPlay}
+                    objectFit={props.objectFit}
+                  />
+                );
+              case 'reloj-clock':
+                return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
+              case 'reloj-loop-clock':
+                return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
+              case 'toni-chyron':
+              case 'fifthbell-chyron': {
+                const fifthBellChyronProps = {
+                  ...(metadata['toni-chyron'] || {}),
+                  ...(metadata['fifthbell-chyron'] || {}),
+                  ...(metadata[componentType] || {})
+                } as Record<string, unknown>;
+                return (
+                  <FifthBellChyron
+                    key={componentType}
+                    text={typeof fifthBellChyronProps.text === 'string' ? fifthBellChyronProps.text : ''}
+                    show={true}
+                    useMarquee={typeof fifthBellChyronProps.useMarquee === 'boolean' ? fifthBellChyronProps.useMarquee : undefined}
+                    contentMode={
+                      fifthBellChyronProps.contentMode === 'text' || fifthBellChyronProps.contentMode === 'sequence'
+                        ? fifthBellChyronProps.contentMode
+                        : undefined
+                    }
+                    sequence={fifthBellChyronProps.sequence}
+                    socialHandles={fifthBellChyronProps.socialHandles}
+                  />
+                );
+              }
+              case 'toni-clock':
+              case 'fifthbell-clock':
+              case 'fifthbell-corner':
+                if (firstClockComponentType !== componentType) {
+                  return null;
+                }
+                const resolvedShowBellIcon =
+                  componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
+                    ? true
+                    : typeof fifthBellClockProps.showBellIcon === 'boolean'
+                      ? fifthBellClockProps.showBellIcon
+                      : undefined;
+                return (
+                  <ToniClock
+                    key={componentType}
+                    timeOverride={globalTimeOverride}
+                    cities={Array.isArray(fifthBellClockProps.worldClockCities) ? fifthBellClockProps.worldClockCities : undefined}
+                    rotationIntervalMs={
+                      typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined
+                    }
+                    transitionDurationMs={
+                      typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined
+                    }
+                    shuffleCities={typeof fifthBellClockProps.worldClockShuffle === 'boolean' ? fifthBellClockProps.worldClockShuffle : undefined}
+                    widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
+                    showWorldClocks={typeof fifthBellClockProps.showWorldClocks === 'boolean' ? fifthBellClockProps.showWorldClocks : undefined}
+                    showBellIcon={resolvedShowBellIcon}
+                  />
+                );
+              case 'modoitaliano-clock': {
+                if (shouldRenderProgramRow) {
+                  return null;
+                }
+                return (
+                  <ModoItalianoClock
+                    key={componentType}
+                    programId={programId}
+                    timeOverride={globalTimeOverride}
+                    transitionDurationMs={300}
+                    shuffleCities={false}
+                    widthPx={220}
+                    showWorldClocks={true}
+                    showBellIcon={false}
+                    songSequence={audioBusSettings?.songSequence}
+                    language='es'
+                  />
+                );
+              }
+              case 'modoitaliano-chyron':
+                if (shouldRenderProgramRow) {
+                  return null;
+                }
+                return (
+                  <ModoItalianoChyron
+                    key={componentType}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    textSequence={props.textSequence}
+                    ctaSequence={props.ctaSequence}
+                  />
+                );
+              case 'modoitaliano-disclaimer':
+                if (shouldRenderProgramRow) {
+                  return null;
+                }
+                return (
+                  <ModoItalianoDisclaimer
+                    key={componentType}
+                    text={props.text || ''}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    align={props.align === 'left' || props.align === 'center' || props.align === 'right' ? props.align : undefined}
+                    bottomPx={typeof props.bottomPx === 'number' ? props.bottomPx : undefined}
+                    fontSizePx={typeof props.fontSizePx === 'number' ? props.fontSizePx : undefined}
+                    opacity={typeof props.opacity === 'number' ? props.opacity : undefined}
+                  />
+                );
+              case 'toni-logo':
+                return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
+              case 'earone':
+                return (
+                  <Earone
+                    key={componentType}
+                    label={props.label || 'EARONE'}
+                    rank={props.rank || matchedEaroneEntry?.ranking || activeToniLeaf?.earoneRank}
+                    spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
+                  />
+                );
+              case 'fifthbell':
+              case 'fifthbell-content':
+              case 'fifthbell-marquee':
+                if (firstFifthBellComponentType !== componentType) {
+                  return null;
+                }
+                return (
+                  <div key={componentType} className='absolute inset-0'>
+                    <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} />
+                  </div>
+                );
+              case 'corner-bug':
+                return (
+                  <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>
+                    <CornerBug text={props.text} />
+                  </div>
+                );
+              case 'cronica-background':
+                return <CronicaBackground key={componentType} />;
+              case 'cronica-chyron':
+                return <CronicaChyron key={componentType} text={props.text} />;
+              case 'cronica-reiteramos':
+                return <CronicaReiteramos key={componentType} text={props.text} show={props.show} />;
+              default:
+                console.warn('Unknown component type:', componentType);
+                return (
+                  <div key={componentType} style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
+                    Unknown component: {componentType}
+                  </div>
+                );
             }
-            case 'toni-clock':
-            case 'fifthbell-clock':
-            case 'fifthbell-corner':
-              if (firstClockComponentType !== componentType) {
-                return null;
-              }
-              const resolvedShowBellIcon =
-                componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
-                  ? true
-                  : typeof fifthBellClockProps.showBellIcon === 'boolean'
-                    ? fifthBellClockProps.showBellIcon
-                    : undefined;
-              return (
-                <ToniClock
-                  key={componentType}
-                  timeOverride={globalTimeOverride}
-                  cities={Array.isArray(fifthBellClockProps.worldClockCities) ? fifthBellClockProps.worldClockCities : undefined}
-                  rotationIntervalMs={
-                    typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined
-                  }
-                  transitionDurationMs={typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined}
-                  shuffleCities={typeof fifthBellClockProps.worldClockShuffle === 'boolean' ? fifthBellClockProps.worldClockShuffle : undefined}
-                  widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
-                  showWorldClocks={typeof fifthBellClockProps.showWorldClocks === 'boolean' ? fifthBellClockProps.showWorldClocks : undefined}
-                  showBellIcon={resolvedShowBellIcon}
-                />
-              );
-            case 'modoitaliano-clock': {
-              if (shouldRenderProgramRow) {
-                return null;
-              }
-              return (
-                <ModoItalianoClock
-                  key={componentType}
-                  programId={programId}
-                  timeOverride={globalTimeOverride}
-                  transitionDurationMs={300}
-                  shuffleCities={false}
-                  widthPx={220}
-                  showWorldClocks={true}
-                  showBellIcon={false}
-                  songSequence={audioBusSettings?.songSequence}
-                  language='es'
-                />
-              );
-            }
-            case 'modoitaliano-chyron':
-              if (shouldRenderProgramRow) {
-                return null;
-              }
-              return (
-                <ModoItalianoChyron
-                  key={componentType}
-                  show={typeof props.show === 'boolean' ? props.show : true}
-                  textSequence={props.textSequence}
-                  ctaSequence={props.ctaSequence}
-                />
-              );
-            case 'modoitaliano-disclaimer':
-              if (shouldRenderProgramRow) {
-                return null;
-              }
-              return (
-                <ModoItalianoDisclaimer
-                  key={componentType}
-                  text={props.text || ''}
-                  show={typeof props.show === 'boolean' ? props.show : true}
-                  align={props.align === 'left' || props.align === 'center' || props.align === 'right' ? props.align : undefined}
-                  bottomPx={typeof props.bottomPx === 'number' ? props.bottomPx : undefined}
-                  fontSizePx={typeof props.fontSizePx === 'number' ? props.fontSizePx : undefined}
-                  opacity={typeof props.opacity === 'number' ? props.opacity : undefined}
-                />
-              );
-            case 'toni-logo':
-              return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
-            case 'earone':
-              return (
-                <Earone
-                  key={componentType}
-                  label={props.label || 'EARONE'}
-                  rank={props.rank || matchedEaroneEntry?.ranking || activeToniLeaf?.earoneRank}
-                  spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
-                />
-              );
-            case 'fifthbell':
-            case 'fifthbell-content':
-            case 'fifthbell-marquee':
-              if (firstFifthBellComponentType !== componentType) {
-                return null;
-              }
-              return (
-                <div key={componentType} className='absolute inset-0'>
-                  <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} />
-                </div>
-              );
-            case 'corner-bug':
-              return (
-                <div key={componentType} style={{ position: 'absolute', top: '32px', right: '32px' }}>
-                  <CornerBug text={props.text} />
-                </div>
-              );
-            case 'cronica-background':
-              return <CronicaBackground key={componentType} />;
-            case 'cronica-chyron':
-              return <CronicaChyron key={componentType} text={props.text} />;
-            case 'cronica-reiteramos':
-              return <CronicaReiteramos key={componentType} text={props.text} show={props.show} />;
-            default:
-              console.warn('Unknown component type:', componentType);
-              return (
-                <div key={componentType} style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
-                  Unknown component: {componentType}
-                </div>
-              );
-          }
           };
 
           const rendered = renderComponent();

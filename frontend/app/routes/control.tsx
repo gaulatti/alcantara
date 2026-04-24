@@ -3505,9 +3505,7 @@ export default function Control() {
   const mainMixPeakFill = meterLevelToFill(programAudioMeterLevels.main.peak);
   const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
   const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
-  const onlineStatusTone = isProgramRealtimeConnected
-    ? 'text-sea bg-sea/15 border-sea/40'
-    : 'text-text-primary bg-accent-blue/15 border-accent-blue/35';
+  const onlineStatusTone = isProgramRealtimeConnected ? 'text-sea bg-sea/15 border-sea/40' : 'text-text-primary bg-accent-blue/15 border-accent-blue/35';
   const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
   const controlDeckGrowProps = { grow: true } as any;
   return (
@@ -4530,10 +4528,12 @@ export default function Control() {
                                   className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
                                   options={[
                                     { value: '', label: 'No background instant' },
-                                    ...instants.filter((instant) => instant.enabled).map((instant) => ({
-                                      value: String(instant.id),
-                                      label: instant.name
-                                    }))
+                                    ...instants
+                                      .filter((instant) => instant.enabled)
+                                      .map((instant) => ({
+                                        value: String(instant.id),
+                                        label: instant.name
+                                      }))
                                   ]}
                                 />
                               </div>
@@ -4744,9 +4744,7 @@ export default function Control() {
         scrollContent={false}
       >
         <div className='h-full min-h-0'>
-          <div className='mb-2 text-xs text-text-secondary dark:text-text-secondary'>
-            {isSavingProgramAudioBus ? 'Saving…' : ''}
-          </div>
+          <div className='mb-2 text-xs text-text-secondary dark:text-text-secondary'>{isSavingProgramAudioBus ? 'Saving…' : ''}</div>
           <ProgramSongSequenceEditor
             sequence={programAudioBusSongSequence}
             songCatalog={songCatalog}
@@ -5748,7 +5746,9 @@ function ComponentPropsFields({
               </label>
             )}
           </div>
-          {supportsMarquee && <p className='text-xs text-text-secondary'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>}
+          {supportsMarquee && (
+            <p className='text-xs text-text-secondary'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>
+          )}
 
           {supportsContent && (
             <div className='space-y-2'>
@@ -5846,7 +5846,15 @@ function ComponentPropsFields({
   }
 }
 
-function ZIndexField({ componentType, props, updateProp }: { componentType: string; props: any; updateProp: (componentType: string, propName: string, value: any) => void }) {
+function ZIndexField({
+  componentType,
+  props,
+  updateProp
+}: {
+  componentType: string;
+  props: any;
+  updateProp: (componentType: string, propName: string, value: any) => void;
+}) {
   return (
     <div className='mt-3 border-t border-sand/20 pt-3'>
       <label className='block text-xs text-text-secondary mb-1'>Layer (z-index)</label>
@@ -7440,11 +7448,7 @@ function ProgramSongSequenceEditor({
   };
 
   return (
-    <div
-      className={`flex flex-col overflow-hidden rounded-xl ${
-        isNested ? 'border border-sand/30 bg-dark-sand/70' : 'h-full min-h-0 bg-dark-sand'
-      }`}
-    >
+    <div className={`flex flex-col overflow-hidden rounded-xl ${isNested ? 'border border-sand/30 bg-dark-sand/70' : 'h-full min-h-0 bg-dark-sand'}`}>
       {/* Two-column layout container */}
       <div className='flex min-h-0 flex-1 flex-col md:flex-row'>
         {/* Left Column: Playlist Queue */}
@@ -7544,16 +7548,15 @@ function ProgramSongSequenceEditor({
                               aria-label='Take on air'
                             >
                               {/* Number — visible by default when not active, hidden on hover */}
-                              <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}>
+                              <span
+                                className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}
+                              >
                                 {index + 1}
                               </span>
                               {/* EQ bars — only when active */}
                               {isActive && (
                                 <span className='absolute inset-0 flex items-end justify-center gap-0.5 pb-0.5 group-hover:opacity-0'>
-                                  <span
-                                    className='w-0.75 rounded-sm bg-sea opacity-100'
-                                    style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }}
-                                  />
+                                  <span className='w-0.75 rounded-sm bg-sea opacity-100' style={{ animation: 'eq-bar1 0.8s ease-in-out infinite alternate' }} />
                                   <span
                                     className='w-0.75 rounded-sm bg-sea opacity-100'
                                     style={{ animation: 'eq-bar2 0.8s ease-in-out 0.15s infinite alternate' }}
@@ -7800,257 +7803,257 @@ function ProgramSongSequenceEditor({
             </div>
           ) : null}
           <div className='flex items-center justify-between border-t border-sand/30 bg-dark-sand/85 px-4 py-3'>
-          {/* Transport controls */}
-          <div className='flex items-center gap-2'>
-            <IconButton
-              type='button'
-              title='Previous'
-              disabled={runtimeActiveItemIndex <= 0}
-              onClick={() => {
-                const idx = runtimeActiveItemIndex;
-                if (idx > 0) {
-                  void activateItem(sequence.items[idx - 1].id);
-                }
-              }}
-              className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
-              aria-label='Previous'
-            >
-              <SkipBack size={16} fill='currentColor' />
-            </IconButton>
-
-            <IconButton
-              type='button'
-              title={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
-              onClick={() => {
-                if (!runtimeActiveItemId && sequence.items.length > 0) {
-                  void activateItem(sequence.items[0].id);
-                } else if (runtimeActiveItemId) {
-                  const idx = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
-                  if (idx < sequence.items.length - 1) {
-                    void activateItem(sequence.items[idx + 1].id);
-                  } else {
-                    void activateItem(sequence.items[0].id);
-                  }
-                }
-              }}
-              className='flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95'
-              aria-label={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
-            >
-              <Play size={18} fill='currentColor' className='ml-0.5' />
-            </IconButton>
-
-            <IconButton
-              type='button'
-              title='Stop / Take Off Air'
-              onClick={() => {
-                void clearActiveItem();
-              }}
-              className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
-              aria-label='Stop / Take Off Air'
-            >
-              <Square size={16} fill='currentColor' />
-            </IconButton>
-
-            <IconButton
-              type='button'
-              title='Next'
-              disabled={runtimeActiveItemIndex < 0 || runtimeActiveItemIndex >= sequence.items.length - 1}
-              onClick={() => {
-                const idx = runtimeActiveItemIndex;
-                if (idx < sequence.items.length - 1) {
-                  void activateItem(sequence.items[idx + 1].id);
-                }
-              }}
-              className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
-              aria-label='Next'
-            >
-              <SkipForward size={16} fill='currentColor' />
-            </IconButton>
-          </div>
-
-          {/* Now playing info + progress */}
-          <div className='hidden min-w-0 flex-1 px-4 md:block'>
-            {runtimeActiveItemId ? (
-              (() => {
-                // Prefer real playback identity, then sequence timing fallback.
-                const displayItem = sequence.items.find((i) => i.id === runtimeActiveItemId);
-                if (!displayItem || displayItem.kind !== 'preset') return null;
-
-                const displayAudioUrl = displayItem.audioUrl?.trim() || '';
-                const playbackAudioUrl = programSongPlayback?.audioUrl?.trim() || '';
-                const playbackToken = programSongPlayback?.token || '';
-                const playbackMatchesDisplaySong =
-                  !isNested &&
-                  !!programSongPlayback &&
-                  ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
-                    (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
-                    (runtimeActiveItemId === displayItem.id && programSongPlayback.isPlaying));
-
-                // Compute how far into the current song we are
-                let songElapsedMs = 0;
-                let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
-
-                if (playbackMatchesDisplaySong && programSongPlayback) {
-                  songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
-                  songStartedAt = Math.max(0, nowMs - songElapsedMs);
-                } else if (programSongPlayback?.isPlaying) {
-                  songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
-                  songStartedAt = Math.max(0, nowMs - songElapsedMs);
-                } else if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
-                  const seqStartedAt = sequence.startedAt;
-                  const totalElapsed = Math.max(0, nowMs - seqStartedAt);
-                  const baseIndex = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
-                  const startIdx = baseIndex >= 0 ? baseIndex : 0;
-                  const itemDurations = sequence.items.map((item) =>
-                    item.kind === 'preset' && typeof item.durationMs === 'number' && item.durationMs > 0 ? item.durationMs : null
-                  );
-                  const allKnown = itemDurations.every((d) => d !== null);
-                  let remaining = totalElapsed;
-                  let cycleOffset = 0;
-                  if (allKnown && sequence.loop !== false) {
-                    const cycleDuration = itemDurations.reduce((s, d) => s + (d ?? 0), 0);
-                    if (cycleDuration > 0) {
-                      remaining = totalElapsed % cycleDuration;
-                      cycleOffset = totalElapsed - remaining;
-                    }
-                  }
-                  let cumulativeOffset = 0;
-                  for (let step = 0; step < sequence.items.length; step++) {
-                    const idx = (startIdx + step) % sequence.items.length;
-                    const dur = itemDurations[idx];
-                    if (dur === null || remaining < dur) {
-                      songStartedAt = seqStartedAt + cycleOffset + cumulativeOffset;
-                      songElapsedMs = remaining;
-                      break;
-                    }
-                    remaining -= dur;
-                    cumulativeOffset += dur;
-                  }
-                } else {
-                  songElapsedMs = Math.max(0, nowMs - songStartedAt);
-                }
-
-                const totalMs =
-                  programSongPlayback?.isPlaying && typeof programSongPlayback.durationMs === 'number'
-                    ? programSongPlayback.durationMs
-                    : typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0
-                      ? displayItem.durationMs
-                      : null;
-                const hasProgressTimeline = totalMs !== null && totalMs > 0;
-                const clampedSongElapsedMs = hasProgressTimeline ? Math.max(0, Math.min(songElapsedMs, totalMs)) : Math.max(0, songElapsedMs);
-                const progressRatio = hasProgressTimeline ? Math.max(0, Math.min(1, clampedSongElapsedMs / totalMs)) : 0;
-
-                const fmt = (ms: number) => {
-                  const s = Math.floor(ms / 1000);
-                  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-                };
-                return (
-                  <div className='relative overflow-hidden rounded-lg border border-sand/30 bg-dark-sand/80'>
-                    {/* Fill progress from direct playback ratio (avoids animation jitter). */}
-                    {hasProgressTimeline && (
-                      <div
-                        className='pointer-events-none absolute inset-0 origin-left bg-sea/20'
-                        style={{
-                          transform: `scaleX(${progressRatio})`,
-                          transition: 'transform 90ms linear'
-                        }}
-                      />
-                    )}
-                    <div className='relative flex items-center gap-2 px-3 py-2'>
-                      {displayItem.coverUrl ? (
-                        <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
-                      ) : (
-                        <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-dark-sand'>
-                          <Music2 size={11} className='text-text-secondary' />
-                        </div>
-                      )}
-                      <div className='min-w-0 flex-1'>
-                        <div className='truncate text-xs font-semibold text-sea'>{displayItem.title || ''}</div>
-                        <div className='truncate text-[10px] text-text-secondary'>{displayItem.artist || ''}</div>
-                      </div>
-                      <div className='shrink-0 text-right text-[10px] tabular-nums text-text-secondary'>
-                        {hasProgressTimeline && (
-                          <span>
-                            {fmt(clampedSongElapsedMs)}
-                            <span className='text-text-secondary/70'> / {fmt(totalMs)}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()
-            ) : (
-              <p className='text-[11px] text-text-secondary'>Nothing on air</p>
-            )}
-          </div>
-
-          {/* Mode and loop toggles */}
-          <div className='flex items-center gap-3'>
-            <div className='flex items-center gap-0.5 rounded-lg border border-sand/30 bg-dark-sand/80 p-0.5'>
-              <Button
-                onClick={() =>
-                  applySequence({
-                    ...sequence,
-                    mode: 'manual',
-                    activeItemId:
-                      sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
-                    startedAt: Date.now()
-                  })
-                }
-                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  sequence.mode === 'manual' ? 'bg-sea/20 text-sea shadow-sm' : 'text-text-secondary hover:text-text-primary'
-                }`}
-                size='sm'
-                variant='secondary'
-              >
-                Manual
-              </Button>
-              <Button
-                onClick={() =>
-                  applySequence({
-                    ...sequence,
-                    mode: 'autoplay',
-                    activeItemId:
-                      sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
-                    startedAt: resolveAutoplayStartedAt()
-                  })
-                }
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  sequence.mode === 'autoplay' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'
-                }`}
-                size='sm'
-                variant='secondary'
-              >
-                <Play size={9} fill='currentColor' />
-                Autoplay
-              </Button>
-            </div>
-
-            <IconButton
-              type='button'
-              title='Loop'
-              onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
-              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                sequence.loop !== false ? 'text-sea bg-sea/10' : 'text-text-secondary hover:text-text-primary'
-              }`}
-              aria-label='Loop'
-            >
-              <Repeat2 size={16} />
-            </IconButton>
-
-            {onStopAllInstants && (
+            {/* Transport controls */}
+            <div className='flex items-center gap-2'>
               <IconButton
                 type='button'
-                title='Stop All Instants'
-                onClick={() => onStopAllInstants()}
-                className='flex h-8 w-8 items-center justify-center rounded-full transition-colors text-text-secondary hover:text-terracotta hover:bg-terracotta/10'
-                aria-label='Stop All Instants'
+                title='Previous'
+                disabled={runtimeActiveItemIndex <= 0}
+                onClick={() => {
+                  const idx = runtimeActiveItemIndex;
+                  if (idx > 0) {
+                    void activateItem(sequence.items[idx - 1].id);
+                  }
+                }}
+                className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
+                aria-label='Previous'
               >
-                <ZapOff size={16} />
+                <SkipBack size={16} fill='currentColor' />
               </IconButton>
-            )}
-          </div>
+
+              <IconButton
+                type='button'
+                title={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
+                onClick={() => {
+                  if (!runtimeActiveItemId && sequence.items.length > 0) {
+                    void activateItem(sequence.items[0].id);
+                  } else if (runtimeActiveItemId) {
+                    const idx = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
+                    if (idx < sequence.items.length - 1) {
+                      void activateItem(sequence.items[idx + 1].id);
+                    } else {
+                      void activateItem(sequence.items[0].id);
+                    }
+                  }
+                }}
+                className='flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95'
+                aria-label={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
+              >
+                <Play size={18} fill='currentColor' className='ml-0.5' />
+              </IconButton>
+
+              <IconButton
+                type='button'
+                title='Stop / Take Off Air'
+                onClick={() => {
+                  void clearActiveItem();
+                }}
+                className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
+                aria-label='Stop / Take Off Air'
+              >
+                <Square size={16} fill='currentColor' />
+              </IconButton>
+
+              <IconButton
+                type='button'
+                title='Next'
+                disabled={runtimeActiveItemIndex < 0 || runtimeActiveItemIndex >= sequence.items.length - 1}
+                onClick={() => {
+                  const idx = runtimeActiveItemIndex;
+                  if (idx < sequence.items.length - 1) {
+                    void activateItem(sequence.items[idx + 1].id);
+                  }
+                }}
+                className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
+                aria-label='Next'
+              >
+                <SkipForward size={16} fill='currentColor' />
+              </IconButton>
+            </div>
+
+            {/* Now playing info + progress */}
+            <div className='hidden min-w-0 flex-1 px-4 md:block'>
+              {runtimeActiveItemId ? (
+                (() => {
+                  // Prefer real playback identity, then sequence timing fallback.
+                  const displayItem = sequence.items.find((i) => i.id === runtimeActiveItemId);
+                  if (!displayItem || displayItem.kind !== 'preset') return null;
+
+                  const displayAudioUrl = displayItem.audioUrl?.trim() || '';
+                  const playbackAudioUrl = programSongPlayback?.audioUrl?.trim() || '';
+                  const playbackToken = programSongPlayback?.token || '';
+                  const playbackMatchesDisplaySong =
+                    !isNested &&
+                    !!programSongPlayback &&
+                    ((displayAudioUrl && playbackAudioUrl && displayAudioUrl === playbackAudioUrl) ||
+                      (displayItem.id && playbackToken.startsWith(`${displayItem.id}:`)) ||
+                      (runtimeActiveItemId === displayItem.id && programSongPlayback.isPlaying));
+
+                  // Compute how far into the current song we are
+                  let songElapsedMs = 0;
+                  let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
+
+                  if (playbackMatchesDisplaySong && programSongPlayback) {
+                    songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
+                    songStartedAt = Math.max(0, nowMs - songElapsedMs);
+                  } else if (programSongPlayback?.isPlaying) {
+                    songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
+                    songStartedAt = Math.max(0, nowMs - songElapsedMs);
+                  } else if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
+                    const seqStartedAt = sequence.startedAt;
+                    const totalElapsed = Math.max(0, nowMs - seqStartedAt);
+                    const baseIndex = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
+                    const startIdx = baseIndex >= 0 ? baseIndex : 0;
+                    const itemDurations = sequence.items.map((item) =>
+                      item.kind === 'preset' && typeof item.durationMs === 'number' && item.durationMs > 0 ? item.durationMs : null
+                    );
+                    const allKnown = itemDurations.every((d) => d !== null);
+                    let remaining = totalElapsed;
+                    let cycleOffset = 0;
+                    if (allKnown && sequence.loop !== false) {
+                      const cycleDuration = itemDurations.reduce((s, d) => s + (d ?? 0), 0);
+                      if (cycleDuration > 0) {
+                        remaining = totalElapsed % cycleDuration;
+                        cycleOffset = totalElapsed - remaining;
+                      }
+                    }
+                    let cumulativeOffset = 0;
+                    for (let step = 0; step < sequence.items.length; step++) {
+                      const idx = (startIdx + step) % sequence.items.length;
+                      const dur = itemDurations[idx];
+                      if (dur === null || remaining < dur) {
+                        songStartedAt = seqStartedAt + cycleOffset + cumulativeOffset;
+                        songElapsedMs = remaining;
+                        break;
+                      }
+                      remaining -= dur;
+                      cumulativeOffset += dur;
+                    }
+                  } else {
+                    songElapsedMs = Math.max(0, nowMs - songStartedAt);
+                  }
+
+                  const totalMs =
+                    programSongPlayback?.isPlaying && typeof programSongPlayback.durationMs === 'number'
+                      ? programSongPlayback.durationMs
+                      : typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0
+                        ? displayItem.durationMs
+                        : null;
+                  const hasProgressTimeline = totalMs !== null && totalMs > 0;
+                  const clampedSongElapsedMs = hasProgressTimeline ? Math.max(0, Math.min(songElapsedMs, totalMs)) : Math.max(0, songElapsedMs);
+                  const progressRatio = hasProgressTimeline ? Math.max(0, Math.min(1, clampedSongElapsedMs / totalMs)) : 0;
+
+                  const fmt = (ms: number) => {
+                    const s = Math.floor(ms / 1000);
+                    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+                  };
+                  return (
+                    <div className='relative overflow-hidden rounded-lg border border-sand/30 bg-dark-sand/80'>
+                      {/* Fill progress from direct playback ratio (avoids animation jitter). */}
+                      {hasProgressTimeline && (
+                        <div
+                          className='pointer-events-none absolute inset-0 origin-left bg-sea/20'
+                          style={{
+                            transform: `scaleX(${progressRatio})`,
+                            transition: 'transform 90ms linear'
+                          }}
+                        />
+                      )}
+                      <div className='relative flex items-center gap-2 px-3 py-2'>
+                        {displayItem.coverUrl ? (
+                          <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
+                        ) : (
+                          <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-dark-sand'>
+                            <Music2 size={11} className='text-text-secondary' />
+                          </div>
+                        )}
+                        <div className='min-w-0 flex-1'>
+                          <div className='truncate text-xs font-semibold text-sea'>{displayItem.title || ''}</div>
+                          <div className='truncate text-[10px] text-text-secondary'>{displayItem.artist || ''}</div>
+                        </div>
+                        <div className='shrink-0 text-right text-[10px] tabular-nums text-text-secondary'>
+                          {hasProgressTimeline && (
+                            <span>
+                              {fmt(clampedSongElapsedMs)}
+                              <span className='text-text-secondary/70'> / {fmt(totalMs)}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <p className='text-[11px] text-text-secondary'>Nothing on air</p>
+              )}
+            </div>
+
+            {/* Mode and loop toggles */}
+            <div className='flex items-center gap-3'>
+              <div className='flex items-center gap-0.5 rounded-lg border border-sand/30 bg-dark-sand/80 p-0.5'>
+                <Button
+                  onClick={() =>
+                    applySequence({
+                      ...sequence,
+                      mode: 'manual',
+                      activeItemId:
+                        sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                      startedAt: Date.now()
+                    })
+                  }
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    sequence.mode === 'manual' ? 'bg-sea/20 text-sea shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  size='sm'
+                  variant='secondary'
+                >
+                  Manual
+                </Button>
+                <Button
+                  onClick={() =>
+                    applySequence({
+                      ...sequence,
+                      mode: 'autoplay',
+                      activeItemId:
+                        sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                      startedAt: resolveAutoplayStartedAt()
+                    })
+                  }
+                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    sequence.mode === 'autoplay' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  size='sm'
+                  variant='secondary'
+                >
+                  <Play size={9} fill='currentColor' />
+                  Autoplay
+                </Button>
+              </div>
+
+              <IconButton
+                type='button'
+                title='Loop'
+                onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
+                className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                  sequence.loop !== false ? 'text-sea bg-sea/10' : 'text-text-secondary hover:text-text-primary'
+                }`}
+                aria-label='Loop'
+              >
+                <Repeat2 size={16} />
+              </IconButton>
+
+              {onStopAllInstants && (
+                <IconButton
+                  type='button'
+                  title='Stop All Instants'
+                  onClick={() => onStopAllInstants()}
+                  className='flex h-8 w-8 items-center justify-center rounded-full transition-colors text-text-secondary hover:text-terracotta hover:bg-terracotta/10'
+                  aria-label='Stop All Instants'
+                >
+                  <ZapOff size={16} />
+                </IconButton>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
