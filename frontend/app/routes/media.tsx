@@ -8,7 +8,9 @@ import {
   Input,
   LoadingSpinner,
   Modal,
+  Select,
   SectionHeader,
+  Textarea,
   showAlert
 } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
@@ -271,11 +273,11 @@ export default function MediaRoute() {
         }
 
         if (!normalizedName) {
-          setError('Name is required.');
+          setError('Name is .');
           return;
         }
         if (!nextUrl) {
-          setError('Image URL is required.');
+          setError('Image URL is .');
           return;
         }
 
@@ -339,7 +341,7 @@ export default function MediaRoute() {
         }
       } else {
         if (!normalizedName) {
-          setError('Name is required when using direct URL.');
+          setError('Name is  when using direct URL.');
           return;
         }
         await createMediaRecord({
@@ -378,7 +380,7 @@ export default function MediaRoute() {
       } else if (groupAssignMode === 'new') {
         const groupName = groupAssignNewName.trim();
         if (!groupName) {
-          setError('New group name is required.');
+          setError('New group name is .');
           return;
         }
 
@@ -435,7 +437,7 @@ export default function MediaRoute() {
   const saveGroup = async () => {
     const normalizedName = groupNameInput.trim();
     if (!normalizedName) {
-      setError('Group name is required.');
+      setError('Group name is .');
       return;
     }
 
@@ -625,7 +627,7 @@ export default function MediaRoute() {
                   {sortedMedia.map((item) => (
                     <article
                       key={item.id}
-                      className='rounded-2xl border border-sand/20 bg-white/80 p-3 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/60'
+                      className='rounded-2xl border border-sand/20 bg-white/80 p-3 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
                     >
                       <div className='flex items-start gap-3'>
                         <img src={item.imageUrl} alt={item.name} className='h-20 w-28 rounded-md border border-sand/20 bg-sand/10 object-cover dark:border-sand/40' />
@@ -637,7 +639,7 @@ export default function MediaRoute() {
                       <div className='mt-3 flex items-center justify-end gap-2'>
                         <IconButton
                           onClick={() => openEditMediaModal(item)}
-                          className='text-sea dark:text-accent-blue'
+                          className='text-sea '
                           title={`Edit ${item.name}`}
                           aria-label={`Edit ${item.name}`}
                         >
@@ -681,19 +683,20 @@ export default function MediaRoute() {
                     {sortedGroups.map((group) => {
                       const isSelected = selectedGroupId === group.id;
                       return (
-                        <button
+                        <Button
                           key={group.id}
                           type='button'
                           onClick={() => setSelectedGroupId(group.id)}
+                          variant='ghost'
                           className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                             isSelected
-                              ? 'border-sea bg-sea/10 dark:border-accent-blue dark:bg-accent-blue/10'
-                              : 'border-sand/20 bg-white/70 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/50 dark:hover:border-accent-blue/60'
+                              ? 'border-sea bg-sea/10  '
+                              : 'border-sand/20 bg-white/70 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/50 '
                           }`}
                         >
                           <div className='truncate text-sm font-semibold text-text-primary dark:text-text-primary'>{group.name}</div>
                           <div className='text-xs text-text-secondary dark:text-text-secondary'>{group.items.length} images</div>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -824,7 +827,7 @@ export default function MediaRoute() {
                 }}
                 placeholder={editingMedia ? 'Morning Headlines 01' : 'Optional base name'}
                 autoFocus
-                error={!!error && editingMedia && !mediaNameInput.trim()}
+                error={!!error && Boolean(editingMedia) && !mediaNameInput.trim()}
               />
               {!editingMedia ? (
                 <p className='mt-2 text-xs text-text-secondary dark:text-text-secondary'>
@@ -869,29 +872,20 @@ export default function MediaRoute() {
               <>
                 <div>
                   <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Upload Images</label>
-                  <label
-                    className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${
-                      isUploadingMediaImage ? 'cursor-not-allowed border-sand/30 bg-sand/5 opacity-60' : 'border-sand/40 bg-sand/5 hover:border-sea'
-                    }`}
-                  >
-                    <input
-                      type='file'
-                      accept='image/*'
-                      multiple
-                      className='hidden'
-                      disabled={isUploadingMediaImage}
-                      onChange={(event) => {
-                        const files = Array.from(event.target.files ?? []);
-                        event.target.value = '';
-                        setSelectedImageFiles(files);
-                        if (error) setError('');
-                      }}
-                    />
-                    <span className='text-sm font-medium text-text-primary dark:text-text-primary'>
-                      {isUploadingMediaImage ? 'Uploading…' : 'Click to select one or more images'}
-                    </span>
-                    <span className='text-xs text-text-secondary dark:text-text-secondary'>Multi-upload supported</span>
-                  </label>
+                  <FileInput
+                    accept='image/*'
+                    multiple
+                    disabled={isUploadingMediaImage}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      event.target.value = '';
+                      setSelectedImageFiles(files);
+                      if (error) setError('');
+                    }}
+                  />
+                  <span className='mt-2 block text-xs text-text-secondary dark:text-text-secondary'>
+                    {isUploadingMediaImage ? 'Uploading…' : 'Select one or more images. Multi-upload is supported.'}
+                  </span>
                   {selectedImageFiles.length > 0 ? (
                     <div className='mt-2 rounded-lg border border-sand/20 bg-white/70 p-2 text-xs text-text-secondary dark:border-sand/40 dark:bg-dark-sand/50 dark:text-text-secondary'>
                       <p>{selectedImageFiles.length} file(s) selected</p>
@@ -920,10 +914,10 @@ export default function MediaRoute() {
 
                 <div className='space-y-3 rounded-xl border border-sand/20 bg-sand/5 p-3 dark:border-sand/40 dark:bg-dark-sand/40'>
                   <h4 className='text-sm font-semibold text-text-primary dark:text-text-primary'>Assign To Group</h4>
-                  <select
+                  <Select
                     value={groupAssignMode}
-                    onChange={(event) => {
-                      const nextMode = event.target.value as MediaGroupAssignMode;
+                    onChange={(value) => {
+                      const nextMode = value as MediaGroupAssignMode;
                       setGroupAssignMode(nextMode);
                       if (nextMode !== 'existing') {
                         setGroupAssignExistingId('');
@@ -933,26 +927,23 @@ export default function MediaRoute() {
                         setGroupAssignNewDescription('');
                       }
                     }}
-                    className='w-full rounded border border-sand/30 bg-white px-3 py-2 text-sm text-text-primary outline-none focus:border-sea dark:border-sand/40 dark:bg-dark-sand dark:text-text-primary dark:focus:border-accent-blue'
-                  >
-                    <option value='none'>Do not assign</option>
-                    <option value='existing'>Assign to existing group</option>
-                    <option value='new'>Create a new group and assign</option>
-                  </select>
+                    options={[
+                      { value: 'none', label: 'Do not assign' },
+                      { value: 'existing', label: 'Assign to existing group' },
+                      { value: 'new', label: 'Create a new group and assign' }
+                    ]}
+                  />
 
                   {groupAssignMode === 'existing' ? (
-                    <select
+                    <Select
                       value={groupAssignExistingId}
-                      onChange={(event) => setGroupAssignExistingId(event.target.value)}
-                      className='w-full rounded border border-sand/30 bg-white px-3 py-2 text-sm text-text-primary outline-none focus:border-sea dark:border-sand/40 dark:bg-dark-sand dark:text-text-primary dark:focus:border-accent-blue'
-                    >
-                      <option value=''>Select a group</option>
-                      {sortedGroups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name} ({group.items.length} images)
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => setGroupAssignExistingId(value)}
+                      placeholder='Select a group'
+                      options={sortedGroups.map((group) => ({
+                        value: String(group.id),
+                        label: `${group.name} (${group.items.length} images)`
+                      }))}
+                    />
                   ) : null}
 
                   {groupAssignMode === 'new' ? (
@@ -962,11 +953,10 @@ export default function MediaRoute() {
                         onChange={(event) => setGroupAssignNewName(event.target.value)}
                         placeholder='New group name'
                       />
-                      <textarea
+                      <Textarea
                         value={groupAssignNewDescription}
                         onChange={(event) => setGroupAssignNewDescription(event.target.value)}
                         rows={2}
-                        className='w-full rounded border border-sand/30 bg-white px-3 py-2 text-sm text-text-primary outline-none focus:border-sea dark:border-sand/40 dark:bg-dark-sand dark:text-text-primary dark:focus:border-accent-blue'
                         placeholder='Optional group description'
                       />
                     </div>
@@ -1006,14 +996,13 @@ export default function MediaRoute() {
 
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Description (optional)</label>
-              <textarea
+              <Textarea
                 value={groupDescriptionInput}
                 onChange={(event) => {
                   setGroupDescriptionInput(event.target.value);
                   if (error) setError('');
                 }}
                 rows={3}
-                className='w-full rounded border border-sand/30 bg-white px-3 py-2 text-sm text-text-primary outline-none focus:border-sea dark:border-sand/40 dark:bg-dark-sand dark:text-text-primary dark:focus:border-accent-blue'
                 placeholder='Used by Morning program scene 1'
               />
             </div>

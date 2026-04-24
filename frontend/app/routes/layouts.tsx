@@ -200,7 +200,7 @@ export default function LayoutsAdmin() {
                 return (
                   <article
                     key={layout.id}
-                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 backdrop-blur-sm transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/60'
+                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 backdrop-blur-sm transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
                   >
                     <div className='flex justify-between gap-4'>
                       <div className='flex-1'>
@@ -212,7 +212,7 @@ export default function LayoutsAdmin() {
                             return (
                               <span
                                 key={component}
-                                className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2.5 py-1 text-xs font-medium text-sea dark:border-accent-blue/40 dark:bg-accent-blue/15 dark:text-accent-blue'
+                                className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2.5 py-1 text-xs font-medium text-sea   '
                                 title={info?.description}
                               >
                                 {info?.name || component}
@@ -224,7 +224,7 @@ export default function LayoutsAdmin() {
                       <div className='flex items-start gap-2'>
                         <IconButton
                           onClick={() => openEditModal(layout)}
-                          className='text-sea dark:text-accent-blue'
+                          className='text-sea '
                           title={`Edit ${layout.name}`}
                           aria-label={`Edit ${layout.name}`}
                         >
@@ -270,12 +270,12 @@ export default function LayoutsAdmin() {
               <label className='mb-3 block text-sm font-medium text-text-primary dark:text-text-primary'>Select Components</label>
               <div className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${errors.components ? 'rounded-2xl border-2 border-terracotta p-2' : ''}`}>
                 {componentTypes.map((ct) => (
-                  <button
+                  <Button
                     key={ct.type}
                     type='button'
                     className={`w-full rounded-2xl border p-3 text-left transition-colors ${
                       selectedComponents.includes(ct.type)
-                        ? 'border-sea bg-sea/10 dark:border-accent-blue dark:bg-accent-blue/10'
+                        ? 'border-sea bg-sea/10  '
                         : 'border-sand/30 bg-white hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:hover:bg-sand/10'
                     }`}
                     onClick={() => {
@@ -301,12 +301,12 @@ export default function LayoutsAdmin() {
                         <p className='mt-1 text-xs text-text-secondary dark:text-text-secondary'>{ct.description}</p>
                       </div>
                     </div>
-                  </button>
+                  </Button>
                 ))}
               </div>
               {errors.components ? <p className='mt-2 text-sm text-terracotta'>{errors.components}</p> : null}
               {errors.components ? null : selectedComponents.length > 0 ? (
-                <p className='mt-2 text-sm text-sea dark:text-accent-blue'>
+                <p className='mt-2 text-sm text-sea '>
                   Selected: {selectedComponents.length} component{selectedComponents.length === 1 ? '' : 's'}
                 </p>
               ) : null}

@@ -248,7 +248,7 @@ export default function ProgramsAdmin() {
   const saveProgram = async () => {
     const nextProgramId = programIdInput.trim();
     if (!nextProgramId) {
-      setError('Program ID is required');
+      setError('Program ID is ');
       return;
     }
 
@@ -376,8 +376,8 @@ export default function ProgramsAdmin() {
                     key={program.id}
                     className={`rounded-2xl border p-4 transition-colors ${
                       isSelected
-                        ? 'border-sea bg-sea/10 dark:border-accent-blue dark:bg-accent-blue/10'
-                        : 'border-sand/20 bg-white/80 hover:border-sea/30 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/50'
+                        ? 'border-sea bg-sea/10  '
+                        : 'border-sand/20 bg-white/80 hover:border-sea/30 dark:border-sand/40 dark:bg-dark-sand/60 '
                     }`}
                   >
                     <div className='flex items-start justify-between gap-4'>
@@ -385,7 +385,7 @@ export default function ProgramsAdmin() {
                         <div className='flex flex-wrap items-center gap-2'>
                           <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{program.programId}</h3>
                           {isSelected ? (
-                            <span className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea dark:border-accent-blue/30 dark:bg-accent-blue/15 dark:text-accent-blue'>
+                            <span className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea   '>
                               Selected
                             </span>
                           ) : null}
@@ -401,7 +401,7 @@ export default function ProgramsAdmin() {
                         </Button>
                         <IconButton
                           onClick={() => openEditModal(program)}
-                          className='text-sea dark:text-accent-blue'
+                          className='text-sea '
                           title={`Edit ${program.programId}`}
                           aria-label={`Edit ${program.programId}`}
                         >

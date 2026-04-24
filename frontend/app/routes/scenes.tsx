@@ -94,7 +94,7 @@ export default function ScenesAdmin() {
   const saveScene = async () => {
     const normalizedName = nameInput.trim();
     if (!normalizedName) {
-      setError('Scene name is required.');
+      setError('Scene name is .');
       return;
     }
     if (!layoutIdInput) {
@@ -193,7 +193,7 @@ export default function ScenesAdmin() {
                 {scenes.map((scene) => (
                   <article
                     key={scene.id}
-                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/60'
+                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
                   >
                     <div className='flex items-start justify-between gap-4'>
                       <div className='min-w-0 flex-1'>
@@ -203,7 +203,7 @@ export default function ScenesAdmin() {
                       <div className='flex items-start gap-2'>
                         <IconButton
                           onClick={() => openEditModal(scene)}
-                          className='text-sea dark:text-accent-blue'
+                          className='text-sea '
                           title={`Edit ${scene.name}`}
                           aria-label={`Edit ${scene.name}`}
                         >

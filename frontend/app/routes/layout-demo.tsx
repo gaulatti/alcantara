@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Button, Card } from '@gaulatti/bleecker';
 import { BroadcastLayout } from '../components';
 
 /**
@@ -26,151 +27,39 @@ export default function BroadcastLayoutExample() {
       showLiveIndicator={true}
       qrCodeContent='https://modoradio.cl'
     >
-      {/* Main Content Area */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100%',
-          color: '#FFFFFF'
-        }}
-      >
-        <h1
-          style={{
-            fontSize: 'clamp(2rem, 4vw, 4rem)',
-            marginBottom: '3rem',
-            textAlign: 'center'
-          }}
-        >
-          Broadcast Layout Demo
-        </h1>
+      <div className='flex h-full flex-col items-center justify-center px-6 py-10 text-white'>
+        <h1 className='text-center text-4xl font-semibold'>Broadcast Layout Demo</h1>
 
-        <div
-          style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            padding: '2rem',
-            borderRadius: '12px',
-            maxWidth: '600px',
-            width: '100%'
-          }}
-        >
-          <h2 style={{ marginBottom: '1.5rem' }}>Test Chyron Messages</h2>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem'
-            }}
-          >
-            <button
-              onClick={() => displayChyron('LAS INTROS DEL FESTIVAL DE SANREMO')}
-              style={{
-                padding: '1rem 1.5rem',
-                fontSize: '1rem',
-                background: '#5FB7E5',
-                color: '#000',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600'
-              }}
-            >
+        <Card className='mt-12 w-full max-w-2xl space-y-4 bg-white/10 p-8 text-white ring-white/20'>
+          <h2 className='text-2xl font-semibold'>Test Chyron Messages</h2>
+          <div className='flex flex-col gap-3'>
+            <Button onClick={() => displayChyron('LAS INTROS DEL FESTIVAL DE SANREMO')} variant='primary' size='lg'>
               Show Title Message
-            </button>
-
-            <button
-              onClick={() => displayChyron('Ahora suena: Beautiful Song - Amazing Artist')}
-              style={{
-                padding: '1rem 1.5rem',
-                fontSize: '1rem',
-                background: '#5FB7E5',
-                color: '#000',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600'
-              }}
-            >
+            </Button>
+            <Button onClick={() => displayChyron('Ahora suena: Beautiful Song - Amazing Artist')} variant='primary' size='lg'>
               Show Now Playing
-            </button>
-
-            <button
-              onClick={() => displayChyron('ÚLTIMA HORA: Noticia importante en desarrollo')}
-              style={{
-                padding: '1rem 1.5rem',
-                fontSize: '1rem',
-                background: '#5FB7E5',
-                color: '#000',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600'
-              }}
-            >
+            </Button>
+            <Button onClick={() => displayChyron('ULTIMA HORA: Noticia importante en desarrollo')} variant='primary' size='lg'>
               Show Breaking News
-            </button>
-
-            <button
-              onClick={() => setShowChyron(false)}
-              style={{
-                padding: '1rem 1.5rem',
-                fontSize: '1rem',
-                background: '#FF4444',
-                color: '#FFF',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600'
-              }}
-            >
+            </Button>
+            <Button onClick={() => setShowChyron(false)} variant='destructive' size='lg'>
               Hide Chyron
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
 
-        <div
-          style={{
-            marginTop: '3rem',
-            padding: '2rem',
-            background: 'rgba(255, 255, 255, 0.05)',
-            borderRadius: '12px',
-            maxWidth: '800px'
-          }}
-        >
-          <h3 style={{ marginBottom: '1rem' }}>Layout Features:</h3>
-          <ul
-            style={{
-              listStyle: 'none',
-              padding: 0,
-              lineHeight: '1.8'
-            }}
-          >
-            <li>
-              ✓ <strong>Header:</strong> Black bar with program title and date
-            </li>
-            <li>
-              ✓ <strong>Clock:</strong> Live time widget with icon (top-left)
-            </li>
-            <li>
-              ✓ <strong>QR Code:</strong> Scannable code for viewers (left side)
-            </li>
-            <li>
-              ✓ <strong>Live Indicator:</strong> Pulsing "VIVO" badge (top-right)
-            </li>
-            <li>
-              ✓ <strong>Logo:</strong> Brand logo widget (bottom-right)
-            </li>
-            <li>
-              ✓ <strong>Chyron:</strong> Animated message overlay (above ticker)
-            </li>
-            <li>
-              ✓ <strong>Ticker:</strong> Bottom bar with hashtag and URL
-            </li>
+        <Card className='mt-10 w-full max-w-4xl bg-white/5 p-8 text-white ring-white/15'>
+          <h3 className='mb-4 text-xl font-semibold'>Layout Features</h3>
+          <ul className='space-y-1 text-sm leading-7'>
+            <li>Header: Black bar with program title and date</li>
+            <li>Clock: Live time widget with icon (top-left)</li>
+            <li>QR Code: Scannable code for viewers (left side)</li>
+            <li>Live Indicator: Pulsing "VIVO" badge (top-right)</li>
+            <li>Logo: Brand logo widget (bottom-right)</li>
+            <li>Chyron: Animated message overlay (above ticker)</li>
+            <li>Ticker: Bottom bar with hashtag and URL</li>
           </ul>
-        </div>
+        </Card>
       </div>
     </BroadcastLayout>
   );

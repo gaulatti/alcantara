@@ -1,4 +1,4 @@
-import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Checkbox, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
@@ -353,12 +353,12 @@ export default function SongsCatalog() {
     const durationMs = durationMsRaw ? Number(durationMsRaw) : null;
 
     if (!audioUrl) {
-      setError('Audio URL is required. Upload a song file first.');
+      setError('Audio URL is . Upload a song file first.');
       return;
     }
 
     if (!artist && !title) {
-      setError('Artist or title is required.');
+      setError('Artist or title is .');
       return;
     }
 
@@ -543,14 +543,16 @@ export default function SongsCatalog() {
 
                     {/* Artist */}
                     <div className='min-w-0'>
-                      <button
+                      <Button
                         type='button'
+                        variant='ghost'
+                        size='sm'
                         onClick={() => setSearchQuery(song.artist || '')}
-                        className='max-w-full truncate text-left text-sm text-text-secondary transition-colors hover:text-sea dark:text-text-secondary dark:hover:text-accent-blue'
+                        className='h-auto max-w-full justify-start truncate p-0 text-left text-sm font-normal text-text-secondary transition-colors hover:bg-transparent hover:text-sea dark:text-text-secondary '
                         title={`Filter by ${song.artist}`}
                       >
                         {song.artist || '—'}
-                      </button>
+                      </Button>
                     </div>
 
                     {/* Duration */}
@@ -562,7 +564,7 @@ export default function SongsCatalog() {
                         onClick={() => {
                           void playSongPreview(song);
                         }}
-                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 dark:text-accent-blue'
+                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
                         title={`Preview ${formatSongTitle(song)}`}
                         aria-label={`Preview ${formatSongTitle(song)}`}
                       >
@@ -570,7 +572,7 @@ export default function SongsCatalog() {
                       </IconButton>
                       <IconButton
                         onClick={() => openEditModal(song)}
-                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 dark:text-accent-blue'
+                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
                         title={`Edit ${formatSongTitle(song)}`}
                         aria-label={`Edit ${formatSongTitle(song)}`}
                       >
@@ -599,18 +601,11 @@ export default function SongsCatalog() {
         <div className='space-y-4'>
           {!editingSong ? (
             <>
-              <label
-                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
-                  batchItems.some((i) => i.status === 'uploading')
-                    ? 'cursor-not-allowed border-sand/30 bg-sand/5 opacity-60'
-                    : 'border-sand/40 bg-sand/5 hover:border-sea dark:border-sand/50 dark:bg-dark-sand/30 dark:hover:border-accent-blue'
-                }`}
-              >
-                <input
-                  type='file'
+              <div className='space-y-2 rounded-xl border-2 border-dashed border-sand/40 bg-sand/5 px-6 py-6 text-center dark:border-sand/50 dark:bg-dark-sand/30'>
+                <Music2 size={28} className='text-text-secondary dark:text-text-secondary' />
+                <FileInput
                   accept='audio/*'
                   multiple
-                  className='hidden'
                   disabled={batchItems.some((i) => i.status === 'uploading')}
                   onChange={(event) => {
                     const files = Array.from(event.target.files ?? []);
@@ -618,12 +613,8 @@ export default function SongsCatalog() {
                     if (files.length > 0) void batchCreateSongs(files);
                   }}
                 />
-                <Music2 size={28} className='text-text-secondary dark:text-text-secondary' />
-                <span className='text-sm font-medium text-text-primary dark:text-text-primary'>
-                  {batchItems.some((i) => i.status === 'uploading') ? 'Uploading…' : 'Click to select audio files'}
-                </span>
                 <span className='text-xs text-text-secondary dark:text-text-secondary'>Multiple files supported — metadata read automatically</span>
-              </label>
+              </div>
 
               {batchItems.length > 0 && (
                 <ul className='space-y-1.5'>
@@ -635,11 +626,11 @@ export default function SongsCatalog() {
                       <span
                         className={`shrink-0 text-base ${
                           item.status === 'done'
-                            ? 'text-green-500'
+                            ? ''
                             : item.status === 'error'
                               ? 'text-terracotta'
                               : item.status === 'uploading'
-                                ? 'text-sea dark:text-accent-blue'
+                                ? 'text-sea '
                                 : 'text-text-secondary'
                         }`}
                       >
@@ -661,38 +652,36 @@ export default function SongsCatalog() {
           ) : (
             <>
               <div className='rounded-xl border border-sand/30 bg-sand/5 p-3 space-y-2'>
-                <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
-                  <input
-                    type='file'
-                    accept='audio/*'
-                    className='hidden'
-                    disabled={isUploadingSong || isSaving}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      event.target.value = '';
-                      if (file) {
-                        setSongFile(file);
-                        void uploadSongFile();
-                      }
-                    }}
-                  />
-                  {isUploadingSong ? 'Uploading…' : songFile ? `Replace: ${songFile.name}` : 'Replace Song File'}
-                </label>
+                <FileInput
+                  accept='audio/*'
+                  disabled={isUploadingSong || isSaving}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    event.target.value = '';
+                    if (file) {
+                      setSongFile(file);
+                      void uploadSongFile();
+                    }
+                  }}
+                />
+                <p className='text-xs text-text-secondary dark:text-text-secondary'>
+                  {isUploadingSong ? 'Uploading…' : songFile ? `Replace: ${songFile.name}` : 'Replace song file'}
+                </p>
               </div>
 
               <div className='grid gap-3 sm:grid-cols-2'>
                 <div>
-                  <label className='mb-1 block text-xs text-gray-600'>Artist</label>
+                  <label className='mb-1 block text-xs '>Artist</label>
                   <Input type='text' value={artistInput} onChange={(event) => setArtistInput(event.target.value)} />
                 </div>
                 <div>
-                  <label className='mb-1 block text-xs text-gray-600'>Title</label>
+                  <label className='mb-1 block text-xs '>Title</label>
                   <Input type='text' value={titleInput} onChange={(event) => setTitleInput(event.target.value)} />
                 </div>
               </div>
 
               <div>
-                <label className='mb-1 block text-xs text-gray-600'>Audio URL</label>
+                <label className='mb-1 block text-xs '>Audio URL</label>
                 <Input
                   type='text'
                   value={audioUrlInput}
@@ -703,14 +692,12 @@ export default function SongsCatalog() {
 
               <div className='grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end'>
                 <div className='flex-1'>
-                  <label className='mb-1 block text-xs text-gray-600'>Cover URL</label>
+                  <label className='mb-1 block text-xs '>Cover URL</label>
                   <Input type='text' value={coverUrlInput} onChange={(event) => setCoverUrlInput(event.target.value)} />
                 </div>
-                <label className='inline-flex cursor-pointer items-center rounded-lg border border-sand/40 px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-sea hover:text-text-primary dark:border-sand/50 dark:text-text-secondary dark:hover:border-accent-blue dark:hover:text-text-primary'>
-                  <input
-                    type='file'
+                <div className='space-y-1'>
+                  <FileInput
                     accept='image/*'
-                    className='hidden'
                     disabled={isUploadingCover || isSaving}
                     onChange={(event) => {
                       const file = event.target.files?.[0] ?? null;
@@ -718,13 +705,13 @@ export default function SongsCatalog() {
                       void uploadCoverFile(file);
                     }}
                   />
-                  {isUploadingCover ? 'Uploading Cover...' : 'Upload Cover'}
-                </label>
+                  <p className='text-xs text-text-secondary dark:text-text-secondary'>{isUploadingCover ? 'Uploading cover…' : 'Upload cover image'}</p>
+                </div>
               </div>
 
               <div className='grid gap-3 sm:grid-cols-2'>
                 <div>
-                  <label className='mb-1 block text-xs text-gray-600'>Duration (ms)</label>
+                  <label className='mb-1 block text-xs '>Duration (ms)</label>
                   <Input type='number' min={1} value={durationMsInput} onChange={(event) => setDurationMsInput(event.target.value)} />
                 </div>
                 <div className='mt-7 flex items-center'>
@@ -734,15 +721,15 @@ export default function SongsCatalog() {
 
               <div className='grid gap-3 sm:grid-cols-3'>
                 <div>
-                  <label className='mb-1 block text-xs text-gray-600'>EarOne Song ID</label>
+                  <label className='mb-1 block text-xs '>EarOne Song ID</label>
                   <Input type='text' value={earoneSongIdInput} onChange={(event) => setEaroneSongIdInput(event.target.value)} />
                 </div>
                 <div>
-                  <label className='mb-1 block text-xs text-gray-600'>EarOne Rank</label>
+                  <label className='mb-1 block text-xs '>EarOne Rank</label>
                   <Input type='text' value={earoneRankInput} onChange={(event) => setEaroneRankInput(event.target.value)} />
                 </div>
                 <div>
-                  <label className='mb-1 block text-xs text-gray-600'>EarOne Spins</label>
+                  <label className='mb-1 block text-xs '>EarOne Spins</label>
                   <Input type='text' value={earoneSpinsInput} onChange={(event) => setEaroneSpinsInput(event.target.value)} />
                 </div>
               </div>

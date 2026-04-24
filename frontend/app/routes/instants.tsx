@@ -143,7 +143,7 @@ export default function InstantsAdmin() {
         const text = await res.text();
         throw new Error(text || `HTTP ${res.status}`);
       }
-      showAlert('Instant triggered.', 'success');
+      showAlert('Instant .', 'success');
     } catch (err) {
       console.error('Failed to trigger instant:', err);
       showAlert('Failed to trigger instant.', 'error');
@@ -171,7 +171,7 @@ export default function InstantsAdmin() {
     const parsedVolume = Number(volumeInput);
 
     if (!normalizedName) {
-      setError('Name is required.');
+      setError('Name is .');
       return;
     }
 
@@ -192,7 +192,7 @@ export default function InstantsAdmin() {
       }
 
       if (!nextAudioUrl) {
-        setError('Audio file is required.');
+        setError('Audio file is .');
         return;
       }
 
@@ -255,7 +255,7 @@ export default function InstantsAdmin() {
       <AlertContainer />
       <div className='mx-auto max-w-6xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader title='Instants' description='Audio trigger cart shared across the app.' />
+          <SectionHeader title='Instants' description='Audio trigger cart  across the app.' />
           <div className='flex flex-wrap items-center gap-3'>
             <Button variant='secondary' onClick={() => navigate('/')}>
               Back to Control
@@ -287,7 +287,7 @@ export default function InstantsAdmin() {
               {sortedInstants.map((instant) => (
                 <article
                   key={instant.id}
-                  className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 dark:hover:border-accent-blue/60'
+                  className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
                 >
                   <div className='flex items-start justify-between gap-4'>
                     <div className='min-w-0 flex-1'>
@@ -307,7 +307,7 @@ export default function InstantsAdmin() {
                         onClick={() => {
                           void playInstant(instant.id);
                         }}
-                        className='text-sea dark:text-accent-blue'
+                        className='text-sea '
                         title={`Play ${instant.name}`}
                         aria-label={`Play ${instant.name}`}
                       >
@@ -315,7 +315,7 @@ export default function InstantsAdmin() {
                       </IconButton>
                       <IconButton
                         onClick={() => openEditModal(instant)}
-                        className='text-sea dark:text-accent-blue'
+                        className='text-sea '
                         title={`Edit ${instant.name}`}
                         aria-label={`Edit ${instant.name}`}
                       >
@@ -373,7 +373,7 @@ export default function InstantsAdmin() {
                   {selectedAudioFile ? `Selected: ${selectedAudioFile.name}` : uploadedAudioUrl ? 'Using existing uploaded audio.' : 'No audio selected yet.'}
                 </span>
               </div>
-              {uploadedAudioUrl ? <p className='mt-2 truncate text-xs text-text-secondary dark:text-text-secondary'>Stored URL: {uploadedAudioUrl}</p> : null}
+              {uploadedAudioUrl ? <p className='mt-2 truncate text-xs text-text-secondary dark:text-text-secondary'> URL: {uploadedAudioUrl}</p> : null}
             </div>
 
             <div className='grid gap-4 sm:grid-cols-2'>

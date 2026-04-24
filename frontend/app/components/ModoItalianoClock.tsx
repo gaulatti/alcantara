@@ -2,15 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BellRing } from 'lucide-react';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
-import {
-  normalizeProgramSongSequence,
-  resolveProgramSongLeaf,
-  type ProgramSongSequence
-} from '../utils/programSequence';
-import {
-  getProgramAudioBusSnapshot,
-  subscribeProgramAudioBus
-} from '../utils/programAudioBus';
+import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence } from '../utils/programSequence';
+import { getProgramAudioBusSnapshot, subscribeProgramAudioBus } from '../utils/programAudioBus';
 
 export interface ModoItalianoClockCity {
   city: string;
@@ -139,9 +132,7 @@ function normalizeSongPayload(value: unknown): SongPayload | null {
   const coverUrl = typeof record.coverUrl === 'string' ? record.coverUrl.trim() : '';
   const audioUrl = typeof record.audioUrl === 'string' ? record.audioUrl.trim() : '';
   const durationMs =
-    typeof record.durationMs === 'number' && Number.isFinite(record.durationMs) && record.durationMs > 0
-      ? Math.round(record.durationMs)
-      : undefined;
+    typeof record.durationMs === 'number' && Number.isFinite(record.durationMs) && record.durationMs > 0 ? Math.round(record.durationMs) : undefined;
   const earoneSongId =
     typeof record.earoneSongId === 'string' && record.earoneSongId.trim()
       ? record.earoneSongId.trim()
@@ -410,7 +401,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         display: 'flex',
         flexDirection: 'column',
         width: useSplitSongClockLayout ? 'min(1420px, calc(100vw - 192px))' : 'fit-content'
-    };
+      };
   const listeningStyle: React.CSSProperties = {
     color: '#ffffff',
     fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
@@ -468,7 +459,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     overflow: 'hidden',
     transformOrigin: 'right center',
     animation: hasSongCardBackground
-      ? `modoItalianoClockBgFlow 8s ease-in-out infinite, modoItalianoClockBgPalette 60s ease-in-out infinite${clockBoxMotionAnimation}`
+      ? `modoItalianoClockBgFlow 8s ease-in-out infinite${clockBoxMotionAnimation}`
       : clockBoxMotion
         ? `modoItalianoClockSongBox${clockBoxMotion === 'in' ? 'In' : 'Out'} ${SONG_BOX_MOTION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1) 1`
         : undefined
@@ -478,12 +469,11 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     position: 'absolute',
     inset: 0,
     borderRadius: 'inherit',
-    background:
-      'linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.08) 70%, rgba(255, 255, 255, 0.02) 100%)',
+    background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.08) 70%, rgba(255, 255, 255, 0.02) 100%)',
     transform: `scaleX(${clampedSongProgress})`,
     transformOrigin: 'left center',
     transition: 'transform 140ms linear, opacity 220ms ease',
-    opacity: hasSongCardBackground && hasLiveSongPayload ? 0.85 : 0,
+    opacity: hasSongCardBackground && hasLiveSongPayload ? 1 : 0,
     pointerEvents: 'none'
   };
   const progressEdgeStyle: React.CSSProperties = {
@@ -494,7 +484,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     width: '2px',
     background: 'rgba(255, 255, 255, 0.28)',
     boxShadow: '0 0 8px rgba(255, 255, 255, 0.22)',
-    opacity: hasSongCardBackground && hasLiveSongPayload ? 0.7 : 0,
+    opacity: hasSongCardBackground && hasLiveSongPayload ? 1 : 0,
     transform: 'translateX(-1px)',
     transition: 'left 140ms linear, opacity 220ms ease',
     pointerEvents: 'none'
@@ -570,16 +560,10 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
           50% { background-position: 100% 50%; }
           100% { background-position: 0% 50%; }
         }
-        @keyframes modoItalianoClockBgPalette {
-          0% {
-            background-image: linear-gradient(125deg, #6B7E39 0%, #3F4D20 48%, #6B7E39 100%);
-          }
-          50% {
-            background-image: linear-gradient(125deg, #A42323 0%, #661313 48%, #A42323 100%);
-          }
-          100% {
-            background-image: linear-gradient(125deg, #6B7E39 0%, #3F4D20 48%, #6B7E39 100%);
-          }
+        @keyframes modoItalianoClockRedOverlay {
+          0% { opacity: 0; }
+          50% { opacity: 1; }
+          100% { opacity: 0; }
         }
         @keyframes modoItalianoClockSongBoxIn {
           0% { transform: scale(1); }
@@ -599,6 +583,21 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         </div>
       )}
       <div style={outerStyle}>
+        {hasSongCardBackground && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 'inherit',
+              background: 'linear-gradient(125deg, #A42323 0%, #661313 48%, #A42323 100%)',
+              backgroundSize: '200% 200%',
+              animation: 'modoItalianoClockBgFlow 8s ease-in-out infinite, modoItalianoClockRedOverlay 60s ease-in-out infinite',
+              opacity: 0,
+              zIndex: 0,
+              pointerEvents: 'none'
+            }}
+          />
+        )}
         <div style={progressLayerStyle} />
         <div style={progressEdgeStyle} />
         {songUiVisible && (
@@ -613,7 +612,9 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
               maxWidth: useSplitSongClockLayout ? undefined : '980px',
               opacity: songUiActive ? 1 : 0,
               transform: songUiActive ? 'translateY(0px)' : 'translateY(10px)',
-              transition: `opacity ${SONG_UI_FADE_MS}ms ease, transform ${SONG_UI_FADE_MS}ms ease`
+              transition: `opacity ${SONG_UI_FADE_MS}ms ease, transform ${SONG_UI_FADE_MS}ms ease`,
+              position: 'relative',
+              zIndex: 1
             }}
           >
             {displaySongTitle ? (
@@ -661,7 +662,9 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
               display: 'flex',
               alignItems: 'center',
               flexShrink: 0,
-              marginLeft: useSplitSongClockLayout ? '24px' : 0
+              marginLeft: useSplitSongClockLayout ? '24px' : 0,
+              position: 'relative',
+              zIndex: 1
             }}
           >
             {showWorldClocks && cityClockBlock}

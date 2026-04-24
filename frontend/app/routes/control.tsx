@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Accordion, Button, IconButton, Input, Panel, PanelLayout, Select, Sheet, Switch } from '@gaulatti/bleecker';
-import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
+import { Accordion, Button, Checkbox, FileInput, IconButton, Input, Panel, PanelLayout, Select, Sheet, Switch, Textarea } from '@gaulatti/bleecker';
+import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square, ZapOff } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { useSSE } from '../hooks/useSSE';
@@ -915,42 +915,43 @@ function SlideshowEditorFields({
   return (
     <div className='space-y-3'>
       <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
-        <label className='text-sm text-gray-700'>
-          <span className='block text-xs text-gray-500 mb-1'>Interval (ms)</span>
-          <input
+        <label className='text-sm text-text-primary'>
+          <span className='block text-xs text-text-secondary mb-1'>Interval (ms)</span>
+          <Input
             type='number'
             min={1000}
             step={100}
             value={typeof props.intervalMs === 'number' ? props.intervalMs : 5000}
             onChange={(event) => updateProp(componentType, 'intervalMs', Math.max(1000, Number(event.target.value) || 5000))}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           />
         </label>
-        <label className='text-sm text-gray-700'>
-          <span className='block text-xs text-gray-500 mb-1'>Transition (ms)</span>
-          <input
+        <label className='text-sm text-text-primary'>
+          <span className='block text-xs text-text-secondary mb-1'>Transition (ms)</span>
+          <Input
             type='number'
             min={100}
             step={50}
             value={typeof props.transitionMs === 'number' ? props.transitionMs : 900}
             onChange={(event) => updateProp(componentType, 'transitionMs', Math.max(100, Number(event.target.value) || 900))}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           />
         </label>
-        <label className='text-sm text-gray-700'>
-          <span className='block text-xs text-gray-500 mb-1'>Fit Mode</span>
-          <select
+        <label className='text-sm text-text-primary'>
+          <span className='block text-xs text-text-secondary mb-1'>Fit Mode</span>
+          <Select
             value={props.fitMode === 'contain' ? 'contain' : 'cover'}
-            onChange={(event) => updateProp(componentType, 'fitMode', event.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-          >
-            <option value='cover'>Cover</option>
-            <option value='contain'>Contain</option>
-          </select>
+            onChange={(value) => updateProp(componentType, 'fitMode', value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+            options={[
+              { value: 'cover', label: 'Cover' },
+              { value: 'contain', label: 'Contain' }
+            ]}
+          />
         </label>
         <div className='flex flex-col justify-end gap-2 pb-1'>
-          <label className='flex items-center gap-2 text-sm text-gray-700'>
-            <input
+          <label className='flex items-center gap-2 text-sm text-text-primary'>
+            <Input
               type='checkbox'
               checked={asBoolean(props.shuffle, false)}
               onChange={(event) => updateProp(componentType, 'shuffle', event.target.checked)}
@@ -958,8 +959,8 @@ function SlideshowEditorFields({
             />
             Shuffle
           </label>
-          <label className='flex items-center gap-2 text-sm text-gray-700'>
-            <input
+          <label className='flex items-center gap-2 text-sm text-text-primary'>
+            <Input
               type='checkbox'
               checked={asBoolean(props.kenBurns, true)}
               onChange={(event) => updateProp(componentType, 'kenBurns', event.target.checked)}
@@ -971,23 +972,23 @@ function SlideshowEditorFields({
       </div>
 
       <div className='space-y-2'>
-        <label className='block text-xs text-gray-600'>Media Group Source</label>
-        <select
+        <label className='block text-xs text-text-secondary'>Media Group Source</label>
+        <Select
           value={selectedMediaGroupId !== null ? String(selectedMediaGroupId) : ''}
-          onChange={(event) => {
-            const nextGroupId = normalizeSlideshowMediaGroupId(event.target.value);
+          onChange={(value) => {
+            const nextGroupId = normalizeSlideshowMediaGroupId(value);
             updateProp(componentType, 'mediaGroupId', nextGroupId);
           }}
-          className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
-        >
-          <option value=''>Manual images in scene metadata</option>
-          {mediaGroups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name} ({group.items.length} images)
-            </option>
-          ))}
-        </select>
-        <p className='text-xs text-gray-500'>
+          className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
+          options={[
+            { value: '', label: 'Manual images in scene metadata' },
+            ...mediaGroups.map((group) => ({
+              value: String(group.id),
+              label: `${group.name} (${group.items.length} images)`
+            }))
+          ]}
+        />
+        <p className='text-xs text-text-secondary'>
           {isLoadingMediaGroups
             ? 'Loading media groups...'
             : usesMediaGroup
@@ -998,8 +999,8 @@ function SlideshowEditorFields({
 
       {!usesMediaGroup ? (
         <div className='space-y-2'>
-          <label className='block text-xs text-gray-600'>Upload images</label>
-          <input
+          <label className='block text-xs text-text-secondary'>Upload images</label>
+          <Input
             type='file'
             accept='image/*'
             multiple
@@ -1009,43 +1010,43 @@ function SlideshowEditorFields({
               event.target.value = '';
               void uploadImages(files);
             }}
-            className='block w-full text-xs text-gray-500 file:mr-3 file:rounded file:border file:border-slate-300 file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-100'
+            className='block w-full text-xs text-text-secondary file:mr-3 file:rounded file:border file:border-sand/40 file:bg-dark-sand/80 file:px-2 file:py-1 file:text-xs file:font-medium file:text-text-primary hover:file:bg-sand/10'
           />
-          <p className='text-xs text-gray-500 mt-1'>1920x1080 images are recommended. Upload one or many files.</p>
-          {isUploading ? <p className='text-xs text-gray-500'>Uploading image...</p> : null}
-          {uploadError ? <p className='text-xs text-red-500'>{uploadError}</p> : null}
+          <p className='text-xs text-text-secondary mt-1'>1920x1080 images are recommended. Upload one or many files.</p>
+          {isUploading ? <p className='text-xs text-text-secondary'>Uploading image...</p> : null}
+          {uploadError ? <p className='text-xs text-terracotta'>{uploadError}</p> : null}
         </div>
       ) : null}
 
       {usesMediaGroup ? (
         <div className='space-y-2'>
-          <p className='text-xs text-gray-600'>{selectedMediaGroup ? `Using group "${selectedMediaGroup.name}"` : 'Selected group not found.'}</p>
+          <p className='text-xs text-text-secondary'>{selectedMediaGroup ? `Using group "${selectedMediaGroup.name}"` : 'Selected group not found.'}</p>
           {selectedMediaGroup && mediaGroupImages.length > 0 ? (
             <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>
               {mediaGroupImages.map((url, index) => (
-                <div key={`${url}_${index}`} className='rounded border border-slate-200 bg-white p-2'>
-                  <img src={url} alt={`Media group image ${index + 1}`} className='h-20 w-full rounded object-cover bg-slate-100' />
+                <div key={`${url}_${index}`} className='rounded border border-sand/30 bg-dark-sand/80 p-2'>
+                  <img src={url} alt={`Media group image ${index + 1}`} className='h-20 w-full rounded object-cover bg-sand/10' />
                 </div>
               ))}
             </div>
           ) : (
-            <p className='text-xs text-gray-500'>No images in this group yet. Add assets in the Media page.</p>
+            <p className='text-xs text-text-secondary'>No images in this group yet. Add assets in the Media page.</p>
           )}
         </div>
       ) : images.length > 0 ? (
         <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>
           {images.map((url, index) => (
-            <div key={`${url}_${index}`} className='rounded border border-slate-200 bg-white p-2 space-y-2'>
-              <img src={url} alt={`Slideshow ${index + 1}`} className='h-20 w-full rounded object-cover bg-slate-100' />
-              <button
+            <div key={`${url}_${index}`} className='rounded border border-sand/30 bg-dark-sand/80 p-2 space-y-2'>
+              <img src={url} alt={`Slideshow ${index + 1}`} className='h-20 w-full rounded object-cover bg-sand/10' />
+              <Button
                 type='button'
                 onClick={() => {
                   setImages(images.filter((_, imageIndex) => imageIndex !== index));
                 }}
-                className='w-full rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50'
+                className='w-full rounded border border-terracotta/35 px-2 py-1 text-xs font-medium text-terracotta hover:bg-terracotta/10'
               >
                 Remove
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -3505,12 +3506,12 @@ export default function Control() {
   const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
   const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
   const onlineStatusTone = isProgramRealtimeConnected
-    ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/40'
-    : 'text-amber-200 bg-amber-500/15 border-amber-300/40';
+    ? 'text-sea bg-sea/15 border-sea/40'
+    : 'text-text-primary bg-accent-blue/15 border-accent-blue/35';
   const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
   const controlDeckGrowProps = { grow: true } as any;
   return (
-    <div className='flex h-full w-full min-h-0 flex-col bg-light-sand/30 text-text-primary dark:bg-black/20'>
+    <div className='flex h-full w-full min-h-0 flex-col bg-dark-sand text-text-primary'>
       <style>
         {`
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
@@ -3557,7 +3558,7 @@ export default function Control() {
                             <p className='mt-1 text-[11px] text-zinc-400'>Independent gain for scene-scoped background instant.</p>
                           </div>
                           <div className='flex gap-2'>
-                            <button
+                            <Button
                               type='button'
                               onClick={toggleSceneInstantMuted}
                               className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -3567,8 +3568,8 @@ export default function Control() {
                               }`}
                             >
                               Mute
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type='button'
                               onClick={toggleSceneInstantSolo}
                               className={`flex h-9 items-center justify-center rounded px-3 transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -3578,11 +3579,11 @@ export default function Control() {
                               }`}
                             >
                               Solo
-                            </button>
+                            </Button>
                           </div>
                           <label className='text-[10px] font-mono text-sky-300'>
                             <span className='mb-1 block text-center'>A (dB)</span>
-                            <input
+                            <Input
                               key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
                               type='text'
                               inputMode='decimal'
@@ -3604,9 +3605,9 @@ export default function Control() {
                               className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
                             />
                           </label>
-                          <label className='text-[10px] font-mono text-amber-300'>
+                          <label className='text-[10px] font-mono text-sky-300'>
                             <span className='mb-1 block text-center'>B (dB)</span>
-                            <input
+                            <Input
                               key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
                               type='text'
                               inputMode='decimal'
@@ -3629,7 +3630,7 @@ export default function Control() {
                             />
                           </label>
                           <div className='h-9 w-36 self-end rounded bg-zinc-950'>
-                            <input
+                            <Input
                               type='range'
                               min={0}
                               max={1}
@@ -3639,7 +3640,7 @@ export default function Control() {
                               className='h-full w-full cursor-pointer'
                             />
                           </div>
-                          <input
+                          <Input
                             key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
                             type='text'
                             inputMode='decimal'
@@ -3652,19 +3653,19 @@ export default function Control() {
                             }}
                             className='h-9 w-24 rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-sm font-bold text-violet-300 outline-none'
                           />
-                          <button
+                          <Button
                             type='button'
                             onClick={() => triggerChannelTake('sceneInstant')}
                             disabled={isApplyingTakePresetByChannel.sceneInstant}
                             className='h-9 rounded border border-violet-800/50 bg-zinc-900 px-3 text-[10px] font-bold tracking-wider text-violet-300 transition hover:bg-violet-900/20 disabled:opacity-50'
                           >
                             TAKE {sceneInstantTakeTargetSide.toUpperCase()}
-                          </button>
+                          </Button>
                           <div className='min-w-[120px] text-right'>
                             <p className='text-[11px] text-zinc-400'>
                               Meter {Math.round(sceneInstantMeterFill * 100)}% / {Math.round(sceneInstantPeakFill * 100)}%
                             </p>
-                            <p className='text-[11px] text-zinc-500'>
+                            <p className='text-[11px] text-zinc-400'>
                               Peak Hold {Math.round(sceneInstantPeakHoldFill * 100)}% · {sceneInstantOutputGain > 0 ? 'LIVE' : 'CUT'}
                             </p>
                             <p className='text-[10px] text-zinc-500'>
@@ -3684,7 +3685,7 @@ export default function Control() {
                               </div>
 
                               <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                                <button
+                                <Button
                                   type='button'
                                   onClick={toggleSongMuted}
                                   className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -3694,8 +3695,8 @@ export default function Control() {
                                   }`}
                                 >
                                   Mute
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                   type='button'
                                   onClick={toggleSongSolo}
                                   className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -3705,12 +3706,12 @@ export default function Control() {
                                   }`}
                                 >
                                   Solo
-                                </button>
+                                </Button>
                               </div>
                               <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
                                 <label className='text-[10px] font-mono text-sky-300'>
                                   <span className='mb-1 block text-center'>A</span>
-                                  <input
+                                  <Input
                                     key={`song-preset-a-${mixerTakePresetsDb.song.aDb}`}
                                     type='text'
                                     inputMode='decimal'
@@ -3732,9 +3733,9 @@ export default function Control() {
                                     className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
                                   />
                                 </label>
-                                <label className='text-[10px] font-mono text-amber-300'>
+                                <label className='text-[10px] font-mono text-sky-300'>
                                   <span className='mb-1 block text-center'>B</span>
-                                  <input
+                                  <Input
                                     key={`song-preset-b-${mixerTakePresetsDb.song.bDb}`}
                                     type='text'
                                     inputMode='decimal'
@@ -3781,7 +3782,7 @@ export default function Control() {
                                       style={{ bottom: `${Math.round(songPeakHoldFill * 100)}%` }}
                                     />
                                     <div
-                                      className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
+                                      className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
                                       style={{ height: `${Math.round(songMeterFill * 100)}%` }}
                                     />
                                   </div>
@@ -3798,11 +3799,11 @@ export default function Control() {
                                       A
                                     </span>
                                     <div
-                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
                                       style={{ bottom: `${Math.round(songPresetBFader * 100)}%` }}
                                     />
                                     <span
-                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
                                       style={{ bottom: `calc(${Math.round(songPresetBFader * 100)}% - 6px)` }}
                                     >
                                       B
@@ -3811,7 +3812,7 @@ export default function Control() {
                                     <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                                     {/* Wrapper for rotation */}
                                     <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                                      <input
+                                      <Input
                                         type='range'
                                         min={0}
                                         max={1}
@@ -3837,7 +3838,7 @@ export default function Control() {
                               </div>
 
                               <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
-                                <input
+                                <Input
                                   key={`song-level-${mixerLevels.songMasterVolume}`}
                                   type='text'
                                   inputMode='decimal'
@@ -3863,14 +3864,14 @@ export default function Control() {
                                 />
                                 <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{songOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                               </div>
-                              <button
+                              <Button
                                 type='button'
                                 onClick={() => triggerChannelTake('song')}
                                 disabled={isApplyingTakePresetByChannel.song}
                                 className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
                               >
                                 TAKE {songTakeTargetSide.toUpperCase()}
-                              </button>
+                              </Button>
                             </div>
 
                             {shouldShowStreamStrip ? (
@@ -3878,11 +3879,11 @@ export default function Control() {
                                 {/* --- STREAM STRIP --- */}
                                 <div className='flex w-36 flex-col items-center rounded-lg border border-cyan-900/50 bg-zinc-800/80 pb-6 shadow-xl'>
                                   <div className='w-full rounded-t-lg border-b border-cyan-900/60 bg-cyan-950/20 py-2.5 text-center shadow-sm'>
-                                    <span className='text-[11px] font-bold tracking-widest text-cyan-300'>STREAM</span>
+                                    <span className='text-[11px] font-bold tracking-widest text-violet-300'>STREAM</span>
                                   </div>
 
                                   <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                                    <button
+                                    <Button
                                       type='button'
                                       onClick={toggleStreamMuted}
                                       className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -3892,8 +3893,8 @@ export default function Control() {
                                       }`}
                                     >
                                       Mute
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       type='button'
                                       onClick={toggleStreamSolo}
                                       className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -3903,12 +3904,12 @@ export default function Control() {
                                       }`}
                                     >
                                       Solo
-                                    </button>
+                                    </Button>
                                   </div>
                                   <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
                                     <label className='text-[10px] font-mono text-sky-300'>
                                       <span className='mb-1 block text-center'>A</span>
-                                      <input
+                                      <Input
                                         key={`stream-preset-a-${mixerTakePresetsDb.stream.aDb}`}
                                         type='text'
                                         inputMode='decimal'
@@ -3930,9 +3931,9 @@ export default function Control() {
                                         className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
                                       />
                                     </label>
-                                    <label className='text-[10px] font-mono text-amber-300'>
+                                    <label className='text-[10px] font-mono text-sky-300'>
                                       <span className='mb-1 block text-center'>B</span>
-                                      <input
+                                      <Input
                                         key={`stream-preset-b-${mixerTakePresetsDb.stream.bDb}`}
                                         type='text'
                                         inputMode='decimal'
@@ -3983,18 +3984,18 @@ export default function Control() {
                                           A
                                         </span>
                                         <div
-                                          className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                          className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
                                           style={{ bottom: `${Math.round(streamPresetBFader * 100)}%` }}
                                         />
                                         <span
-                                          className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                          className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
                                           style={{ bottom: `calc(${Math.round(streamPresetBFader * 100)}% - 6px)` }}
                                         >
                                           B
                                         </span>
                                         <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                                         <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                                          <input
+                                          <Input
                                             type='range'
                                             min={0}
                                             max={1}
@@ -4020,7 +4021,7 @@ export default function Control() {
                                   </div>
 
                                   <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-cyan-900/30 bg-[#07161a] text-center shadow-inner'>
-                                    <input
+                                    <Input
                                       key={`stream-level-${mixerLevels.streamMasterVolume}`}
                                       type='text'
                                       inputMode='decimal'
@@ -4042,18 +4043,18 @@ export default function Control() {
                                           event.currentTarget.blur();
                                         }
                                       }}
-                                      className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-cyan-300 outline-none'
+                                      className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-sky-300 outline-none'
                                     />
-                                    <span className='font-mono text-[9px] tracking-wider text-cyan-700'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
+                                    <span className='font-mono text-[9px] tracking-wider text-sky-300'>{streamOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                                   </div>
-                                  <button
+                                  <Button
                                     type='button'
                                     onClick={() => triggerChannelTake('stream')}
                                     disabled={isApplyingTakePresetByChannel.stream}
                                     className='mt-2 w-4/5 rounded border border-cyan-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-cyan-300 transition hover:bg-cyan-900/20 disabled:opacity-50'
                                   >
                                     TAKE {streamTakeTargetSide.toUpperCase()}
-                                  </button>
+                                  </Button>
                                 </div>
                               </>
                             ) : null}
@@ -4065,7 +4066,7 @@ export default function Control() {
                               </div>
 
                               <div className='mt-5 flex w-full flex-col gap-2.5 px-5'>
-                                <button
+                                <Button
                                   type='button'
                                   onClick={toggleInstantMuted}
                                   className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -4075,8 +4076,8 @@ export default function Control() {
                                   }`}
                                 >
                                   Mute
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                   type='button'
                                   onClick={toggleInstantSolo}
                                   className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
@@ -4086,12 +4087,12 @@ export default function Control() {
                                   }`}
                                 >
                                   Solo
-                                </button>
+                                </Button>
                               </div>
                               <div className='mt-2 grid w-full grid-cols-2 gap-2 px-5'>
                                 <label className='text-[10px] font-mono text-sky-300'>
                                   <span className='mb-1 block text-center'>A</span>
-                                  <input
+                                  <Input
                                     key={`instants-preset-a-${mixerTakePresetsDb.instants.aDb}`}
                                     type='text'
                                     inputMode='decimal'
@@ -4113,9 +4114,9 @@ export default function Control() {
                                     className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
                                   />
                                 </label>
-                                <label className='text-[10px] font-mono text-amber-300'>
+                                <label className='text-[10px] font-mono text-sky-300'>
                                   <span className='mb-1 block text-center'>B</span>
-                                  <input
+                                  <Input
                                     key={`instants-preset-b-${mixerTakePresetsDb.instants.bDb}`}
                                     type='text'
                                     inputMode='decimal'
@@ -4162,7 +4163,7 @@ export default function Control() {
                                       style={{ bottom: `${Math.round(instantsPeakHoldFill * 100)}%` }}
                                     />
                                     <div
-                                      className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-rose-500 transition-[height] duration-75 ease-linear'
+                                      className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
                                       style={{ height: `${Math.round(instantsMeterFill * 100)}%` }}
                                     />
                                   </div>
@@ -4179,11 +4180,11 @@ export default function Control() {
                                       A
                                     </span>
                                     <div
-                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                      className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
                                       style={{ bottom: `${Math.round(instantsPresetBFader * 100)}%` }}
                                     />
                                     <span
-                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                      className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
                                       style={{ bottom: `calc(${Math.round(instantsPresetBFader * 100)}% - 6px)` }}
                                     >
                                       B
@@ -4192,7 +4193,7 @@ export default function Control() {
                                     <div className='absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                                     {/* Wrapper for rotation */}
                                     <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                                      <input
+                                      <Input
                                         type='range'
                                         min={0}
                                         max={1}
@@ -4218,7 +4219,7 @@ export default function Control() {
                               </div>
 
                               <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-[#1a3525] bg-[#0a1510] text-center shadow-inner'>
-                                <input
+                                <Input
                                   key={`instants-level-${mixerLevels.instantMasterVolume}`}
                                   type='text'
                                   inputMode='decimal'
@@ -4244,14 +4245,14 @@ export default function Control() {
                                 />
                                 <span className='font-mono text-[9px] tracking-wider text-emerald-700'>{instantsOutputGain > 0 ? 'LIVE' : 'CUT'}</span>
                               </div>
-                              <button
+                              <Button
                                 type='button'
                                 onClick={() => triggerChannelTake('instants')}
                                 disabled={isApplyingTakePresetByChannel.instants}
                                 className='mt-2 w-4/5 rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
                               >
                                 TAKE {instantsTakeTargetSide.toUpperCase()}
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -4266,7 +4267,7 @@ export default function Control() {
                             <div className='flex h-[82px] w-full flex-col justify-center rounded border border-red-900/20 bg-zinc-900/50 px-2 py-2 shadow-inner'>
                               <label className='text-[10px] font-mono text-red-300'>
                                 <span className='mb-1 block text-center'>TAKE FADE (ms)</span>
-                                <input
+                                <Input
                                   type='number'
                                   step={100}
                                   min={0}
@@ -4279,7 +4280,7 @@ export default function Control() {
                               <div className='mt-2 grid grid-cols-2 gap-2'>
                                 <label className='text-[10px] font-mono text-sky-300'>
                                   <span className='mb-1 block text-center'>A</span>
-                                  <input
+                                  <Input
                                     key={`main-preset-a-${mixerTakePresetsDb.main.aDb}`}
                                     type='text'
                                     inputMode='decimal'
@@ -4301,9 +4302,9 @@ export default function Control() {
                                     className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
                                   />
                                 </label>
-                                <label className='text-[10px] font-mono text-amber-300'>
+                                <label className='text-[10px] font-mono text-sky-300'>
                                   <span className='mb-1 block text-center'>B</span>
-                                  <input
+                                  <Input
                                     key={`main-preset-b-${mixerTakePresetsDb.main.bDb}`}
                                     type='text'
                                     inputMode='decimal'
@@ -4385,11 +4386,11 @@ export default function Control() {
                                   A
                                 </span>
                                 <div
-                                  className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-amber-300/90'
+                                  className='pointer-events-none absolute left-1/2 w-8 -translate-x-1/2 border-t border-sky-300/90'
                                   style={{ bottom: `${Math.round(mainPresetBFader * 100)}%` }}
                                 />
                                 <span
-                                  className='pointer-events-none absolute -right-3 text-[8px] font-bold text-amber-300'
+                                  className='pointer-events-none absolute -right-3 text-[8px] font-bold text-sky-300'
                                   style={{ bottom: `calc(${Math.round(mainPresetBFader * 100)}% - 6px)` }}
                                 >
                                   B
@@ -4398,7 +4399,7 @@ export default function Control() {
                                 <div className='absolute left-1/2 top-0 h-full w-2 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
                                 {/* Wrapper for rotation */}
                                 <div className='absolute top-1/2 left-1/2 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 -rotate-90 w-64 h-10'>
-                                  <input
+                                  <Input
                                     type='range'
                                     min={0}
                                     max={1}
@@ -4424,7 +4425,7 @@ export default function Control() {
                           </div>
 
                           <div className='mt-10 flex h-14 w-4/5 flex-col justify-center rounded border border-red-950/50 bg-[#1a0a0a] text-center shadow-inner'>
-                            <input
+                            <Input
                               key={`main-level-${mixerLevels.mainMasterVolume}`}
                               type='text'
                               inputMode='decimal'
@@ -4446,18 +4447,18 @@ export default function Control() {
                                   event.currentTarget.blur();
                                 }
                               }}
-                              className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-500 outline-none'
+                              className='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-300 outline-none'
                             />
                             <span className='font-mono text-[9px] tracking-wider text-red-700'>{mainMixGain > 0 ? 'LIVE' : 'CUT'}</span>
                           </div>
-                          <button
+                          <Button
                             type='button'
                             onClick={() => triggerChannelTake('main')}
                             disabled={isApplyingTakePresetByChannel.main}
                             className='mt-2 w-4/5 rounded border border-red-900/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-red-300 transition hover:bg-red-900/20 disabled:opacity-50'
                           >
                             TAKE {mainTakeTargetSide.toUpperCase()}
-                          </button>
+                          </Button>
                         </div>
                       </div>
 
@@ -4514,11 +4515,11 @@ export default function Control() {
                           <div className='space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
                             <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
                               <div className='flex-1'>
-                                <label className='block text-xs text-gray-600 mb-1'>Scene Background Instant</label>
-                                <select
+                                <label className='block text-xs text-text-secondary mb-1'>Scene Background Instant</label>
+                                <Select
                                   value={selectedSceneInstantId ? String(selectedSceneInstantId) : ''}
-                                  onChange={(event) => {
-                                    const nextInstantId = normalizeSceneInstantId(event.target.value);
+                                  onChange={(value) => {
+                                    const nextInstantId = normalizeSceneInstantId(value);
                                     const currentSceneInstantProps =
                                       sceneEditorProps?.sceneInstant && typeof sceneEditorProps.sceneInstant === 'object' ? sceneEditorProps.sceneInstant : {};
                                     void commitSceneEditorComponentProps('sceneInstant', {
@@ -4526,17 +4527,15 @@ export default function Control() {
                                       instantId: nextInstantId
                                     });
                                   }}
-                                  className='w-full rounded border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500'
-                                >
-                                  <option value=''>No background instant</option>
-                                  {instants
-                                    .filter((instant) => instant.enabled)
-                                    .map((instant) => (
-                                      <option key={instant.id} value={instant.id}>
-                                        {instant.name}
-                                      </option>
-                                    ))}
-                                </select>
+                                  className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
+                                  options={[
+                                    { value: '', label: 'No background instant' },
+                                    ...instants.filter((instant) => instant.enabled).map((instant) => ({
+                                      value: String(instant.id),
+                                      label: instant.name
+                                    }))
+                                  ]}
+                                />
                               </div>
                               <div className='flex flex-wrap gap-2'>
                                 <Button
@@ -4580,6 +4579,7 @@ export default function Control() {
                                     mediaGroups={mediaGroups}
                                     isLoadingMediaGroups={isLoadingMediaGroups}
                                   />
+                                  <ZIndexField componentType={componentType} props={props} updateProp={updateSceneEditorProp} />
                                 </div>
                               );
                             })}
@@ -4587,7 +4587,7 @@ export default function Control() {
                           {isSavingSceneAttributes ? (
                             <p className='text-xs text-text-secondary dark:text-text-secondary text-right'>Autosaving scene attributes…</p>
                           ) : sceneAttributeSaveError ? (
-                            <p className='text-xs text-red-500 text-right'>{sceneAttributeSaveError}</p>
+                            <p className='text-xs text-terracotta text-right'>{sceneAttributeSaveError}</p>
                           ) : null}
                         </div>
                       )}
@@ -4647,6 +4647,7 @@ export default function Control() {
                 onTakeOffAir={async () => {
                   await takeProgramSongOffAir(activeProgramId);
                 }}
+                onStopAllInstants={() => void stopAllInstants()}
               />
             </Panel>
             <Panel
@@ -4656,19 +4657,13 @@ export default function Control() {
               className='shrink-0 h-auto'
               toolbar={
                 <div className='flex w-full items-center gap-2'>
-                  <input
+                  <Input
                     type='text'
                     placeholder='Search instants…'
                     value={instantSearch}
                     onChange={(e) => setInstantSearch(e.target.value)}
-                    className='min-w-0 flex-1 rounded border border-sand/30 bg-white/60 px-2 py-1 text-xs text-text-primary placeholder-text-secondary focus:border-amber-400/60 focus:outline-none dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:placeholder-text-secondary dark:focus:border-amber-400/40'
+                    className='min-w-0 flex-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent-blue/60 focus:outline-none dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:placeholder:text-text-secondary dark:focus:border-accent-blue/40'
                   />
-                  <Button size='sm' variant='secondary' onClick={() => void stopAllInstants()}>
-                    Stop All
-                  </Button>
-                  <Button size='sm' variant='secondary' onClick={() => window.location.assign('/instants')}>
-                    Manage
-                  </Button>
                 </div>
               }
             >
@@ -4683,7 +4678,7 @@ export default function Control() {
                     return filtered.length === 0 ? (
                       <p className='text-sm text-text-secondary dark:text-text-secondary'>No instants match &ldquo;{instantSearch}&rdquo;.</p>
                     ) : (
-                      <div className='grid grid-cols-4 gap-1.5'>
+                      <div className='grid grid-cols-2 gap-1.5'>
                         {filtered.map((instant) => {
                           const originalIndex = instants.indexOf(instant);
                           const playbackState = instantPlayback[instant.id] ?? null;
@@ -4691,7 +4686,7 @@ export default function Control() {
                           const shortcutLetter = getInstantShortcutLetter(originalIndex);
 
                           return (
-                            <button
+                            <Button
                               key={instant.id}
                               type='button'
                               onClick={() => void triggerInstant(instant.id)}
@@ -4701,8 +4696,8 @@ export default function Control() {
                                 !instant.enabled
                                   ? 'cursor-not-allowed border-sand/20 bg-sand/10 opacity-50 dark:border-sand/40'
                                   : isPlaying
-                                    ? 'border-amber-400/60 bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/30'
-                                    : 'border-sand/25 bg-white/50 text-text-primary hover:border-amber-400/40 hover:bg-amber-500/10 dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:hover:border-amber-400/30'
+                                    ? 'border-accent-blue/60 bg-accent-blue/15 text-text-primary ring-1 ring-accent-blue/30'
+                                    : 'border-sand/25 bg-dark-sand/80 text-text-primary hover:border-accent-blue/40 hover:bg-accent-blue/10 dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:hover:border-accent-blue/40'
                               }`}
                             >
                               {shortcutLetter ? <span className='mb-0.5 block font-mono text-[9px] opacity-40'>{shortcutLetter}</span> : null}
@@ -4712,14 +4707,14 @@ export default function Control() {
                                   {playbackState && playbackState.endsAtMs !== null ? (
                                     <div
                                       key={`${instant.id}-${playbackState.startedAtMs}`}
-                                      className='absolute inset-0 origin-left bg-amber-400/20'
+                                      className='absolute inset-0 origin-left bg-accent-blue/20'
                                       style={{
                                         animation: `${INSTANT_PLAYBACK_SWEEP_ANIMATION} ${Math.max(200, playbackState.endsAtMs - playbackState.startedAtMs)}ms linear forwards`
                                       }}
                                     />
                                   ) : (
                                     <div
-                                      className='absolute inset-0 bg-amber-400/15'
+                                      className='absolute inset-0 bg-accent-blue/15'
                                       style={{
                                         animation: `${INSTANT_PLAYBACK_PULSE_ANIMATION} 1400ms ease-in-out infinite`
                                       }}
@@ -4727,7 +4722,7 @@ export default function Control() {
                                   )}
                                 </div>
                               ) : null}
-                            </button>
+                            </Button>
                           );
                         })}
                       </div>
@@ -4816,22 +4811,22 @@ function ComponentPropsFields({
       return (
         <div className='grid grid-cols-2 gap-3'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Hashtag</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Hashtag</label>
+            <Input
               type='text'
               value={props.hashtag || ''}
               onChange={(e) => updateProp(componentType, 'hashtag', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='#Hashtag'
             />
           </div>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>URL</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>URL</label>
+            <Input
               type='text'
               value={props.url || ''}
               onChange={(e) => updateProp(componentType, 'url', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='website.com'
             />
           </div>
@@ -4841,12 +4836,12 @@ function ComponentPropsFields({
       return (
         <div className='space-y-2'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Text</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Text</label>
+            <Input
               type='text'
               value={props.text || ''}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Chyron message'
             />
           </div>
@@ -4856,22 +4851,22 @@ function ComponentPropsFields({
       return (
         <div className='grid grid-cols-2 gap-3'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Title</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Title</label>
+            <Input
               type='text'
               value={props.title || ''}
               onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Program title'
             />
           </div>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Date</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Date</label>
+            <Input
               type='text'
               value={props.date || ''}
               onChange={(e) => updateProp(componentType, 'date', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </div>
         </div>
@@ -4879,13 +4874,13 @@ function ComponentPropsFields({
     case 'live-indicator':
       return (
         <div>
-          <p className='text-xs text-gray-500 italic'>No configurable attributes. This component renders its SVG indicator.</p>
+          <p className='text-xs text-text-secondary italic'>No configurable attributes. This component renders its SVG indicator.</p>
         </div>
       );
     case 'logo-widget':
       return (
         <div>
-          <p className='text-xs text-gray-500 italic'>No configurable attributes. This component renders its SVG logo.</p>
+          <p className='text-xs text-text-secondary italic'>No configurable attributes. This component renders its SVG logo.</p>
         </div>
       );
     case 'slideshow':
@@ -4902,41 +4897,42 @@ function ComponentPropsFields({
       return (
         <div className='space-y-3'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Source URL</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Source URL</label>
+            <Input
               type='text'
               value={props.sourceUrl || ''}
               onChange={(e) => updateProp(componentType, 'sourceUrl', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='https://example.com/stream.m3u8'
             />
           </div>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Poster URL (optional)</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Poster URL (optional)</label>
+            <Input
               type='text'
               value={props.posterUrl || ''}
               onChange={(e) => updateProp(componentType, 'posterUrl', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='https://example.com/poster.jpg'
             />
           </div>
           <div className='grid grid-cols-2 gap-3'>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Fit Mode</span>
-              <select
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>Fit Mode</span>
+              <Select
                 value={props.objectFit || 'cover'}
-                onChange={(e) => updateProp(componentType, 'objectFit', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              >
-                <option value='cover'>Cover</option>
-                <option value='contain'>Contain</option>
-              </select>
+                onChange={(value) => updateProp(componentType, 'objectFit', value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+                options={[
+                  { value: 'cover', label: 'Cover' },
+                  { value: 'contain', label: 'Contain' }
+                ]}
+              />
             </label>
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.autoPlay, true)}
                 onChange={(e) => updateProp(componentType, 'autoPlay', e.target.checked)}
@@ -4944,8 +4940,8 @@ function ComponentPropsFields({
               />
               Autoplay
             </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.loop, false)}
                 onChange={(e) => updateProp(componentType, 'loop', e.target.checked)}
@@ -4953,8 +4949,8 @@ function ComponentPropsFields({
               />
               Loop
             </label>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.showControls, false)}
                 onChange={(e) => updateProp(componentType, 'showControls', e.target.checked)}
@@ -4963,67 +4959,57 @@ function ComponentPropsFields({
               Show Native Controls
             </label>
           </div>
-          <p className='text-xs text-gray-500'>Audio is controlled by mixer Song + Main faders (including mute/solo behavior).</p>
+          <p className='text-xs text-text-secondary'>Audio is controlled by mixer Song + Main faders (including mute/solo behavior).</p>
         </div>
       );
     case 'qr-code':
       return (
         <div>
-          <label className='block text-xs text-gray-600 mb-1'>QR Code Content (URL or text)</label>
-          <input
+          <label className='block text-xs text-text-secondary mb-1'>QR Code Content (URL or text)</label>
+          <Input
             type='text'
             value={props.content || ''}
             onChange={(e) => updateProp(componentType, 'content', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             placeholder='https://example.com'
           />
-          <p className='text-xs text-gray-500 mt-1'>Enter URL or text to encode in QR code</p>
+          <p className='text-xs text-text-secondary mt-1'>Enter URL or text to encode in QR code</p>
         </div>
       );
     case 'broadcast-layout':
       return (
         <div className='grid grid-cols-2 gap-3'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Header Title</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Header Title</label>
+            <Input
               type='text'
               value={props.headerTitle || ''}
               onChange={(e) => updateProp(componentType, 'headerTitle', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Program title'
             />
           </div>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Hashtag</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Hashtag</label>
+            <Input
               type='text'
               value={props.hashtag || ''}
               onChange={(e) => updateProp(componentType, 'hashtag', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </div>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>URL</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>URL</label>
+            <Input
               type='text'
               value={props.url || ''}
               onChange={(e) => updateProp(componentType, 'url', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </div>
           <div className='col-span-2'>
-            <label className='block text-xs text-gray-600 mb-1'>Chyron Text</label>
-            <input
-              type='text'
-              value={props.chyronText || ''}
-              onChange={(e) => updateProp(componentType, 'chyronText', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              placeholder='Optional lower chyron text'
-            />
-          </div>
-          <div className='col-span-2'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.showChyron, false)}
                 onChange={(e) => updateProp(componentType, 'showChyron', e.target.checked)}
@@ -5032,84 +5018,76 @@ function ComponentPropsFields({
               Show Chyron
             </label>
           </div>
+          {toBoolean(props.showChyron, false) ? (
+            <div className='col-span-2'>
+              <label className='block text-xs text-text-secondary mb-1'>Chyron Text</label>
+              <Input
+                type='text'
+                value={props.chyronText || ''}
+                onChange={(e) => updateProp(componentType, 'chyronText', e.target.value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+                placeholder='Optional lower chyron text'
+              />
+            </div>
+          ) : null}
           <div className='col-span-2'>
-            <label className='block text-xs text-gray-600 mb-1'>QR Code Content</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>QR Code Content</label>
+            <Input
               type='text'
               value={props.qrCodeContent || ''}
               onChange={(e) => updateProp(componentType, 'qrCodeContent', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='https://example.com'
             />
           </div>
           <div className='col-span-2'>
-            <label className='block text-xs text-gray-600 mb-1'>Clock Timezone</label>
-            <select
+            <label className='block text-xs text-text-secondary mb-1'>Clock Timezone</label>
+            <Select
               value={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
-              onChange={(e) => updateProp(componentType, 'clockTimezone', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-            >
-              {timezoneOptions.map((timezoneOption) => (
-                <option key={timezoneOption.value} value={timezoneOption.value}>
-                  {timezoneOption.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => updateProp(componentType, 'clockTimezone', value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+              options={timezoneOptions}
+            />
           </div>
         </div>
       );
     case 'clock-widget':
       return (
         <div>
-          <label className='block text-xs text-gray-600 mb-1'>Timezone</label>
-          <select
+          <label className='block text-xs text-text-secondary mb-1'>Timezone</label>
+          <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
-            onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-          >
-            {timezoneOptions.map((timezoneOption) => (
-              <option key={timezoneOption.value} value={timezoneOption.value}>
-                {timezoneOption.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => updateProp(componentType, 'timezone', value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+            options={timezoneOptions}
+          />
         </div>
       );
     case 'reloj-clock':
       return (
         <div>
-          <label className='block text-xs text-gray-600 mb-1'>Timezone</label>
-          <select
+          <label className='block text-xs text-text-secondary mb-1'>Timezone</label>
+          <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
-            onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-          >
-            {timezoneOptions.map((timezoneOption) => (
-              <option key={timezoneOption.value} value={timezoneOption.value}>
-                {timezoneOption.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => updateProp(componentType, 'timezone', value)}
+            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+            options={timezoneOptions}
+          />
         </div>
       );
     case 'reloj-loop-clock':
       return (
         <div className='space-y-2'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Starting Timezone</label>
-            <select
+            <label className='block text-xs text-text-secondary mb-1'>Starting Timezone</label>
+            <Select
               value={props.timezone || 'Europe/Madrid'}
-              onChange={(e) => updateProp(componentType, 'timezone', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-            >
-              {timezoneOptions.map((timezoneOption) => (
-                <option key={timezoneOption.value} value={timezoneOption.value}>
-                  {timezoneOption.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => updateProp(componentType, 'timezone', value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+              options={timezoneOptions}
+            />
           </div>
-          <p className='text-xs text-gray-500'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>
+          <p className='text-xs text-text-secondary'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>
         </div>
       );
     case 'toni-chyron':
@@ -5131,8 +5109,8 @@ function ComponentPropsFields({
       return (
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.showWorldClocks, true)}
                 onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
@@ -5141,8 +5119,8 @@ function ComponentPropsFields({
               Show World Clocks
             </label>
             {canToggleBellIcon ? (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showBellIcon, false)}
                   onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
@@ -5151,10 +5129,10 @@ function ComponentPropsFields({
                 Show Bell Icon
               </label>
             ) : (
-              <div className='text-sm text-gray-600'>FifthBell clock icon is always enabled.</div>
+              <div className='text-sm text-text-secondary'>FifthBell clock icon is always enabled.</div>
             )}
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.worldClockShuffle, false)}
                 onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
@@ -5165,41 +5143,41 @@ function ComponentPropsFields({
           </div>
 
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock rotate (ms)</span>
-              <input
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>World clock rotate (ms)</span>
+              <Input
                 type='number'
                 min={500}
                 value={props.worldClockRotateIntervalMs ?? 5000}
                 onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
-              <input
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>World clock transition (ms)</span>
+              <Input
                 type='number'
                 min={0}
                 value={props.worldClockTransitionMs ?? 300}
                 onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
-              <input
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>World clock width (px)</span>
+              <Input
                 type='number'
                 min={120}
                 value={props.worldClockWidthPx ?? 200}
                 onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
           </div>
 
           <div className='space-y-2'>
-            <label className='block text-xs text-gray-600'>World Clock Cities JSON</label>
-            <textarea
+            <label className='block text-xs text-text-secondary'>World Clock Cities JSON</label>
+            <Textarea
               defaultValue={worldClockCitiesDefaultValue}
               onBlur={(e) => {
                 if (!e.target.value.trim()) {
@@ -5233,9 +5211,9 @@ function ComponentPropsFields({
                 }
               }}
               rows={6}
-              className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-sea/50'
             />
-            <p className='text-xs text-gray-500'>Each item must be {'{ \"city\": \"SANREMO\", \"timezone\": \"Europe/Rome\" }'}.</p>
+            <p className='text-xs text-text-secondary'>Each item must be {'{ \"city\": \"SANREMO\", \"timezone\": \"Europe/Rome\" }'}.</p>
           </div>
         </div>
       );
@@ -5243,20 +5221,20 @@ function ComponentPropsFields({
     case 'modoitaliano-disclaimer':
       return (
         <div className='space-y-3'>
-          <p className='text-xs text-gray-500'>Shown only when ModoItaliano chyron is hidden/empty.</p>
+          <p className='text-xs text-text-secondary'>Shown only when ModoItaliano chyron is hidden/empty.</p>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Text</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Text</label>
+            <Input
               type='text'
               value={props.text || ''}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Disclaimer text'
             />
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-gray-700'>
-              <input
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
                 type='checkbox'
                 checked={toBoolean(props.show, true)}
                 onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
@@ -5264,64 +5242,65 @@ function ComponentPropsFields({
               />
               Show Disclaimer
             </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Alignment</span>
-              <select
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>Alignment</span>
+              <Select
                 value={props.align || 'right'}
-                onChange={(e) => updateProp(componentType, 'align', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
-              >
-                <option value='left'>Left</option>
-                <option value='center'>Center</option>
-                <option value='right'>Right</option>
-              </select>
+                onChange={(value) => updateProp(componentType, 'align', value)}
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+                options={[
+                  { value: 'left', label: 'Left' },
+                  { value: 'center', label: 'Center' },
+                  { value: 'right', label: 'Right' }
+                ]}
+              />
             </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Bottom (px)</span>
-              <input
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>Bottom (px)</span>
+              <Input
                 type='number'
                 min={0}
                 value={props.bottomPx ?? 24}
                 onChange={(e) => updateProp(componentType, 'bottomPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
-            <label className='text-sm text-gray-700'>
-              <span className='block text-xs text-gray-500 mb-1'>Font Size (px)</span>
-              <input
+            <label className='text-sm text-text-primary'>
+              <span className='block text-xs text-text-secondary mb-1'>Font Size (px)</span>
+              <Input
                 type='number'
                 min={10}
                 value={props.fontSizePx ?? 20}
                 onChange={(e) => updateProp(componentType, 'fontSizePx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
           </div>
-          <label className='text-sm text-gray-700 block max-w-xs'>
-            <span className='block text-xs text-gray-500 mb-1'>Opacity (0-1)</span>
-            <input
+          <label className='text-sm text-text-primary block max-w-xs'>
+            <span className='block text-xs text-text-secondary mb-1'>Opacity (0-1)</span>
+            <Input
               type='number'
               min={0}
               max={1}
               step={0.05}
               value={props.opacity ?? 0.82}
               onChange={(e) => updateProp(componentType, 'opacity', Number(e.target.value))}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </label>
         </div>
       );
     case 'cronica-background':
-      return <p className='text-xs text-gray-500 italic'>No configurable fields for Cronica background.</p>;
+      return <p className='text-xs text-text-secondary italic'>No configurable fields for Cronica background.</p>;
     case 'cronica-chyron':
       return (
         <div className='space-y-3'>
-          <label className='block text-sm text-gray-700'>
+          <label className='block text-sm text-text-primary'>
             Text (Multi-line supported)
-            <textarea
+            <Textarea
               value={props.text || ''}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='mt-1 w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500 h-24'
+              className='mt-1 w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 h-24'
               placeholder='Enter chyron text...'
             />
           </label>
@@ -5330,64 +5309,64 @@ function ComponentPropsFields({
     case 'cronica-reiteramos':
       return (
         <div className='space-y-3'>
-          <label className='block text-sm text-gray-700'>
+          <label className='block text-sm text-text-primary'>
             Text
-            <input
+            <Input
               type='text'
               value={props.text || 'REITERAMOS'}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='mt-1 w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='mt-1 w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </label>
-          <label className='flex items-center gap-2 text-sm text-gray-700'>
-            <input
+          <label className='flex items-center gap-2 text-sm text-text-primary'>
+            <Input
               type='checkbox'
               checked={toBoolean(props.show, true)}
               onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
-              className='h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded'
+              className='h-4 w-4 text-sea focus:ring-sea/50 border-sand/40 rounded'
             />
             Show banner
           </label>
         </div>
       );
     case 'toni-logo':
-      return <p className='text-xs text-gray-500 italic'>Logo cycles automatically between station images.</p>;
+      return <p className='text-xs text-text-secondary italic'>Logo cycles automatically between station images.</p>;
     case 'earone':
       return (
         <div className='space-y-2'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Label</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Label</label>
+            <Input
               type='text'
               value={props.label || 'EARONE'}
               onChange={(e) => updateProp(componentType, 'label', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='EARONE'
             />
           </div>
           <div className='grid grid-cols-2 gap-3'>
             <div>
-              <label className='block text-xs text-gray-600 mb-1'>Rank</label>
-              <input
+              <label className='block text-xs text-text-secondary mb-1'>Rank</label>
+              <Input
                 type='text'
                 value={props.rank || ''}
                 onChange={(e) => updateProp(componentType, 'rank', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='Uses active sequence item'
               />
             </div>
             <div>
-              <label className='block text-xs text-gray-600 mb-1'>Spins Today</label>
-              <input
+              <label className='block text-xs text-text-secondary mb-1'>Spins Today</label>
+              <Input
                 type='text'
                 value={props.spins || ''}
                 onChange={(e) => updateProp(componentType, 'spins', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='Uses active sequence item'
               />
             </div>
           </div>
-          <p className='text-xs text-gray-500'>Leave rank/spins blank to follow the active Toni chyron sequence item.</p>
+          <p className='text-xs text-text-secondary'>Leave rank/spins blank to follow the active Toni chyron sequence item.</p>
         </div>
       );
     case 'fifthbell':
@@ -5410,8 +5389,8 @@ function ComponentPropsFields({
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
             {supportsContent && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showArticles, true)}
                   onChange={(e) => updateProp(componentType, 'showArticles', e.target.checked)}
@@ -5421,8 +5400,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsContent && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showWeather, true)}
                   onChange={(e) => updateProp(componentType, 'showWeather', e.target.checked)}
@@ -5432,8 +5411,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsContent && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showEarthquakes, true)}
                   onChange={(e) => updateProp(componentType, 'showEarthquakes', e.target.checked)}
@@ -5443,8 +5422,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsContent && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showMarkets, true)}
                   onChange={(e) => updateProp(componentType, 'showMarkets', e.target.checked)}
@@ -5454,8 +5433,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsMarquee && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showMarquee, false)}
                   onChange={(e) => updateProp(componentType, 'showMarquee', e.target.checked)}
@@ -5465,8 +5444,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsContent && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showCallsignTake, true)}
                   onChange={(e) => updateProp(componentType, 'showCallsignTake', e.target.checked)}
@@ -5476,8 +5455,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsCorner && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.showWorldClocks, true)}
                   onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
@@ -5486,10 +5465,10 @@ function ComponentPropsFields({
                 Show World Clocks
               </label>
             )}
-            {supportsCorner && <div className='text-sm text-gray-600'>FifthBell clock icon is always enabled.</div>}
+            {supportsCorner && <div className='text-sm text-text-secondary'>FifthBell clock icon is always enabled.</div>}
             {supportsContent && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.audioCueEnabled, true)}
                   onChange={(e) => updateProp(componentType, 'audioCueEnabled', e.target.checked)}
@@ -5499,8 +5478,8 @@ function ComponentPropsFields({
               </label>
             )}
             {supportsCorner && (
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={toBoolean(props.worldClockShuffle, true)}
                   onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
@@ -5513,268 +5492,268 @@ function ComponentPropsFields({
 
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Data load timeout (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Data load timeout (ms)</span>
+                <Input
                   type='number'
                   min={1000}
                   value={props.dataLoadTimeoutMs ?? 15000}
                   onChange={(e) => updateProp(componentType, 'dataLoadTimeoutMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Playlist default duration (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Playlist default duration (ms)</span>
+                <Input
                   type='number'
                   min={1000}
                   value={props.playlistDefaultDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'playlistDefaultDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Playlist update interval (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Playlist update interval (ms)</span>
+                <Input
                   type='number'
                   min={16}
                   value={props.playlistUpdateIntervalMs ?? 100}
                   onChange={(e) => updateProp(componentType, 'playlistUpdateIntervalMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Articles duration (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Articles duration (ms)</span>
+                <Input
                   type='number'
                   min={1000}
                   value={props.articlesDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'articlesDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Weather duration (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Weather duration (ms)</span>
+                <Input
                   type='number'
                   min={1000}
                   value={props.weatherDurationMs ?? 5000}
                   onChange={(e) => updateProp(componentType, 'weatherDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Earthquakes duration (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Earthquakes duration (ms)</span>
+                <Input
                   type='number'
                   min={1000}
                   value={props.earthquakesDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'earthquakesDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Markets duration (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Markets duration (ms)</span>
+                <Input
                   type='number'
                   min={1000}
                   value={props.marketsDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'marketsDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsCorner && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>World clock rotate (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>World clock rotate (ms)</span>
+                <Input
                   type='number'
                   min={500}
                   value={props.worldClockRotateIntervalMs ?? 7000}
                   onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsCorner && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>World clock transition (ms)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>World clock transition (ms)</span>
+                <Input
                   type='number'
                   min={0}
                   value={props.worldClockTransitionMs ?? 300}
                   onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsCorner && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>World clock width (px)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>World clock width (px)</span>
+                <Input
                   type='number'
                   min={120}
                   value={props.worldClockWidthPx ?? 200}
                   onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Audio cue minute</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Audio cue minute</span>
+                <Input
                   type='number'
                   min={0}
                   max={59}
                   value={props.audioCueMinute ?? 59}
                   onChange={(e) => updateProp(componentType, 'audioCueMinute', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Audio cue second</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Audio cue second</span>
+                <Input
                   type='number'
                   min={0}
                   max={59}
                   value={props.audioCueSecond ?? 55}
                   onChange={(e) => updateProp(componentType, 'audioCueSecond', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Callsign prelaunch until (NYC ISO)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Callsign prelaunch until (NYC ISO)</span>
+                <Input
                   type='text'
                   value={props.callsignPrelaunchUntilNyc ?? '2026-01-02T21:30:00'}
                   onChange={(e) => updateProp(componentType, 'callsignPrelaunchUntilNyc', e.target.value)}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   placeholder='2026-01-02T21:30:00'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Callsign window start sec (:59)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Callsign window start sec (:59)</span>
+                <Input
                   type='number'
                   min={0}
                   max={59}
                   value={props.callsignWindowStartSecond ?? 50}
                   onChange={(e) => updateProp(componentType, 'callsignWindowStartSecond', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsContent && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Callsign window end sec (:00)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Callsign window end sec (:00)</span>
+                <Input
                   type='number'
                   min={0}
                   max={59}
                   value={props.callsignWindowEndSecond ?? 3}
                   onChange={(e) => updateProp(componentType, 'callsignWindowEndSecond', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsMarquee && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Marquee min posts</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Marquee min posts</span>
+                <Input
                   type='number'
                   min={0}
                   value={props.marqueeMinPostsCount ?? 4}
                   onChange={(e) => updateProp(componentType, 'marqueeMinPostsCount', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsMarquee && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Marquee min average relevance</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Marquee min average relevance</span>
+                <Input
                   type='number'
                   min={0}
                   value={props.marqueeMinAverageRelevance ?? 0}
                   onChange={(e) => updateProp(componentType, 'marqueeMinAverageRelevance', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsMarquee && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Marquee min median relevance</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Marquee min median relevance</span>
+                <Input
                   type='number'
                   min={0}
                   value={props.marqueeMinMedianRelevance ?? 0}
                   onChange={(e) => updateProp(componentType, 'marqueeMinMedianRelevance', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsMarquee && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Marquee px/sec</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Marquee px/sec</span>
+                <Input
                   type='number'
                   min={10}
                   value={props.marqueePixelsPerSecond ?? 150}
                   onChange={(e) => updateProp(componentType, 'marqueePixelsPerSecond', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsMarquee && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Marquee min duration (sec)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Marquee min duration (sec)</span>
+                <Input
                   type='number'
                   min={1}
                   value={props.marqueeMinDurationSeconds ?? 10}
                   onChange={(e) => updateProp(componentType, 'marqueeMinDurationSeconds', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
             {supportsMarquee && (
-              <label className='text-sm text-gray-700'>
-                <span className='block text-xs text-gray-500 mb-1'>Marquee height (px)</span>
-                <input
+              <label className='text-sm text-text-primary'>
+                <span className='block text-xs text-text-secondary mb-1'>Marquee height (px)</span>
+                <Input
                   type='number'
                   min={72}
                   value={props.marqueeHeightPx ?? 72}
                   onChange={(e) => updateProp(componentType, 'marqueeHeightPx', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
           </div>
-          {supportsMarquee && <p className='text-xs text-gray-500'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>}
+          {supportsMarquee && <p className='text-xs text-text-secondary'>Marquee thresholds are minimums. Set any of them to `0` to disable that specific filter.</p>}
 
           {supportsContent && (
             <div className='space-y-2'>
-              <label className='block text-xs text-gray-600'>Language Rotation (comma-separated: en, es, it)</label>
-              <input
+              <label className='block text-xs text-text-secondary'>Language Rotation (comma-separated: en, es, it)</label>
+              <Input
                 type='text'
                 defaultValue={languageRotation.join(', ')}
                 onBlur={(e) => {
@@ -5784,19 +5763,19 @@ function ComponentPropsFields({
                     .filter((lang) => ['en', 'es', 'it'].includes(lang));
                   updateProp(componentType, 'languageRotation', next.length > 0 ? next : ['en']);
                 }}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </div>
           )}
 
           {supportsContent && (
             <div>
-              <h3 className='text-sm font-semibold text-gray-800 mb-2'>Weather Cities</h3>
-              <p className='text-xs text-gray-500 mb-2'>If none are selected, all cities are shown in the weather segment.</p>
-              <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-gray-50'>
+              <h3 className='text-sm font-semibold text-text-primary mb-2'>Weather Cities</h3>
+              <p className='text-xs text-text-secondary mb-2'>If none are selected, all cities are shown in the weather segment.</p>
+              <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-auto border rounded p-3 bg-dark-sand/60'>
                 {FIFTHBELL_AVAILABLE_WEATHER_CITIES.map((city) => (
-                  <label key={city} className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
+                  <label key={city} className='flex items-center gap-2 text-sm text-text-primary'>
+                    <Input
                       type='checkbox'
                       checked={selectedCitySet.has(city)}
                       onChange={(e) => {
@@ -5819,8 +5798,8 @@ function ComponentPropsFields({
 
           {supportsCorner && (
             <div className='space-y-2'>
-              <label className='block text-xs text-gray-600'>World Clock Cities JSON (optional override)</label>
-              <textarea
+              <label className='block text-xs text-text-secondary'>World Clock Cities JSON (optional override)</label>
+              <Textarea
                 defaultValue={worldClockCitiesDefaultValue}
                 onBlur={(e) => {
                   if (!e.target.value.trim()) {
@@ -5854,17 +5833,36 @@ function ComponentPropsFields({
                   }
                 }}
                 rows={6}
-                className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-green-500'
+                className='w-full px-3 py-2 text-sm border rounded font-mono focus:ring-2 focus:ring-sea/50'
               />
-              <p className='text-xs text-gray-500'>Each item must be {'{ \"city\": \"NEW YORK\", \"timezone\": \"America/New_York\" }'}.</p>
+              <p className='text-xs text-text-secondary'>Each item must be {'{ \"city\": \"NEW YORK\", \"timezone\": \"America/New_York\" }'}.</p>
             </div>
           )}
         </div>
       );
     }
     default:
-      return <div className='text-xs text-gray-500 italic'>Default configuration</div>;
+      return <div className='text-xs text-text-secondary italic'>Default configuration</div>;
   }
+}
+
+function ZIndexField({ componentType, props, updateProp }: { componentType: string; props: any; updateProp: (componentType: string, propName: string, value: any) => void }) {
+  return (
+    <div className='mt-3 border-t border-sand/20 pt-3'>
+      <label className='block text-xs text-text-secondary mb-1'>Layer (z-index)</label>
+      <Input
+        type='number'
+        value={typeof props._zIndex === 'number' ? props._zIndex : ''}
+        onChange={(e) => {
+          const val = e.target.value.trim();
+          updateProp(componentType, '_zIndex', val === '' ? undefined : Number(val));
+        }}
+        className='w-28 px-3 py-1.5 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+        placeholder='auto'
+      />
+      <p className='mt-1 text-[10px] text-text-secondary'>Higher numbers appear in front. Leave blank for default DOM order.</p>
+    </div>
+  );
 }
 
 function ToniChyronEditorFields({
@@ -5905,7 +5903,7 @@ function ToniChyronEditorFields({
   return (
     <div className='space-y-3'>
       <div className='flex flex-wrap gap-2'>
-        <button
+        <Button
           type='button'
           onClick={() =>
             applyProps({
@@ -5914,12 +5912,12 @@ function ToniChyronEditorFields({
             })
           }
           className={`px-3 py-1.5 rounded text-sm font-medium border ${
-            contentMode === 'text' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            contentMode === 'text' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-dark-sand/60'
           }`}
         >
           Direct Text
-        </button>
-        <button
+        </Button>
+        <Button
           type='button'
           onClick={() =>
             applyProps({
@@ -5929,16 +5927,16 @@ function ToniChyronEditorFields({
             })
           }
           className={`px-3 py-1.5 rounded text-sm font-medium border ${
-            contentMode === 'sequence' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            contentMode === 'sequence' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-dark-sand/60'
           }`}
         >
           Sequence
-        </button>
+        </Button>
       </div>
 
       {contentMode === 'sequence' ? (
         <div className='space-y-3'>
-          <p className='text-xs text-gray-500'>Sequence mode lets you preload multiple chyron values and take them live with one tap.</p>
+          <p className='text-xs text-text-secondary'>Sequence mode lets you preload multiple chyron values and take them live with one tap.</p>
           <ToniChyronSequenceEditor
             sequence={normalizedSequence ?? createToniChyronSequence('manual')}
             onChange={(nextSequence) =>
@@ -5950,21 +5948,21 @@ function ToniChyronEditorFields({
             }
             onTakeSelection={activateSequence}
           />
-          <details className='rounded border border-dashed border-gray-300 px-3 py-2'>
-            <summary className='cursor-pointer text-xs font-medium text-gray-600'>Fallback direct text</summary>
+          <details className='rounded border border-dashed border-sand/40 px-3 py-2'>
+            <summary className='cursor-pointer text-xs font-medium text-text-secondary'>Fallback direct text</summary>
             <div className='space-y-2 pt-3'>
               <div>
-                <label className='block text-xs text-gray-600 mb-1'>Fallback Text</label>
-                <input
+                <label className='block text-xs text-text-secondary mb-1'>Fallback Text</label>
+                <Input
                   type='text'
                   value={props.text || ''}
                   onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   placeholder='Used only if the sequence is empty'
                 />
               </div>
-              <label className='flex items-center gap-2 text-sm text-gray-700'>
-                <input
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Input
                   type='checkbox'
                   checked={Boolean(props.useMarquee)}
                   onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
@@ -5978,17 +5976,17 @@ function ToniChyronEditorFields({
       ) : (
         <div className='space-y-2'>
           <div>
-            <label className='block text-xs text-gray-600 mb-1'>Text</label>
-            <input
+            <label className='block text-xs text-text-secondary mb-1'>Text</label>
+            <Input
               type='text'
               value={props.text || ''}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Chyron message'
             />
           </div>
-          <label className='flex items-center gap-2 text-sm text-gray-700'>
-            <input
+          <label className='flex items-center gap-2 text-sm text-text-primary'>
+            <Input
               type='checkbox'
               checked={Boolean(props.useMarquee)}
               onChange={(e) => updateProp(componentType, 'useMarquee', e.target.checked)}
@@ -6000,8 +5998,8 @@ function ToniChyronEditorFields({
       )}
 
       <div className='space-y-1'>
-        <label className='block text-xs text-gray-600'>Social Handles (comma-separated)</label>
-        <input
+        <label className='block text-xs text-text-secondary'>Social Handles (comma-separated)</label>
+        <Input
           type='text'
           value={socialHandlesValue.join(', ')}
           onChange={(e) =>
@@ -6014,10 +6012,10 @@ function ToniChyronEditorFields({
                 .filter((entry) => entry.length > 0)
             )
           }
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           placeholder='@modoitaliano.oficial, @fifth.bell, @hnmages'
         />
-        <p className='text-xs text-gray-500'>Set an empty value to hide social handles.</p>
+        <p className='text-xs text-text-secondary'>Set an empty value to hide social handles.</p>
       </div>
     </div>
   );
@@ -6173,10 +6171,10 @@ function ToniChyronSequenceEditor({
   };
 
   return (
-    <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
+    <div className={`space-y-3 rounded border ${isNested ? 'border-sand/30 bg-dark-sand/70' : 'border-sand/40 bg-dark-sand/60'} p-3`}>
       <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
-        <button
+        <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
+        <Button
           type='button'
           onClick={() => {
             void applySequenceAndTakeSelection({
@@ -6187,12 +6185,12 @@ function ToniChyronSequenceEditor({
             });
           }}
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            sequence.mode === 'manual' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-sand/10'
           }`}
         >
           Manual
-        </button>
-        <button
+        </Button>
+        <Button
           type='button'
           onClick={() => {
             void applySequenceAndTakeSelection({
@@ -6202,15 +6200,15 @@ function ToniChyronSequenceEditor({
             });
           }}
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            sequence.mode === 'autoplay' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-sand/10'
           }`}
         >
           Autoplay
-        </button>
+        </Button>
         {sequence.mode === 'autoplay' && (
           <>
-            <label className='text-xs text-slate-600'>Interval (ms)</label>
-            <input
+            <label className='text-xs text-text-secondary'>Interval (ms)</label>
+            <Input
               type='number'
               min={500}
               step={500}
@@ -6222,10 +6220,10 @@ function ToniChyronSequenceEditor({
                   startedAt: Date.now()
                 });
               }}
-              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
+              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50'
             />
-            <label className='flex items-center gap-1 text-xs text-slate-600'>
-              <input
+            <label className='flex items-center gap-1 text-xs text-text-secondary'>
+              <Input
                 type='checkbox'
                 checked={sequence.loop !== false}
                 onChange={(e) => {
@@ -6242,7 +6240,7 @@ function ToniChyronSequenceEditor({
         )}
       </div>
 
-      {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
+      {sequence.items.length === 0 && <p className='text-xs text-text-secondary'>This sequence is empty. Add items below.</p>}
 
       <div className='space-y-3'>
         {sequence.items.map((item, index) => {
@@ -6259,45 +6257,45 @@ function ToniChyronSequenceEditor({
                 }
                 setDraggingIndex(null);
               }}
-              className={`rounded border p-3 ${isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}
+              className={`rounded border p-3 ${isActive ? 'border-sea/40 bg-sea/10' : 'border-sand/30 bg-dark-sand/80'}`}
             >
               <div className='flex flex-wrap items-center gap-2'>
                 <span
                   draggable
                   onDragStart={() => setDraggingIndex(index)}
                   onDragEnd={() => setDraggingIndex(null)}
-                  className='cursor-grab select-none rounded border border-dashed border-slate-300 p-2 text-slate-500'
+                  className='cursor-grab select-none rounded border border-dashed border-sand/40 p-2 text-text-secondary'
                   title='Drag to reorder'
                   aria-label='Drag to reorder'
                 >
                   <GripVertical size={14} strokeWidth={2} />
                 </span>
-                <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>
+                <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-text-secondary'>
                   {displayItem.kind === 'sequence' ? 'Nested Sequence' : 'Sequence Item'}
                 </div>
-                <button
+                <Button
                   type='button'
                   onClick={() => {
                     void activateItem(displayItem.id);
                   }}
-                  className='px-3 py-2 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700'
+                  className='px-3 py-2 text-xs font-semibold rounded bg-sea text-white hover:bg-sea/90'
                 >
                   Take
-                </button>
-                <button
+                </Button>
+                <Button
                   type='button'
                   onClick={() => removeItem(index)}
-                  className='px-3 py-2 text-xs font-semibold rounded border border-red-200 text-red-600 hover:bg-red-50'
+                  className='px-3 py-2 text-xs font-semibold rounded border border-terracotta/35 text-terracotta hover:bg-terracotta/10'
                 >
                   Remove
-                </button>
+                </Button>
               </div>
 
               {displayItem.kind === 'preset' ? (
                 <div className='mt-3 space-y-2'>
                   <div>
-                    <label className='block text-xs text-gray-600 mb-1'>Text</label>
-                    <input
+                    <label className='block text-xs text-text-secondary mb-1'>Text</label>
+                    <Input
                       type='text'
                       value={displayItem.text}
                       onChange={(e) =>
@@ -6306,14 +6304,14 @@ function ToniChyronSequenceEditor({
                           text: e.target.value
                         })
                       }
-                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                       placeholder='Chyron message'
                     />
                   </div>
                   <div className='grid grid-cols-2 gap-3'>
                     <div className='col-span-2'>
-                      <label className='block text-xs text-gray-600 mb-1'>EarOne Song ID</label>
-                      <input
+                      <label className='block text-xs text-text-secondary mb-1'>EarOne Song ID</label>
+                      <Input
                         type='text'
                         value={displayItem.earoneSongId || ''}
                         onChange={(e) =>
@@ -6322,13 +6320,13 @@ function ToniChyronSequenceEditor({
                             earoneSongId: e.target.value
                           })
                         }
-                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                         placeholder='Matches against song.earoneSongId'
                       />
                     </div>
                     <div>
-                      <label className='block text-xs text-gray-600 mb-1'>Earone Rank</label>
-                      <input
+                      <label className='block text-xs text-text-secondary mb-1'>Earone Rank</label>
+                      <Input
                         type='text'
                         value={displayItem.earoneRank || ''}
                         onChange={(e) =>
@@ -6337,13 +6335,13 @@ function ToniChyronSequenceEditor({
                             earoneRank: e.target.value
                           })
                         }
-                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                         placeholder='e.g. 4'
                       />
                     </div>
                     <div>
-                      <label className='block text-xs text-gray-600 mb-1'>Earone Spins</label>
-                      <input
+                      <label className='block text-xs text-text-secondary mb-1'>Earone Spins</label>
+                      <Input
                         type='text'
                         value={displayItem.earoneSpins || ''}
                         onChange={(e) =>
@@ -6352,13 +6350,13 @@ function ToniChyronSequenceEditor({
                             earoneSpins: e.target.value
                           })
                         }
-                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                        className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                         placeholder='e.g. 124'
                       />
                     </div>
                   </div>
-                  <label className='flex items-center gap-2 text-sm text-gray-700'>
-                    <input
+                  <label className='flex items-center gap-2 text-sm text-text-primary'>
+                    <Input
                       type='checkbox'
                       checked={Boolean(displayItem.useMarquee)}
                       onChange={(e) =>
@@ -6409,9 +6407,9 @@ function ToniChyronSequenceEditor({
       </div>
 
       <div className='flex flex-wrap gap-2'>
-        <button type='button' onClick={addItem} className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'>
+        <Button type='button' onClick={addItem} className='px-3 py-2 text-xs font-semibold rounded border border-sand/40 text-text-primary hover:bg-sand/10'>
           + Sequence
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -6570,37 +6568,41 @@ function ProgramChyronEditorFields({
 
   return (
     <div className='space-y-4'>
-      <p className='text-xs text-gray-500'>ModoItaliano row rule: if chyron and disclaimer are both enabled, chyron is shown.</p>
+      <p className='text-xs text-text-secondary'>ModoItaliano row rule: if chyron and disclaimer are both enabled, chyron is shown.</p>
       <Switch checked={showValue} onCheckedChange={(checked) => updateProp(componentType, 'show', checked)} label='Show Chyron' />
 
-      <div className='space-y-2 rounded border border-slate-200 p-3'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>Main Chyron</span>
-        <div className='space-y-3'>
-          <p className='text-xs text-gray-500'>Sequence-only. If no text item is selected, the chyron is hidden.</p>
-          <ProgramTextSequenceEditor
-            sequence={textSequenceForEditor}
-            includeMarquee
-            textLabel='Text'
-            textPlaceholder='Main chyron text'
-            onChange={(nextSequence) => applyProps(buildSequenceProps(nextSequence, ctaSequenceForEditor))}
-            onTakeSelection={activateTextSequence}
-          />
-        </div>
-      </div>
+      {showValue ? (
+        <>
+          <div className='space-y-2 rounded border border-sand/30 p-3'>
+            <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>Main Chyron</span>
+            <div className='space-y-3'>
+              <p className='text-xs text-text-secondary'>Sequence-only. If no text item is selected, the chyron is hidden.</p>
+              <ProgramTextSequenceEditor
+                sequence={textSequenceForEditor}
+                includeMarquee
+                textLabel='Text'
+                textPlaceholder='Main chyron text'
+                onChange={(nextSequence) => applyProps(buildSequenceProps(nextSequence, ctaSequenceForEditor))}
+                onTakeSelection={activateTextSequence}
+              />
+            </div>
+          </div>
 
-      <div className='space-y-2 rounded border border-slate-200 p-3'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>CTA</span>
-        <div className='space-y-3'>
-          <p className='text-xs text-gray-500'>CTA is sequence-only as well.</p>
-          <ProgramTextSequenceEditor
-            sequence={ctaSequenceForEditor}
-            textLabel='CTA'
-            textPlaceholder='Call to action (shown above chyron)'
-            onChange={(nextSequence) => applyProps(buildSequenceProps(textSequenceForEditor, nextSequence))}
-            onTakeSelection={activateCtaSequence}
-          />
-        </div>
-      </div>
+          <div className='space-y-2 rounded border border-sand/30 p-3'>
+            <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>CTA</span>
+            <div className='space-y-3'>
+              <p className='text-xs text-text-secondary'>CTA is sequence-only as well.</p>
+              <ProgramTextSequenceEditor
+                sequence={ctaSequenceForEditor}
+                textLabel='CTA'
+                textPlaceholder='Call to action (shown above chyron)'
+                onChange={(nextSequence) => applyProps(buildSequenceProps(textSequenceForEditor, nextSequence))}
+                onTakeSelection={activateCtaSequence}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -6751,10 +6753,10 @@ function ProgramTextSequenceEditor({
   };
 
   return (
-    <div className={`space-y-3 rounded border ${isNested ? 'border-slate-200 bg-slate-50/70' : 'border-slate-300 bg-slate-50'} p-3`}>
+    <div className={`space-y-3 rounded border ${isNested ? 'border-sand/30 bg-dark-sand/70' : 'border-sand/40 bg-dark-sand/60'} p-3`}>
       <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-slate-600'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
-        <button
+        <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
+        <Button
           type='button'
           onClick={() =>
             applySequence({
@@ -6765,12 +6767,12 @@ function ProgramTextSequenceEditor({
             })
           }
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'manual' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            sequence.mode === 'manual' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-sand/10'
           }`}
         >
           Manual
-        </button>
-        <button
+        </Button>
+        <Button
           type='button'
           onClick={() =>
             applySequence({
@@ -6780,15 +6782,15 @@ function ProgramTextSequenceEditor({
             })
           }
           className={`px-2.5 py-1 rounded text-xs font-medium border ${
-            sequence.mode === 'autoplay' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            sequence.mode === 'autoplay' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-sand/10'
           }`}
         >
           Autoplay
-        </button>
+        </Button>
         {sequence.mode === 'autoplay' && (
           <>
-            <label className='text-xs text-slate-600'>Interval (ms)</label>
-            <input
+            <label className='text-xs text-text-secondary'>Interval (ms)</label>
+            <Input
               type='number'
               min={500}
               step={500}
@@ -6800,10 +6802,10 @@ function ProgramTextSequenceEditor({
                   startedAt: Date.now()
                 })
               }
-              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-green-500'
+              className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50'
             />
-            <label className='flex items-center gap-1 text-xs text-slate-600'>
-              <input
+            <label className='flex items-center gap-1 text-xs text-text-secondary'>
+              <Input
                 type='checkbox'
                 checked={sequence.loop !== false}
                 onChange={(e) =>
@@ -6820,7 +6822,7 @@ function ProgramTextSequenceEditor({
         )}
       </div>
 
-      {sequence.items.length === 0 && <p className='text-xs text-slate-500'>This sequence is empty. Add items below.</p>}
+      {sequence.items.length === 0 && <p className='text-xs text-text-secondary'>This sequence is empty. Add items below.</p>}
 
       <div className='space-y-3'>
         {sequence.items.map((item, index) => {
@@ -6837,45 +6839,45 @@ function ProgramTextSequenceEditor({
                 }
                 setDraggingIndex(null);
               }}
-              className={`rounded border p-3 ${isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}
+              className={`rounded border p-3 ${isActive ? 'border-sea/40 bg-sea/10' : 'border-sand/30 bg-dark-sand/80'}`}
             >
               <div className='flex flex-wrap items-center gap-2'>
                 <span
                   draggable
                   onDragStart={() => setDraggingIndex(index)}
                   onDragEnd={() => setDraggingIndex(null)}
-                  className='cursor-grab select-none rounded border border-dashed border-slate-300 p-2 text-slate-500'
+                  className='cursor-grab select-none rounded border border-dashed border-sand/40 p-2 text-text-secondary'
                   title='Drag to reorder'
                   aria-label='Drag to reorder'
                 >
                   <GripVertical size={14} strokeWidth={2} />
                 </span>
-                <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-slate-500'>
+                <div className='min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-text-secondary'>
                   {displayItem.kind === 'sequence' ? 'Nested Sequence' : 'Sequence Item'}
                 </div>
-                <button
+                <Button
                   type='button'
                   onClick={() => {
                     void activateItem(displayItem.id);
                   }}
-                  className='px-3 py-2 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700'
+                  className='px-3 py-2 text-xs font-semibold rounded bg-sea text-white hover:bg-sea/90'
                 >
                   Take
-                </button>
-                <button
+                </Button>
+                <Button
                   type='button'
                   onClick={() => removeItem(index)}
-                  className='px-3 py-2 text-xs font-semibold rounded border border-red-200 text-red-600 hover:bg-red-50'
+                  className='px-3 py-2 text-xs font-semibold rounded border border-terracotta/35 text-terracotta hover:bg-terracotta/10'
                 >
                   Remove
-                </button>
+                </Button>
               </div>
 
               {displayItem.kind === 'preset' ? (
                 <div className='mt-3 space-y-2'>
-                  <label className='text-sm text-gray-700 block'>
-                    <span className='block text-xs text-gray-500 mb-1'>{textLabel}</span>
-                    <input
+                  <label className='text-sm text-text-primary block'>
+                    <span className='block text-xs text-text-secondary mb-1'>{textLabel}</span>
+                    <Input
                       type='text'
                       value={displayItem.text}
                       onChange={(e) =>
@@ -6884,13 +6886,13 @@ function ProgramTextSequenceEditor({
                           text: e.target.value
                         })
                       }
-                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-green-500'
+                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                       placeholder={textPlaceholder}
                     />
                   </label>
                   {includeMarquee && (
-                    <label className='flex items-center gap-2 text-sm text-gray-700'>
-                      <input
+                    <label className='flex items-center gap-2 text-sm text-text-primary'>
+                      <Input
                         type='checkbox'
                         checked={Boolean(displayItem.useMarquee)}
                         onChange={(e) =>
@@ -6945,9 +6947,9 @@ function ProgramTextSequenceEditor({
       </div>
 
       <div className='flex flex-wrap gap-2'>
-        <button type='button' onClick={addItem} className='px-3 py-2 text-xs font-semibold rounded border border-slate-300 text-slate-700 hover:bg-slate-100'>
+        <Button type='button' onClick={addItem} className='px-3 py-2 text-xs font-semibold rounded border border-sand/40 text-text-primary hover:bg-sand/10'>
           + Sequence
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -6960,6 +6962,7 @@ function ProgramSongSequenceEditor({
   onChange,
   onTakeSelection,
   onTakeOffAir,
+  onStopAllInstants,
   sceneQuickActions = [],
   onStageScene,
   onTakeScene,
@@ -6973,6 +6976,7 @@ function ProgramSongSequenceEditor({
   onChange: (nextSequence: ProgramSongSequence) => void;
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onTakeOffAir?: () => Promise<void> | void;
+  onStopAllInstants?: () => void;
   sceneQuickActions?: Array<{
     id: number;
     name: string;
@@ -7514,7 +7518,7 @@ function ProgramSongSequenceEditor({
                           {/* Main track row */}
                           <div
                             className={`group grid grid-cols-[28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${
-                              isActive ? 'bg-sea/15' : 'hover:bg-white/5'
+                              isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'
                             }`}
                           >
                             {/* Drag handle — hidden until hover */}
@@ -7721,7 +7725,7 @@ function ProgramSongSequenceEditor({
                 })
                 .slice(0, 80)
                 .map((song) => (
-                  <div key={song.id} className='group flex items-center justify-between border-b border-sand/20 px-3 py-2 hover:bg-white/5'>
+                  <div key={song.id} className='group flex items-center justify-between border-b border-sand/20 px-3 py-2 hover:bg-dark-sand/70'>
                     <div className='flex min-w-0 items-center gap-2'>
                       {song.coverUrl ? (
                         <img src={song.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover opacity-80' />
@@ -7785,7 +7789,7 @@ function ProgramSongSequenceEditor({
                         ? 'border-terracotta/80 bg-terracotta/35 text-white ring-1 ring-terracotta/50 dark:border-terracotta/90 dark:bg-terracotta/45 dark:text-white dark:ring-terracotta/60'
                         : sceneAction.isStaged
                           ? 'border-accent-blue/80 bg-accent-blue/35 text-white ring-1 ring-accent-blue/50 dark:border-accent-blue/90 dark:bg-accent-blue/45 dark:text-white dark:ring-accent-blue/60'
-                          : 'border-sand/25 bg-white/50 text-text-primary hover:border-sea/40 hover:bg-sea/10 dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:hover:border-sea/40'
+                          : 'border-sand/25 bg-dark-sand/80 text-text-primary hover:border-sea/40 hover:bg-sea/10 dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:hover:border-sea/40'
                     }`}
                   >
                     <span className='mb-0.5 block font-mono text-[9px] opacity-50'>{sceneAction.shortcutLabel}</span>
@@ -8034,6 +8038,18 @@ function ProgramSongSequenceEditor({
             >
               <Repeat2 size={16} />
             </IconButton>
+
+            {onStopAllInstants && (
+              <IconButton
+                type='button'
+                title='Stop All Instants'
+                onClick={() => onStopAllInstants()}
+                className='flex h-8 w-8 items-center justify-center rounded-full transition-colors text-text-secondary hover:text-terracotta hover:bg-terracotta/10'
+                aria-label='Stop All Instants'
+              >
+                <ZapOff size={16} />
+              </IconButton>
+            )}
           </div>
           </div>
         </div>

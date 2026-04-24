@@ -2241,8 +2241,10 @@ function SceneProgram({ programId }: { programId: string }) {
       <div className='w-full h-full relative bg-transparent'>
         {components.map((componentType) => {
           const props = metadata[componentType] || {};
+          const zIndex = typeof props._zIndex === 'number' ? props._zIndex : undefined;
 
-          switch (componentType) {
+          const renderComponent = (): React.ReactNode => {
+            switch (componentType) {
             case 'ticker':
               return (
                 <div key={componentType} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
@@ -2432,6 +2434,16 @@ function SceneProgram({ programId }: { programId: string }) {
                 </div>
               );
           }
+          };
+
+          const rendered = renderComponent();
+          if (rendered === null || rendered === undefined) return null;
+          if (zIndex === undefined) return rendered;
+          return (
+            <div key={componentType} style={{ position: 'absolute', inset: 0, zIndex }}>
+              {rendered}
+            </div>
+          );
         })}
         {shouldRenderProgramRow && (
           <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>

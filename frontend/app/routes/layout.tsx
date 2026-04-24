@@ -1,5 +1,6 @@
 import {
   AppShell,
+  IconButton,
   CommandSpotlight,
   Footer as BleeckerFooter,
   Header as BleeckerHeader,
@@ -297,7 +298,7 @@ export default function Layout() {
       }}
       options={programOptions}
       placeholder='Program'
-      icon={<Tv size={15} className='flex-shrink-0 text-sea dark:text-accent-blue' strokeWidth={1.5} />}
+      icon={<Tv size={15} className='flex-shrink-0 text-sea ' strokeWidth={1.5} />}
       wrapperClassName='max-w-[220px]'
     />
   );
@@ -324,20 +325,21 @@ export default function Layout() {
   }, [selectedProgramId]);
 
   const renderOpenProgramButton = () => (
-    <a
-      href={openProgramUrl}
-      target='_blank'
-      rel='noopener noreferrer'
+    <IconButton
+      type='button'
       title='Open Program Output'
       aria-label='Open Program Output'
-      className='inline-flex h-9 w-9 items-center justify-center rounded-full border border-sand/20 bg-white text-text-primary transition-colors hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
+      onClick={() => {
+        window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
+      }}
+      className='border-sand/20 bg-white text-text-primary hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
     >
       <ExternalLink size={16} strokeWidth={1.8} />
-    </a>
+    </IconButton>
   );
 
   const renderRefreshProgramButton = () => (
-    <button
+    <IconButton
       type='button'
       title='Refresh Program'
       aria-label='Refresh Program'
@@ -345,10 +347,10 @@ export default function Layout() {
         void triggerProgramReload();
       }}
       disabled={isTriggeringProgramReload}
-      className='inline-flex h-9 w-9 items-center justify-center rounded-full border border-sand/20 bg-white text-text-primary transition-colors hover:bg-sand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
+      className='border-sand/20 bg-white text-text-primary hover:bg-sand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
     >
       <RefreshCw size={16} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} />
-    </button>
+    </IconButton>
   );
 
   const renderLogoutButton = () => (
