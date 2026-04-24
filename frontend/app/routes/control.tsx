@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Accordion, Button, Panel, PanelLayout, Select, Sheet, Switch } from '@gaulatti/bleecker';
+import { Accordion, Button, IconButton, Input, Panel, PanelLayout, Select, Sheet, Switch } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -7530,13 +7530,14 @@ function ProgramSongSequenceEditor({
                             </span>
 
                             {/* Track number / eq bars / take-on-hover */}
-                            <button
+                            <IconButton
                               type='button'
                               onClick={() => {
                                 void activateItem(displayItem.id);
                               }}
-                              className='relative flex h-6 w-6 shrink-0 items-center justify-center'
+                              className='relative flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100'
                               title='Take on air'
+                              aria-label='Take on air'
                             >
                               {/* Number — visible by default when not active, hidden on hover */}
                               <span className={`text-xs tabular-nums transition-opacity ${isActive ? 'opacity-0' : 'text-text-secondary group-hover:opacity-0'}`}>
@@ -7563,7 +7564,7 @@ function ProgramSongSequenceEditor({
                               <span className='absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100'>
                                 <Play size={11} className='fill-text-primary text-text-primary' />
                               </span>
-                            </button>
+                            </IconButton>
 
                             {/* Cover art + title + artist */}
                             <div className='flex min-w-0 items-center gap-2.5 pl-1'>
@@ -7588,11 +7589,12 @@ function ProgramSongSequenceEditor({
                             {/* Hover actions */}
                             <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
                               {displayItem.kind === 'preset' ? (
-                                <button
+                                <IconButton
                                   type='button'
                                   onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
-                                  className='flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:text-text-primary'
+                                  className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
                                   title='Edit song'
+                                  aria-label='Edit song'
                                 >
                                   <svg
                                     width='13'
@@ -7607,13 +7609,14 @@ function ProgramSongSequenceEditor({
                                     <path d='M12 20h9' />
                                     <path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
                                   </svg>
-                                </button>
+                                </IconButton>
                               ) : null}
-                              <button
+                              <IconButton
                                 type='button'
                                 onClick={() => removeItem(index)}
-                                className='flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:text-terracotta'
+                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-terracotta'
                                 title='Remove'
+                                aria-label='Remove'
                               >
                                 <svg
                                   width='13'
@@ -7631,7 +7634,7 @@ function ProgramSongSequenceEditor({
                                   <path d='M14 11v6' />
                                   <path d='M9 6V4h6v2' />
                                 </svg>
-                              </button>
+                              </IconButton>
                             </div>
                           </div>
 
@@ -7701,7 +7704,7 @@ function ProgramSongSequenceEditor({
             className={`flex min-h-0 flex-col border-t border-sand/30 bg-dark-sand/70 ${showQueue ? 'hidden w-[320px] shrink-0 md:flex' : 'min-h-0 flex-1'}`}
           >
             <div className='border-b border-sand/30 bg-dark-sand/80 p-2'>
-              <input
+              <Input
                 type='text'
                 placeholder='Search catalog to add...'
                 value={addSongValue}
@@ -7732,14 +7735,15 @@ function ProgramSongSequenceEditor({
                         <div className='truncate text-[10px] text-text-secondary'>{song.artist}</div>
                       </div>
                     </div>
-                    <button
+                    <IconButton
                       type='button'
                       onClick={() => addItemFromCatalog(song.id)}
-                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-secondary opacity-0 transition-all hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
+                      className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary opacity-0 shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
                       title='Add to queue'
+                      aria-label='Add to queue'
                     >
                       <Plus size={14} />
-                    </button>
+                    </IconButton>
                   </div>
                 ))}
               {availableSongCatalog.length > 0 &&
@@ -7769,29 +7773,24 @@ function ProgramSongSequenceEditor({
             <div className='border-t border-sand/30 bg-dark-sand/90 px-4 py-2'>
               <div className='flex items-center gap-2 overflow-x-auto'>
                 {sceneQuickActions.map((sceneAction) => (
-                  <button
+                  <Button
                     key={sceneAction.id}
-                    type='button'
                     onClick={() => onStageScene?.(sceneAction.id)}
                     onDoubleClick={() => onTakeScene?.(sceneAction.id)}
                     title={`${sceneAction.name} (click to stage, double-click to take)`}
+                    variant='ghost'
+                    size='sm'
                     className={`relative min-w-[150px] max-w-[240px] shrink-0 overflow-hidden rounded border px-2 py-1.5 text-left text-[11px] font-medium leading-tight transition-colors ${
-                      sceneAction.isActive && sceneAction.isStaged
-                        ? 'border-sea/80 bg-sea/20 text-text-primary ring-1 ring-sea/40'
-                        : sceneAction.isActive
-                          ? 'border-terracotta/80 bg-terracotta/20 text-text-primary ring-1 ring-terracotta/40'
-                          : sceneAction.isStaged
-                            ? 'border-accent-blue/80 bg-accent-blue/20 text-text-primary ring-1 ring-accent-blue/40'
-                            : 'border-sand/25 bg-white/50 text-text-primary hover:border-sea/40 hover:bg-sea/10 dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:hover:border-sea/40'
+                      sceneAction.isActive
+                        ? 'border-terracotta/80 bg-terracotta/35 text-white ring-1 ring-terracotta/50 dark:border-terracotta/90 dark:bg-terracotta/45 dark:text-white dark:ring-terracotta/60'
+                        : sceneAction.isStaged
+                          ? 'border-accent-blue/80 bg-accent-blue/35 text-white ring-1 ring-accent-blue/50 dark:border-accent-blue/90 dark:bg-accent-blue/45 dark:text-white dark:ring-accent-blue/60'
+                          : 'border-sand/25 bg-white/50 text-text-primary hover:border-sea/40 hover:bg-sea/10 dark:border-sand/20 dark:bg-white/5 dark:text-text-primary dark:hover:border-sea/40'
                     }`}
                   >
                     <span className='mb-0.5 block font-mono text-[9px] opacity-50'>{sceneAction.shortcutLabel}</span>
-                    <div className='absolute right-1 top-1 flex gap-1'>
-                      {sceneAction.isActive ? <span className='rounded bg-terracotta px-1 py-0.5 text-[9px] font-bold text-white'>PGM</span> : null}
-                      {sceneAction.isStaged ? <span className='rounded bg-sea px-1 py-0.5 text-[9px] font-bold text-white'>STG</span> : null}
-                    </div>
                     <span className='line-clamp-2'>{sceneAction.name}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -7799,7 +7798,7 @@ function ProgramSongSequenceEditor({
           <div className='flex items-center justify-between border-t border-sand/30 bg-dark-sand/85 px-4 py-3'>
           {/* Transport controls */}
           <div className='flex items-center gap-2'>
-            <button
+            <IconButton
               type='button'
               title='Previous'
               disabled={runtimeActiveItemIndex <= 0}
@@ -7809,12 +7808,13 @@ function ProgramSongSequenceEditor({
                   void activateItem(sequence.items[idx - 1].id);
                 }
               }}
-              className='flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary disabled:opacity-30'
+              className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
+              aria-label='Previous'
             >
               <SkipBack size={16} fill='currentColor' />
-            </button>
+            </IconButton>
 
-            <button
+            <IconButton
               type='button'
               title={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
               onClick={() => {
@@ -7829,23 +7829,25 @@ function ProgramSongSequenceEditor({
                   }
                 }
               }}
-              className='flex h-10 w-10 items-center justify-center rounded-full bg-sea text-white shadow-lg transition-transform hover:scale-105 hover:bg-accent-blue active:scale-95'
+              className='flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95'
+              aria-label={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
             >
               <Play size={18} fill='currentColor' className='ml-0.5' />
-            </button>
+            </IconButton>
 
-            <button
+            <IconButton
               type='button'
               title='Stop / Take Off Air'
               onClick={() => {
                 void clearActiveItem();
               }}
-              className='flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary'
+              className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
+              aria-label='Stop / Take Off Air'
             >
               <Square size={16} fill='currentColor' />
-            </button>
+            </IconButton>
 
-            <button
+            <IconButton
               type='button'
               title='Next'
               disabled={runtimeActiveItemIndex < 0 || runtimeActiveItemIndex >= sequence.items.length - 1}
@@ -7855,10 +7857,11 @@ function ProgramSongSequenceEditor({
                   void activateItem(sequence.items[idx + 1].id);
                 }
               }}
-              className='flex h-8 w-8 items-center justify-center rounded-full text-text-secondary transition-colors hover:text-text-primary disabled:opacity-30'
+              className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
+              aria-label='Next'
             >
               <SkipForward size={16} fill='currentColor' />
-            </button>
+            </IconButton>
           </div>
 
           {/* Now playing info + progress */}
@@ -7981,8 +7984,7 @@ function ProgramSongSequenceEditor({
           {/* Mode and loop toggles */}
           <div className='flex items-center gap-3'>
             <div className='flex items-center gap-0.5 rounded-lg border border-sand/30 bg-dark-sand/80 p-0.5'>
-              <button
-                type='button'
+              <Button
                 onClick={() =>
                   applySequence({
                     ...sequence,
@@ -7995,11 +7997,12 @@ function ProgramSongSequenceEditor({
                 className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                   sequence.mode === 'manual' ? 'bg-sea/20 text-sea shadow-sm' : 'text-text-secondary hover:text-text-primary'
                 }`}
+                size='sm'
+                variant='secondary'
               >
                 Manual
-              </button>
-              <button
-                type='button'
+              </Button>
+              <Button
                 onClick={() =>
                   applySequence({
                     ...sequence,
@@ -8012,22 +8015,25 @@ function ProgramSongSequenceEditor({
                 className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                   sequence.mode === 'autoplay' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'
                 }`}
+                size='sm'
+                variant='secondary'
               >
                 <Play size={9} fill='currentColor' />
                 Autoplay
-              </button>
+              </Button>
             </div>
 
-            <button
+            <IconButton
               type='button'
               title='Loop'
               onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
               className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
                 sequence.loop !== false ? 'text-sea bg-sea/10' : 'text-text-secondary hover:text-text-primary'
               }`}
+              aria-label='Loop'
             >
               <Repeat2 size={16} />
-            </button>
+            </IconButton>
           </div>
           </div>
         </div>
