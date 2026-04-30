@@ -1,44 +1,29 @@
 import React, { useState } from 'react';
 import { Button, Card, Input, SectionHeader } from '@gaulatti/bleecker';
-import { BroadcastLayout, ChyronHolder, ClockWidget, Header, LiveIndicator, QRCodeWidget, Ticker } from '../components';
+import {
+  BroadcastLayout,
+  ChyronHolder,
+  ClockWidget,
+  Header,
+  LiveIndicator,
+  QRCodeWidget,
+  Ticker,
+  RelojLoopClock,
+  RelojDigitalLoopClock,
+  RelojClone
+} from '../components';
+import { OVERLAY_COMPONENTS } from '../models/components';
 
 const STAGE_CLASS = 'relative min-h-screen bg-deep-sea';
 const STAGE_CENTER_CLASS = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-white';
 
 export default function Preview() {
-  const [activeDemo, setActiveDemo] = useState<string>('broadcast-layout');
+  const [activeDemo, setActiveDemo] = useState<string>('ticker');
   const [chyronText, setChyronText] = useState('LAS INTROS DEL FESTIVAL DE SANREMO');
   const [showChyron, setShowChyron] = useState(false);
 
-  const demos = [
-    { id: 'broadcast-layout', name: 'Broadcast Layout', description: 'Complete broadcast layout with all components' },
-    { id: 'ticker', name: 'Ticker', description: 'Bottom ticker bar with hashtag and URL' },
-    { id: 'chyron', name: 'Chyron', description: 'Animated message overlay' },
-    { id: 'clock-widget', name: 'Clock Widget', description: 'Live updating clock display' },
-    { id: 'qr-code', name: 'QR Code', description: 'QR code widget' },
-    { id: 'live-indicator', name: 'Live Indicator', description: 'Animated LIVE badge' },
-    { id: 'header', name: 'Header', description: 'Top header bar' }
-  ];
-
   const renderDemo = () => {
     switch (activeDemo) {
-      case 'broadcast-layout':
-        return (
-          <BroadcastLayout
-            headerTitle='ModoSanremo | La evolución gráfica del Festival (1969-1989)'
-            headerDate='23/01/2026'
-            hashtag='#ModoSanremoMR'
-            url='modoradio.cl'
-            chyronText={chyronText}
-            showChyron={showChyron}
-            showLiveIndicator={true}
-            qrCodeContent='https://modoradio.cl'
-          >
-            <div className='flex h-full items-center justify-center p-8 text-center text-white'>
-              <p className='text-4xl font-semibold tracking-tight'>Broadcast Layout Preview</p>
-            </div>
-          </BroadcastLayout>
-        );
       case 'ticker':
         return (
           <div className={STAGE_CLASS}>
@@ -96,6 +81,24 @@ export default function Preview() {
             </div>
           </div>
         );
+      case 'reloj-loop-clock':
+        return (
+          <div className={`${STAGE_CLASS}`}>
+            <RelojLoopClock />
+          </div>
+        );
+      case 'reloj-digital-loop-clock':
+        return (
+          <div className={`${STAGE_CLASS}`}>
+            <RelojDigitalLoopClock />
+          </div>
+        );
+      case 'reloj-clone':
+        return (
+          <div className={`${STAGE_CLASS}`}>
+            <RelojClone />
+          </div>
+        );
       default:
         return <div className='p-4 text-sm text-text-secondary'>Select a component to preview</div>;
     }
@@ -106,7 +109,7 @@ export default function Preview() {
       <aside className='w-[300px] overflow-y-auto border-r border-sand/30 bg-light-sand p-6 dark:border-sand/20 dark:bg-deep-sea'>
         <SectionHeader title='Component Preview' description='Preview each graphic block and its behavior.' />
         <div className='mt-6 flex flex-col gap-3'>
-          {demos.map((demo) => (
+          {OVERLAY_COMPONENTS.map((demo) => (
             <Button
               key={demo.id}
               onClick={() => {

@@ -26,6 +26,7 @@ import {
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
+import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
 import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
@@ -2288,6 +2289,8 @@ function SceneProgram({ programId }: { programId: string }) {
                 return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
               case 'reloj-loop-clock':
                 return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
+              case 'reloj-digital-loop-clock':
+                return <RelojDigitalLoopClock key={componentType} timezone={props.timezone || 'America/New_York'} title={props.title || 'NEW YORK NONSTOP'} />;
               case 'toni-chyron':
               case 'fifthbell-chyron': {
                 const fifthBellChyronProps = {

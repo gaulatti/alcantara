@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/layouts';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { OVERLAY_COMPONENTS } from '../models/components';
 
 interface Layout {
   id: number;
@@ -42,18 +43,12 @@ export default function LayoutsAdmin() {
     setLayouts(data);
   };
 
-  const fetchComponentTypes = async () => {
-    const res = await fetch(apiUrl('/layouts/component-types'));
-    if (!res.ok) throw new Error(`Failed to fetch component types: ${res.status}`);
-    const data = await res.json();
-    setComponentTypes(data);
-  };
-
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([fetchLayouts(), fetchComponentTypes()]);
+        setComponentTypes(OVERLAY_COMPONENTS.map((c) => ({ type: c.id, name: c.name, description: c.description })));
+        await fetchLayouts();
       } catch (err) {
         console.error(err);
         showAlert('Failed to load layouts. Please refresh and try again.', 'error');

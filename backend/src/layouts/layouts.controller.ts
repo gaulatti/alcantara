@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+} from '@nestjs/common';
 import { LayoutsService } from './layouts.service';
 
 @Controller('layouts')
@@ -10,18 +18,15 @@ export class LayoutsController {
     return this.layoutsService.findAll();
   }
 
-  @Get('component-types')
-  async getComponentTypes() {
-    return this.layoutsService.getComponentTypes();
-  }
-
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.layoutsService.findOne(+id);
   }
 
   @Post()
-  async create(@Body() data: { name: string; componentType: string; settings?: any }) {
+  async create(
+    @Body() data: { name: string; componentType: string; settings?: any },
+  ) {
     return this.layoutsService.create(data);
   }
 

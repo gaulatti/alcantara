@@ -18,3 +18,6 @@ export { CronicaBackground } from './CronicaBackground';
 export { CronicaReiteramos } from './CronicaReiteramos';
 export { Slideshow } from './Slideshow';
 export { VideoStream } from './VideoStream';
+export { default as RelojLoopClock } from './RelojLoopClock';
+export { default as RelojDigitalLoopClock } from './RelojDigitalLoopClock';
+export { default as RelojClone } from './RelojClone';

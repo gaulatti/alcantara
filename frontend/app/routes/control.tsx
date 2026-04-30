@@ -3,6 +3,7 @@ import { Accordion, Button, Checkbox, FileInput, IconButton, Input, Panel, Panel
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square, ZapOff } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { OVERLAY_COMPONENTS } from '../models/components';
 import { useSSE } from '../hooks/useSSE';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { useGlobalProgramId } from '../utils/globalProgram';
@@ -308,6 +309,7 @@ const hasConfigurableSceneAttributes = (componentType: string): boolean => {
     case 'clock-widget':
     case 'reloj-clock':
     case 'reloj-loop-clock':
+    case 'reloj-digital-loop-clock':
     case 'toni-chyron':
     case 'fifthbell-chyron':
     case 'toni-clock':
@@ -1116,7 +1118,7 @@ export default function Control() {
   const instantDurationByUrlRef = useRef<Record<string, number | null>>({});
   const instantPlaybackTimeoutsRef = useRef<Record<number, number>>({});
   const [layouts, setLayouts] = useState<Layout[]>([]);
-  const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
+  const componentTypes = OVERLAY_COMPONENTS.map((c) => ({ type: c.id, name: c.name, description: c.description }));
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
   const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
   const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
@@ -1721,13 +1723,7 @@ export default function Control() {
   };
 
   const fetchComponentTypes = async () => {
-    try {
-      const res = await fetch(apiUrl('/layouts/component-types'));
-      const data = await res.json();
-      setComponentTypes(data);
-    } catch (err) {
-      console.error('Failed to fetch component types:', err);
-    }
+    // No-op, using constants
   };
 
   const fetchInstants = async () => {
@@ -3066,6 +3062,8 @@ export default function Control() {
         return { timezone: 'America/Argentina/Buenos_Aires' };
       case 'reloj-loop-clock':
         return { timezone: 'Europe/Madrid' };
+      case 'reloj-digital-loop-clock':
+        return { timezone: 'America/New_York', title: 'NEW YORK NONSTOP' };
       case 'toni-chyron':
       case 'fifthbell-chyron':
         return { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] };
@@ -5086,6 +5084,29 @@ function ComponentPropsFields({
             />
           </div>
           <p className='text-xs text-text-secondary'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>
+        </div>
+      );
+    case 'reloj-digital-loop-clock':
+      return (
+        <div className='space-y-4'>
+          <div>
+            <label className='block text-xs text-text-secondary mb-1'>Starting Timezone</label>
+            <Select
+              value={props.timezone || 'America/New_York'}
+              onChange={(value) => updateProp(componentType, 'timezone', value)}
+              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+              options={timezoneOptions}
+            />
+          </div>
+          <div>
+            <label className='block text-xs text-text-secondary mb-1'>Lower Third Title</label>
+            <Input
+              value={props.title || 'NEW YORK NONSTOP'}
+              onChange={(e) => updateProp(componentType, 'title', e.target.value)}
+              placeholder='NEW YORK NONSTOP'
+            />
+          </div>
+          <p className='text-xs text-text-secondary'>Clock cycles through global timezones automatically. Title remains static.</p>
         </div>
       );
     case 'toni-chyron':
