@@ -147,7 +147,7 @@
     pointer-events: auto;
 }
 
-#coming-soon {
+#cta {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 800;
     font-size: 72px;
@@ -163,7 +163,7 @@
     transform: translateY(0);
 }
 
-#coming-soon.out {
+#cta.out {
     opacity: 0;
     transform: translateY(12px);
 }

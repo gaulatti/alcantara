@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
 import './RelojDigitalLoopClock.css';
 
 interface RelojDigitalLoopClockProps {
   timezone?: string;
-  title?: string;
-  comingSoonPhrases?: string[];
+  textSequence?: unknown;
+  ctaSequence?: unknown;
 }
 
 interface LoopTimezone {
@@ -20,9 +21,49 @@ const LOOP_TIMEZONES: LoopTimezone[] = [
   { label: 'SANTIAGO', timezone: 'America/Santiago' }
 ];
 
-const DEFAULT_COMING_SOON_PHRASES = ['YA VIENE', 'COMING SOON', 'IN ARRIVO'];
+const FLIGHT_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.!? ';
 
-export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title = 'MODOSANREMO NONSTOP', comingSoonPhrases = DEFAULT_COMING_SOON_PHRASES }: RelojDigitalLoopClockProps) {
+function FlightBoardText({ targetText }: { targetText: string }) {
+  const [displayArray, setDisplayArray] = useState<string[]>([]);
+  const targetChars = useMemo(() => targetText.split(''), [targetText]);
+
+  useEffect(() => {
+    setDisplayArray((prev) => {
+      const start = prev.slice(0, targetChars.length);
+      while (start.length < targetChars.length) start.push(' ');
+      return start;
+    });
+
+    let frame = 0;
+    const intervalId = window.setInterval(() => {
+      frame++;
+      setDisplayArray((prev) => {
+        let allDone = true;
+        // Map over targetChars so array size matches current text precisely
+        const next = targetChars.map((targetChar, i) => {
+          // Speed: 2 frames per character index delay to settle
+          const settleFrame = 5 + i * 2;
+          if (frame >= settleFrame) {
+            return targetChar;
+          }
+
+          allDone = false;
+          // Random flip simulation
+          return FLIGHT_CHARS[Math.floor(Math.random() * FLIGHT_CHARS.length)];
+        });
+
+        if (allDone) window.clearInterval(intervalId);
+        return next;
+      });
+    }, 45);
+
+    return () => window.clearInterval(intervalId);
+  }, [targetChars]);
+
+  return <>{displayArray.join('')}</>;
+}
+
+export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSequence, ctaSequence }: RelojDigitalLoopClockProps) {
   const defaultIndex = useMemo(() => {
     const idx = LOOP_TIMEZONES.findIndex((item) => item.timezone === timezone);
     return idx >= 0 ? idx : 0;
@@ -32,9 +73,16 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title 
   const activeIndexRef = useRef(defaultIndex);
   const [clockOut, setClockOut] = useState(false);
 
-  const [phraseIndex, setPhraseIndex] = useState(0);
-  const phraseIndexRef = useRef(0);
-  const [phraseOut, setPhraseOut] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const normalizedTextSequence = useMemo(() => normalizeProgramTextSequence(textSequence), [textSequence]);
+  const normalizedCtaSequence = useMemo(() => normalizeProgramTextSequence(ctaSequence), [ctaSequence]);
+  const shouldTick = normalizedTextSequence?.mode === 'autoplay' || normalizedCtaSequence?.mode === 'autoplay';
+
+  useEffect(() => {
+    if (!shouldTick) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [shouldTick, normalizedTextSequence?.mode, normalizedCtaSequence?.mode]);
 
   const clockRef = useRef<HTMLDivElement>(null);
   const msRef = useRef<HTMLDivElement>(null);
@@ -101,27 +149,17 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title 
           setClockOut(false);
         }, 500);
       }
-
-      // "Coming soon" rotation every 15s
-      // Slightly offset or aligned with 15/30/45/0 offsets
-      if (secs % 15 === 0) {
-        setPhraseOut(true);
-        setTimeout(() => {
-          const next = (phraseIndexRef.current + 1) % comingSoonPhrases.length;
-          phraseIndexRef.current = next;
-          setPhraseIndex(next);
-          setPhraseOut(false);
-        }, 400); // Wait 400ms to swap text naturally while hidden
-      }
     }, 1000);
     return () => window.clearInterval(id);
-  }, [comingSoonPhrases.length]);
+  }, []);
 
   const active = LOOP_TIMEZONES[activeIndex] || LOOP_TIMEZONES[0];
-  
-  // Safe bounds check in case the array mutated and the index is now out of bounds
-  const currentPhraseIndex = phraseIndex < comingSoonPhrases.length ? phraseIndex : 0;
-  const phrase = comingSoonPhrases[currentPhraseIndex] || '';
+
+  const activeTitleItem = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedTextSequence }, nowMs);
+  const activeCtaItem = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedCtaSequence }, nowMs);
+
+  const titleText = activeTitleItem?.text?.trim() || '';
+  const ctaText = activeCtaItem?.text?.trim() || '';
 
   return (
     <div className='reloj-digital-loop-root'>
@@ -143,13 +181,19 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title 
         </div>
         <div id='city-name'>{active.label}</div>
       </div>
-      {title && title.trim() !== '' && (
+      {(titleText !== '' || ctaText !== '') && (
         <div id='lower-third'>
-          <div id='coming-soon' className={phraseOut ? 'out' : ''}>
-            {phrase}
-          </div>
-          <div id='pipe'>|</div>
-          <div id='show-title'>{title}</div>
+          {ctaText !== '' && (
+            <div id='cta' className={activeCtaItem?.mode === 'in' ? 'in-anim' : activeCtaItem?.mode === 'out' ? 'out' : ''}>
+              {ctaText}
+            </div>
+          )}
+          {titleText !== '' && ctaText !== '' && <div id='pipe'>|</div>}
+          {titleText !== '' && (
+            <div id='show-title'>
+              <FlightBoardText targetText={titleText} />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -52,7 +52,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     id: 'reloj-digital-loop-clock',
     name: 'Reloj Digital',
     description: 'Broadcast-style digital clock',
-    defaultProps: { timezone: 'America/New_York', title: '', comingSoonPhrases: ['YA VIENE', 'COMING SOON', 'IN ARRIVO'] }
+    defaultProps: { timezone: 'America/New_York' }
   },
   {
     id: 'reloj-clone',

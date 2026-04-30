@@ -12,7 +12,7 @@ import {
   RelojDigitalLoopClock,
   RelojClone
 } from '../components';
-import { OVERLAY_COMPONENTS } from '../models/components';
+import { OVERLAY_COMPONENTS, getComponentMetadata } from '../models/components';
 
 const STAGE_CLASS = 'relative min-h-screen bg-deep-sea';
 const STAGE_CENTER_CLASS = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-white';
@@ -87,12 +87,15 @@ export default function Preview() {
             <RelojLoopClock />
           </div>
         );
-      case 'reloj-digital-loop-clock':
+      case 'reloj-digital-loop-clock': {
+        const metadata = getComponentMetadata('reloj-digital-loop-clock');
+        const defaultProps = metadata?.defaultProps || {};
         return (
           <div className={`${STAGE_CLASS}`}>
-            <RelojDigitalLoopClock />
+            <RelojDigitalLoopClock timezone={defaultProps.timezone} textSequence={defaultProps.textSequence} ctaSequence={defaultProps.ctaSequence} />
           </div>
         );
+      }
       case 'reloj-clone':
         return (
           <div className={`${STAGE_CLASS}`}>

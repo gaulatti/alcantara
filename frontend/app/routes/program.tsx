@@ -2290,7 +2290,14 @@ function SceneProgram({ programId }: { programId: string }) {
               case 'reloj-loop-clock':
                 return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
               case 'reloj-digital-loop-clock':
-                return <RelojDigitalLoopClock key={componentType} timezone={props.timezone || 'America/New_York'} title={props.title ?? ''} comingSoonPhrases={props.comingSoonPhrases} />;
+                return (
+                  <RelojDigitalLoopClock
+                    key={componentType}
+                    timezone={props.timezone || 'America/New_York'}
+                    textSequence={props.textSequence}
+                    ctaSequence={props.ctaSequence}
+                  />
+                );
               case 'toni-chyron':
               case 'fifthbell-chyron': {
                 const fifthBellChyronProps = {

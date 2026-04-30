@@ -3063,7 +3063,11 @@ export default function Control() {
       case 'reloj-loop-clock':
         return { timezone: 'Europe/Madrid' };
       case 'reloj-digital-loop-clock':
-        return { timezone: 'America/New_York', title: '', comingSoonPhrases: ['YA VIENE', 'COMING SOON', 'IN ARRIVO'] };
+        return {
+          timezone: 'America/New_York',
+          textSequence: createProgramTextSequence('manual'),
+          ctaSequence: createProgramTextSequence('manual')
+        };
       case 'toni-chyron':
       case 'fifthbell-chyron':
         return { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] };
@@ -5087,41 +5091,15 @@ function ComponentPropsFields({
         </div>
       );
     case 'reloj-digital-loop-clock':
-      const currentPhrases = props.comingSoonPhrases && Array.isArray(props.comingSoonPhrases) ? props.comingSoonPhrases.join(', ') : 'YA VIENE, COMING SOON, IN ARRIVO';
       return (
-        <div className='space-y-4'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Starting Timezone</label>
-            <Select
-              value={props.timezone || 'America/New_York'}
-              onChange={(value) => updateProp(componentType, 'timezone', value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
-              options={timezoneOptions}
-            />
-          </div>
-          <div className='flex gap-2'>
-            <div className='flex-1'>
-              <label className='block text-xs text-text-secondary mb-1'>Lower Third Title (Leave empty to hide)</label>
-              <Input
-                value={props.title ?? ''}
-                onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-                placeholder="e.g. MODOSANREMO NONSTOP"
-              />
-            </div>
-            <div className='flex-1'>
-              <label className='block text-xs text-text-secondary mb-1'>Coming Soon Phrases (comma-separated)</label>
-              <Input
-                value={currentPhrases}
-                onChange={(e) => {
-                  const arr = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
-                  updateProp(componentType, 'comingSoonPhrases', arr.length > 0 ? arr : ['']);
-                }}
-                placeholder="YA VIENE, COMING SOON"
-              />
-            </div>
-          </div>
-          <p className='text-xs text-text-secondary'>Clock cycles global timezones. Coming Soon rotates automatically.</p>
-        </div>
+        <RelojDigitalEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          replaceProps={replaceProps}
+          commitProps={commitProps}
+          timezoneOptions={timezoneOptions}
+        />
       );
     case 'toni-chyron':
     case 'fifthbell-chyron':
@@ -6487,6 +6465,102 @@ function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSon
     items: playlistItems,
     activeItemId
   };
+}
+
+function RelojDigitalEditorFields({
+  componentType,
+  props,
+  updateProp,
+  replaceProps,
+  commitProps,
+  timezoneOptions
+}: {
+  componentType: string;
+  props: any;
+  updateProp: (componentType: string, propName: string, value: any) => void;
+  replaceProps: (componentType: string, nextProps: any) => void;
+  commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+  timezoneOptions: { value: string; label: string }[];
+}) {
+  const normalizedTextSequence = normalizeProgramTextSequence(props.textSequence, 0, { includeMarquee: false });
+  const normalizedCtaSequence = normalizeProgramTextSequence(props.ctaSequence, 0, { includeMarquee: false });
+
+  const textSequenceForEditor = useMemo<ProgramTextSequence>(() => {
+    return normalizedTextSequence ?? createProgramTextSequence('manual', { includeMarquee: false });
+  }, [normalizedTextSequence]);
+
+  const ctaSequenceForEditor = useMemo<ProgramTextSequence>(() => {
+    return normalizedCtaSequence ?? createProgramTextSequence('manual', { includeMarquee: false });
+  }, [normalizedCtaSequence]);
+
+  const buildSequenceProps = (nextTextSequence: ProgramTextSequence, nextCtaSequence: ProgramTextSequence) => ({
+    ...props,
+    textSequence: nextTextSequence,
+    ctaSequence: nextCtaSequence,
+    _timestamp: Date.now()
+  });
+
+  const activateTextSequence = async (nextSequence: ProgramTextSequence) => {
+    const nextProps = buildSequenceProps(nextSequence, ctaSequenceForEditor);
+    replaceProps(componentType, nextProps);
+    if (commitProps) {
+      await commitProps(componentType, nextProps);
+    }
+  };
+
+  const activateCtaSequence = async (nextSequence: ProgramTextSequence) => {
+    const nextProps = buildSequenceProps(textSequenceForEditor, nextSequence);
+    replaceProps(componentType, nextProps);
+    if (commitProps) {
+      await commitProps(componentType, nextProps);
+    }
+  };
+
+  const applyProps = (nextProps: unknown) => {
+    replaceProps(componentType, nextProps);
+  };
+
+  return (
+    <div className='space-y-4'>
+      <div>
+        <label className='block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1'>Starting Timezone</label>
+        <Select
+          value={props.timezone || 'America/New_York'}
+          onChange={(value) => updateProp(componentType, 'timezone', value)}
+          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 bg-black/20 text-white'
+          options={timezoneOptions}
+        />
+      </div>
+
+      <div className='space-y-2 rounded border border-sand/30 p-3'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>Lower Third Title</span>
+        <div className='space-y-3'>
+          <p className='text-xs text-text-secondary'>Sequence-only. If no text item is active, the entire lower third strip hides.</p>
+          <ProgramTextSequenceEditor
+            sequence={textSequenceForEditor}
+            textLabel='Title'
+            textPlaceholder='Main lower third title'
+            onChange={(nextSequence) => applyProps(buildSequenceProps(nextSequence, ctaSequenceForEditor))}
+            onTakeSelection={activateTextSequence}
+          />
+        </div>
+      </div>
+
+      <div className='space-y-2 rounded border border-sand/30 p-3'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>CTA Sequence</span>
+        <div className='space-y-3'>
+          <p className='text-xs text-text-secondary'>CTA sequence rotates automatically if configured as playlist.</p>
+          <ProgramTextSequenceEditor
+            sequence={ctaSequenceForEditor}
+            textLabel='CTA'
+            textPlaceholder='e.g. YA VIENE, UP NEXT'
+            onChange={(nextSequence) => applyProps(buildSequenceProps(textSequenceForEditor, nextSequence))}
+            onTakeSelection={activateCtaSequence}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ProgramChyronEditorFields({
