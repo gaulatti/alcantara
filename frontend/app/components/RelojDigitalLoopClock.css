@@ -20,16 +20,10 @@
     z-index: 0;
 }
 
-#logo-top-right {
-    position: absolute;
-    top: 48px;
-    right: 52px;
-    pointer-events: auto;
-}
-
-#logo-top-right img {
-    height: auto;
-    width: 128px;
+#logo-above img {
+    height: 52px;
+    width: auto;
+    filter: brightness(0) invert(1) drop-shadow(0 0 12px rgba(0, 0, 0, 0.85));
 }
 
 #clock-block {

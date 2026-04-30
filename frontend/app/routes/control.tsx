@@ -3063,7 +3063,7 @@ export default function Control() {
       case 'reloj-loop-clock':
         return { timezone: 'Europe/Madrid' };
       case 'reloj-digital-loop-clock':
-        return { timezone: 'America/New_York', title: 'NEW YORK NONSTOP' };
+        return { timezone: 'America/New_York', title: '', comingSoonPhrases: ['YA VIENE', 'COMING SOON', 'IN ARRIVO'] };
       case 'toni-chyron':
       case 'fifthbell-chyron':
         return { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] };
@@ -5087,6 +5087,7 @@ function ComponentPropsFields({
         </div>
       );
     case 'reloj-digital-loop-clock':
+      const currentPhrases = props.comingSoonPhrases && Array.isArray(props.comingSoonPhrases) ? props.comingSoonPhrases.join(', ') : 'YA VIENE, COMING SOON, IN ARRIVO';
       return (
         <div className='space-y-4'>
           <div>
@@ -5098,15 +5099,28 @@ function ComponentPropsFields({
               options={timezoneOptions}
             />
           </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Lower Third Title</label>
-            <Input
-              value={props.title || 'NEW YORK NONSTOP'}
-              onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-              placeholder='NEW YORK NONSTOP'
-            />
+          <div className='flex gap-2'>
+            <div className='flex-1'>
+              <label className='block text-xs text-text-secondary mb-1'>Lower Third Title (Leave empty to hide)</label>
+              <Input
+                value={props.title ?? ''}
+                onChange={(e) => updateProp(componentType, 'title', e.target.value)}
+                placeholder="e.g. MODOSANREMO NONSTOP"
+              />
+            </div>
+            <div className='flex-1'>
+              <label className='block text-xs text-text-secondary mb-1'>Coming Soon Phrases (comma-separated)</label>
+              <Input
+                value={currentPhrases}
+                onChange={(e) => {
+                  const arr = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+                  updateProp(componentType, 'comingSoonPhrases', arr.length > 0 ? arr : ['']);
+                }}
+                placeholder="YA VIENE, COMING SOON"
+              />
+            </div>
           </div>
-          <p className='text-xs text-text-secondary'>Clock cycles through global timezones automatically. Title remains static.</p>
+          <p className='text-xs text-text-secondary'>Clock cycles global timezones. Coming Soon rotates automatically.</p>
         </div>
       );
     case 'toni-chyron':

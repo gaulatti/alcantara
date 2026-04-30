@@ -4,6 +4,7 @@ import './RelojDigitalLoopClock.css';
 interface RelojDigitalLoopClockProps {
   timezone?: string;
   title?: string;
+  comingSoonPhrases?: string[];
 }
 
 interface LoopTimezone {
@@ -19,9 +20,9 @@ const LOOP_TIMEZONES: LoopTimezone[] = [
   { label: 'SANTIAGO', timezone: 'America/Santiago' }
 ];
 
-const COMING_SOON_PHRASES = ['YA VIENE', 'COMING SOON', 'IN ARRIVO'];
+const DEFAULT_COMING_SOON_PHRASES = ['YA VIENE', 'COMING SOON', 'IN ARRIVO'];
 
-export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title = 'MODOSANREMO NONSTOP' }: RelojDigitalLoopClockProps) {
+export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title = 'MODOSANREMO NONSTOP', comingSoonPhrases = DEFAULT_COMING_SOON_PHRASES }: RelojDigitalLoopClockProps) {
   const defaultIndex = useMemo(() => {
     const idx = LOOP_TIMEZONES.findIndex((item) => item.timezone === timezone);
     return idx >= 0 ? idx : 0;
@@ -106,7 +107,7 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title 
       if (secs % 15 === 0) {
         setPhraseOut(true);
         setTimeout(() => {
-          const next = (phraseIndexRef.current + 1) % COMING_SOON_PHRASES.length;
+          const next = (phraseIndexRef.current + 1) % comingSoonPhrases.length;
           phraseIndexRef.current = next;
           setPhraseIndex(next);
           setPhraseOut(false);
@@ -114,17 +115,20 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title 
       }
     }, 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [comingSoonPhrases.length]);
 
   const active = LOOP_TIMEZONES[activeIndex] || LOOP_TIMEZONES[0];
-  const phrase = COMING_SOON_PHRASES[phraseIndex];
+  
+  // Safe bounds check in case the array mutated and the index is now out of bounds
+  const currentPhraseIndex = phraseIndex < comingSoonPhrases.length ? phraseIndex : 0;
+  const phrase = comingSoonPhrases[currentPhraseIndex] || '';
 
   return (
     <div className='reloj-digital-loop-root'>
-      <div id='logo-top-right'>
-        <img src='/mi.png' alt='Modo Italiano' />
-      </div>
       <div id='clock-block' className={clockOut ? 'clock-out' : ''}>
+        <div id='logo-above'>
+          <img src='/mi.svg' alt='Modo Italiano' />
+        </div>
         <div id='clock-row'>
           <div id='clock-bg'>
             <div id='clock' ref={clockRef}>
@@ -139,13 +143,15 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', title 
         </div>
         <div id='city-name'>{active.label}</div>
       </div>
-      <div id='lower-third'>
-        <div id='coming-soon' className={phraseOut ? 'out' : ''}>
-          {phrase}
+      {title && title.trim() !== '' && (
+        <div id='lower-third'>
+          <div id='coming-soon' className={phraseOut ? 'out' : ''}>
+            {phrase}
+          </div>
+          <div id='pipe'>|</div>
+          <div id='show-title'>{title}</div>
         </div>
-        <div id='pipe'>|</div>
-        <div id='show-title'>{title}</div>
-      </div>
+      )}
     </div>
   );
 }
