@@ -3,7 +3,7 @@ import { Accordion, Button, Checkbox, FileInput, IconButton, Input, Panel, Panel
 import { Clock, GripVertical, Music2, Play, Plus, Repeat2, SkipBack, SkipForward, Square, ZapOff } from 'lucide-react';
 import type { Route } from './+types/control';
 import { apiUrl } from '../utils/apiBaseUrl';
-import { OVERLAY_COMPONENTS } from '../models/components';
+import { OVERLAY_COMPONENTS, hasConfigurableSceneAttributes, getDefaultPropsForComponent as getStaticDefaultProps } from '../models/components';
 import { useSSE } from '../hooks/useSSE';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { useGlobalProgramId } from '../utils/globalProgram';
@@ -297,38 +297,6 @@ const FIFTHBELL_AVAILABLE_WEATHER_CITIES = [
   'Bangkok',
   'Jakarta'
 ] as const;
-
-const hasConfigurableSceneAttributes = (componentType: string): boolean => {
-  switch (componentType) {
-    case 'ticker':
-    case 'header':
-    case 'qr-code':
-    case 'slideshow':
-    case 'video-stream':
-    case 'broadcast-layout':
-    case 'clock-widget':
-    case 'reloj-clock':
-    case 'reloj-loop-clock':
-    case 'reloj-digital-loop-clock':
-    case 'toni-chyron':
-    case 'fifthbell-chyron':
-    case 'toni-clock':
-    case 'fifthbell-clock':
-    case 'modoitaliano-chyron':
-    case 'modoitaliano-disclaimer':
-    case 'cronica-background':
-    case 'cronica-chyron':
-    case 'cronica-reiteramos':
-    case 'earone':
-    case 'fifthbell-content':
-    case 'fifthbell-marquee':
-    case 'fifthbell-corner':
-    case 'fifthbell':
-      return true;
-    default:
-      return false;
-  }
-};
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -3014,149 +2982,16 @@ export default function Control() {
   };
 
   const getDefaultPropsForComponent = (componentType: string): any => {
+    const base = getStaticDefaultProps(componentType);
     switch (componentType) {
-      case 'ticker':
-        return { hashtag: '#ModoSanremoMR', url: 'modoradio.cl' };
-      case 'chyron':
-        return { text: '', duration: 5000 };
       case 'header':
-        return { title: '', date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) };
-      case 'clock-widget':
-        return { showIcon: true, iconUrl: '', timezone: 'America/Argentina/Buenos_Aires' };
-      case 'live-indicator':
-        return { animate: true };
-      case 'logo-widget':
-        return { logoUrl: '', position: 'bottom-right' };
-      case 'slideshow':
-        return {
-          mediaGroupId: null,
-          images: [],
-          intervalMs: 5000,
-          transitionMs: 900,
-          shuffle: false,
-          fitMode: 'cover',
-          kenBurns: true
-        };
-      case 'video-stream':
-        return {
-          sourceUrl: '',
-          posterUrl: '',
-          showControls: false,
-          loop: false,
-          autoPlay: true,
-          objectFit: 'cover'
-        };
-      case 'qr-code':
-        return { qrCodeUrl: '', placeholder: true, content: 'https://modoradio.cl' };
-      case 'broadcast-layout':
-        return {
-          headerTitle: '',
-          hashtag: '#ModoSanremoMR',
-          url: 'modoradio.cl',
-          qrCodeContent: 'https://modoradio.cl',
-          clockTimezone: 'America/Argentina/Buenos_Aires',
-          showChyron: false,
-          chyronText: ''
-        };
-      case 'reloj-clock':
-        return { timezone: 'America/Argentina/Buenos_Aires' };
-      case 'reloj-loop-clock':
-        return { timezone: 'Europe/Madrid' };
+        return { ...base, date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) };
       case 'reloj-digital-loop-clock':
-        return {
-          timezone: 'America/New_York',
-          textSequence: createProgramTextSequence('manual'),
-          ctaSequence: createProgramTextSequence('manual')
-        };
-      case 'toni-chyron':
-      case 'fifthbell-chyron':
-        return { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] };
-      case 'toni-clock':
-      case 'fifthbell-clock':
-        return {
-          showWorldClocks: true,
-          showBellIcon: componentType === 'fifthbell-clock',
-          worldClockRotateIntervalMs: 5000,
-          worldClockTransitionMs: 300,
-          worldClockShuffle: false,
-          worldClockWidthPx: 200,
-          worldClockCities: [
-            { city: 'SANREMO', timezone: 'Europe/Rome' },
-            { city: 'NEW YORK', timezone: 'America/New_York' },
-            { city: 'MADRID', timezone: 'Europe/Madrid' },
-            { city: 'MONTEVIDEO', timezone: 'America/Montevideo' },
-            { city: 'SANTIAGO', timezone: 'America/Santiago' }
-          ]
-        };
-      case 'modoitaliano-clock':
-        return {};
+        return { ...base, textSequence: createProgramTextSequence('manual'), ctaSequence: createProgramTextSequence('manual') };
       case 'modoitaliano-chyron':
-        return {
-          show: true,
-          textSequence: createProgramTextSequence('manual', { includeMarquee: true }),
-          ctaSequence: createProgramTextSequence('manual')
-        };
-      case 'modoitaliano-disclaimer':
-        return {
-          text: 'Contenuti a scopo informativo.',
-          show: true,
-          align: 'right',
-          bottomPx: 24,
-          fontSizePx: 20,
-          opacity: 0.82
-        };
-      case 'cronica-background':
-        return {};
-      case 'cronica-chyron':
-        return { text: '' };
-      case 'cronica-reiteramos':
-        return { text: 'REITERAMOS', show: true };
-      case 'toni-logo':
-        return {};
-      case 'earone':
-        return { label: 'EARONE', rank: '', spins: '' };
+        return { ...base, textSequence: createProgramTextSequence('manual', { includeMarquee: true }), ctaSequence: createProgramTextSequence('manual') };
       case 'fifthbell-content':
-        return {
-          showArticles: true,
-          showWeather: true,
-          showEarthquakes: true,
-          showMarkets: true,
-          showCallsignTake: true,
-          weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES],
-          languageRotation: ['en', 'es', 'en', 'it'],
-          dataLoadTimeoutMs: 15000,
-          playlistDefaultDurationMs: 10000,
-          playlistUpdateIntervalMs: 100,
-          articlesDurationMs: 10000,
-          weatherDurationMs: 5000,
-          earthquakesDurationMs: 10000,
-          marketsDurationMs: 10000,
-          audioCueEnabled: true,
-          audioCueMinute: 59,
-          audioCueSecond: 55,
-          callsignPrelaunchUntilNyc: '2026-01-02T21:30:00',
-          callsignWindowStartSecond: 50,
-          callsignWindowEndSecond: 3
-        };
-      case 'fifthbell-marquee':
-        return {
-          showMarquee: false,
-          marqueeMinPostsCount: 4,
-          marqueeMinAverageRelevance: 0,
-          marqueeMinMedianRelevance: 0,
-          marqueePixelsPerSecond: 150,
-          marqueeMinDurationSeconds: 10,
-          marqueeHeightPx: 72
-        };
-      case 'fifthbell-corner':
-        return {
-          showWorldClocks: true,
-          showBellIcon: true,
-          worldClockRotateIntervalMs: 7000,
-          worldClockTransitionMs: 300,
-          worldClockShuffle: true,
-          worldClockWidthPx: 200
-        };
+        return { ...base, weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES] };
       case 'fifthbell':
         return {
           ...getDefaultPropsForComponent('fifthbell-content'),
@@ -3164,7 +2999,7 @@ export default function Control() {
           ...getDefaultPropsForComponent('toni-clock')
         };
       default:
-        return {};
+        return base;
     }
   };
 
