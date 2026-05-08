@@ -4,7 +4,13 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
+const usePolling = process.env.VITE_USE_POLLING === 'true';
+
 export default defineConfig({
+  server: {
+    host: true,
+    watch: usePolling ? { usePolling: true, interval: 300 } : undefined
+  },
   resolve: {
     alias: [
       {

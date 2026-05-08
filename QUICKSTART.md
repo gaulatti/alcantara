@@ -16,36 +16,41 @@ The database has already been seeded with sample data:
 
 ## Running the Application
 
-### Option 1: Using tmux (Recommended)
+### Option 1: Using Docker Compose (Recommended)
 
 ```bash
-./launch.sh
+docker compose up
 ```
 
-This will open a tmux session with one `dev` window split into two panes:
-- Left pane: Backend (NestJS on port 3000)
-- Right pane: Frontend (Vite dev server on port 5173)
+This builds and starts both services:
+- **Backend** (NestJS on port 3000) — auto-reloads on code changes
+- **Frontend** (React Router/Vite on port 5173) — HMR enabled
 
-If your session is messy or you want to rebuild the split layout:
-
+Rebuild images after dependency changes:
 ```bash
-./launch.sh --reset
+docker compose up --build
 ```
 
-To detach from tmux: `Ctrl+B` then `D`
-To reattach: `tmux attach -t alcantara`
-To kill the session: `tmux kill-session -t alcantara`
+Run in background:
+```bash
+docker compose up -d
+```
 
-### Option 2: Manual Launch
+Stop all services:
+```bash
+docker compose down
+```
+
+### Option 2: Manual Launch (without Docker)
 
 ```bash
 # Terminal 1 - Backend
 cd backend
-pnpm start:dev
+pnpm install && pnpm prisma:generate && pnpm start:dev
 
 # Terminal 2 - Frontend
 cd frontend
-pnpm dev
+npm install && npm run dev
 ```
 
 ## Using the System

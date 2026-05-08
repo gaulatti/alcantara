@@ -28,7 +28,13 @@ alcantara/
 │   │   └── prisma.service.ts  # Prisma database client
 │   └── prisma/
 │       └── schema.prisma      # Database schema
-└── launch.sh          # tmux launcher script
+├── compose.yml        # Docker Compose development setup
+├── backend/
+│   ├── Dockerfile     # Production build
+│   └── Dockerfile.dev # Development build (hot reload)
+└── frontend/
+    ├── Dockerfile     # Production build
+    └── Dockerfile.dev # Development build (hot reload)
 ```
 
 ## Features
@@ -68,45 +74,42 @@ alcantara/
 
 ### Prerequisites
 
-- Node.js (v18+)
-- pnpm
-- tmux (optional, for easy launching)
-
-### Installation
-
-```bash
-# Install all dependencies
-pnpm install
-```
+- Docker & Docker Compose
 
 ### Development
 
-#### Option 1: Using tmux (recommended)
+#### Option 1: Using Docker Compose (recommended)
 
 ```bash
-./launch.sh
+docker compose up
 ```
 
-This launches one tmux window (`dev`) split into two panes:
-- Left pane: Backend (`pnpm start:dev`)
-- Right pane: Frontend (`pnpm dev`)
+This builds and starts both services:
+- **Backend** (NestJS, port 3000) with hot reload via `nest start --watch`
+- **Frontend** (React Router/Vite, port 5173) with HMR
 
-If you need to rebuild the session layout:
+Source directories are mounted so changes are reflected immediately.
 
+Rebuild images after dependency changes:
 ```bash
-./launch.sh --reset
+docker compose up --build
 ```
 
-#### Option 2: Manual launch
+Run in background:
+```bash
+docker compose up -d
+```
+
+#### Option 2: Manual launch (without Docker)
 
 ```bash
 # Terminal 1 - Backend
 cd backend
-pnpm start:dev
+pnpm install && pnpm prisma:generate && pnpm start:dev
 
 # Terminal 2 - Frontend
 cd frontend
-pnpm dev
+npm install && npm run dev
 ```
 
 ### Accessing the Application

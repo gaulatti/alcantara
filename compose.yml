@@ -1,0 +1,58 @@
+name: alcantara
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    env_file: ./backend/.env
+    environment:
+      - PORT=3000
+      - ALLOWED_ORIGINS=http://localhost:5173
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - ./backend/nest-cli.json:/app/nest-cli.json
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/src
+          ignore:
+            - node_modules/
+        - action: sync
+          path: ./backend/prisma
+          target: /app/prisma
+        - action: rebuild
+          path: ./backend/package.json
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    env_file: ./frontend/.env
+    environment:
+      - VITE_USE_POLLING=true
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/react-router.config.ts:/app/react-router.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/app
+          target: /app/app
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./frontend/package.json
+    command: sh -c "npm run dev"
+    restart: unless-stopped

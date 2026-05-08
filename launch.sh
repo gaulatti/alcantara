@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# DEPRECATED: Use 'docker compose up' instead.
+# This tmux-based launcher is kept for reference.
+
 set -euo pipefail
 
 SESSION_NAME="alcantara"
