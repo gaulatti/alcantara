@@ -3346,7 +3346,7 @@ export default function Control() {
   const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
   const controlDeckGrowProps = { grow: true } as any;
   return (
-    <div className='flex h-full w-full min-h-0 flex-col bg-dark-sand text-text-primary'>
+    <div className='flex h-screen w-full min-h-0 flex-col bg-dark-sand text-text-primary'>
       <style>
         {`
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
