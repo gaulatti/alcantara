@@ -3,7 +3,13 @@ import { Amplify, type ResourcesConfig } from 'aws-amplify';
 const userPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID;
 const userPoolClientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const userPoolDomain = import.meta.env.VITE_COGNITO_DOMAIN;
-const fqdn = import.meta.env.VITE_FQDN || 'http://localhost:5173';
+const port = import.meta.env.VITE_PORT || '5173';
+const fqdn = import.meta.env.VITE_FQDN || `http://localhost:${port}`;
+const localOrigin = `http://localhost:${port}`;
+const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
+
+const redirectSignIn = Array.from(new Set([runtimeOrigin, localOrigin, fqdn].filter(Boolean))) as string[];
+const redirectSignOut = redirectSignIn.map((origin) => `${origin}/logout`);
 
 if (userPoolId && userPoolClientId && userPoolDomain) {
   const config: ResourcesConfig = {
@@ -15,8 +21,8 @@ if (userPoolId && userPoolClientId && userPoolDomain) {
           oauth: {
             domain: userPoolDomain,
             scopes: ['openid', 'email', 'profile'],
-            redirectSignIn: ['http://localhost:5173', fqdn],
-            redirectSignOut: ['http://localhost:5173/logout', `${fqdn}/logout`],
+            redirectSignIn,
+            redirectSignOut,
             responseType: 'code'
           }
         }

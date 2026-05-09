@@ -84,9 +84,9 @@ alcantara/
 docker compose up
 ```
 
-This builds and starts both services:
-- **Backend** (NestJS, port 3000) with hot reload via `nest start --watch`
-- **Frontend** (React Router/Vite, port 5173) with HMR
+This builds and starts both services (ports configurable via `.env`):
+- **Backend** (NestJS, default port 3000) with hot reload via `nest start --watch`
+- **Frontend** (React Router/Vite, default port 5173) with HMR
 
 Source directories are mounted so changes are reflected immediately.
 
@@ -114,10 +114,19 @@ npm install && npm run dev
 
 ### Accessing the Application
 
-- **Frontend (dev)**: http://localhost:5173
-- **Control Panel**: http://localhost:5173/control
-- **Program Page**: http://localhost:5173/program
-- **Backend API**: http://localhost:3000
+Ports default to 5173 (frontend) and 3000 (backend). Configure via env vars:
+
+```bash
+# Docker: set in ./.env or shell
+BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
+
+# Manual dev: set in frontend/.env and backend/.env
+```
+
+- **Frontend (dev)**: `http://localhost:<VITE_PORT>` (default 5173)
+- **Control Panel**: `http://localhost:<VITE_PORT>/control`
+- **Program Page**: `http://localhost:<VITE_PORT>/program`
+- **Backend API**: `http://localhost:<BACKEND_PORT>` (default 3000)
 
 ### API Endpoints
 

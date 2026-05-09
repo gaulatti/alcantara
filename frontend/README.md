@@ -32,7 +32,13 @@ Start the development server with HMR:
 npm run dev
 ```
 
-Your application will be available at `http://localhost:5173`.
+The dev server port is configurable via the `VITE_PORT` env var (default 5173).
+
+```bash
+VITE_PORT=3001 npm run dev
+```
+
+Your application will be available at `http://localhost:<VITE_PORT>`.
 
 ## Building for Production
 

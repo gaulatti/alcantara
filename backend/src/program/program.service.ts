@@ -2,6 +2,7 @@ import {
   BadRequestException,
   BadGatewayException,
   Injectable,
+  OnModuleInit,
   NotFoundException,
 } from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
@@ -70,7 +71,7 @@ type ProgramUpdateTopic =
   | 'sceneInstant';
 
 @Injectable()
-export class ProgramService {
+export class ProgramService implements OnModuleInit {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
   private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
@@ -117,6 +118,25 @@ export class ProgramService {
   >();
 
   constructor(private prisma: PrismaService) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.ensureDefaultProgramState();
+  }
+
+  private async ensureDefaultProgramState(): Promise<void> {
+    await this.prisma.programState.upsert({
+      where: { programId: ProgramService.DEFAULT_PROGRAM_ID },
+      update: {},
+      create: {
+        programId: ProgramService.DEFAULT_PROGRAM_ID,
+        activeSceneId: null,
+        audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+      },
+    });
+    if (!this.stagedSceneByProgramId.has(ProgramService.DEFAULT_PROGRAM_ID)) {
+      this.stagedSceneByProgramId.set(ProgramService.DEFAULT_PROGRAM_ID, null);
+    }
+  }
 
   private createDefaultBroadcastMixerChannels(): BroadcastMixerChannel[] {
     return [
@@ -1002,10 +1022,18 @@ export class ProgramService {
 
   private async getProgramStateRecord(programId: string) {
     const normalizedProgramId = this.normalizeProgramId(programId);
-    const state = await this.prisma.programState.findUnique({
+    let state = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
       select: { id: true, programId: true },
     });
+
+    if (!state && normalizedProgramId === ProgramService.DEFAULT_PROGRAM_ID) {
+      await this.ensureDefaultProgramState();
+      state = await this.prisma.programState.findUnique({
+        where: { programId: normalizedProgramId },
+        select: { id: true, programId: true },
+      });
+    }
 
     if (!state) {
       throw new Error('Program not found');
@@ -1016,7 +1044,7 @@ export class ProgramService {
 
   private async getProgramStateWithScenes(programId: string) {
     const normalizedProgramId = this.normalizeProgramId(programId);
-    const state = await this.prisma.programState.findUnique({
+    let state = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
       include: {
         activeScene: {
@@ -1045,6 +1073,39 @@ export class ProgramService {
         },
       },
     });
+
+    if (!state && normalizedProgramId === ProgramService.DEFAULT_PROGRAM_ID) {
+      await this.ensureDefaultProgramState();
+      state = await this.prisma.programState.findUnique({
+        where: { programId: normalizedProgramId },
+        include: {
+          activeScene: {
+            include: { layout: true },
+          },
+          scenes: {
+            orderBy: { position: 'asc' },
+            include: {
+              scene: {
+                include: { layout: true },
+              },
+            },
+          },
+          mediaGroups: {
+            orderBy: { position: 'asc' },
+            include: {
+              mediaGroup: {
+                include: {
+                  mediaItems: {
+                    include: { media: true },
+                    orderBy: { position: 'asc' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    }
 
     if (!state) {
       throw new Error('Program not found');
@@ -1381,14 +1442,15 @@ export class ProgramService {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
 
-    const levels =
-      this.programAudioMeterByProgramId.get(normalizedProgramId) ?? {
-        song: { vu: 0, peak: 0, peakHold: 0 },
-        instants: { vu: 0, peak: 0, peakHold: 0 },
-        sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
-        main: { vu: 0, peak: 0, peakHold: 0 },
-        updatedAt: new Date(0).toISOString(),
-      };
+    const levels = this.programAudioMeterByProgramId.get(
+      normalizedProgramId,
+    ) ?? {
+      song: { vu: 0, peak: 0, peakHold: 0 },
+      instants: { vu: 0, peak: 0, peakHold: 0 },
+      sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
+      main: { vu: 0, peak: 0, peakHold: 0 },
+      updatedAt: new Date(0).toISOString(),
+    };
     return {
       ...levels,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioMeter'),
@@ -1534,16 +1596,17 @@ export class ProgramService {
     const normalizedProgramId = this.normalizeProgramId(programId);
     await this.getProgramStateRecord(normalizedProgramId);
 
-    const playback =
-      this.programSongPlaybackByProgramId.get(normalizedProgramId) ?? {
-        token: '',
-        audioUrl: '',
-        progress: 0,
-        currentTimeMs: 0,
-        durationMs: null,
-        isPlaying: false,
-        updatedAt: new Date(0).toISOString(),
-      };
+    const playback = this.programSongPlaybackByProgramId.get(
+      normalizedProgramId,
+    ) ?? {
+      token: '',
+      audioUrl: '',
+      progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
+      isPlaying: false,
+      updatedAt: new Date(0).toISOString(),
+    };
     return {
       ...playback,
       version: this.getProgramTopicVersion(normalizedProgramId, 'songPlayback'),
@@ -1743,7 +1806,9 @@ export class ProgramService {
         : null;
     const sceneInstantId =
       normalizedOverrideInstantId ??
-      this.parseSceneInstantIdFromSceneMetadata(assignedSceneEntry.scene.metadata);
+      this.parseSceneInstantIdFromSceneMetadata(
+        assignedSceneEntry.scene.metadata,
+      );
     if (sceneInstantId === null) {
       throw new BadRequestException(
         'Scene has no configured background instant',
@@ -2303,9 +2368,8 @@ export class ProgramService {
     }
 
     if (!state.activeSceneId) {
-      const currentState = await this.getProgramStateWithScenes(
-        normalizedProgramId,
-      );
+      const currentState =
+        await this.getProgramStateWithScenes(normalizedProgramId);
       return {
         ...currentState,
         version: this.getProgramTopicVersion(normalizedProgramId, 'state'),
@@ -2663,13 +2727,9 @@ export class ProgramService {
     data: any,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
-    const payload = this.withProgramVersionEnvelope(
-      normalizedProgramId,
-      data,
-      {
-        bumpVersion: true,
-      },
-    );
+    const payload = this.withProgramVersionEnvelope(normalizedProgramId, data, {
+      bumpVersion: true,
+    });
 
     this.getEventSubject(normalizedProgramId).next(payload);
     this.notifyEventListeners({

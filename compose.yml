@@ -6,11 +6,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}"
     env_file: ./backend/.env
     environment:
-      - PORT=3000
-      - ALLOWED_ORIGINS=http://localhost:5173
+      - PORT=${BACKEND_PORT:-3000}
+      - ALLOWED_ORIGINS=http://localhost:${VITE_PORT:-5173}
       - CHOKIDAR_USEPOLLING=true
     volumes:
       - ./backend/src:/app/src
@@ -36,9 +36,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "5173:5173"
+      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
     env_file: ./frontend/.env
     environment:
+      - VITE_PORT=${VITE_PORT:-5173}
       - VITE_USE_POLLING=true
     volumes:
       - ./frontend/app:/app/app

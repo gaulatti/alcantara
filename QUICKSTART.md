@@ -22,9 +22,9 @@ The database has already been seeded with sample data:
 docker compose up
 ```
 
-This builds and starts both services:
-- **Backend** (NestJS on port 3000) — auto-reloads on code changes
-- **Frontend** (React Router/Vite on port 5173) — HMR enabled
+This builds and starts both services (ports configurable via `.env`):
+- **Backend** (NestJS, default port 3000) — auto-reloads on code changes
+- **Frontend** (React Router/Vite, default port 5173) — HMR enabled
 
 Rebuild images after dependency changes:
 ```bash
@@ -56,7 +56,7 @@ npm install && npm run dev
 ## Using the System
 
 ### 1. Open the Control Panel
-Visit: http://localhost:5173/control
+Visit: `http://localhost:<VITE_PORT>/control` (default 5173)
 
 Here you can:
 - View all available scenes
@@ -65,7 +65,7 @@ Here you can:
 - Create new scenes and layouts
 
 ### 2. Open the Program Page
-Visit: http://localhost:5173/program
+Visit: `http://localhost:<VITE_PORT>/program` (default 5173)
 
 This page displays:
 - Fixed 1920x1080 resolution
@@ -83,17 +83,20 @@ This page displays:
 ## Architecture Overview
 
 ```
-┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
-│  Control Panel  │────────>│   NestJS API     │────────>│  Program Page   │
-│  (localhost:    │  REST   │  (localhost:     │   SSE   │  (localhost:    │
-│   5173/control) │         │   3000)          │         │   5173/program) │
-└─────────────────┘         └──────────────────┘         └─────────────────┘
-                                     │
-                                     ▼
-                            ┌──────────────────┐
-                            │  SQLite Database │
-                            │  (prisma/dev.db) │
-                            └──────────────────┘
+┌──────────────────────┐         ┌─────────────────────┐         ┌──────────────────────┐
+│  Control Panel       │────────>│   NestJS API        │────────>│  Program Page        │
+│  (localhost:5173/    │  REST   │  (localhost:3000)    │   SSE   │  (localhost:5173/    │
+│   control)           │         │                      │         │   program)           │
+└──────────────────────┘         └─────────────────────┘         └──────────────────────┘
+                                         │
+                                         ▼
+                                ┌──────────────────────┐
+                                │  SQLite Database      │
+                                │  (prisma/dev.db)      │
+                                └──────────────────────┘
+
+Ports are configurable via the `.env` file or shell env vars:
+VITE_PORT=5173 BACKEND_PORT=3000 docker compose up
 ```
 
 ## API Endpoints
@@ -189,17 +192,25 @@ npx prisma migrate dev --name <migration_name>
 ## Troubleshooting
 
 ### Port Already in Use
-If port 3000 or 5173 is already in use:
+If the default ports are already in use, set custom ports via environment variables:
 
-Backend (port 3000):
-- Edit `backend/src/main.ts` and change the port number
-- Update frontend API calls to use the new port
+**Docker Compose:**
+```bash
+BACKEND_PORT=4000 VITE_PORT=3001 docker compose up
+```
 
-Frontend (port 5173):
-- Edit `frontend/vite.config.ts` and add:
-  ```ts
-  server: { port: 5174 }
-  ```
+**Or edit `./.env`** (alongside `compose.yml`):
+```
+BACKEND_PORT=4000
+VITE_PORT=3001
+```
+
+**Manual (non-Docker) dev:**
+- Backend: Set `PORT` in `backend/.env`
+- Frontend: Set `VITE_PORT` in `frontend/.env`
+- Update `VITE_API_BASE_URL` in `frontend/.env` to match the backend port
+
+Note: If you change the frontend port, also update `ALLOWED_ORIGINS` in the backend's env or compose configuration to include the new origin.
 
 ### Database Locked Error
 If you get a "database is locked" error:
@@ -212,7 +223,7 @@ pnpm seed
 
 ### SSE Connection Issues
 - Check that CORS is enabled in the backend
-- Verify the backend is running on port 3000
+- Verify the backend is running and reachable (check `VITE_API_BASE_URL`)
 - Check browser console for connection errors
 
 ## Next Steps

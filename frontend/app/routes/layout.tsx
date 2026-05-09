@@ -12,7 +12,23 @@ import {
   type NavItem,
   type RenderLinkProps
 } from '@gaulatti/bleecker';
-import { Blend, CircleOff, Clock3, Clapperboard, Eye, ExternalLink, Images, LayoutTemplate, LogOut, Music, Radio, RefreshCw, SlidersHorizontal, Tv, Volume2 } from 'lucide-react';
+import {
+  Blend,
+  CircleOff,
+  Clock3,
+  Clapperboard,
+  Eye,
+  ExternalLink,
+  Images,
+  LayoutTemplate,
+  LogOut,
+  Music,
+  Radio,
+  RefreshCw,
+  SlidersHorizontal,
+  Tv,
+  Volume2
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -288,6 +304,7 @@ export default function Layout() {
     }
   ];
   const hideFooter = location.pathname === '/' || location.pathname === '/control';
+  const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control';
 
   const renderHeaderProgramSelector = () => (
     <HeaderSelect
@@ -603,7 +620,8 @@ export default function Layout() {
         emptyMessage='No commands found.'
       />
       <AppShell
-        className='antialiased'
+        className={`antialiased ${isViewportConstrainedRoute ? 'h-screen overflow-hidden' : ''}`}
+        contentClassName={isViewportConstrainedRoute ? 'h-full overflow-hidden' : undefined}
         header={
           <BleeckerHeader
             brand={{
@@ -662,7 +680,9 @@ export default function Layout() {
           )
         }
       >
-        <Outlet />
+        <div className={isViewportConstrainedRoute ? 'flex h-full min-h-0 flex-col overflow-hidden' : ''}>
+          <Outlet />
+        </div>
       </AppShell>
       <Modal
         isOpen={showBroadcastTimeModal}

@@ -21,6 +21,8 @@ function getAllowedOrigins(): Set<string> {
 
   return new Set<string>([
     'https://alcantara.gaulatti.com',
+    'https://alcantara.dev',
+    'https://alcantara.gt',
     ...configuredOrigins,
   ]);
 }
@@ -52,8 +54,7 @@ async function bootstrap() {
         !origin ||
         origin === 'null' ||
         allowedOrigins.has(origin) ||
-        /^http:\/\/localhost:517\d$/.test(origin) ||
-        /^http:\/\/127\.0\.0\.1:517\d$/.test(origin)
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
       ) {
         callback(null, true);
         return;

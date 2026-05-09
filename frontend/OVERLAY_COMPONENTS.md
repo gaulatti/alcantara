@@ -84,7 +84,7 @@ A pre-built demo overlay page is available at `/overlay`. It renders all three T
 
 **OBS / vMix setup:**
 
-1. Add a **Browser Source** with URL `http://localhost:5173/overlay` (or your deployed URL).
+1. Add a **Browser Source** with URL `http://localhost:<VITE_PORT>/overlay` (default 5173, or your deployed URL).
 2. Set resolution to **1920 × 1080**.
 3. Enable **Allow Transparency** / **Transparent Background** in the source settings.
 
