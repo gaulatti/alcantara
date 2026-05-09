@@ -2,8 +2,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm (v9 avoids interactive approve-builds flow in CI)
+RUN npm install -g pnpm@9
 
 # Install dependencies
 COPY package*.json ./
