@@ -86,6 +86,35 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     }
   },
   {
+    id: 'stream-wall',
+    name: 'Stream Wall',
+    description: 'Horizontal row of up to 4 embedded stream URLs (16:9 each)',
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      urls: ['https://vdo.ninja/?view=q7r4qju&solo&room=modoitaliano'],
+      maxStreams: 4,
+      title: ''
+    }
+  },
+  {
+    id: 'scoreboard',
+    name: 'Scoreboard',
+    description: 'Top-center scoreboard with teams, scores, clock and status',
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      title: 'MATCH',
+      homeTeam: 'HOME',
+      awayTeam: 'AWAY',
+      homeScore: '0',
+      awayScore: '0',
+      period: '1ST',
+      showPeriod: true,
+      clock: '00:00',
+      showClock: true,
+      status: 'LIVE'
+    }
+  },
+  {
     id: 'broadcast-layout',
     name: 'Broadcast Layout',
     description: 'Full broadcast layout with header, ticker, clock and QR',
@@ -328,9 +357,7 @@ export function getDefaultPropsForComponent(id: string): Record<string, any> {
   return metadata?.defaultProps || {};
 }
 
-export const CONFIGURABLE_COMPONENT_IDS = new Set(
-  OVERLAY_COMPONENTS.filter((c) => c.hasConfigurableSceneAttributes).map((c) => c.id)
-);
+export const CONFIGURABLE_COMPONENT_IDS = new Set(OVERLAY_COMPONENTS.filter((c) => c.hasConfigurableSceneAttributes).map((c) => c.id));
 
 export function hasConfigurableSceneAttributes(componentType: string): boolean {
   return CONFIGURABLE_COMPONENT_IDS.has(componentType);

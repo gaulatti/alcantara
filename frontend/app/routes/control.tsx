@@ -201,7 +201,7 @@ function MixerStrip({
   combinedMarkerLabelOffsetClassName = '-right-6',
   markerTrackClassName = 'w-8',
   scaleClassName = 'text-zinc-500',
-  scalePositiveClassName,
+  scalePositiveClassName
 }: MixerStripProps) {
   return (
     <div className={`flex ${widthClass} shrink-0 flex-col pb-3 ${stripClassName}`}>
@@ -219,7 +219,9 @@ function MixerStrip({
                 type='button'
                 onClick={onToggleMuted}
                 className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                  muted ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]' : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
+                  muted
+                    ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
+                    : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
                 }`}
               >
                 Mute
@@ -228,7 +230,9 @@ function MixerStrip({
                 type='button'
                 onClick={onToggleSolo}
                 className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
-                  solo ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]' : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
+                  solo
+                    ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                    : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
                 }`}
               >
                 Solo
@@ -307,7 +311,10 @@ function MixerStrip({
               <div className={`relative h-full ${meterBarCount === 1 ? 'w-2.5' : 'w-6'}`}>
                 <div className='absolute inset-0 flex gap-1'>
                   {Array.from({ length: meterBarCount }).map((_, idx) => (
-                    <div key={`combined-meter-${title}-${idx}`} className='relative flex-1 overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
+                    <div
+                      key={`combined-meter-${title}-${idx}`}
+                      className='relative flex-1 overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'
+                    >
                       {showMeterSignal ? (
                         <>
                           <div

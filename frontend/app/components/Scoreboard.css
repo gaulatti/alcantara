@@ -1,0 +1,89 @@
+.scoreboard-shell {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 780px;
+    max-width: 80vw;
+    pointer-events: none;
+    z-index: 900;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.scoreboard-title {
+    text-align: center;
+    font-size: 26px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #d1d5db;
+    margin-bottom: 8px;
+}
+
+.scoreboard-main {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 14px;
+    align-items: center;
+    background: linear-gradient(180deg, rgba(13, 17, 23, 0.92), rgba(8, 12, 18, 0.9));
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 14px;
+    padding: 12px 18px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.scoreboard-team {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.scoreboard-team-label {
+    font-size: 33px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.scoreboard-team-score {
+    min-width: 56px;
+    text-align: center;
+    font-size: 75px;
+    line-height: 1;
+    font-weight: 800;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.scoreboard-center {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 6px;
+}
+
+.scoreboard-period,
+.scoreboard-status {
+    font-size: 23px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(30, 41, 59, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #cbd5e1;
+}
+
+.scoreboard-clock {
+    font-size: 57px;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: #f8fafc;
+}

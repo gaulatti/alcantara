@@ -22,7 +22,9 @@ import {
   CronicaBackground,
   CronicaReiteramos,
   Slideshow,
-  VideoStream
+  VideoStream,
+  StreamWall,
+  Scoreboard
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
@@ -2283,6 +2285,31 @@ function SceneProgram({ programId }: { programId: string }) {
                     loop={props.loop}
                     autoPlay={props.autoPlay}
                     objectFit={props.objectFit}
+                  />
+                );
+              case 'stream-wall':
+                return (
+                  <StreamWall
+                    key={componentType}
+                    urls={Array.isArray(props.urls) ? props.urls : []}
+                    maxStreams={typeof props.maxStreams === 'number' ? props.maxStreams : 4}
+                    title={typeof props.title === 'string' ? props.title : ''}
+                  />
+                );
+              case 'scoreboard':
+                return (
+                  <Scoreboard
+                    key={componentType}
+                    title={props.title}
+                    homeTeam={props.homeTeam}
+                    awayTeam={props.awayTeam}
+                    homeScore={props.homeScore}
+                    awayScore={props.awayScore}
+                    period={props.period}
+                    showPeriod={typeof props.showPeriod === 'boolean' ? props.showPeriod : true}
+                    clock={props.clock}
+                    showClock={typeof props.showClock === 'boolean' ? props.showClock : true}
+                    status={props.status}
                   />
                 );
               case 'reloj-clock':

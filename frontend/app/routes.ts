@@ -18,5 +18,5 @@ export default [
     ]),
     route('overlay', 'routes/overlay.tsx')
   ]),
-  route('program/:id', 'routes/program.tsx'),
+  route('program/:id', 'routes/program.tsx')
 ] satisfies RouteConfig;
