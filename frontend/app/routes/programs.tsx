@@ -34,12 +34,25 @@ interface ProgramMediaGroupEntry {
   mediaGroup?: MediaGroupSummary;
 }
 
+interface StingerSummary {
+  id: number;
+  name: string;
+}
+
+interface ProgramStingerEntry {
+  id: number;
+  stingerId: number;
+  position: number;
+  stinger?: StingerSummary;
+}
+
 interface ProgramState {
   id: number;
   programId: string;
   activeSceneId: number | null;
   scenes: ProgramSceneEntry[];
   mediaGroups: ProgramMediaGroupEntry[];
+  stingers: ProgramStingerEntry[];
 }
 
 export function meta({}: Route.MetaArgs) {
@@ -53,6 +66,7 @@ export default function ProgramsAdmin() {
   const [programs, setPrograms] = useState<ProgramState[]>([]);
   const [allScenes, setAllScenes] = useState<SceneSummary[]>([]);
   const [allMediaGroups, setAllMediaGroups] = useState<MediaGroupSummary[]>([]);
+  const [allStingers, setAllStingers] = useState<StingerSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
@@ -62,6 +76,7 @@ export default function ProgramsAdmin() {
   const [selectedMediaGroupIds, setSelectedMediaGroupIds] = useState<number[]>(
     [],
   );
+  const [selectedStingerIds, setSelectedStingerIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -91,11 +106,21 @@ export default function ProgramsAdmin() {
     return data;
   };
 
+  const fetchStingers = async (): Promise<StingerSummary[]> => {
+    const res = await fetch(apiUrl('/stingers'));
+    if (!res.ok) {
+      throw new Error(`Failed to fetch stingers: ${res.status}`);
+    }
+    const data = (await res.json()) as StingerSummary[];
+    setAllStingers(data);
+    return data;
+  };
+
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([fetchPrograms(), fetchScenes(), fetchMediaGroups()]);
+        await Promise.all([fetchPrograms(), fetchScenes(), fetchMediaGroups(), fetchStingers()]);
       } catch (err) {
         console.error(err);
         showAlert('Failed to load programs. Please refresh and try again.', 'error');
@@ -118,11 +143,16 @@ export default function ProgramsAdmin() {
     return [...allMediaGroups].sort((a, b) => a.name.localeCompare(b.name));
   }, [allMediaGroups]);
 
+  const sortedStingers = useMemo(() => {
+    return [...allStingers].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allStingers]);
+
   const openCreateModal = () => {
     setEditingProgramId(null);
     setProgramIdInput('');
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
+    setSelectedStingerIds([]);
     setError('');
     setShowModal(true);
   };
@@ -134,6 +164,9 @@ export default function ProgramsAdmin() {
     setSelectedMediaGroupIds(
       (program.mediaGroups || []).map((entry) => entry.mediaGroupId),
     );
+    setSelectedStingerIds(
+      (program.stingers || []).map((entry) => entry.stingerId),
+    );
     setError('');
     setShowModal(true);
   };
@@ -144,6 +177,7 @@ export default function ProgramsAdmin() {
     setProgramIdInput('');
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
+    setSelectedStingerIds([]);
     setError('');
   };
 
@@ -162,6 +196,15 @@ export default function ProgramsAdmin() {
         return current.filter((id) => id !== mediaGroupId);
       }
       return [...current, mediaGroupId];
+    });
+  };
+
+  const toggleStingerSelection = (stingerId: number) => {
+    setSelectedStingerIds((current) => {
+      if (current.includes(stingerId)) {
+        return current.filter((id) => id !== stingerId);
+      }
+      return [...current, stingerId];
     });
   };
 
@@ -245,6 +288,52 @@ export default function ProgramsAdmin() {
     }
   };
 
+  const syncProgramStingers = async (
+    programId: string,
+    currentStingerIds: number[],
+    nextStingerIds: number[],
+  ) => {
+    const currentSet = new Set(currentStingerIds);
+    const nextSet = new Set(nextStingerIds);
+
+    const stingerIdsToRemove = currentStingerIds.filter(
+      (stingerId) => !nextSet.has(stingerId),
+    );
+    const stingerIdsToAdd = nextStingerIds.filter(
+      (stingerId) => !currentSet.has(stingerId),
+    );
+
+    await Promise.all(
+      stingerIdsToRemove.map(async (stingerId) => {
+        const res = await fetch(
+          apiUrl(`/program/${encodeURIComponent(programId)}/stingers/${stingerId}`),
+          { method: 'DELETE' },
+        );
+        if (!res.ok) {
+          throw new Error(
+            `Failed to remove stinger ${stingerId} from ${programId} (${res.status})`,
+          );
+        }
+      }),
+    );
+
+    for (const stingerId of stingerIdsToAdd) {
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(programId)}/stingers`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stingerId }),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(
+          `Failed to add stinger ${stingerId} to ${programId} (${res.status})`,
+        );
+      }
+    }
+  };
+
   const saveProgram = async () => {
     const nextProgramId = programIdInput.trim();
     if (!nextProgramId) {
@@ -274,12 +363,15 @@ export default function ProgramsAdmin() {
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
         const currentMediaGroupIds =
           editingProgram?.mediaGroups.map((entry) => entry.mediaGroupId) || [];
+        const currentStingerIds =
+          editingProgram?.stingers.map((entry) => entry.stingerId) || [];
         await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
         await syncProgramMediaGroups(
           nextProgramId,
           currentMediaGroupIds,
           selectedMediaGroupIds,
         );
+        await syncProgramStingers(nextProgramId, currentStingerIds, selectedStingerIds);
       } else {
         const createRes = await fetch(apiUrl('/program'), {
           method: 'POST',
@@ -293,6 +385,7 @@ export default function ProgramsAdmin() {
 
         await syncProgramScenes(nextProgramId, [], selectedSceneIds);
         await syncProgramMediaGroups(nextProgramId, [], selectedMediaGroupIds);
+        await syncProgramStingers(nextProgramId, [], selectedStingerIds);
       }
 
       if (isEditing && editingProgramId === selectedProgramId) {
@@ -391,7 +484,7 @@ export default function ProgramsAdmin() {
                           ) : null}
                         </div>
                         <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>
-                          Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Active scene:{' '}
+                          Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
                           {program.activeSceneId ?? 'none'}
                         </p>
                       </div>
@@ -498,6 +591,38 @@ export default function ProgramsAdmin() {
                           <span className='block text-xs text-text-secondary dark:text-text-secondary'>
                             {mediaGroup.description || 'No description'}
                           </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className='mb-2 flex items-center justify-between'>
+                <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Stingers</label>
+                <Button size='sm' variant='ghost' onClick={() => navigate('/stingers')}>
+                  Manage Stingers
+                </Button>
+              </div>
+              {sortedStingers.length === 0 ? (
+                <p className='text-sm text-text-secondary dark:text-text-secondary'>No stingers available. Create stingers first.</p>
+              ) : (
+                <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
+                  {sortedStingers.map((stinger) => {
+                    const checked = selectedStingerIds.includes(stinger.id);
+                    return (
+                      <label
+                        key={stinger.id}
+                        className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onChange={() => toggleStingerSelection(stinger.id)}
+                        />
+                        <span className='min-w-0'>
+                          <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{stinger.name}</span>
                         </span>
                       </label>
                     );

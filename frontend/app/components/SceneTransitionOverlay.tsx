@@ -191,6 +191,24 @@ export function SceneTransitionOverlay({ transition }: SceneTransitionOverlayPro
     return null;
   }
 
+  if (transition.id === 'webm-stinger') {
+    return (
+      <div
+        className='scene-transition-overlay scene-transition-overlay--webm-stinger'
+        style={{ ['--scene-transition-duration' as string]: `${transition.durationMs}ms` }}
+        aria-hidden='true'
+      >
+        <video
+          className='scene-transition-overlay__stinger-video'
+          src={transition.stingerUrl}
+          autoPlay
+          muted
+          playsInline
+        />
+      </div>
+    );
+  }
+
   if (transition.id === 'velvet-eclipse') {
     return (
       <div

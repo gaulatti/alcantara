@@ -2751,3 +2751,15 @@
     opacity: 0;
   }
 }
+
+.scene-transition-overlay--webm-stinger::before {
+  display: none;
+}
+
+.scene-transition-overlay__stinger-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}

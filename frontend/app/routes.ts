@@ -8,6 +8,7 @@ export default [
       index('routes/control.tsx'),
       route('control', 'routes/control-legacy.tsx'),
       route('instants', 'routes/instants.tsx'),
+      route('stingers', 'routes/stingers.tsx'),
       route('songs', 'routes/songs.tsx'),
       route('media', 'routes/media.tsx'),
       route('scenes', 'routes/scenes.tsx'),

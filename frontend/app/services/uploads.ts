@@ -1,6 +1,6 @@
 import { apiUrl } from '../utils/apiBaseUrl';
 
-export type UploadKind = 'instant' | 'artwork' | 'song';
+export type UploadKind = 'instant' | 'artwork' | 'song' | 'stinger';
 
 interface UploadResponse {
   key: string;

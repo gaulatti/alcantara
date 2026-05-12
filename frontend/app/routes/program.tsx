@@ -291,6 +291,7 @@ function resolveProgramUpdateTopicFromType(type: unknown): ProgramUpdateTopic | 
     case 'scene_update':
     case 'scene_cleared':
     case 'program_scenes_changed':
+    case 'program_stingers_changed':
       return 'state';
     case 'audio_bus_snapshot':
     case 'audio_bus_update':
@@ -670,6 +671,7 @@ function SceneProgram({ programId }: { programId: string }) {
   const [audioBusSettings, setAudioBusSettings] = useState<ProgramAudioBusSettings | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
   const [slideshowMediaGroupsById, setSlideshowMediaGroupsById] = useState<Record<number, SlideshowMediaGroup>>({});
+  const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
   const transitionTimersRef = useRef<number[]>([]);
@@ -696,6 +698,8 @@ function SceneProgram({ programId }: { programId: string }) {
     sceneInstant: -1,
     broadcastSettings: -1
   });
+  const stingerVideoRefs = useRef<Map<number, HTMLVideoElement>>(new Map());
+  const programStingersRef = useRef<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
   useEffect(() => {
     latestProgramVersionByTopicRef.current = {
       state: -1,
@@ -1312,7 +1316,22 @@ function SceneProgram({ programId }: { programId: string }) {
         });
       } else if (data.type === 'scene_change') {
         const event = data as SceneChangeEvent;
-        const preset = getSceneTransitionPreset(event.transitionId);
+        let preset = getSceneTransitionPreset(event.transitionId);
+
+        if (preset.id === 'webm-stinger') {
+          const stingers = programStingersRef.current;
+          const firstStinger = stingers.length > 0 ? stingers[0] : null;
+          if (firstStinger) {
+            const cutPointMs = firstStinger.cutPointMs ?? 1000;
+            preset = {
+              ...preset,
+              stingerUrl: firstStinger.videoUrl,
+              cutPointMs,
+              durationMs: cutPointMs + 2000,
+            };
+          }
+        }
+
         const canAnimate = preset.id !== 'cut' && !!state?.activeScene && !!event.state.activeScene && state.activeSceneId !== event.state.activeSceneId;
 
         clearTransitionTimers();
@@ -1440,6 +1459,29 @@ function SceneProgram({ programId }: { programId: string }) {
         if (event.programId === programId) {
           setAudioBusSettings(normalizeProgramAudioBusSettings(event.settings));
         }
+      } else if (data.type === 'program_stingers_changed') {
+        const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+        if (eventProgramId && eventProgramId !== programId) {
+          return;
+        }
+        if (data.state && typeof data.state === 'object' && Array.isArray(data.state.stingers)) {
+          const stingers = data.state.stingers.map((entry: any) => ({
+            id: entry.stingerId,
+            name: entry.stinger?.name || '',
+            videoUrl: entry.stinger?.videoUrl || '',
+            cutPointMs: entry.stinger?.cutPointMs ?? 1000,
+          }));
+          setProgramStingers(stingers);
+          programStingersRef.current = stingers;
+        } else {
+          fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
+            .then((res) => res.json())
+            .then((stingers) => {
+              setProgramStingers(stingers);
+              programStingersRef.current = stingers;
+            })
+            .catch(() => {});
+        }
       }
     },
     [
@@ -1459,6 +1501,51 @@ function SceneProgram({ programId }: { programId: string }) {
   useEffect(() => {
     handleProgramEventRef.current = handleProgramEvent;
   }, [handleProgramEvent]);
+
+  useEffect(() => {
+    programStingersRef.current = programStingers;
+  }, [programStingers]);
+
+  useEffect(() => {
+    const currentRefs = stingerVideoRefs.current;
+    const seen = new Set<number>();
+
+    for (const stinger of programStingers) {
+      seen.add(stinger.id);
+      if (!currentRefs.has(stinger.id)) {
+        const video = document.createElement('video');
+        video.src = stinger.videoUrl;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.style.display = 'none';
+        document.body.appendChild(video);
+        currentRefs.set(stinger.id, video);
+      }
+    }
+
+    for (const [id, video] of currentRefs) {
+      if (!seen.has(id)) {
+        video.removeAttribute('src');
+        video.load();
+        if (video.parentNode) {
+          video.parentNode.removeChild(video);
+        }
+        currentRefs.delete(id);
+      }
+    }
+
+    return () => {
+      for (const [, video] of currentRefs) {
+        video.removeAttribute('src');
+        video.load();
+        if (video.parentNode) {
+          video.parentNode.removeChild(video);
+        }
+      }
+      currentRefs.clear();
+    };
+  }, [programStingers]);
 
   useEffect(() => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -1521,23 +1608,33 @@ function SceneProgram({ programId }: { programId: string }) {
         })
         .catch((err) => console.error('Failed to fetch broadcast settings:', err));
 
-      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
+        fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
+          .then((res) => res.json())
+          .then((playback) => {
+            if (!cancelled) {
+              const sceneInstantVersion =
+                playback && typeof playback === 'object' && !Array.isArray(playback)
+                  ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
+                  : null;
+              handleProgramEventRef.current({
+                type: 'scene_instant_state',
+                programId,
+                playback,
+                version: sceneInstantVersion ?? undefined
+              });
+            }
+          })
+          .catch((err) => console.error('Failed to fetch scene instant playback:', err));
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
         .then((res) => res.json())
-        .then((playback) => {
+        .then((stingers) => {
           if (!cancelled) {
-            const sceneInstantVersion =
-              playback && typeof playback === 'object' && !Array.isArray(playback)
-                ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
-                : null;
-            handleProgramEventRef.current({
-              type: 'scene_instant_state',
-              programId,
-              playback,
-              version: sceneInstantVersion ?? undefined
-            });
+            setProgramStingers(stingers);
+            programStingersRef.current = stingers;
           }
         })
-        .catch((err) => console.error('Failed to fetch scene instant playback:', err));
+        .catch((err) => console.error('Failed to fetch program stingers:', err));
     }, 900);
 
     return () => {
@@ -1594,6 +1691,16 @@ function SceneProgram({ programId }: { programId: string }) {
           }
         })
         .catch((err) => console.error('Failed to poll scene instant snapshot:', err));
+
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
+        .then((res) => res.json())
+        .then((stingers) => {
+          if (!cancelled) {
+            setProgramStingers(stingers);
+            programStingersRef.current = stingers;
+          }
+        })
+        .catch((err) => console.error('Failed to poll program stingers:', err));
     };
 
     const pollTimer = window.setInterval(() => {

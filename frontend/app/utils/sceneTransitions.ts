@@ -8,7 +8,8 @@ export type SceneTransitionId =
   | 'market-pulse'
   | 'world-desk'
   | 'festival-runway'
-  | 'hit-parade';
+  | 'hit-parade'
+  | 'webm-stinger';
 
 export interface SceneTransitionPreset {
   id: SceneTransitionId;
@@ -16,6 +17,7 @@ export interface SceneTransitionPreset {
   description: string;
   durationMs: number;
   cutPointMs: number;
+  stingerUrl?: string;
 }
 
 const SCENE_TRANSITION_REGISTRY: Record<SceneTransitionId, SceneTransitionPreset> = {
@@ -88,6 +90,13 @@ const SCENE_TRANSITION_REGISTRY: Record<SceneTransitionId, SceneTransitionPreset
     description: 'Chrome marquee bars, electric color blocks, and stage-flash reveals for chart-show and entertainment segments.',
     durationMs: 1420,
     cutPointMs: 710
+  },
+  'webm-stinger': {
+    id: 'webm-stinger',
+    name: 'WebM Stinger',
+    description: 'A pre-loaded .webm stinger video transition with alpha channel overlay.',
+    durationMs: 2000,
+    cutPointMs: 1000
   }
 };
 

@@ -212,6 +212,33 @@ export class ProgramController {
     );
   }
 
+  @Get(':programId/stingers')
+  async listProgramStingers(@Param('programId') programId: string) {
+    return this.programService.listProgramStingers(programId);
+  }
+
+  @Post(':programId/stingers')
+  async addStingerToProgram(
+    @Param('programId') programId: string,
+    @Body() data: { stingerId: number },
+  ) {
+    return this.programService.addStingerToProgram(
+      data.stingerId,
+      programId,
+    );
+  }
+
+  @Delete(':programId/stingers/:stingerId')
+  async removeStingerFromProgram(
+    @Param('programId') programId: string,
+    @Param('stingerId') stingerId: string,
+  ) {
+    return this.programService.removeStingerFromProgram(
+      Number(stingerId),
+      programId,
+    );
+  }
+
   @Post(':programId/activate')
   async activateSceneById(
     @Param('programId') programId: string,

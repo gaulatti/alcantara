@@ -9,7 +9,7 @@ import { parseBuffer } from 'music-metadata';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 
-type UploadKind = 'instant' | 'artwork' | 'song';
+type UploadKind = 'instant' | 'artwork' | 'song' | 'stinger';
 
 interface UploadPayload {
   kind: UploadKind;
@@ -35,6 +35,7 @@ export interface UploadResult {
 const MAX_INSTANT_BYTES = 100 * 1024 * 1024;
 const MAX_ARTWORK_BYTES = 10 * 1024 * 1024;
 const MAX_SONG_BYTES = 100 * 1024 * 1024;
+const MAX_STINGER_BYTES = 50 * 1024 * 1024;
 
 const INSTANT_MIME_TYPES = new Set<string>([
   'audio/aac',
@@ -73,6 +74,14 @@ const ARTWORK_MIME_TYPES = new Set<string>([
   'image/jpg',
   'image/png',
   'image/webp',
+]);
+
+const STINGER_MIME_TYPES = new Set<string>([
+  'video/webm',
+]);
+
+const STINGER_EXTENSIONS = new Set<string>([
+  '.webm',
 ]);
 
 const ARTWORK_EXTENSIONS = new Set<string>([
@@ -162,21 +171,29 @@ export class UploadsService {
       extname(payload.originalFilename),
     );
     const isAudioUpload = payload.kind === 'instant' || payload.kind === 'song';
+    const isStingerUpload = payload.kind === 'stinger';
     const { maxBytes, allowedMimeTypes, allowedExtensions, fileTypeLabel } =
-      isAudioUpload
+      isStingerUpload
         ? {
-            maxBytes:
-              payload.kind === 'song' ? MAX_SONG_BYTES : MAX_INSTANT_BYTES,
-            allowedMimeTypes: INSTANT_MIME_TYPES,
-            allowedExtensions: INSTANT_EXTENSIONS,
-            fileTypeLabel: 'audio',
+            maxBytes: MAX_STINGER_BYTES,
+            allowedMimeTypes: STINGER_MIME_TYPES,
+            allowedExtensions: STINGER_EXTENSIONS,
+            fileTypeLabel: 'stinger video',
           }
-        : {
-            maxBytes: MAX_ARTWORK_BYTES,
-            allowedMimeTypes: ARTWORK_MIME_TYPES,
-            allowedExtensions: ARTWORK_EXTENSIONS,
-            fileTypeLabel: 'image',
-          };
+        : isAudioUpload
+          ? {
+              maxBytes:
+                payload.kind === 'song' ? MAX_SONG_BYTES : MAX_INSTANT_BYTES,
+              allowedMimeTypes: INSTANT_MIME_TYPES,
+              allowedExtensions: INSTANT_EXTENSIONS,
+              fileTypeLabel: 'audio',
+            }
+          : {
+              maxBytes: MAX_ARTWORK_BYTES,
+              allowedMimeTypes: ARTWORK_MIME_TYPES,
+              allowedExtensions: ARTWORK_EXTENSIONS,
+              fileTypeLabel: 'image',
+            };
 
     if (payload.buffer.length > maxBytes) {
       throw new BadRequestException(
@@ -243,11 +260,15 @@ export class UploadsService {
   }
 
   private defaultExtensionForKind(kind: UploadKind): string {
-    return kind === 'artwork' ? '.jpg' : '.mp3';
+    if (kind === 'artwork') return '.jpg';
+    if (kind === 'stinger') return '.webm';
+    return '.mp3';
   }
 
   private defaultContentTypeForKind(kind: UploadKind): string {
-    return kind === 'artwork' ? 'image/jpeg' : 'audio/mpeg';
+    if (kind === 'artwork') return 'image/jpeg';
+    if (kind === 'stinger') return 'video/webm';
+    return 'audio/mpeg';
   }
 
   private async uploadObjectToS3(

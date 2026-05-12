@@ -11,6 +11,7 @@ import { SongsModule } from './songs/songs.module';
 import { InstantsModule } from './instants/instants.module';
 import { MediaModule } from './media/media.module';
 import { MediaGroupsModule } from './media-groups/media-groups.module';
+import { StingersModule } from './stingers/stingers.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MediaGroupsModule } from './media-groups/media-groups.module';
     InstantsModule,
     MediaModule,
     MediaGroupsModule,
+    StingersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

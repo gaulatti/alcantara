@@ -940,6 +940,7 @@ export class ProgramService implements OnModuleInit {
       case 'scene_cleared':
       case 'program_scenes_changed':
       case 'program_media_groups_changed':
+      case 'program_stingers_changed':
         return 'state';
       case 'audio_bus_update':
         return 'audioBus';
@@ -1071,6 +1072,12 @@ export class ProgramService implements OnModuleInit {
             },
           },
         },
+        stingers: {
+          orderBy: { position: 'asc' },
+          include: {
+            stinger: true,
+          },
+        },
       },
     });
 
@@ -1101,6 +1108,12 @@ export class ProgramService implements OnModuleInit {
                   },
                 },
               },
+            },
+          },
+          stingers: {
+            orderBy: { position: 'asc' },
+            include: {
+              stinger: true,
             },
           },
         },
@@ -1300,6 +1313,12 @@ export class ProgramService implements OnModuleInit {
                 },
               },
             },
+          },
+        },
+        stingers: {
+          orderBy: { position: 'asc' },
+          include: {
+            stinger: true,
           },
         },
       },
@@ -2188,6 +2207,124 @@ export class ProgramService implements OnModuleInit {
     const updated = await this.getProgramStateWithScenes(normalizedProgramId);
     const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'program_media_groups_changed',
+      programId: normalizedProgramId,
+      state: updated,
+    });
+    return {
+      ...updated,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
+  }
+
+  async listProgramStingers(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      include: {
+        stingers: {
+          orderBy: { position: 'asc' },
+          include: {
+            stinger: true,
+          },
+        },
+      },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    return state.stingers.map((entry) => ({
+      id: entry.stinger.id,
+      name: entry.stinger.name,
+      videoUrl: entry.stinger.videoUrl,
+      cutPointMs: entry.stinger.cutPointMs,
+      enabled: entry.stinger.enabled,
+      position: entry.position,
+    }));
+  }
+
+  async addStingerToProgram(
+    stingerId: number,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const stinger = await this.prisma.stinger.findUnique({
+      where: { id: stingerId },
+      select: { id: true },
+    });
+    if (!stinger) {
+      throw new Error('Stinger not found');
+    }
+
+    const state = await this.getProgramStateRecord(programId);
+    const existing = await this.prisma.programStinger.findUnique({
+      where: {
+        programStateId_stingerId: {
+          programStateId: state.id,
+          stingerId,
+        },
+      },
+    });
+
+    if (!existing) {
+      const currentMaxPosition = await this.prisma.programStinger.aggregate({
+        where: { programStateId: state.id },
+        _max: { position: true },
+      });
+      const nextPosition = (currentMaxPosition._max.position ?? -1) + 1;
+
+      await this.prisma.programStinger.create({
+        data: {
+          programStateId: state.id,
+          stingerId,
+          position: nextPosition,
+        },
+      });
+    }
+
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const updated = await this.getProgramStateWithScenes(normalizedProgramId);
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'program_stingers_changed',
+      programId: normalizedProgramId,
+      state: updated,
+    });
+    return {
+      ...updated,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
+  }
+
+  async removeStingerFromProgram(
+    stingerId: number,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { id: true },
+    });
+    if (!state) {
+      throw new Error('Program not found');
+    }
+
+    await this.prisma.programStinger.deleteMany({
+      where: {
+        programStateId: state.id,
+        stingerId,
+      },
+    });
+
+    const updated = await this.getProgramStateWithScenes(normalizedProgramId);
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'program_stingers_changed',
       programId: normalizedProgramId,
       state: updated,
     });

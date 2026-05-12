@@ -37,6 +37,15 @@ export class UploadsController {
     });
   }
 
+  @Post('stinger')
+  async uploadStinger(@Req() req: any) {
+    const file = await this.readSingleFile(req);
+    return this.uploadsService.upload({
+      kind: 'stinger',
+      ...file,
+    });
+  }
+
   private async readSingleFile(req: any): Promise<{
     buffer: Buffer;
     mimeType: string;

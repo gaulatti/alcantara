@@ -17,6 +17,7 @@ services:
       - ./backend/prisma:/app/prisma
       - ./backend/tsconfig.json:/app/tsconfig.json
       - ./backend/nest-cli.json:/app/nest-cli.json
+      - ~/.aws:/root/.aws:ro
     develop:
       watch:
         - action: sync
