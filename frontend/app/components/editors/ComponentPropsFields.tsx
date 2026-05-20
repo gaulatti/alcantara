@@ -5,6 +5,7 @@ import { SlideshowEditorFields } from './SlideshowEditorFields';
 import { ToniChyronEditorFields } from './ToniChyronEditorFields';
 import { RelojDigitalEditorFields } from './RelojDigitalEditorFields';
 import { ProgramChyronEditorFields } from './ProgramChyronEditorFields';
+import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
 import { createProgramTextSequence } from '../../utils/programSequence';
 import type { SongCatalogItem, MediaGroup } from '../../models/broadcast';
@@ -679,6 +680,8 @@ export function ComponentPropsFields({
           </label>
         </div>
       );
+    case 'modoitaliano-bracket':
+      return <ModoItalianoBracketEditorFields props={props} updateProp={updateProp} componentType={componentType} songCatalog={songCatalog} />;
     case 'cronica-background':
       return <p className='text-xs text-text-secondary italic'>No configurable fields for Cronica background.</p>;
     case 'cronica-chyron':

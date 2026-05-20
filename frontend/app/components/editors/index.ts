@@ -5,6 +5,7 @@ export { RelojDigitalEditorFields } from './RelojDigitalEditorFields';
 export { ProgramChyronEditorFields } from './ProgramChyronEditorFields';
 export { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 export { ProgramSongSequenceEditor } from './ProgramSongSequenceEditor';
+export { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFields';
 export { PanelColumn } from './PanelColumn';
 export { ComponentPropsFields } from './ComponentPropsFields';
 export { ZIndexField } from './ComponentPropsFields';

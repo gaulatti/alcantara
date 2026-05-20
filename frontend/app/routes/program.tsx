@@ -18,6 +18,7 @@ import {
   ModoItalianoClock,
   ModoItalianoChyron,
   ModoItalianoDisclaimer,
+  ModoItalianoBracket,
   CronicaChyron,
   CronicaBackground,
   CronicaReiteramos,
@@ -1327,7 +1328,7 @@ function SceneProgram({ programId }: { programId: string }) {
               ...preset,
               stingerUrl: firstStinger.videoUrl,
               cutPointMs,
-              durationMs: cutPointMs + 2000,
+              durationMs: cutPointMs + 2000
             };
           }
         }
@@ -1469,7 +1470,7 @@ function SceneProgram({ programId }: { programId: string }) {
             id: entry.stingerId,
             name: entry.stinger?.name || '',
             videoUrl: entry.stinger?.videoUrl || '',
-            cutPointMs: entry.stinger?.cutPointMs ?? 1000,
+            cutPointMs: entry.stinger?.cutPointMs ?? 1000
           }));
           setProgramStingers(stingers);
           programStingersRef.current = stingers;
@@ -1608,23 +1609,23 @@ function SceneProgram({ programId }: { programId: string }) {
         })
         .catch((err) => console.error('Failed to fetch broadcast settings:', err));
 
-        fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
-          .then((res) => res.json())
-          .then((playback) => {
-            if (!cancelled) {
-              const sceneInstantVersion =
-                playback && typeof playback === 'object' && !Array.isArray(playback)
-                  ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
-                  : null;
-              handleProgramEventRef.current({
-                type: 'scene_instant_state',
-                programId,
-                playback,
-                version: sceneInstantVersion ?? undefined
-              });
-            }
-          })
-          .catch((err) => console.error('Failed to fetch scene instant playback:', err));
+      fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
+        .then((res) => res.json())
+        .then((playback) => {
+          if (!cancelled) {
+            const sceneInstantVersion =
+              playback && typeof playback === 'object' && !Array.isArray(playback)
+                ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
+                : null;
+            handleProgramEventRef.current({
+              type: 'scene_instant_state',
+              programId,
+              playback,
+              version: sceneInstantVersion ?? undefined
+            });
+          }
+        })
+        .catch((err) => console.error('Failed to fetch scene instant playback:', err));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
         .then((res) => res.json())
@@ -2280,7 +2281,9 @@ function SceneProgram({ programId }: { programId: string }) {
     const hasProgramChyronComponent = components.includes('modoitaliano-chyron');
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
     const hasCronicaChyronComponent = components.includes('cronica-chyron');
-    const shouldRenderProgramRow = hasProgramClockComponent && (hasProgramChyronComponent || hasProgramDisclaimerComponent || hasCronicaChyronComponent);
+    const hasProgramBracketComponent = components.includes('modoitaliano-bracket');
+    const shouldRenderProgramRow =
+      hasProgramClockComponent && (hasProgramChyronComponent || hasProgramDisclaimerComponent || hasCronicaChyronComponent || hasProgramBracketComponent);
     const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
     const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
     const toBoolean = (value: unknown, fallback: boolean): boolean => {
@@ -2528,6 +2531,15 @@ function SceneProgram({ programId }: { programId: string }) {
                     bottomPx={typeof props.bottomPx === 'number' ? props.bottomPx : undefined}
                     fontSizePx={typeof props.fontSizePx === 'number' ? props.fontSizePx : undefined}
                     opacity={typeof props.opacity === 'number' ? props.opacity : undefined}
+                  />
+                );
+              case 'modoitaliano-bracket':
+                return (
+                  <ModoItalianoBracket
+                    key={componentType}
+                    title={props.title}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    matches={Array.isArray(props.matches) ? props.matches : []}
                   />
                 );
               case 'toni-logo':

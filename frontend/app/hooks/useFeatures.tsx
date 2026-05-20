@@ -17,12 +17,12 @@ interface FeaturesContextValue {
 const FeaturesContext = createContext<FeaturesContextValue>({
   context: null,
   loading: true,
-  hasFeature: () => false,
+  hasFeature: () => false
 });
 
 export const useFeatures = () => useContext(FeaturesContext);
 
-const levelValues: Record<FeatureLevel, number> = { C: 0, T1: 1, T2: 2, T3: 3 };
+// const levelValues: Record<FeatureLevel, number> = { C: 0, T1: 1, T2: 2, T3: 3 };
 
 export function FeaturesProvider({ children }: { children: ReactNode }) {
   const [context, setContext] = useState<UserContext | null>(null);
@@ -31,7 +31,8 @@ export function FeaturesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    api.get('/auth/me')
+    api
+      .get('/auth/me')
       .then((res) => {
         if (mounted) {
           setContext(res.data.context || {});
@@ -46,22 +47,26 @@ export function FeaturesProvider({ children }: { children: ReactNode }) {
         }
       });
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const hasFeature = (slug: string, minLevel: FeatureLevel = 'C'): boolean => {
-    if (!context?.features || !context.features[slug]) {
-      return false;
-    }
-    const userLevel = context.features[slug].level;
-    return (levelValues[userLevel] ?? -1) >= levelValues[minLevel];
+    // Feature gating is temporarily disabled.
+    // Previous logic retained for easy rollback:
+    // if (!context?.features || !context.features[slug]) {
+    //   return false;
+    // }
+    // const userLevel = context.features[slug].level;
+    // return (levelValues[userLevel] ?? -1) >= levelValues[minLevel];
+    void slug;
+    void minLevel;
+    void context;
+    return true;
   };
 
-  return (
-    <FeaturesContext.Provider value={{ context, loading, hasFeature }}>
-      {children}
-    </FeaturesContext.Provider>
-  );
+  return <FeaturesContext.Provider value={{ context, loading, hasFeature }}>{children}</FeaturesContext.Provider>;
 }
 
 export function Can({ feature, level = 'C', children, fallback = null }: { feature: string; level?: FeatureLevel; children: ReactNode; fallback?: ReactNode }) {

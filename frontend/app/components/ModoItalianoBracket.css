@@ -1,0 +1,17 @@
+.modoitaliano-bracket-root {
+  overflow: hidden;
+}
+
+.modoitaliano-bracket-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 18, 52, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 0;
+}
+
+.modoitaliano-bracket-stage {
+  z-index: 1;
+}

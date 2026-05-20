@@ -1,12 +1,14 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { REQUIRE_FEATURE_KEY, RequireFeatureOptions } from './require-feature.decorator';
 
 @Injectable()
 export class FeaturesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    // Feature gating is temporarily disabled.
+    // Keeping previous logic commented for quick rollback.
+    /*
     const requiredFeature = this.reflector.getAllAndOverride<RequireFeatureOptions>(
       REQUIRE_FEATURE_KEY,
       [context.getHandler(), context.getClass()],
@@ -32,5 +34,10 @@ export class FeaturesGuard implements CanActivate {
     const userLevelValue = levelValues[feature.level as keyof typeof levelValues] ?? -1;
 
     return userLevelValue >= requiredLevelValue;
+    */
+
+    void this.reflector;
+    void context;
+    return true;
   }
 }

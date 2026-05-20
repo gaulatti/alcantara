@@ -13,6 +13,7 @@ export { Earone } from './Earone';
 export { ModoItalianoClock } from './ModoItalianoClock';
 export { ModoItalianoChyron } from './ModoItalianoChyron';
 export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
+export { ModoItalianoBracket } from './ModoItalianoBracket';
 export { CronicaChyron } from './CronicaChyron';
 export { CronicaBackground } from './CronicaBackground';
 export { CronicaReiteramos } from './CronicaReiteramos';

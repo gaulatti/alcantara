@@ -256,6 +256,17 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     }
   },
   {
+    id: 'modoitaliano-bracket',
+    name: 'Modo Italiano Bracket',
+    description: 'Tournament bracket from Round of 16 to Final',
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      title: 'TORNEO CANCIÓN',
+      show: true,
+      matches: []
+    }
+  },
+  {
     id: 'toni-logo',
     name: 'Toni Logo',
     description: 'Station logo with callsign',
