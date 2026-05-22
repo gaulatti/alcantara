@@ -35,7 +35,7 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
     if (!song) {
       return (
         <span
-          className={`text-[#f3f3f3] text-[24px] font-bold uppercase truncate flex-1 leading-none tracking-wide text-shadow-sm px-2 ${isRightWing ? 'text-right' : 'text-left'}`}
+          className={`text-[#f3f3f3] text-[20px] font-bold uppercase truncate flex-1 leading-none tracking-wide text-shadow-sm px-2 ${isRightWing ? 'text-right' : 'text-left'}`}
           style={{ fontFamily: MODO_ITALIANO_DISPLAY_FONT }}
         >
           TBD
@@ -46,11 +46,14 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
       <div className={`flex items-center flex-1 min-w-0 h-full ${isRightWing ? 'flex-row-reverse' : ''}`}>
         {song.coverUrl && <img src={song.coverUrl} className='w-[110px] h-full object-cover flex-shrink-0' />}
         <div className={`flex flex-col min-w-0 flex-1 justify-center gap-[4px] px-4 ${isRightWing ? 'text-right items-end' : 'text-left items-start'}`}>
-          <span className='text-[#aaaaaa] text-[22px] font-bold uppercase truncate leading-none tracking-wide' style={{ fontFamily: MODO_ITALIANO_DISPLAY_FONT }}>
+          <span
+            className='text-[#aaaaaa] text-[20px] font-bold uppercase truncate leading-none tracking-wide'
+            style={{ fontFamily: MODO_ITALIANO_DISPLAY_FONT }}
+          >
             {song.artist}
           </span>
           <span
-            className='text-[#f3f3f3] text-[30px] font-bold uppercase truncate leading-none tracking-wide text-shadow-sm'
+            className='text-[#f3f3f3] text-[26px] font-bold uppercase truncate leading-none tracking-wide text-shadow-sm'
             style={{ fontFamily: MODO_ITALIANO_DISPLAY_FONT }}
           >
             {song.title}
@@ -142,8 +145,14 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
 
         {/* Center / Final */}
         <div className='absolute top-[100%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center gap-12 z-20 pointer-events-none w-full max-w-[900px]'>
-          <div className='flex flex-col items-center bg-[#1D1D1B] p-3 rounded-md shadow-2xl border border-[#3A3A3A]' style={{ height: `${FINAL_PANEL_HEIGHT_PX}px` }}>
-            <span className='text-white opacity-80 text-xl font-bold tracking-widest mb-3 uppercase leading-none' style={{ fontFamily: MODO_ITALIANO_LABEL_FONT }}>
+          <div
+            className='flex flex-col items-center bg-[#1D1D1B] p-3 rounded-md shadow-2xl border border-[#3A3A3A]'
+            style={{ height: `${FINAL_PANEL_HEIGHT_PX}px` }}
+          >
+            <span
+              className='text-white opacity-80 text-xl font-bold tracking-widest mb-3 uppercase leading-none'
+              style={{ fontFamily: MODO_ITALIANO_LABEL_FONT }}
+            >
               Gran Final
             </span>
             <div
@@ -170,7 +179,9 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
               <span className='text-[#e2a842] text-xl font-black tracking-widest mb-3 shadow-sm leading-none' style={{ fontFamily: MODO_ITALIANO_LABEL_FONT }}>
                 CAMPEÓN
               </span>
-              {champion.coverUrl && <img src={champion.coverUrl} className='h-0 min-h-0 flex-1 aspect-square object-cover rounded-md shadow-2xl border-2 border-[#e2a842]' />}
+              {champion.coverUrl && (
+                <img src={champion.coverUrl} className='h-0 min-h-0 flex-1 aspect-square object-cover rounded-md shadow-2xl border-2 border-[#e2a842]' />
+              )}
             </div>
           ) : (
             <div className='flex flex-col items-center opacity-30' style={{ height: `${FINAL_PANEL_HEIGHT_PX}px` }}>
