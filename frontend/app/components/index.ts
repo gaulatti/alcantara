@@ -14,6 +14,7 @@ export { ModoItalianoClock } from './ModoItalianoClock';
 export { ModoItalianoChyron } from './ModoItalianoChyron';
 export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
 export { ModoItalianoBracket } from './ModoItalianoBracket';
+export { ModoItalianoPodcastPlayer } from './ModoItalianoPodcastPlayer';
 export { CronicaChyron } from './CronicaChyron';
 export { CronicaBackground } from './CronicaBackground';
 export { CronicaReiteramos } from './CronicaReiteramos';

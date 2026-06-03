@@ -20,6 +20,7 @@ interface ModoItalianoClockProps {
   language?: 'it' | 'en' | 'es';
   showWorldClocks?: boolean;
   showBellIcon?: boolean;
+  showLogo?: boolean;
   songs?: unknown;
   songSequence?: unknown;
   playingSong?: boolean;
@@ -173,6 +174,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   language = 'it',
   showWorldClocks = true,
   showBellIcon = false,
+  showLogo = true,
   songs,
   songSequence,
   playingSong,
@@ -384,8 +386,43 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     };
   }, [hasLiveSongPayload]);
 
-  if (!showWorldClocks && !showBellIcon) {
+  const logoBlock = (
+    <div
+      aria-label='MI'
+      role='img'
+      style={{
+        width: '172px',
+        height: '56px',
+        background: 'rgba(255, 255, 255, 0.56)',
+        WebkitMaskImage: "url('/mi.svg')",
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center',
+        WebkitMaskSize: 'contain',
+        maskImage: "url('/mi.svg')",
+        maskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        maskSize: 'contain'
+      }}
+    />
+  );
+
+  if (!showWorldClocks && !showBellIcon && !showLogo) {
     return null;
+  }
+
+  // Logo-only mode when clocks are hidden
+  if (!showWorldClocks && !showBellIcon && showLogo) {
+    return (
+      <div
+        style={
+          inline
+            ? { display: 'flex', flexDirection: 'column', width: 'fit-content' }
+            : { position: 'absolute', top: '64px', right: '96px', zIndex: 950 }
+        }
+      >
+        {logoBlock}
+      </div>
+    );
   }
   const wrapperStyle: React.CSSProperties = inline
     ? {
@@ -503,23 +540,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
         gap: '4px'
       }}
     >
-      <div
-        aria-label='MI'
-        role='img'
-        style={{
-          width: '172px',
-          height: '56px',
-          background: 'rgba(255, 255, 255, 0.56)',
-          WebkitMaskImage: "url('/mi.svg')",
-          WebkitMaskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'center',
-          WebkitMaskSize: 'contain',
-          maskImage: "url('/mi.svg')",
-          maskRepeat: 'no-repeat',
-          maskPosition: 'center',
-          maskSize: 'contain'
-        }}
-      />
+      {logoBlock}
       <div
         style={{
           height: '62px',

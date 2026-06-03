@@ -1567,10 +1567,6 @@ export default function Control() {
     const combined: Record<string, any> = {};
 
     for (const componentType of components) {
-      if (componentType === 'modoitaliano-clock') {
-        continue;
-      }
-
       const compatibleMetadata =
         componentType === 'fifthbell-content' || componentType === 'fifthbell-marquee'
           ? { ...legacyFifthBell, ...(metadata[componentType] || {}) }
@@ -2315,9 +2311,6 @@ export default function Control() {
       const components = layout.componentType.split(',').filter(Boolean);
       const initialProps: Record<string, any> = {};
       components.forEach((comp) => {
-        if (comp === 'modoitaliano-clock') {
-          return;
-        }
         initialProps[comp] = getDefaultPropsForComponent(comp);
       });
       setSceneComponentProps(initialProps);

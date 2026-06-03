@@ -231,8 +231,11 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     id: 'modoitaliano-clock',
     name: 'Modo Italiano Clock',
     description: 'Modo Italiano branded clock',
-    hasConfigurableSceneAttributes: false,
-    defaultProps: {}
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      showWorldClocks: true,
+      showLogo: true
+    }
   },
   {
     id: 'modoitaliano-chyron',
@@ -264,6 +267,19 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
       title: 'TORNEO CANCIÓN',
       show: true,
       matches: []
+    }
+  },
+  {
+    id: 'modoitaliano-podcast-player',
+    name: 'Modo Italiano Podcast Player',
+    description: 'Full-screen podcast player with animated background and audio visualizer',
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      show: true,
+      coverUrl: '',
+      episodeTitle: '',
+      showName: '',
+      audioUrl: ''
     }
   },
   {

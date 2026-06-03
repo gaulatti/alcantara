@@ -361,8 +361,7 @@ export function parseSceneMetadata(metadata: string | null): ComponentPropsMap {
 }
 
 export function withIndependentProgramClockMetadata(metadata: ComponentPropsMap): ComponentPropsMap {
-  if (!Object.prototype.hasOwnProperty.call(metadata, 'modoitaliano-clock')) return metadata;
-  return { ...metadata, 'modoitaliano-clock': {} };
+  return metadata;
 }
 
 export function formatTakePresetDbInputValue(value: number): string {

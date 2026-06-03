@@ -19,6 +19,7 @@ import {
   ModoItalianoChyron,
   ModoItalianoDisclaimer,
   ModoItalianoBracket,
+  ModoItalianoPodcastPlayer,
   CronicaChyron,
   CronicaBackground,
   CronicaReiteramos,
@@ -2282,8 +2283,14 @@ function SceneProgram({ programId }: { programId: string }) {
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
     const hasCronicaChyronComponent = components.includes('cronica-chyron');
     const hasProgramBracketComponent = components.includes('modoitaliano-bracket');
+    const hasProgramPodcastPlayerComponent = components.includes('modoitaliano-podcast-player');
     const shouldRenderProgramRow =
-      hasProgramClockComponent && (hasProgramChyronComponent || hasProgramDisclaimerComponent || hasCronicaChyronComponent || hasProgramBracketComponent);
+      hasProgramClockComponent &&
+      (hasProgramChyronComponent ||
+        hasProgramDisclaimerComponent ||
+        hasCronicaChyronComponent ||
+        hasProgramBracketComponent ||
+        hasProgramPodcastPlayerComponent);
     const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
     const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
     const toBoolean = (value: unknown, fallback: boolean): boolean => {
@@ -2346,7 +2353,7 @@ function SceneProgram({ programId }: { programId: string }) {
       <div className='w-full h-full relative bg-transparent'>
         {components.map((componentType) => {
           const props = metadata[componentType] || {};
-          const zIndex = typeof props._zIndex === 'number' ? props._zIndex : undefined;
+          const zIndex = props.zIndex !== undefined && props.zIndex !== '' ? Number(props.zIndex) : undefined;
 
           const renderComponent = (): React.ReactNode => {
             switch (componentType) {
@@ -2499,7 +2506,8 @@ function SceneProgram({ programId }: { programId: string }) {
                     transitionDurationMs={300}
                     shuffleCities={false}
                     widthPx={220}
-                    showWorldClocks={true}
+                    showWorldClocks={toBoolean(props.showWorldClocks, true)}
+                    showLogo={toBoolean(props.showLogo, true)}
                     showBellIcon={false}
                     songSequence={audioBusSettings?.songSequence}
                     language='es'
@@ -2540,6 +2548,17 @@ function SceneProgram({ programId }: { programId: string }) {
                     title={props.title}
                     show={typeof props.show === 'boolean' ? props.show : true}
                     matches={Array.isArray(props.matches) ? props.matches : []}
+                  />
+                );
+              case 'modoitaliano-podcast-player':
+                return (
+                  <ModoItalianoPodcastPlayer
+                    key={componentType}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    coverUrl={typeof props.coverUrl === 'string' ? props.coverUrl : ''}
+                    episodeTitle={typeof props.episodeTitle === 'string' ? props.episodeTitle : ''}
+                    showName={typeof props.showName === 'string' ? props.showName : ''}
+                    audioUrl={typeof props.audioUrl === 'string' ? props.audioUrl : ''}
                   />
                 );
               case 'toni-logo':
@@ -2624,7 +2643,8 @@ function SceneProgram({ programId }: { programId: string }) {
                 transitionDurationMs={300}
                 shuffleCities={false}
                 widthPx={220}
-                showWorldClocks={true}
+                showWorldClocks={toBoolean(metadata['modoitaliano-clock']?.showWorldClocks, true)}
+                showLogo={toBoolean(metadata['modoitaliano-clock']?.showLogo, true)}
                 showBellIcon={false}
                 songSequence={audioBusSettings?.songSequence}
                 language='es'

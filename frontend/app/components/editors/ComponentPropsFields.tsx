@@ -6,6 +6,7 @@ import { ToniChyronEditorFields } from './ToniChyronEditorFields';
 import { RelojDigitalEditorFields } from './RelojDigitalEditorFields';
 import { ProgramChyronEditorFields } from './ProgramChyronEditorFields';
 import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFields';
+import { ModoItalianoPodcastPlayerEditorFields } from './ModoItalianoPodcastPlayerEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
 import { createProgramTextSequence } from '../../utils/programSequence';
 import type { SongCatalogItem, MediaGroup } from '../../models/broadcast';
@@ -503,7 +504,30 @@ export function ComponentPropsFields({
         <ProgramChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
     case 'modoitaliano-clock':
-      return null;
+      return (
+        <div className='space-y-4'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
+                type='checkbox'
+                checked={toBoolean(props.showWorldClocks, true)}
+                onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show World Clocks
+            </label>
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
+                type='checkbox'
+                checked={toBoolean(props.showLogo, true)}
+                onChange={(e) => updateProp(componentType, 'showLogo', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Logo
+            </label>
+          </div>
+        </div>
+      );
     case 'toni-clock':
     case 'fifthbell-clock': {
       const worldClockCitiesDefaultValue = JSON.stringify(Array.isArray(props.worldClockCities) ? props.worldClockCities : [], null, 2);
@@ -682,6 +706,16 @@ export function ComponentPropsFields({
       );
     case 'modoitaliano-bracket':
       return <ModoItalianoBracketEditorFields props={props} updateProp={updateProp} componentType={componentType} songCatalog={songCatalog} />;
+    case 'modoitaliano-podcast-player':
+      return (
+        <ModoItalianoPodcastPlayerEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          mediaGroups={mediaGroups}
+          isLoadingMediaGroups={isLoadingMediaGroups}
+        />
+      );
     case 'cronica-background':
       return <p className='text-xs text-text-secondary italic'>No configurable fields for Cronica background.</p>;
     case 'cronica-chyron':
