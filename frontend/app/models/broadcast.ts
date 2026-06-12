@@ -64,6 +64,24 @@ export interface SongCatalogItem {
   earoneRank: string | null;
   earoneSpins: string | null;
   enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  catalogTotal: number;
+  catalogEnabled: number;
+  catalogTotalDurationMs: number;
+  catalogKnownDurationCount: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: PaginationMeta;
 }
 
 export interface MediaItem {

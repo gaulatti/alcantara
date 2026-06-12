@@ -1,25 +1,12 @@
-import { AlertContainer, Button, Card, Checkbox, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
-import { Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
+import { AlertContainer, Button, Card, Checkbox, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, Pagination, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/songs';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { apiUrl } from '../utils/apiBaseUrl';
-
-interface SongItem {
-  id: number;
-  artist: string;
-  title: string;
-  audioUrl: string;
-  coverUrl: string | null;
-  durationMs: number | null;
-  earoneSongId: string | null;
-  earoneRank: string | null;
-  earoneSpins: string | null;
-  enabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+import { fetchSongsPage } from '../services/songs';
+import type { SongCatalogItem } from '../models/broadcast';
 
 async function extractErrorMessage(res: Response): Promise<string> {
   const text = await res.text();
@@ -45,7 +32,7 @@ async function extractErrorMessage(res: Response): Promise<string> {
   return text;
 }
 
-function formatSongTitle(song: SongItem): string {
+function formatSongTitle(song: SongCatalogItem): string {
   const artist = song.artist.trim();
   const title = song.title.trim();
   if (artist && title) {
@@ -116,12 +103,23 @@ export function meta({}: Route.MetaArgs) {
 
 export default function SongsCatalog() {
   const navigate = useNavigate();
-  const [songs, setSongs] = useState<SongItem[]>([]);
+  const [songs, setSongs] = useState<SongCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showDisabledSongs, setShowDisabledSongs] = useState(true);
+  const [sortBy, setSortBy] = useState('artist');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [catalogTotal, setCatalogTotal] = useState(0);
+  const [catalogEnabled, setCatalogEnabled] = useState(0);
+  const [catalogTotalDurationMs, setCatalogTotalDurationMs] = useState(0);
+  const [catalogKnownDurationCount, setCatalogKnownDurationCount] = useState(0);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSong, setEditingSong] = useState<SongItem | null>(null);
+  const [editingSong, setEditingSong] = useState<SongCatalogItem | null>(null);
   const [artistInput, setArtistInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
   const [audioUrlInput, setAudioUrlInput] = useState('');
@@ -138,69 +136,72 @@ export default function SongsCatalog() {
   const [error, setError] = useState('');
   const [batchItems, setBatchItems] = useState<Array<{ name: string; status: 'pending' | 'uploading' | 'done' | 'error'; error?: string }>>([]);
 
-  const sortedSongs = useMemo(() => [...songs].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [songs]);
-
-  const filteredSongs = useMemo(() => {
-    const normalizedSearch = searchQuery.trim().toLowerCase();
-    return sortedSongs.filter((song) => {
-      if (!showDisabledSongs && !song.enabled) {
-        return false;
-      }
-
-      if (!normalizedSearch) {
-        return true;
-      }
-
-      const haystack = [song.artist, song.title, song.earoneSongId]
-        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        .join(' ')
-        .toLowerCase();
-
-      return haystack.includes(normalizedSearch);
-    });
-  }, [searchQuery, showDisabledSongs, sortedSongs]);
-
-  const enabledSongCount = useMemo(() => songs.filter((song) => song.enabled).length, [songs]);
-  const knownDurationCount = useMemo(
-    () => songs.filter((song) => typeof song.durationMs === 'number' && Number.isFinite(song.durationMs) && song.durationMs > 0).length,
-    [songs]
-  );
-  const totalKnownDurationMs = useMemo(
-    () =>
-      songs.reduce((acc, song) => {
-        if (typeof song.durationMs === 'number' && Number.isFinite(song.durationMs) && song.durationMs > 0) {
-          return acc + song.durationMs;
-        }
-        return acc;
-      }, 0),
-    [songs]
-  );
-
-  const fetchSongs = async () => {
-    const res = await fetch(apiUrl('/songs'));
-    if (!res.ok) {
-      throw new Error(await extractErrorMessage(res));
+  const fetchSongs = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await fetchSongsPage({
+        search: debouncedSearch || undefined,
+        ...(!showDisabledSongs ? { enabled: true } : {}),
+        sortBy,
+        sortOrder,
+        page,
+      });
+      setSongs(result.data);
+      setTotalPages(result.meta.totalPages);
+      setTotalCount(result.meta.total);
+      setCatalogTotal(result.meta.catalogTotal);
+      setCatalogEnabled(result.meta.catalogEnabled);
+      setCatalogTotalDurationMs(result.meta.catalogTotalDurationMs);
+      setCatalogKnownDurationCount(result.meta.catalogKnownDurationCount);
+    } catch (err) {
+      console.error('Failed to load songs:', err);
+      showAlert('Failed to load songs catalog.', 'error');
+    } finally {
+      setIsLoading(false);
     }
-
-    const payload = (await res.json()) as SongItem[];
-    setSongs(payload);
-  };
+  }, [debouncedSearch, showDisabledSongs, sortBy, sortOrder, page]);
 
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        await fetchSongs();
-      } catch (err) {
-        console.error('Failed to load songs:', err);
-        showAlert('Failed to load songs catalog.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-    void load();
-  }, []);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, showDisabledSongs, sortBy, sortOrder]);
+
+  useEffect(() => {
+    fetchSongs();
+  }, [fetchSongs]);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortHeader = ({ field, children }: { field: string; children: React.ReactNode }) => {
+    const isActive = sortBy === field;
+    return (
+      <button
+        type='button'
+        onClick={() => handleSort(field)}
+        className='inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:text-text-secondary hover:text-sea dark:hover:text-sea transition-colors'
+      >
+        {children}
+        {isActive ? (
+          sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+        ) : (
+          <ArrowUpDown size={12} className='opacity-30' />
+        )}
+      </button>
+    );
+  };
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -260,7 +261,7 @@ export default function SongsCatalog() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (song: SongItem) => {
+  const openEditModal = (song: SongCatalogItem) => {
     setEditingSong(song);
     setArtistInput(song.artist);
     setTitleInput(song.title);
@@ -276,7 +277,7 @@ export default function SongsCatalog() {
     setIsModalOpen(true);
   };
 
-  const playSongPreview = async (song: SongItem) => {
+  const playSongPreview = async (song: SongCatalogItem) => {
     try {
       const audio = new Audio(song.audioUrl);
       audio.preload = 'auto';
@@ -353,12 +354,12 @@ export default function SongsCatalog() {
     const durationMs = durationMsRaw ? Number(durationMsRaw) : null;
 
     if (!audioUrl) {
-      setError('Audio URL is . Upload a song file first.');
+      setError('Audio URL is required. Upload a song file first.');
       return;
     }
 
     if (!artist && !title) {
-      setError('Artist or title is .');
+      setError('Artist or title is required.');
       return;
     }
 
@@ -407,7 +408,7 @@ export default function SongsCatalog() {
     }
   };
 
-  const deleteSong = async (song: SongItem) => {
+  const deleteSong = async (song: SongCatalogItem) => {
     if (!confirm(`Delete song "${formatSongTitle(song)}"?`)) {
       return;
     }
@@ -448,17 +449,17 @@ export default function SongsCatalog() {
           <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
             <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
               <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>Songs</span>
-              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{songs.length}</p>
-              <p className='text-xs text-text-secondary dark:text-text-secondary'>{enabledSongCount} enabled</p>
+              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{catalogTotal}</p>
+              <p className='text-xs text-text-secondary dark:text-text-secondary'>{catalogEnabled} enabled</p>
             </div>
             <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
               <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>Duration</span>
-              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{formatSongDuration(totalKnownDurationMs)}</p>
-              <p className='text-xs text-text-secondary dark:text-text-secondary'>{knownDurationCount} with known runtime</p>
+              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{formatSongDuration(catalogTotalDurationMs)}</p>
+              <p className='text-xs text-text-secondary dark:text-text-secondary'>{catalogKnownDurationCount} with known runtime</p>
             </div>
             <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
               <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>View</span>
-              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{filteredSongs.length}</p>
+              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{totalCount}</p>
               <p className='text-xs text-text-secondary dark:text-text-secondary'>matching current filters</p>
             </div>
           </div>
@@ -468,7 +469,9 @@ export default function SongsCatalog() {
               <Input
                 type='text'
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                }}
                 placeholder='Search by artist, title, or EarOne ID'
                 startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
               />
@@ -483,13 +486,13 @@ export default function SongsCatalog() {
               <LoadingSpinner />
               <p>Loading songs...</p>
             </div>
-          ) : sortedSongs.length === 0 ? (
+          ) : catalogTotal === 0 ? (
             <Empty
               title='No songs yet'
               description='Upload your first song into the global catalog.'
               action={<Button onClick={openCreateModal}>Add Song</Button>}
             />
-          ) : filteredSongs.length === 0 ? (
+          ) : totalCount === 0 ? (
             <Empty
               title='No songs match this search'
               description='Try another artist/title query or include disabled songs.'
@@ -506,93 +509,105 @@ export default function SongsCatalog() {
               }
             />
           ) : (
-            <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
-              {/* Header row */}
-              <div className='grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:border-sand/35 dark:bg-dark-sand/40 dark:text-text-secondary'>
-                <span />
-                <span className='text-center'>#</span>
-                <span>Title</span>
-                <span>Artist</span>
-                <span className='text-right'>Duration</span>
-                <span />
-              </div>
-              <div className='divide-y divide-sand/15 dark:divide-sand/25'>
-                {filteredSongs.map((song, index) => (
-                  <div
-                    key={song.id}
-                    className={`group grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 px-3 py-2 transition-colors hover:bg-sand/10 dark:hover:bg-dark-sand/50 ${!song.enabled ? 'opacity-50' : ''}`}
-                  >
-                    {/* Cover art */}
-                    <div className='h-9 w-9 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
-                      {song.coverUrl ? (
-                        <img src={song.coverUrl} alt='' className='h-full w-full object-cover' />
-                      ) : (
-                        <div className='flex h-full w-full items-center justify-center'>
-                          <Music2 size={14} className='text-text-secondary/40' />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Track number */}
-                    <span className='text-center text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{index + 1}</span>
-
-                    {/* Title only */}
-                    <div className='min-w-0'>
-                      <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{song.title || 'Untitled'}</div>
-                    </div>
-
-                    {/* Artist */}
-                    <div className='min-w-0'>
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='sm'
-                        onClick={() => setSearchQuery(song.artist || '')}
-                        className='h-auto max-w-full justify-start truncate p-0 text-left text-sm font-normal text-text-secondary transition-colors hover:bg-transparent hover:text-sea dark:text-text-secondary '
-                        title={`Filter by ${song.artist}`}
-                      >
-                        {song.artist || '—'}
-                      </Button>
-                    </div>
-
-                    {/* Duration */}
-                    <span className='text-right text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{formatSongDuration(song.durationMs)}</span>
-
-                    {/* Actions — visible on hover */}
-                    <div className='flex items-center justify-end gap-1'>
-                      <IconButton
-                        onClick={() => {
-                          void playSongPreview(song);
-                        }}
-                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
-                        title={`Preview ${formatSongTitle(song)}`}
-                        aria-label={`Preview ${formatSongTitle(song)}`}
-                      >
-                        <Play size={14} />
-                      </IconButton>
-                      <IconButton
-                        onClick={() => openEditModal(song)}
-                        className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
-                        title={`Edit ${formatSongTitle(song)}`}
-                        aria-label={`Edit ${formatSongTitle(song)}`}
-                      >
-                        <Pencil size={14} />
-                      </IconButton>
-                      <IconButton
-                        onClick={() => {
-                          void deleteSong(song);
-                        }}
-                        className='text-terracotta opacity-0 transition-opacity group-hover:opacity-100'
-                        title={`Delete ${formatSongTitle(song)}`}
-                        aria-label={`Delete ${formatSongTitle(song)}`}
-                      >
-                        <Trash2 size={14} />
-                      </IconButton>
-                    </div>
+            <>
+              <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
+                {/* Header row */}
+                <div className='grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 dark:border-sand/35 dark:bg-dark-sand/40'>
+                  <span />
+                  <span className='text-center text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:text-text-secondary'>#</span>
+                  <SortHeader field='title'>Title</SortHeader>
+                  <SortHeader field='artist'>Artist</SortHeader>
+                  <div className='text-right'>
+                    <SortHeader field='durationMs'>Duration</SortHeader>
                   </div>
-                ))}
+                  <span />
+                </div>
+                <div className='divide-y divide-sand/15 dark:divide-sand/25'>
+                  {songs.map((song, index) => (
+                    <div
+                      key={song.id}
+                      className={`group grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 px-3 py-2 transition-colors hover:bg-sand/10 dark:hover:bg-dark-sand/50 ${!song.enabled ? 'opacity-50' : ''}`}
+                    >
+                      {/* Cover art */}
+                      <div className='h-9 w-9 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
+                        {song.coverUrl ? (
+                          <img src={song.coverUrl} alt='' className='h-full w-full object-cover' />
+                        ) : (
+                          <div className='flex h-full w-full items-center justify-center'>
+                            <Music2 size={14} className='text-text-secondary/40' />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Track number */}
+                      <span className='text-center text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{(page - 1) * 50 + index + 1}</span>
+
+                      {/* Title only */}
+                      <div className='min-w-0'>
+                        <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{song.title || 'Untitled'}</div>
+                      </div>
+
+                      {/* Artist */}
+                      <div className='min-w-0'>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => setSearchQuery(song.artist || '')}
+                          className='h-auto max-w-full justify-start truncate p-0 text-left text-sm font-normal text-text-secondary transition-colors hover:bg-transparent hover:text-sea dark:text-text-secondary '
+                          title={`Filter by ${song.artist}`}
+                        >
+                          {song.artist || '—'}
+                        </Button>
+                      </div>
+
+                      {/* Duration */}
+                      <span className='text-right text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{formatSongDuration(song.durationMs)}</span>
+
+                      {/* Actions — visible on hover */}
+                      <div className='flex items-center justify-end gap-1'>
+                        <IconButton
+                          onClick={() => {
+                            void playSongPreview(song);
+                          }}
+                          className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
+                          title={`Preview ${formatSongTitle(song)}`}
+                          aria-label={`Preview ${formatSongTitle(song)}`}
+                        >
+                          <Play size={14} />
+                        </IconButton>
+                        <IconButton
+                          onClick={() => openEditModal(song)}
+                          className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
+                          title={`Edit ${formatSongTitle(song)}`}
+                          aria-label={`Edit ${formatSongTitle(song)}`}
+                        >
+                          <Pencil size={14} />
+                        </IconButton>
+                        <IconButton
+                          onClick={() => {
+                            void deleteSong(song);
+                          }}
+                          className='text-terracotta opacity-0 transition-opacity group-hover:opacity-100'
+                          title={`Delete ${formatSongTitle(song)}`}
+                          aria-label={`Delete ${formatSongTitle(song)}`}
+                        >
+                          <Trash2 size={14} />
+                        </IconButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                hasNextPage={page < totalPages}
+                hasPrevPage={page > 1}
+                onPageChange={setPage}
+              />
+            </>
           )}
         </Card>
       </div>

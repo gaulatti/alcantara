@@ -8,6 +8,16 @@ interface MediaGroupInput {
   mediaIds?: number[];
 }
 
+interface FindAllParams {
+  search?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  page: number;
+  limit: number;
+}
+
+const ALLOWED_SORT_FIELDS = ['id', 'name', 'updatedAt', 'createdAt'] as const;
+
 type MediaGroupRecord = Prisma.MediaGroupGetPayload<{
   include: {
     mediaItems: {
@@ -21,18 +31,55 @@ type MediaGroupRecord = Prisma.MediaGroupGetPayload<{
 export class MediaGroupsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
-    const groups = await this.prisma.mediaGroup.findMany({
-      include: {
-        mediaItems: {
-          include: { media: true },
-          orderBy: { position: 'asc' },
-        },
-      },
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-    });
+  async findAll(params: FindAllParams) {
+    const { search, sortBy, sortOrder, page, limit } = params;
 
-    return groups.map((group) => this.mapGroup(group));
+    const where: Prisma.MediaGroupWhereInput = {};
+
+    if (search) {
+      const term = search.trim();
+      if (term) {
+        where.name = { contains: term, mode: 'insensitive' };
+      }
+    }
+
+    const actualSortBy = ALLOWED_SORT_FIELDS.includes(sortBy as typeof ALLOWED_SORT_FIELDS[number])
+      ? (sortBy as string)
+      : 'updatedAt';
+    const actualSortOrder: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const orderBy: Prisma.MediaGroupOrderByWithRelationInput[] = [
+      { [actualSortBy]: actualSortOrder },
+      { id: 'desc' },
+    ] as Prisma.MediaGroupOrderByWithRelationInput[];
+
+    const skip = (page - 1) * limit;
+
+    const [groups, total] = await Promise.all([
+      this.prisma.mediaGroup.findMany({
+        where,
+        include: {
+          mediaItems: {
+            include: { media: true },
+            orderBy: { position: 'asc' },
+          },
+        },
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      this.prisma.mediaGroup.count({ where }),
+    ]);
+
+    return {
+      data: groups.map((group) => this.mapGroup(group)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: number) {

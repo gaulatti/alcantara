@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 
 interface SongInput {
@@ -13,14 +14,77 @@ interface SongInput {
   enabled?: boolean;
 }
 
+interface FindAllParams {
+  search?: string;
+  enabled?: boolean;
+  sortBy?: string;
+  sortOrder?: string;
+  page: number;
+  limit: number;
+}
+
+const ALLOWED_SORT_FIELDS = ['id', 'artist', 'title', 'durationMs', 'updatedAt', 'createdAt', 'enabled'] as const;
+
 @Injectable()
 export class SongsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
-    return this.prisma.song.findMany({
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-    });
+  async findAll(params: FindAllParams) {
+    const { search, enabled, sortBy, sortOrder, page, limit } = params;
+
+    const where: Prisma.SongWhereInput = {};
+
+    if (enabled !== undefined) {
+      where.enabled = enabled;
+    }
+
+    if (search) {
+      const term = search.trim();
+      if (term) {
+        where.OR = [
+          { artist: { contains: term, mode: 'insensitive' } },
+          { title: { contains: term, mode: 'insensitive' } },
+          { earoneSongId: { contains: term, mode: 'insensitive' } },
+        ];
+      }
+    }
+
+    const actualSortBy = ALLOWED_SORT_FIELDS.includes(sortBy as typeof ALLOWED_SORT_FIELDS[number])
+      ? (sortBy as string)
+      : 'artist';
+    const actualSortOrder: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const orderBy: Prisma.SongOrderByWithRelationInput[] = [
+      { [actualSortBy]: actualSortOrder },
+      { id: 'desc' },
+    ] as Prisma.SongOrderByWithRelationInput[];
+
+    const skip = (page - 1) * limit;
+
+    const [data, total, catalogTotal, catalogEnabled, durationAgg] = await Promise.all([
+      this.prisma.song.findMany({ where, orderBy, skip, take: limit }),
+      this.prisma.song.count({ where }),
+      this.prisma.song.count(),
+      this.prisma.song.count({ where: { enabled: true } }),
+      this.prisma.song.aggregate({
+        _sum: { durationMs: true },
+        _count: { durationMs: true },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        catalogTotal,
+        catalogEnabled,
+        catalogTotalDurationMs: durationAgg._sum.durationMs ?? 0,
+        catalogKnownDurationCount: durationAgg._count.durationMs,
+      },
+    };
   }
 
   async findOne(id: number) {

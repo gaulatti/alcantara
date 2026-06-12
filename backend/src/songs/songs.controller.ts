@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { SongsService } from './songs.service';
 
 @Controller('songs')
@@ -6,8 +6,22 @@ export class SongsController {
   constructor(private readonly songsService: SongsService) {}
 
   @Get()
-  async findAll() {
-    return this.songsService.findAll();
+  async findAll(
+    @Query('search') search?: string,
+    @Query('enabled') enabled?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.songsService.findAll({
+      search,
+      enabled: enabled === undefined ? undefined : enabled === 'true',
+      sortBy,
+      sortOrder,
+      page: page ? Math.max(1, Number(page)) : 1,
+      limit: limit ? Math.min(200, Math.max(1, Number(limit))) : 50,
+    });
   }
 
   @Get(':id')

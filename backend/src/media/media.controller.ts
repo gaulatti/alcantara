@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { MediaService } from './media.service';
 
 @Controller('media')
@@ -6,8 +6,20 @@ export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
   @Get()
-  async findAll() {
-    return this.mediaService.findAll();
+  async findAll(
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.mediaService.findAll({
+      search,
+      sortBy,
+      sortOrder,
+      page: page ? Math.max(1, Number(page)) : 1,
+      limit: limit ? Math.min(200, Math.max(1, Number(limit))) : 50,
+    });
   }
 
   @Get(':id')

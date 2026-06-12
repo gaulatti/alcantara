@@ -10,8 +10,10 @@ import {
   LoadingSpinner,
   Modal,
   SectionHeader,
+  TanStackDataTable,
   showAlert
 } from '@gaulatti/bleecker';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Play, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -250,6 +252,65 @@ export default function InstantsAdmin() {
     }
   };
 
+  const columns = useMemo<ColumnDef<InstantItem>[]>(
+    () => [
+      { accessorKey: 'position', header: '#' },
+      { accessorKey: 'name', header: 'Name', enableSorting: true },
+      {
+        accessorKey: 'volume',
+        header: 'Volume',
+        cell: ({ row }) => row.original.volume.toFixed(2),
+      },
+      {
+        accessorKey: 'enabled',
+        header: 'Status',
+        cell: ({ row }) =>
+          row.original.enabled ? (
+            <span className='text-xs font-medium text-green-600 dark:text-green-400'>Enabled</span>
+          ) : (
+            <span className='text-xs text-text-secondary dark:text-text-secondary'>Disabled</span>
+          ),
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <div className='flex items-center justify-end gap-1'>
+            <IconButton
+              onClick={() => {
+                void playInstant(row.original.id);
+              }}
+              className='text-sea '
+              title={`Play ${row.original.name}`}
+              aria-label={`Play ${row.original.name}`}
+            >
+              <Play size={14} />
+            </IconButton>
+            <IconButton
+              onClick={() => openEditModal(row.original)}
+              className='text-sea '
+              title={`Edit ${row.original.name}`}
+              aria-label={`Edit ${row.original.name}`}
+            >
+              <Pencil size={14} />
+            </IconButton>
+            <IconButton
+              onClick={() => {
+                void deleteInstant(row.original);
+              }}
+              className='text-terracotta'
+              title={`Delete ${row.original.name}`}
+              aria-label={`Delete ${row.original.name}`}
+            >
+              <Trash2 size={14} />
+            </IconButton>
+          </div>
+        ),
+      },
+    ],
+    [playInstant, openEditModal, deleteInstant],
+  );
+
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
       <AlertContainer />
@@ -283,59 +344,7 @@ export default function InstantsAdmin() {
               action={<Button onClick={openCreateModal}>Create Instant</Button>}
             />
           ) : (
-            <div className='space-y-3'>
-              {sortedInstants.map((instant) => (
-                <article
-                  key={instant.id}
-                  className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
-                >
-                  <div className='flex items-start justify-between gap-4'>
-                    <div className='min-w-0 flex-1'>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{instant.name}</h3>
-                        {!instant.enabled ? (
-                          <span className='inline-flex rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15 dark:text-text-secondary'>
-                            Disabled
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className='mt-2 truncate text-sm text-text-secondary dark:text-text-secondary'>{instant.audioUrl}</p>
-                      <p className='mt-1 text-xs text-text-secondary dark:text-text-secondary'>Volume: {instant.volume}</p>
-                    </div>
-                    <div className='flex items-start gap-2'>
-                      <IconButton
-                        onClick={() => {
-                          void playInstant(instant.id);
-                        }}
-                        className='text-sea '
-                        title={`Play ${instant.name}`}
-                        aria-label={`Play ${instant.name}`}
-                      >
-                        <Play size={16} />
-                      </IconButton>
-                      <IconButton
-                        onClick={() => openEditModal(instant)}
-                        className='text-sea '
-                        title={`Edit ${instant.name}`}
-                        aria-label={`Edit ${instant.name}`}
-                      >
-                        <Pencil size={16} />
-                      </IconButton>
-                      <IconButton
-                        onClick={() => {
-                          void deleteInstant(instant);
-                        }}
-                        className='text-terracotta'
-                        title={`Delete ${instant.name}`}
-                        aria-label={`Delete ${instant.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+            <TanStackDataTable columns={columns} data={sortedInstants} />
           )}
         </Card>
 

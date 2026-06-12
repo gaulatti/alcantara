@@ -1,6 +1,7 @@
-import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, TanStackDataTable, showAlert } from '@gaulatti/bleecker';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/layouts';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -154,6 +155,62 @@ export default function LayoutsAdmin() {
     }
   };
 
+  const columns = useMemo<ColumnDef<Layout>[]>(
+    () => [
+      { accessorKey: 'name', header: 'Name', enableSorting: true },
+      {
+        id: 'components',
+        header: 'Components',
+        cell: ({ row }) => {
+          const components = row.original.componentType.split(',').filter(Boolean);
+          return (
+            <div className='flex flex-wrap gap-1'>
+              {components.map((component) => {
+                const info = componentTypes.find((ct) => ct.type === component);
+                return (
+                  <span
+                    key={component}
+                    className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea dark:border-accent-blue/30 dark:bg-accent-blue/10 dark:text-accent-blue'
+                    title={info?.description}
+                  >
+                    {info?.name || component}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        },
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <div className='flex items-center justify-end gap-1'>
+            <IconButton
+              onClick={() => openEditModal(row.original)}
+              className='text-sea '
+              title={`Edit ${row.original.name}`}
+              aria-label={`Edit ${row.original.name}`}
+            >
+              <Pencil size={14} />
+            </IconButton>
+            <IconButton
+              onClick={() => {
+                void deleteLayout(row.original.id);
+              }}
+              className='text-terracotta'
+              title={`Delete ${row.original.name}`}
+              aria-label={`Delete ${row.original.name}`}
+            >
+              <Trash2 size={14} />
+            </IconButton>
+          </div>
+        ),
+      },
+    ],
+    [openEditModal, deleteLayout, componentTypes],
+  );
+
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
       <AlertContainer />
@@ -189,56 +246,7 @@ export default function LayoutsAdmin() {
               }
             />
           ) : (
-            <div className='space-y-3'>
-              {layouts.map((layout) => {
-                const components = layout.componentType.split(',').filter(Boolean);
-                return (
-                  <article
-                    key={layout.id}
-                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 backdrop-blur-sm transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
-                  >
-                    <div className='flex justify-between gap-4'>
-                      <div className='flex-1'>
-                        <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{layout.name}</h3>
-                        <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Components</p>
-                        <div className='mt-2 flex flex-wrap gap-2'>
-                          {components.map((component) => {
-                            const info = componentTypes.find((ct) => ct.type === component);
-                            return (
-                              <span
-                                key={component}
-                                className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2.5 py-1 text-xs font-medium text-sea   '
-                                title={info?.description}
-                              >
-                                {info?.name || component}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className='flex items-start gap-2'>
-                        <IconButton
-                          onClick={() => openEditModal(layout)}
-                          className='text-sea '
-                          title={`Edit ${layout.name}`}
-                          aria-label={`Edit ${layout.name}`}
-                        >
-                          <Pencil size={16} />
-                        </IconButton>
-                        <IconButton
-                          onClick={() => deleteLayout(layout.id)}
-                          className='text-terracotta'
-                          title={`Delete ${layout.name}`}
-                          aria-label={`Delete ${layout.name}`}
-                        >
-                          <Trash2 size={16} />
-                        </IconButton>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+            <TanStackDataTable columns={columns} data={layouts} />
           )}
         </Card>
 

@@ -7,14 +7,58 @@ interface MediaInput {
   imageUrl?: string;
 }
 
+interface FindAllParams {
+  search?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  page: number;
+  limit: number;
+}
+
+const ALLOWED_SORT_FIELDS = ['id', 'name', 'updatedAt', 'createdAt'] as const;
+
 @Injectable()
 export class MediaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
-    return this.prisma.media.findMany({
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-    });
+  async findAll(params: FindAllParams) {
+    const { search, sortBy, sortOrder, page, limit } = params;
+
+    const where: Prisma.MediaWhereInput = {};
+
+    if (search) {
+      const term = search.trim();
+      if (term) {
+        where.name = { contains: term, mode: 'insensitive' };
+      }
+    }
+
+    const actualSortBy = ALLOWED_SORT_FIELDS.includes(sortBy as typeof ALLOWED_SORT_FIELDS[number])
+      ? (sortBy as string)
+      : 'updatedAt';
+    const actualSortOrder: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const orderBy: Prisma.MediaOrderByWithRelationInput[] = [
+      { [actualSortBy]: actualSortOrder },
+      { id: 'desc' },
+    ] as Prisma.MediaOrderByWithRelationInput[];
+
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.prisma.media.findMany({ where, orderBy, skip, take: limit }),
+      this.prisma.media.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: number) {
