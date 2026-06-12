@@ -1,6 +1,26 @@
-import { AlertContainer, Button, Card, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, Select, showAlert } from '@gaulatti/bleecker';
+import {
+  AlertContainer,
+  Button,
+  Card,
+  Empty,
+  IconButton,
+  Input,
+  LoadingSpinner,
+  Modal,
+  SectionHeader,
+  Select,
+  SortableTableHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  showAlert
+} from '@gaulatti/bleecker';
+import type { SortState } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/scenes';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -66,6 +86,21 @@ export default function ScenesAdmin() {
     };
     void load();
   }, []);
+
+  const [sort, setSort] = useState<SortState>({ field: 'name', order: 'asc' });
+
+  const handleSort = (field: string, order: 'asc' | 'desc') => {
+    setSort({ field, order });
+  };
+
+  const sortedScenes = useMemo(() => {
+    return [...scenes].sort((a, b) => {
+      if (sort.field === 'name') {
+        return sort.order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      }
+      return 0;
+    });
+  }, [scenes, sort]);
 
   const openCreateModal = () => {
     setEditingScene(null);
@@ -189,40 +224,46 @@ export default function ScenesAdmin() {
             ) : scenes.length === 0 ? (
               <Empty title='No scenes yet' description='Create your first scene.' action={<Button onClick={openCreateModal}>Create Scene</Button>} />
             ) : (
-              <div className='space-y-3'>
-                {scenes.map((scene) => (
-                  <article
-                    key={scene.id}
-                    className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
-                  >
-                    <div className='flex items-start justify-between gap-4'>
-                      <div className='min-w-0 flex-1'>
-                        <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{scene.name}</h3>
-                        <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Layout: {scene.layout?.name || `#${scene.layoutId}`}</p>
-                      </div>
-                      <div className='flex items-start gap-2'>
-                        <IconButton
-                          onClick={() => openEditModal(scene)}
-                          className='text-sea '
-                          title={`Edit ${scene.name}`}
-                          aria-label={`Edit ${scene.name}`}
-                        >
-                          <Pencil size={16} />
-                        </IconButton>
-                        <IconButton
-                          onClick={() => {
-                            void deleteScene(scene);
-                          }}
-                          className='text-terracotta'
-                          title={`Delete ${scene.name}`}
-                          aria-label={`Delete ${scene.name}`}
-                        >
-                          <Trash2 size={16} />
-                        </IconButton>
-                      </div>
-                    </div>
-                  </article>
-                ))}
+              <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <SortableTableHeader field='name' label='Name' currentSort={sort} onSort={handleSort} />
+                      <TableHead>Layout</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedScenes.map((scene) => (
+                      <TableRow key={scene.id}>
+                        <TableCell className='font-medium text-text-primary dark:text-text-primary'>{scene.name}</TableCell>
+                        <TableCell className='text-text-secondary dark:text-text-secondary'>{scene.layout?.name || `#${scene.layoutId}`}</TableCell>
+                        <TableCell>
+                          <div className='flex items-center justify-end gap-1'>
+                            <IconButton
+                              onClick={() => openEditModal(scene)}
+                              className='text-sea '
+                              title={`Edit ${scene.name}`}
+                              aria-label={`Edit ${scene.name}`}
+                            >
+                              <Pencil size={14} />
+                            </IconButton>
+                            <IconButton
+                              onClick={() => {
+                                void deleteScene(scene);
+                              }}
+                              className='text-terracotta'
+                              title={`Delete ${scene.name}`}
+                              aria-label={`Delete ${scene.name}`}
+                            >
+                              <Trash2 size={14} />
+                            </IconButton>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </Card>
