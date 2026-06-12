@@ -1,5 +1,24 @@
-import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, TanStackDataTable, showAlert } from '@gaulatti/bleecker';
-import type { ColumnDef } from '@tanstack/react-table';
+import {
+  AlertContainer,
+  Button,
+  Card,
+  Checkbox,
+  Empty,
+  IconButton,
+  Input,
+  LoadingSpinner,
+  Modal,
+  SectionHeader,
+  SortableTableHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  showAlert
+} from '@gaulatti/bleecker';
+import type { SortState } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -155,61 +174,20 @@ export default function LayoutsAdmin() {
     }
   };
 
-  const columns = useMemo<ColumnDef<Layout>[]>(
-    () => [
-      { accessorKey: 'name', header: 'Name', enableSorting: true },
-      {
-        id: 'components',
-        header: 'Components',
-        cell: ({ row }) => {
-          const components = row.original.componentType.split(',').filter(Boolean);
-          return (
-            <div className='flex flex-wrap gap-1'>
-              {components.map((component) => {
-                const info = componentTypes.find((ct) => ct.type === component);
-                return (
-                  <span
-                    key={component}
-                    className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea dark:border-accent-blue/30 dark:bg-accent-blue/10 dark:text-accent-blue'
-                    title={info?.description}
-                  >
-                    {info?.name || component}
-                  </span>
-                );
-              })}
-            </div>
-          );
-        },
-      },
-      {
-        id: 'actions',
-        header: '',
-        cell: ({ row }) => (
-          <div className='flex items-center justify-end gap-1'>
-            <IconButton
-              onClick={() => openEditModal(row.original)}
-              className='text-sea '
-              title={`Edit ${row.original.name}`}
-              aria-label={`Edit ${row.original.name}`}
-            >
-              <Pencil size={14} />
-            </IconButton>
-            <IconButton
-              onClick={() => {
-                void deleteLayout(row.original.id);
-              }}
-              className='text-terracotta'
-              title={`Delete ${row.original.name}`}
-              aria-label={`Delete ${row.original.name}`}
-            >
-              <Trash2 size={14} />
-            </IconButton>
-          </div>
-        ),
-      },
-    ],
-    [openEditModal, deleteLayout, componentTypes],
-  );
+  const [sort, setSort] = useState<SortState>({ field: 'name', order: 'asc' });
+
+  const handleSort = (field: string, order: 'asc' | 'desc') => {
+    setSort({ field, order });
+  };
+
+  const sortedLayouts = useMemo(() => {
+    return [...layouts].sort((a, b) => {
+      if (sort.field === 'name') {
+        return sort.order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      }
+      return 0;
+    });
+  }, [layouts, sort]);
 
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
@@ -246,7 +224,65 @@ export default function LayoutsAdmin() {
               }
             />
           ) : (
-            <TanStackDataTable columns={columns} data={layouts} />
+            <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableTableHeader field='name' label='Name' currentSort={sort} onSort={handleSort} />
+                    <TableHead>Components</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedLayouts.map((layout) => {
+                    const components = layout.componentType.split(',').filter(Boolean);
+                    return (
+                      <TableRow key={layout.id}>
+                        <TableCell className='font-medium text-text-primary dark:text-text-primary'>{layout.name}</TableCell>
+                        <TableCell>
+                          <div className='flex flex-wrap gap-1'>
+                            {components.map((component) => {
+                              const info = componentTypes.find((ct) => ct.type === component);
+                              return (
+                                <span
+                                  key={component}
+                                  className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea dark:border-accent-blue/30 dark:bg-accent-blue/10 dark:text-accent-blue'
+                                  title={info?.description}
+                                >
+                                  {info?.name || component}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className='flex items-center justify-end gap-1'>
+                            <IconButton
+                              onClick={() => openEditModal(layout)}
+                              className='text-sea '
+                              title={`Edit ${layout.name}`}
+                              aria-label={`Edit ${layout.name}`}
+                            >
+                              <Pencil size={14} />
+                            </IconButton>
+                            <IconButton
+                              onClick={() => {
+                                void deleteLayout(layout.id);
+                              }}
+                              className='text-terracotta'
+                              title={`Delete ${layout.name}`}
+                              aria-label={`Delete ${layout.name}`}
+                            >
+                              <Trash2 size={14} />
+                            </IconButton>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </Card>
 

@@ -11,12 +11,18 @@ import {
   Pagination,
   Select,
   SectionHeader,
+  SortableTableHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Tabs,
-  TanStackDataTable,
   Textarea,
   showAlert
 } from '@gaulatti/bleecker';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { SortState } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2, ArrowUp, ArrowDown, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -95,7 +101,7 @@ export default function MediaRoute() {
   const navigate = useNavigate();
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<MediaGroup | null>(null);
   const [activeTab, setActiveTab] = useState('library');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -107,6 +113,9 @@ export default function MediaRoute() {
 
   const [groupSearch, setGroupSearch] = useState('');
   const [debouncedGroupSearch, setDebouncedGroupSearch] = useState('');
+  const [groupPage, setGroupPage] = useState(1);
+  const [groupTotalPages, setGroupTotalPages] = useState(1);
+  const [groupTotalCount, setGroupTotalCount] = useState(0);
 
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
@@ -147,14 +156,18 @@ export default function MediaRoute() {
   const fetchMediaGroups = useCallback(async () => {
     const params = new URLSearchParams();
     if (debouncedGroupSearch) params.set('search', debouncedGroupSearch);
+    params.set('page', String(groupPage));
+    params.set('limit', '20');
     const qs = params.toString();
     const res = await fetch(apiUrl(`/media-groups${qs ? `?${qs}` : ''}`));
     if (!res.ok) {
       throw new Error(await extractErrorMessage(res));
     }
-    const payload = (await res.json()) as MediaGroup[];
-    setMediaGroups(Array.isArray(payload) ? payload : []);
-  }, [debouncedGroupSearch]);
+    const payload = await res.json();
+    setMediaGroups(Array.isArray(payload.data) ? payload.data : []);
+    setGroupTotalPages(payload.meta?.totalPages ?? 1);
+    setGroupTotalCount(payload.meta?.total ?? 0);
+  }, [debouncedGroupSearch, groupPage]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedMediaSearch(mediaSearch), 300);
@@ -169,6 +182,10 @@ export default function MediaRoute() {
   useEffect(() => {
     setMediaPage(1);
   }, [debouncedMediaSearch]);
+
+  useEffect(() => {
+    setGroupPage(1);
+  }, [debouncedGroupSearch]);
 
   useEffect(() => {
     const load = async () => {
@@ -190,49 +207,14 @@ export default function MediaRoute() {
     return [...media].sort((a, b) => b.id - a.id);
   }, [media]);
 
-  const sortedGroups = useMemo(() => {
-    return [...mediaGroups].sort((a, b) => a.name.localeCompare(b.name));
-  }, [mediaGroups]);
-
-  useEffect(() => {
-    if (!sortedGroups.length) {
-      setSelectedGroupId(null);
-      return;
-    }
-
-    if (selectedGroupId === null) {
-      setSelectedGroupId(sortedGroups[0].id);
-      return;
-    }
-
-    if (!sortedGroups.some((group) => group.id === selectedGroupId)) {
-      setSelectedGroupId(sortedGroups[0].id);
-    }
-  }, [selectedGroupId, sortedGroups]);
-
-  const selectedGroup = useMemo(() => {
-    if (selectedGroupId === null) {
-      return null;
-    }
-    return sortedGroups.find((group) => group.id === selectedGroupId) ?? null;
-  }, [selectedGroupId, sortedGroups]);
-
-  const selectedGroupMediaIds = useMemo(() => {
-    return new Set((selectedGroup?.items ?? []).map((item) => item.mediaId));
-  }, [selectedGroup]);
-
-  const availableMediaForGroup = useMemo(() => {
-    return sortedMedia.filter((item) => !selectedGroupMediaIds.has(item.id));
-  }, [selectedGroupMediaIds, sortedMedia]);
-
   const openCreateMediaModal = () => {
     setEditingMedia(null);
     setMediaNameInput('');
     setMediaUrlInput('');
     setSelectedImageFiles([]);
-    if (selectedGroupId !== null) {
+    if (selectedGroup !== null) {
       setGroupAssignMode('existing');
-      setGroupAssignExistingId(String(selectedGroupId));
+      setGroupAssignExistingId(String(selectedGroup.id));
     } else {
       setGroupAssignMode('none');
       setGroupAssignExistingId('');
@@ -440,7 +422,10 @@ export default function MediaRoute() {
 
       await Promise.all([fetchMedia(), fetchMediaGroups()]);
       if (assignedGroupId !== null) {
-        setSelectedGroupId(assignedGroupId);
+        const groupRes = await fetch(apiUrl(`/media-groups/${assignedGroupId}`));
+        if (groupRes.ok) {
+          setSelectedGroup(await groupRes.json());
+        }
       }
       closeMediaModal();
       showAlert(`Created ${createdMediaIds.length} media item${createdMediaIds.length === 1 ? '' : 's'}.`, 'success');
@@ -510,7 +495,7 @@ export default function MediaRoute() {
         next[existingIndex] = saved;
         return next;
       });
-      setSelectedGroupId(saved.id);
+      setSelectedGroup(saved);
       closeGroupModal();
       showAlert(editingGroup ? 'Media group updated.' : 'Media group created.', 'success');
     } catch (err) {
@@ -619,6 +604,21 @@ export default function MediaRoute() {
     }
   };
 
+  const [groupSort, setGroupSort] = useState<SortState>({ field: 'name', order: 'asc' });
+
+  const handleGroupSort = (field: string, order: 'asc' | 'desc') => {
+    setGroupSort({ field, order });
+  };
+
+  const sortedMediaGroups = useMemo(() => {
+    return [...mediaGroups].sort((a, b) => {
+      if (groupSort.field === 'name') {
+        return groupSort.order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      }
+      return 0;
+    });
+  }, [mediaGroups, groupSort]);
+
   return (
     <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
       <AlertContainer />
@@ -645,7 +645,7 @@ export default function MediaRoute() {
                 onChange={setActiveTab}
                 tabs={[
                   { id: 'library', label: `Media Library (${sortedMedia.length})` },
-                  { id: 'groups', label: `Media Groups (${sortedGroups.length})` },
+                  { id: 'groups', label: `Media Groups (${groupTotalCount})` },
                 ]}
               />
             </div>
@@ -734,170 +734,197 @@ export default function MediaRoute() {
                   )}
                 </div>
               ) : (
-                <div className='space-y-4'>
-                  <div className='flex items-center justify-between'>
-                    <h2 className='text-xl font-semibold text-text-primary dark:text-text-primary'>Media Groups</h2>
-                    <div className='flex items-center gap-3'>
-                      <Input
-                        type='text'
-                        value={groupSearch}
-                        onChange={(event) => setGroupSearch(event.target.value)}
-                        placeholder='Search groups...'
-                        startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
-                      />
-                      <Button size='sm' onClick={openCreateGroupModal}>
-                        <Plus size={14} />
-                        Create Group
-                      </Button>
-                    </div>
-                  </div>
-
-                  {sortedGroups.length === 0 ? (
-                    <Empty
-                      title={debouncedGroupSearch ? 'No groups match your search' : 'No groups yet'}
-                      description={debouncedGroupSearch ? 'Try a different search term.' : 'Create a media group, then assign images to it.'}
-                      action={
-                        debouncedGroupSearch ? (
-                          <Button variant='secondary' onClick={() => setGroupSearch('')}>
-                            Clear Search
-                          </Button>
-                        ) : (
-                          <Button onClick={openCreateGroupModal}>Create Group</Button>
-                        )
-                      }
-                    />
-                  ) : (
-                    <div className='grid gap-4 lg:grid-cols-[220px_1fr]'>
-                      <div className='space-y-2'>
-                        {sortedGroups.map((group) => {
-                          const isSelected = selectedGroupId === group.id;
-                          return (
-                            <Button
-                              key={group.id}
-                              type='button'
-                              onClick={() => setSelectedGroupId(group.id)}
-                              variant='ghost'
-                              className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
-                                isSelected
-                                  ? 'border-sea bg-sea/10  '
-                                  : 'border-sand/20 bg-white/70 hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/50 '
-                              }`}
-                            >
-                              <div className='truncate text-sm font-semibold text-text-primary dark:text-text-primary'>{group.name}</div>
-                              <div className='text-xs text-text-secondary dark:text-text-secondary'>{group.items.length} images</div>
-                            </Button>
-                          );
-                        })}
+                <div className='flex gap-6'>
+                  <div className='w-1/2 space-y-4'>
+                    <div className='flex items-center justify-between'>
+                      <h2 className='text-xl font-semibold text-text-primary dark:text-text-primary'>Media Groups</h2>
+                      <div className='flex items-center gap-3'>
+                        <Input
+                          type='text'
+                          value={groupSearch}
+                          onChange={(event) => setGroupSearch(event.target.value)}
+                          placeholder='Search groups...'
+                          startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
+                        />
+                        <Button size='sm' onClick={openCreateGroupModal}>
+                          <Plus size={14} />
+                          Create Group
+                        </Button>
                       </div>
+                    </div>
 
-                      {selectedGroup ? (
-                        <div className='space-y-4'>
-                          <div className='flex flex-wrap items-center justify-between gap-2'>
-                            <div>
-                              <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{selectedGroup.name}</h3>
-                              {selectedGroup.description ? (
-                                <p className='text-sm text-text-secondary dark:text-text-secondary'>{selectedGroup.description}</p>
-                              ) : (
-                                <p className='text-sm text-text-secondary dark:text-text-secondary'>No description.</p>
-                              )}
-                            </div>
-                            <div className='flex items-center gap-2'>
-                              <Button size='sm' variant='secondary' onClick={() => openEditGroupModal(selectedGroup)}>
-                                Edit Group
-                              </Button>
-                              <Button size='sm' variant='secondary' onClick={() => void deleteGroup(selectedGroup)}>
-                                Delete Group
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className='space-y-2'>
-                            <h4 className='text-sm font-semibold text-text-primary dark:text-text-primary'>Assigned Media</h4>
-                            {selectedGroup.items.length === 0 ? (
-                              <p className='text-sm text-text-secondary dark:text-text-secondary'>No media assigned yet.</p>
-                            ) : (
-                              <div className='space-y-2'>
-                                {selectedGroup.items.map((item, index) => (
-                                  <div
-                                    key={item.id}
-                                    className='flex items-center gap-3 rounded-lg border border-sand/20 bg-white/70 px-2 py-2 dark:border-sand/40 dark:bg-dark-sand/50'
-                                  >
-                                    <img src={item.media.imageUrl} alt={item.media.name} className='h-12 w-16 rounded border border-sand/20 object-cover dark:border-sand/40' />
-                                    <div className='min-w-0 flex-1'>
-                                      <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{item.media.name}</div>
-                                      <div className='text-xs text-text-secondary dark:text-text-secondary'>#{index + 1}</div>
-                                    </div>
-                                    <div className='flex items-center gap-1'>
+                    {groupTotalCount === 0 ? (
+                      <Empty
+                        title={debouncedGroupSearch ? 'No groups match your search' : 'No groups yet'}
+                        description={debouncedGroupSearch ? 'Try a different search term.' : 'Create a media group, then assign images to it.'}
+                        action={
+                          debouncedGroupSearch ? (
+                            <Button variant='secondary' onClick={() => setGroupSearch('')}>
+                              Clear Search
+                            </Button>
+                          ) : (
+                            <Button onClick={openCreateGroupModal}>Create Group</Button>
+                          )
+                        }
+                      />
+                    ) : (
+                      <>
+                        <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <SortableTableHeader field='name' label='Name' currentSort={groupSort} onSort={handleGroupSort} />
+                                <TableHead>Images</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead />
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {sortedMediaGroups.map((group) => (
+                                <TableRow
+                                  key={group.id}
+                                  className='cursor-pointer'
+                                  onClick={() => setSelectedGroup(group)}
+                                >
+                                  <TableCell className='font-medium text-text-primary dark:text-text-primary'>{group.name}</TableCell>
+                                  <TableCell className='text-text-secondary dark:text-text-secondary'>{group.items.length}</TableCell>
+                                  <TableCell>
+                                    <span className='truncate text-xs text-text-secondary dark:text-text-secondary'>
+                                      {group.description || '—'}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className='flex items-center justify-end gap-1' onClick={(e) => e.stopPropagation()}>
                                       <IconButton
-                                        onClick={() => {
-                                          void moveMediaInSelectedGroup(item.mediaId, -1);
-                                        }}
-                                        title='Move up'
-                                        aria-label='Move up'
-                                        disabled={index === 0}
+                                        onClick={() => setSelectedGroup(group)}
+                                        className='text-sea '
+                                        title={`View ${group.name}`}
+                                        aria-label={`View ${group.name}`}
                                       >
-                                        <ArrowUp size={14} />
+                                        <Search size={14} />
+                                      </IconButton>
+                                      <IconButton
+                                        onClick={() => openEditGroupModal(group)}
+                                        className='text-sea '
+                                        title={`Edit ${group.name}`}
+                                        aria-label={`Edit ${group.name}`}
+                                      >
+                                        <Pencil size={14} />
                                       </IconButton>
                                       <IconButton
                                         onClick={() => {
-                                          void moveMediaInSelectedGroup(item.mediaId, 1);
-                                        }}
-                                        title='Move down'
-                                        aria-label='Move down'
-                                        disabled={index === selectedGroup.items.length - 1}
-                                      >
-                                        <ArrowDown size={14} />
-                                      </IconButton>
-                                      <IconButton
-                                        onClick={() => {
-                                          void removeMediaFromSelectedGroup(item.mediaId);
+                                          void deleteGroup(group);
                                         }}
                                         className='text-terracotta'
-                                        title='Remove from group'
-                                        aria-label='Remove from group'
+                                        title={`Delete ${group.name}`}
+                                        aria-label={`Delete ${group.name}`}
                                       >
                                         <Trash2 size={14} />
                                       </IconButton>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        <Pagination
+                          currentPage={groupPage}
+                          totalPages={groupTotalPages}
+                          hasNextPage={groupPage < groupTotalPages}
+                          hasPrevPage={groupPage > 1}
+                          onPageChange={setGroupPage}
+                        />
+                      </>
+                    )}
+                  </div>
+
+                  <div className='w-1/2 space-y-4'>
+                    {selectedGroup ? (
+                      <>
+                        <div className='flex items-center justify-between'>
+                          <div>
+                            <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{selectedGroup.name}</h3>
+                            {selectedGroup.description ? (
+                              <p className='text-sm text-text-secondary dark:text-text-secondary'>{selectedGroup.description}</p>
+                            ) : (
+                              <p className='text-sm text-text-secondary dark:text-text-secondary'>{selectedGroup.items.length} media items</p>
                             )}
                           </div>
-
-                          <div className='space-y-2'>
-                            <h4 className='text-sm font-semibold text-text-primary dark:text-text-primary'>Add Media To Group</h4>
-                            {availableMediaForGroup.length === 0 ? (
-                              <p className='text-sm text-text-secondary dark:text-text-secondary'>All media are already in this group.</p>
-                            ) : (
-                              <div className='max-h-64 space-y-2 overflow-y-auto pr-1'>
-                                {availableMediaForGroup.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className='flex items-center gap-3 rounded-lg border border-sand/20 bg-white/70 px-2 py-2 dark:border-sand/40 dark:bg-dark-sand/50'
-                                  >
-                                    <img src={item.imageUrl} alt={item.name} className='h-10 w-14 rounded border border-sand/20 object-cover dark:border-sand/40' />
-                                    <div className='min-w-0 flex-1 truncate text-sm text-text-primary dark:text-text-primary'>{item.name}</div>
-                                    <Button
-                                      size='sm'
-                                      variant='secondary'
-                                      onClick={() => {
-                                        void addMediaToSelectedGroup(item.id);
-                                      }}
-                                    >
-                                      Add
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                          <div className='flex items-center gap-2'>
+                            <Button size='sm' variant='secondary' onClick={() => openEditGroupModal(selectedGroup)}>
+                              Edit Group
+                            </Button>
+                            <Button size='sm' variant='secondary' onClick={() => void deleteGroup(selectedGroup)}>
+                              Delete Group
+                            </Button>
                           </div>
                         </div>
-                      ) : (
-                        <p className='text-sm text-text-secondary dark:text-text-secondary'>Select a media group to manage members.</p>
-                      )}
-                    </div>
-                  )}
+
+                        {selectedGroup.items.length === 0 ? (
+                          <div className='flex flex-col items-center justify-center gap-3 py-12 text-center text-text-secondary dark:text-text-secondary'>
+                            <p>No media assigned yet.</p>
+                          </div>
+                        ) : (
+                          <div className='grid gap-4 grid-cols-2'>
+                            {selectedGroup.items.map((item, index) => (
+                              <article
+                                key={item.id}
+                                className='group relative overflow-hidden rounded-2xl border border-sand/20 bg-white/80 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60'
+                              >
+                                <img
+                                  src={item.media.imageUrl}
+                                  alt={item.media.name}
+                                  className='aspect-[4/3] w-full object-cover'
+                                />
+                                <div className='absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.8)_20%,rgba(0,0,0,0.7)_40%,rgba(0,0,0,0.3)_60%,transparent_80%)] p-3 pt-14'>
+                                  <h3 className='truncate text-sm font-semibold text-white drop-shadow-sm'>{item.media.name}</h3>
+                                </div>
+                                <div className='absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                                  <IconButton
+                                    onClick={() => {
+                                      void moveMediaInSelectedGroup(item.mediaId, -1);
+                                    }}
+                                    disabled={index === 0}
+                                    className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
+                                    title='Move up'
+                                    aria-label='Move up'
+                                  >
+                                    <ArrowUp size={14} />
+                                  </IconButton>
+                                  <IconButton
+                                    onClick={() => {
+                                      void moveMediaInSelectedGroup(item.mediaId, 1);
+                                    }}
+                                    disabled={index === selectedGroup.items.length - 1}
+                                    className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
+                                    title='Move down'
+                                    aria-label='Move down'
+                                  >
+                                    <ArrowDown size={14} />
+                                  </IconButton>
+                                  <IconButton
+                                    onClick={() => {
+                                      void removeMediaFromSelectedGroup(item.mediaId);
+                                    }}
+                                    className='bg-white/80 text-terracotta backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
+                                    title='Remove from group'
+                                    aria-label='Remove from group'
+                                  >
+                                    <X size={14} />
+                                  </IconButton>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className='flex flex-col items-center justify-center gap-3 py-16 text-center text-text-secondary dark:text-text-secondary'>
+                        <p>Select a group from the table to view its media.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1030,7 +1057,7 @@ export default function MediaRoute() {
                       value={groupAssignExistingId}
                       onChange={(value) => setGroupAssignExistingId(value)}
                       placeholder='Select a group'
-                      options={sortedGroups.map((group) => ({
+                      options={mediaGroups.map((group) => ({
                         value: String(group.id),
                         label: `${group.name} (${group.items.length} images)`
                       }))}
