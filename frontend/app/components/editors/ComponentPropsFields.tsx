@@ -9,7 +9,7 @@ import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFiel
 import { ModoItalianoPodcastPlayerEditorFields } from './ModoItalianoPodcastPlayerEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
 import { createProgramTextSequence } from '../../utils/programSequence';
-import type { SongCatalogItem, MediaGroup } from '../../models/broadcast';
+import type { Scene, SongCatalogItem, MediaGroup } from '../../models/broadcast';
 import { getDefaultPropsForComponent } from '../../models/components';
 
 function toBoolean(value: unknown, fallback: boolean): boolean {
@@ -31,7 +31,9 @@ export function ComponentPropsFields({
   commitProps,
   songCatalog,
   mediaGroups,
-  isLoadingMediaGroups
+  isLoadingMediaGroups,
+  scenes,
+  programId
 }: {
   componentType: string;
   props: any;
@@ -41,6 +43,8 @@ export function ComponentPropsFields({
   songCatalog: SongCatalogItem[];
   mediaGroups: MediaGroup[];
   isLoadingMediaGroups: boolean;
+  scenes?: Scene[];
+  programId?: string;
 }) {
   const timezoneOptions = useMemo(() => {
     const baseDate = new Date();
@@ -492,6 +496,8 @@ export function ComponentPropsFields({
           replaceProps={replaceProps}
           commitProps={commitProps}
           timezoneOptions={timezoneOptions}
+          scenes={scenes}
+          programId={programId}
         />
       );
     case 'toni-chyron':

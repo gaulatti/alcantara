@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
+import { activateScene } from '../services/program';
 import './RelojDigitalLoopClock.css';
 
 interface RelojDigitalLoopClockProps {
   timezone?: string;
   textSequence?: unknown;
   ctaSequence?: unknown;
+  programId?: string;
+  mode?: 'clock' | 'countdown';
+  countdownDuration?: number;
+  countdownTargetSceneId?: number | null;
+  countdownTransitionId?: string | null;
+  countdownCommand?: number;
 }
 
 interface LoopTimezone {
@@ -39,16 +46,13 @@ function FlightBoardText({ targetText }: { targetText: string }) {
       frame++;
       setDisplayArray((prev) => {
         let allDone = true;
-        // Map over targetChars so array size matches current text precisely
         const next = targetChars.map((targetChar, i) => {
-          // Speed: 2 frames per character index delay to settle
           const settleFrame = 5 + i * 2;
           if (frame >= settleFrame) {
             return targetChar;
           }
 
           allDone = false;
-          // Random flip simulation
           return FLIGHT_CHARS[Math.floor(Math.random() * FLIGHT_CHARS.length)];
         });
 
@@ -63,7 +67,17 @@ function FlightBoardText({ targetText }: { targetText: string }) {
   return <>{displayArray.join('')}</>;
 }
 
-export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSequence, ctaSequence }: RelojDigitalLoopClockProps) {
+export default function RelojDigitalLoopClock({
+  timezone = 'Europe/Rome',
+  textSequence,
+  ctaSequence,
+  programId,
+  mode = 'clock',
+  countdownDuration = 300,
+  countdownTargetSceneId,
+  countdownTransitionId = 'cut',
+  countdownCommand
+}: RelojDigitalLoopClockProps) {
   const defaultIndex = useMemo(() => {
     const idx = LOOP_TIMEZONES.findIndex((item) => item.timezone === timezone);
     return idx >= 0 ? idx : 0;
@@ -78,6 +92,33 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSe
   const normalizedCtaSequence = useMemo(() => normalizeProgramTextSequence(ctaSequence), [ctaSequence]);
   const shouldTick = normalizedTextSequence?.mode === 'autoplay' || normalizedCtaSequence?.mode === 'autoplay';
 
+  const countdownFiredRef = useRef(false);
+  const countdownAnchorRef = useRef(0);
+  const lastCommandRef = useRef(0);
+  const initializedRef = useRef(false);
+  const [countdownRunning, setCountdownRunning] = useState(false);
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      lastCommandRef.current = countdownCommand || 0;
+      return;
+    }
+
+    const cmd = countdownCommand || 0;
+    if (cmd > lastCommandRef.current) {
+      lastCommandRef.current = cmd;
+      if (countdownRunning) {
+        setCountdownRunning(false);
+        countdownFiredRef.current = true;
+      } else {
+        countdownAnchorRef.current = Date.now();
+        countdownFiredRef.current = false;
+        setCountdownRunning(true);
+      }
+    }
+  }, [countdownCommand]);
+
   useEffect(() => {
     if (!shouldTick) return;
     const timer = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -86,15 +127,89 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSe
 
   const clockRef = useRef<HTMLDivElement>(null);
   const msRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setActiveIndex(defaultIndex);
     activeIndexRef.current = defaultIndex;
   }, [defaultIndex]);
 
-  // High-performance clock loop
+  const prevDurationRef = useRef(countdownDuration);
+
   useEffect(() => {
+    if (countdownRunning && countdownDuration !== prevDurationRef.current) {
+      countdownAnchorRef.current = Date.now();
+      countdownFiredRef.current = false;
+    }
+    prevDurationRef.current = countdownDuration;
+  }, [countdownDuration, countdownRunning]);
+
+  useEffect(() => {
+    if (mode !== 'countdown') return;
+
     let rafId: number;
+    let animationId: number;
+
+    const tick = () => {
+      let remaining: number;
+
+      if (countdownRunning) {
+        const now = Date.now();
+        const elapsed = now - countdownAnchorRef.current;
+        remaining = Math.max(0, countdownDuration * 1000 - elapsed);
+      } else if (countdownFiredRef.current) {
+        remaining = 0;
+      } else {
+        remaining = countdownDuration * 1000;
+      }
+
+      const totalCs = Math.floor(remaining / 10);
+      const cs = totalCs % 100;
+      const totalSeconds = Math.floor(remaining / 1000);
+      const seconds = totalSeconds % 60;
+      const totalMinutes = Math.floor(totalSeconds / 60);
+      const minutes = totalMinutes % 60;
+      const hours = Math.floor(totalMinutes / 60);
+
+      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+      if (clockRef.current) {
+        clockRef.current.textContent = timeStr;
+      }
+      if (msRef.current) {
+        msRef.current.textContent = String(cs).padStart(2, '0');
+      }
+      if (labelRef.current) {
+        labelRef.current.textContent = countdownRunning ? 'COUNTDOWN' : '';
+      }
+
+      if (countdownRunning && remaining <= 0 && !countdownFiredRef.current) {
+        countdownFiredRef.current = true;
+        if (programId && countdownTargetSceneId) {
+          activateScene(programId, countdownTargetSceneId, countdownTransitionId);
+        }
+        return;
+      }
+
+      rafId = requestAnimationFrame(() => {
+        animationId = window.setTimeout(tick, 20);
+      });
+    };
+
+    tick();
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(animationId);
+    };
+  }, [mode, countdownRunning, countdownDuration, countdownTargetSceneId, countdownTransitionId, programId]);
+
+  useEffect(() => {
+    if (mode !== 'clock') return;
+
+    let rafId: number;
+    let timerId: number;
+
     const tick = () => {
       const now = new Date();
       const currentTz = LOOP_TIMEZONES[activeIndexRef.current].timezone;
@@ -124,22 +239,28 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSe
         msRef.current.textContent = cs;
       }
 
-      // Aim for smooth ~16-30ms refresh
+      if (labelRef.current) {
+        labelRef.current.textContent = LOOP_TIMEZONES[activeIndexRef.current].label;
+      }
+
       rafId = requestAnimationFrame(() => {
-        setTimeout(tick, 20);
+        timerId = window.setTimeout(tick, 20);
       });
     };
     tick();
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+    };
+  }, [mode]);
 
-  // Update rotation interval
   useEffect(() => {
+    if (mode !== 'clock') return;
+
     const id = window.setInterval(() => {
       const now = new Date();
       const secs = now.getSeconds();
 
-      // Clock rotation every 30s
       if (secs % 30 === 0) {
         setClockOut(true);
         setTimeout(() => {
@@ -151,7 +272,7 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSe
       }
     }, 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [mode]);
 
   const active = LOOP_TIMEZONES[activeIndex] || LOOP_TIMEZONES[0];
 
@@ -163,7 +284,7 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSe
 
   return (
     <div className='reloj-digital-loop-root'>
-      <div id='clock-block' className={clockOut ? 'clock-out' : ''}>
+      <div id='clock-block' className={clockOut && mode === 'clock' ? 'clock-out' : ''}>
         <div id='logo-above'>
           <img src='/mi.svg' alt='Modo Italiano' />
         </div>
@@ -179,7 +300,7 @@ export default function RelojDigitalLoopClock({ timezone = 'Europe/Rome', textSe
             </div>
           </div>
         </div>
-        <div id='city-name'>{active.label}</div>
+        <div id='city-name' ref={labelRef}>{active.label}</div>
       </div>
       {(titleText !== '' || ctaText !== '') && (
         <div id='lower-third'>

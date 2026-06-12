@@ -146,9 +146,9 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
   {
     id: 'reloj-digital-loop-clock',
     name: 'Reloj Digital',
-    description: 'Broadcast-style digital clock with text/CTA sequences',
+    description: 'Broadcast-style digital clock with countdown and text/CTA sequences',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { timezone: 'America/New_York' }
+    defaultProps: { timezone: 'America/New_York', mode: 'clock', countdownDuration: 300, countdownTargetSceneId: null, countdownTransitionId: 'cut', countdownCommand: 0 }
   },
   {
     id: 'reloj-clone',

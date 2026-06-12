@@ -2440,6 +2440,12 @@ function SceneProgram({ programId }: { programId: string }) {
                     timezone={props.timezone || 'America/New_York'}
                     textSequence={props.textSequence}
                     ctaSequence={props.ctaSequence}
+                    programId={programId}
+                    mode={props.mode || 'clock'}
+                    countdownDuration={typeof props.countdownDuration === 'number' ? props.countdownDuration : 300}
+                    countdownTargetSceneId={typeof props.countdownTargetSceneId === 'number' ? props.countdownTargetSceneId : null}
+                    countdownTransitionId={props.countdownTransitionId || 'cut'}
+                    countdownCommand={typeof props.countdownCommand === 'number' ? props.countdownCommand : 0}
                   />
                 );
               case 'toni-chyron':
