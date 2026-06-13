@@ -11,9 +11,10 @@ export interface FetchSongsParams {
 }
 
 export async function fetchSongCatalog(): Promise<SongCatalogItem[]> {
-  const res = await fetch(apiUrl('/songs'));
+  const res = await fetch(apiUrl('/songs?limit=0'));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const body: PaginatedResponse<SongCatalogItem> = await res.json();
+  return body.data;
 }
 
 export async function fetchSongsPage(params?: FetchSongsParams): Promise<PaginatedResponse<SongCatalogItem>> {

@@ -42,6 +42,7 @@ import type {
   Scene,
   SceneAttributeSavePayload,
   SceneInstantPlaybackState,
+  PaginatedResponse,
   SongCatalogItem
 } from '../models/broadcast';
 import {
@@ -1063,12 +1064,12 @@ export default function Control() {
 
   const fetchSongCatalog = async () => {
     try {
-      const res = await fetch(apiUrl('/songs'));
+      const res = await fetch(apiUrl('/songs?limit=0'));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-      const data = (await res.json()) as SongCatalogItem[];
-      setSongCatalog(Array.isArray(data) ? data : []);
+      const body = (await res.json()) as PaginatedResponse<SongCatalogItem>;
+      setSongCatalog(Array.isArray(body.data) ? body.data : []);
     } catch (err) {
       console.error('Failed to fetch songs catalog:', err);
       setSongCatalog([]);

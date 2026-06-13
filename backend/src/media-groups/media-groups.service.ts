@@ -53,7 +53,7 @@ export class MediaGroupsService {
       { id: 'desc' },
     ] as Prisma.MediaGroupOrderByWithRelationInput[];
 
-    const skip = (page - 1) * limit;
+    const skip = limit > 0 ? (page - 1) * limit : 0;
 
     const [groups, total] = await Promise.all([
       this.prisma.mediaGroup.findMany({
@@ -65,8 +65,7 @@ export class MediaGroupsService {
           },
         },
         orderBy,
-        skip,
-        take: limit,
+        ...(limit > 0 ? { skip, take: limit } : {}),
       }),
       this.prisma.mediaGroup.count({ where }),
     ]);

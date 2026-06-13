@@ -59,10 +59,10 @@ export class SongsService {
       { id: 'desc' },
     ] as Prisma.SongOrderByWithRelationInput[];
 
-    const skip = (page - 1) * limit;
+    const skip = limit > 0 ? (page - 1) * limit : 0;
 
     const [data, total, catalogTotal, catalogEnabled, durationAgg] = await Promise.all([
-      this.prisma.song.findMany({ where, orderBy, skip, take: limit }),
+      this.prisma.song.findMany({ where, orderBy, ...(limit > 0 ? { skip, take: limit } : {}) }),
       this.prisma.song.count({ where }),
       this.prisma.song.count(),
       this.prisma.song.count({ where: { enabled: true } }),

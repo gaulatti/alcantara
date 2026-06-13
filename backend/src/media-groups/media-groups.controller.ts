@@ -18,7 +18,7 @@ export class MediaGroupsController {
       sortBy,
       sortOrder,
       page: page ? Math.max(1, Number(page)) : 1,
-      limit: limit ? Math.min(200, Math.max(1, Number(limit))) : 20,
+      limit: limit ? Math.max(0, Number(limit)) : 20,
     });
   }
 

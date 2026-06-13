@@ -97,13 +97,13 @@ export default function ProgramsAdmin() {
   };
 
   const fetchMediaGroups = async (): Promise<MediaGroupSummary[]> => {
-    const res = await fetch(apiUrl('/media-groups'));
+    const res = await fetch(apiUrl('/media-groups?limit=0'));
     if (!res.ok) {
       throw new Error(`Failed to fetch media groups: ${res.status}`);
     }
-    const data = (await res.json()) as MediaGroupSummary[];
-    setAllMediaGroups(data);
-    return data;
+    const body = (await res.json()) as { data: MediaGroupSummary[] };
+    setAllMediaGroups(body.data);
+    return body.data;
   };
 
   const fetchStingers = async (): Promise<StingerSummary[]> => {
