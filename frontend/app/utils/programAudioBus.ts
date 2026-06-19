@@ -618,7 +618,13 @@ export function ensureProgramAudioBusTrack(programId: string, track: ProgramAudi
   };
 
   if (state.activeTrack && state.activeTrack.token === normalizedTrack.token && state.activeAudio) {
-    if (!state.activeAudio.ended && state.activeAudio.paused) {
+    if (state.activeAudio.ended) {
+      state.activeAudio.currentTime = 0;
+      state.endedToken = '';
+      state.progress = 0;
+      state.isPlaying = false;
+    }
+    if (state.activeAudio.paused) {
       const playPromise = state.activeAudio.play();
       if (playPromise && typeof playPromise.catch === 'function') {
         playPromise.catch(() => {

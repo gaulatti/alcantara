@@ -323,7 +323,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   const [displaySongCoverUrl, setDisplaySongCoverUrl] = useState(normalizedSongCoverUrl || '/cover.jpg');
   const [clockBoxMotion, setClockBoxMotion] = useState<'in' | 'out' | null>(null);
   const previousHasSongPayloadRef = useRef(hasLiveSongPayload);
-  const useSplitSongClockLayout = songUiVisible && showWorldClocks;
+  const useSplitSongClockLayout = songUiVisible && (showWorldClocks || showLogo || showBellIcon);
 
   useEffect(() => {
     return subscribeProgramAudioBus(programId, (snapshot) => {
@@ -410,8 +410,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     return null;
   }
 
-  // Logo-only mode when clocks are hidden
-  if (!showWorldClocks && !showBellIcon && showLogo) {
+  // Logo-only mode when clocks are hidden and no song UI is active
+  if (!showWorldClocks && !showBellIcon && showLogo && !songUiVisible) {
     return (
       <div
         style={
@@ -677,7 +677,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
             ) : null}
           </div>
         )}
-        {(showWorldClocks || showBellIcon) && (
+        {(showWorldClocks || showBellIcon || showLogo) && (
           <div
             style={{
               display: 'flex',
@@ -685,14 +685,15 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
               flexShrink: 0,
               marginLeft: useSplitSongClockLayout ? '24px' : 0,
               position: 'relative',
-              zIndex: 1
+              zIndex: 1,
+              gap: '20px'
             }}
           >
             {showWorldClocks && cityClockBlock}
+            {!showWorldClocks && showLogo && logoBlock}
             {showBellIcon && (
               <div
                 style={{
-                  marginLeft: showWorldClocks ? '20px' : 0,
                   width: '72px',
                   height: '72px',
                   borderRadius: '24px',

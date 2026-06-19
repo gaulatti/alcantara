@@ -31,7 +31,6 @@ import type {
   MixerTakePresetDbMap,
   MixerTakePresetSide,
   MixerTakeRunIdMap,
-  MixerTakeSideMap,
   MixerTakeTimerMap,
   ProgramAudioBusSettings,
   ProgramAudioMeterLevels,
@@ -49,7 +48,6 @@ import {
   DEFAULT_MIXER_TAKE_APPLYING,
   DEFAULT_MIXER_TAKE_PRESETS_DB,
   DEFAULT_MIXER_TAKE_RUN_IDS,
-  DEFAULT_MIXER_TAKE_TARGET_SIDE,
   DEFAULT_MIXER_TAKE_TIMERS,
   FIFTHBELL_AVAILABLE_WEATHER_CITIES,
   INSTANT_PLAYBACK_PULSE_ANIMATION,
@@ -125,6 +123,10 @@ interface MixerStripProps {
   presetBDb: number;
   onCommitPresetA: (raw: string) => number;
   onCommitPresetB: (raw: string) => number;
+  onTakeA: () => void;
+  onTakeB: () => void;
+  isTakingA: boolean;
+  isTakingB: boolean;
   topPanel?: ReactNode;
   levelKey: string;
   levelValue: number;
@@ -134,10 +136,6 @@ interface MixerStripProps {
   levelInputClassName: string;
   liveClassName: string;
   isLive: boolean;
-  takeLabel: string;
-  onTake: () => void;
-  isTaking: boolean;
-  takeClassName: string;
   meterFill?: number;
   meterPeakFill?: number;
   meterPeakHoldFill?: number;
@@ -174,6 +172,10 @@ function MixerStrip({
   presetBDb,
   onCommitPresetA,
   onCommitPresetB,
+  onTakeA,
+  onTakeB,
+  isTakingA,
+  isTakingB,
   topPanel,
   levelKey,
   levelValue,
@@ -183,10 +185,6 @@ function MixerStrip({
   levelInputClassName,
   liveClassName,
   isLive,
-  takeLabel,
-  onTake,
-  isTaking,
-  takeClassName,
   meterFill,
   meterPeakFill,
   meterPeakHoldFill,
@@ -210,71 +208,81 @@ function MixerStrip({
         <span className={`text-[11px] font-bold tracking-widest ${titleClassName}`}>{title}</span>
       </div>
 
-      <div className='mt-3 flex w-full gap-2 px-3'>
+      <div className='mt-3 flex w-full gap-3 px-3'>
         <div className='flex min-w-0 flex-1 flex-col gap-2'>
           {topPanel}
 
           {showMuteSolo ? (
-            <>
+            <div className='flex gap-1.5'>
               <Button
                 type='button'
                 onClick={onToggleMuted}
-                className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                className={`flex h-8 flex-1 items-center justify-center rounded transition-all font-bold text-[10px] uppercase tracking-wider ${
                   muted
                     ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
                     : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
                 }`}
               >
-                Mute
+                M
               </Button>
               <Button
                 type='button'
                 onClick={onToggleSolo}
-                className={`flex h-9 w-full items-center justify-center rounded transition-all font-bold text-[11px] uppercase tracking-wider ${
+                className={`flex h-8 flex-1 items-center justify-center rounded transition-all font-bold text-[10px] uppercase tracking-wider ${
                   solo
                     ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
                     : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
                 }`}
               >
-                Solo
+                S
               </Button>
-            </>
-          ) : null}
-
-          {showPresets ? (
-            <div className='grid w-full grid-cols-2 gap-1'>
-              <label className='text-[10px] font-mono text-sky-300'>
-                <span className='mb-1 block text-center'>A</span>
-                <Input
-                  key={presetAKey}
-                  type='text'
-                  inputMode='decimal'
-                  defaultValue={formatTakePresetDbInputValue(presetADb)}
-                  onBlur={(event) => {
-                    const nextValue = onCommitPresetA(event.target.value);
-                    event.target.value = formatTakePresetDbInputValue(nextValue);
-                  }}
-                  className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                />
-              </label>
-              <label className='text-[10px] font-mono text-sky-300'>
-                <span className='mb-1 block text-center'>B</span>
-                <Input
-                  key={presetBKey}
-                  type='text'
-                  inputMode='decimal'
-                  defaultValue={formatTakePresetDbInputValue(presetBDb)}
-                  onBlur={(event) => {
-                    const nextValue = onCommitPresetB(event.target.value);
-                    event.target.value = formatTakePresetDbInputValue(nextValue);
-                  }}
-                  className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                />
-              </label>
             </div>
           ) : null}
 
-          <div className={`mt-1 flex h-11 w-full flex-col justify-center rounded border text-center ${levelContainerClassName}`}>
+          {showPresets ? (
+            <div className='flex gap-2'>
+              <div className='flex flex-1 flex-col gap-1'>
+                <label className='text-[10px] font-mono text-sky-300'>
+                  <span className='block text-center'>A (dB)</span>
+                  <Input
+                    key={presetAKey}
+                    type='text'
+                    inputMode='decimal'
+                    defaultValue={formatTakePresetDbInputValue(presetADb)}
+                    onBlur={(event) => {
+                      const nextValue = onCommitPresetA(event.target.value);
+                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                    }}
+                    className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                  />
+                </label>
+                <Button type='button' onClick={onTakeA} disabled={isTakingA} className='w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'>
+                  TAKE A
+                </Button>
+              </div>
+              <div className='flex flex-1 flex-col gap-1'>
+                <label className='text-[10px] font-mono text-amber-300'>
+                  <span className='block text-center'>B (dB)</span>
+                  <Input
+                    key={presetBKey}
+                    type='text'
+                    inputMode='decimal'
+                    defaultValue={formatTakePresetDbInputValue(presetBDb)}
+                    onBlur={(event) => {
+                      const nextValue = onCommitPresetB(event.target.value);
+                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                    }}
+                    className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                  />
+                </label>
+                <Button type='button' onClick={onTakeB} disabled={isTakingB} className='w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50'>
+                  TAKE B
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className={`flex h-9 w-full flex-col justify-center rounded border text-center ${levelContainerClassName}`}>
             <Input
               key={levelKey}
               type='text'
@@ -287,132 +295,10 @@ function MixerStrip({
               }}
               className={levelInputClassName}
             />
-            <span className={`font-mono text-[9px] tracking-wider ${liveClassName}`}>{isLive ? 'LIVE' : 'CUT'}</span>
+            <span className={`font-mono text-[8px] tracking-wider leading-none ${liveClassName}`}>{isLive ? 'LIVE' : 'CUT'}</span>
           </div>
-
-          <Button type='button' onClick={onTake} disabled={isTaking} className={takeClassName}>
-            TAKE {takeLabel}
-          </Button>
         </div>
 
-        <div className='relative flex h-44 w-12 shrink-0 justify-center'>
-          <div className={`absolute -left-7 top-0 flex h-full flex-col justify-between text-right font-mono text-[9px] ${scaleClassName}`}>
-            <span className={`translate-y-[-50%] ${scalePositiveClassName ?? ''}`}>10</span>
-            <span className={`translate-y-[-50%] ${scalePositiveClassName ?? ''}`}>5</span>
-            <span className='translate-y-[-50%] font-bold text-zinc-300'>0</span>
-            <span className='translate-y-[-50%]'>-5</span>
-            <span className='translate-y-[-50%]'>-10</span>
-            <span className='translate-y-[-50%]'>-20</span>
-            <span className='translate-y-[-50%]'>-40</span>
-            <span className='translate-y-[-50%]'>-∞</span>
-          </div>
-
-          {combineMarkerRail ? (
-            <div className='ml-2 flex h-full items-center'>
-              <div className={`relative h-full ${meterBarCount === 1 ? 'w-2.5' : 'w-6'}`}>
-                <div className='absolute inset-0 flex gap-1'>
-                  {Array.from({ length: meterBarCount }).map((_, idx) => (
-                    <div
-                      key={`combined-meter-${title}-${idx}`}
-                      className='relative flex-1 overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'
-                    >
-                      {showMeterSignal ? (
-                        <>
-                          <div
-                            className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
-                            style={{ bottom: `${Math.round((meterPeakFill ?? 0) * 100)}%` }}
-                          />
-                          <div
-                            className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
-                            style={{ bottom: `${Math.round((meterPeakHoldFill ?? 0) * 100)}%` }}
-                          />
-                          <div
-                            className='absolute bottom-0 left-0 right-0 bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
-                            style={{ height: `${Math.round((meterFill ?? 0) * 100)}%` }}
-                          />
-                        </>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-                <div
-                  className={`pointer-events-none absolute left-1/2 ${combinedMarkerLineClassName} -translate-x-1/2 border-t ${markerBorderClassName}`}
-                  style={{ bottom: `${Math.round(markerA * 100)}%` }}
-                />
-                {showMarkerLabels ? (
-                  <span
-                    className={`pointer-events-none absolute ${combinedMarkerLabelOffsetClassName} text-[8px] font-bold ${markerTextClassName}`}
-                    style={{ bottom: `calc(${Math.round(markerA * 100)}% - 6px)` }}
-                  >
-                    A
-                  </span>
-                ) : null}
-                <div
-                  className={`pointer-events-none absolute left-1/2 ${combinedMarkerLineClassName} -translate-x-1/2 border-t ${markerBorderClassName}`}
-                  style={{ bottom: `${Math.round(markerB * 100)}%` }}
-                />
-                {showMarkerLabels ? (
-                  <span
-                    className={`pointer-events-none absolute ${combinedMarkerLabelOffsetClassName} text-[8px] font-bold ${markerTextClassName}`}
-                    style={{ bottom: `calc(${Math.round(markerB * 100)}% - 6px)` }}
-                  >
-                    B
-                  </span>
-                ) : null}
-                <div className='pointer-events-none absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black/60 shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
-              </div>
-            </div>
-          ) : (
-            <div className='ml-2 flex h-full gap-2'>
-              {Array.from({ length: meterBarCount }).map((_, idx) => (
-                <div key={`meter-${title}-${idx}`} className='relative h-full w-2.5'>
-                  <div className='absolute inset-0 flex flex-col justify-end overflow-hidden rounded bg-zinc-950 shadow-[inset_0_1px_3px_rgba(0,0,0,1)]'>
-                    {showMeterSignal ? (
-                      <>
-                        <div
-                          className='pointer-events-none absolute left-0 right-0 h-[2px] bg-amber-200/90 transition-[bottom] duration-75 ease-linear'
-                          style={{ bottom: `${Math.round((meterPeakFill ?? 0) * 100)}%` }}
-                        />
-                        <div
-                          className='pointer-events-none absolute left-0 right-0 h-[1px] bg-rose-400 transition-[bottom] duration-100 ease-linear'
-                          style={{ bottom: `${Math.round((meterPeakHoldFill ?? 0) * 100)}%` }}
-                        />
-                        <div
-                          className='w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-600 transition-[height] duration-75 ease-linear'
-                          style={{ height: `${Math.round((meterFill ?? 0) * 100)}%` }}
-                        />
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-
-              <div className={`relative h-full ${markerTrackClassName}`}>
-                <div
-                  className={`pointer-events-none absolute left-1/2 w-6 -translate-x-1/2 border-t ${markerBorderClassName}`}
-                  style={{ bottom: `${Math.round(markerA * 100)}%` }}
-                />
-                <span
-                  className={`pointer-events-none absolute -right-3 text-[8px] font-bold ${markerTextClassName}`}
-                  style={{ bottom: `calc(${Math.round(markerA * 100)}% - 6px)` }}
-                >
-                  A
-                </span>
-                <div
-                  className={`pointer-events-none absolute left-1/2 w-6 -translate-x-1/2 border-t ${markerBorderClassName}`}
-                  style={{ bottom: `${Math.round(markerB * 100)}%` }}
-                />
-                <span
-                  className={`pointer-events-none absolute -right-3 text-[8px] font-bold ${markerTextClassName}`}
-                  style={{ bottom: `calc(${Math.round(markerB * 100)}% - 6px)` }}
-                >
-                  B
-                </span>
-                <div className='pointer-events-none absolute left-1/2 top-0 h-full w-1.5 -translate-x-1/2 rounded-full bg-black/60 shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]' />
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -533,7 +419,6 @@ export default function Control() {
   const takeVolumeFadeTimerRef = useRef<MixerTakeTimerMap>({ ...DEFAULT_MIXER_TAKE_TIMERS });
   const takeVolumeFadeRunIdRef = useRef<MixerTakeRunIdMap>({ ...DEFAULT_MIXER_TAKE_RUN_IDS });
   const [mixerTakePresetsDb, setMixerTakePresetsDb] = useState<MixerTakePresetDbMap>({ ...DEFAULT_MIXER_TAKE_PRESETS_DB });
-  const [mixerTakeTargetSide, setMixerTakeTargetSide] = useState<MixerTakeSideMap>({ ...DEFAULT_MIXER_TAKE_TARGET_SIDE });
   const [takePresetFadeMs, setTakePresetFadeMs] = useState<number>(5000);
   const [isApplyingTakePresetByChannel, setIsApplyingTakePresetByChannel] = useState<MixerTakeApplyingMap>({ ...DEFAULT_MIXER_TAKE_APPLYING });
   const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
@@ -1292,7 +1177,9 @@ export default function Control() {
 
       step += 1;
       const ratio = Math.min(1, step / stepCount);
-      const easedRatio = ratio < 0.5 ? 2 * ratio * ratio : 1 - Math.pow(-2 * ratio + 2, 2) / 2;
+      const easedRatio = ratio < 0.3
+        ? (1 - (1 - ratio / 0.3) ** 2) * 0.65
+        : 0.65 + ((ratio - 0.3) / 0.7) * 0.35;
       const nextFader = currentFader + (targetFader - currentFader) * easedRatio;
       setChannelMasterVolume(channelId, Number(nextFader.toFixed(4)));
 
@@ -1312,13 +1199,8 @@ export default function Control() {
     takeVolumeFadeTimerRef.current[channelId] = window.setInterval(advanceStep, stepIntervalMs);
   };
 
-  const triggerChannelTake = (channelId: MixerTakeChannelKey) => {
-    const targetPresetSide = mixerTakeTargetSide[channelId];
-    applyTakePresetToChannel(channelId, targetPresetSide, takePresetFadeMs);
-    setMixerTakeTargetSide((prev) => ({
-      ...prev,
-      [channelId]: targetPresetSide === 'a' ? 'b' : 'a'
-    }));
+  const triggerChannelTake = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide) => {
+    applyTakePresetToChannel(channelId, presetSide, takePresetFadeMs);
   };
 
   const toggleSongMuted = () => {
@@ -2658,11 +2540,6 @@ export default function Control() {
   const sceneInstantPresetBFader = dbToFader(mixerTakePresetsDb.sceneInstant.bDb);
   const mainPresetAFader = dbToFader(mixerTakePresetsDb.main.aDb);
   const mainPresetBFader = dbToFader(mixerTakePresetsDb.main.bDb);
-  const songTakeTargetSide = mixerTakeTargetSide.song;
-  const streamTakeTargetSide = mixerTakeTargetSide.stream;
-  const instantsTakeTargetSide = mixerTakeTargetSide.instants;
-  const sceneInstantTakeTargetSide = mixerTakeTargetSide.sceneInstant;
-  const mainTakeTargetSide = mixerTakeTargetSide.main;
   const sceneQuickActions = useMemo(() => {
     return assignedScenes.map((scene, index) => ({
       id: scene.id,
@@ -2746,75 +2623,81 @@ export default function Control() {
                             Solo
                           </Button>
                         </div>
-                        <label className='text-[10px] font-mono text-sky-300'>
-                          <span className='mb-1 block text-center'>A (dB)</span>
-                          <Input
-                            key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
-                            type='text'
-                            inputMode='decimal'
-                            defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.aDb)}
-                            onBlur={(event) => {
-                              const nextValue = commitTakePresetDbInput('sceneInstant', 'a', event.target.value, mixerTakePresetsDb.sceneInstant.aDb);
-                              event.target.value = formatTakePresetDbInputValue(nextValue);
-                            }}
-                            className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                          />
-                        </label>
-                        <label className='text-[10px] font-mono text-sky-300'>
-                          <span className='mb-1 block text-center'>B (dB)</span>
-                          <Input
-                            key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
-                            type='text'
-                            inputMode='decimal'
-                            defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.bDb)}
-                            onBlur={(event) => {
-                              const nextValue = commitTakePresetDbInput('sceneInstant', 'b', event.target.value, mixerTakePresetsDb.sceneInstant.bDb);
-                              event.target.value = formatTakePresetDbInputValue(nextValue);
-                            }}
-                            className='w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                          />
-                        </label>
-                        <Input
-                          key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
-                          type='text'
-                          inputMode='decimal'
-                          defaultValue={formatMixerLevelInputValue(mixerLevels.sceneInstantMasterVolume)}
-                          aria-label='Scene instant channel level in dB'
-                          onBlur={(event) => {
-                            const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.sceneInstantMasterVolume);
-                            setSceneInstantMasterVolume(nextValue);
-                            event.target.value = formatMixerLevelInputValue(nextValue);
-                          }}
-                          className='h-8 w-20 self-end rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-xs font-bold text-violet-300 outline-none'
-                        />
-                        <Button
-                          type='button'
-                          onClick={() => triggerChannelTake('sceneInstant')}
-                          disabled={isApplyingTakePresetByChannel.sceneInstant}
-                          className='h-8 self-end rounded border border-violet-800/50 bg-zinc-900 px-3 text-[10px] font-bold tracking-wider text-violet-300 transition hover:bg-violet-900/20 disabled:opacity-50'
-                        >
-                          TAKE {sceneInstantTakeTargetSide.toUpperCase()}
-                        </Button>
-                      </div>
-                      <div className='min-w-[150px] self-end rounded border border-zinc-800/70 bg-zinc-950/70 px-2 py-1 text-right'>
-                        <p className='text-[10px] text-zinc-400'>
-                          Meter {Math.round(sceneInstantMeterFill * 100)}% / {Math.round(sceneInstantPeakFill * 100)}%
-                        </p>
-                        <p className='text-[10px] text-zinc-400'>
-                          Peak Hold {Math.round(sceneInstantPeakHoldFill * 100)}% · {sceneInstantOutputGain > 0 ? 'LIVE' : 'CUT'}
-                        </p>
+                        <div className='flex flex-col gap-1'>
+                          <label className='text-[10px] font-mono text-sky-300'>
+                            <span className='mb-0.5 block text-center'>A (dB)</span>
+                            <Input
+                              key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
+                              type='text'
+                              inputMode='decimal'
+                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.aDb)}
+                              onBlur={(event) => {
+                                const nextValue = commitTakePresetDbInput('sceneInstant', 'a', event.target.value, mixerTakePresetsDb.sceneInstant.aDb);
+                                event.target.value = formatTakePresetDbInputValue(nextValue);
+                              }}
+                              className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                            />
+                          </label>
+                          <Button
+                            type='button'
+                            onClick={() => triggerChannelTake('sceneInstant', 'a')}
+                            disabled={isApplyingTakePresetByChannel.sceneInstant}
+                            className='w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
+                          >
+                            TAKE A
+                          </Button>
+                        </div>
+                        <div className='flex flex-col gap-1'>
+                          <label className='text-[10px] font-mono text-amber-300'>
+                            <span className='mb-0.5 block text-center'>B (dB)</span>
+                            <Input
+                              key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
+                              type='text'
+                              inputMode='decimal'
+                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.bDb)}
+                              onBlur={(event) => {
+                                const nextValue = commitTakePresetDbInput('sceneInstant', 'b', event.target.value, mixerTakePresetsDb.sceneInstant.bDb);
+                                event.target.value = formatTakePresetDbInputValue(nextValue);
+                              }}
+                              className='w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                            />
+                          </label>
+                          <Button
+                            type='button'
+                            onClick={() => triggerChannelTake('sceneInstant', 'b')}
+                            disabled={isApplyingTakePresetByChannel.sceneInstant}
+                            className='w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50'
+                          >
+                            TAKE B
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
+                  <div className='mt-2 px-1'>
+                    <Input
+                      key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
+                      type='text'
+                      inputMode='decimal'
+                      defaultValue={formatMixerLevelInputValue(mixerLevels.sceneInstantMasterVolume)}
+                      aria-label='Scene instant channel level in dB'
+                      onBlur={(event) => {
+                        const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.sceneInstantMasterVolume);
+                        setSceneInstantMasterVolume(nextValue);
+                        event.target.value = formatMixerLevelInputValue(nextValue);
+                      }}
+                      className='h-8 w-full rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-xs font-bold text-violet-300 outline-none'
+                    />
+                  </div>
                 </div>
 
-                <div className='flex gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3'>
+                <div className='flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-3'>
                   <div className='flex flex-1 overflow-x-auto pb-2 custom-scrollbar'>
-                    <div className='flex min-w-max items-stretch gap-2 pr-3'>
+                    <div className='flex min-w-max items-stretch gap-5 pr-3'>
                       <MixerStrip
                         title='SONG'
                         widthClass='w-44'
-                        stripClassName='rounded-lg border border-zinc-700 bg-zinc-800/80 shadow-md'
+                        stripClassName='rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg'
                         headerClassName='border-zinc-700 bg-zinc-900'
                         titleClassName='text-zinc-400'
                         muted={mixerLevels.songMuted}
@@ -2827,6 +2710,10 @@ export default function Control() {
                         presetBDb={mixerTakePresetsDb.song.bDb}
                         onCommitPresetA={(raw) => commitTakePresetDbInput('song', 'a', raw, mixerTakePresetsDb.song.aDb)}
                         onCommitPresetB={(raw) => commitTakePresetDbInput('song', 'b', raw, mixerTakePresetsDb.song.bDb)}
+                        onTakeA={() => triggerChannelTake('song', 'a')}
+                        onTakeB={() => triggerChannelTake('song', 'b')}
+                        isTakingA={isApplyingTakePresetByChannel.song}
+                        isTakingB={isApplyingTakePresetByChannel.song}
                         levelKey={`song-level-${mixerLevels.songMasterVolume}`}
                         levelValue={mixerLevels.songMasterVolume}
                         levelAriaLabel='Song channel level in dB'
@@ -2839,10 +2726,6 @@ export default function Control() {
                         levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
                         liveClassName='text-emerald-700'
                         isLive={songOutputGain > 0}
-                        takeLabel={songTakeTargetSide.toUpperCase()}
-                        onTake={() => triggerChannelTake('song')}
-                        isTaking={isApplyingTakePresetByChannel.song}
-                        takeClassName='w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
                         meterFill={songMeterFill}
                         meterPeakFill={songPeakFill}
                         meterPeakHoldFill={songPeakHoldFill}
@@ -2857,7 +2740,7 @@ export default function Control() {
                         <MixerStrip
                           title='STREAM'
                           widthClass='w-44'
-                          stripClassName='rounded-lg border border-cyan-900/50 bg-zinc-800/80 shadow-md'
+                          stripClassName='rounded-lg border border-cyan-700/40 bg-zinc-800/80 shadow-lg'
                           headerClassName='border-cyan-900/60 bg-cyan-950/20'
                           titleClassName='text-violet-300'
                           muted={mixerLevels.streamMuted}
@@ -2870,6 +2753,10 @@ export default function Control() {
                           presetBDb={mixerTakePresetsDb.stream.bDb}
                           onCommitPresetA={(raw) => commitTakePresetDbInput('stream', 'a', raw, mixerTakePresetsDb.stream.aDb)}
                           onCommitPresetB={(raw) => commitTakePresetDbInput('stream', 'b', raw, mixerTakePresetsDb.stream.bDb)}
+                          onTakeA={() => triggerChannelTake('stream', 'a')}
+                          onTakeB={() => triggerChannelTake('stream', 'b')}
+                          isTakingA={isApplyingTakePresetByChannel.stream}
+                          isTakingB={isApplyingTakePresetByChannel.stream}
                           levelKey={`stream-level-${mixerLevels.streamMasterVolume}`}
                           levelValue={mixerLevels.streamMasterVolume}
                           levelAriaLabel='Stream channel level in dB'
@@ -2882,10 +2769,6 @@ export default function Control() {
                           levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-sky-300 outline-none'
                           liveClassName='text-sky-300'
                           isLive={streamOutputGain > 0}
-                          takeLabel={streamTakeTargetSide.toUpperCase()}
-                          onTake={() => triggerChannelTake('stream')}
-                          isTaking={isApplyingTakePresetByChannel.stream}
-                          takeClassName='w-full rounded border border-cyan-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-cyan-300 transition hover:bg-cyan-900/20 disabled:opacity-50'
                           showMeterSignal={false}
                           markerA={streamPresetAFader}
                           markerB={streamPresetBFader}
@@ -2898,7 +2781,7 @@ export default function Control() {
                       <MixerStrip
                         title='INSTANTS'
                         widthClass='w-44'
-                        stripClassName='rounded-lg border border-zinc-700 bg-zinc-800/80 shadow-md'
+                        stripClassName='rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg'
                         headerClassName='border-zinc-700 bg-zinc-900'
                         titleClassName='text-zinc-400'
                         muted={mixerLevels.instantMuted}
@@ -2911,6 +2794,10 @@ export default function Control() {
                         presetBDb={mixerTakePresetsDb.instants.bDb}
                         onCommitPresetA={(raw) => commitTakePresetDbInput('instants', 'a', raw, mixerTakePresetsDb.instants.aDb)}
                         onCommitPresetB={(raw) => commitTakePresetDbInput('instants', 'b', raw, mixerTakePresetsDb.instants.bDb)}
+                        onTakeA={() => triggerChannelTake('instants', 'a')}
+                        onTakeB={() => triggerChannelTake('instants', 'b')}
+                        isTakingA={isApplyingTakePresetByChannel.instants}
+                        isTakingB={isApplyingTakePresetByChannel.instants}
                         levelKey={`instants-level-${mixerLevels.instantMasterVolume}`}
                         levelValue={mixerLevels.instantMasterVolume}
                         levelAriaLabel='Instants channel level in dB'
@@ -2923,10 +2810,6 @@ export default function Control() {
                         levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
                         liveClassName='text-emerald-700'
                         isLive={instantsOutputGain > 0}
-                        takeLabel={instantsTakeTargetSide.toUpperCase()}
-                        onTake={() => triggerChannelTake('instants')}
-                        isTaking={isApplyingTakePresetByChannel.instants}
-                        takeClassName='w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
                         meterFill={instantsMeterFill}
                         meterPeakFill={instantsPeakFill}
                         meterPeakHoldFill={instantsPeakHoldFill}
@@ -2942,7 +2825,7 @@ export default function Control() {
                   <MixerStrip
                     title='MAIN MIX'
                     widthClass='w-48'
-                    stripClassName='rounded-lg border border-red-900/30 bg-zinc-800 shadow-lg'
+                    stripClassName='rounded-lg border border-red-700/40 bg-zinc-800 shadow-xl'
                     headerClassName='border-red-900/50 bg-red-950/20'
                     titleClassName='text-red-500'
                     showMuteSolo={false}
@@ -2953,10 +2836,14 @@ export default function Control() {
                     presetBDb={mixerTakePresetsDb.main.bDb}
                     onCommitPresetA={(raw) => commitTakePresetDbInput('main', 'a', raw, mixerTakePresetsDb.main.aDb)}
                     onCommitPresetB={(raw) => commitTakePresetDbInput('main', 'b', raw, mixerTakePresetsDb.main.bDb)}
+                    onTakeA={() => triggerChannelTake('main', 'a')}
+                    onTakeB={() => triggerChannelTake('main', 'b')}
+                    isTakingA={isApplyingTakePresetByChannel.main}
+                    isTakingB={isApplyingTakePresetByChannel.main}
                     topPanel={
-                      <div className='flex h-[82px] w-full flex-col justify-center rounded border border-red-900/20 bg-zinc-900/50 px-2 py-2 shadow-inner'>
+                      <div className='flex flex-col gap-1 rounded border border-red-900/20 bg-zinc-900/50 px-2 py-1.5 shadow-inner'>
                         <label className='text-[10px] font-mono text-red-300'>
-                          <span className='mb-1 block text-center'>TAKE FADE (ms)</span>
+                          <span className='block text-center'>TAKE FADE (ms)</span>
                           <Input
                             type='number'
                             step={100}
@@ -2964,39 +2851,9 @@ export default function Control() {
                             max={20000}
                             value={takePresetFadeMs}
                             onChange={(event) => setTakePresetFadeMs(normalizeTakeVolumeFadeMs(Number(event.target.value), takePresetFadeMs))}
-                            className='w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-red-200 outline-none focus:border-red-400'
+                            className='w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-red-200 outline-none focus:border-red-400'
                           />
                         </label>
-                        <div className='mt-2 grid grid-cols-2 gap-2'>
-                          <label className='text-[10px] font-mono text-sky-300'>
-                            <span className='mb-1 block text-center'>A</span>
-                            <Input
-                              key={`main-preset-a-${mixerTakePresetsDb.main.aDb}`}
-                              type='text'
-                              inputMode='decimal'
-                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.main.aDb)}
-                              onBlur={(event) => {
-                                const nextValue = commitTakePresetDbInput('main', 'a', event.target.value, mixerTakePresetsDb.main.aDb);
-                                event.target.value = formatTakePresetDbInputValue(nextValue);
-                              }}
-                              className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                            />
-                          </label>
-                          <label className='text-[10px] font-mono text-sky-300'>
-                            <span className='mb-1 block text-center'>B</span>
-                            <Input
-                              key={`main-preset-b-${mixerTakePresetsDb.main.bDb}`}
-                              type='text'
-                              inputMode='decimal'
-                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.main.bDb)}
-                              onBlur={(event) => {
-                                const nextValue = commitTakePresetDbInput('main', 'b', event.target.value, mixerTakePresetsDb.main.bDb);
-                                event.target.value = formatTakePresetDbInputValue(nextValue);
-                              }}
-                              className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-1 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                            />
-                          </label>
-                        </div>
                       </div>
                     }
                     levelKey={`main-level-${mixerLevels.mainMasterVolume}`}
@@ -3011,10 +2868,6 @@ export default function Control() {
                     levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-300 outline-none'
                     liveClassName='text-red-700'
                     isLive={mainMixGain > 0}
-                    takeLabel={mainTakeTargetSide.toUpperCase()}
-                    onTake={() => triggerChannelTake('main')}
-                    isTaking={isApplyingTakePresetByChannel.main}
-                    takeClassName='w-full rounded border border-red-900/50 bg-zinc-900 py-1 text-[10px] font-bold tracking-wider text-red-300 transition hover:bg-red-900/20 disabled:opacity-50'
                     meterFill={mainMixMeterFill}
                     meterPeakFill={mainMixPeakFill}
                     meterPeakHoldFill={mainMixPeakHoldFill}

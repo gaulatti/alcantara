@@ -172,7 +172,6 @@ export type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlay
 export type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'sceneInstant' | 'main';
 export type MixerTakePresetSide = 'a' | 'b';
 export type MixerTakePresetDbMap = Record<MixerTakeChannelKey, { aDb: number; bDb: number }>;
-export type MixerTakeSideMap = Record<MixerTakeChannelKey, MixerTakePresetSide>;
 export type MixerTakeApplyingMap = Record<MixerTakeChannelKey, boolean>;
 export type MixerTakeTimerMap = Record<MixerTakeChannelKey, number | null>;
 export type MixerTakeRunIdMap = Record<MixerTakeChannelKey, number>;

@@ -13,7 +13,6 @@ import type {
   MixerTakeTimerMap,
   MixerTakeRunIdMap,
   MixerTakePresetDbMap,
-  MixerTakeSideMap,
   ComponentPropsMap
 } from '../models/broadcast';
 import { dbToFader, faderToDb, faderToGain } from './audioTaper';
@@ -37,9 +36,6 @@ export const DEFAULT_MIXER_TAKE_PRESETS_DB: MixerTakePresetDbMap = {
   main: { aDb: -15, bDb: -30 }
 };
 export const MIXER_TAKE_CHANNELS: MixerTakeChannelKey[] = ['song', 'stream', 'instants', 'sceneInstant', 'main'];
-export const DEFAULT_MIXER_TAKE_TARGET_SIDE: MixerTakeSideMap = {
-  song: 'a', stream: 'a', instants: 'a', sceneInstant: 'a', main: 'a'
-};
 export const DEFAULT_MIXER_TAKE_APPLYING: MixerTakeApplyingMap = {
   song: false, stream: false, instants: false, sceneInstant: false, main: false
 };
