@@ -234,7 +234,8 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     hasConfigurableSceneAttributes: true,
     defaultProps: {
       showWorldClocks: true,
-      showLogo: true
+      showLogo: true,
+      showPlaybackProgress: true
     }
   },
   {

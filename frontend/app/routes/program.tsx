@@ -2514,6 +2514,7 @@ function SceneProgram({ programId }: { programId: string }) {
                     widthPx={220}
                     showWorldClocks={toBoolean(props.showWorldClocks, true)}
                     showLogo={toBoolean(props.showLogo, true)}
+                    showPlaybackProgress={toBoolean(props.showPlaybackProgress, true)}
                     showBellIcon={false}
                     songSequence={audioBusSettings?.songSequence}
                     language='es'
@@ -2651,6 +2652,7 @@ function SceneProgram({ programId }: { programId: string }) {
                 widthPx={220}
                 showWorldClocks={toBoolean(metadata['modoitaliano-clock']?.showWorldClocks, true)}
                 showLogo={toBoolean(metadata['modoitaliano-clock']?.showLogo, true)}
+                showPlaybackProgress={toBoolean(metadata['modoitaliano-clock']?.showPlaybackProgress, true)}
                 showBellIcon={false}
                 songSequence={audioBusSettings?.songSequence}
                 language='es'

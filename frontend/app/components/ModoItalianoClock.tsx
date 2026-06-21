@@ -21,6 +21,7 @@ interface ModoItalianoClockProps {
   showWorldClocks?: boolean;
   showBellIcon?: boolean;
   showLogo?: boolean;
+  showPlaybackProgress?: boolean;
   songs?: unknown;
   songSequence?: unknown;
   playingSong?: boolean;
@@ -175,6 +176,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
   showWorldClocks = true,
   showBellIcon = false,
   showLogo = true,
+  showPlaybackProgress = true,
   songs,
   songSequence,
   playingSong,
@@ -510,7 +512,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     transform: `scaleX(${clampedSongProgress})`,
     transformOrigin: 'left center',
     transition: 'transform 140ms linear, opacity 220ms ease',
-    opacity: hasSongCardBackground && hasLiveSongPayload ? 1 : 0,
+    opacity: hasSongCardBackground && hasLiveSongPayload && showPlaybackProgress ? 1 : 0,
     pointerEvents: 'none'
   };
   const progressEdgeStyle: React.CSSProperties = {
@@ -521,7 +523,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     width: '2px',
     background: 'rgba(255, 255, 255, 0.28)',
     boxShadow: '0 0 8px rgba(255, 255, 255, 0.22)',
-    opacity: hasSongCardBackground && hasLiveSongPayload ? 1 : 0,
+    opacity: hasSongCardBackground && hasLiveSongPayload && showPlaybackProgress ? 1 : 0,
     transform: 'translateX(-1px)',
     transition: 'left 140ms linear, opacity 220ms ease',
     pointerEvents: 'none'

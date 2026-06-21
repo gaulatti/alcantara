@@ -531,6 +531,15 @@ export function ComponentPropsFields({
               />
               Show Logo
             </label>
+            <label className='flex items-center gap-2 text-sm text-text-primary'>
+              <Input
+                type='checkbox'
+                checked={toBoolean(props.showPlaybackProgress, true)}
+                onChange={(e) => updateProp(componentType, 'showPlaybackProgress', e.target.checked)}
+                className='h-4 w-4'
+              />
+              Show Playback Progress
+            </label>
           </div>
         </div>
       );
