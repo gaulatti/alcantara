@@ -168,7 +168,50 @@ export type SceneAttributeSavePayload = {
   signature: string;
   revision: number;
 };
-export type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlayback' | 'sceneInstant';
+export type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlayback' | 'sceneInstant' | 'flight';
+
+export type FlightCueKind = 'scene' | 'playSong' | 'stopSong' | 'wait' | 'waitForSongEnd' | 'sceneUpdate' | 'instant' | 'mixer';
+
+export interface FlightMixerChange {
+  channelId?: 'main' | 'song' | 'instants' | 'sceneInstant' | 'stream';
+  volume?: number;
+  muted?: boolean;
+  solo?: boolean;
+}
+
+export interface FlightCue {
+  id: string;
+  kind: FlightCueKind;
+  label?: string;
+  sceneId?: number;
+  transitionId?: string;
+  songId?: number;
+  metadataPatch?: Record<string, unknown>;
+  durationMs?: number;
+  instantId?: number;
+  mixerChange?: FlightMixerChange;
+}
+
+export interface FlightSequence {
+  id: number;
+  name: string;
+  items: FlightCue[];
+  loop: boolean;
+  isRunning: boolean;
+  activeItemId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlightRuntime {
+  sequenceId: number;
+  activeIndex: number;
+  isRunning: boolean;
+  waitingForSongEnd: boolean;
+  activeItemId: string | null;
+  totalItems: number;
+  loop: boolean;
+}
 export type MixerTakeChannelKey = 'song' | 'stream' | 'instants' | 'sceneInstant' | 'main';
 export type MixerTakePresetSide = 'a' | 'b';
 export type MixerTakePresetDbMap = Record<MixerTakeChannelKey, { aDb: number; bDb: number }>;

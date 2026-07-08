@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 
@@ -33,10 +37,13 @@ export class MediaService {
       }
     }
 
-    const actualSortBy = ALLOWED_SORT_FIELDS.includes(sortBy as typeof ALLOWED_SORT_FIELDS[number])
+    const actualSortBy = ALLOWED_SORT_FIELDS.includes(
+      sortBy as (typeof ALLOWED_SORT_FIELDS)[number],
+    )
       ? (sortBy as string)
       : 'updatedAt';
-    const actualSortOrder: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+    const actualSortOrder: 'asc' | 'desc' =
+      sortOrder === 'asc' ? 'asc' : 'desc';
 
     const orderBy: Prisma.MediaOrderByWithRelationInput[] = [
       { [actualSortBy]: actualSortOrder },
@@ -91,7 +98,10 @@ export class MediaService {
     }
 
     if (data.imageUrl !== undefined) {
-      updateData.imageUrl = this.toRequiredTrimmedString(data.imageUrl, 'imageUrl');
+      updateData.imageUrl = this.toRequiredTrimmedString(
+        data.imageUrl,
+        'imageUrl',
+      );
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -111,7 +121,9 @@ export class MediaService {
       where: { mediaId: id },
       select: { mediaGroupId: true },
     });
-    const impactedGroupIds = [...new Set(impactedRows.map((row) => row.mediaGroupId))];
+    const impactedGroupIds = [
+      ...new Set(impactedRows.map((row) => row.mediaGroupId)),
+    ];
 
     await this.prisma.$transaction(async (tx) => {
       await tx.media.delete({ where: { id } });

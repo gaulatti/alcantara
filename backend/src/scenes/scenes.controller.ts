@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+} from '@nestjs/common';
 import { ScenesService } from './scenes.service';
 
 @Controller('scenes')
@@ -16,20 +24,37 @@ export class ScenesController {
   }
 
   @Post()
-  async create(@Body() data: { name: string; layoutId: number; chyronText?: string; metadata?: any }) {
+  async create(
+    @Body()
+    data: {
+      name: string;
+      layoutId: number;
+      chyronText?: string;
+      metadata?: any;
+    },
+  ) {
     return this.scenesService.create(data);
   }
 
   @Put(':id')
   async update(
     @Param('id') id: string,
-    @Body() data: { name?: string; layoutId?: number; chyronText?: string; metadata?: any },
+    @Body()
+    data: {
+      name?: string;
+      layoutId?: number;
+      chyronText?: string;
+      metadata?: any;
+    },
   ) {
     return this.scenesService.update(+id, data);
   }
 
   @Put(':id/chyron')
-  async updateChyron(@Param('id') id: string, @Body() data: { chyronText: string }) {
+  async updateChyron(
+    @Param('id') id: string,
+    @Body() data: { chyronText: string },
+  ) {
     return this.scenesService.updateChyron(+id, data.chyronText);
   }
 

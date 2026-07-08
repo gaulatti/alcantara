@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 
 export interface ChartEntry {
   normalizedKey: string;
@@ -52,7 +57,8 @@ interface EscplusSong {
 
 const EARONE_URL =
   'https://api6.xdevel.com/xsocial/earone/public/posts/451e7ddf8b08?clientId=43671f1197420c16e74a872b491ab86674f5d728&itemsLimit=100&anonymousPublicKey=d29cb65024ea0886fa7d5659c05ef5a724b8280e';
-const ESCPLUS_URL = 'https://www.escplus.es/odds/sanremo2026/chart-sanremo2026.json';
+const ESCPLUS_URL =
+  'https://www.escplus.es/odds/sanremo2026/chart-sanremo2026.json';
 const REFRESH_MS = 15000;
 
 function normalizeFragment(value: string): string {
@@ -75,13 +81,17 @@ function buildNormalizedKey(artist: string, title: string): string {
 function getEaroneArtists(song: EaroneApiSong): string {
   const artists = song.song?.tracks?.[0]?.artists ?? [];
   return artists
-    .map((artist) => (typeof artist?.name === 'string' ? artist.name.trim() : ''))
+    .map((artist) =>
+      typeof artist?.name === 'string' ? artist.name.trim() : '',
+    )
     .filter(Boolean)
     .join(' & ');
 }
 
 function numberToString(value: unknown): string | null {
-  return typeof value === 'number' && Number.isFinite(value) ? String(value) : null;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? String(value)
+    : null;
 }
 
 @Injectable()
@@ -146,7 +156,9 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
 
     const mergedByKey = new Map<string, ChartEntry>();
 
-    const earoneSongs = Array.isArray(earonePayload?.result?.postTypeData?.songs)
+    const earoneSongs = Array.isArray(
+      earonePayload?.result?.postTypeData?.songs,
+    )
       ? (earonePayload.result.postTypeData.songs as EaroneApiSong[])
       : [];
 
@@ -157,7 +169,8 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
       const normalizedKey = buildNormalizedKey(artist, title);
       const earoneSongIdValue = song.song?.earoneSongId;
       const earoneSongId =
-        typeof earoneSongIdValue === 'string' || typeof earoneSongIdValue === 'number'
+        typeof earoneSongIdValue === 'string' ||
+        typeof earoneSongIdValue === 'number'
           ? String(earoneSongIdValue)
           : null;
 

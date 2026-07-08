@@ -451,7 +451,8 @@ export default function Control() {
     audioBus: -1,
     audioMeter: -1,
     songPlayback: -1,
-    sceneInstant: -1
+    sceneInstant: -1,
+    flight: -1
   });
 
   const applySceneUpdateLocally = useCallback((nextScene: Scene) => {
@@ -541,7 +542,8 @@ export default function Control() {
       audioBus: -1,
       audioMeter: -1,
       songPlayback: -1,
-      sceneInstant: -1
+      sceneInstant: -1,
+      flight: -1
     };
     void fetchInstants();
     Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {

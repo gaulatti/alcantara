@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { StingersService } from './stingers.service';
 
 @Controller('stingers')
@@ -12,7 +20,13 @@ export class StingersController {
 
   @Post()
   async createStinger(
-    @Body() data: { name: string; videoUrl: string; cutPointMs?: number; enabled?: boolean },
+    @Body()
+    data: {
+      name: string;
+      videoUrl: string;
+      cutPointMs?: number;
+      enabled?: boolean;
+    },
   ) {
     return this.stingersService.create(data);
   }
@@ -20,7 +34,13 @@ export class StingersController {
   @Put(':stingerId')
   async updateStinger(
     @Param('stingerId') stingerId: string,
-    @Body() data: { name?: string; videoUrl?: string; cutPointMs?: number; enabled?: boolean },
+    @Body()
+    data: {
+      name?: string;
+      videoUrl?: string;
+      cutPointMs?: number;
+      enabled?: boolean;
+    },
   ) {
     return this.stingersService.update(Number(stingerId), data);
   }

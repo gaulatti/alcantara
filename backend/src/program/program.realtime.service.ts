@@ -4,6 +4,7 @@ import type { Socket } from 'net';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { RawData } from 'ws';
 import { ProgramService } from './program.service';
+import { FlightService } from './flight.service';
 
 type ProgramRealtimeRole = 'program' | 'control' | 'unknown';
 
@@ -56,7 +57,10 @@ export class ProgramRealtimeService implements OnModuleDestroy {
   private httpServer: HttpServer | null = null;
   private removeProgramEventListener: (() => void) | null = null;
 
-  constructor(private readonly programService: ProgramService) {
+  constructor(
+    private readonly programService: ProgramService,
+    private readonly flightService: FlightService,
+  ) {
     this.removeProgramEventListener = this.programService.addEventListener(
       (event) => {
         this.forwardProgramServiceEvent(event);
@@ -423,6 +427,19 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       } catch {
         // ignore malformed payloads from client
       }
+      return;
+    }
+
+    if (payload.type === 'song_ended') {
+      if (client.role !== 'program') {
+        return;
+      }
+      try {
+        await this.flightService.handleSongEnded(client.programId);
+      } catch {
+        // ignore flight service errors
+      }
+      return;
     }
   }
 
@@ -475,10 +492,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     this.broadcastProgramScopedEvent(normalizedProgramId, payload);
   }
 
-  private enrichProgramScopedPayload(
-    payload: any,
-    programId: string,
-  ): any {
+  private enrichProgramScopedPayload(payload: any, programId: string): any {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return {
         type: 'program_event',
@@ -514,7 +528,10 @@ export class ProgramRealtimeService implements OnModuleDestroy {
   private broadcastGlobalEvent(payload: any): void {
     const encoded = JSON.stringify(payload);
     for (const client of this.clients) {
-      if (client.role === 'program' || client.socket.readyState !== WebSocket.OPEN) {
+      if (
+        client.role === 'program' ||
+        client.socket.readyState !== WebSocket.OPEN
+      ) {
         continue;
       }
       client.socket.send(encoded);

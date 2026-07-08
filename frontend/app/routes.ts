@@ -15,7 +15,8 @@ export default [
       route('programs', 'routes/programs.tsx'),
       route('layouts', 'routes/layouts.tsx'),
       route('preview', 'routes/preview.tsx'),
-      route('layout-demo', 'routes/layout-demo.tsx')
+      route('layout-demo', 'routes/layout-demo.tsx'),
+      route('flight', 'routes/flight.tsx')
     ]),
     route('overlay', 'routes/overlay.tsx')
   ]),

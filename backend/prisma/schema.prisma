@@ -33,16 +33,33 @@ model Scene {
 }
 
 model ProgramState {
-  id            Int            @id @default(autoincrement())
-  programId     String         @unique
-  activeSceneId Int?
-  activeScene   Scene?         @relation(fields: [activeSceneId], references: [id])
-  songSequence  Json?
-  audioMixer    Json?
-  scenes        ProgramScene[]
-  mediaGroups   ProgramMediaGroup[]
-  stingers      ProgramStinger[]
-  updatedAt     DateTime       @updatedAt
+  id                     Int               @id @default(autoincrement())
+  programId              String            @unique
+  activeSceneId          Int?
+  activeScene            Scene?            @relation(fields: [activeSceneId], references: [id])
+  songSequence           Json?
+  audioMixer             Json?
+  activeFlightSequenceId Int?
+  flightSequences        FlightSequence[]
+  scenes                 ProgramScene[]
+  mediaGroups            ProgramMediaGroup[]
+  stingers               ProgramStinger[]
+  updatedAt              DateTime          @updatedAt
+}
+
+model FlightSequence {
+  id             Int          @id @default(autoincrement())
+  programStateId Int
+  programState   ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  name           String
+  items          Json
+  loop           Boolean      @default(false)
+  isRunning      Boolean      @default(false)
+  activeItemId   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([programStateId, name])
 }
 
 model ProgramScene {

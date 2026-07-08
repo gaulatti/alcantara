@@ -39,7 +39,8 @@ import {
   getProgramAudioBusSignalSnapshot,
   getProgramAudioBusSnapshot,
   setProgramAudioBusMasterVolume,
-  stopProgramAudioBus
+  stopProgramAudioBus,
+  subscribeProgramAudioBus
 } from '../utils/programAudioBus';
 import { faderToGain } from '../utils/audioTaper';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
@@ -1721,6 +1722,33 @@ function SceneProgram({ programId }: { programId: string }) {
   useEffect(() => {
     setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
   }, [programId, resolvedSongMasterVolume]);
+
+  useEffect(() => {
+    let lastEndedToken = '';
+
+    const unsubscribe = subscribeProgramAudioBus(programId, (snapshot) => {
+      if (!snapshot.track) {
+        return;
+      }
+
+      if (snapshot.endedToken && snapshot.endedToken !== lastEndedToken) {
+        lastEndedToken = snapshot.endedToken;
+
+        const socket = meterSocketRef.current;
+        if (socket && meterSocketReadyRef.current && socket.readyState === WebSocket.OPEN) {
+          try {
+            socket.send(JSON.stringify({ type: 'song_ended', programId }));
+          } catch {
+            // ignore
+          }
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [programId]);
 
   useEffect(() => {
     setSongSequenceNowMs(Date.now());

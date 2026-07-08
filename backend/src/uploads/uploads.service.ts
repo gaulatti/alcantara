@@ -76,13 +76,9 @@ const ARTWORK_MIME_TYPES = new Set<string>([
   'image/webp',
 ]);
 
-const STINGER_MIME_TYPES = new Set<string>([
-  'video/webm',
-]);
+const STINGER_MIME_TYPES = new Set<string>(['video/webm']);
 
-const STINGER_EXTENSIONS = new Set<string>([
-  '.webm',
-]);
+const STINGER_EXTENSIONS = new Set<string>(['.webm']);
 
 const ARTWORK_EXTENSIONS = new Set<string>([
   '.avif',

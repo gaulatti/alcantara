@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Images,
   LayoutTemplate,
+  List,
   LogOut,
   Music,
   Radio,
@@ -270,6 +271,7 @@ export default function Layout() {
 
   const navigation: NavItem[] = [
     { href: '/', label: 'Control' },
+    { href: '/flight', label: 'Flight' },
     { href: '/instants', label: 'Instants' },
     { href: '/songs', label: 'Songs' },
     { href: '/media', label: 'Media' },
@@ -284,6 +286,7 @@ export default function Layout() {
       title: 'Navigation',
       items: [
         { href: '/', label: 'Control' },
+        { href: '/flight', label: 'Flight' },
         { href: '/instants', label: 'Instants' },
         { href: '/songs', label: 'Songs' },
         { href: '/media', label: 'Media' },
@@ -390,6 +393,14 @@ export default function Layout() {
         group: 'Navigation',
         icon: <SlidersHorizontal size={16} />,
         onSelect: () => navigate('/')
+      },
+      {
+        id: 'nav-flight',
+        title: 'Go to Flight',
+        description: 'Open the flight mode cue list for the selected program',
+        group: 'Navigation',
+        icon: <List size={16} />,
+        onSelect: () => navigate('/flight')
       },
       {
         id: 'nav-instants',

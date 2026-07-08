@@ -23,7 +23,12 @@ export class ScenesService {
     });
   }
 
-  async create(data: { name: string; layoutId: number; chyronText?: string; metadata?: any }) {
+  async create(data: {
+    name: string;
+    layoutId: number;
+    chyronText?: string;
+    metadata?: any;
+  }) {
     const scene = await this.prisma.scene.create({
       data: {
         name: data.name,
@@ -38,7 +43,12 @@ export class ScenesService {
 
   async update(
     id: number,
-    data: { name?: string; layoutId?: number; chyronText?: string; metadata?: any },
+    data: {
+      name?: string;
+      layoutId?: number;
+      chyronText?: string;
+      metadata?: any;
+    },
   ) {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
@@ -53,7 +63,8 @@ export class ScenesService {
       include: { layout: true },
     });
 
-    const programIds = await this.programService.getProgramIdsByAssignedScene(id);
+    const programIds =
+      await this.programService.getProgramIdsByAssignedScene(id);
     for (const programId of programIds) {
       this.programService.broadcastUpdate(programId, {
         type: 'scene_update',

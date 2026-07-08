@@ -256,6 +256,7 @@ export function resolveControlUpdateTopicFromType(type: unknown): ProgramUpdateT
     case 'audio_meter_update': return 'audioMeter';
     case 'song_playback_update': case 'song_off_air': return 'songPlayback';
     case 'scene_instant_state': case 'scene_instant_take': case 'scene_instant_stop': return 'sceneInstant';
+    case 'flight_update': return 'flight';
     default: return null;
   }
 }
@@ -271,6 +272,7 @@ export function readControlUpdateVersion(topic: ProgramUpdateTopic, payload: unk
     case 'audioMeter': return normalizeUpdateVersion((record.levels as Record<string, unknown> | undefined)?.version ?? record.audioMeterVersion);
     case 'songPlayback': return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.songPlaybackVersion);
     case 'sceneInstant': return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.sceneInstantVersion);
+    case 'flight': return normalizeUpdateVersion(record.flightVersion);
     default: return null;
   }
 }

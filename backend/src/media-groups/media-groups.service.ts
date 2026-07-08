@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 
@@ -43,10 +47,13 @@ export class MediaGroupsService {
       }
     }
 
-    const actualSortBy = ALLOWED_SORT_FIELDS.includes(sortBy as typeof ALLOWED_SORT_FIELDS[number])
+    const actualSortBy = ALLOWED_SORT_FIELDS.includes(
+      sortBy as (typeof ALLOWED_SORT_FIELDS)[number],
+    )
       ? (sortBy as string)
       : 'updatedAt';
-    const actualSortOrder: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+    const actualSortOrder: 'asc' | 'desc' =
+      sortOrder === 'asc' ? 'asc' : 'desc';
 
     const orderBy: Prisma.MediaGroupOrderByWithRelationInput[] = [
       { [actualSortBy]: actualSortOrder },
@@ -137,7 +144,10 @@ export class MediaGroupsService {
         });
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
         throw new BadRequestException('Media group name already exists');
       }
       throw error;
@@ -204,7 +214,10 @@ export class MediaGroupsService {
         });
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
         throw new BadRequestException('Media group name already exists');
       }
       throw error;
@@ -265,8 +278,14 @@ export class MediaGroupsService {
 
     for (const entry of value) {
       const numeric = typeof entry === 'number' ? entry : Number(entry);
-      if (!Number.isFinite(numeric) || numeric <= 0 || !Number.isInteger(numeric)) {
-        throw new BadRequestException('mediaIds must contain positive integer ids');
+      if (
+        !Number.isFinite(numeric) ||
+        numeric <= 0 ||
+        !Number.isInteger(numeric)
+      ) {
+        throw new BadRequestException(
+          'mediaIds must contain positive integer ids',
+        );
       }
 
       if (!seen.has(numeric)) {

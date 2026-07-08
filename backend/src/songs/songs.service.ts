@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 
@@ -23,7 +27,15 @@ interface FindAllParams {
   limit: number;
 }
 
-const ALLOWED_SORT_FIELDS = ['id', 'artist', 'title', 'durationMs', 'updatedAt', 'createdAt', 'enabled'] as const;
+const ALLOWED_SORT_FIELDS = [
+  'id',
+  'artist',
+  'title',
+  'durationMs',
+  'updatedAt',
+  'createdAt',
+  'enabled',
+] as const;
 
 @Injectable()
 export class SongsService {
@@ -49,10 +61,13 @@ export class SongsService {
       }
     }
 
-    const actualSortBy = ALLOWED_SORT_FIELDS.includes(sortBy as typeof ALLOWED_SORT_FIELDS[number])
+    const actualSortBy = ALLOWED_SORT_FIELDS.includes(
+      sortBy as (typeof ALLOWED_SORT_FIELDS)[number],
+    )
       ? (sortBy as string)
       : 'artist';
-    const actualSortOrder: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+    const actualSortOrder: 'asc' | 'desc' =
+      sortOrder === 'asc' ? 'asc' : 'desc';
 
     const orderBy: Prisma.SongOrderByWithRelationInput[] = [
       { [actualSortBy]: actualSortOrder },
@@ -61,16 +76,21 @@ export class SongsService {
 
     const skip = limit > 0 ? (page - 1) * limit : 0;
 
-    const [data, total, catalogTotal, catalogEnabled, durationAgg] = await Promise.all([
-      this.prisma.song.findMany({ where, orderBy, ...(limit > 0 ? { skip, take: limit } : {}) }),
-      this.prisma.song.count({ where }),
-      this.prisma.song.count(),
-      this.prisma.song.count({ where: { enabled: true } }),
-      this.prisma.song.aggregate({
-        _sum: { durationMs: true },
-        _count: { durationMs: true },
-      }),
-    ]);
+    const [data, total, catalogTotal, catalogEnabled, durationAgg] =
+      await Promise.all([
+        this.prisma.song.findMany({
+          where,
+          orderBy,
+          ...(limit > 0 ? { skip, take: limit } : {}),
+        }),
+        this.prisma.song.count({ where }),
+        this.prisma.song.count(),
+        this.prisma.song.count({ where: { enabled: true } }),
+        this.prisma.song.aggregate({
+          _sum: { durationMs: true },
+          _count: { durationMs: true },
+        }),
+      ]);
 
     return {
       data,
@@ -121,8 +141,14 @@ export class SongsService {
 
   async update(id: number, data: SongInput) {
     const existing = await this.findOne(id);
-    const artist = data.artist === undefined ? existing.artist : this.toTrimmedString(data.artist);
-    const title = data.title === undefined ? existing.title : this.toTrimmedString(data.title);
+    const artist =
+      data.artist === undefined
+        ? existing.artist
+        : this.toTrimmedString(data.artist);
+    const title =
+      data.title === undefined
+        ? existing.title
+        : this.toTrimmedString(data.title);
 
     if (!artist && !title) {
       throw new BadRequestException('artist or title is required');
@@ -134,7 +160,10 @@ export class SongsService {
     };
 
     if (data.audioUrl !== undefined) {
-      updateData.audioUrl = this.toRequiredTrimmedString(data.audioUrl, 'audioUrl');
+      updateData.audioUrl = this.toRequiredTrimmedString(
+        data.audioUrl,
+        'audioUrl',
+      );
     }
 
     if (data.coverUrl !== undefined) {

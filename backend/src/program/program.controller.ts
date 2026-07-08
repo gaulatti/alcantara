@@ -12,10 +12,14 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ProgramService } from './program.service';
+import { FlightService } from './flight.service';
 
 @Controller('program')
 export class ProgramController {
-  constructor(private readonly programService: ProgramService) {}
+  constructor(
+    private readonly programService: ProgramService,
+    private readonly flightService: FlightService,
+  ) {}
 
   @Get()
   async listPrograms() {
@@ -151,13 +155,11 @@ export class ProgramController {
   }
 
   @Get('audio-proxy')
-  async proxyAudio(
-    @Query('url') url: string,
-  ): Promise<StreamableFile> {
+  async proxyAudio(@Query('url') url: string): Promise<StreamableFile> {
     const proxied = await this.programService.proxyAudio(url);
     return new StreamableFile(proxied.buffer, {
       type: proxied.contentType,
-      disposition: 'inline'
+      disposition: 'inline',
     });
   }
 
@@ -222,10 +224,7 @@ export class ProgramController {
     @Param('programId') programId: string,
     @Body() data: { stingerId: number },
   ) {
-    return this.programService.addStingerToProgram(
-      data.stingerId,
-      programId,
-    );
+    return this.programService.addStingerToProgram(data.stingerId, programId);
   }
 
   @Delete(':programId/stingers/:stingerId')
@@ -315,6 +314,79 @@ export class ProgramController {
   @Post('reload')
   async reloadProgram() {
     return this.programService.requestProgramReload();
+  }
+
+  @Get(':programId/flight')
+  async listFlightSequencesById(@Param('programId') programId: string) {
+    return this.flightService.listFlightSequences(programId);
+  }
+
+  @Post(':programId/flight')
+  async createFlightSequenceById(
+    @Param('programId') programId: string,
+    @Body() data: { name: string; items?: unknown; loop?: boolean },
+  ) {
+    return this.flightService.createFlightSequence(programId, data);
+  }
+
+  @Put(':programId/flight/:sequenceId')
+  async updateFlightSequenceById(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+    @Body() data: { name?: string; items?: unknown; loop?: boolean },
+  ) {
+    return this.flightService.updateFlightSequence(
+      programId,
+      Number(sequenceId),
+      data,
+    );
+  }
+
+  @Delete(':programId/flight/:sequenceId')
+  async deleteFlightSequenceById(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+  ) {
+    return this.flightService.deleteFlightSequence(
+      programId,
+      Number(sequenceId),
+    );
+  }
+
+  @Post(':programId/flight/:sequenceId/activate')
+  async activateFlightSequenceById(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+  ) {
+    return this.flightService.activateFlightSequence(
+      programId,
+      Number(sequenceId),
+    );
+  }
+
+  @Post(':programId/flight/deactivate')
+  async deactivateFlightSequenceById(@Param('programId') programId: string) {
+    return this.flightService.deactivateFlightSequence(programId);
+  }
+
+  @Post(':programId/flight/start')
+  async startFlightById(@Param('programId') programId: string) {
+    return this.flightService.start(programId);
+  }
+
+  @Post(':programId/flight/stop')
+  async stopFlightById(@Param('programId') programId: string) {
+    return this.flightService.stop(programId);
+  }
+
+  @Post(':programId/flight/go')
+  async goFlightById(@Param('programId') programId: string) {
+    return this.flightService.go(programId);
+  }
+
+  @Post(':programId/flight/reset')
+  async resetFlightById(@Param('programId') programId: string) {
+    return this.flightService.reset(programId);
   }
 
   @Sse(':programId/events')

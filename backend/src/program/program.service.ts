@@ -68,7 +68,8 @@ type ProgramUpdateTopic =
   | 'audioBus'
   | 'audioMeter'
   | 'songPlayback'
-  | 'sceneInstant';
+  | 'sceneInstant'
+  | 'flight';
 
 @Injectable()
 export class ProgramService implements OnModuleInit {
@@ -86,6 +87,7 @@ export class ProgramService implements OnModuleInit {
     audioMeter: new Map<string, number>(),
     songPlayback: new Map<string, number>(),
     sceneInstant: new Map<string, number>(),
+    flight: new Map<string, number>(),
   };
   private globalBroadcastVersion = 0;
   private stagedSceneByProgramId = new Map<string, number | null>();
@@ -953,6 +955,8 @@ export class ProgramService implements OnModuleInit {
       case 'scene_instant_stop':
       case 'scene_instant_state':
         return 'sceneInstant';
+      case 'flight_update':
+        return 'flight';
       default:
         return null;
     }
@@ -1078,6 +1082,9 @@ export class ProgramService implements OnModuleInit {
             stinger: true,
           },
         },
+        flightSequences: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -1115,6 +1122,9 @@ export class ProgramService implements OnModuleInit {
             include: {
               stinger: true,
             },
+          },
+          flightSequences: {
+            orderBy: { createdAt: 'asc' },
           },
         },
       });
@@ -1320,6 +1330,9 @@ export class ProgramService implements OnModuleInit {
           include: {
             stinger: true,
           },
+        },
+        flightSequences: {
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -2231,6 +2244,9 @@ export class ProgramService implements OnModuleInit {
           include: {
             stinger: true,
           },
+        },
+        flightSequences: {
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
