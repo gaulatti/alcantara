@@ -432,12 +432,14 @@ export class ProgramRealtimeService implements OnModuleDestroy {
 
     if (payload.type === 'song_ended') {
       if (client.role !== 'program') {
+        console.log(`[WS] song_ended ignored: role=${client.role}, expected=program`);
         return;
       }
       try {
+        console.log(`[WS] song_ended received from program client for ${client.programId}`);
         await this.flightService.handleSongEnded(client.programId);
       } catch {
-        // ignore flight service errors
+        console.error('[WS] song_ended handler threw');
       }
       return;
     }

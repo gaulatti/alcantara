@@ -8,6 +8,7 @@ import {
 import { Subject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
+import { RadioService } from '../radio/radio.service';
 
 export interface ProgramAudioMeterChannel {
   vu: number;
@@ -119,7 +120,10 @@ export class ProgramService implements OnModuleInit {
     }) => void
   >();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly radioService: RadioService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.ensureDefaultProgramState();
@@ -1180,8 +1184,10 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
-  async createProgram(programId: string) {
+  async createProgram(programId: string, type?: string) {
     const normalized = this.normalizeProgramId(programId);
+    const programType =
+      type === 'radio' || type === 'both' || type === 'tv' ? type : 'tv';
 
     const existing = await this.prisma.programState.findUnique({
       where: { programId: normalized },
@@ -1195,6 +1201,7 @@ export class ProgramService implements OnModuleInit {
     await this.prisma.programState.create({
       data: {
         programId: normalized,
+        type: programType,
         activeSceneId: null,
         audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
       },
@@ -1204,10 +1211,26 @@ export class ProgramService implements OnModuleInit {
     return this.getProgramStateWithScenes(normalized);
   }
 
-  async renameProgram(programId: string, nextProgramId: string) {
+  async renameProgram(programId: string, nextProgramId: string, type?: string) {
     const current = this.normalizeProgramId(programId);
     const next = this.normalizeProgramId(nextProgramId);
+    if (current === next && type === undefined) {
+      return this.getProgramStateWithScenes(current);
+    }
+
+    const programType =
+      type !== undefined &&
+      (type === 'radio' || type === 'both' || type === 'tv')
+        ? type
+        : undefined;
+
     if (current === next) {
+      if (programType) {
+        await this.prisma.programState.update({
+          where: { programId: current },
+          data: { type: programType },
+        });
+      }
       return this.getProgramStateWithScenes(current);
     }
 
@@ -1227,9 +1250,14 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Program not found');
     }
 
+    const updateData: Record<string, unknown> = { programId: next };
+    if (programType) {
+      updateData.type = programType;
+    }
+
     await this.prisma.programState.update({
       where: { id: existingSource.id },
-      data: { programId: next },
+      data: updateData,
     });
 
     const currentSubject = this.eventSubjects.get(current);
@@ -1714,6 +1742,17 @@ export class ProgramService implements OnModuleInit {
     };
 
     this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
+
+    if (
+      isPlaying &&
+      audioUrl &&
+      (!previousPlayback ||
+        previousPlayback.token !== token ||
+        previousPlayback.audioUrl !== audioUrl)
+    ) {
+      void this.forwardSongToRadio(normalizedProgramId, audioUrl);
+    }
+
     const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'song_playback_update',
       programId: normalizedProgramId,
@@ -2637,6 +2676,8 @@ export class ProgramService implements OnModuleInit {
       playback: stoppedPlayback,
     });
 
+    void this.forwardStopSongToRadio(normalizedProgramId);
+
     return { ok: true, programId: normalizedProgramId };
   }
 
@@ -2861,6 +2902,12 @@ export class ProgramService implements OnModuleInit {
       triggeredAt: new Date().toISOString(),
     });
 
+    void this.forwardInstantToRadio(
+      normalizedProgramId,
+      instant.audioUrl,
+      instant.volume,
+    );
+
     return { ok: true };
   }
 
@@ -2871,6 +2918,8 @@ export class ProgramService implements OnModuleInit {
       type: 'instant_stop_all',
       triggeredAt: new Date().toISOString(),
     });
+
+    void this.forwardStopInstantsToRadio(normalizedProgramId);
 
     return { ok: true };
   }
@@ -2931,6 +2980,46 @@ export class ProgramService implements OnModuleInit {
         // no-op
       }
     }
+  }
+
+  private async isRadioCapable(programId: string): Promise<boolean> {
+    try {
+      const settings = await this.radioService.getRadioSettings(programId);
+      return !!(settings && settings.enabled);
+    } catch {
+      return false;
+    }
+  }
+
+  private async forwardInstantToRadio(
+    programId: string,
+    audioUrl: string,
+    volume: number,
+  ): Promise<void> {
+    if (!(await this.isRadioCapable(programId))) return;
+    void this.radioService.playInstant(programId, audioUrl, volume);
+  }
+
+  private async forwardStopInstantsToRadio(
+    programId: string,
+  ): Promise<void> {
+    if (!(await this.isRadioCapable(programId))) return;
+    void this.radioService.stopAllInstants(programId);
+  }
+
+  private async forwardSongToRadio(
+    programId: string,
+    audioUrl: string,
+  ): Promise<void> {
+    if (!(await this.isRadioCapable(programId))) return;
+    void this.radioService.playSong(programId, audioUrl);
+  }
+
+  private async forwardStopSongToRadio(
+    programId: string,
+  ): Promise<void> {
+    if (!(await this.isRadioCapable(programId))) return;
+    void this.radioService.stopSong(programId);
   }
 
   getEventStream(

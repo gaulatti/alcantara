@@ -1,5 +1,5 @@
 import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/programs';
@@ -49,6 +49,7 @@ interface ProgramStingerEntry {
 interface ProgramState {
   id: number;
   programId: string;
+  type?: 'tv' | 'radio' | 'both';
   activeSceneId: number | null;
   scenes: ProgramSceneEntry[];
   mediaGroups: ProgramMediaGroupEntry[];
@@ -79,6 +80,7 @@ export default function ProgramsAdmin() {
   const [selectedStingerIds, setSelectedStingerIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedType, setSelectedType] = useState<'tv' | 'radio' | 'both'>('tv');
 
   const fetchPrograms = async (): Promise<ProgramState[]> => {
     const res = await fetch(apiUrl('/program'));
@@ -153,6 +155,7 @@ export default function ProgramsAdmin() {
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
+    setSelectedType('tv');
     setError('');
     setShowModal(true);
   };
@@ -167,6 +170,7 @@ export default function ProgramsAdmin() {
     setSelectedStingerIds(
       (program.stingers || []).map((entry) => entry.stingerId),
     );
+    setSelectedType(program.type || 'tv');
     setError('');
     setShowModal(true);
   };
@@ -178,6 +182,7 @@ export default function ProgramsAdmin() {
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
+    setSelectedType('tv');
     setError('');
   };
 
@@ -349,10 +354,24 @@ export default function ProgramsAdmin() {
       if (isEditing) {
         const needsRename = editingProgramId !== nextProgramId;
         if (needsRename) {
+          const renameBody: Record<string, unknown> = { nextProgramId };
+          if (selectedType !== (editingProgram?.type || 'tv')) {
+            renameBody.type = selectedType;
+          }
           const res = await fetch(apiUrl(`/program/${encodeURIComponent(editingProgramId)}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nextProgramId })
+            body: JSON.stringify(renameBody)
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || `HTTP ${res.status}`);
+          }
+        } else if (selectedType !== (editingProgram?.type || 'tv')) {
+          const res = await fetch(apiUrl(`/program/${encodeURIComponent(editingProgramId)}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nextProgramId, type: selectedType })
           });
           if (!res.ok) {
             const text = await res.text();
@@ -376,7 +395,7 @@ export default function ProgramsAdmin() {
         const createRes = await fetch(apiUrl('/program'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ programId: nextProgramId })
+          body: JSON.stringify({ programId: nextProgramId, type: selectedType })
         });
         if (!createRes.ok) {
           const text = await createRes.text();
@@ -477,6 +496,9 @@ export default function ProgramsAdmin() {
                       <div className='min-w-0 flex-1'>
                         <div className='flex flex-wrap items-center gap-2'>
                           <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{program.programId}</h3>
+                          <span className='inline-flex items-center gap-1 rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15'>
+                            {program.type === 'radio' ? <><Radio size={12} /> Radio</> : program.type === 'both' ? <><Tv size={12} /><Radio size={12} /> Simulcast</> : <><Tv size={12} /> TV</>}
+                          </span>
                           {isSelected ? (
                             <span className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea   '>
                               Selected
@@ -535,6 +557,27 @@ export default function ProgramsAdmin() {
                 error={!!error}
                 autoFocus
               />
+            </div>
+
+            <div>
+              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
+              <div className='flex gap-2'>
+                {(['tv', 'radio', 'both'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type='button'
+                    onClick={() => setSelectedType(type)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                      selectedType === type
+                        ? 'border-sea bg-sea/10 text-sea'
+                        : 'border-sand/20 bg-white/70 text-text-secondary hover:border-sea/30 dark:border-sand/40 dark:bg-dark-sand/50'
+                    }`}
+                  >
+                    {type === 'radio' ? <Radio size={14} /> : type === 'both' ? <><Tv size={14} /><Radio size={14} /></> : <Tv size={14} />}
+                    {type === 'tv' ? 'TV' : type === 'radio' ? 'Radio' : 'Simulcast'}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>

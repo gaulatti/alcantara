@@ -2888,6 +2888,7 @@ export default function Control() {
               </div>
             </Panel>
 
+            {programState?.type !== 'radio' ? (
             <Panel title='Stage Attributes' accent='#14b8a6' variant='monitor' className='min-h-0' grow>
               <SceneAttributesPanel
                 selectedScene={selectedScene}
@@ -2919,6 +2920,7 @@ export default function Control() {
                 onStopSceneInstant={() => stopSceneInstant()}
               />
             </Panel>
+            ) : null}
           </PanelColumn>
 
           <PanelColumn style={{ width: 520, minWidth: 520 }}>

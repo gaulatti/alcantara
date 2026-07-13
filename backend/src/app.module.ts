@@ -12,6 +12,7 @@ import { InstantsModule } from './instants/instants.module';
 import { MediaModule } from './media/media.module';
 import { MediaGroupsModule } from './media-groups/media-groups.module';
 import { StingersModule } from './stingers/stingers.module';
+import { RadioModule } from './radio/radio.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { StingersModule } from './stingers/stingers.module';
     MediaModule,
     MediaGroupsModule,
     StingersModule,
+    RadioModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -455,6 +455,12 @@ export class FlightService implements OnModuleDestroy {
       });
     }
 
+    try {
+      await this.programService.takeProgramSongOffAir(normalizedProgramId);
+    } catch {
+      // ignore
+    }
+
     await this.broadcastFlightUpdate(normalizedProgramId);
     return { ok: true };
   }
@@ -464,12 +470,14 @@ export class FlightService implements OnModuleDestroy {
     const runtime = this.runtimes.get(normalizedProgramId);
 
     if (!runtime || !runtime.isRunning) {
+      console.log(`[Flight] go(${normalizedProgramId}): runtime not running, calling start()`);
       return this.start(normalizedProgramId);
     }
 
     this.clearTimer(runtime);
     runtime.waitingForSongEnd = false;
     runtime.generation += 1;
+    console.log(`[Flight] go(${normalizedProgramId}): advancing from cue #${runtime.activeIndex} to #${runtime.activeIndex + 1}`);
 
     const nextIndex = runtime.activeIndex + 1;
     if (nextIndex >= runtime.items.length) {
@@ -522,9 +530,15 @@ export class FlightService implements OnModuleDestroy {
     const runtime = this.runtimes.get(normalizedProgramId);
 
     if (!runtime || !runtime.isRunning || !runtime.waitingForSongEnd) {
+      console.log(
+        `[Flight] handleSongEnded(${normalizedProgramId}): ` +
+        `runtime=${!!runtime} isRunning=${runtime?.isRunning} ` +
+        `waitingForSongEnd=${runtime?.waitingForSongEnd}`,
+      );
       return { ok: false };
     }
 
+    console.log(`[Flight] handleSongEnded(${normalizedProgramId}): advancing from cue #${runtime.activeIndex}`);
     this.clearTimer(runtime);
     runtime.waitingForSongEnd = false;
     runtime.generation += 1;
@@ -599,6 +613,15 @@ export class FlightService implements OnModuleDestroy {
 
     if (cue.kind === 'waitForSongEnd') {
       runtime.waitingForSongEnd = true;
+      const songEndTimeoutMs = 5 * 60 * 1000;
+      runtime.timer = setTimeout(() => {
+        const current = this.runtimes.get(programId);
+        if (current?.waitingForSongEnd) {
+          current.waitingForSongEnd = false;
+          current.generation += 1;
+          void this.advance(programId, current.generation);
+        }
+      }, songEndTimeoutMs);
       return;
     }
 

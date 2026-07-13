@@ -31,6 +31,7 @@ export interface ProgramMediaGroupEntry {
 export interface ProgramState {
   id: number;
   programId: string;
+  type?: 'tv' | 'radio' | 'both';
   activeSceneId: number | null;
   activeScene?: Scene | null;
   stagedSceneId?: number | null;

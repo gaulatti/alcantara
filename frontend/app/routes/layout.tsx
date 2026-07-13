@@ -42,6 +42,7 @@ const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
 
 interface ProgramSummary {
   programId: string;
+  type?: 'tv' | 'radio' | 'both';
 }
 
 interface SceneSummary {
@@ -262,11 +263,18 @@ export default function Layout() {
   }, []);
 
   const programOptions = useMemo(() => {
+    const programMap = new Map(knownPrograms.map((p) => [p.programId, p]));
     const uniqueProgramIds = Array.from(new Set([selectedProgramId, ...knownPrograms.map((program) => program.programId)]));
-    return uniqueProgramIds.filter(Boolean).map((programIdValue) => ({
-      label: programIdValue,
-      value: programIdValue
-    }));
+    return uniqueProgramIds.filter(Boolean).map((programIdValue) => {
+      const program = programMap.get(programIdValue);
+      const type = program?.type ?? 'tv';
+      const icon = type === 'radio' ? <Radio size={14} /> : type === 'both' ? <><Tv size={14} /><Radio size={14} /></> : <Tv size={14} />;
+      return {
+        label: programIdValue,
+        value: programIdValue,
+        icon
+      };
+    });
   }, [knownPrograms, selectedProgramId]);
 
   const navigation: NavItem[] = [
@@ -547,7 +555,7 @@ export default function Layout() {
       title: `Select Program: ${option.label}`,
       description: option.value === selectedProgramId ? 'Currently selected' : 'Switch global program context',
       group: 'Programs',
-      icon: <Tv size={16} />,
+      icon: option.icon ?? <Tv size={16} />,
       onSelect: () => setSelectedProgramId(option.value)
     }));
 

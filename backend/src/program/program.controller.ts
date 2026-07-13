@@ -27,16 +27,18 @@ export class ProgramController {
   }
 
   @Post()
-  async createProgram(@Body() data: { programId: string }) {
-    return this.programService.createProgram(data.programId);
+  async createProgram(
+    @Body() data: { programId: string; type?: string },
+  ) {
+    return this.programService.createProgram(data.programId, data.type);
   }
 
   @Put(':programId')
   async renameProgram(
     @Param('programId') programId: string,
-    @Body() data: { nextProgramId: string },
+    @Body() data: { nextProgramId: string; type?: string },
   ) {
-    return this.programService.renameProgram(programId, data.nextProgramId);
+    return this.programService.renameProgram(programId, data.nextProgramId, data.type);
   }
 
   @Delete(':programId')
