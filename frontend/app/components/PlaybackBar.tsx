@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, IconButton } from '@gaulatti/bleecker';
-import { Music2, Play, Repeat2, SkipBack, SkipForward, Square, ZapOff } from 'lucide-react';
+import { Music2, Play, Repeat2, Shuffle, SkipBack, SkipForward, Square, ZapOff } from 'lucide-react';
 import {
   createProgramSongSequence,
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
-  resolveProgramSongLeaf,
   type ProgramSongSequence,
 } from '../utils/programSequence';
 import type { ProgramSongPlaybackState } from '../models/broadcast';
@@ -74,19 +73,10 @@ export function PlaybackBar({
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [stickyPlaybackItemId, setStickyPlaybackItemId] = useState<string | null>(null);
-  const songDurationByUrlRef = useRef<Record<string, number | null>>({});
-  const autoTakeOffTimerRef = useRef<number | null>(null);
   const sequenceRef = useRef(sequence);
   const effectiveActiveItemId = getProgramSongSequenceSelectedItemId(sequence, nowMs);
 
   const showSceneQuickBar = sceneQuickActions.length > 0;
-
-  const clearAutoTakeOffTimer = useCallback(() => {
-    if (autoTakeOffTimerRef.current !== null) {
-      window.clearTimeout(autoTakeOffTimerRef.current);
-      autoTakeOffTimerRef.current = null;
-    }
-  }, []);
 
   const applySequence = useCallback(
     (nextSequence: ProgramSongSequence) => {
@@ -146,121 +136,20 @@ export function PlaybackBar({
   }, [programSongPlayback?.isPlaying, sequence.activeItemId, sequence.startedAt]);
 
   const clearActiveItem = useCallback(async () => {
-    clearAutoTakeOffTimer();
     const next = { ...sequence, mode: 'manual' as const, activeItemId: null };
     applySequence(next);
     if (onTakeSelection) await onTakeSelection(next);
     if (onTakeOffAir) await onTakeOffAir();
-  }, [applySequence, clearAutoTakeOffTimer, onTakeOffAir, onTakeSelection, sequence]);
-
-  const resolveAutoplayStartedAt = useCallback((): number => {
-    const now = Date.now();
-    if (!programSongPlayback) return now;
-    const targetId = sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId ?? null) : (runtimeActiveItemId ?? sequence.activeItemId ?? null);
-    if (!targetId) return now;
-    const target = sequence.items.find((i) => i.id === targetId);
-    if (!target || target.kind !== 'preset') return now;
-    const itemUrl = target.audioUrl?.trim() || '';
-    const pbUrl = programSongPlayback.audioUrl.trim();
-    const pbToken = programSongPlayback.token;
-    const matches = (itemUrl && pbUrl && itemUrl === pbUrl) || (target.id && pbToken.startsWith(`${target.id}:`));
-    if (!matches) return now;
-    return now - Math.max(0, Math.round(programSongPlayback.currentTimeMs));
-  }, [programSongPlayback, runtimeActiveItemId, sequence.activeItemId, sequence.items, sequence.mode]);
-
-  const scheduleAutoTakeOffForSequence = useCallback(
-    (nextSequence: ProgramSongSequence) => {
-      clearAutoTakeOffTimer();
-      if (nextSequence.mode !== 'manual') return;
-      const leaf = resolveProgramSongLeaf({ sequence: nextSequence }, Date.now());
-      const durationMs = leaf?.durationMs;
-      if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) {
-        const fallbackUrl = leaf?.audioUrl?.trim();
-        if (!fallbackUrl) return;
-        const cached = songDurationByUrlRef.current[fallbackUrl];
-        if (typeof cached === 'number' && Number.isFinite(cached) && cached > 0) {
-          const expectedId = nextSequence.activeItemId ?? null;
-          const expectedStarted = typeof nextSequence.startedAt === 'number' && Number.isFinite(nextSequence.startedAt) ? nextSequence.startedAt : null;
-          autoTakeOffTimerRef.current = window.setTimeout(
-            () => {
-              const cur = sequenceRef.current;
-              if (cur.activeItemId !== expectedId) return;
-              if ((typeof cur.startedAt === 'number' && Number.isFinite(cur.startedAt) ? cur.startedAt : null) !== expectedStarted) return;
-              void clearActiveItem();
-            },
-            Math.max(200, Math.round(cached))
-          );
-          return;
-        }
-        const audio = new Audio();
-        audio.preload = 'metadata';
-        audio.onloadedmetadata = () => {
-          const sec = Number(audio.duration);
-          audio.onloadedmetadata = null;
-          audio.onerror = null;
-          audio.src = '';
-          const d = Number.isFinite(sec) && sec > 0 ? Math.max(1, Math.round(sec * 1000)) : null;
-          songDurationByUrlRef.current[fallbackUrl] = d;
-          if (!d) return;
-          const expectedId = nextSequence.activeItemId ?? null;
-          const expectedStarted = typeof nextSequence.startedAt === 'number' && Number.isFinite(nextSequence.startedAt) ? nextSequence.startedAt : null;
-          clearAutoTakeOffTimer();
-          autoTakeOffTimerRef.current = window.setTimeout(
-            () => {
-              const cur = sequenceRef.current;
-              if (cur.activeItemId !== expectedId) return;
-              if ((typeof cur.startedAt === 'number' && Number.isFinite(cur.startedAt) ? cur.startedAt : null) !== expectedStarted) return;
-              void clearActiveItem();
-            },
-            Math.max(200, d)
-          );
-        };
-        audio.onerror = () => {
-          audio.onloadedmetadata = null;
-          audio.onerror = null;
-          audio.src = '';
-          songDurationByUrlRef.current[fallbackUrl] = null;
-        };
-        audio.src = fallbackUrl;
-        audio.load();
-        return;
-      }
-      const expectedId = nextSequence.activeItemId ?? null;
-      const expectedStarted = typeof nextSequence.startedAt === 'number' && Number.isFinite(nextSequence.startedAt) ? nextSequence.startedAt : null;
-      autoTakeOffTimerRef.current = window.setTimeout(
-        () => {
-          const cur = sequenceRef.current;
-          if (cur.activeItemId !== expectedId) return;
-          if ((typeof cur.startedAt === 'number' && Number.isFinite(cur.startedAt) ? cur.startedAt : null) !== expectedStarted) return;
-          void clearActiveItem();
-        },
-        Math.max(200, Math.round(durationMs))
-      );
-    },
-    [clearActiveItem, clearAutoTakeOffTimer]
-  );
+  }, [applySequence, onTakeOffAir, onTakeSelection, sequence]);
 
   const activateItem = useCallback(
     async (itemId: string) => {
-      clearAutoTakeOffTimer();
       const next = { ...sequence, activeItemId: itemId, startedAt: Date.now() };
       applySequence(next);
       if (onTakeSelection) await onTakeSelection(next);
-      scheduleAutoTakeOffForSequence(next);
     },
-    [applySequence, clearAutoTakeOffTimer, onTakeSelection, scheduleAutoTakeOffForSequence, sequence]
+    [applySequence, onTakeSelection, sequence]
   );
-
-  useEffect(() => {
-    if (sequence.activeItemId && !programSongPlayback?.isPlaying && sequence.mode === 'manual') {
-      const leaf = resolveProgramSongLeaf({ sequence }, Date.now());
-      const dur = leaf?.durationMs;
-      if (dur && Number.isFinite(dur) && dur > 0) {
-        const elapsed = Date.now() - (sequence.startedAt ?? Date.now());
-        if (elapsed >= dur) void clearActiveItem();
-      }
-    }
-  }, [clearActiveItem, programSongPlayback?.isPlaying, sequence]);
 
   return (
     <div className='bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90'>
@@ -465,7 +354,7 @@ export function PlaybackBar({
                   mode: 'autoplay',
                   activeItemId:
                     sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
-                  startedAt: resolveAutoplayStartedAt()
+                  startedAt: Date.now()
                 })
               }
               className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${sequence.mode === 'autoplay' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'}`}
@@ -473,6 +362,20 @@ export function PlaybackBar({
               variant='secondary'
             >
               <Play size={9} fill='currentColor' /> Autoplay
+            </Button>
+            <Button
+              onClick={() =>
+                applySequence({
+                  ...sequence,
+                  mode: 'shuffle',
+                  startedAt: Date.now()
+                })
+              }
+              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${sequence.mode === 'shuffle' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+              size='sm'
+              variant='secondary'
+            >
+              <Shuffle size={9} /> Shuffle
             </Button>
           </div>
           <IconButton

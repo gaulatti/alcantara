@@ -39,6 +39,8 @@ model ProgramState {
   activeSceneId          Int?
   activeScene            Scene?            @relation(fields: [activeSceneId], references: [id])
   songSequence           Json?
+  shuffleOrder           Json?
+  engineState            Json?
   audioMixer             Json?
   activeFlightSequenceId Int?
   flightSequences        FlightSequence[]
@@ -191,15 +193,11 @@ model RadioSettings {
   id               Int          @id @default(autoincrement())
   programStateId   Int          @unique
   programState     ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
-  palazzoUrl       String       @default("http://localhost:3100")
-  palazzoStreamId  String?
-  icecastHost      String?
-  icecastPort      Int?
-  icecastMount     String?
-  icecastPassword  String?
-  streamName       String?
-  streamGenre      String?
-  streamBitrate    Int?
+  palazzoUrl       String       @default("http://palazzo:3100")
+  bumperEnabled    Boolean      @default(false)
+  bumperInterval   Int?
+  bumperInstantIds Int[]        @default([])
+  bumperMode       String       @default("sequential")
   enabled          Boolean      @default(false)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt

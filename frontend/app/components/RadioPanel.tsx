@@ -1,0 +1,320 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Button, Panel, PanelColumn, PanelLayout } from '@gaulatti/bleecker';
+import { apiUrl } from '../utils/apiBaseUrl';
+import {
+  Music2,
+  Wifi,
+  WifiOff,
+  Settings,
+  Save,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
+import type { ProgramSongPlaybackState, SongCatalogItem, InstantItem } from '../models/broadcast';
+import { PlaybackBar } from './PlaybackBar';
+import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel } from './panels';
+
+interface RadioPanelProps {
+  programId: string;
+  songSequence: any;
+  songCatalog: SongCatalogItem[];
+  programSongPlayback: ProgramSongPlaybackState | null;
+  onSaveSongSequence: (seq: any) => Promise<void> | void;
+  onTakeOffAir: () => Promise<void>;
+  instants: InstantItem[];
+  instantSearch: string;
+  onInstantSearchChange: (v: string) => void;
+  onTriggerInstant: (id: number) => void;
+  onStopAllInstants: () => void;
+  instantPlayback: Record<number, { startedAtMs: number; endsAtMs: number | null }>;
+}
+
+interface StreamStatus { running: boolean; uptime: number; }
+
+interface RadioSettings {
+  palazzoUrl: string;
+  bumperEnabled: boolean;
+  bumperInterval: number | null;
+  bumperInstantIds: number[];
+  bumperMode: string | null;
+  enabled: boolean;
+}
+
+export const RadioPanel: React.FC<RadioPanelProps> = ({
+  programId,
+  songSequence,
+  songCatalog,
+  programSongPlayback,
+  onSaveSongSequence,
+  onTakeOffAir,
+  instants,
+  instantSearch,
+  onInstantSearchChange,
+  onTriggerInstant,
+  onStopAllInstants,
+  instantPlayback,
+}) => {
+  const [stream, setStream] = useState<StreamStatus | null>(null);
+  const [radioSettings, setRadioSettings] = useState<RadioSettings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [playlistSheetOpen, setPlaylistSheetOpen] = useState(false);
+
+  const fetchStreamStatus = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/status`));
+      if (res.ok) setStream(await res.json());
+    } catch {}
+  }, [programId]);
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/settings`));
+      if (res.ok) {
+        const data = await res.json();
+        setRadioSettings(data || {
+          palazzoUrl: 'http://palazzo:3100',
+          bumperEnabled: false, bumperInterval: null,
+          bumperInstantIds: [], bumperMode: 'sequential', enabled: false,
+        });
+      }
+    } catch {}
+  }, [programId]);
+
+  useEffect(() => {
+    fetchStreamStatus(); fetchSettings();
+    const interval = setInterval(fetchStreamStatus, 8000);
+    return () => clearInterval(interval);
+  }, [fetchStreamStatus, fetchSettings]);
+
+  const saveSettings = useCallback(async () => {
+    if (!radioSettings) return;
+    setSavingSettings(true);
+    try {
+      const res = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/settings`), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(radioSettings),
+      });
+      if (res.ok) setRadioSettings(await res.json());
+    } finally { setSavingSettings(false); }
+  }, [programId, radioSettings]);
+
+  const handleTakeSelection = useCallback(async (seq: any) => {
+    await onSaveSongSequence(seq);
+    const item = seq?.items?.find((i: any) => i.id === seq?.activeItemId);
+    if (!item?.audioUrl) return;
+    await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/song`), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioUrl: item.audioUrl, title: item?.title, artist: item?.artist, durationMs: item?.durationMs }),
+    });
+  }, [onSaveSongSequence, programId]);
+
+  const isLive = stream?.running === true;
+  const isPlaying = programSongPlayback?.isPlaying && programSongPlayback?.audioUrl;
+  const progress = programSongPlayback?.durationMs
+    ? Math.round((programSongPlayback.positionMs / programSongPlayback.durationMs) * 100) : 0;
+
+  return (
+    <div className='flex h-full w-full flex-1 min-h-0 flex-col overflow-hidden bg-dark-sand text-text-primary'>
+      <PanelLayout className='w-full h-full min-h-0' padding='p-0'>
+        <PanelColumn className='min-w-0' grow>
+          <Panel title='Radio' accent={isLive ? '#22c55e' : '#ef4444'} variant='monitor' className='min-h-0' grow>
+            <div className='space-y-3'>
+              <div className='flex items-center justify-between rounded-xl border border-sand/30 bg-dark-sand/70 p-3'>
+                <div className='flex items-center gap-3'>
+                  {isLive ? (
+                    <div className='flex items-center gap-2 text-green-400'>
+                      <span className='relative flex h-2.5 w-2.5'>
+                        <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75' />
+                        <span className='relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500' />
+                      </span>
+                      <Wifi className='h-4 w-4' />
+                      <span className='text-sm font-bold tracking-wide'>ON AIR</span>
+                    </div>
+                  ) : (
+                    <div className='flex items-center gap-2 text-red-400'>
+                      <WifiOff className='h-4 w-4' />
+                      <span className='text-sm font-bold tracking-wide'>OFFLINE</span>
+                    </div>
+                  )}
+                  {isLive && stream?.uptime != null && (
+                    <span className='text-[11px] text-text-secondary font-mono'>{formatUptime(stream.uptime)}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className='rounded-xl border border-sand/30 bg-dark-sand/70 p-4'>
+                <p className='text-[10px] font-bold tracking-widest text-violet-300 mb-3 uppercase'>On Air</p>
+                {isPlaying && programSongPlayback ? (
+                  <div className='space-y-1'>
+                    <h2 className='text-lg font-bold text-text-primary truncate'>{programSongPlayback.title || 'Unknown'}</h2>
+                    <p className='text-sm text-text-secondary'>{programSongPlayback.artist || 'Unknown Artist'}</p>
+                    {programSongPlayback.durationMs ? (
+                      <div className='mt-3 space-y-1'>
+                        <div className='h-1.5 w-full rounded-full bg-sand/20 overflow-hidden'>
+                          <div className='h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-400 transition-all duration-500'
+                            style={{ width: `${Math.min(progress, 100)}%` }} />
+                        </div>
+                        <div className='flex justify-between text-[10px] font-mono text-text-secondary'>
+                          <span>{formatTime(programSongPlayback.positionMs || 0)}</span>
+                          <span>{formatTime(programSongPlayback.durationMs)}</span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className='py-3 text-center'>
+                    <Music2 className='h-10 w-10 mx-auto text-sand mb-2' />
+                    <p className='text-sm text-text-secondary'>No track playing</p>
+                  </div>
+                )}
+              </div>
+
+              <div className='rounded-xl border border-sand/30 bg-dark-sand/70 overflow-hidden'>
+                <button type='button' onClick={() => setSettingsOpen(!settingsOpen)}
+                  className='flex items-center justify-between w-full p-3 text-left hover:bg-dark-sand/80 transition-colors'>
+                  <div className='flex items-center gap-2'>
+                    <Settings className='h-4 w-4 text-text-secondary' />
+                    <span className='text-xs font-bold text-text-secondary uppercase tracking-wider'>Settings</span>
+                    {radioSettings?.enabled && <span className='text-[10px] font-mono text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded'>ENABLED</span>}
+                    {!radioSettings?.enabled && radioSettings && <span className='text-[10px] font-mono text-text-secondary bg-sand/20 px-1.5 py-0.5 rounded'>DISABLED</span>}
+                  </div>
+                  {settingsOpen ? <ChevronDown className='h-4 w-4 text-text-secondary' /> : <ChevronRight className='h-4 w-4 text-text-secondary' />}
+                </button>
+                {settingsOpen && radioSettings && (
+                  <div className='border-t border-sand/30 p-3 space-y-3'>
+                    <SettingsField label='Palazzo URL' value={radioSettings.palazzoUrl}
+                      onChange={(v) => setRadioSettings({ ...radioSettings, palazzoUrl: v })} />
+                    <div className='pt-2 space-y-2 border-t border-sand/30'>
+                      <div className='flex items-center gap-2'>
+                        <input type='checkbox' checked={radioSettings.bumperEnabled}
+                          onChange={(e) => setRadioSettings({ ...radioSettings, bumperEnabled: e.target.checked })}
+                          className='rounded accent-violet-500' />
+                        <span className='text-[10px] font-bold text-text-secondary uppercase'>Bumper/ID</span>
+                        {radioSettings.bumperEnabled && (
+                          <select value={radioSettings.bumperMode || 'sequential'}
+                            onChange={(e) => setRadioSettings({ ...radioSettings, bumperMode: e.target.value })}
+                            className='rounded bg-dark-sand/60 border border-sand/30 px-2 py-0.5 text-[10px] text-text-primary font-mono focus:outline-none focus:border-violet-500'>
+                            <option value='sequential'>Sequential</option>
+                            <option value='random'>Random</option>
+                          </select>
+                        )}
+                      </div>
+                      {radioSettings.bumperEnabled && (
+                        <>
+                          <SettingsField label='Every N songs'
+                            value={radioSettings.bumperInterval != null ? String(radioSettings.bumperInterval) : '4'}
+                            onChange={(v) => setRadioSettings({ ...radioSettings, bumperInterval: v ? Number(v) : null })} />
+                          <label className='space-y-1'>
+                            <span className='text-[10px] font-bold text-text-secondary uppercase'>Instants</span>
+                            <div className='flex flex-wrap gap-1'>
+                              {instants.map((inst) => {
+                                const selected = radioSettings.bumperInstantIds.includes(inst.id);
+                                return (
+                                  <button key={inst.id} type='button'
+                                    onClick={() => {
+                                      const next = selected
+                                        ? radioSettings.bumperInstantIds.filter((id) => id !== inst.id)
+                                        : [...radioSettings.bumperInstantIds, inst.id];
+                                      setRadioSettings({ ...radioSettings, bumperInstantIds: next });
+                                    }}
+                                    className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${selected ? 'bg-violet-600 text-white' : 'bg-dark-sand/60 border border-sand/30 text-text-secondary hover:text-text-primary'}`}>
+                                    {inst.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </label>
+                        </>
+                      )}
+                    </div>
+                    <div className='flex items-center justify-between pt-2 border-t border-sand/30'>
+                      <label className='flex items-center gap-2 cursor-pointer'>
+                        <input type='checkbox' checked={radioSettings.enabled}
+                          onChange={(e) => setRadioSettings({ ...radioSettings, enabled: e.target.checked })}
+                          className='rounded accent-violet-500' />
+                        <span className='text-xs font-bold text-text-secondary'>Enabled</span>
+                      </label>
+                      <Button type='button' onClick={saveSettings} disabled={savingSettings}
+                        className='flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500 transition-colors disabled:opacity-50'>
+                        <Save className='h-3 w-3' />{savingSettings ? 'SAVING...' : 'SAVE'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Panel>
+        </PanelColumn>
+
+        <PanelColumn className='shrink-0 w-[380px]'>
+          <Panel title='Playlist' accent='#22c55e' variant='monitor' className='min-h-0' grow
+            toolbar={
+              <Button type='button' onClick={() => setPlaylistSheetOpen(true)}
+                className='flex items-center gap-1 rounded bg-violet-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-violet-500'>
+                <Music2 className='h-3 w-3' />Add Songs
+              </Button>
+            }>
+            <PlaylistPanel sequence={songSequence} songCatalog={songCatalog}
+              programSongPlayback={programSongPlayback}
+              onChange={(seq) => { void onSaveSongSequence(seq); }}
+              onTakeSelection={handleTakeSelection} />
+          </Panel>
+          <Panel title='Sounders' accent='#f59e0b' variant='monitor' className='min-h-0' grow
+            toolbar={
+              <Button type='button' onClick={onStopAllInstants}
+                className='text-[10px] font-bold text-red-400 hover:text-red-300 px-1'>Stop All</Button>
+            }>
+            <InstantsPanel isLoading={false} instants={instants} search={instantSearch}
+              playback={instantPlayback} onSearchChange={onInstantSearchChange}
+              onTrigger={(id) => onTriggerInstant(id)} />
+          </Panel>
+        </PanelColumn>
+      </PanelLayout>
+
+      <PlaybackBar sequence={songSequence} programSongPlayback={programSongPlayback}
+        sceneQuickActions={[]}
+        onChange={(seq) => { void onSaveSongSequence(seq); }}
+        onTakeSelection={handleTakeSelection}
+        onTakeOffAir={async () => { await onTakeOffAir(); }}
+        onStopAllInstants={() => { onStopAllInstants(); }}
+        onStageScene={() => {}} onTakeScene={() => {}} />
+
+      <PlaylistSheetPanel isOpen={playlistSheetOpen} onClose={() => setPlaylistSheetOpen(false)}
+        sequence={songSequence} songCatalog={songCatalog}
+        programSongPlayback={programSongPlayback} isSaving={false}
+        onChange={(seq) => { void onSaveSongSequence(seq); }}
+        onTakeSelection={handleTakeSelection} />
+    </div>
+  );
+};
+
+function SettingsField({ label, value, onChange, placeholder, password }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; password?: boolean;
+}) {
+  return (
+    <label className='space-y-1'>
+      <span className='text-[10px] font-bold text-text-secondary uppercase'>{label}</span>
+      <input type={password ? 'password' : 'text'} value={value} placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className='w-full rounded bg-dark-sand/60 border border-sand/30 px-2 py-1 text-xs text-text-primary font-mono focus:outline-none focus:border-violet-500' />
+    </label>
+  );
+}
+
+function formatTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatUptime(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}

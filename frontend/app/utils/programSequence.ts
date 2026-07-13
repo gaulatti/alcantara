@@ -1,4 +1,4 @@
-export type ProgramSequenceMode = 'manual' | 'autoplay';
+export type ProgramSequenceMode = 'manual' | 'autoplay' | 'shuffle';
 export type ProgramTextContentMode = 'text' | 'sequence';
 export type ProgramSongContentMode = 'sequence';
 
@@ -98,7 +98,9 @@ function createId(prefix: string): string {
 }
 
 function normalizeMode(value: unknown): ProgramSequenceMode {
-  return value === 'autoplay' ? 'autoplay' : 'manual';
+  if (value === 'autoplay') return 'autoplay';
+  if (value === 'shuffle') return 'shuffle';
+  return 'manual';
 }
 
 function normalizeTextContentMode(

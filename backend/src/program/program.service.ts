@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   BadGatewayException,
+  forwardRef,
+  Inject,
   Injectable,
   OnModuleInit,
   NotFoundException,
@@ -9,6 +11,7 @@ import { Subject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
 import { RadioService } from '../radio/radio.service';
+import { SongExecutionEngine, type SongEngineEvent } from '../radio/song-execution.engine';
 
 export interface ProgramAudioMeterChannel {
   vu: number;
@@ -112,20 +115,25 @@ export class ProgramService implements OnModuleInit {
       updatedAt: string;
     }
   >();
-  private eventListeners = new Set<
+  private eventListeners: Set<
     (event: {
       scope: 'program' | 'global';
       programId: string | null;
       data: any;
     }) => void
-  >();
+  > | undefined;
 
   constructor(
     private prisma: PrismaService,
     private readonly radioService: RadioService,
+    @Inject(forwardRef(() => SongExecutionEngine))
+    private readonly songExecutionEngine: SongExecutionEngine,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    this.songExecutionEngine.setBroadcastHandler((event: SongEngineEvent) => {
+      this.handleEngineEvent(event);
+    });
     await this.ensureDefaultProgramState();
   }
 
@@ -1487,6 +1495,10 @@ export class ProgramService implements OnModuleInit {
       updatedAt: new Date().toISOString(),
     });
 
+    if (hasSongSequenceUpdate) {
+      this.songExecutionEngine.handleSequenceUpdated(normalizedProgramId, nextSongSequence);
+    }
+
     return {
       ...nextSettings,
       version:
@@ -2677,6 +2689,8 @@ export class ProgramService implements OnModuleInit {
     });
 
     void this.forwardStopSongToRadio(normalizedProgramId);
+    console.log(`[ProgramService] takeProgramSongOffAir → forwarded stop to radio for ${normalizedProgramId}`);
+    this.songExecutionEngine.handleStopSong(normalizedProgramId);
 
     return { ok: true, programId: normalizedProgramId };
   }
@@ -2962,9 +2976,12 @@ export class ProgramService implements OnModuleInit {
       data: any;
     }) => void,
   ): () => void {
+    if (!this.eventListeners) {
+      this.eventListeners = new Set();
+    }
     this.eventListeners.add(listener);
     return () => {
-      this.eventListeners.delete(listener);
+      this.eventListeners?.delete(listener);
     };
   }
 
@@ -2973,6 +2990,7 @@ export class ProgramService implements OnModuleInit {
     programId: string | null;
     data: any;
   }): void {
+    if (!this.eventListeners) return;
     for (const listener of this.eventListeners) {
       try {
         listener(event);
@@ -2985,9 +3003,65 @@ export class ProgramService implements OnModuleInit {
   private async isRadioCapable(programId: string): Promise<boolean> {
     try {
       const settings = await this.radioService.getRadioSettings(programId);
-      return !!(settings && settings.enabled);
+      const capable = !!(settings && settings.enabled);
+      console.log(`[ProgramService] isRadioCapable(${programId}) = ${capable}`);
+      return capable;
     } catch {
+      console.log(`[ProgramService] isRadioCapable(${programId}) = false (error)`);
       return false;
+    }
+  }
+
+  private handleEngineEvent(event: SongEngineEvent): void {
+    const programId = event.programId;
+    switch (event.type) {
+      case 'playback_update': {
+        const playback = {
+          token: event.playback.token,
+          audioUrl: event.playback.audioUrl,
+          progress: event.playback.progress,
+          currentTimeMs: event.playback.positionMs,
+          durationMs: event.playback.durationMs,
+          isPlaying: event.playback.isPlaying,
+          updatedAt: event.playback.updatedAt,
+        };
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'song_playback_update',
+          programId: normalizedProgramId,
+          playback,
+        });
+        break;
+      }
+      case 'song_playback_active': {
+        const playback = {
+          token: event.playback.token,
+          audioUrl: event.playback.audioUrl,
+          progress: event.playback.progress,
+          currentTimeMs: event.playback.positionMs,
+          durationMs: event.playback.durationMs,
+          isPlaying: event.playback.isPlaying,
+          updatedAt: event.playback.updatedAt,
+        };
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'song_playback_update',
+          programId: normalizedProgramId,
+          playback,
+        });
+        break;
+      }
+      case 'song_off_air': {
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'song_off_air',
+          programId: normalizedProgramId,
+          triggeredAt: event.triggeredAt,
+        });
+        break;
+      }
     }
   }
 
@@ -3015,12 +3089,16 @@ export class ProgramService implements OnModuleInit {
     void this.radioService.playSong(programId, audioUrl);
   }
 
-  private async forwardStopSongToRadio(
-    programId: string,
-  ): Promise<void> {
-    if (!(await this.isRadioCapable(programId))) return;
-    void this.radioService.stopSong(programId);
-  }
+   private async forwardStopSongToRadio(
+     programId: string,
+   ): Promise<void> {
+     if (!(await this.isRadioCapable(programId))) {
+       console.log(`[ProgramService] forwardStopSongToRadio skipped — radio not capable for ${programId}`);
+       return;
+     }
+     console.log(`[ProgramService] forwardStopSongToRadio → calling radioService.stopSong for ${programId}`);
+     void this.radioService.stopSong(programId);
+   }
 
   getEventStream(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,

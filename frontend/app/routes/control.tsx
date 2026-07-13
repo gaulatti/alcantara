@@ -18,6 +18,7 @@ import type { Route } from './+types/control';
 
 import { PanelColumn } from '../components/editors';
 import { PlaybackBar } from '../components/PlaybackBar';
+import { RadioPanel } from '../components/RadioPanel';
 import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel, SceneAttributesPanel } from '../components/panels';
 import type {
   BroadcastSettings,
@@ -1430,19 +1431,21 @@ export default function Control() {
     }
   };
 
-  const takeProgramSongOffAir = async (targetProgramId: string = activeProgramId) => {
-    try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song/off-air`), {
-        method: 'POST'
-      });
+   const takeProgramSongOffAir = async (targetProgramId: string = activeProgramId) => {
+     console.log(`[Control] takeProgramSongOffAir programId=${targetProgramId}`);
+     try {
+       const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song/off-air`), {
+         method: 'POST'
+       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-    } catch (err) {
-      console.error('Failed to take song off air:', err);
-    }
-  };
+       if (!res.ok) {
+         throw new Error(`HTTP ${res.status}`);
+       }
+       console.log(`[Control] takeProgramSongOffAir response ${res.status}`);
+     } catch (err) {
+       console.error('Failed to take song off air:', err);
+     }
+   };
 
   const buildComponentPropsForScene = (scene: Scene): Record<string, any> => {
     const metadata = parseSceneMetadata(scene.metadata);
@@ -2569,7 +2572,27 @@ export default function Control() {
   const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
   const onlineStatusTone = isProgramRealtimeConnected ? 'text-sea bg-sea/15 border-sea/40' : 'text-text-primary bg-accent-blue/15 border-accent-blue/35';
   const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
-  const controlDeckGrowProps = { grow: true } as any;
+   const controlDeckGrowProps = { grow: true } as any;
+
+  if (programState?.type === 'radio') {
+    return (
+       <RadioPanel
+        programId={activeProgramId}
+        songSequence={programAudioBusSongSequence}
+        songCatalog={songCatalog}
+        programSongPlayback={programSongPlaybackState}
+        onSaveSongSequence={async (seq) => { await saveProgramAudioBusSongSequence(seq); }}
+        onTakeOffAir={async () => { await takeProgramSongOffAir(activeProgramId); }}
+        instants={instants}
+        instantSearch={instantSearch}
+        onInstantSearchChange={setInstantSearch}
+        onTriggerInstant={(id) => triggerInstant(id)}
+        onStopAllInstants={stopAllInstants}
+        instantPlayback={instantPlayback}
+      />
+    );
+  }
+
   return (
     <div className='flex h-full w-full flex-1 min-h-0 flex-col overflow-hidden bg-dark-sand text-text-primary'>
       <style>

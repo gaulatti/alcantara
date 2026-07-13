@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
   OnModuleDestroy,
@@ -168,6 +170,7 @@ export class FlightService implements OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ProgramService))
     private readonly programService: ProgramService,
   ) {}
 
