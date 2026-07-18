@@ -22,6 +22,7 @@ export function ModoItalianoBracketEditorFields({
   updateProp,
   replaceProps,
   commitProps,
+  syncProps,
   componentType,
   songCatalog,
   sceneId
@@ -35,15 +36,24 @@ export function ModoItalianoBracketEditorFields({
     drawSeed?: number;
     drawDurationSeconds?: number;
     drawCommand?: ModoItalianoBracketDrawCommand | null;
+    voters?: Array<{ id: string; name: string }>;
+    matchVotes?: Record<string, Record<string, number | null>>;
+    activeVotingMatchId?: number | null;
+    votingWinnerId?: number | null;
+    votingResultStartedAt?: number | null;
   };
   updateProp: (componentType: string, propName: string, value: any) => void;
   replaceProps?: (componentType: string, nextProps: any) => void;
   commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+  syncProps?: (componentType: string, nextProps: any) => void;
   componentType: string;
   songCatalog: SongCatalogItem[];
   sceneId?: number;
 }) {
   const [songSearch, setSongSearch] = useState('');
+  const [voterName, setVoterName] = useState('');
+  const [expandedVotingMatchId, setExpandedVotingMatchId] = useState<number | null>(null);
+  const [openingVotingMatchId, setOpeningVotingMatchId] = useState<number | null>(null);
   const [isDrawPending, setIsDrawPending] = useState(false);
 
   const songLabelById = useMemo(() => {
@@ -65,6 +75,18 @@ export function ModoItalianoBracketEditorFields({
   );
   const randomSongPoolSet = useMemo(() => new Set(randomSongPoolIds), [randomSongPoolIds]);
   const safeMatches = useMemo(() => normalizeModoItalianoBracketMatches(props.matches, startRound), [props.matches, startRound]);
+  const voters = useMemo(() => {
+    if (!Array.isArray(props.voters)) return [];
+    const seen = new Set<string>();
+    return props.voters.flatMap((voter) => {
+      const name = typeof voter?.name === 'string' ? voter.name.trim() : '';
+      const id = typeof voter?.id === 'string' ? voter.id.trim() : '';
+      if (!name || !id || seen.has(id)) return [];
+      seen.add(id);
+      return [{ id, name }];
+    });
+  }, [props.voters]);
+  const matchVotes = useMemo(() => (props.matchVotes && typeof props.matchVotes === 'object' ? props.matchVotes : {}), [props.matchVotes]);
 
   const selectedRandomSongs = useMemo(
     () => randomSongPoolIds.map((songId) => songCatalog.find((song) => song.id === songId)).filter((song): song is SongCatalogItem => Boolean(song)),
@@ -102,7 +124,11 @@ export function ModoItalianoBracketEditorFields({
     applyComponentProps({
       ...props,
       matches: createDefaultModoItalianoBracketMatches(),
-      drawCommand: null
+      drawCommand: null,
+      matchVotes: {},
+      activeVotingMatchId: null,
+      votingWinnerId: null,
+      votingResultStartedAt: null
     });
   };
 
@@ -172,6 +198,72 @@ export function ModoItalianoBracketEditorFields({
         songCatalogIds
       )
     );
+  };
+
+  const addVoter = () => {
+    const name = voterName.trim();
+    if (!name) return;
+    updateProp(componentType, 'voters', [...voters, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name }]);
+    setVoterName('');
+  };
+
+  const getRotatedVoters = (matchId: number) => {
+    if (voters.length < 2) return voters;
+    const offset = (matchId - (startRound === 'quarterfinals' ? 9 : 1)) % voters.length;
+    return offset > 0 ? [...voters.slice(offset), ...voters.slice(0, offset)] : voters;
+  };
+
+  const updateVoterVote = (matchId: number, voterId: string, songId: number | null) => {
+    if (!sceneId) return;
+    const nextMatchVotes = {
+      ...matchVotes,
+      [String(matchId)]: {
+        ...(matchVotes[String(matchId)] ?? {}),
+        [voterId]: songId
+      }
+    };
+    syncProps?.(componentType, {
+      ...props,
+      matchVotes: nextMatchVotes,
+      activeVotingMatchId: matchId,
+      votingWinnerId: null,
+      votingResultStartedAt: null
+    });
+    void fetch(apiUrl(`/scenes/${sceneId}/modo-italiano-bracket/vote`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ componentType, matchId, voterId, songId })
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((scene) => {
+        if (!syncProps || typeof scene?.metadata !== 'string') return;
+        const metadata = JSON.parse(scene.metadata);
+        const nextProps = metadata?.[componentType];
+        if (nextProps && typeof nextProps === 'object') syncProps(componentType, nextProps);
+      })
+      .catch((error) => {
+        syncProps?.(componentType, props);
+        console.error('Failed to save Modo Italiano bracket vote:', error);
+      });
+  };
+
+  const openVoting = (matchId: number) => {
+    if (!sceneId || openingVotingMatchId !== null) return;
+    setOpeningVotingMatchId(matchId);
+    void fetch(apiUrl(`/scenes/${sceneId}/modo-italiano-bracket/voting/open`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ componentType, matchId })
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        setExpandedVotingMatchId(matchId);
+      })
+      .catch((error) => console.error('Failed to open Modo Italiano bracket voting:', error))
+      .finally(() => setOpeningVotingMatchId(null));
   };
 
   const updateMatch = (matchId: number, field: keyof ModoItalianoBracketMatch, value: any) => {
@@ -387,6 +479,49 @@ export function ModoItalianoBracketEditorFields({
         </div>
       </div>
 
+      <div className='space-y-3 bg-[#1D1D1B] p-4 rounded-lg border border-[#3A3A3A]'>
+        <div>
+          <h3 className='text-sm font-bold text-text-primary uppercase tracking-wide'>Voting</h3>
+          <p className='mt-1 text-xs text-text-secondary'>Add the voters who will participate throughout the tournament.</p>
+        </div>
+        <div className='flex gap-2'>
+          <Input
+            type='text'
+            value={voterName}
+            onChange={(event) => setVoterName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                addVoter();
+              }
+            }}
+            className='min-w-0 flex-1 px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
+            placeholder='Voter name'
+          />
+          <Button type='button' onClick={addVoter} className='px-3 py-2 text-xs font-semibold rounded border border-sea/40 text-sea hover:bg-sea/10'>
+            Add
+          </Button>
+        </div>
+        {voters.length === 0 ? (
+          <p className='text-xs text-text-secondary italic'>No voters have been added.</p>
+        ) : (
+          <div className='space-y-1.5'>
+            {voters.map((voter) => (
+              <div key={voter.id} className='flex items-center justify-between gap-2 rounded border border-[#3A3A3A] bg-[#2B2B2B] px-2 py-1.5'>
+                <span className='min-w-0 truncate text-xs text-text-primary'>{voter.name}</span>
+                <Button
+                  type='button'
+                  onClick={() => updateProp(componentType, 'voters', voters.filter((entry) => entry.id !== voter.id))}
+                  className='shrink-0 px-2 py-1 text-[10px] font-semibold rounded border border-terracotta/35 text-terracotta hover:bg-terracotta/10'
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className='space-y-4'>
         <div className='flex items-center justify-between gap-3 border-b border-[#3A3A3A] pb-2'>
           <h3 className='text-sm font-bold text-text-primary uppercase tracking-wide'>Matches Configuration</h3>
@@ -442,13 +577,50 @@ export function ModoItalianoBracketEditorFields({
 
               <div>
                 <label className='block text-[10px] text-text-secondary mb-1 uppercase'>Winner</label>
-                <Select
-                  value={match.winnerId ? String(match.winnerId) : ''}
-                  onChange={(val) => updateMatch(match.id, 'winnerId', val ? parseInt(val, 10) : null)}
-                  options={winnerOptions}
-                  className='w-full px-2 py-1.5 text-xs bg-[#2B2B2B] font-bold text-white'
-                />
+                <div className='flex gap-2'>
+                  <Select
+                    value={match.winnerId ? String(match.winnerId) : ''}
+                    onChange={(val) => updateMatch(match.id, 'winnerId', val ? parseInt(val, 10) : null)}
+                    options={winnerOptions}
+                    className='min-w-0 flex-1 px-2 py-1.5 text-xs bg-[#2B2B2B] font-bold text-white'
+                  />
+                  <Button
+                    type='button'
+                    onClick={() => {
+                      if (expandedVotingMatchId === match.id) {
+                        setExpandedVotingMatchId(null);
+                        return;
+                      }
+                      openVoting(match.id);
+                    }}
+                    disabled={!songA || !songB || match.winnerId !== null || voters.length === 0 || openingVotingMatchId !== null}
+                    className='px-3 py-1.5 text-xs font-semibold rounded border border-sea/40 text-sea hover:bg-sea/10 disabled:cursor-not-allowed disabled:opacity-40'
+                  >
+                    {openingVotingMatchId === match.id ? 'Opening…' : 'Vote'}
+                  </Button>
+                </div>
               </div>
+
+              {expandedVotingMatchId === match.id && songA && songB && (
+                <div className='space-y-2 border-t border-[#3A3A3A] pt-3'>
+                  <p className='text-[10px] uppercase tracking-wide text-text-secondary'>Ballots</p>
+                  {getRotatedVoters(match.id).map((voter) => (
+                    <label key={voter.id} className='block text-xs text-text-primary'>
+                      <span className='mb-1 block'>{voter.name}</span>
+                      <Select
+                        value={matchVotes[String(match.id)]?.[voter.id] ? String(matchVotes[String(match.id)][voter.id]) : ''}
+                        onChange={(value) => updateVoterVote(match.id, voter.id, value ? Number(value) : null)}
+                        options={[
+                          { value: '', label: '-- No vote --' },
+                          { value: String(songA.id), label: `${songA.artist} - ${songA.title}` },
+                          { value: String(songB.id), label: `${songB.artist} - ${songB.title}` }
+                        ]}
+                        className='w-full px-2 py-1.5 text-xs'
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

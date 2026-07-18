@@ -66,6 +66,22 @@ export class ScenesController {
     return this.scenesService.drawModoItalianoBracket(+id, data);
   }
 
+  @Post(':id/modo-italiano-bracket/vote')
+  async voteModoItalianoBracket(
+    @Param('id') id: string,
+    @Body() data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null },
+  ) {
+    return this.scenesService.voteModoItalianoBracket(+id, data);
+  }
+
+  @Post(':id/modo-italiano-bracket/voting/open')
+  async openModoItalianoBracketVoting(
+    @Param('id') id: string,
+    @Body() data: { componentType?: string; matchId?: number },
+  ) {
+    return this.scenesService.openModoItalianoBracketVoting(+id, data);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.scenesService.remove(+id);

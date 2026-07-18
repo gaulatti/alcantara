@@ -70,6 +70,7 @@ export class ScenesService {
     for (const programId of programIds) {
       this.programService.broadcastUpdate(programId, {
         type: 'scene_update',
+        programId,
         scene,
       });
     }
@@ -148,6 +149,62 @@ export class ScenesService {
     return { drawId: now, durationSeconds, sceneId: id };
   }
 
+  async voteModoItalianoBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }) {
+    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
+    const matchId = Number(data.matchId);
+    const voterId = typeof data.voterId === 'string' ? data.voterId.trim() : '';
+    if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId) throw new BadRequestException('Invalid vote');
+    const scene = await this.findOne(id);
+    if (!scene) throw new BadRequestException('Scene not found');
+    const metadata = this.parseMetadata(scene.metadata);
+    const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
+    const voters = Array.isArray(bracket.voters) ? bracket.voters.filter((voter): voter is { id: string; name: string } => Boolean(voter && typeof voter === 'object' && typeof (voter as any).id === 'string' && typeof (voter as any).name === 'string')) : [];
+    if (!voters.some((voter) => voter.id === voterId)) throw new BadRequestException('Unknown voter');
+    const matches = this.normalizeBracketMatches(bracket.matches);
+    const match = matches[matchId - 1];
+    const songId = data.songId === null ? null : Number(data.songId);
+    if (songId !== null && songId !== match.songAId && songId !== match.songBId) throw new BadRequestException('Vote must be for a song in this match');
+    const matchVotes = bracket.matchVotes && typeof bracket.matchVotes === 'object' ? { ...(bracket.matchVotes as Record<string, Record<string, number | null>>) } : {};
+    matchVotes[String(matchId)] = { ...(matchVotes[String(matchId)] ?? {}), [voterId]: songId };
+    const requiredVotes = Math.floor(voters.length / 2) + 1;
+    const counts = voters.reduce<Record<number, number>>((result, voter) => {
+      const vote = matchVotes[String(matchId)]?.[voter.id];
+      if (typeof vote === 'number' && (vote === match.songAId || vote === match.songBId)) result[vote] = (result[vote] ?? 0) + 1;
+      return result;
+    }, {});
+    const winnerId = [match.songAId, match.songBId].find((candidate) => candidate !== null && (counts[candidate] ?? 0) >= requiredVotes) ?? null;
+    const nextBracket: Record<string, unknown> = { ...bracket, matchVotes, activeVotingMatchId: matchId, votingWinnerId: null, votingResultStartedAt: null, matches };
+    if (winnerId !== null) {
+      match.winnerId = winnerId;
+      const target = ({ 1: [9, 'songAId'], 2: [9, 'songBId'], 3: [10, 'songAId'], 4: [10, 'songBId'], 5: [11, 'songAId'], 6: [11, 'songBId'], 7: [12, 'songAId'], 8: [12, 'songBId'], 9: [13, 'songAId'], 10: [13, 'songBId'], 11: [14, 'songAId'], 12: [14, 'songBId'], 13: [15, 'songAId'], 14: [15, 'songBId'] } as Record<number, [number, 'songAId' | 'songBId']>)[matchId];
+      if (target) matches[target[0] - 1][target[1]] = winnerId;
+      nextBracket.votingWinnerId = winnerId;
+      nextBracket.votingResultStartedAt = Date.now();
+    }
+    return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket });
+  }
+
+  async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }) {
+    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
+    const matchId = Number(data.matchId);
+    if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');
+    const scene = await this.findOne(id);
+    if (!scene) throw new BadRequestException('Scene not found');
+    const metadata = this.parseMetadata(scene.metadata);
+    const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
+    const match = this.normalizeBracketMatches(bracket.matches)[matchId - 1];
+    if (match.songAId === null || match.songBId === null || match.winnerId !== null) throw new BadRequestException('This match is not open for voting');
+    return this.persistSceneMetadata(id, {
+      ...metadata,
+      [componentType]: {
+        ...bracket,
+        activeVotingMatchId: matchId,
+        votingWinnerId: null,
+        votingResultStartedAt: null,
+      },
+    });
+  }
+
   private async completeModoItalianoBracketDraw(sceneId: number, componentType: string, drawId: number, selectedSongId: number) {
     const activeDraw = this.modoItalianoBracketDraws.get(sceneId);
     if (!activeDraw || activeDraw.drawId !== drawId) return;
@@ -182,7 +239,7 @@ export class ScenesService {
   private async persistSceneMetadata(id: number, metadata: Record<string, unknown>) {
     const scene = await this.prisma.scene.update({ where: { id }, data: { metadata: JSON.stringify(metadata) }, include: { layout: true } });
     const programIds = await this.programService.getProgramIdsByAssignedScene(id);
-    for (const programId of programIds) this.programService.broadcastUpdate(programId, { type: 'scene_update', scene });
+    for (const programId of programIds) this.programService.broadcastUpdate(programId, { type: 'scene_update', programId, scene });
     return scene;
   }
 

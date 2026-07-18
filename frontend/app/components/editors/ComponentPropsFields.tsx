@@ -29,6 +29,7 @@ export function ComponentPropsFields({
   updateProp,
   replaceProps,
   commitProps,
+  syncProps,
   songCatalog,
   mediaGroups,
   isLoadingMediaGroups,
@@ -41,6 +42,7 @@ export function ComponentPropsFields({
   updateProp: (componentType: string, propName: string, value: any) => void;
   replaceProps: (componentType: string, nextProps: any) => void;
   commitProps?: (componentType: string, nextProps: any) => Promise<void> | void;
+  syncProps?: (componentType: string, nextProps: any) => void;
   songCatalog: SongCatalogItem[];
   mediaGroups: MediaGroup[];
   isLoadingMediaGroups: boolean;
@@ -728,6 +730,7 @@ export function ComponentPropsFields({
           updateProp={updateProp}
           replaceProps={replaceProps}
           commitProps={commitProps}
+          syncProps={syncProps}
           componentType={componentType}
           songCatalog={songCatalog}
           sceneId={sceneId}

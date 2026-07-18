@@ -463,6 +463,17 @@ export default function Control() {
 
     sceneMetadataCacheRef.current[nextScene.id] = parseSceneMetadata(nextScene.metadata);
 
+    // Scene mutations from dedicated actions (draws and votes) are authoritative.
+    // Adopt them directly so the staged editor cannot remain on a stale draft.
+    if (selectedSceneRef.current === nextScene.id) {
+      const nextSceneProps = buildComponentPropsForScene(nextScene);
+      sceneEditorDirtyRef.current = false;
+      pendingSceneAttributeSaveRef.current = null;
+      sceneEditorPropsRef.current = nextSceneProps;
+      setSceneEditorProps(nextSceneProps);
+      setSceneAttributeSaveError(null);
+    }
+
     setScenes((previous) => {
       const existingIndex = previous.findIndex((scene) => scene.id === nextScene.id);
       if (existingIndex === -1) {
@@ -1447,7 +1458,7 @@ export default function Control() {
      }
    };
 
-  const buildComponentPropsForScene = (scene: Scene): Record<string, any> => {
+  function buildComponentPropsForScene(scene: Scene): Record<string, any> {
     const metadata = parseSceneMetadata(scene.metadata);
     const legacyFifthBell = metadata?.fifthbell && typeof metadata.fifthbell === 'object' && !Array.isArray(metadata.fifthbell) ? metadata.fifthbell : {};
 
@@ -1489,7 +1500,7 @@ export default function Control() {
     };
 
     return combined;
-  };
+  }
 
   const assignedSceneEntries = useMemo(() => {
     if (!programState || !Array.isArray(programState.scenes)) {
@@ -1873,6 +1884,18 @@ export default function Control() {
     if (selectedSceneRef.current) {
       queueSceneAttributePersist(selectedSceneRef.current, nextSceneProps);
     }
+  };
+
+  const syncSceneEditorComponentProps = (componentType: string, nextProps: any) => {
+    const nextSceneProps = {
+      ...sceneEditorPropsRef.current,
+      [componentType]: nextProps
+    };
+    sceneEditorDirtyRef.current = false;
+    pendingSceneAttributeSaveRef.current = null;
+    sceneEditorPropsRef.current = nextSceneProps;
+    setSceneEditorProps(nextSceneProps);
+    setSceneAttributeSaveError(null);
   };
 
   const persistSceneAttributes = useCallback(
@@ -2939,6 +2962,7 @@ export default function Control() {
                 onCommitComponentProps={(componentType, props) => commitSceneEditorComponentProps(componentType, props)}
                 onUpdateProp={updateSceneEditorProp}
                 onReplaceProps={replaceSceneEditorComponentProps}
+                onSyncComponentProps={syncSceneEditorComponentProps}
                 onTakeSceneInstant={(sceneId, instantId) => takeSceneInstant(sceneId, instantId)}
                 onStopSceneInstant={() => stopSceneInstant()}
               />

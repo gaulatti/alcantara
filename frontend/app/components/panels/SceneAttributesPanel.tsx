@@ -26,6 +26,7 @@ interface SceneAttributesPanelProps {
   onCommitComponentProps: (componentType: string, props: any) => Promise<void>;
   onUpdateProp: (componentType: string, propName: string, value: any) => void;
   onReplaceProps: (componentType: string, newProps: any) => void;
+  onSyncComponentProps: (componentType: string, newProps: any) => void;
   onTakeSceneInstant: (sceneId: number | null, instantId: number | null) => Promise<void>;
   onStopSceneInstant: () => Promise<void>;
 }
@@ -52,6 +53,7 @@ export function SceneAttributesPanel({
   onCommitComponentProps,
   onUpdateProp,
   onReplaceProps,
+  onSyncComponentProps,
   onTakeSceneInstant,
   onStopSceneInstant
 }: SceneAttributesPanelProps) {
@@ -165,6 +167,7 @@ export function SceneAttributesPanel({
                 updateProp={onUpdateProp}
                 replaceProps={onReplaceProps}
                 commitProps={onCommitComponentProps}
+                syncProps={onSyncComponentProps}
                 songCatalog={songCatalog}
                 mediaGroups={mediaGroups}
                 isLoadingMediaGroups={isLoadingMediaGroups}

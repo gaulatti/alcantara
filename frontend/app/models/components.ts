@@ -272,6 +272,11 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
       drawSeed: 5,
       drawDurationSeconds: 5,
       drawCommand: null,
+      voters: [],
+      matchVotes: {},
+      activeVotingMatchId: null,
+      votingWinnerId: null,
+      votingResultStartedAt: null,
       matches: []
     }
   },

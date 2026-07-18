@@ -2169,6 +2169,11 @@ function SceneProgram({ programId }: { programId: string }) {
                     startRound={props.startRound}
                     matches={Array.isArray(props.matches) ? props.matches : []}
                     drawCommand={bracketDrawCommands[scene.id]}
+                    voters={props.voters}
+                    matchVotes={props.matchVotes}
+                    activeVotingMatchId={props.activeVotingMatchId}
+                    votingWinnerId={props.votingWinnerId}
+                    votingResultStartedAt={props.votingResultStartedAt}
                   />
                 );
               case 'modoitaliano-podcast-player':

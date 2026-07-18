@@ -116,3 +116,150 @@
     transform: scale(1);
   }
 }
+
+.modoitaliano-bracket-voting-modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 70vw;
+  height: 70vh;
+  padding: 4vh 4vw;
+  transform: translate(-50%, -50%);
+  border: 2px solid #e2a842;
+  background: rgba(20, 20, 20, 0.96);
+  box-shadow: 0 0 34px rgba(226, 168, 66, 0.85), 0 0 90px rgba(226, 168, 66, 0.38);
+  animation: modoitaliano-voting-modal-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modoitaliano-bracket-voting-title {
+  margin-bottom: 3vh;
+  color: #e2a842;
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.modoitaliano-bracket-voting-grid {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  gap: 1.25vw;
+}
+
+.modoitaliano-bracket-voting-voter {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.modoitaliano-bracket-voting-cover {
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: #2b2b2b;
+}
+
+.modoitaliano-bracket-voting-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.modoitaliano-bracket-voting-cover-reveal {
+  animation: modoitaliano-vote-cover-in 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modoitaliano-bracket-voting-name {
+  overflow: hidden;
+  padding-top: 1vh;
+  color: #f3f3f3;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.modoitaliano-bracket-voting-winner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  color: #ffffff;
+  text-align: center;
+}
+
+.modoitaliano-bracket-voting-winner-reveal {
+  animation: modoitaliano-voting-winner-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modoitaliano-bracket-voting-winner span {
+  color: #e2a842;
+  font-size: 3rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.modoitaliano-bracket-voting-winner img {
+  width: min(36vh, 36vw);
+  max-height: 38vh;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border: 3px solid #e2a842;
+  box-shadow: 0 0 28px rgba(226, 168, 66, 0.9);
+}
+
+.modoitaliano-bracket-voting-winner strong {
+  max-width: 90%;
+  color: #ffffff;
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+@keyframes modoitaliano-voting-modal-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes modoitaliano-vote-cover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+    filter: brightness(1.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes modoitaliano-voting-winner-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+    filter: brightness(1.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
