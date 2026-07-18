@@ -58,6 +58,14 @@ export class ScenesController {
     return this.scenesService.updateChyron(+id, data.chyronText);
   }
 
+  @Post(':id/modo-italiano-bracket/draw')
+  async drawModoItalianoBracket(
+    @Param('id') id: string,
+    @Body() data: { componentType?: string; seed?: number },
+  ) {
+    return this.scenesService.drawModoItalianoBracket(+id, data);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.scenesService.remove(+id);

@@ -33,7 +33,8 @@ export function ComponentPropsFields({
   mediaGroups,
   isLoadingMediaGroups,
   scenes,
-  programId
+  programId,
+  sceneId
 }: {
   componentType: string;
   props: any;
@@ -45,6 +46,7 @@ export function ComponentPropsFields({
   isLoadingMediaGroups: boolean;
   scenes?: Scene[];
   programId?: string;
+  sceneId?: number;
 }) {
   const timezoneOptions = useMemo(() => {
     const baseDate = new Date();
@@ -720,7 +722,17 @@ export function ComponentPropsFields({
         </div>
       );
     case 'modoitaliano-bracket':
-      return <ModoItalianoBracketEditorFields props={props} updateProp={updateProp} componentType={componentType} songCatalog={songCatalog} />;
+      return (
+        <ModoItalianoBracketEditorFields
+          props={props}
+          updateProp={updateProp}
+          replaceProps={replaceProps}
+          commitProps={commitProps}
+          componentType={componentType}
+          songCatalog={songCatalog}
+          sceneId={sceneId}
+        />
+      );
     case 'modoitaliano-podcast-player':
       return (
         <ModoItalianoPodcastPlayerEditorFields

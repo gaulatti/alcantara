@@ -675,6 +675,7 @@ function SceneProgram({ programId }: { programId: string }) {
   const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
+  const [bracketDrawCommands, setBracketDrawCommands] = useState<Record<number, any>>({});
   const transitionTimersRef = useRef<number[]>([]);
   const transitionSequenceRef = useRef(0);
   const activeInstantAudiosRef = useRef<Map<HTMLAudioElement, InstantAudioRuntimeState>>(new Map());
@@ -1347,11 +1348,35 @@ function SceneProgram({ programId }: { programId: string }) {
         transitionTimersRef.current = [cutTimer, cleanupTimer];
       } else if (data.type === 'scene_update') {
         setState((prev) => {
-          if (!prev || !prev.activeScene || prev.activeScene.id !== data.scene.id) return prev;
+          if (!prev || !data.scene) return prev;
           return {
             ...prev,
-            activeScene: data.scene
+            activeScene: prev.activeScene?.id === data.scene.id ? data.scene : prev.activeScene,
+            stagedScene: prev.stagedScene?.id === data.scene.id ? data.scene : prev.stagedScene
           };
+        });
+      } else if (data.type === 'modoitaliano_bracket_draw_start') {
+        if (typeof data.sceneId !== 'number' || !Array.isArray(data.songIds)) {
+          return;
+        }
+        setBracketDrawCommands((previous) => ({
+          ...previous,
+          [data.sceneId]: {
+            id: data.drawId,
+            seed: data.drawId,
+            startedAt: Date.now(),
+            durationSeconds: data.durationSeconds,
+            songIds: data.songIds,
+            selectedSongId: null
+          }
+        }));
+      } else if (data.type === 'modoitaliano_bracket_draw_end') {
+        setBracketDrawCommands((previous) => {
+          const current = previous[data.sceneId];
+          if (!current || current.id !== data.drawId) return previous;
+          const next = { ...previous };
+          delete next[data.sceneId];
+          return next;
         });
       } else if (data.type === 'scene_cleared') {
         clearTransitionTimers();
@@ -2141,7 +2166,9 @@ function SceneProgram({ programId }: { programId: string }) {
                     key={componentType}
                     title={props.title}
                     show={typeof props.show === 'boolean' ? props.show : true}
+                    startRound={props.startRound}
                     matches={Array.isArray(props.matches) ? props.matches : []}
+                    drawCommand={bracketDrawCommands[scene.id]}
                   />
                 );
               case 'modoitaliano-podcast-player':

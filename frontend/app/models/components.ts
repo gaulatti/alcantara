@@ -262,11 +262,16 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
   {
     id: 'modoitaliano-bracket',
     name: 'Modo Italiano Bracket',
-    description: 'Tournament bracket from Round of 16 to Final',
+    description: 'Tournament bracket from Round of 16 or Quarterfinals to Final',
     hasConfigurableSceneAttributes: true,
     defaultProps: {
       title: 'TORNEO CANCIÓN',
       show: true,
+      startRound: 'roundOf16',
+      randomSongPoolIds: [],
+      drawSeed: 5,
+      drawDurationSeconds: 5,
+      drawCommand: null,
       matches: []
     }
   },

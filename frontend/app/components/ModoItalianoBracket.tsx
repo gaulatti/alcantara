@@ -1,7 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { fetchSongCatalog } from '../services/songs';
 import type { SongCatalogItem } from '../models/broadcast';
-import { normalizeModoItalianoBracketMatches, type ModoItalianoBracketMatch } from '../utils/modoItalianoBracket';
+import {
+  normalizeModoItalianoBracketDrawCommand,
+  normalizeModoItalianoBracketMatches,
+  normalizeModoItalianoBracketStartRound,
+  type ModoItalianoBracketDrawCommand,
+  type ModoItalianoBracketMatch,
+  type ModoItalianoBracketStartRound
+} from '../utils/modoItalianoBracket';
 import './ModoItalianoBracket.css';
 
 const MODO_ITALIANO_DISPLAY_FONT = "'Barlow Condensed', 'Encode Sans', system-ui, sans-serif";
@@ -11,11 +18,21 @@ const FINAL_PANEL_HEIGHT_PX = 224;
 export interface ModoItalianoBracketProps {
   title?: string;
   show?: boolean;
+  startRound?: ModoItalianoBracketStartRound;
   matches?: ModoItalianoBracketMatch[];
+  drawCommand?: ModoItalianoBracketDrawCommand;
 }
 
-export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title = 'TORNEO CANCIÓN', show = true, matches = [] }) => {
+export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({
+  title = 'TORNEO CANCIÓN',
+  show = true,
+  startRound = 'roundOf16',
+  matches = [],
+  drawCommand = undefined
+}) => {
   const [songs, setSongs] = useState<SongCatalogItem[]>([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [drawStartedAtMs, setDrawStartedAtMs] = useState(0);
 
   useEffect(() => {
     fetchSongCatalog()
@@ -23,11 +40,31 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
       .catch((err) => console.error('Failed to fetch songs for bracket:', err));
   }, []);
 
+  const normalizedDrawCommand = normalizeModoItalianoBracketDrawCommand(drawCommand);
+  const drawEndsAtMs = normalizedDrawCommand && drawStartedAtMs > 0 ? drawStartedAtMs + normalizedDrawCommand.durationSeconds * 1000 : 0;
+  const isDrawing = Boolean(normalizedDrawCommand && drawStartedAtMs > 0 && nowMs < drawEndsAtMs);
+
+  useEffect(() => {
+    setDrawStartedAtMs(normalizedDrawCommand ? Date.now() : 0);
+  }, [normalizedDrawCommand?.id]);
+
+  useEffect(() => {
+    if (!normalizedDrawCommand || Date.now() >= drawEndsAtMs) {
+      return;
+    }
+
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 120);
+    return () => window.clearInterval(timer);
+  }, [drawEndsAtMs, normalizedDrawCommand?.id]);
+
+  const normalizedStartRound = normalizeModoItalianoBracketStartRound(startRound);
+  const isQuarterfinalStart = normalizedStartRound === 'quarterfinals';
+  const safeMatches = useMemo(() => normalizeModoItalianoBracketMatches(matches, normalizedStartRound), [matches, normalizedStartRound]);
+
   if (!show) {
     return null;
   }
-
-  const safeMatches = normalizeModoItalianoBracketMatches(matches);
 
   const getSong = (id: number | null) => songs.find((s) => s.id === id);
 
@@ -113,6 +150,9 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
   const isAFinalWinner = finalMatch.winnerId === finalMatch.songAId && finalMatch.songAId !== null;
   const isBFinalWinner = finalMatch.winnerId === finalMatch.songBId && finalMatch.songBId !== null;
   const champion = getSong(finalMatch.winnerId);
+  const drawnSongs = normalizedDrawCommand ? normalizedDrawCommand.songIds.map((songId) => getSong(songId)).filter((song): song is SongCatalogItem => Boolean(song)) : [];
+  const drawProgress = normalizedDrawCommand && drawStartedAtMs > 0 ? Math.min(1, Math.max(0, (nowMs - drawStartedAtMs) / (normalizedDrawCommand.durationSeconds * 1000))) : 0;
+  const featuredDrawSong = drawnSongs.length > 0 ? drawnSongs[Math.floor(nowMs / 180) % drawnSongs.length] : null;
 
   return (
     <div
@@ -127,20 +167,38 @@ export const ModoItalianoBracket: React.FC<ModoItalianoBracketProps> = ({ title 
         fontFamily: MODO_ITALIANO_DISPLAY_FONT
       }}
     >
+      {isDrawing && (
+        <div className='modoitaliano-bracket-draw-panel'>
+          <div className='modoitaliano-bracket-draw-label' style={{ fontFamily: MODO_ITALIANO_LABEL_FONT }}>
+            SORTEO
+          </div>
+          <div className='modoitaliano-bracket-draw-card'>
+            {featuredDrawSong?.coverUrl && <img src={featuredDrawSong.coverUrl} className='modoitaliano-bracket-draw-cover' />}
+            <div className='modoitaliano-bracket-draw-copy'>
+              <span className='modoitaliano-bracket-draw-artist'>{featuredDrawSong?.artist ?? 'Seleccionando'}</span>
+              <span className='modoitaliano-bracket-draw-title'>{featuredDrawSong?.title ?? 'Canciones'}</span>
+            </div>
+          </div>
+          <div className='modoitaliano-bracket-draw-track'>
+            <div className='modoitaliano-bracket-draw-progress' style={{ width: `${drawProgress * 100}%` }} />
+          </div>
+        </div>
+      )}
+
       {/* Bracket Container */}
       <div className='modoitaliano-bracket-stage flex w-full px-8 flex-1 pb-16 justify-between items-stretch relative'>
         {/* Left Side */}
         <div className='flex justify-start relative z-10 w-1/2'>
-          <RoundColumn matches={[1, 2, 3, 4]} round={1} isLeft={true} className='z-10' />
-          <RoundColumn matches={[9, 10]} round={2} isLeft={true} className='z-20 ml-[30px]' />
-          <RoundColumn matches={[13]} round={3} isLeft={true} className='z-30 -ml-[370px]' />
+          {!isQuarterfinalStart && <RoundColumn matches={[1, 2, 3, 4]} round={1} isLeft={true} className='z-10' />}
+          <RoundColumn matches={[9, 10]} round={2} isLeft={true} className={`z-20 ${isQuarterfinalStart ? '' : 'ml-[30px]'}`} />
+          <RoundColumn matches={[13]} round={3} isLeft={true} className={`z-30 ${isQuarterfinalStart ? 'ml-[30px]' : '-ml-[370px]'}`} />
         </div>
 
         {/* Right Side */}
         <div className='flex justify-end relative z-10 w-1/2'>
-          <RoundColumn matches={[14]} round={3} isLeft={false} className='z-30 -mr-[370px]' />
-          <RoundColumn matches={[11, 12]} round={2} isLeft={false} className='z-20 mr-[30px]' />
-          <RoundColumn matches={[5, 6, 7, 8]} round={1} isLeft={false} className='z-10' />
+          <RoundColumn matches={[14]} round={3} isLeft={false} className={`z-30 ${isQuarterfinalStart ? 'mr-[30px]' : '-mr-[370px]'}`} />
+          <RoundColumn matches={[11, 12]} round={2} isLeft={false} className={`z-20 ${isQuarterfinalStart ? '' : 'mr-[30px]'}`} />
+          {!isQuarterfinalStart && <RoundColumn matches={[5, 6, 7, 8]} round={1} isLeft={false} className='z-10' />}
         </div>
 
         {/* Center / Final */}

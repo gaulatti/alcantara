@@ -170,6 +170,7 @@ export function SceneAttributesPanel({
                 isLoadingMediaGroups={isLoadingMediaGroups}
                 scenes={scenes}
                 programId={activeProgramId}
+                sceneId={selectedScene}
               />
               <ZIndexField componentType={activeComponentEntry[0]} props={activeComponentEntry[1]} updateProp={onUpdateProp} />
             </div>
