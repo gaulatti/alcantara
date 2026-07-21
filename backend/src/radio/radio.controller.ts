@@ -9,6 +9,10 @@ import {
 } from '@nestjs/common';
 import { RadioService } from './radio.service';
 import { SongExecutionEngine } from './song-execution.engine';
+import {
+  NowPlayingPublisherService,
+  type NowPlayingConsumerPayload,
+} from './now-playing-publisher.service';
 import type { RadioSettingsPayload } from './radio.service';
 
 @Controller('radio')
@@ -16,6 +20,7 @@ export class RadioController {
   constructor(
     private readonly radioService: RadioService,
     private readonly songExecutionEngine: SongExecutionEngine,
+    private readonly nowPlayingPublisherService: NowPlayingPublisherService,
   ) {}
 
   @Get(':programId/settings')
@@ -31,16 +36,56 @@ export class RadioController {
     return this.radioService.updateRadioSettings(programId, data);
   }
 
+  @Get(':programId/now-playing-consumers')
+  async listNowPlayingConsumers(@Param('programId') programId: string) {
+    return this.nowPlayingPublisherService.listConsumers(programId);
+  }
+
+  @Put(':programId/now-playing-consumers')
+  async replaceNowPlayingConsumers(
+    @Param('programId') programId: string,
+    @Body() data: { consumers?: NowPlayingConsumerPayload[] },
+  ) {
+    if (!Array.isArray(data.consumers)) {
+      throw new BadRequestException('consumers must be an array');
+    }
+    try {
+      return await this.nowPlayingPublisherService.replaceConsumers(
+        programId,
+        data.consumers,
+      );
+    } catch (err) {
+      throw new BadRequestException(String(err));
+    }
+  }
+
   @Post(':programId/song')
   async playSong(
     @Param('programId') programId: string,
-    @Body() data: { audioUrl: string; title?: string; artist?: string; durationMs?: number },
+    @Body()
+    data: {
+      audioUrl: string;
+      title?: string;
+      artist?: string;
+      durationMs?: number;
+    },
   ) {
     if (!data.audioUrl) {
       throw new BadRequestException('audioUrl is required');
     }
-    await this.radioService.playSong(programId, data.audioUrl, data.title, data.artist);
-    this.songExecutionEngine.handleManualSong(programId, data.audioUrl, data.title, data.artist, data.durationMs);
+    await this.radioService.playSong(
+      programId,
+      data.audioUrl,
+      data.title,
+      data.artist,
+    );
+    this.songExecutionEngine.handleManualSong(
+      programId,
+      data.audioUrl,
+      data.title,
+      data.artist,
+      data.durationMs,
+    );
     return { ok: true };
   }
 

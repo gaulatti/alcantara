@@ -155,10 +155,14 @@ export interface SceneInstantPlaybackState {
 export interface ProgramSongPlaybackState {
   token: string;
   audioUrl: string;
+  title?: string;
+  artist?: string;
+  coverUrl?: string;
   progress: number;
   currentTimeMs: number;
   durationMs: number | null;
   isPlaying: boolean;
+  startedAt?: string;
   updatedAt: string;
 }
 

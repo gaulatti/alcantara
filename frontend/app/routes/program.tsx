@@ -40,12 +40,14 @@ import {
   getProgramAudioBusSnapshot,
   setProgramAudioBusMasterVolume,
   stopProgramAudioBus,
+  subscribeProgramAudioBus,
 } from '../utils/programAudioBus';
 import { faderToGain } from '../utils/audioTaper';
-import { normalizeProgramSongSequence, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
+import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
+import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 
 interface Layout {
   id: number;
@@ -686,6 +688,8 @@ function SceneProgram({ programId }: { programId: string }) {
   } | null>(null);
   const sceneInstantTakeSequenceRef = useRef(0);
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
+  const programSocketRef = useRef<WebSocket | null>(null);
+  const programSocketReadyRef = useRef(false);
   const handleProgramEventRef = useRef<(data: any) => void>(() => {
     // no-op until handler is initialized
   });
@@ -763,6 +767,13 @@ function SceneProgram({ programId }: { programId: string }) {
   const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain, 0);
   const resolvedSceneInstantMasterVolume = normalizeMasterVolume(resolvedSceneInstantChannelGain * mainMasterGain, 0);
   const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain, 0);
+  const resolvedManualSong = useMemo(
+    () =>
+      normalizedSongSequence?.mode === 'manual'
+        ? resolveProgramSongLeaf({ sequence: normalizedSongSequence })
+        : null,
+    [normalizedSongSequence]
+  );
   const activeSlideshowMediaGroupId = useMemo(() => {
     const activeScene = state?.activeScene;
     if (!activeScene?.layout?.componentType?.includes('slideshow')) {
@@ -1753,6 +1764,75 @@ function SceneProgram({ programId }: { programId: string }) {
   }, [programId, resolvedSongMasterVolume]);
 
   useEffect(() => {
+    let lastEndedToken = '';
+
+    return subscribeProgramAudioBus(programId, (snapshot) => {
+      if (!snapshot.track || !snapshot.endedToken || snapshot.endedToken === lastEndedToken) {
+        return;
+      }
+
+      lastEndedToken = snapshot.endedToken;
+      const socket = programSocketRef.current;
+      if (!socket || !programSocketReadyRef.current || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      try {
+        socket.send(JSON.stringify({ type: 'song_ended', programId }));
+      } catch {
+        // The flight timeout remains the fallback if the connection drops at song end.
+      }
+    });
+  }, [programId]);
+
+  useEffect(() => {
+    if (!audioBusSettings || normalizedSongSequence?.mode !== 'manual') {
+      return;
+    }
+
+    const song = resolvedManualSong;
+    const audioUrl = song?.audioUrl?.trim() ?? '';
+    const snapshot = getProgramAudioBusSnapshot(programId);
+
+    if (!song || !audioUrl) {
+      if (snapshot.track) {
+        stopProgramAudioBus(programId);
+      }
+      return;
+    }
+
+    const token = `manual:${song.id}:${audioUrl}`;
+    if (snapshot.track?.token === token && snapshot.isPlaying) {
+      return;
+    }
+
+    ensureProgramAudioBusTrack(programId, {
+      token,
+      audioUrl,
+      durationMs: song.durationMs,
+      artist: song.artist,
+      title: song.title,
+      coverUrl: song.coverUrl,
+      earoneSongId: song.earoneSongId,
+      earoneRank: song.earoneRank,
+      earoneSpins: song.earoneSpins
+    });
+  }, [
+    programId,
+    audioBusSettings,
+    normalizedSongSequence?.mode,
+    resolvedManualSong?.id,
+    resolvedManualSong?.audioUrl,
+    resolvedManualSong?.artist,
+    resolvedManualSong?.title,
+    resolvedManualSong?.coverUrl,
+    resolvedManualSong?.durationMs,
+    resolvedManualSong?.earoneSongId,
+    resolvedManualSong?.earoneRank,
+    resolvedManualSong?.earoneSpins
+  ]);
+
+  useEffect(() => {
     for (const [audio, runtime] of activeInstantAudiosRef.current) {
       audio.volume = normalizeMasterVolume(runtime.baseVolume * resolvedInstantMasterVolume, 1);
     }
@@ -1797,6 +1877,67 @@ function SceneProgram({ programId }: { programId: string }) {
       cancelled = true;
     };
   }, [activeSlideshowMediaGroupId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let disposed = false;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (disposed) {
+        return;
+      }
+
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(getProgramRealtimeSocketUrl(programId, 'program'));
+      } catch {
+        reconnectTimer = window.setTimeout(connect, 1500);
+        return;
+      }
+
+      programSocketRef.current = socket;
+      programSocketReadyRef.current = false;
+
+      socket.addEventListener('open', () => {
+        if (disposed || programSocketRef.current !== socket) {
+          socket.close();
+          return;
+        }
+        programSocketReadyRef.current = true;
+      });
+
+      socket.addEventListener('close', () => {
+        if (programSocketRef.current === socket) {
+          programSocketRef.current = null;
+          programSocketReadyRef.current = false;
+        }
+        if (!disposed) {
+          reconnectTimer = window.setTimeout(connect, 1500);
+        }
+      });
+
+      socket.addEventListener('error', () => socket.close());
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      programSocketReadyRef.current = false;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+      const socket = programSocketRef.current;
+      programSocketRef.current = null;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [programId]);
 
   useEffect(() => {
     const componentTypes = state?.activeScene?.layout.componentType.split(',').filter(Boolean) || [];

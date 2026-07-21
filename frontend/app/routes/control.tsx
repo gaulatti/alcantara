@@ -463,17 +463,6 @@ export default function Control() {
 
     sceneMetadataCacheRef.current[nextScene.id] = parseSceneMetadata(nextScene.metadata);
 
-    // Scene mutations from dedicated actions (draws and votes) are authoritative.
-    // Adopt them directly so the staged editor cannot remain on a stale draft.
-    if (selectedSceneRef.current === nextScene.id) {
-      const nextSceneProps = buildComponentPropsForScene(nextScene);
-      sceneEditorDirtyRef.current = false;
-      pendingSceneAttributeSaveRef.current = null;
-      sceneEditorPropsRef.current = nextSceneProps;
-      setSceneEditorProps(nextSceneProps);
-      setSceneAttributeSaveError(null);
-    }
-
     setScenes((previous) => {
       const existingIndex = previous.findIndex((scene) => scene.id === nextScene.id);
       if (existingIndex === -1) {
@@ -1542,6 +1531,33 @@ export default function Control() {
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = (await response.json()) as {
+        stagedSceneId?: unknown;
+        stagedScene?: unknown;
+        version?: unknown;
+      };
+      if (shouldApplyControlUpdatePayload(result, 'state')) {
+        const stagedSceneId =
+          typeof result.stagedSceneId === 'number' && Number.isFinite(result.stagedSceneId)
+            ? result.stagedSceneId
+            : null;
+        const stagedScene =
+          result.stagedScene && typeof result.stagedScene === 'object'
+            ? (result.stagedScene as Scene)
+            : null;
+
+        setSelectedScene(stagedSceneId);
+        setProgramState((previous) =>
+          previous
+            ? {
+                ...previous,
+                stagedSceneId,
+                stagedScene
+              }
+            : previous
+        );
       }
 
       if (!isProgramRealtimeConnected) {
