@@ -3,6 +3,7 @@ import { Button, Input, Select } from '@gaulatti/bleecker';
 import { uploadFileToMediaBucket } from '../../services/uploads';
 import { normalizeSlideshowImageList, normalizeSlideshowMediaGroupId } from '../../utils/broadcast';
 import type { MediaGroup } from '../../models/broadcast';
+import { SearchableSelect } from './SearchableSelect';
 
 export function SlideshowEditorFields({
   componentType,
@@ -92,9 +93,10 @@ export function SlideshowEditorFields({
 
       <div className='space-y-2'>
         <label className='block text-xs text-text-secondary'>Media Group Source</label>
-        <Select value={selectedMediaGroupId !== null ? String(selectedMediaGroupId) : ''}
+        <SearchableSelect value={selectedMediaGroupId !== null ? String(selectedMediaGroupId) : ''}
           onChange={v => updateProp(componentType, 'mediaGroupId', normalizeSlideshowMediaGroupId(v))}
           className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
+          searchPlaceholder='Search media groups…'
           options={[
             { value: '', label: 'Manual images in scene metadata' },
             ...mediaGroups.map(g => ({ value: String(g.id), label: `${g.name} (${g.items.length} images)` }))

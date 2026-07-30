@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Input, Select } from '@gaulatti/bleecker';
 import { normalizeProgramTextSequence, createProgramTextSequence, type ProgramTextSequence } from '../../utils/programSequence';
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
+import { SearchableSelect } from './SearchableSelect';
 import { SCENE_TRANSITIONS } from '../../utils/sceneTransitions';
 import type { Scene } from '../../models/broadcast';
 
@@ -131,9 +132,10 @@ export function RelojDigitalEditorFields({
 
           <div>
             <label className='block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1'>Target Scene</label>
-            <Select value={props.countdownTargetSceneId ?? ''}
+            <SearchableSelect value={String(props.countdownTargetSceneId ?? '')}
               onChange={v => updateProp(componentType, 'countdownTargetSceneId', v === '' ? null : Number(v))}
               className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 bg-black/20 text-white'
+              searchPlaceholder='Search scenes…'
               options={[{ value: '', label: '— Select scene —' }, ...sceneOptions]} />
           </div>
 

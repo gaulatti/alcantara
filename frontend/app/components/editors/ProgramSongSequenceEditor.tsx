@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
-import { Clock, GripVertical, Music2, Plus } from 'lucide-react';
+import { Clock, GripVertical, Headphones, Music2, Plus } from 'lucide-react';
 import {
   createProgramSongSequence,
   createProgramSongSequenceItem,
@@ -62,6 +62,8 @@ export function ProgramSongSequenceEditor({
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [addSongValue, setAddSongValue] = useState('');
+  const [previewingItemId, setPreviewingItemId] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const isNested = depth > 0;
   const showQueue = view !== 'catalog';
   const showCatalog = view !== 'queue';
@@ -95,10 +97,56 @@ export function ProgramSongSequenceEditor({
     if (expandedItemId && !sequence.items.some((i) => i.id === expandedItemId)) setExpandedItemId(null);
   }, [sequence.items, expandedItemId]);
 
+  useEffect(() => {
+    return () => {
+      previewAudioRef.current?.pause();
+      previewAudioRef.current = null;
+    };
+  }, []);
+
   const applySequence = useCallback(
     (nextSequence: ProgramSongSequence) => onChange(nextSequence),
     [onChange]
   );
+
+  const previewItem = useCallback(async (item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>) => {
+    const audioUrl = item.audioUrl?.trim() ?? '';
+    if (!audioUrl) return;
+
+    if (previewingItemId === item.id) {
+      previewAudioRef.current?.pause();
+      previewAudioRef.current = null;
+      setPreviewingItemId(null);
+      return;
+    }
+
+    previewAudioRef.current?.pause();
+    const audio = new Audio(audioUrl);
+    previewAudioRef.current = audio;
+    audio.onended = () => {
+      if (previewAudioRef.current === audio) {
+        previewAudioRef.current = null;
+        setPreviewingItemId(null);
+      }
+    };
+    audio.onerror = () => {
+      if (previewAudioRef.current === audio) {
+        previewAudioRef.current = null;
+        setPreviewingItemId(null);
+      }
+    };
+
+    try {
+      await audio.play();
+      if (previewAudioRef.current === audio) setPreviewingItemId(item.id);
+    } catch (error) {
+      if (previewAudioRef.current === audio) {
+        previewAudioRef.current = null;
+        setPreviewingItemId(null);
+      }
+      console.error('Failed to play local song preview:', error);
+    }
+  }, [previewingItemId]);
 
   const resolveAutoplayStartedAt = useCallback((): number => {
     const now = Date.now();
@@ -239,10 +287,11 @@ export function ProgramSongSequenceEditor({
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
                 <div className='min-w-100'>
-                  <div className='grid grid-cols-[28px_28px_1fr_52px_56px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
+                  <div className='grid grid-cols-[28px_28px_28px_1fr_52px_56px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
                     <span />
                     <span className='text-center'>#</span>
-                    <span style={{ paddingLeft: '50px' }}>Title</span>
+                    <span />
+                    <span style={{ paddingLeft: '22px' }}>Title</span>
                     <span className='flex items-center justify-end pr-3'>
                       <Clock size={10} />
                     </span>
@@ -281,7 +330,7 @@ export function ProgramSongSequenceEditor({
                           }}
                         >
                           <div
-                            className={`group grid grid-cols-[28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
+                            className={`group grid grid-cols-[28px_28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
                           >
                             <span
                               draggable
@@ -326,6 +375,20 @@ export function ProgramSongSequenceEditor({
                                 <PlayIcon />
                               </span>
                             </Button>
+                            {displayItem.kind === 'preset' ? (
+                              <Button
+                                type='button'
+                                onClick={() => void previewItem(displayItem)}
+                                disabled={!displayItem.audioUrl?.trim()}
+                                className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? 'text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+                                title={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
+                                aria-label={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
+                              >
+                                <Headphones size={13} />
+                              </Button>
+                            ) : (
+                              <span />
+                            )}
                             <div className='flex min-w-0 items-center gap-2.5 pl-1'>
                               {coverUrl ? (
                                 <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
