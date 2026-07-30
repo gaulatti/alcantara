@@ -78,6 +78,8 @@ export default function ProgramsAdmin() {
     [],
   );
   const [selectedStingerIds, setSelectedStingerIds] = useState<number[]>([]);
+  const [sceneSearch, setSceneSearch] = useState('');
+  const [mediaGroupSearch, setMediaGroupSearch] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedType, setSelectedType] = useState<'tv' | 'radio' | 'both'>('tv');
@@ -149,12 +151,30 @@ export default function ProgramsAdmin() {
     return [...allStingers].sort((a, b) => a.name.localeCompare(b.name));
   }, [allStingers]);
 
+  const filteredScenes = useMemo(() => {
+    const query = sceneSearch.trim().toLocaleLowerCase();
+    if (!query) return sortedScenes;
+    return sortedScenes.filter((scene) =>
+      [scene.name, scene.layout?.name].some((value) => value?.toLocaleLowerCase().includes(query))
+    );
+  }, [sceneSearch, sortedScenes]);
+
+  const filteredMediaGroups = useMemo(() => {
+    const query = mediaGroupSearch.trim().toLocaleLowerCase();
+    if (!query) return sortedMediaGroups;
+    return sortedMediaGroups.filter((mediaGroup) =>
+      [mediaGroup.name, mediaGroup.description].some((value) => value?.toLocaleLowerCase().includes(query))
+    );
+  }, [mediaGroupSearch, sortedMediaGroups]);
+
   const openCreateModal = () => {
     setEditingProgramId(null);
     setProgramIdInput('');
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
+    setSceneSearch('');
+    setMediaGroupSearch('');
     setSelectedType('tv');
     setError('');
     setShowModal(true);
@@ -171,6 +191,8 @@ export default function ProgramsAdmin() {
       (program.stingers || []).map((entry) => entry.stingerId),
     );
     setSelectedType(program.type || 'tv');
+    setSceneSearch('');
+    setMediaGroupSearch('');
     setError('');
     setShowModal(true);
   };
@@ -182,6 +204,8 @@ export default function ProgramsAdmin() {
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
+    setSceneSearch('');
+    setMediaGroupSearch('');
     setSelectedType('tv');
     setError('');
   };
@@ -591,7 +615,15 @@ export default function ProgramsAdmin() {
                 <p className='text-sm text-text-secondary dark:text-text-secondary'>No scenes available. Create scenes first.</p>
               ) : (
                 <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-                  {sortedScenes.map((scene) => {
+                  <Input
+                    type='search'
+                    value={sceneSearch}
+                    onChange={(event) => setSceneSearch(event.target.value)}
+                    placeholder='Search scenes by name or layout…'
+                    aria-label='Search program scenes'
+                    className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95'
+                  />
+                  {filteredScenes.map((scene) => {
                     const checked = selectedSceneIds.includes(scene.id);
                     return (
                       <label key={scene.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
@@ -603,6 +635,9 @@ export default function ProgramsAdmin() {
                       </label>
                     );
                   })}
+                  {filteredScenes.length === 0 ? (
+                    <p className='px-2 py-4 text-center text-sm text-text-secondary'>No scenes match “{sceneSearch}”.</p>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -618,7 +653,15 @@ export default function ProgramsAdmin() {
                 <p className='text-sm text-text-secondary dark:text-text-secondary'>No media groups available. Create media groups first.</p>
               ) : (
                 <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-                  {sortedMediaGroups.map((mediaGroup) => {
+                  <Input
+                    type='search'
+                    value={mediaGroupSearch}
+                    onChange={(event) => setMediaGroupSearch(event.target.value)}
+                    placeholder='Search media groups by name or description…'
+                    aria-label='Search program media groups'
+                    className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95'
+                  />
+                  {filteredMediaGroups.map((mediaGroup) => {
                     const checked = selectedMediaGroupIds.includes(mediaGroup.id);
                     return (
                       <label
@@ -638,6 +681,9 @@ export default function ProgramsAdmin() {
                       </label>
                     );
                   })}
+                  {filteredMediaGroups.length === 0 ? (
+                    <p className='px-2 py-4 text-center text-sm text-text-secondary'>No media groups match “{mediaGroupSearch}”.</p>
+                  ) : null}
                 </div>
               )}
             </div>
