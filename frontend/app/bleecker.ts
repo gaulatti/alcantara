@@ -1,0 +1,39 @@
+/**
+ * Runtime-only compatibility entry for Bleecker 0.1.36.
+ *
+ * The published root barrel references a missing `dist/tokens.js` file. Every
+ * export below comes from a documented public component/layout subpath; Vite
+ * aliases only the broken root barrel here until Bleecker republishes it.
+ */
+export * from '@gaulatti/bleecker/components/alert';
+export * from '@gaulatti/bleecker/components/button';
+export * from '@gaulatti/bleecker/components/card';
+export * from '@gaulatti/bleecker/components/checkbox';
+export * from '@gaulatti/bleecker/components/command-spotlight';
+export * from '@gaulatti/bleecker/components/empty';
+export * from '@gaulatti/bleecker/components/field';
+export * from '@gaulatti/bleecker/components/file-input';
+export * from '@gaulatti/bleecker/components/header-select';
+export * from '@gaulatti/bleecker/components/icon-badge';
+export * from '@gaulatti/bleecker/components/icon-button';
+export * from '@gaulatti/bleecker/components/input';
+export * from '@gaulatti/bleecker/components/loading-spinner';
+export * from '@gaulatti/bleecker/components/modal';
+export * from '@gaulatti/bleecker/components/nav-menu';
+export * from '@gaulatti/bleecker/components/page-header';
+export * from '@gaulatti/bleecker/components/pagination';
+export * from '@gaulatti/bleecker/components/panel';
+export * from '@gaulatti/bleecker/components/search-input';
+export * from '@gaulatti/bleecker/components/section-header';
+export * from '@gaulatti/bleecker/components/select';
+export * from '@gaulatti/bleecker/components/sheet';
+export * from '@gaulatti/bleecker/components/stat-card';
+export * from '@gaulatti/bleecker/components/status-badge';
+export * from '@gaulatti/bleecker/components/switch';
+export * from '@gaulatti/bleecker/components/table';
+export * from '@gaulatti/bleecker/components/tabs';
+export * from '@gaulatti/bleecker/components/textarea';
+export * from '@gaulatti/bleecker/layout/app-shell';
+export * from '@gaulatti/bleecker/layout/footer';
+export * from '@gaulatti/bleecker/layout/header';
+export * from '@gaulatti/bleecker/layout/panel-layout';

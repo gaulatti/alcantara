@@ -18,7 +18,10 @@ export default defineConfig({
     alias: [
       {
         find: /^@gaulatti\/bleecker$/,
-        replacement: fileURLToPath(new URL('./node_modules/@gaulatti/bleecker/dist/index.js', import.meta.url))
+        // Bleecker 0.1.36's published root barrel references a missing
+        // `dist/tokens.js`; keep public subpath imports behind a local barrel
+        // until the upstream package is republished.
+        replacement: fileURLToPath(new URL('./app/bleecker.ts', import.meta.url))
       }
     ]
   },
