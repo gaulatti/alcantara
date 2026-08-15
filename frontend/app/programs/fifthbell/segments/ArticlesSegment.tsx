@@ -19,6 +19,7 @@ interface ApiArticle {
     slug?: string | null;
   }[];
   publishedAt: string;
+  status: string;
 }
 
 interface ApiResponse {
@@ -117,7 +118,9 @@ export async function fetchArticles(language: SupportedLanguage = 'en'): Promise
     const data: ApiResponse = await response.json();
     const now = new Date();
     const recentThreshold = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-    const feedArticles = Array.isArray(data.articles) ? data.articles : [];
+    const feedArticles = Array.isArray(data.articles)
+      ? data.articles.filter((article) => article.status === 'published')
+      : [];
 
     const articlesWithImages = feedArticles.filter((article) => article.featuredImage?.url);
     const sortByPublishedDesc = (a: ApiArticle, b: ApiArticle) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
