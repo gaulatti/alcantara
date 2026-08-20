@@ -4,6 +4,7 @@ interface StreamWallProps {
   urls: string[];
   maxStreams?: number;
   title?: string;
+  suspended?: boolean;
 }
 
 function isValidHttpUrl(value: string): boolean {
@@ -15,7 +16,7 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
-export function StreamWall({ urls, maxStreams = 4, title = 'Stream Wall' }: StreamWallProps) {
+export function StreamWall({ urls, maxStreams = 4, title = 'Stream Wall', suspended = false }: StreamWallProps) {
   const streams = useMemo(() => {
     const deduped = Array.from(new Set(urls.map((u) => u.trim()).filter(Boolean)));
     return deduped.filter(isValidHttpUrl).slice(0, maxStreams);
@@ -36,7 +37,9 @@ export function StreamWall({ urls, maxStreams = 4, title = 'Stream Wall' }: Stre
         ) : null}
 
         <main className='min-h-0 flex-1'>
-          {streams.length === 0 ? (
+          {suspended ? (
+            <div className='flex h-full items-center justify-center bg-black text-xs uppercase tracking-widest text-white/50'>Stream wall suspended</div>
+          ) : streams.length === 0 ? (
             <div className='flex h-full items-center justify-center px-6 text-center text-sm text-white/70'>
               No valid stream URLs provided. Use query params like <code className='rounded bg-white/10 px-1.5 py-0.5'>?url=https://vdo.ninja/?view=...</code>{' '}
               (repeat up to {maxStreams}).
