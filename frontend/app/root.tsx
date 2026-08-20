@@ -9,6 +9,7 @@ import './services/auth';
 import AuthListener from './components/common/AuthListener';
 import { getStore } from './state';
 import { installAuthenticatedFetch } from './services/authenticatedFetch';
+import { isTestAuth } from './services/session';
 
 installAuthenticatedFetch();
 
@@ -50,6 +51,11 @@ export default function App() {
   return (
     <Provider store={store}>
       <AuthListener />
+      {isTestAuth() ? (
+        <div className='bg-amber-300 px-3 py-1 text-center text-xs font-semibold tracking-wide text-black' data-testid='test-auth-banner'>
+          TEST AUTH · {String(import.meta.env.VITE_TEST_AUTH_PROFILE || 'admin').toUpperCase()}
+        </div>
+      ) : null}
       <Outlet />
     </Provider>
   );
