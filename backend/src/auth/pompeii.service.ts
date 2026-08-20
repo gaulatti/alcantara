@@ -17,6 +17,7 @@ import {
 } from '@grpc/grpc-js';
 import { loadSync } from '@grpc/proto-loader';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { AlcantaraPermission } from './permissions';
 
 type AuthorizeWireResponse = {
@@ -84,7 +85,9 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const protoPath = join(__dirname, '..', 'proto', 'authorization.proto');
+    const sourceProtoPath = join(__dirname, '..', 'proto', 'authorization.proto');
+    const compiledProtoPath = join(__dirname, '..', '..', 'proto', 'authorization.proto');
+    const protoPath = existsSync(sourceProtoPath) ? sourceProtoPath : compiledProtoPath;
     const definition = loadSync(protoPath, {
       defaults: true,
       enums: String,

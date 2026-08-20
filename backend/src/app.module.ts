@@ -14,6 +14,7 @@ import { MediaGroupsModule } from './media-groups/media-groups.module';
 import { StingersModule } from './stingers/stingers.module';
 import { RadioModule } from './radio/radio.module';
 import { AuthModule } from './auth/auth.module';
+import { TestAuthController } from './auth/test-auth.controller';
 
 @Module({
   imports: [
@@ -33,7 +34,7 @@ import { AuthModule } from './auth/auth.module';
     StingersModule,
     RadioModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, TestAuthController],
   providers: [AppService],
 })
 export class AppModule {}

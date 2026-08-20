@@ -1,60 +1,130 @@
-name: alcantara
+# Local development only. Production is deployed through GitHub Actions.
+name: alcantara-local
 
 services:
+  alcantara-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: alcantara
+      POSTGRES_USER: alcantara
+      POSTGRES_PASSWORD: alcantara-local-development
+    volumes:
+      - alcantara-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  pompeii-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pompeii
+      POSTGRES_USER: pompeii
+      POSTGRES_PASSWORD: pompeii-local-development
+    volumes:
+      - pompeii-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  pompeii:
+    build:
+      context: ../pompeii/backend
+      dockerfile: Dockerfile.dev
+    command: ['/bin/sh', '-c', 'npm run db:migrate && npm run start:dev']
+    environment:
+      DATABASE_URL: postgres://pompeii:pompeii-local-development@pompeii-postgres:5432/pompeii
+      AUTH_MODE: test
+      TEST_AUTH_SECRET: alcantara-pompeii-local-test-secret-change-me
+      ALLOWED_ORIGINS: http://localhost:${VITE_PORT:-5173}
+      POMPEII_COGNITO_USER_POOL_ID: us-east-1_local
+      POMPEII_COGNITO_CLIENT_ID: local-browser-tests
+    depends_on:
+      pompeii-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3187/authorization/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  pompeii-seed:
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: pompeii-local-development
+    command: ['psql', '-h', 'pompeii-postgres', '-U', 'pompeii', '-d', 'pompeii', '-f', '/seed/seed.sql']
+    volumes:
+      - ./infra/pompeii/seed.sql:/seed/seed.sql:ro
+    depends_on:
+      pompeii:
+        condition: service_healthy
+    restart: 'no'
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    ports:
-      - "${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}"
-    env_file: ./backend/.env
+    command: ['/bin/sh', '-c', 'pnpm prisma migrate deploy --config prisma.local.config.ts && pnpm seed && pnpm start:dev']
     environment:
-      - PORT=${BACKEND_PORT:-3000}
-      - ALLOWED_ORIGINS=http://localhost:${VITE_PORT:-5173}
-      - CHOKIDAR_USEPOLLING=true
+      NODE_ENV: development
+      PORT: ${BACKEND_PORT:-3000}
+      ALLOWED_ORIGINS: http://localhost:${VITE_PORT:-5173}
+      DATABASE_URL: postgres://alcantara:alcantara-local-development@alcantara-postgres:5432/alcantara
+      POMPEII_GRPC_URL: pompeii:50087
+      POMPEII_TEAM_ID: 420
+      POMPEII_GRPC_TIMEOUT_MS: 2000
+      POMPEII_GRPC_TLS: 'false'
+      AUTH_MODE: test
+      TEST_AUTH_SECRET: alcantara-pompeii-local-test-secret-change-me
+      CHOKIDAR_USEPOLLING: 'true'
+    ports:
+      - '${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}'
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       - ./backend/tsconfig.json:/app/tsconfig.json
       - ./backend/nest-cli.json:/app/nest-cli.json
-      - ~/.aws:/root/.aws:ro
-    develop:
-      watch:
-        - action: sync
-          path: ./backend/src
-          target: /app/src
-          ignore:
-            - node_modules/
-        - action: sync
-          path: ./backend/prisma
-          target: /app/prisma
-        - action: rebuild
-          path: ./backend/package.json
-    restart: unless-stopped
+      - ./backend/prisma.local.config.ts:/app/prisma.local.config.ts
+    depends_on:
+      alcantara-postgres:
+        condition: service_healthy
+      pompeii-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:${BACKEND_PORT:-3000}/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    ports:
-      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
-    env_file: ./frontend/.env
+    command: ['npm', 'run', 'dev']
     environment:
-      - VITE_PORT=${VITE_PORT:-5173}
-      - VITE_USE_POLLING=true
+      VITE_PORT: ${VITE_PORT:-5173}
+      VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-3000}
+      VITE_AUTH_MODE: test
+      VITE_TEST_AUTH_PROFILE: ${VITE_TEST_AUTH_PROFILE:-admin}
+      VITE_USE_POLLING: 'true'
+    ports:
+      - '${VITE_PORT:-5173}:${VITE_PORT:-5173}'
     volumes:
       - ./frontend/app:/app/app
       - ./frontend/vite.config.ts:/app/vite.config.ts
       - ./frontend/react-router.config.ts:/app/react-router.config.ts
       - ./frontend/tsconfig.json:/app/tsconfig.json
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend/app
-          target: /app/app
-          ignore:
-            - node_modules/
-        - action: rebuild
-          path: ./frontend/package.json
-    command: sh -c "npm run dev"
-    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  alcantara-postgres-data:
+  pompeii-postgres-data:
