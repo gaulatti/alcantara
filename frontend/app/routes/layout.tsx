@@ -37,6 +37,8 @@ import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
+import { useFeatures } from '../hooks/useFeatures';
+import { PERMISSIONS, routePermission } from '../auth/permissions';
 
 const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
 
@@ -90,6 +92,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useLogout();
+  const { hasPermission } = useFeatures();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
   const [knownInstants, setKnownInstants] = useState<InstantSummary[]>([]);
@@ -287,7 +290,7 @@ export default function Layout() {
     { href: '/programs', label: 'Programs' },
     { href: '/preview', label: 'Preview' },
     { href: '/layouts', label: 'Layouts' }
-  ];
+  ].filter((item) => hasPermission(routePermission(item.href)));
 
   const footerSections: Array<{ title: string; items: NavItem[] }> = [
     {
@@ -300,7 +303,7 @@ export default function Layout() {
         { href: '/media', label: 'Media' },
         { href: '/scenes', label: 'Scenes' },
         { href: '/programs', label: 'Programs' }
-      ]
+      ].filter((item) => hasPermission(routePermission(item.href)))
     },
     {
       title: 'Resources',
@@ -615,12 +618,31 @@ export default function Layout() {
         }
       }));
 
-    return [...baseActions, ...selectProgramActions, ...sceneTakeActions, ...transitionActions, ...instantActions];
+    const readActions = baseActions.filter((action) => {
+      if (action.id === 'nav-flight') return hasPermission(PERMISSIONS.flight.read);
+      if (action.id === 'nav-instants') return hasPermission(PERMISSIONS.instant.read);
+      if (action.id === 'nav-songs') return hasPermission(PERMISSIONS.song.read);
+      if (action.id === 'nav-media') return hasPermission(PERMISSIONS.media.read);
+      if (action.id === 'nav-scenes') return hasPermission(PERMISSIONS.scene.read);
+      if (action.id === 'nav-layouts' || action.id === 'nav-preview') return hasPermission(PERMISSIONS.layout.read);
+      if (action.id === 'take-selected-program-song-off-air') return hasPermission(PERMISSIONS.program.operate);
+      if (action.id === 'stop-all-instants') return hasPermission(PERMISSIONS.instant.operate);
+      if (action.id === 'open-broadcast-time-override' || action.id === 'disable-broadcast-time-override') return hasPermission(PERMISSIONS.program.operate);
+      return hasPermission(PERMISSIONS.program.read);
+    });
+    return [
+      ...readActions,
+      ...selectProgramActions,
+      ...(hasPermission(PERMISSIONS.program.operate) ? sceneTakeActions : []),
+      ...(hasPermission(PERMISSIONS.program.operate) ? transitionActions : []),
+      ...(hasPermission(PERMISSIONS.instant.operate) ? instantActions : [])
+    ];
   }, [
     knownInstants,
     knownScenes,
     broadcastSettings,
     clearBroadcastTimeOverride,
+    hasPermission,
     loadBroadcastSettings,
     navigate,
     programOptions,
@@ -654,7 +676,7 @@ export default function Layout() {
               <>
                 {renderHeaderProgramSelector()}
                 {renderOpenProgramButton()}
-                {renderRefreshProgramButton()}
+                {hasPermission(PERMISSIONS.program.operate) ? renderRefreshProgramButton() : null}
                 {renderLogoutButton()}
               </>
             }
@@ -662,7 +684,7 @@ export default function Layout() {
               <>
                 {renderHeaderProgramSelector()}
                 {renderOpenProgramButton()}
-                {renderRefreshProgramButton()}
+                {hasPermission(PERMISSIONS.program.operate) ? renderRefreshProgramButton() : null}
                 {renderLogoutButton()}
               </>
             }
