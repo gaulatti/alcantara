@@ -5,6 +5,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { RawData } from 'ws';
 import { ProgramService } from './program.service';
 import { FlightService } from './flight.service';
+import { RealtimeTicketService } from '../auth/realtime-ticket.service';
 
 type ProgramRealtimeRole = 'program' | 'control' | 'unknown';
 
@@ -60,6 +61,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
   constructor(
     private readonly programService: ProgramService,
     private readonly flightService: FlightService,
+    private readonly realtimeTickets: RealtimeTicketService,
   ) {
     this.removeProgramEventListener = this.programService.addEventListener(
       (event) => {
@@ -166,14 +168,63 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       return;
     }
 
-    this.wsServer.handleUpgrade(request, socket, head, (ws) => {
-      this.handleConnection(ws, connection.programId, connection.role);
-    });
+    if (connection.role === 'unknown') {
+      this.rejectUpgrade(socket, 400, 'A known realtime role is required');
+      return;
+    }
+
+    // Program renderers are deliberately machine-runtime clients. They never
+    // receive operator snapshots, and their accepted message types are limited
+    // below to meter/playback telemetry and song completion.
+    if (connection.role === 'program') {
+      this.acceptUpgrade(request, socket, head, connection);
+      return;
+    }
+
+    if (
+      !connection.ticket ||
+      !this.realtimeTickets.consume(connection.ticket, connection.programId)
+    ) {
+      this.rejectUpgrade(socket, 401, 'Valid realtime ticket required');
+      return;
+    }
+    this.acceptUpgrade(request, socket, head, connection);
   };
 
-  private parseConnection(
+  private acceptUpgrade(
     request: IncomingMessage,
-  ): { programId: string; role: ProgramRealtimeRole } | null {
+    socket: Socket,
+    head: Buffer,
+    connection: { programId: string; role: ProgramRealtimeRole },
+  ): void {
+    this.wsServer?.handleUpgrade(request, socket, head, (ws) => {
+      this.handleConnection(ws, connection.programId, connection.role);
+    });
+  }
+
+  private rejectUpgrade(
+    socket: Socket,
+    statusCode: number,
+    reason: string,
+  ): void {
+    const statusText =
+      statusCode === 400
+        ? 'Bad Request'
+        : statusCode === 401
+          ? 'Unauthorized'
+          : statusCode === 403
+            ? 'Forbidden'
+            : 'Service Unavailable';
+    socket.end(
+      `HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n${reason}`,
+    );
+  }
+
+  private parseConnection(request: IncomingMessage): {
+    programId: string;
+    role: ProgramRealtimeRole;
+    ticket: string | null;
+  } | null {
     const baseUrl = `http://${request.headers.host ?? 'localhost'}`;
     let parsedUrl: URL;
     try {
@@ -191,7 +242,12 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     );
     const role = this.normalizeRole(parsedUrl.searchParams.get('role'));
 
-    return { programId, role };
+    const ticket = parsedUrl.searchParams.get('ticket')?.trim();
+    return {
+      programId,
+      role,
+      ticket: ticket || null,
+    };
   }
 
   private normalizeProgramId(programId: unknown): string {
@@ -432,11 +488,15 @@ export class ProgramRealtimeService implements OnModuleDestroy {
 
     if (payload.type === 'song_ended') {
       if (client.role !== 'program') {
-        console.log(`[WS] song_ended ignored: role=${client.role}, expected=program`);
+        console.log(
+          `[WS] song_ended ignored: role=${client.role}, expected=program`,
+        );
         return;
       }
       try {
-        console.log(`[WS] song_ended received from program client for ${client.programId}`);
+        console.log(
+          `[WS] song_ended received from program client for ${client.programId}`,
+        );
         await this.flightService.handleSongEnded(client.programId);
       } catch {
         console.error('[WS] song_ended handler threw');

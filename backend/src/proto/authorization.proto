@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package pompeii.authorization.v1;
+
+// Private service-to-service authorization API. Authorization decisions are
+// intentionally not exposed over the REST administration surface.
+service AuthorizationService {
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+}
+
+message AuthorizeRequest {
+  // The end user's Cognito ID token, with or without the "Bearer " prefix.
+  string bearer_token = 1;
+  // A configured RBAC permission key, for example "application:write".
+  string permission = 2;
+  // Zero means global scope; a positive value evaluates global plus team scope.
+  int64 team_id = 3;
+}
+
+message AuthorizeResponse {
+  bool authenticated = 1;
+  bool allowed = 2;
+  string reason = 3;
+  string subject = 4;
+  repeated string effective_permissions = 5;
+  repeated string roles = 6;
+}

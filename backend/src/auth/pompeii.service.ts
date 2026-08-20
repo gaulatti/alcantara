@@ -1,60 +1,203 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ChannelCredentials,
+  Client,
+  type ClientUnaryCall,
+  type ServiceError,
+  credentials,
+  loadPackageDefinition,
+  waitForClientReady,
+} from '@grpc/grpc-js';
+import { loadSync } from '@grpc/proto-loader';
+import { join } from 'node:path';
+import type { AlcantaraPermission } from './permissions';
 
-export interface EnrichedUser {
-  sub: string;
-  email: string;
-  name: string;
-  username: string;
-  context: {
-    features: Record<string, { level: string }>;
-    permissions: string[];
-    roles: string[];
-    teams: string[];
-  };
-}
+type AuthorizeWireResponse = {
+  authenticated?: boolean;
+  allowed?: boolean;
+  reason?: string;
+  subject?: string;
+  effective_permissions?: string[];
+  roles?: string[];
+};
+
+export type AuthorizationDecision = {
+  authenticated: boolean;
+  allowed: boolean;
+  reason: string;
+  subject: string;
+  effectivePermissions: string[];
+  roles: string[];
+};
+
+type AuthorizationClient = Client & {
+  authorize(
+    request: {
+      bearer_token: string;
+      permission: string;
+      team_id: number;
+    },
+    options: { deadline: Date },
+    callback: (
+      error: ServiceError | null,
+      response?: AuthorizeWireResponse,
+    ) => void,
+  ): ClientUnaryCall;
+};
+
+type AuthorizationClientConstructor = new (
+  address: string,
+  channelCredentials: ChannelCredentials,
+) => AuthorizationClient;
 
 @Injectable()
-export class PompeiiService implements OnModuleInit {
+export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PompeiiService.name);
   private readonly grpcUrl: string;
+  private readonly timeoutMs: number;
+  private readonly client: AuthorizationClient;
+  private readonly isProduction: boolean;
+  readonly teamId: number;
 
-  constructor(configService: ConfigService) {
-    const grpcHost =
-      configService.get<string>('POMPEII_GRPC_HOST') || 'localhost';
-    const grpcPort = configService.get<string>('POMPEII_GRPC_PORT') || '50051';
+  constructor(config: ConfigService) {
     this.grpcUrl =
-      configService.get<string>('POMPEII_GRPC_URL') ||
-      `${grpcHost}:${grpcPort}`;
+      config.get<string>('POMPEII_GRPC_URL')?.trim() || 'localhost:50087';
+    this.timeoutMs = this.positiveInteger(
+      config.get<string>('POMPEII_GRPC_TIMEOUT_MS'),
+      2_000,
+    );
+    this.teamId = this.nonNegativeInteger(
+      config.get<string>('POMPEII_TEAM_ID'),
+      0,
+    );
+    this.isProduction = config.get<string>('NODE_ENV') === 'production';
+    if (this.isProduction && this.teamId === 0) {
+      throw new Error(
+        'POMPEII_TEAM_ID must be an explicit positive integer in production',
+      );
+    }
 
-    // Pompeii/gRPC integration is temporarily disabled.
-    // Keeping config resolution so logs/context remain useful.
-    this.logger.log(
-      `Pompeii integration disabled (target would be ${this.grpcUrl})`,
+    const protoPath = join(__dirname, '..', 'proto', 'authorization.proto');
+    const definition = loadSync(protoPath, {
+      defaults: true,
+      enums: String,
+      keepCase: true,
+      longs: String,
+      oneofs: true,
+    });
+    const loaded = loadPackageDefinition(definition) as unknown as {
+      pompeii: {
+        authorization: {
+          v1: { AuthorizationService: AuthorizationClientConstructor };
+        };
+      };
+    };
+    const useTls = config.get<string>('POMPEII_GRPC_TLS') === 'true';
+    this.client = new loaded.pompeii.authorization.v1.AuthorizationService(
+      this.grpcUrl,
+      useTls ? credentials.createSsl() : credentials.createInsecure(),
     );
   }
 
-  async onModuleInit() {
-    // Integration intentionally disabled.
-    this.logger.log('Pompeii integration disabled at module init');
+  async onModuleInit(): Promise<void> {
+    const status = await this.checkConnection(this.timeoutMs);
+    if (status.ready) {
+      this.logger.log(
+        `Pompeii authorization ready at ${status.target} (team ${this.teamId || 'global'})`,
+      );
+      return;
+    }
+    this.logger.warn(
+      `Pompeii authorization unavailable at startup (${status.target}): ${status.error}`,
+    );
+    if (this.isProduction) {
+      throw new Error(
+        `Pompeii authorization is required in production: ${status.error ?? 'unavailable'}`,
+      );
+    }
+  }
+
+  onModuleDestroy(): void {
+    this.client.close();
   }
 
   async checkConnection(
-    _timeoutMs = 3_000,
+    timeoutMs = this.timeoutMs,
   ): Promise<{ target: string; ready: boolean; error?: string }> {
-    // Connection checks are disabled with the integration.
-    return {
-      target: this.grpcUrl,
-      ready: false,
-      error: 'pompeii_integration_disabled',
-    };
+    try {
+      await new Promise<void>((resolve, reject) => {
+        waitForClientReady(
+          this.client,
+          new Date(Date.now() + timeoutMs),
+          (error) => (error ? reject(error) : resolve()),
+        );
+      });
+      return { target: this.grpcUrl, ready: true };
+    } catch (error) {
+      return {
+        target: this.grpcUrl,
+        ready: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
-  async authenticate(rawToken: string): Promise<EnrichedUser | null> {
-    // Authentication enrichment via Pompeii is disabled.
-    // Returning null preserves "no external enrichment" behavior.
-    void rawToken;
-    this.logger.warn('Pompeii authenticate skipped: integration disabled');
-    return null;
+  async authorize(
+    bearerToken: string,
+    permission: AlcantaraPermission,
+  ): Promise<AuthorizationDecision> {
+    try {
+      const response = await new Promise<AuthorizeWireResponse>(
+        (resolve, reject) => {
+          this.client.authorize(
+            {
+              bearer_token: bearerToken,
+              permission,
+              team_id: this.teamId,
+            },
+            { deadline: new Date(Date.now() + this.timeoutMs) },
+            (error, value) => {
+              if (error) reject(error);
+              else resolve(value ?? {});
+            },
+          );
+        },
+      );
+      return {
+        authenticated: response.authenticated === true,
+        allowed: response.allowed === true,
+        reason: response.reason || 'DENY_UNSPECIFIED',
+        subject: response.subject || '',
+        effectivePermissions: response.effective_permissions ?? [],
+        roles: response.roles ?? [],
+      };
+    } catch (error) {
+      this.logger.error(
+        `Pompeii decision failed for ${permission}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new ServiceUnavailableException({
+        error: 'AUTHORIZATION_SERVICE_UNAVAILABLE',
+      });
+    }
+  }
+
+  private positiveInteger(value: string | undefined, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private nonNegativeInteger(
+    value: string | undefined,
+    fallback: number,
+  ): number {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
   }
 }

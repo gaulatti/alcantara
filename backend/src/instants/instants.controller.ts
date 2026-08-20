@@ -9,8 +9,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { ProgramService } from '../program/program.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @Controller('instants')
+@RequirePermission(ALCANTARA_PERMISSIONS.instant.read)
 export class InstantsController {
   constructor(private readonly programService: ProgramService) {}
 
@@ -20,6 +23,7 @@ export class InstantsController {
   }
 
   @Post()
+  @RequirePermission(ALCANTARA_PERMISSIONS.instant.manage)
   async createInstant(
     @Body()
     data: {
@@ -33,6 +37,7 @@ export class InstantsController {
   }
 
   @Put(':instantId')
+  @RequirePermission(ALCANTARA_PERMISSIONS.instant.manage)
   async updateInstant(
     @Param('instantId') instantId: string,
     @Body()
@@ -47,11 +52,13 @@ export class InstantsController {
   }
 
   @Delete(':instantId')
+  @RequirePermission(ALCANTARA_PERMISSIONS.instant.manage)
   async deleteInstant(@Param('instantId') instantId: string) {
     return this.programService.deleteInstant(Number(instantId));
   }
 
   @Post(':instantId/play')
+  @RequirePermission(ALCANTARA_PERMISSIONS.instant.operate)
   async playInstant(
     @Param('instantId') instantId: string,
     @Query('programId') programIdQuery?: string,
@@ -62,6 +69,7 @@ export class InstantsController {
   }
 
   @Post('stop-all')
+  @RequirePermission(ALCANTARA_PERMISSIONS.instant.operate)
   async stopAllInstants(
     @Query('programId') programIdQuery?: string,
     @Body() data?: { programId?: string },

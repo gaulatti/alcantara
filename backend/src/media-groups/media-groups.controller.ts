@@ -9,8 +9,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { MediaGroupsService } from './media-groups.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { Public } from '../auth/public.decorator';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @Controller('media-groups')
+@RequirePermission(ALCANTARA_PERMISSIONS.media.read)
 export class MediaGroupsController {
   constructor(private readonly mediaGroupsService: MediaGroupsService) {}
 
@@ -32,11 +36,13 @@ export class MediaGroupsController {
   }
 
   @Get(':id')
+  @Public()
   async findOne(@Param('id') id: string) {
     return this.mediaGroupsService.findOne(Number(id));
   }
 
   @Post()
+  @RequirePermission(ALCANTARA_PERMISSIONS.media.manage)
   async create(
     @Body()
     data: {
@@ -49,6 +55,7 @@ export class MediaGroupsController {
   }
 
   @Put(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.media.manage)
   async update(
     @Param('id') id: string,
     @Body()
@@ -62,6 +69,7 @@ export class MediaGroupsController {
   }
 
   @Delete(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.media.manage)
   async remove(@Param('id') id: string) {
     return this.mediaGroupsService.remove(Number(id));
   }

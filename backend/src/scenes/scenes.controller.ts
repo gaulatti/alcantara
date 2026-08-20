@@ -8,8 +8,11 @@ import {
   Delete,
 } from '@nestjs/common';
 import { ScenesService } from './scenes.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @Controller('scenes')
+@RequirePermission(ALCANTARA_PERMISSIONS.scene.read)
 export class ScenesController {
   constructor(private readonly scenesService: ScenesService) {}
 
@@ -24,6 +27,7 @@ export class ScenesController {
   }
 
   @Post()
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.manage)
   async create(
     @Body()
     data: {
@@ -37,6 +41,7 @@ export class ScenesController {
   }
 
   @Put(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.manage)
   async update(
     @Param('id') id: string,
     @Body()
@@ -51,6 +56,7 @@ export class ScenesController {
   }
 
   @Put(':id/chyron')
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
   async updateChyron(
     @Param('id') id: string,
     @Body() data: { chyronText: string },
@@ -59,6 +65,7 @@ export class ScenesController {
   }
 
   @Post(':id/modo-italiano-bracket/draw')
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
   async drawModoItalianoBracket(
     @Param('id') id: string,
     @Body() data: { componentType?: string; seed?: number },
@@ -67,14 +74,22 @@ export class ScenesController {
   }
 
   @Post(':id/modo-italiano-bracket/vote')
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
   async voteModoItalianoBracket(
     @Param('id') id: string,
-    @Body() data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null },
+    @Body()
+    data: {
+      componentType?: string;
+      matchId?: number;
+      voterId?: string;
+      songId?: number | null;
+    },
   ) {
     return this.scenesService.voteModoItalianoBracket(+id, data);
   }
 
   @Post(':id/modo-italiano-bracket/voting/open')
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.operate)
   async openModoItalianoBracketVoting(
     @Param('id') id: string,
     @Body() data: { componentType?: string; matchId?: number },
@@ -83,6 +98,7 @@ export class ScenesController {
   }
 
   @Delete(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.scene.manage)
   async remove(@Param('id') id: string) {
     return this.scenesService.remove(+id);
   }
