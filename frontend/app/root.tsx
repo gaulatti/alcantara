@@ -8,6 +8,9 @@ import './app.css';
 import './services/auth';
 import AuthListener from './components/common/AuthListener';
 import { getStore } from './state';
+import { installAuthenticatedFetch } from './services/authenticatedFetch';
+
+installAuthenticatedFetch();
 
 export const links: Route.LinksFunction = () => [
   { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
