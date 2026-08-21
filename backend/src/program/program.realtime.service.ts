@@ -454,7 +454,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       !isRendererRealtimeInboundType(payload.type)
     ) {
       this.logger.warn(
-        `Rejected renderer realtime message type: ${String(payload.type)}`,
+        `Rejected renderer realtime message: role=${client.role} programId=${client.programId} type=${String(payload.type)}`,
       );
       return;
     }
