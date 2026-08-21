@@ -9,8 +9,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { SongsService } from './songs.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @Controller('songs')
+@RequirePermission(ALCANTARA_PERMISSIONS.song.read)
 export class SongsController {
   constructor(private readonly songsService: SongsService) {}
 
@@ -39,6 +42,7 @@ export class SongsController {
   }
 
   @Post()
+  @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
   async create(
     @Body()
     data: {
@@ -57,6 +61,7 @@ export class SongsController {
   }
 
   @Put(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
   async update(
     @Param('id') id: string,
     @Body()
@@ -76,6 +81,7 @@ export class SongsController {
   }
 
   @Delete(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
   async remove(@Param('id') id: string) {
     return this.songsService.remove(Number(id));
   }

@@ -14,8 +14,11 @@ import {
   type NowPlayingConsumerPayload,
 } from './now-playing-publisher.service';
 import type { RadioSettingsPayload } from './radio.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @Controller('radio')
+@RequirePermission(ALCANTARA_PERMISSIONS.radio.read)
 export class RadioController {
   constructor(
     private readonly radioService: RadioService,
@@ -29,6 +32,7 @@ export class RadioController {
   }
 
   @Put(':programId/settings')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
   async updateSettings(
     @Param('programId') programId: string,
     @Body() data: RadioSettingsPayload,
@@ -42,6 +46,7 @@ export class RadioController {
   }
 
   @Put(':programId/now-playing-consumers')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
   async replaceNowPlayingConsumers(
     @Param('programId') programId: string,
     @Body() data: { consumers?: NowPlayingConsumerPayload[] },
@@ -60,6 +65,7 @@ export class RadioController {
   }
 
   @Post(':programId/song')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.operate)
   async playSong(
     @Param('programId') programId: string,
     @Body()
@@ -90,6 +96,7 @@ export class RadioController {
   }
 
   @Post(':programId/song/stop')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.operate)
   async stopSong(@Param('programId') programId: string) {
     await this.radioService.stopSong(programId);
     this.songExecutionEngine.handleStopSong(programId);
@@ -97,6 +104,7 @@ export class RadioController {
   }
 
   @Post(':programId/instant')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.operate)
   async playInstant(
     @Param('programId') programId: string,
     @Body() data: { audioUrl: string; instantId: number; volume?: number },
@@ -109,6 +117,7 @@ export class RadioController {
   }
 
   @Post(':programId/instant/stop')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.operate)
   async stopAllInstants(@Param('programId') programId: string) {
     await this.radioService.stopAllInstants(programId);
     return { ok: true };

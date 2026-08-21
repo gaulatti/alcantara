@@ -1,12 +1,15 @@
 import type { MultipartFile } from '@fastify/multipart';
 import { BadRequestException, Controller, Post, Req } from '@nestjs/common';
 import { UploadsService } from './uploads.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 type MultipartRequest = {
   file: () => Promise<MultipartFile | undefined>;
 };
 
 @Controller('uploads')
+@RequirePermission(ALCANTARA_PERMISSIONS.upload.create)
 export class UploadsController {
   constructor(private readonly uploadsService: UploadsService) {}
 

@@ -9,8 +9,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { MediaService } from './media.service';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @Controller('media')
+@RequirePermission(ALCANTARA_PERMISSIONS.media.read)
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
@@ -37,6 +40,7 @@ export class MediaController {
   }
 
   @Post()
+  @RequirePermission(ALCANTARA_PERMISSIONS.media.manage)
   async create(
     @Body()
     data: {
@@ -48,6 +52,7 @@ export class MediaController {
   }
 
   @Put(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.media.manage)
   async update(
     @Param('id') id: string,
     @Body()
@@ -60,6 +65,7 @@ export class MediaController {
   }
 
   @Delete(':id')
+  @RequirePermission(ALCANTARA_PERMISSIONS.media.manage)
   async remove(@Param('id') id: string) {
     return this.mediaService.remove(Number(id));
   }

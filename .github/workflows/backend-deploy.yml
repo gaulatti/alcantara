@@ -59,8 +59,10 @@ jobs:
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
-            -e COGNITO_USER_POOL_ID="${{ vars.COGNITO_USER_POOL_ID }}" \
-            -e COGNITO_CLIENT_ID="${{ vars.COGNITO_CLIENT_ID }}" \
+            -e POMPEII_GRPC_URL="${{ vars.POMPEII_GRPC_URL }}" \
+            -e POMPEII_TEAM_ID="${{ vars.POMPEII_TEAM_ID }}" \
+            -e POMPEII_GRPC_TLS="${{ vars.POMPEII_GRPC_TLS }}" \
+            -e POMPEII_GRPC_TIMEOUT_MS="${{ vars.POMPEII_GRPC_TIMEOUT_MS }}" \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
             -e CONTAINERIZED=true \
             --restart=always \
