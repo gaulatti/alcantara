@@ -8,6 +8,7 @@ import { dbToFader, faderToGain } from '../utils/audioTaper';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
+import { acceptStageSceneResponse, type StageSceneResponse } from '../utils/stageSceneResponse';
 import {
   createProgramSongSequence,
   createProgramTextSequence,
@@ -1546,20 +1547,12 @@ export default function Control() {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const result = (await response.json()) as {
-        stagedSceneId?: unknown;
-        stagedScene?: unknown;
-        version?: unknown;
-      };
-      shouldApplyControlUpdatePayload(result, 'state');
-      const stagedSceneId =
-        typeof result.stagedSceneId === 'number' && Number.isFinite(result.stagedSceneId)
-          ? result.stagedSceneId
-          : null;
-      const stagedScene =
-        result.stagedScene && typeof result.stagedScene === 'object'
-          ? (result.stagedScene as Scene)
-          : null;
+      const result = (await response.json()) as StageSceneResponse;
+      const acceptedResult = acceptStageSceneResponse<Scene>(result, shouldApplyControlUpdatePayload);
+      if (!acceptedResult) {
+        return;
+      }
+      const { stagedSceneId, stagedScene } = acceptedResult;
 
       setSelectedScene(stagedSceneId);
       setProgramState((previous) =>
