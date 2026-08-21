@@ -11,6 +11,7 @@ export default [
       route('stingers', 'routes/stingers.tsx'),
       route('songs', 'routes/songs.tsx'),
       route('media', 'routes/media.tsx'),
+      route('calls', 'routes/calls.tsx'),
       route('scenes', 'routes/scenes.tsx'),
       route('programs', 'routes/programs.tsx'),
       route('layouts', 'routes/layouts.tsx'),
@@ -21,5 +22,7 @@ export default [
     ]),
     route('overlay', 'routes/overlay.tsx')
   ]),
+  route('guest/:invitation', 'routes/guest.tsx'),
+  route('return-router/:programId', 'routes/return-router.tsx'),
   route('program/:id', 'routes/program.tsx')
 ] satisfies RouteConfig;

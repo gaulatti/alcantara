@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'infra/**'
       - '.github/workflows/backend-deploy.yml'
 
 jobs:
@@ -36,6 +37,19 @@ jobs:
     needs: build
 
     steps:
+      - name: Checkout deployment definitions
+        uses: actions/checkout@v4
+
+      - name: Upload LiveKit deployment definition
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: infra/compose.production.yml
+          target: /services/alcantara
+          strip_components: 1
+
       - name: Deploy to on-premises host
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -47,12 +61,20 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
             docker pull ghcr.io/${{ github.repository }}:latest
 
+            test -n "${{ secrets.LIVEKIT_CONFIG_B64 }}"
+            mkdir -p /services/alcantara/livekit-redis
+            printf "%s" "${{ secrets.LIVEKIT_CONFIG_B64 }}" | base64 --decode > /services/alcantara/livekit.yaml
+            chmod 600 /services/alcantara/livekit.yaml
+            docker compose -f /services/alcantara/compose.production.yml up -d
+            docker network inspect alcantara >/dev/null
+
             docker stop alcantara-backend || true
             docker rm alcantara-backend || true
 
             LOG_STREAM_UUID=$(uuidgen)
 
             docker run -d --name alcantara-backend \
+            --network alcantara \
             -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
             -e HTTP_PORT="${{ vars.HTTP_PORT }}" \
             -e PORT="${{ vars.HTTP_PORT }}" \
@@ -64,6 +86,12 @@ jobs:
             -e POMPEII_GRPC_TLS="${{ vars.POMPEII_GRPC_TLS }}" \
             -e POMPEII_GRPC_TIMEOUT_MS="${{ vars.POMPEII_GRPC_TIMEOUT_MS }}" \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
+            -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \
+            -e LIVEKIT_API_URL="http://alcantara-livekit:7880" \
+            -e LIVEKIT_API_KEY="${{ secrets.LIVEKIT_API_KEY }}" \
+            -e LIVEKIT_API_SECRET="${{ secrets.LIVEKIT_API_SECRET }}" \
+            -e WEBRTC_SESSION_SECRET="${{ secrets.WEBRTC_SESSION_SECRET }}" \
+            -e WEBRTC_RENDERER_KEY="${{ secrets.WEBRTC_RENDERER_KEY }}" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=awslogs \
