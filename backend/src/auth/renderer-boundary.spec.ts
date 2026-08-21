@@ -49,7 +49,7 @@ describe('transitional renderer boundary', () => {
       getMethodMetadata<string>(IS_RENDERER_PUBLIC_KEY, controller, method),
     );
 
-    expect(new Set(declared).size).toBe(16);
+    expect(new Set(declared).size).toBe(controllerCapabilities.length);
     expect(decorated.sort()).toEqual([...declared].sort());
     for (const [controller, method] of controllerCapabilities) {
       expect(
