@@ -1,6 +1,11 @@
 const RETURN_TO_KEY = 'alcantara:login:return-to';
 const REDIRECT_STARTED_KEY = 'alcantara:login:redirect-started';
 
+export function loginPathForLocation(pathname: string, search: string, hash: string): string {
+  const returnTo = `${pathname}${search}${hash}`;
+  return `/login?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 export function safeReturnPath(value: string | null): string {
   if (!value) return '/';
   try {

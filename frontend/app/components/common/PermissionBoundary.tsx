@@ -1,8 +1,9 @@
 import { Button, LoadingSpinner } from '@gaulatti/bleecker';
 import type { ReactNode } from 'react';
-import { useLocation } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { routePermission } from '../../auth/permissions';
 import { useFeatures } from '../../hooks/useFeatures';
+import { loginPathForLocation } from '../../services/login-return';
 
 export default function PermissionBoundary({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -13,9 +14,7 @@ export default function PermissionBoundary({ children }: { children: ReactNode }
     return <div className='flex min-h-[50vh] items-center justify-center'><LoadingSpinner size='lg' /></div>;
   }
   if (status === 'unauthenticated') {
-    const returnTo = `${location.pathname}${location.search}${location.hash}`;
-    window.location.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
-    return null;
+    return <Navigate to={loginPathForLocation(location.pathname, location.search, location.hash)} replace />;
   }
   if (status === 'unavailable') {
     return <AccessState title='Authorization service unavailable' detail='Access could not be verified. Nothing was allowed. Retry when Pompeii is healthy.' action={<Button onClick={reload}>Retry</Button>} />;
