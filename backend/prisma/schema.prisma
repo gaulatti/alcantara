@@ -38,6 +38,8 @@ model ProgramState {
   type                   String               @default("tv")
   activeSceneId          Int?
   activeScene            Scene?               @relation(fields: [activeSceneId], references: [id])
+  stagedSceneId          Int?
+  fadeToBlack            Boolean              @default(false)
   songSequence           Json?
   shuffleOrder           Json?
   engineState            Json?

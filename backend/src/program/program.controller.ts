@@ -306,6 +306,15 @@ export class ProgramController {
     return this.programService.stageScene(nextSceneId, programId);
   }
 
+  @Put(':programId/fade-to-black')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
+  async setFadeToBlackById(
+    @Param('programId') programId: string,
+    @Body() data: { active?: boolean },
+  ) {
+    return this.programService.setFadeToBlack(data?.active === true, programId);
+  }
+
   @Post(':programId/off-air')
   @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
   async takeProgramOffAirById(@Param('programId') programId: string) {

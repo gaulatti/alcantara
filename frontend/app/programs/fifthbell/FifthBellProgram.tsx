@@ -58,6 +58,7 @@ interface FifthBellProgramProps {
   embedded?: boolean;
   sceneMetadata?: Record<string, unknown> | null;
   activeComponents?: string[];
+  masterGain?: number;
 }
 
 interface FifthBellConfig {
@@ -355,7 +356,7 @@ function normalizeLaunchDate(rawDate: string): Date {
   return parsed;
 }
 
-export default function FifthBellProgram({ programId = 'fifthbell', embedded = false, sceneMetadata, activeComponents }: FifthBellProgramProps) {
+export default function FifthBellProgram({ programId = 'fifthbell', embedded = false, sceneMetadata, activeComponents, masterGain = 1 }: FifthBellProgramProps) {
   const encodedProgramId = encodeURIComponent(programId);
   const [state, setState] = useState<ProgramState | null>(null);
   const [showLogoSlide, setShowLogoSlide] = useState(false);
@@ -604,6 +605,12 @@ export default function FifthBellProgram({ programId = 'fifthbell', embedded = f
     audioRef.current.load();
     audioInitialized.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.volume = Math.max(0, Math.min(1, masterGain));
+    audioRef.current.muted = masterGain <= 0.0001;
+  }, [masterGain]);
 
   useEffect(() => {
     if (!config.audioCueEnabled) {

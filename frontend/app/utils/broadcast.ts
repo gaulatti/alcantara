@@ -251,7 +251,7 @@ export function normalizeUpdateVersion(value: unknown): number | null {
 export function resolveControlUpdateTopicFromType(type: unknown): ProgramUpdateTopic | null {
   if (typeof type !== 'string') return null;
   switch (type) {
-    case 'program_state_snapshot': case 'scene_change': case 'scene_staged': case 'scene_update': case 'scene_cleared': case 'program_scenes_changed': case 'program_media_groups_changed': return 'state';
+    case 'program_state_snapshot': case 'scene_change': case 'scene_staged': case 'fade_to_black': case 'scene_update': case 'scene_cleared': case 'program_scenes_changed': case 'program_media_groups_changed': return 'state';
     case 'audio_bus_snapshot': case 'audio_bus_update': return 'audioBus';
     case 'audio_meter_update': return 'audioMeter';
     case 'song_playback_update': case 'song_off_air': return 'songPlayback';
@@ -304,6 +304,7 @@ export function normalizeProgramState(value: unknown): ProgramState | null {
     mediaGroups: Array.isArray(record.mediaGroups) ? record.mediaGroups : [],
     activeSceneId: typeof record.activeSceneId === 'number' ? record.activeSceneId : null,
     stagedSceneId: typeof record.stagedSceneId === 'number' ? record.stagedSceneId : null,
+    fadeToBlack: record.fadeToBlack === true,
     activeScene: record.activeScene && typeof record.activeScene === 'object' ? (record.activeScene as Scene) : null,
     stagedScene: record.stagedScene && typeof record.stagedScene === 'object' ? (record.stagedScene as Scene) : null
   };
