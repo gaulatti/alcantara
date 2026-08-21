@@ -50,31 +50,12 @@ export const ALCANTARA_PERMISSIONS = {
   },
 } as const;
 
-export type AlcantaraPermission =
-  | typeof ALCANTARA_PERMISSIONS.access
-  | 'alcantara:program:read'
-  | 'alcantara:program:manage'
-  | 'alcantara:program:operate'
-  | 'alcantara:flight:read'
-  | 'alcantara:flight:manage'
-  | 'alcantara:flight:operate'
-  | 'alcantara:scene:read'
-  | 'alcantara:scene:manage'
-  | 'alcantara:scene:operate'
-  | 'alcantara:layout:read'
-  | 'alcantara:layout:manage'
-  | 'alcantara:media:read'
-  | 'alcantara:media:manage'
-  | 'alcantara:song:read'
-  | 'alcantara:song:manage'
-  | 'alcantara:instant:read'
-  | 'alcantara:instant:manage'
-  | 'alcantara:instant:operate'
-  | 'alcantara:stinger:read'
-  | 'alcantara:stinger:manage'
-  | 'alcantara:radio:read'
-  | 'alcantara:radio:manage'
-  | 'alcantara:radio:operate'
-  | 'alcantara:webrtc:read'
-  | 'alcantara:webrtc:operate'
-  | 'alcantara:upload:create';
+type PermissionLeaf<T> = T extends string
+  ? T
+  : T extends Record<PropertyKey, unknown>
+    ? PermissionLeaf<T[keyof T]>
+    : never;
+
+export type AlcantaraPermission = PermissionLeaf<
+  typeof ALCANTARA_PERMISSIONS
+>;
