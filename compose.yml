@@ -2,6 +2,22 @@
 name: alcantara-local
 
 services:
+  livekit:
+    image: livekit/livekit-server:v1.13.4
+    command: ['--config', '/etc/livekit.yaml', '--bind', '0.0.0.0']
+    volumes:
+      - ./infra/livekit.dev.yaml:/etc/livekit.yaml:ro
+    ports:
+      - '7880:7880'
+      - '7881:7881'
+      - '7882:7882/udp'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:7880 || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   alcantara-postgres:
     image: postgres:17-alpine
     environment:
@@ -82,6 +98,12 @@ services:
       POMPEII_GRPC_TLS: 'false'
       AUTH_MODE: test
       TEST_AUTH_SECRET: alcantara-pompeii-local-test-secret-change-me
+      LIVEKIT_WS_URL: ws://localhost:7880
+      LIVEKIT_API_URL: http://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-devsecret
+      WEBRTC_SESSION_SECRET: alcantara-local-session-secret-change-me-now
+      WEBRTC_RENDERER_KEY: alcantara-local-renderer-secret-change-me-now
       CHOKIDAR_USEPOLLING: 'true'
     ports:
       - '${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}'
@@ -96,6 +118,8 @@ services:
         condition: service_healthy
       pompeii-seed:
         condition: service_completed_successfully
+      livekit:
+        condition: service_healthy
     healthcheck:
       test: ['CMD', 'node', '-e', "fetch('http://localhost:${BACKEND_PORT:-3000}/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 5s
