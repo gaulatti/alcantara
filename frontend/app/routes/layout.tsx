@@ -24,6 +24,7 @@ import {
   List,
   LogOut,
   Music,
+  PhoneCall,
   Radio,
   RefreshCw,
   SlidersHorizontal,
@@ -271,7 +272,17 @@ export default function Layout() {
     return uniqueProgramIds.filter(Boolean).map((programIdValue) => {
       const program = programMap.get(programIdValue);
       const type = program?.type ?? 'tv';
-      const icon = type === 'radio' ? <Radio size={14} /> : type === 'both' ? <><Tv size={14} /><Radio size={14} /></> : <Tv size={14} />;
+      const icon =
+        type === 'radio' ? (
+          <Radio size={14} />
+        ) : type === 'both' ? (
+          <>
+            <Tv size={14} />
+            <Radio size={14} />
+          </>
+        ) : (
+          <Tv size={14} />
+        );
       return {
         label: programIdValue,
         value: programIdValue,
@@ -286,6 +297,7 @@ export default function Layout() {
     { href: '/instants', label: 'Instants' },
     { href: '/songs', label: 'Songs' },
     { href: '/media', label: 'Media' },
+    { href: '/calls', label: 'Guest Calls' },
     { href: '/scenes', label: 'Scenes' },
     { href: '/programs', label: 'Programs' },
     { href: '/preview', label: 'Preview' },
@@ -301,6 +313,7 @@ export default function Layout() {
         { href: '/instants', label: 'Instants' },
         { href: '/songs', label: 'Songs' },
         { href: '/media', label: 'Media' },
+        { href: '/calls', label: 'Guest Calls' },
         { href: '/scenes', label: 'Scenes' },
         { href: '/programs', label: 'Programs' }
       ].filter((item) => hasPermission(routePermission(item.href)))
@@ -438,6 +451,14 @@ export default function Layout() {
         onSelect: () => navigate('/media')
       },
       {
+        id: 'nav-calls',
+        title: 'Go to Guest Calls',
+        description: 'Invite and direct remote contributors',
+        group: 'Navigation',
+        icon: <PhoneCall size={16} />,
+        onSelect: () => navigate('/calls')
+      },
+      {
         id: 'nav-programs',
         title: 'Go to Programs',
         description: 'Manage create/edit/delete for programs',
@@ -525,9 +546,7 @@ export default function Layout() {
       {
         id: 'open-broadcast-time-override',
         title: 'Set Global Broadcast Time Override',
-        description: broadcastSettings?.timeOverrideEnabled
-          ? `Active from ${broadcastSettings.timeOverrideStartTime || '--:--'}`
-          : 'Disabled (clocks use live timezone time)',
+        description: broadcastSettings?.timeOverrideEnabled ? `Active from ${broadcastSettings.timeOverrideStartTime || '--:--'}` : 'Disabled (clocks use live timezone time)',
         group: 'Broadcast',
         icon: <Clock3 size={16} />,
         keywords: ['clock', 'time override', 'broadcast time', 'global'],
@@ -582,7 +601,10 @@ export default function Layout() {
         const activateRes = await fetch(apiUrl(`/program/${encodeURIComponent(selectedProgramId)}/activate`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sceneId: scene.id, transitionId: selectedTransition.id })
+          body: JSON.stringify({
+            sceneId: scene.id,
+            transitionId: selectedTransition.id
+          })
         });
         if (!activateRes.ok) {
           throw new Error(`Failed to activate scene (${activateRes.status})`);
@@ -739,9 +761,7 @@ export default function Layout() {
             Applies to all programs and scenes for clock widgets.
             <br />
             {broadcastSettings?.timeOverrideEnabled
-              ? `Active from ${broadcastSettings.timeOverrideStartTime || '--:--'} (started ${new Date(
-                  broadcastSettings.timeOverrideStartedAt || Date.now()
-                ).toLocaleString()})`
+              ? `Active from ${broadcastSettings.timeOverrideStartTime || '--:--'} (started ${new Date(broadcastSettings.timeOverrideStartedAt || Date.now()).toLocaleString()})`
               : 'Disabled (clocks use live timezone time).'}
           </p>
 

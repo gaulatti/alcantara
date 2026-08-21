@@ -14,4 +14,4 @@ COPY . .
 RUN pnpm run prisma:generate
 RUN pnpm run build
 
-CMD ["sh", "-c", "pnpm prisma db push && pnpm start:prod"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm start:prod"]
