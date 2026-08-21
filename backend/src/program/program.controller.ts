@@ -14,8 +14,8 @@ import { Observable } from 'rxjs';
 import { ProgramService } from './program.service';
 import { FlightService } from './flight.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
-import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import { RendererPublic } from '../auth/renderer-boundary';
 
 @Controller('program')
 @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
@@ -56,7 +56,7 @@ export class ProgramController {
   }
 
   @Get('broadcast-settings')
-  @Public()
+  @RendererPublic('broadcast-settings-read')
   async getBroadcastSettings() {
     // The service currently exposes a legacy loosely typed settings payload.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
@@ -92,25 +92,25 @@ export class ProgramController {
   }
 
   @Get(':programId/state')
-  @Public()
+  @RendererPublic('program-state-read')
   async getStateById(@Param('programId') programId: string) {
     return this.programService.getState(programId);
   }
 
   @Get(':programId/audio-bus')
-  @Public()
+  @RendererPublic('audio-bus-read')
   async getProgramAudioBusById(@Param('programId') programId: string) {
     return this.programService.getProgramAudioBus(programId);
   }
 
   @Get(':programId/audio-meter')
-  @Public()
+  @RendererPublic('audio-meter-read')
   async getProgramAudioMeterById(@Param('programId') programId: string) {
     return this.programService.getProgramAudioMeter(programId);
   }
 
   @Post(':programId/audio-meter')
-  @Public()
+  @RendererPublic('audio-meter-write')
   async updateProgramAudioMeterById(
     @Param('programId') programId: string,
     @Body()
@@ -125,7 +125,7 @@ export class ProgramController {
   }
 
   @Get(':programId/scene-instant')
-  @Public()
+  @RendererPublic('scene-instant-read')
   async getProgramSceneInstantById(@Param('programId') programId: string) {
     return this.programService.getProgramSceneInstantPlayback(programId);
   }
@@ -158,13 +158,13 @@ export class ProgramController {
   }
 
   @Get(':programId/song-playback')
-  @Public()
+  @RendererPublic('song-playback-read')
   async getProgramSongPlaybackById(@Param('programId') programId: string) {
     return this.programService.getProgramSongPlayback(programId);
   }
 
   @Post(':programId/song-playback')
-  @Public()
+  @RendererPublic('song-playback-write')
   async updateProgramSongPlaybackById(
     @Param('programId') programId: string,
     @Body()
@@ -181,7 +181,7 @@ export class ProgramController {
   }
 
   @Get('audio-proxy')
-  @Public()
+  @RendererPublic('audio-proxy-read')
   async proxyAudio(@Query('url') url: string): Promise<StreamableFile> {
     const proxied = await this.programService.proxyAudio(url);
     return new StreamableFile(proxied.buffer, {
@@ -191,7 +191,7 @@ export class ProgramController {
   }
 
   @Get('state')
-  @Public()
+  @RendererPublic('legacy-program-state-read')
   async getState() {
     return this.programService.getState();
   }
@@ -218,7 +218,7 @@ export class ProgramController {
   }
 
   @Get(':programId/media-groups')
-  @Public()
+  @RendererPublic('program-media-groups-read')
   async listProgramMediaGroups(@Param('programId') programId: string) {
     return this.programService.listProgramMediaGroups(programId);
   }
@@ -248,7 +248,7 @@ export class ProgramController {
   }
 
   @Get(':programId/stingers')
-  @Public()
+  @RendererPublic('program-stingers-read')
   async listProgramStingers(@Param('programId') programId: string) {
     return this.programService.listProgramStingers(programId);
   }
@@ -456,7 +456,7 @@ export class ProgramController {
   }
 
   @Sse(':programId/events')
-  @Public()
+  @RendererPublic('program-events-read')
   eventsById(
     @Param('programId') programId: string,
   ): Observable<{ data: string }> {
@@ -464,7 +464,7 @@ export class ProgramController {
   }
 
   @Sse('events')
-  @Public()
+  @RendererPublic('legacy-program-events-read')
   events(): Observable<{ data: string }> {
     return this.programService.getEventStream();
   }
