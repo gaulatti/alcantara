@@ -36,6 +36,7 @@ export interface ProgramState {
   activeScene?: Scene | null;
   stagedSceneId?: number | null;
   stagedScene?: Scene | null;
+  fadeToBlack: boolean;
   scenes: ProgramSceneEntry[];
   mediaGroups: ProgramMediaGroupEntry[];
 }

@@ -1,0 +1,3 @@
+ALTER TABLE "ProgramState"
+ADD COLUMN "stagedSceneId" INTEGER,
+ADD COLUMN "fadeToBlack" BOOLEAN NOT NULL DEFAULT false;
