@@ -192,9 +192,9 @@ export class SongExecutionEngine implements OnModuleInit {
     return s;
   }
 
-  private playNext(programId: string): void {
+  private playNext(programId: string): boolean {
     const state = this.states.get(programId);
-    if (!state?.sequence) return;
+    if (!state?.sequence) return false;
 
     let resolved: ProgramResolvedSongLeaf | null;
     if (state.sequence.mode === 'shuffle') {
@@ -206,7 +206,7 @@ export class SongExecutionEngine implements OnModuleInit {
       };
       resolved = resolveProgramSongLeaf(seq, Date.now());
     }
-    if (!resolved?.audioUrl) return;
+    if (!resolved?.audioUrl) return false;
 
     const dur =
       typeof resolved.durationMs === 'number' && resolved.durationMs > 0
@@ -236,6 +236,7 @@ export class SongExecutionEngine implements OnModuleInit {
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);
     this.setTimer(programId, dur);
+    return true;
   }
 
   private resolveShuffle(programId: string): ProgramResolvedSongLeaf | null {
@@ -266,16 +267,19 @@ export class SongExecutionEngine implements OnModuleInit {
       if (!s) return;
       this.handleSongEnded(programId);
       s.activeSong = null;
-      void this.nowPlayingPublisherService.publishStopped(programId);
       s.songCount++;
       void this.maybeBumper(programId).then(() => {
         const st = this.states.get(programId);
+        if (!st || st.activeSong) return;
+
         if (
-          st?.sequence &&
+          st.sequence &&
           (st.sequence.mode === 'autoplay' || st.sequence.mode === 'shuffle')
         ) {
-          this.playNext(programId);
+          if (this.playNext(programId)) return;
         }
+
+        void this.nowPlayingPublisherService.publishStopped(programId);
       });
     }, durationMs);
   }
