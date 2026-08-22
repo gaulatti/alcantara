@@ -1,78 +1,63 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api } from '../../services/api';
+import axios from 'axios';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { api } from '../services/api';
 
-export type FeatureLevel = 'C' | 'T1' | 'T2' | 'T3';
-
-export interface UserContext {
-  features?: Record<string, { level: FeatureLevel }>;
-  membership?: any;
+export interface AuthorizationContext {
+  permissions: string[];
+  roles: string[];
+  teamId: number;
 }
 
+type AuthorizationStatus = 'loading' | 'ready' | 'unauthenticated' | 'denied' | 'unavailable';
+
 interface FeaturesContextValue {
-  context: UserContext | null;
-  loading: boolean;
-  hasFeature: (slug: string, minLevel?: FeatureLevel) => boolean;
+  context: AuthorizationContext | null;
+  status: AuthorizationStatus;
+  hasPermission: (permission: string) => boolean;
+  reload: () => void;
 }
 
 const FeaturesContext = createContext<FeaturesContextValue>({
   context: null,
-  loading: true,
-  hasFeature: () => false
+  status: 'loading',
+  hasPermission: () => false,
+  reload: () => undefined
 });
 
 export const useFeatures = () => useContext(FeaturesContext);
 
-// const levelValues: Record<FeatureLevel, number> = { C: 0, T1: 1, T2: 2, T3: 3 };
-
 export function FeaturesProvider({ children }: { children: ReactNode }) {
-  const [context, setContext] = useState<UserContext | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [context, setContext] = useState<AuthorizationContext | null>(null);
+  const [status, setStatus] = useState<AuthorizationStatus>('loading');
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
+    setStatus('loading');
+    void api.get<{ authorization?: AuthorizationContext }>('/auth/me').then((response) => {
+      if (!active) return;
+      const authorization = response.data.authorization ?? null;
+      setContext(authorization);
+      setStatus(authorization ? 'ready' : 'denied');
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setContext(null);
+      const code = axios.isAxiosError(error) ? error.response?.status : undefined;
+      setStatus(code === 401 ? 'unauthenticated' : code === 403 ? 'denied' : 'unavailable');
+    });
+    return () => { active = false; };
+  }, [revision]);
 
-    api
-      .get('/auth/me')
-      .then((res) => {
-        if (mounted) {
-          setContext(res.data.context || {});
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load user context', err);
-        if (mounted) {
-          setContext(null);
-          setLoading(false);
-        }
-      });
+  const hasPermission = useCallback((permission: string) => (
+    context?.permissions.includes('*') === true || context?.permissions.includes(permission) === true
+  ), [context]);
+  const reload = useCallback(() => setRevision((value) => value + 1), []);
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const hasFeature = (slug: string, minLevel: FeatureLevel = 'C'): boolean => {
-    // Feature gating is temporarily disabled.
-    // Previous logic retained for easy rollback:
-    // if (!context?.features || !context.features[slug]) {
-    //   return false;
-    // }
-    // const userLevel = context.features[slug].level;
-    // return (levelValues[userLevel] ?? -1) >= levelValues[minLevel];
-    void slug;
-    void minLevel;
-    void context;
-    return true;
-  };
-
-  return <FeaturesContext.Provider value={{ context, loading, hasFeature }}>{children}</FeaturesContext.Provider>;
+  return <FeaturesContext.Provider value={{ context, status, hasPermission, reload }}>{children}</FeaturesContext.Provider>;
 }
 
-export function Can({ feature, level = 'C', children, fallback = null }: { feature: string; level?: FeatureLevel; children: ReactNode; fallback?: ReactNode }) {
-  const { hasFeature, loading } = useFeatures();
-
-  if (loading) return null;
-
-  return hasFeature(feature, level) ? <>{children}</> : <>{fallback}</>;
+export function Can({ permission, children, fallback = null }: { permission: string; children: ReactNode; fallback?: ReactNode }) {
+  const { status, hasPermission } = useFeatures();
+  if (status !== 'ready') return null;
+  return hasPermission(permission) ? <>{children}</> : <>{fallback}</>;
 }

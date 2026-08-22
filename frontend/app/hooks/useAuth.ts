@@ -1,4 +1,4 @@
-import { signOut } from 'aws-amplify/auth';
+import { clearSession } from '../services/session';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router';
 import { logout as logoutDispatcher } from '../state/dispatchers/auth';
@@ -11,7 +11,7 @@ const useLogout = () => {
 
   const logout = (): void => {
     if (isAuthenticated && isLoaded) {
-      signOut()
+      clearSession()
         .then(() => {
           dispatch(logoutDispatcher());
           navigate('/login');

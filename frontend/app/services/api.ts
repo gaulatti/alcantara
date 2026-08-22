@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import { fetchAuthSession } from 'aws-amplify/auth';
+import { getSession } from './session';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 
 export const api = axios.create({
@@ -12,8 +12,7 @@ export const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
+      const { token } = await getSession();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -29,8 +28,7 @@ export const authFetch = async (input: string, init?: RequestInit): Promise<Resp
   const headers = new Headers(init?.headers);
 
   try {
-    const session = await fetchAuthSession();
-    const token = session.tokens?.idToken?.toString();
+    const { token } = await getSession();
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
@@ -54,6 +52,9 @@ export const handleApiError = (error: unknown): string => {
     }
     if (error.response?.status === 403) {
       return 'Access denied';
+    }
+    if (error.response?.status === 503) {
+      return 'Authorization service unavailable. Please retry.';
     }
     if (error.response?.status === 500) {
       return 'Server error. Please try again later.';
