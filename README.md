@@ -141,6 +141,41 @@ the committed local credentials outside Compose.
   - Full Screen
   - Corner Bug
 
+#### Transitional renderer boundary (G-118)
+
+The Alana-owned Program renderer remains a trusted machine-runtime client while
+machine authentication is extracted in G-119. Alcantara exposes only the
+following renderer HTTP surface without an operator bearer token:
+
+| Direction  | Route                                                             | Renderer purpose                |
+| ---------- | ----------------------------------------------------------------- | ------------------------------- |
+| Read       | `GET /program/broadcast-settings`                                 | Audio and timing bootstrap      |
+| Read       | `GET /program/:programId/state` and legacy `GET /program/state`   | Active scene and Program state  |
+| Read       | `GET /program/:programId/audio-bus`                               | Audio-bus bootstrap             |
+| Read/write | `GET`/`POST /program/:programId/audio-meter`                      | Meter snapshot and telemetry    |
+| Read       | `GET /program/:programId/scene-instant`                           | Scene-instant playback restore  |
+| Read/write | `GET`/`POST /program/:programId/song-playback`                    | Song playback state             |
+| Read       | `GET /program/audio-proxy`                                        | Same-origin renderer audio      |
+| Read       | `GET /program/:programId/media-groups`                            | Program media-group assignments |
+| Read       | `GET /program/:programId/stingers`                                | Program stinger preload         |
+| Read       | `SSE /program/:programId/events` and legacy `SSE /program/events` | Program event stream            |
+| Read       | `GET /media-groups/:id`                                           | Active slideshow media          |
+| Read       | `GET /charts/sanremo-realtime`                                    | Renderer chart data             |
+
+The renderer WebSocket connects to
+`/program/ws?programId=<id>&role=program`. It may send only
+`audio_meter_update`, `song_playback_update`, and `song_ended`. The role never
+receives operator snapshots or operator event broadcasts, and all other inbound
+message types are rejected. Operator REST and realtime access continues through
+Cognito plus Pompeii permissions; `role=control` also requires a protected,
+single-use realtime ticket.
+
+This is an explicitly transitional trust boundary: the renderer role is
+self-declared and its two telemetry/playback writes are unauthenticated. Keep
+the renderer URL and runtime network exposure limited to the deployed broadcast
+environment until G-119 replaces this with machine authentication. Public
+guest/WebRTC endpoints are separate from this boundary and are unchanged.
+
 ### Control Page (`/control`)
 
 - Scene selection and activation

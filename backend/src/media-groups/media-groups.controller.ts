@@ -10,8 +10,8 @@ import {
 } from '@nestjs/common';
 import { MediaGroupsService } from './media-groups.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
-import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import { RendererPublic } from '../auth/renderer-boundary';
 
 @Controller('media-groups')
 @RequirePermission(ALCANTARA_PERMISSIONS.media.read)
@@ -36,7 +36,7 @@ export class MediaGroupsController {
   }
 
   @Get(':id')
-  @Public()
+  @RendererPublic('media-group-read')
   async findOne(@Param('id') id: string) {
     return this.mediaGroupsService.findOne(Number(id));
   }

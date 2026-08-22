@@ -6,6 +6,7 @@ import type { RawData } from 'ws';
 import { ProgramService } from './program.service';
 import { FlightService } from './flight.service';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
+import { isRendererRealtimeInboundType } from '../auth/renderer-boundary';
 
 type ProgramRealtimeRole = 'program' | 'control' | 'unknown';
 
@@ -448,6 +449,16 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       return;
     }
 
+    if (
+      client.role === 'program' &&
+      !isRendererRealtimeInboundType(payload.type)
+    ) {
+      this.logger.warn(
+        `Rejected renderer realtime message: role=${client.role} programId=${client.programId} type=${String(payload.type)}`,
+      );
+      return;
+    }
+
     if (payload.type === 'audio_meter_update') {
       if (client.role !== 'program') {
         return;
@@ -516,6 +527,10 @@ export class ProgramRealtimeService implements OnModuleDestroy {
 
     if (Array.isArray(rawData)) {
       return Buffer.concat(rawData).toString('utf8');
+    }
+
+    if (rawData instanceof ArrayBuffer) {
+      return Buffer.from(rawData).toString('utf8');
     }
 
     return Buffer.from(rawData).toString('utf8');
