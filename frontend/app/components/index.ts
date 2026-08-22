@@ -12,6 +12,8 @@ export { ToniLogo } from './ToniLogo';
 export { Earone } from './Earone';
 export { ModoItalianoClock } from './ModoItalianoClock';
 export { ModoItalianoChyron } from './ModoItalianoChyron';
+export { ModoItalianoGiorgiaClock } from './ModoItalianoGiorgiaClock';
+export { ModoItalianoGiorgiaChyron } from './ModoItalianoGiorgiaChyron';
 export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
 export { ModoItalianoBracket } from './ModoItalianoBracket';
 export { ModoItalianoPodcastPlayer } from './ModoItalianoPodcastPlayer';

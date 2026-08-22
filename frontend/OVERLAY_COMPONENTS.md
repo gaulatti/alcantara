@@ -4,6 +4,8 @@ This document describes the Toni-style broadcast overlay components available in
 
 These components use the visual language from **fifthbell/toni**: dark backgrounds, brand red accents, and a compact broadcast-style layout.
 
+The Modo Italiano Giorgia variants use the Giorgia editorial language: deep navy surfaces, signal magenta (`#ed0076`), hard rectangular geometry, the white MI mark, and Barlow Condensed display typography.
+
 All components are designed for a **1920 × 1080** broadcast canvas.
 
 ---
@@ -76,6 +78,39 @@ import { ToniLogo } from '~/components';
 
 No visible text is rendered by the current component. The visible output is the rotating image stack.
 
+### `ModoItalianoGiorgiaClock`
+
+A separate Giorgia-branded clock and now-playing overlay. It keeps the original Modo Italiano clock geometry, paired lower-third placement, cover treatment, world-clock rotation, program audio-bus integration, song-sequence support, and playback progress. The variant changes only the visual language: deep navy, signal magenta, and Giorgia typography.
+
+```tsx
+import { ModoItalianoGiorgiaClock } from '~/components';
+
+<ModoItalianoGiorgiaClock
+  programId="modoitaliano"
+  showWorldClocks
+  showLogo
+  showPlaybackProgress
+/>
+```
+
+Use the component type `modoitaliano-giorgia-clock`. Its configurable scene attributes match `modoitaliano-clock`: `showWorldClocks`, `showLogo`, and `showPlaybackProgress`.
+
+### `ModoItalianoGiorgiaChyron`
+
+A separate Giorgia-branded editorial lower third with a hard-edged navy panel, signal-magenta rule, and condensed editorial typography. It preserves the existing manual, autoplay, nested-sequence, CTA, and explicit-marquee behavior without adding a second logo. When paired with the Giorgia clock, the MI mark appears only in the clock.
+
+```tsx
+import { ModoItalianoGiorgiaChyron } from '~/components';
+
+<ModoItalianoGiorgiaChyron
+  show
+  textSequence={textSequence}
+  ctaSequence={ctaSequence}
+/>
+```
+
+Use the component type `modoitaliano-giorgia-chyron`. Configure it with the same program chyron editor used by `modoitaliano-chyron`.
+
 ---
 
 ## Overlay Route
@@ -99,6 +134,8 @@ The components are available as named component types in the dynamic program ren
 | `toni-chyron` | `text`, `useMarquee` |
 | `toni-clock` | — |
 | `toni-logo` | `callsign`, `subtitle` (used for image alt text only) |
+| `modoitaliano-giorgia-clock` | `showWorldClocks`, `showLogo`, `showPlaybackProgress` |
+| `modoitaliano-giorgia-chyron` | `show`, `textSequence`, `ctaSequence` |
 
 Example scene metadata:
 
@@ -119,6 +156,7 @@ For the current Toni components:
 - `ToniChyron` uses `Encode Sans`.
 - `ToniClock` currently uses a system sans stack.
 - `ToniLogo` is image-based.
+- `ModoItalianoGiorgiaClock` and `ModoItalianoGiorgiaChyron` use `Barlow Condensed` with the shared global fallback stack.
 
 ---
 

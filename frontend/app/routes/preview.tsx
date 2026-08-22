@@ -10,12 +10,30 @@ import {
   Ticker,
   RelojLoopClock,
   RelojDigitalLoopClock,
-  RelojClone
+  RelojClone,
+  ModoItalianoGiorgiaClock,
+  ModoItalianoGiorgiaChyron
 } from '../components';
 import { OVERLAY_COMPONENTS, getComponentMetadata } from '../models/components';
 
 const STAGE_CLASS = 'relative min-h-screen bg-deep-sea';
 const STAGE_CENTER_CLASS = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-white';
+const GIORGIA_TEXT_SEQUENCE = {
+  mode: 'manual',
+  items: [{ id: 'giorgia-preview-headline', kind: 'preset', text: 'La musica italiana, senza compromessi', useMarquee: false }],
+  activeItemId: 'giorgia-preview-headline',
+  intervalMs: 4000,
+  loop: true,
+  startedAt: 0
+};
+const GIORGIA_CTA_SEQUENCE = {
+  mode: 'manual',
+  items: [{ id: 'giorgia-preview-cta', kind: 'preset', text: 'In diretta da Sanremo' }],
+  activeItemId: 'giorgia-preview-cta',
+  intervalMs: 4000,
+  loop: true,
+  startedAt: 0
+};
 
 export default function Preview() {
   const [activeDemo, setActiveDemo] = useState<string>('ticker');
@@ -100,6 +118,25 @@ export default function Preview() {
         return (
           <div className={`${STAGE_CLASS}`}>
             <RelojClone />
+          </div>
+        );
+      case 'modoitaliano-giorgia-clock':
+        return (
+          <div className={`${STAGE_CLASS}`}>
+            <ModoItalianoGiorgiaClock
+              programId='giorgia-preview'
+              playingSong
+              songTitle='La cura per me'
+              songArtist='Giorgia'
+              songCoverUrl='/cover.jpg'
+              showPlaybackProgress={false}
+            />
+          </div>
+        );
+      case 'modoitaliano-giorgia-chyron':
+        return (
+          <div className={`${STAGE_CLASS}`}>
+            <ModoItalianoGiorgiaChyron show textSequence={GIORGIA_TEXT_SEQUENCE} ctaSequence={GIORGIA_CTA_SEQUENCE} />
           </div>
         );
       default:

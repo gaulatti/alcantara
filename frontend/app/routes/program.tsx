@@ -17,6 +17,8 @@ import {
   Earone,
   ModoItalianoClock,
   ModoItalianoChyron,
+  ModoItalianoGiorgiaClock,
+  ModoItalianoGiorgiaChyron,
   ModoItalianoDisclaimer,
   ModoItalianoBracket,
   ModoItalianoPodcastPlayer,
@@ -2033,6 +2035,8 @@ function SceneProgram({ programId }: { programId: string }) {
     } as Record<string, unknown>;
     const hasProgramClockComponent = components.includes('modoitaliano-clock');
     const hasProgramChyronComponent = components.includes('modoitaliano-chyron');
+    const hasGiorgiaClockComponent = components.includes('modoitaliano-giorgia-clock');
+    const hasGiorgiaChyronComponent = components.includes('modoitaliano-giorgia-chyron');
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
     const hasCronicaChyronComponent = components.includes('cronica-chyron');
     const hasProgramBracketComponent = components.includes('modoitaliano-bracket');
@@ -2044,7 +2048,9 @@ function SceneProgram({ programId }: { programId: string }) {
         hasCronicaChyronComponent ||
         hasProgramBracketComponent ||
         hasProgramPodcastPlayerComponent);
+    const shouldRenderGiorgiaProgramRow = hasGiorgiaClockComponent && hasGiorgiaChyronComponent;
     const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
+    const modoItalianoGiorgiaChyronProps = metadata['modoitaliano-giorgia-chyron'] || {};
     const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
     const toBoolean = (value: unknown, fallback: boolean): boolean => {
       if (typeof value === 'boolean') return value;
@@ -2286,6 +2292,38 @@ function SceneProgram({ programId }: { programId: string }) {
                     ctaSequence={props.ctaSequence}
                   />
                 );
+              case 'modoitaliano-giorgia-clock':
+                if (shouldRenderGiorgiaProgramRow) {
+                  return null;
+                }
+                return (
+                  <ModoItalianoGiorgiaClock
+                    key={componentType}
+                    programId={programId}
+                    timeOverride={globalTimeOverride}
+                    transitionDurationMs={300}
+                    shuffleCities={false}
+                    widthPx={220}
+                    showWorldClocks={toBoolean(props.showWorldClocks, true)}
+                    showLogo={toBoolean(props.showLogo, true)}
+                    showPlaybackProgress={toBoolean(props.showPlaybackProgress, true)}
+                    showBellIcon={false}
+                    songSequence={audioBusSettings?.songSequence}
+                    language='es'
+                  />
+                );
+              case 'modoitaliano-giorgia-chyron':
+                if (shouldRenderGiorgiaProgramRow) {
+                  return null;
+                }
+                return (
+                  <ModoItalianoGiorgiaChyron
+                    key={componentType}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    textSequence={props.textSequence}
+                    ctaSequence={props.ctaSequence}
+                  />
+                );
               case 'modoitaliano-disclaimer':
                 if (shouldRenderProgramRow) {
                   return null;
@@ -2413,6 +2451,34 @@ function SceneProgram({ programId }: { programId: string }) {
                 showWorldClocks={toBoolean(metadata['modoitaliano-clock']?.showWorldClocks, true)}
                 showLogo={toBoolean(metadata['modoitaliano-clock']?.showLogo, true)}
                 showPlaybackProgress={toBoolean(metadata['modoitaliano-clock']?.showPlaybackProgress, true)}
+                showBellIcon={false}
+                songSequence={audioBusSettings?.songSequence}
+                language='es'
+                inline
+              />
+            </div>
+          </div>
+        )}
+        {shouldRenderGiorgiaProgramRow && (
+          <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
+            <div className='flex-1 min-w-0'>
+              <ModoItalianoGiorgiaChyron
+                show={toBoolean(modoItalianoGiorgiaChyronProps.show, true)}
+                textSequence={modoItalianoGiorgiaChyronProps.textSequence}
+                ctaSequence={modoItalianoGiorgiaChyronProps.ctaSequence}
+                inline
+              />
+            </div>
+            <div className='shrink-0'>
+              <ModoItalianoGiorgiaClock
+                programId={programId}
+                timeOverride={globalTimeOverride}
+                transitionDurationMs={300}
+                shuffleCities={false}
+                widthPx={220}
+                showWorldClocks={toBoolean(metadata['modoitaliano-giorgia-clock']?.showWorldClocks, true)}
+                showLogo={toBoolean(metadata['modoitaliano-giorgia-clock']?.showLogo, true)}
+                showPlaybackProgress={toBoolean(metadata['modoitaliano-giorgia-clock']?.showPlaybackProgress, true)}
                 showBellIcon={false}
                 songSequence={audioBusSettings?.songSequence}
                 language='es'

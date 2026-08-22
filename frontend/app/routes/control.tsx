@@ -2252,6 +2252,7 @@ export default function Control() {
       case 'reloj-digital-loop-clock':
         return { ...base, textSequence: createProgramTextSequence('manual'), ctaSequence: createProgramTextSequence('manual') };
       case 'modoitaliano-chyron':
+      case 'modoitaliano-giorgia-chyron':
         return { ...base, textSequence: createProgramTextSequence('manual', { includeMarquee: true }), ctaSequence: createProgramTextSequence('manual') };
       case 'fifthbell-content':
         return { ...base, weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES] };

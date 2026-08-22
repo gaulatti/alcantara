@@ -510,10 +510,12 @@ export function ComponentPropsFields({
         <ToniChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
     case 'modoitaliano-chyron':
+    case 'modoitaliano-giorgia-chyron':
       return (
         <ProgramChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
       );
     case 'modoitaliano-clock':
+    case 'modoitaliano-giorgia-clock':
       return (
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
