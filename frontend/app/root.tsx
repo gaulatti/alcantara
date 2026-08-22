@@ -6,8 +6,11 @@ import 'aws-amplify/auth/enable-oauth-listener';
 import type { Route } from './+types/root';
 import './app.css';
 import './services/auth';
+import { installAuthenticatedFetch } from './services/authenticatedFetch';
 import AuthListener from './components/common/AuthListener';
 import { getStore } from './state';
+
+installAuthenticatedFetch();
 
 export const links: Route.LinksFunction = () => [
   { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
