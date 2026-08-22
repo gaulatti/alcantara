@@ -7,6 +7,7 @@
     "assets": [
       {
         "include": "proto/*.proto",
+        "outDir": "dist/src",
         "watchAssets": true
       }
     ]
