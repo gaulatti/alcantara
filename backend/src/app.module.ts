@@ -15,6 +15,7 @@ import { StingersModule } from './stingers/stingers.module';
 import { RadioModule } from './radio/radio.module';
 import { AuthModule } from './auth/auth.module';
 import { TestAuthController } from './auth/test-auth.controller';
+import { WebrtcModule } from './webrtc/webrtc.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TestAuthController } from './auth/test-auth.controller';
     MediaGroupsModule,
     StingersModule,
     RadioModule,
+    WebrtcModule,
   ],
   controllers: [AppController, TestAuthController],
   providers: [AppService],

@@ -52,7 +52,10 @@ export function ComponentPropsFields({
 }) {
   const timezoneOptions = useMemo(() => {
     const baseDate = new Date();
-    return getTimezonesSortedByOffset(baseDate).map((tz) => ({ value: tz, label: getTimezoneOptionLabel(tz, baseDate) }));
+    return getTimezonesSortedByOffset(baseDate).map((tz) => ({
+      value: tz,
+      label: getTimezoneOptionLabel(tz, baseDate)
+    }));
   }, []);
 
   switch (componentType) {
@@ -125,15 +128,7 @@ export function ComponentPropsFields({
     case 'toni-logo':
       return <p className='text-xs text-text-secondary italic'>No configurable attributes.</p>;
     case 'slideshow':
-      return (
-        <SlideshowEditorFields
-          componentType={componentType}
-          props={props}
-          updateProp={updateProp}
-          mediaGroups={mediaGroups}
-          isLoadingMediaGroups={isLoadingMediaGroups}
-        />
-      );
+      return <SlideshowEditorFields componentType={componentType} props={props} updateProp={updateProp} mediaGroups={mediaGroups} isLoadingMediaGroups={isLoadingMediaGroups} />;
     case 'video-stream':
       return (
         <div className='space-y-3'>
@@ -173,21 +168,11 @@ export function ComponentPropsFields({
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.autoPlay, true)}
-                onChange={(e) => updateProp(componentType, 'autoPlay', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.autoPlay, true)} onChange={(e) => updateProp(componentType, 'autoPlay', e.target.checked)} className='h-4 w-4' />
               Autoplay
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.loop, false)}
-                onChange={(e) => updateProp(componentType, 'loop', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.loop, false)} onChange={(e) => updateProp(componentType, 'loop', e.target.checked)} className='h-4 w-4' />
               Loop
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
@@ -201,6 +186,45 @@ export function ComponentPropsFields({
             </label>
           </div>
           <p className='text-xs text-text-secondary'>Audio is controlled by mixer Song + Main faders (including mute/solo behavior).</p>
+        </div>
+      );
+    case 'webrtc-guest':
+      return (
+        <div className='grid gap-3 sm:grid-cols-3'>
+          <label className='text-sm text-text-primary'>
+            <span className='mb-1 block text-xs text-text-secondary'>Reusable guest slot</span>
+            <Select
+              value={String(typeof props.slotNumber === 'number' ? props.slotNumber : 1)}
+              onChange={(value) => updateProp(componentType, 'slotNumber', Number(value))}
+              options={Array.from({ length: 6 }, (_, index) => ({
+                value: String(index + 1),
+                label: `Guest ${index + 1}`
+              }))}
+            />
+          </label>
+          <label className='text-sm text-text-primary'>
+            <span className='mb-1 block text-xs text-text-secondary'>Fit</span>
+            <Select
+              value={props.objectFit === 'contain' ? 'contain' : 'cover'}
+              onChange={(value) => updateProp(componentType, 'objectFit', value)}
+              options={[
+                { value: 'cover', label: 'Cover' },
+                { value: 'contain', label: 'Contain' }
+              ]}
+            />
+          </label>
+          <label className='flex items-center gap-2 self-end pb-2 text-sm text-text-primary'>
+            <Input
+              type='checkbox'
+              checked={toBoolean(props.showStatus, true)}
+              onChange={(event) => updateProp(componentType, 'showStatus', event.target.checked)}
+              className='h-4 w-4'
+            />
+            Show offline state
+          </label>
+          <p className='sm:col-span-3 text-xs text-text-secondary'>
+            Layouts stay bound to this generic slot. Assign or replace a guest from the Calls console without rebuilding the composition.
+          </p>
         </div>
       );
     case 'stream-wall': {
@@ -343,21 +367,11 @@ export function ComponentPropsFields({
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.showPeriod, true)}
-                onChange={(e) => updateProp(componentType, 'showPeriod', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.showPeriod, true)} onChange={(e) => updateProp(componentType, 'showPeriod', e.target.checked)} className='h-4 w-4' />
               Show Period
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.showClock, true)}
-                onChange={(e) => updateProp(componentType, 'showClock', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.showClock, true)} onChange={(e) => updateProp(componentType, 'showClock', e.target.checked)} className='h-4 w-4' />
               Show Clock
             </label>
           </div>
@@ -410,12 +424,7 @@ export function ComponentPropsFields({
           </div>
           <div className='col-span-2'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.showChyron, false)}
-                onChange={(e) => updateProp(componentType, 'showChyron', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.showChyron, false)} onChange={(e) => updateProp(componentType, 'showChyron', e.target.checked)} className='h-4 w-4' />
               Show Chyron
             </label>
           </div>
@@ -506,13 +515,9 @@ export function ComponentPropsFields({
       );
     case 'toni-chyron':
     case 'fifthbell-chyron':
-      return (
-        <ToniChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
-      );
+      return <ToniChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />;
     case 'modoitaliano-chyron':
-      return (
-        <ProgramChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />
-      );
+      return <ProgramChyronEditorFields componentType={componentType} props={props} updateProp={updateProp} replaceProps={replaceProps} commitProps={commitProps} />;
     case 'modoitaliano-clock':
       return (
         <div className='space-y-4'>
@@ -527,12 +532,7 @@ export function ComponentPropsFields({
               Show World Clocks
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.showLogo, true)}
-                onChange={(e) => updateProp(componentType, 'showLogo', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.showLogo, true)} onChange={(e) => updateProp(componentType, 'showLogo', e.target.checked)} className='h-4 w-4' />
               Show Logo
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
@@ -667,12 +667,7 @@ export function ComponentPropsFields({
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
-                checked={toBoolean(props.show, true)}
-                onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
-                className='h-4 w-4'
-              />
+              <Input type='checkbox' checked={toBoolean(props.show, true)} onChange={(e) => updateProp(componentType, 'show', e.target.checked)} className='h-4 w-4' />
               Show Disclaimer
             </label>
             <label className='text-sm text-text-primary'>
@@ -831,9 +826,7 @@ export function ComponentPropsFields({
       const supportsMarquee = componentType === 'fifthbell' || componentType === 'fifthbell-marquee';
       const selectedWeatherCities = Array.isArray(props.weatherCities) ? props.weatherCities.filter((c: unknown): c is string => typeof c === 'string') : [];
       const selectedCitySet = new Set(selectedWeatherCities);
-      const languageRotation = Array.isArray(props.languageRotation)
-        ? props.languageRotation.filter((l: unknown): l is string => typeof l === 'string')
-        : ['en', 'es', 'en', 'it'];
+      const languageRotation = Array.isArray(props.languageRotation) ? props.languageRotation.filter((l: unknown): l is string => typeof l === 'string') : ['en', 'es', 'en', 'it'];
 
       return (
         <div className='space-y-4'>
