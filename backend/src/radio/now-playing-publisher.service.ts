@@ -86,8 +86,22 @@ export class NowPlayingPublisherService {
     programId: string,
     playback: SongPlaybackData,
   ): Promise<void> {
+    this.logger.log(
+      `Now-playing playback event for ${programId}: ${JSON.stringify({
+        title: playback.title,
+        artist: playback.artist,
+        startedAt: playback.startedAt,
+        durationMs: playback.durationMs,
+      })}`,
+    );
+
     const consumers = await this.getProgramConsumers(programId);
-    if (!consumers.length) return;
+    if (!consumers.length) {
+      this.logger.warn(
+        `Now-playing publish skipped for ${programId}: no enabled consumers`,
+      );
+      return;
+    }
 
     const payload: NowPlayingPublisherPayload = {};
     if (playback.title) payload.title = playback.title;
@@ -102,8 +116,15 @@ export class NowPlayingPublisherService {
   }
 
   async publishStopped(programId: string): Promise<void> {
+    this.logger.log(`Now-playing stopped event for ${programId}`);
+
     const consumers = await this.getProgramConsumers(programId);
-    if (!consumers.length) return;
+    if (!consumers.length) {
+      this.logger.warn(
+        `Now-playing publish skipped for ${programId}: no enabled consumers`,
+      );
+      return;
+    }
 
     await this.publishToConsumers(programId, consumers, { status: 'stopped' });
   }
@@ -168,6 +189,10 @@ export class NowPlayingPublisherService {
     consumer: NowPlayingConsumerConfig,
     payload: NowPlayingPublisherPayload,
   ): Promise<void> {
+    this.logger.log(
+      `Now-playing publish attempt for ${programId}/${consumer.name}: ${consumer.method} ${consumer.endpointUrl} ${JSON.stringify(payload)}`,
+    );
+
     let response: Response;
     try {
       response = await fetch(consumer.endpointUrl, {
@@ -185,7 +210,12 @@ export class NowPlayingPublisherService {
       return;
     }
 
-    if (response.ok) return;
+    if (response.ok) {
+      this.logger.log(
+        `Now-playing publish succeeded for ${programId}/${consumer.name}: ${response.status} ${response.statusText}`,
+      );
+      return;
+    }
 
     let responseBody = '';
     try {
