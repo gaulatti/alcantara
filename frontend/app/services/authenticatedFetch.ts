@@ -1,5 +1,6 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { getApiBaseUrl } from '../utils/apiBaseUrl';
+import { reportInvalidSession } from './session-events';
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 let installed = false;
@@ -18,17 +19,35 @@ const isBackendRequest = (input: RequestInfo | URL): boolean => {
 
 const authenticatedBackendFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const requestHeaders = input instanceof Request ? input.headers : undefined;
-  const headers = new Headers(init?.headers ?? requestHeaders);
 
-  try {
-    const session = await fetchAuthSession();
+  const send = async (forceRefresh = false): Promise<Response> => {
+    const attemptHeaders = new Headers(init?.headers ?? requestHeaders);
+    const session = await fetchAuthSession({ forceRefresh });
     const token = session.tokens?.idToken?.toString();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (!token) throw new Error('Authenticated session has no ID token');
+    attemptHeaders.set('Authorization', `Bearer ${token}`);
+    const requestInput = input instanceof Request ? input.clone() : input;
+    return nativeFetch(requestInput, { ...init, headers: attemptHeaders });
+  };
+
+  let response: Response;
+  try {
+    response = await send();
   } catch {
-    // Preserve the backend's normal unauthenticated response when no session exists.
+    reportInvalidSession();
+    return nativeFetch(input, init);
   }
 
-  return nativeFetch(input, { ...init, headers });
+  if (response.status !== 401) return response;
+
+  try {
+    const retried = await send(true);
+    if (retried.status === 401) reportInvalidSession();
+    return retried;
+  } catch {
+    reportInvalidSession();
+    return response;
+  }
 };
 
 export const installAuthenticatedFetch = (): void => {

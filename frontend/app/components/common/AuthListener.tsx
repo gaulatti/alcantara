@@ -1,14 +1,20 @@
 import { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
+import type { Dispatch } from 'redux';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { login, setAuthLoaded } from '../../state/dispatchers/auth';
+import { login, logout } from '../../state/dispatchers/auth';
+import type { ReduxAction } from '../../state/dispatchers/base';
 import { useAuthStatus } from '../../hooks/useAuth';
+import { SESSION_INVALID_EVENT } from '../../services/session-events';
 
 export default function AuthListener() {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<Dispatch<ReduxAction>>();
   const { isLoaded } = useAuthStatus();
 
   useEffect(() => {
+    const clearInvalidSession = () => dispatch(logout());
+    window.addEventListener(SESSION_INVALID_EVENT, clearInvalidSession);
+
     const checkSession = async () => {
       try {
         const session = await fetchAuthSession();
@@ -22,16 +28,19 @@ export default function AuthListener() {
           };
           dispatch(login(user));
         } else {
-          dispatch(setAuthLoaded());
+          clearInvalidSession();
         }
       } catch {
-        dispatch(setAuthLoaded());
+        clearInvalidSession();
       }
     };
 
     if (!isLoaded) {
-      checkSession();
+      void checkSession();
     }
+
+    return () =>
+      window.removeEventListener(SESSION_INVALID_EVENT, clearInvalidSession);
   }, [dispatch, isLoaded]);
 
   return null;

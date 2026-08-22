@@ -95,7 +95,9 @@ developing. Production ignores endpoint overrides and always uses the
 code-owned `api.pompeii.gaulatti.com:443` TLS endpoint with Gaulatti team `1`.
 The browser attaches its current Cognito ID token to every request targeting
 Alcantara's configured API origin; requests to external media and data sources
-remain unchanged.
+remain unchanged. A backend `401` triggers one forced Cognito session refresh;
+if the refreshed request is still unauthorized, Alcantara clears the persisted
+browser identity and returns the operator to login.
 To populate a slideshow, select its media group on the Media Groups tab, switch
 to Media Library, and use each image's add-to-group action. The selected group
 and its ordered membership remain active across the tab switch.
