@@ -57,6 +57,23 @@ type AuthorizationClientConstructor = new (
   channelCredentials: ChannelCredentials,
 ) => AuthorizationClient;
 
+export const PRODUCTION_POMPEII_GRPC_URL = 'api.pompeii.gaulatti.com:443';
+
+export function resolvePompeiiGrpcUrl(
+  nodeEnv: string | undefined,
+  localEndpoint: string | undefined,
+): string {
+  if (nodeEnv === 'production') {
+    return PRODUCTION_POMPEII_GRPC_URL;
+  }
+
+  const endpoint = localEndpoint?.trim();
+  if (!endpoint) {
+    throw new Error('POMPEII_GRPC_URL is required outside production');
+  }
+  return endpoint;
+}
+
 @Injectable()
 export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PompeiiService.name);
@@ -67,8 +84,11 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   readonly teamId: number;
 
   constructor(config: ConfigService) {
-    this.grpcUrl =
-      config.get<string>('POMPEII_GRPC_URL')?.trim() || 'localhost:50087';
+    this.isProduction = config.get<string>('NODE_ENV') === 'production';
+    this.grpcUrl = resolvePompeiiGrpcUrl(
+      config.get<string>('NODE_ENV'),
+      config.get<string>('POMPEII_GRPC_URL'),
+    );
     this.timeoutMs = this.positiveInteger(
       config.get<string>('POMPEII_GRPC_TIMEOUT_MS'),
       2_000,
@@ -77,7 +97,6 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
       config.get<string>('POMPEII_TEAM_ID'),
       0,
     );
-    this.isProduction = config.get<string>('NODE_ENV') === 'production';
     if (this.isProduction && this.teamId === 0) {
       throw new Error(
         'POMPEII_TEAM_ID must be an explicit positive integer in production',
@@ -99,7 +118,8 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
         };
       };
     };
-    const useTls = config.get<string>('POMPEII_GRPC_TLS') === 'true';
+    const useTls =
+      this.isProduction || config.get<string>('POMPEII_GRPC_TLS') === 'true';
     this.client = new loaded.pompeii.authorization.v1.AuthorizationService(
       this.grpcUrl,
       useTls ? credentials.createSsl() : credentials.createInsecure(),
