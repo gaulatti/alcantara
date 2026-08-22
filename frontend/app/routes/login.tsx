@@ -3,6 +3,7 @@ import { signInWithRedirect } from 'aws-amplify/auth';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuthStatus } from '../hooks/useAuth';
+import { getSession, isTestAuth } from '../services/session';
 import {
   cancelLoginRedirect,
   prepareLoginRedirect,
@@ -20,6 +21,10 @@ export default function Login() {
     if (!isLoaded) return;
     if (isAuthenticated) {
       navigate(takeLoginReturnPath() ?? returnPathFromSearch(location.search), { replace: true });
+      return;
+    }
+    if (isTestAuth()) {
+      void getSession().then(() => window.location.reload()).catch(() => setFailed(true));
       return;
     }
     if (!prepareLoginRedirect(location.search)) return;

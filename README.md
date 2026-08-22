@@ -2,6 +2,29 @@
 
 A professional TV broadcast overlay control system built with a modern tech stack.
 
+## Self-contained local development
+
+From this repository, `docker compose up --build` starts Alcantara PostgreSQL,
+Pompeii PostgreSQL, both migration paths, deterministic fictional seeds,
+Pompeii authorization, the Alcantara backend, and the frontend. The only
+one-time prerequisite is a sibling checkout at `../pompeii`; no Cognito, AWS,
+cloud database, production secret, or host process is used.
+
+The browser signs in automatically as the wildcard administrator and shows a
+`TEST AUTH` banner. Select another deterministic profile at startup with
+`VITE_TEST_AUTH_PROFILE=viewer|manager|operator|denied|admin docker compose up --build`.
+Every profile receives a 15-minute local token and still traverses Alcantara's
+normal bearer-token guard and Pompeii gRPC authorization decision.
+
+Local Compose uses the committed PostgreSQL baseline under
+`backend/prisma/local-migrations`; the older historical directory contains
+SQLite-era SQL and is not executed against the local PostgreSQL service.
+
+To destroy only this Compose project's local databases and reseed from empty
+volumes, run `docker compose down --volumes` followed by
+`docker compose up --build`. The seed operation is idempotent and runs on every
+start after Pompeii migrations complete.
+
 ## Tech Stack
 
 - **Frontend**: React Router v7 + Vite + Tailwind CSS

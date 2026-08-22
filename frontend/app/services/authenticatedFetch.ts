@@ -6,6 +6,7 @@ function isAlcantaraApiRequest(input: RequestInfo | URL): boolean {
   try {
     const raw = input instanceof Request ? input.url : input.toString();
     const requestUrl = new URL(raw, window.location.origin);
+    if (requestUrl.pathname.startsWith('/__test/')) return false;
     const apiUrl = new URL(getApiBaseUrl(), window.location.origin);
     if (requestUrl.origin !== apiUrl.origin) return false;
     const prefix = apiUrl.pathname.replace(/\/$/, '');
