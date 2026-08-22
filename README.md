@@ -93,6 +93,9 @@ Source directories are mounted so changes are reflected immediately.
 The backend uses the local `POMPEII_GRPC_URL` from `backend/.env` while
 developing. Production ignores endpoint overrides and always uses the
 code-owned `api.pompeii.gaulatti.com:443` TLS endpoint with Gaulatti team `1`.
+The browser attaches its current Cognito ID token to every request targeting
+Alcantara's configured API origin; requests to external media and data sources
+remain unchanged.
 
 Rebuild images after dependency changes:
 ```bash
