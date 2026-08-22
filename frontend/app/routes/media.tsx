@@ -538,6 +538,7 @@ export default function MediaRoute() {
 
     const updated = (await res.json()) as MediaGroup;
     setMediaGroups((prev) => prev.map((group) => (group.id === updated.id ? updated : group)));
+    setSelectedGroup(updated);
   };
 
   const addMediaToSelectedGroup = async (mediaId: number) => {
@@ -700,6 +701,18 @@ export default function MediaRoute() {
                               <h3 className='truncate text-sm font-semibold text-white drop-shadow-sm'>{item.name}</h3>
                             </div>
                             <div className='absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                              {selectedGroup && !selectedGroup.items.some((groupItem) => groupItem.mediaId === item.id) ? (
+                                <IconButton
+                                  onClick={() => {
+                                    void addMediaToSelectedGroup(item.id);
+                                  }}
+                                  className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
+                                  title={`Add ${item.name} to ${selectedGroup.name}`}
+                                  aria-label={`Add ${item.name} to ${selectedGroup.name}`}
+                                >
+                                  <Plus size={14} />
+                                </IconButton>
+                              ) : null}
                               <IconButton
                                 onClick={() => openEditMediaModal(item)}
                                 className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
