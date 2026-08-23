@@ -90,9 +90,10 @@ This builds and starts both services (ports configurable via `.env`):
 
 Source directories are mounted so changes are reflected immediately.
 
-The backend uses the local `POMPEII_GRPC_URL` from `backend/.env` while
-developing. Production ignores endpoint overrides and always uses the
-code-owned `api.pompeii.gaulatti.com:443` TLS endpoint with Gaulatti team `1`.
+The backend uses the code-owned `host.docker.internal:50087` endpoint while
+developing in Compose and the code-owned `api.pompeii.gaulatti.com:443` TLS
+endpoint in production with Gaulatti team `1`; no Pompeii endpoint variable is
+required.
 The browser attaches its current Cognito ID token to every request targeting
 Alcantara's configured API origin; requests to external media and data sources
 remain unchanged. A backend `401` triggers one forced Cognito session refresh;

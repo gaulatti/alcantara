@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import {
+  LOCAL_POMPEII_GRPC_URL,
   PRODUCTION_POMPEII_GRPC_URL,
   PompeiiService,
   resolvePompeiiGrpcUrl,
@@ -7,7 +8,7 @@ import {
 
 describe('PompeiiService production contract', () => {
   it('uses the code-owned production endpoint regardless of an override', () => {
-    expect(resolvePompeiiGrpcUrl('production', 'untrusted:50087')).toBe(
+    expect(resolvePompeiiGrpcUrl('production')).toBe(
       PRODUCTION_POMPEII_GRPC_URL,
     );
     expect(PRODUCTION_POMPEII_GRPC_URL).toBe(
@@ -15,20 +16,15 @@ describe('PompeiiService production contract', () => {
     );
   });
 
-  it('requires an explicit non-production endpoint', () => {
-    expect(resolvePompeiiGrpcUrl('development', 'localhost:50087')).toBe(
-      'localhost:50087',
-    );
-    expect(() => resolvePompeiiGrpcUrl('development', undefined)).toThrow(
-      'POMPEII_GRPC_URL is required outside production',
-    );
+  it('uses the code-owned local endpoint outside production', () => {
+    expect(resolvePompeiiGrpcUrl('development')).toBe(LOCAL_POMPEII_GRPC_URL);
+    expect(LOCAL_POMPEII_GRPC_URL).toBe('host.docker.internal:50087');
   });
 
   it('requires an explicit positive team in production', () => {
     const config = new ConfigService({
       NODE_ENV: 'production',
       POMPEII_TEAM_ID: '0',
-      POMPEII_GRPC_URL: 'untrusted:50087',
     });
 
     expect(() => new PompeiiService(config)).toThrow(

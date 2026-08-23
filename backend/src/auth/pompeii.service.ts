@@ -58,20 +58,15 @@ type AuthorizationClientConstructor = new (
 ) => AuthorizationClient;
 
 export const PRODUCTION_POMPEII_GRPC_URL = 'api.pompeii.gaulatti.com:443';
+export const LOCAL_POMPEII_GRPC_URL = 'host.docker.internal:50087';
 
 export function resolvePompeiiGrpcUrl(
   nodeEnv: string | undefined,
-  localEndpoint: string | undefined,
 ): string {
   if (nodeEnv === 'production') {
     return PRODUCTION_POMPEII_GRPC_URL;
   }
-
-  const endpoint = localEndpoint?.trim();
-  if (!endpoint) {
-    throw new Error('POMPEII_GRPC_URL is required outside production');
-  }
-  return endpoint;
+  return LOCAL_POMPEII_GRPC_URL;
 }
 
 @Injectable()
@@ -85,10 +80,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
 
   constructor(config: ConfigService) {
     this.isProduction = config.get<string>('NODE_ENV') === 'production';
-    this.grpcUrl = resolvePompeiiGrpcUrl(
-      config.get<string>('NODE_ENV'),
-      config.get<string>('POMPEII_GRPC_URL'),
-    );
+    this.grpcUrl = resolvePompeiiGrpcUrl(config.get<string>('NODE_ENV'));
     this.timeoutMs = this.positiveInteger(
       config.get<string>('POMPEII_GRPC_TIMEOUT_MS'),
       2_000,
@@ -118,11 +110,9 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
         };
       };
     };
-    const useTls =
-      this.isProduction || config.get<string>('POMPEII_GRPC_TLS') === 'true';
     this.client = new loaded.pompeii.authorization.v1.AuthorizationService(
       this.grpcUrl,
-      useTls ? credentials.createSsl() : credentials.createInsecure(),
+      this.isProduction ? credentials.createSsl() : credentials.createInsecure(),
     );
   }
 
