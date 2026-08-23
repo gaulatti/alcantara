@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
+  Radio,
   Trash2,
 } from 'lucide-react';
 import type { ProgramSongPlaybackState, SongCatalogItem, InstantItem } from '../models/broadcast';
@@ -32,6 +33,18 @@ interface RadioPanelProps {
 }
 
 interface StreamStatus { running: boolean; uptime: number; }
+
+interface PalazzoStatus {
+  programId: string;
+  programType: string;
+  palazzoUrl: string;
+  instanceId: string | null;
+  connection: 'connecting' | 'connected' | 'polling' | 'unavailable' | 'instance-mismatch' | 'instance-conflict';
+  lastEventAt: string | null;
+  lastSnapshotAt: string | null;
+  degraded: boolean;
+  detail: string | null;
+}
 
 interface RadioSettings {
   palazzoUrl: string;
@@ -72,6 +85,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   instantPlayback,
 }) => {
   const [stream, setStream] = useState<StreamStatus | null>(null);
+  const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(null);
   const [radioSettings, setRadioSettings] = useState<RadioSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -85,6 +99,20 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       const res = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/status`));
       if (res.ok) setStream(await res.json());
     } catch {}
+  }, [programId]);
+
+  const fetchPalazzoStatus = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/palazzo-status`));
+      if (res.ok) {
+        const data = await res.json();
+        setPalazzo(data || null);
+      } else {
+        setPalazzo(null);
+      }
+    } catch {
+      setPalazzo(null);
+    }
   }, [programId]);
 
   const fetchSettings = useCallback(async () => {
@@ -114,10 +142,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   }, [programId]);
 
   useEffect(() => {
-    fetchStreamStatus(); fetchSettings(); fetchNowPlayingConsumers();
+    fetchStreamStatus(); fetchSettings(); fetchNowPlayingConsumers(); fetchPalazzoStatus();
     const interval = setInterval(fetchStreamStatus, 8000);
-    return () => clearInterval(interval);
-  }, [fetchStreamStatus, fetchSettings, fetchNowPlayingConsumers]);
+    const palazzoInterval = setInterval(fetchPalazzoStatus, 8000);
+    return () => { clearInterval(interval); clearInterval(palazzoInterval); };
+  }, [fetchStreamStatus, fetchSettings, fetchNowPlayingConsumers, fetchPalazzoStatus]);
 
   const saveSettings = useCallback(async () => {
     if (!radioSettings) return;
@@ -254,6 +283,34 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     <span className='text-[11px] text-text-secondary font-mono'>{formatUptime(stream.uptime)}</span>
                   )}
                 </div>
+                {palazzo && (
+                  <div className='flex items-center gap-2' title={palazzo.detail ?? undefined}>
+                    {palazzo.connection === 'connected' || palazzo.connection === 'polling' ? (
+                      <span className={`flex items-center gap-1 text-[10px] font-mono font-bold tracking-wide px-1.5 py-0.5 rounded ${palazzo.degraded ? 'bg-amber-400/10 text-amber-300' : 'bg-green-400/10 text-green-400'}`}>
+                        <Radio className='h-3 w-3' />
+                        PALAZZO {palazzo.connection === 'polling' ? 'POLLING' : 'LIVE'}
+                        {palazzo.instanceId ? ` · ${palazzo.instanceId}` : ''}
+                      </span>
+                    ) : (
+                      <span className='flex items-center gap-1 text-[10px] font-mono font-bold tracking-wide px-1.5 py-0.5 rounded bg-red-400/10 text-red-400'>
+                        <WifiOff className='h-3 w-3' />
+                        PALAZZO {palazzo.connection === 'instance-mismatch' || palazzo.connection === 'instance-conflict'
+                          ? palazzo.connection === 'instance-conflict' ? 'CONFLICT' : 'MISMATCH'
+                          : 'OFFLINE'}
+                      </span>
+                    )}
+                    {palazzo.degraded && (
+                      <span className='text-[10px] font-mono font-bold tracking-wide px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300'>
+                        DEGRADED
+                      </span>
+                    )}
+                    {palazzo.lastEventAt && (
+                      <span className='text-[11px] text-text-secondary font-mono'>
+                        {formatUptime(Date.now() - Date.parse(palazzo.lastEventAt))} ago
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className='rounded-xl border border-sand/30 bg-dark-sand/70 p-4'>

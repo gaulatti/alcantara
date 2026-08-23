@@ -40,7 +40,6 @@ model ProgramState {
   activeScene            Scene?               @relation(fields: [activeSceneId], references: [id])
   songSequence           Json?
   shuffleOrder           Json?
-  engineState            Json?
   audioMixer             Json?
   activeFlightSequenceId Int?
   flightSequences        FlightSequence[]

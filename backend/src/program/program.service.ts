@@ -3086,6 +3086,25 @@ export class ProgramService implements OnModuleInit {
         });
         break;
       }
+      case 'radio_leg_status': {
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'radio_leg_status',
+          programId: normalizedProgramId,
+          status: event.status,
+        });
+        break;
+      }
+      case 'audio_levels': {
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'palazzo_audio_levels',
+          programId: normalizedProgramId,
+          levels: event.levels,
+          sampledAt: event.sampledAt,
+        });
+        break;
+      }
     }
   }
 

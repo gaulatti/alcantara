@@ -4,7 +4,7 @@ import type { SongPlaybackData } from './song-execution.engine';
 
 describe('NowPlayingPublisherService logging', () => {
   const playback: SongPlaybackData = {
-    token: 1,
+    token: '1',
     audioUrl: 'https://example.test/song.mp3',
     title: 'Test song',
     artist: 'Test artist',
@@ -15,6 +15,7 @@ describe('NowPlayingPublisherService logging', () => {
     progress: 0,
     startedAt: '2026-08-22T03:00:00.000Z',
     updatedAt: '2026-08-22T03:00:00.000Z',
+    telemetryStale: false,
   };
 
   afterEach(() => {
