@@ -5,4 +5,4 @@
 
 */
 -- AlterTable
-ALTER TABLE "ProgramState" DROP COLUMN "engineState";
+ALTER TABLE "ProgramState" DROP COLUMN IF EXISTS "engineState";

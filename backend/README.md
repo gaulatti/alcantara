@@ -62,9 +62,12 @@ $ pnpm run test:cov
 Production uses committed Prisma migrations. The deployment workflow runs
 `pnpm run db:migrate:deploy` in a one-shot container before replacing the live
 backend, and the image repeats the same idempotent command before application
-startup. Production never uses `prisma db push` or waits for interactive schema
-confirmation. CI applies the complete migration history twice against a fresh
-PostgreSQL database to verify both non-interactive execution and repeatability.
+startup. The command safely baselines recognized PostgreSQL databases that were
+previously created with `prisma db push`, then runs `prisma migrate deploy`.
+Fresh databases replay the PostgreSQL baseline normally. Production never uses
+`prisma db push` or waits for interactive schema confirmation. CI applies the
+complete migration history twice against a fresh PostgreSQL database to verify
+both non-interactive execution and repeatability.
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
