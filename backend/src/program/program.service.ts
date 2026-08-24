@@ -11,6 +11,7 @@ import { Subject, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
 import { RadioService } from '../radio/radio.service';
+import { toRadioMixerPayload } from '../radio/radio-mixer.utils';
 import {
   SongExecutionEngine,
   type SongEngineEvent,
@@ -1428,7 +1429,7 @@ export class ProgramService implements OnModuleInit {
 
     const currentState = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { songSequence: true, audioMixer: true },
+      select: { songSequence: true, audioMixer: true, type: true },
     });
     if (!currentState) {
       throw new Error('Program not found');
@@ -1478,6 +1479,15 @@ export class ProgramService implements OnModuleInit {
         nextMixerSettings,
       ),
     };
+    if (
+      hasMixerSettingsUpdate &&
+      (currentState.type === 'radio' || currentState.type === 'both')
+    ) {
+      await this.radioService.updateMixer(
+        normalizedProgramId,
+        toRadioMixerPayload(nextSettings.mixerSettings),
+      );
+    }
     const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
       type: 'audio_bus_update',
       programId: normalizedProgramId,

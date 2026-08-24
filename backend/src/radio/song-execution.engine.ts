@@ -330,14 +330,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): void {
     if (!this.isRadioCapable(programId)) return;
     const state = this.ensureState(programId);
-    const wasReconciled = state.reconciled;
     state.reconciled = true;
     state.frozen = false;
 
     if (snapshot.status === 'playing' && snapshot.track) {
       this.reconcilePlayingSnapshot(programId, state, snapshot);
     } else {
-      this.reconcileIdleSnapshot(programId, state, snapshot, wasReconciled);
+      this.reconcileIdleSnapshot(programId, state, snapshot);
     }
   }
 
@@ -483,7 +482,6 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     state: SongEngineState,
     snapshot: PalazzoPlaybackState,
-    wasReconciled: boolean,
   ): void {
     const requestId = state.activeSong?.playbackRequestId ?? null;
 
@@ -502,10 +500,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.busyWithForeignTrack = false;
     state.lastIdleSequence = snapshot.sequence;
 
-    if (!wasReconciled) {
-      // First snapshot after (re)connect: reconcile before deciding anything.
-      this.maybeStartSequence(programId);
-    }
+    // An idle authoritative snapshot is also the recovery boundary after a
+    // restart adopted an already-playing track as foreign. Auto modes may
+    // resume here; manual mode remains an explicit operator boundary.
+    this.maybeStartSequence(programId);
   }
 
   private handleAuthoritativeTrackEnded(
@@ -535,6 +533,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (!state.activeSong || state.activeSong.playbackRequestId !== requestId) {
       state.pendingRequestIds.delete(requestId);
       this.metrics.recordTrackTransition('ignored-no-active');
+      if (!state.activeSong && state.busyWithForeignTrack) {
+        state.busyWithForeignTrack = false;
+        this.maybeStartSequence(programId);
+      }
       return;
     }
 
@@ -576,6 +578,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private maybeStartSequence(programId: string): boolean {
     const state = this.states.get(programId);
     if (!state?.sequence) return false;
+    if (state.sequence.mode !== 'autoplay' && state.sequence.mode !== 'shuffle')
+      return false;
     if (state.activeSong || state.pendingRequestIds.size) return false;
     if (state.frozen) return false;
     if (this.isRadioCapable(programId)) {

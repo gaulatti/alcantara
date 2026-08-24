@@ -1,28 +1,51 @@
-import { Button, Input, Panel, PanelLayout } from '@gaulatti/bleecker';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useSSE } from '../hooks/useSSE';
-import { OVERLAY_COMPONENTS, getDefaultPropsForComponent as getStaticDefaultProps, hasConfigurableSceneAttributes } from '../models/components';
-import { apiUrl } from '../utils/apiBaseUrl';
-import { authFetch } from '../services/api';
-import { dbToFader, faderToGain } from '../utils/audioTaper';
-import { useGlobalProgramId } from '../utils/globalProgram';
-import { useGlobalTransitionId } from '../utils/globalTransition';
-import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
-import { acceptStageSceneResponse, type StageSceneResponse } from '../utils/stageSceneResponse';
+import { Button, Input, Panel, PanelLayout } from "@gaulatti/bleecker";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useSSE } from "../hooks/useSSE";
+import {
+  OVERLAY_COMPONENTS,
+  getDefaultPropsForComponent as getStaticDefaultProps,
+  hasConfigurableSceneAttributes,
+} from "../models/components";
+import { apiUrl } from "../utils/apiBaseUrl";
+import { authFetch } from "../services/api";
+import { dbToFader, faderToGain } from "../utils/audioTaper";
+import { useGlobalProgramId } from "../utils/globalProgram";
+import { useGlobalTransitionId } from "../utils/globalTransition";
+import { getProgramRealtimeSocketUrl } from "../utils/programRealtimeSocket";
+import {
+  acceptStageSceneResponse,
+  type StageSceneResponse,
+} from "../utils/stageSceneResponse";
 import {
   createProgramSongSequence,
   createProgramTextSequence,
   normalizeProgramSongSequence,
   type ProgramSongSequence,
-  type ProgramSongSequenceItem
-} from '../utils/programSequence';
-import type { Route } from './+types/control';
+  type ProgramSongSequenceItem,
+} from "../utils/programSequence";
+import type { Route } from "./+types/control";
 
-import { PanelColumn } from '../components/editors';
-import { PlaybackBar } from '../components/PlaybackBar';
-import { BroadcastSwitcherDeck, readStoredConsoleWorkspace, type ConsoleWorkspace } from '../components/BroadcastSwitcherDeck';
-import { RadioPanel } from '../components/RadioPanel';
-import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel, SceneAttributesPanel } from '../components/panels';
+import { PanelColumn } from "../components/editors";
+import { PlaybackBar } from "../components/PlaybackBar";
+import {
+  BroadcastSwitcherDeck,
+  readStoredConsoleWorkspace,
+  type ConsoleWorkspace,
+} from "../components/BroadcastSwitcherDeck";
+import { RadioPanel } from "../components/RadioPanel";
+import {
+  InstantsPanel,
+  PlaylistPanel,
+  PlaylistSheetPanel,
+  SceneAttributesPanel,
+} from "../components/panels";
 import type {
   BroadcastSettings,
   ComponentPropsMap,
@@ -46,8 +69,8 @@ import type {
   SceneAttributeSavePayload,
   SceneInstantPlaybackState,
   PaginatedResponse,
-  SongCatalogItem
-} from '../models/broadcast';
+  SongCatalogItem,
+} from "../models/broadcast";
 import {
   DEFAULT_MIXER_TAKE_APPLYING,
   DEFAULT_MIXER_TAKE_PRESETS_DB,
@@ -83,13 +106,15 @@ import {
   reconcileProgramSongPlayback,
   resolveControlUpdateTopicFromType,
   withIndependentProgramClockMetadata,
-  withNormalizedMixerChannels
-} from '../utils/broadcast';
+  withNormalizedMixerChannels,
+} from "../utils/broadcast";
 
-function flattenProgramSongItems(items: ProgramSongSequenceItem[]): Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] {
-  const flattened: Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] = [];
+function flattenProgramSongItems(
+  items: ProgramSongSequenceItem[],
+): Extract<ProgramSongSequenceItem, { kind: "preset" }>[] {
+  const flattened: Extract<ProgramSongSequenceItem, { kind: "preset" }>[] = [];
   for (const item of items) {
-    if (item.kind === 'preset') {
+    if (item.kind === "preset") {
       flattened.push(item);
       continue;
     }
@@ -98,12 +123,15 @@ function flattenProgramSongItems(items: ProgramSongSequenceItem[]): Extract<Prog
   return flattened;
 }
 
-function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSongSequence {
+function normalizeProgramSongPlaylist(
+  sequence: ProgramSongSequence,
+): ProgramSongSequence {
   const playlistItems = flattenProgramSongItems(sequence.items);
   const activeItemId =
     sequence.activeItemId === null
       ? null
-      : sequence.activeItemId && playlistItems.some((item) => item.id === sequence.activeItemId)
+      : sequence.activeItemId &&
+          playlistItems.some((item) => item.id === sequence.activeItemId)
         ? sequence.activeItemId
         : (playlistItems[0]?.id ?? null);
   return { ...sequence, items: playlistItems, activeItemId };
@@ -200,42 +228,50 @@ function MixerStrip({
   markerBorderClassName,
   markerTextClassName,
   showMarkerLabels = true,
-  combinedMarkerLineClassName = 'w-8',
-  combinedMarkerLabelOffsetClassName = '-right-6',
-  markerTrackClassName = 'w-8',
-  scaleClassName = 'text-zinc-500',
-  scalePositiveClassName
+  combinedMarkerLineClassName = "w-8",
+  combinedMarkerLabelOffsetClassName = "-right-6",
+  markerTrackClassName = "w-8",
+  scaleClassName = "text-zinc-500",
+  scalePositiveClassName,
 }: MixerStripProps) {
   return (
-    <div className={`flex ${widthClass} shrink-0 flex-col pb-3 ${stripClassName}`}>
-      <div className={`w-full rounded-t-lg border-b py-2.5 text-center ${headerClassName}`}>
-        <span className={`text-[11px] font-bold tracking-widest ${titleClassName}`}>{title}</span>
+    <div
+      className={`flex ${widthClass} shrink-0 flex-col pb-3 ${stripClassName}`}
+    >
+      <div
+        className={`w-full rounded-t-lg border-b py-2.5 text-center ${headerClassName}`}
+      >
+        <span
+          className={`text-[11px] font-bold tracking-widest ${titleClassName}`}
+        >
+          {title}
+        </span>
       </div>
 
-      <div className='mt-3 flex w-full gap-3 px-3'>
-        <div className='flex min-w-0 flex-1 flex-col gap-2'>
+      <div className="mt-3 flex w-full gap-3 px-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           {topPanel}
 
           {showMuteSolo ? (
-            <div className='flex gap-1.5'>
+            <div className="flex gap-1.5">
               <Button
-                type='button'
+                type="button"
                 onClick={onToggleMuted}
                 className={`flex h-8 flex-1 items-center justify-center rounded transition-all font-bold text-[10px] uppercase tracking-wider ${
                   muted
-                    ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]'
-                    : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
+                    ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]"
+                    : "border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700"
                 }`}
               >
                 M
               </Button>
               <Button
-                type='button'
+                type="button"
                 onClick={onToggleSolo}
                 className={`flex h-8 flex-1 items-center justify-center rounded transition-all font-bold text-[10px] uppercase tracking-wider ${
                   solo
-                    ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]'
-                    : 'border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700'
+                    ? "bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]"
+                    : "border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700"
                 }`}
               >
                 S
@@ -244,53 +280,67 @@ function MixerStrip({
           ) : null}
 
           {showPresets ? (
-            <div className='flex gap-2'>
-              <div className='flex flex-1 flex-col gap-1'>
-                <label className='text-[10px] font-mono text-sky-300'>
-                  <span className='block text-center'>A (dB)</span>
+            <div className="flex gap-2">
+              <div className="flex flex-1 flex-col gap-1">
+                <label className="text-[10px] font-mono text-sky-300">
+                  <span className="block text-center">A (dB)</span>
                   <Input
                     key={presetAKey}
-                    type='text'
-                    inputMode='decimal'
+                    type="text"
+                    inputMode="decimal"
                     defaultValue={formatTakePresetDbInputValue(presetADb)}
                     onBlur={(event) => {
                       const nextValue = onCommitPresetA(event.target.value);
-                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                      event.target.value =
+                        formatTakePresetDbInputValue(nextValue);
                     }}
-                    className='w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
+                    className="w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400"
                   />
                 </label>
-                <Button type='button' onClick={onTakeA} disabled={isTakingA} className='w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'>
+                <Button
+                  type="button"
+                  onClick={onTakeA}
+                  disabled={isTakingA}
+                  className="w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50"
+                >
                   TAKE A
                 </Button>
               </div>
-              <div className='flex flex-1 flex-col gap-1'>
-                <label className='text-[10px] font-mono text-amber-300'>
-                  <span className='block text-center'>B (dB)</span>
+              <div className="flex flex-1 flex-col gap-1">
+                <label className="text-[10px] font-mono text-amber-300">
+                  <span className="block text-center">B (dB)</span>
                   <Input
                     key={presetBKey}
-                    type='text'
-                    inputMode='decimal'
+                    type="text"
+                    inputMode="decimal"
                     defaultValue={formatTakePresetDbInputValue(presetBDb)}
                     onBlur={(event) => {
                       const nextValue = onCommitPresetB(event.target.value);
-                      event.target.value = formatTakePresetDbInputValue(nextValue);
+                      event.target.value =
+                        formatTakePresetDbInputValue(nextValue);
                     }}
-                    className='w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
+                    className="w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400"
                   />
                 </label>
-                <Button type='button' onClick={onTakeB} disabled={isTakingB} className='w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50'>
+                <Button
+                  type="button"
+                  onClick={onTakeB}
+                  disabled={isTakingB}
+                  className="w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50"
+                >
                   TAKE B
                 </Button>
               </div>
             </div>
           ) : null}
 
-          <div className={`flex h-9 w-full flex-col justify-center rounded border text-center ${levelContainerClassName}`}>
+          <div
+            className={`flex h-9 w-full flex-col justify-center rounded border text-center ${levelContainerClassName}`}
+          >
             <Input
               key={levelKey}
-              type='text'
-              inputMode='decimal'
+              type="text"
+              inputMode="decimal"
               defaultValue={formatMixerLevelInputValue(levelValue)}
               aria-label={levelAriaLabel}
               onBlur={(event) => {
@@ -299,17 +349,26 @@ function MixerStrip({
               }}
               className={levelInputClassName}
             />
-            <span className={`font-mono text-[8px] tracking-wider leading-none ${liveClassName}`}>{isLive ? 'LIVE' : 'CUT'}</span>
+            <span
+              className={`font-mono text-[8px] tracking-wider leading-none ${liveClassName}`}
+            >
+              {isLive ? "LIVE" : "CUT"}
+            </span>
           </div>
         </div>
-
       </div>
     </div>
   );
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Control Panel - TV Broadcast' }, { name: 'description', content: 'Control panel for TV broadcast overlay system' }];
+  return [
+    { title: "Control Panel - TV Broadcast" },
+    {
+      name: "description",
+      content: "Control panel for TV broadcast overlay system",
+    },
+  ];
 }
 
 export default function Control() {
@@ -318,29 +377,43 @@ export default function Control() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [instants, setInstants] = useState<InstantItem[]>([]);
   const [isLoadingInstants, setIsLoadingInstants] = useState(false);
-  const [instantSearch, setInstantSearch] = useState('');
+  const [instantSearch, setInstantSearch] = useState("");
   const [songCatalog, setSongCatalog] = useState<SongCatalogItem[]>([]);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
   const [isLoadingMediaGroups, setIsLoadingMediaGroups] = useState(false);
-  const [instantDurationsMs, setInstantDurationsMs] = useState<Record<number, number | null>>({});
-  const [instantPlayback, setInstantPlayback] = useState<Record<number, InstantPlaybackState>>({});
+  const [instantDurationsMs, setInstantDurationsMs] = useState<
+    Record<number, number | null>
+  >({});
+  const [instantPlayback, setInstantPlayback] = useState<
+    Record<number, InstantPlaybackState>
+  >({});
   const instantDurationByUrlRef = useRef<Record<string, number | null>>({});
   const instantPlaybackTimeoutsRef = useRef<Record<number, number>>({});
   const [layouts, setLayouts] = useState<Layout[]>([]);
-  const componentTypes = OVERLAY_COMPONENTS.map((c) => ({ type: c.id, name: c.name, description: c.description }));
+  const componentTypes = OVERLAY_COMPONENTS.map((c) => ({
+    type: c.id,
+    name: c.name,
+    description: c.description,
+  }));
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
-  const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>({});
+  const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>(
+    {},
+  );
   const [isSavingSceneAttributes, setIsSavingSceneAttributes] = useState(false);
-  const [sceneAttributeSaveError, setSceneAttributeSaveError] = useState<string | null>(null);
+  const [sceneAttributeSaveError, setSceneAttributeSaveError] = useState<
+    string | null
+  >(null);
   const sceneEditorAutosaveTimerRef = useRef<number | null>(null);
-  const sceneEditorAutosaveSignatureRef = useRef<string>('');
+  const sceneEditorAutosaveSignatureRef = useRef<string>("");
   const sceneEditorDirtyRef = useRef<boolean>(false);
   const sceneEditorRevisionRef = useRef<number>(0);
   const selectedSceneRef = useRef<number | null>(null);
   const previousSelectedSceneRef = useRef<number | null>(null);
   const sceneEditorPropsRef = useRef<ComponentPropsMap>({});
   const sceneMetadataCacheRef = useRef<Record<number, ComponentPropsMap>>({});
-  const pendingSceneAttributeSaveRef = useRef<SceneAttributeSavePayload | null>(null);
+  const pendingSceneAttributeSaveRef = useRef<SceneAttributeSavePayload | null>(
+    null,
+  );
   const sceneAttributeSaveDrainPromiseRef = useRef<Promise<void> | null>(null);
   const sceneAttributeRetryTimerRef = useRef<number | null>(null);
   const sceneAttributeFlushKickTimerRef = useRef<number | null>(null);
@@ -348,16 +421,26 @@ export default function Control() {
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
 
   const [showSceneModal, setShowSceneModal] = useState(false);
-  const [newSceneName, setNewSceneName] = useState('');
+  const [newSceneName, setNewSceneName] = useState("");
   const [selectedLayoutId, setSelectedLayoutId] = useState<number | null>(null);
-  const [sceneComponentProps, setSceneComponentProps] = useState<Record<string, any>>({});
-  const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
-  const [isCreatingScene, setIsCreatingScene] = useState(false);
-  const [selectedTransitionId, setSelectedTransitionId] = useGlobalTransitionId(activeProgramId);
-  const [consoleWorkspace, setConsoleWorkspace] = useState<ConsoleWorkspace>(() => readStoredConsoleWorkspace());
-  const [programAudioBusSettings, setProgramAudioBusSettings] = useState<ProgramAudioBusSettings>({
-    songSequence: createProgramSongSequence('manual')
+  const [sceneComponentProps, setSceneComponentProps] = useState<
+    Record<string, any>
+  >({});
+  const [sceneErrors, setSceneErrors] = useState({
+    name: "",
+    layout: "",
+    props: "",
   });
+  const [isCreatingScene, setIsCreatingScene] = useState(false);
+  const [selectedTransitionId, setSelectedTransitionId] =
+    useGlobalTransitionId(activeProgramId);
+  const [consoleWorkspace, setConsoleWorkspace] = useState<ConsoleWorkspace>(
+    () => readStoredConsoleWorkspace(),
+  );
+  const [programAudioBusSettings, setProgramAudioBusSettings] =
+    useState<ProgramAudioBusSettings>({
+      songSequence: createProgramSongSequence("manual"),
+    });
   const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
   const [isPlaylistSheetOpen, setIsPlaylistSheetOpen] = useState(false);
   const [mixerLevels, setMixerLevels] = useState<BroadcastSettings>({
@@ -386,8 +469,8 @@ export default function Control() {
       songSolo: false,
       instantSolo: false,
       sceneInstantSolo: false,
-      streamSolo: false
-    })
+      streamSolo: false,
+    }),
   });
   const mixerLevelsRef = useRef<BroadcastSettings>({
     mainMasterVolume: 1,
@@ -415,60 +498,81 @@ export default function Control() {
       songSolo: false,
       instantSolo: false,
       sceneInstantSolo: false,
-      streamSolo: false
-    })
+      streamSolo: false,
+    }),
   });
   const [isLoadingMixerLevels, setIsLoadingMixerLevels] = useState(false);
   const [isSavingMixerLevels, setIsSavingMixerLevels] = useState(false);
+  const [mixerSaveError, setMixerSaveError] = useState<string | null>(null);
   const mixerSaveTimeoutRef = useRef<number | null>(null);
-  const takeVolumeFadeTimerRef = useRef<MixerTakeTimerMap>({ ...DEFAULT_MIXER_TAKE_TIMERS });
-  const takeVolumeFadeRunIdRef = useRef<MixerTakeRunIdMap>({ ...DEFAULT_MIXER_TAKE_RUN_IDS });
-  const [mixerTakePresetsDb, setMixerTakePresetsDb] = useState<MixerTakePresetDbMap>({ ...DEFAULT_MIXER_TAKE_PRESETS_DB });
+  const takeVolumeFadeTimerRef = useRef<MixerTakeTimerMap>({
+    ...DEFAULT_MIXER_TAKE_TIMERS,
+  });
+  const takeVolumeFadeRunIdRef = useRef<MixerTakeRunIdMap>({
+    ...DEFAULT_MIXER_TAKE_RUN_IDS,
+  });
+  const [mixerTakePresetsDb, setMixerTakePresetsDb] =
+    useState<MixerTakePresetDbMap>({ ...DEFAULT_MIXER_TAKE_PRESETS_DB });
   const [takePresetFadeMs, setTakePresetFadeMs] = useState<number>(5000);
-  const [isApplyingTakePresetByChannel, setIsApplyingTakePresetByChannel] = useState<MixerTakeApplyingMap>({ ...DEFAULT_MIXER_TAKE_APPLYING });
-  const [programAudioMeterLevels, setProgramAudioMeterLevels] = useState<ProgramAudioMeterLevels>({
-    song: createEmptyMeterChannel(),
-    instants: createEmptyMeterChannel(),
-    sceneInstant: createEmptyMeterChannel(),
-    main: createEmptyMeterChannel(),
-    updatedAt: new Date(0).toISOString()
-  });
-  const [programSongPlaybackState, setProgramSongPlaybackState] = useState<ProgramSongPlaybackState>({
-    token: '',
-    audioUrl: '',
-    progress: 0,
-    currentTimeMs: 0,
-    durationMs: null,
-    isPlaying: false,
-    updatedAt: new Date(0).toISOString()
-  });
-  const [sceneInstantPlayback, setSceneInstantPlayback] = useState<SceneInstantPlaybackState>({
-    sceneId: null,
-    instantId: null,
-    instantName: '',
-    isPlaying: false,
-    updatedAt: new Date(0).toISOString()
-  });
+  const [isApplyingTakePresetByChannel, setIsApplyingTakePresetByChannel] =
+    useState<MixerTakeApplyingMap>({ ...DEFAULT_MIXER_TAKE_APPLYING });
+  const [programAudioMeterLevels, setProgramAudioMeterLevels] =
+    useState<ProgramAudioMeterLevels>({
+      song: createEmptyMeterChannel(),
+      instants: createEmptyMeterChannel(),
+      sceneInstant: createEmptyMeterChannel(),
+      main: createEmptyMeterChannel(),
+      updatedAt: new Date(0).toISOString(),
+    });
+  const [programSongPlaybackState, setProgramSongPlaybackState] =
+    useState<ProgramSongPlaybackState>({
+      token: "",
+      audioUrl: "",
+      progress: 0,
+      currentTimeMs: 0,
+      durationMs: null,
+      isPlaying: false,
+      updatedAt: new Date(0).toISOString(),
+    });
+  const [sceneInstantPlayback, setSceneInstantPlayback] =
+    useState<SceneInstantPlaybackState>({
+      sceneId: null,
+      instantId: null,
+      instantName: "",
+      isPlaying: false,
+      updatedAt: new Date(0).toISOString(),
+    });
   const programRealtimeSocketRef = useRef<WebSocket | null>(null);
-  const [isProgramRealtimeConnected, setIsProgramRealtimeConnected] = useState(false);
-  const latestControlVersionByTopicRef = useRef<Record<ProgramUpdateTopic, number>>({
+  const [isProgramRealtimeConnected, setIsProgramRealtimeConnected] =
+    useState(false);
+  const latestControlVersionByTopicRef = useRef<
+    Record<ProgramUpdateTopic, number>
+  >({
     state: -1,
     audioBus: -1,
     audioMeter: -1,
     songPlayback: -1,
     sceneInstant: -1,
-    flight: -1
+    flight: -1,
   });
 
   const applySceneUpdateLocally = useCallback((nextScene: Scene) => {
-    if (!nextScene || typeof nextScene !== 'object' || typeof nextScene.id !== 'number') {
+    if (
+      !nextScene ||
+      typeof nextScene !== "object" ||
+      typeof nextScene.id !== "number"
+    ) {
       return;
     }
 
-    sceneMetadataCacheRef.current[nextScene.id] = parseSceneMetadata(nextScene.metadata);
+    sceneMetadataCacheRef.current[nextScene.id] = parseSceneMetadata(
+      nextScene.metadata,
+    );
 
     setScenes((previous) => {
-      const existingIndex = previous.findIndex((scene) => scene.id === nextScene.id);
+      const existingIndex = previous.findIndex(
+        (scene) => scene.id === nextScene.id,
+      );
       if (existingIndex === -1) {
         return [...previous, nextScene];
       }
@@ -491,13 +595,21 @@ export default function Control() {
         didUpdateSceneEntry = true;
         return {
           ...entry,
-          scene: nextScene
+          scene: nextScene,
         };
       });
 
-      const nextActiveScene = previous.activeScene?.id === nextScene.id ? nextScene : previous.activeScene;
-      const nextStagedScene = previous.stagedScene?.id === nextScene.id ? nextScene : previous.stagedScene;
-      const didUpdateHeader = nextActiveScene !== previous.activeScene || nextStagedScene !== previous.stagedScene;
+      const nextActiveScene =
+        previous.activeScene?.id === nextScene.id
+          ? nextScene
+          : previous.activeScene;
+      const nextStagedScene =
+        previous.stagedScene?.id === nextScene.id
+          ? nextScene
+          : previous.stagedScene;
+      const didUpdateHeader =
+        nextActiveScene !== previous.activeScene ||
+        nextStagedScene !== previous.stagedScene;
 
       if (!didUpdateSceneEntry && !didUpdateHeader) {
         return previous;
@@ -507,32 +619,40 @@ export default function Control() {
         ...previous,
         scenes: didUpdateSceneEntry ? nextEntries : previous.scenes,
         activeScene: nextActiveScene,
-        stagedScene: nextStagedScene
+        stagedScene: nextStagedScene,
       };
     });
   }, []);
 
-  const shouldApplyControlUpdatePayload = useCallback((payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
-    const topic =
-      topicOverride ??
-      (payload && typeof payload === 'object' && !Array.isArray(payload) ? resolveControlUpdateTopicFromType((payload as Record<string, unknown>).type) : null);
-    if (!topic) {
+  const shouldApplyControlUpdatePayload = useCallback(
+    (payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
+      const topic =
+        topicOverride ??
+        (payload && typeof payload === "object" && !Array.isArray(payload)
+          ? resolveControlUpdateTopicFromType(
+              (payload as Record<string, unknown>).type,
+            )
+          : null);
+      if (!topic) {
+        return true;
+      }
+
+      const nextVersion = readControlUpdateVersion(topic, payload);
+      if (nextVersion === null) {
+        return true;
+      }
+
+      const previousVersion =
+        latestControlVersionByTopicRef.current[topic] ?? -1;
+      if (nextVersion <= previousVersion) {
+        return false;
+      }
+
+      latestControlVersionByTopicRef.current[topic] = nextVersion;
       return true;
-    }
-
-    const nextVersion = readControlUpdateVersion(topic, payload);
-    if (nextVersion === null) {
-      return true;
-    }
-
-    const previousVersion = latestControlVersionByTopicRef.current[topic] ?? -1;
-    if (nextVersion <= previousVersion) {
-      return false;
-    }
-
-    latestControlVersionByTopicRef.current[topic] = nextVersion;
-    return true;
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     fetchScenes();
@@ -548,7 +668,7 @@ export default function Control() {
       audioMeter: -1,
       songPlayback: -1,
       sceneInstant: -1,
-      flight: -1
+      flight: -1,
     };
     void fetchInstants();
     Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
@@ -561,23 +681,23 @@ export default function Control() {
       instants: createEmptyMeterChannel(),
       sceneInstant: createEmptyMeterChannel(),
       main: createEmptyMeterChannel(),
-      updatedAt: new Date(0).toISOString()
+      updatedAt: new Date(0).toISOString(),
     });
     setProgramSongPlaybackState({
-      token: '',
-      audioUrl: '',
+      token: "",
+      audioUrl: "",
       progress: 0,
       currentTimeMs: 0,
       durationMs: null,
       isPlaying: false,
-      updatedAt: new Date(0).toISOString()
+      updatedAt: new Date(0).toISOString(),
     });
     setSceneInstantPlayback({
       sceneId: null,
       instantId: null,
-      instantName: '',
+      instantName: "",
       isPlaying: false,
-      updatedAt: new Date(0).toISOString()
+      updatedAt: new Date(0).toISOString(),
     });
     void fetchMediaGroups(activeProgramId);
   }, [activeProgramId]);
@@ -589,7 +709,10 @@ export default function Control() {
 
     let cancelled = false;
     const fallbackTimer = window.setTimeout(() => {
-      if (cancelled || programRealtimeSocketRef.current?.readyState === WebSocket.OPEN) {
+      if (
+        cancelled ||
+        programRealtimeSocketRef.current?.readyState === WebSocket.OPEN
+      ) {
         return;
       }
       void fetchProgramState(activeProgramId);
@@ -607,7 +730,10 @@ export default function Control() {
 
   useEffect(() => {
     const resyncInterval = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
         return;
       }
 
@@ -632,24 +758,30 @@ export default function Control() {
     sceneEditorPropsRef.current = sceneEditorProps;
   }, [sceneEditorProps]);
 
-  const syncProgramStateAndStagedScene = useCallback((nextProgramState: ProgramState | null) => {
-    setProgramState(nextProgramState);
-    setSelectedScene(() => {
-      if (!nextProgramState) {
-        return null;
-      }
+  const syncProgramStateAndStagedScene = useCallback(
+    (nextProgramState: ProgramState | null) => {
+      setProgramState(nextProgramState);
+      setSelectedScene(() => {
+        if (!nextProgramState) {
+          return null;
+        }
 
-      const nextStagedSceneId =
-        typeof nextProgramState.stagedSceneId === 'number' && nextProgramState.scenes.some((entry) => entry.sceneId === nextProgramState.stagedSceneId)
-          ? nextProgramState.stagedSceneId
-          : null;
+        const nextStagedSceneId =
+          typeof nextProgramState.stagedSceneId === "number" &&
+          nextProgramState.scenes.some(
+            (entry) => entry.sceneId === nextProgramState.stagedSceneId,
+          )
+            ? nextProgramState.stagedSceneId
+            : null;
 
-      return nextStagedSceneId;
-    });
-  }, []);
+        return nextStagedSceneId;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -663,19 +795,31 @@ export default function Control() {
 
       let socket: WebSocket;
       try {
-        const ticketResponse = await authFetch('/auth/realtime-ticket', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ programId: activeProgramId })
+        const ticketResponse = await authFetch("/auth/realtime-ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ programId: activeProgramId }),
         });
         if (!ticketResponse.ok) {
           throw new Error(`Realtime ticket HTTP ${ticketResponse.status}`);
         }
-        const ticketPayload = (await ticketResponse.json()) as { ticket?: unknown };
-        if (disposed || typeof ticketPayload.ticket !== 'string' || !ticketPayload.ticket) {
+        const ticketPayload = (await ticketResponse.json()) as {
+          ticket?: unknown;
+        };
+        if (
+          disposed ||
+          typeof ticketPayload.ticket !== "string" ||
+          !ticketPayload.ticket
+        ) {
           return;
         }
-        socket = new WebSocket(getProgramRealtimeSocketUrl(activeProgramId, 'control', ticketPayload.ticket));
+        socket = new WebSocket(
+          getProgramRealtimeSocketUrl(
+            activeProgramId,
+            "control",
+            ticketPayload.ticket,
+          ),
+        );
       } catch {
         reconnectTimer = window.setTimeout(() => void connect(), 1500);
         return;
@@ -684,7 +828,7 @@ export default function Control() {
       programRealtimeSocketRef.current = socket;
       setIsProgramRealtimeConnected(false);
 
-      socket.addEventListener('open', () => {
+      socket.addEventListener("open", () => {
         if (disposed || programRealtimeSocketRef.current !== socket) {
           try {
             socket.close();
@@ -696,7 +840,7 @@ export default function Control() {
         setIsProgramRealtimeConnected(true);
       });
 
-      socket.addEventListener('message', (event) => {
+      socket.addEventListener("message", (event) => {
         let payload: any;
         try {
           payload = JSON.parse(event.data);
@@ -704,7 +848,7 @@ export default function Control() {
           return;
         }
 
-        if (!payload || typeof payload !== 'object') {
+        if (!payload || typeof payload !== "object") {
           return;
         }
 
@@ -712,8 +856,9 @@ export default function Control() {
           return;
         }
 
-        if (payload.type === 'program_state_snapshot') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "program_state_snapshot") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
@@ -722,31 +867,42 @@ export default function Control() {
           return;
         }
 
-        if (payload.type === 'audio_bus_snapshot') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "audio_bus_snapshot") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
           const nextMixerSource =
-            payload.settings && typeof payload.settings === 'object' ? (payload.settings as { mixerSettings?: unknown }).mixerSettings : undefined;
+            payload.settings && typeof payload.settings === "object"
+              ? (payload.settings as { mixerSettings?: unknown }).mixerSettings
+              : undefined;
           if (nextMixerSource !== undefined) {
-            const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
+            const nextMixerLevels =
+              normalizeBroadcastSettingsPayload(nextMixerSource);
             mixerLevelsRef.current = nextMixerLevels;
             setMixerLevels(nextMixerLevels);
           }
           const normalizedSongSequence = normalizeProgramSongPlaylist(
-            normalizeProgramSongSequence(payload?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+            normalizeProgramSongSequence(payload?.settings?.songSequence) ?? {
+              ...createProgramSongSequence("manual"),
+              activeItemId: null,
+            },
           );
           setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
           return;
         }
 
-        if (payload.type === 'scene_staged') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "scene_staged") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
-          const nextStagedSceneId = typeof payload.stagedSceneId === 'number' ? payload.stagedSceneId : null;
+          const nextStagedSceneId =
+            typeof payload.stagedSceneId === "number"
+              ? payload.stagedSceneId
+              : null;
           setSelectedScene(nextStagedSceneId);
           setProgramState((previous) => {
             if (!previous) {
@@ -755,44 +911,54 @@ export default function Control() {
             return {
               ...previous,
               stagedSceneId: nextStagedSceneId,
-              stagedScene: payload.scene && typeof payload.scene === 'object' ? (payload.scene as Scene) : null
+              stagedScene:
+                payload.scene && typeof payload.scene === "object"
+                  ? (payload.scene as Scene)
+                  : null,
             };
           });
           return;
         }
 
-        if (payload.type === 'fade_to_black') {
+        if (payload.type === "fade_to_black") {
           const normalizedProgramState = normalizeProgramState(payload.state);
           syncProgramStateAndStagedScene(normalizedProgramState);
           return;
         }
 
-        if (payload.type === 'scene_change' || payload.type === 'program_scenes_changed' || payload.type === 'program_media_groups_changed') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (
+          payload.type === "scene_change" ||
+          payload.type === "program_scenes_changed" ||
+          payload.type === "program_media_groups_changed"
+        ) {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
           const normalizedProgramState = normalizeProgramState(payload.state);
           syncProgramStateAndStagedScene(normalizedProgramState);
-          if (payload.type === 'program_media_groups_changed') {
+          if (payload.type === "program_media_groups_changed") {
             void fetchMediaGroups(activeProgramId);
           }
           return;
         }
 
-        if (payload.type === 'scene_update') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "scene_update") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
-          if (payload.scene && typeof payload.scene === 'object') {
+          if (payload.scene && typeof payload.scene === "object") {
             applySceneUpdateLocally(payload.scene as Scene);
           }
           return;
         }
 
-        if (payload.type === 'scene_cleared') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "scene_cleared") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
@@ -802,87 +968,120 @@ export default function Control() {
             }
             return {
               ...prev,
-              activeSceneId: null
+              activeSceneId: null,
             };
           });
           return;
         }
 
-        if (payload.type === 'audio_bus_update') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "audio_bus_update") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
           const nextMixerSource =
-            payload.settings && typeof payload.settings === 'object' ? (payload.settings as { mixerSettings?: unknown }).mixerSettings : undefined;
+            payload.settings && typeof payload.settings === "object"
+              ? (payload.settings as { mixerSettings?: unknown }).mixerSettings
+              : undefined;
           if (nextMixerSource !== undefined) {
-            const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
+            const nextMixerLevels =
+              normalizeBroadcastSettingsPayload(nextMixerSource);
             mixerLevelsRef.current = nextMixerLevels;
             setMixerLevels(nextMixerLevels);
           }
           const normalizedSongSequence = normalizeProgramSongPlaylist(
-            normalizeProgramSongSequence(payload?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+            normalizeProgramSongSequence(payload?.settings?.songSequence) ?? {
+              ...createProgramSongSequence("manual"),
+              activeItemId: null,
+            },
           );
           setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
           return;
         }
 
-        if (payload.type === 'audio_meter_update') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "audio_meter_update") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
-          setProgramAudioMeterLevels((previous) => reconcileProgramAudioMeter(previous, normalizeProgramAudioMeter(payload.levels)));
+          setProgramAudioMeterLevels((previous) =>
+            reconcileProgramAudioMeter(
+              previous,
+              normalizeProgramAudioMeter(payload.levels),
+            ),
+          );
           return;
         }
 
-        if (payload.type === 'song_playback_update') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "song_playback_update") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
-          setProgramSongPlaybackState((previous) => reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(payload.playback)));
+          setProgramSongPlaybackState((previous) =>
+            reconcileProgramSongPlayback(
+              previous,
+              normalizeProgramSongPlayback(payload.playback),
+            ),
+          );
           return;
         }
 
-        if (payload.type === 'scene_instant_state') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "scene_instant_state") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
-          setSceneInstantPlayback(normalizeSceneInstantPlayback(payload.playback));
+          setSceneInstantPlayback(
+            normalizeSceneInstantPlayback(payload.playback),
+          );
           return;
         }
 
-        if (payload.type === 'scene_instant_take') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "scene_instant_take") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
           setSceneInstantPlayback({
             sceneId: normalizeSceneInstantId(payload.sceneId),
             instantId: normalizeSceneInstantId(payload.instant?.id),
-            instantName: typeof payload.instant?.name === 'string' ? payload.instant.name : '',
+            instantName:
+              typeof payload.instant?.name === "string"
+                ? payload.instant.name
+                : "",
             isPlaying: true,
-            updatedAt: typeof payload.triggeredAt === 'string' ? payload.triggeredAt : new Date().toISOString()
+            updatedAt:
+              typeof payload.triggeredAt === "string"
+                ? payload.triggeredAt
+                : new Date().toISOString(),
           });
           return;
         }
 
-        if (payload.type === 'scene_instant_stop') {
-          const eventProgramId = typeof payload.programId === 'string' ? payload.programId : '';
+        if (payload.type === "scene_instant_stop") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
           if (eventProgramId !== activeProgramId) {
             return;
           }
           setSceneInstantPlayback((previous) => ({
             ...previous,
             isPlaying: false,
-            updatedAt: typeof payload.triggeredAt === 'string' ? payload.triggeredAt : new Date().toISOString()
+            updatedAt:
+              typeof payload.triggeredAt === "string"
+                ? payload.triggeredAt
+                : new Date().toISOString(),
           }));
         }
       });
 
-      socket.addEventListener('close', () => {
+      socket.addEventListener("close", () => {
         if (programRealtimeSocketRef.current === socket) {
           programRealtimeSocketRef.current = null;
         }
@@ -892,7 +1091,7 @@ export default function Control() {
         }
       });
 
-      socket.addEventListener('error', () => {
+      socket.addEventListener("error", () => {
         try {
           socket.close();
         } catch {
@@ -921,25 +1120,30 @@ export default function Control() {
         }
       }
     };
-  }, [activeProgramId, applySceneUpdateLocally, shouldApplyControlUpdatePayload, syncProgramStateAndStagedScene]);
+  }, [
+    activeProgramId,
+    applySceneUpdateLocally,
+    shouldApplyControlUpdatePayload,
+    syncProgramStateAndStagedScene,
+  ]);
 
   const fetchScenes = async () => {
     try {
-      const res = await fetch(apiUrl('/scenes'));
+      const res = await fetch(apiUrl("/scenes"));
       const data = await res.json();
       setScenes(data);
     } catch (err) {
-      console.error('Failed to fetch scenes:', err);
+      console.error("Failed to fetch scenes:", err);
     }
   };
 
   const fetchLayouts = async () => {
     try {
-      const res = await fetch(apiUrl('/layouts'));
+      const res = await fetch(apiUrl("/layouts"));
       const data = await res.json();
       setLayouts(data);
     } catch (err) {
-      console.error('Failed to fetch layouts:', err);
+      console.error("Failed to fetch layouts:", err);
     }
   };
 
@@ -950,14 +1154,14 @@ export default function Control() {
   const fetchInstants = async () => {
     try {
       setIsLoadingInstants(true);
-      const res = await fetch(apiUrl('/instants'));
+      const res = await fetch(apiUrl("/instants"));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = (await res.json()) as InstantItem[];
       setInstants(data);
     } catch (err) {
-      console.error('Failed to fetch instants:', err);
+      console.error("Failed to fetch instants:", err);
       setInstants([]);
     } finally {
       setIsLoadingInstants(false);
@@ -966,29 +1170,33 @@ export default function Control() {
 
   const fetchSongCatalog = async () => {
     try {
-      const res = await fetch(apiUrl('/songs?limit=0'));
+      const res = await fetch(apiUrl("/songs?limit=0"));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const body = (await res.json()) as PaginatedResponse<SongCatalogItem>;
       setSongCatalog(Array.isArray(body.data) ? body.data : []);
     } catch (err) {
-      console.error('Failed to fetch songs catalog:', err);
+      console.error("Failed to fetch songs catalog:", err);
       setSongCatalog([]);
     }
   };
 
-  const fetchMediaGroups = async (targetProgramId: string = activeProgramId) => {
+  const fetchMediaGroups = async (
+    targetProgramId: string = activeProgramId,
+  ) => {
     try {
       setIsLoadingMediaGroups(true);
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/media-groups`));
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/media-groups`),
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = (await res.json()) as MediaGroup[];
       setMediaGroups(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Failed to fetch media groups:', err);
+      console.error("Failed to fetch media groups:", err);
       setMediaGroups([]);
     } finally {
       setIsLoadingMediaGroups(false);
@@ -997,30 +1205,37 @@ export default function Control() {
 
   const persistMixerLevels = async (nextMixerLevels: BroadcastSettings) => {
     setIsSavingMixerLevels(true);
+    setMixerSaveError(null);
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mixerSettings: {
-            mainMasterVolume: nextMixerLevels.mainMasterVolume,
-            mixerChannels: nextMixerLevels.mixerChannels
-          }
-        })
-      });
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mixerSettings: {
+              mainMasterVolume: nextMixerLevels.mainMasterVolume,
+              mixerChannels: nextMixerLevels.mixerChannels,
+            },
+          }),
+        },
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
       const payload = (await res.json()) as ProgramAudioBusSettings | null;
-      if (!shouldApplyControlUpdatePayload(payload, 'audioBus')) {
+      if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
-      const persistedMixerLevels = normalizeBroadcastSettingsPayload(payload?.mixerSettings ?? nextMixerLevels);
+      const persistedMixerLevels = normalizeBroadcastSettingsPayload(
+        payload?.mixerSettings ?? nextMixerLevels,
+      );
       mixerLevelsRef.current = persistedMixerLevels;
       setMixerLevels(persistedMixerLevels);
     } catch (err) {
-      console.error('Failed to save mixer levels:', err);
+      console.error("Failed to save mixer levels:", err);
+      setMixerSaveError("Mixer change was not applied to Palazzo. Try again.");
     } finally {
       setIsSavingMixerLevels(false);
     }
@@ -1048,7 +1263,10 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
       ...currentMixerLevels,
-      songMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.songMasterVolume)
+      songMasterVolume: normalizeMasterVolume(
+        nextValue,
+        currentMixerLevels.songMasterVolume,
+      ),
     };
     commitMixerLevels(nextMixerLevels);
   };
@@ -1057,7 +1275,10 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
       ...currentMixerLevels,
-      mainMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.mainMasterVolume)
+      mainMasterVolume: normalizeMasterVolume(
+        nextValue,
+        currentMixerLevels.mainMasterVolume,
+      ),
     };
     commitMixerLevels(nextMixerLevels);
   };
@@ -1066,7 +1287,10 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
       ...currentMixerLevels,
-      instantMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.instantMasterVolume)
+      instantMasterVolume: normalizeMasterVolume(
+        nextValue,
+        currentMixerLevels.instantMasterVolume,
+      ),
     };
     commitMixerLevels(nextMixerLevels);
   };
@@ -1075,7 +1299,10 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
       ...currentMixerLevels,
-      sceneInstantMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.sceneInstantMasterVolume)
+      sceneInstantMasterVolume: normalizeMasterVolume(
+        nextValue,
+        currentMixerLevels.sceneInstantMasterVolume,
+      ),
     };
     commitMixerLevels(nextMixerLevels);
   };
@@ -1084,63 +1311,83 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     const nextMixerLevels = {
       ...currentMixerLevels,
-      streamMasterVolume: normalizeMasterVolume(nextValue, currentMixerLevels.streamMasterVolume)
+      streamMasterVolume: normalizeMasterVolume(
+        nextValue,
+        currentMixerLevels.streamMasterVolume,
+      ),
     };
     commitMixerLevels(nextMixerLevels);
   };
 
-  const getChannelMasterVolume = (mixerState: BroadcastSettings, channelId: MixerTakeChannelKey): number => {
+  const getChannelMasterVolume = (
+    mixerState: BroadcastSettings,
+    channelId: MixerTakeChannelKey,
+  ): number => {
     switch (channelId) {
-      case 'song':
+      case "song":
         return mixerState.songMasterVolume;
-      case 'stream':
+      case "stream":
         return mixerState.streamMasterVolume;
-      case 'instants':
+      case "instants":
         return mixerState.instantMasterVolume;
-      case 'sceneInstant':
+      case "sceneInstant":
         return mixerState.sceneInstantMasterVolume;
-      case 'main':
+      case "main":
       default:
         return mixerState.mainMasterVolume;
     }
   };
 
-  const setChannelMasterVolume = (channelId: MixerTakeChannelKey, nextValue: number) => {
+  const setChannelMasterVolume = (
+    channelId: MixerTakeChannelKey,
+    nextValue: number,
+  ) => {
     switch (channelId) {
-      case 'song':
+      case "song":
         setSongMasterVolume(nextValue);
         return;
-      case 'stream':
+      case "stream":
         setStreamMasterVolume(nextValue);
         return;
-      case 'instants':
+      case "instants":
         setInstantMasterVolume(nextValue);
         return;
-      case 'sceneInstant':
+      case "sceneInstant":
         setSceneInstantMasterVolume(nextValue);
         return;
-      case 'main':
+      case "main":
       default:
         setMainMasterVolume(nextValue);
     }
   };
 
-  const updateChannelTakePresetDb = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide, rawValue: number) => {
+  const updateChannelTakePresetDb = (
+    channelId: MixerTakeChannelKey,
+    presetSide: MixerTakePresetSide,
+    rawValue: number,
+  ) => {
     setMixerTakePresetsDb((prev) => {
       const next = { ...prev };
-      const key = presetSide === 'a' ? 'aDb' : 'bDb';
+      const key = presetSide === "a" ? "aDb" : "bDb";
       const fallback = next[channelId][key];
       next[channelId] = {
         ...next[channelId],
-        [key]: normalizeTakeVolumePresetDb(rawValue, fallback)
+        [key]: normalizeTakeVolumePresetDb(rawValue, fallback),
       };
       return next;
     });
   };
 
-  const commitTakePresetDbInput = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide, rawValue: string, fallbackValue: number): number => {
+  const commitTakePresetDbInput = (
+    channelId: MixerTakeChannelKey,
+    presetSide: MixerTakePresetSide,
+    rawValue: string,
+    fallbackValue: number,
+  ): number => {
     const parsed = Number.parseFloat(rawValue.trim());
-    const nextValue = Number.isFinite(parsed) ? normalizeTakeVolumePresetDb(parsed, fallbackValue) : fallbackValue;
+    const nextValue = Number.isFinite(parsed)
+      ? normalizeTakeVolumePresetDb(parsed, fallbackValue)
+      : fallbackValue;
     updateChannelTakePresetDb(channelId, presetSide, nextValue);
     return nextValue;
   };
@@ -1164,25 +1411,44 @@ export default function Control() {
     }
   };
 
-  const applyTakePresetToChannel = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide, fadeMs: number = takePresetFadeMs) => {
+  const applyTakePresetToChannel = (
+    channelId: MixerTakeChannelKey,
+    presetSide: MixerTakePresetSide,
+    fadeMs: number = takePresetFadeMs,
+  ) => {
     const preset = mixerTakePresetsDb[channelId];
-    const presetDb = presetSide === 'a' ? preset.aDb : preset.bDb;
+    const presetDb = presetSide === "a" ? preset.aDb : preset.bDb;
     const normalizedPresetDb = normalizeTakeVolumePresetDb(presetDb, -15);
     const normalizedFadeMs = normalizeTakeVolumeFadeMs(fadeMs, 0);
-    const currentFader = getChannelMasterVolume(mixerLevelsRef.current, channelId);
-    const targetFader = normalizeMasterVolume(dbToFader(normalizedPresetDb), currentFader);
+    const currentFader = getChannelMasterVolume(
+      mixerLevelsRef.current,
+      channelId,
+    );
+    const targetFader = normalizeMasterVolume(
+      dbToFader(normalizedPresetDb),
+      currentFader,
+    );
 
     clearTakeVolumeFadeTimer(channelId);
     takeVolumeFadeRunIdRef.current[channelId] += 1;
     const runId = takeVolumeFadeRunIdRef.current[channelId];
 
-    if (Math.abs(targetFader - currentFader) <= 0.0001 || normalizedFadeMs <= 0) {
+    if (
+      Math.abs(targetFader - currentFader) <= 0.0001 ||
+      normalizedFadeMs <= 0
+    ) {
       setChannelMasterVolume(channelId, targetFader);
-      setIsApplyingTakePresetByChannel((prev) => ({ ...prev, [channelId]: false }));
+      setIsApplyingTakePresetByChannel((prev) => ({
+        ...prev,
+        [channelId]: false,
+      }));
       return;
     }
 
-    setIsApplyingTakePresetByChannel((prev) => ({ ...prev, [channelId]: true }));
+    setIsApplyingTakePresetByChannel((prev) => ({
+      ...prev,
+      [channelId]: true,
+    }));
     const stepIntervalMs = TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS;
     const stepCount = Math.max(1, Math.ceil(normalizedFadeMs / stepIntervalMs));
     let step = 0;
@@ -1194,16 +1460,21 @@ export default function Control() {
 
       step += 1;
       const ratio = Math.min(1, step / stepCount);
-      const easedRatio = ratio < 0.3
-        ? (1 - (1 - ratio / 0.3) ** 2) * 0.65
-        : 0.65 + ((ratio - 0.3) / 0.7) * 0.35;
-      const nextFader = currentFader + (targetFader - currentFader) * easedRatio;
+      const easedRatio =
+        ratio < 0.3
+          ? (1 - (1 - ratio / 0.3) ** 2) * 0.65
+          : 0.65 + ((ratio - 0.3) / 0.7) * 0.35;
+      const nextFader =
+        currentFader + (targetFader - currentFader) * easedRatio;
       setChannelMasterVolume(channelId, Number(nextFader.toFixed(4)));
 
       if (ratio >= 1) {
         clearTakeVolumeFadeTimer(channelId);
         if (runId === takeVolumeFadeRunIdRef.current[channelId]) {
-          setIsApplyingTakePresetByChannel((prev) => ({ ...prev, [channelId]: false }));
+          setIsApplyingTakePresetByChannel((prev) => ({
+            ...prev,
+            [channelId]: false,
+          }));
         }
       }
     };
@@ -1213,10 +1484,16 @@ export default function Control() {
       return;
     }
 
-    takeVolumeFadeTimerRef.current[channelId] = window.setInterval(advanceStep, stepIntervalMs);
+    takeVolumeFadeTimerRef.current[channelId] = window.setInterval(
+      advanceStep,
+      stepIntervalMs,
+    );
   };
 
-  const triggerChannelTake = (channelId: MixerTakeChannelKey, presetSide: MixerTakePresetSide) => {
+  const triggerChannelTake = (
+    channelId: MixerTakeChannelKey,
+    presetSide: MixerTakePresetSide,
+  ) => {
     applyTakePresetToChannel(channelId, presetSide, takePresetFadeMs);
   };
 
@@ -1224,7 +1501,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      songMuted: !currentMixerLevels.songMuted
+      songMuted: !currentMixerLevels.songMuted,
     });
   };
 
@@ -1232,7 +1509,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      instantMuted: !currentMixerLevels.instantMuted
+      instantMuted: !currentMixerLevels.instantMuted,
     });
   };
 
@@ -1240,7 +1517,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      streamMuted: !currentMixerLevels.streamMuted
+      streamMuted: !currentMixerLevels.streamMuted,
     });
   };
 
@@ -1248,7 +1525,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      sceneInstantMuted: !currentMixerLevels.sceneInstantMuted
+      sceneInstantMuted: !currentMixerLevels.sceneInstantMuted,
     });
   };
 
@@ -1256,7 +1533,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      songSolo: !currentMixerLevels.songSolo
+      songSolo: !currentMixerLevels.songSolo,
     });
   };
 
@@ -1264,7 +1541,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      instantSolo: !currentMixerLevels.instantSolo
+      instantSolo: !currentMixerLevels.instantSolo,
     });
   };
 
@@ -1272,7 +1549,7 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      streamSolo: !currentMixerLevels.streamSolo
+      streamSolo: !currentMixerLevels.streamSolo,
     });
   };
 
@@ -1280,226 +1557,278 @@ export default function Control() {
     const currentMixerLevels = mixerLevelsRef.current;
     commitMixerLevels({
       ...currentMixerLevels,
-      sceneInstantSolo: !currentMixerLevels.sceneInstantSolo
+      sceneInstantSolo: !currentMixerLevels.sceneInstantSolo,
     });
   };
 
   const fetchProgramAudioMeter = async (targetProgramId: string) => {
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-meter`));
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-meter`),
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
       const payload = await res.json();
-      if (!shouldApplyControlUpdatePayload(payload, 'audioMeter')) {
+      if (!shouldApplyControlUpdatePayload(payload, "audioMeter")) {
         return;
       }
       setProgramAudioMeterLevels(normalizeProgramAudioMeter(payload));
     } catch (err) {
-      console.error('Failed to fetch program audio meter levels:', err);
+      console.error("Failed to fetch program audio meter levels:", err);
       setProgramAudioMeterLevels({
         song: createEmptyMeterChannel(),
         instants: createEmptyMeterChannel(),
         sceneInstant: createEmptyMeterChannel(),
         main: createEmptyMeterChannel(),
-        updatedAt: new Date(0).toISOString()
+        updatedAt: new Date(0).toISOString(),
       });
     }
   };
 
   const fetchProgramSongPlayback = async (targetProgramId: string) => {
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song-playback`));
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song-playback`),
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
       const payload = await res.json();
-      if (!shouldApplyControlUpdatePayload(payload, 'songPlayback')) {
+      if (!shouldApplyControlUpdatePayload(payload, "songPlayback")) {
         return;
       }
       setProgramSongPlaybackState(normalizeProgramSongPlayback(payload));
     } catch (err) {
-      console.error('Failed to fetch program song playback:', err);
+      console.error("Failed to fetch program song playback:", err);
       setProgramSongPlaybackState({
-        token: '',
-        audioUrl: '',
+        token: "",
+        audioUrl: "",
         progress: 0,
         currentTimeMs: 0,
         durationMs: null,
         isPlaying: false,
-        updatedAt: new Date(0).toISOString()
+        updatedAt: new Date(0).toISOString(),
       });
     }
   };
 
   const fetchSceneInstantPlayback = async (targetProgramId: string) => {
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/scene-instant`));
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/scene-instant`),
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const payload = await res.json();
-      if (!shouldApplyControlUpdatePayload(payload, 'sceneInstant')) {
+      if (!shouldApplyControlUpdatePayload(payload, "sceneInstant")) {
         return;
       }
       setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
     } catch (err) {
-      console.error('Failed to fetch scene instant playback:', err);
+      console.error("Failed to fetch scene instant playback:", err);
       setSceneInstantPlayback({
         sceneId: null,
         instantId: null,
-        instantName: '',
+        instantName: "",
         isPlaying: false,
-        updatedAt: new Date(0).toISOString()
+        updatedAt: new Date(0).toISOString(),
       });
     }
   };
 
   const fetchProgramState = async (targetProgramId: string) => {
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`));
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/state`),
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
       const data = (await res.json()) as unknown;
-      if (!shouldApplyControlUpdatePayload(data, 'state')) {
+      if (!shouldApplyControlUpdatePayload(data, "state")) {
         return;
       }
       const normalizedProgramState = normalizeProgramState(data);
 
       syncProgramStateAndStagedScene(normalizedProgramState);
     } catch (err) {
-      console.error('Failed to fetch program state:', err);
+      console.error("Failed to fetch program state:", err);
     }
   };
 
   const fetchProgramAudioBusSettings = async (targetProgramId: string) => {
     try {
       setIsLoadingMixerLevels(true);
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`));
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
-      if (!shouldApplyControlUpdatePayload(payload, 'audioBus')) {
+      const payload =
+        (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
-      const nextMixerLevels = normalizeBroadcastSettingsPayload(payload?.mixerSettings);
+      const nextMixerLevels = normalizeBroadcastSettingsPayload(
+        payload?.mixerSettings,
+      );
       mixerLevelsRef.current = nextMixerLevels;
       setMixerLevels(nextMixerLevels);
       const normalizedSongSequence = normalizeProgramSongPlaylist(
-        normalizeProgramSongSequence(payload?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+        normalizeProgramSongSequence(payload?.songSequence) ?? {
+          ...createProgramSongSequence("manual"),
+          activeItemId: null,
+        },
       );
       setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     } catch (err) {
-      console.error('Failed to fetch program audio bus settings:', err);
+      console.error("Failed to fetch program audio bus settings:", err);
       const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
       mixerLevelsRef.current = fallbackMixerLevels;
       setMixerLevels(fallbackMixerLevels);
       setProgramAudioBusSettings({
-        songSequence: { ...createProgramSongSequence('manual'), activeItemId: null }
+        songSequence: {
+          ...createProgramSongSequence("manual"),
+          activeItemId: null,
+        },
       });
     } finally {
       setIsLoadingMixerLevels(false);
     }
   };
 
-  const saveProgramAudioBusSongSequence = async (nextSequence: ProgramSongSequence) => {
+  const saveProgramAudioBusSongSequence = async (
+    nextSequence: ProgramSongSequence,
+  ) => {
     const normalizedSongSequence = normalizeProgramSongPlaylist(
-      normalizeProgramSongSequence(nextSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+      normalizeProgramSongSequence(nextSequence) ?? {
+        ...createProgramSongSequence("manual"),
+        activeItemId: null,
+      },
     );
     setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     setIsSavingProgramAudioBus(true);
 
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          songSequence: normalizedSongSequence
-        })
-      });
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/audio-bus`),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            songSequence: normalizedSongSequence,
+          }),
+        },
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const payload = (await res.json()) as Partial<ProgramAudioBusSettings> | null;
-      if (!shouldApplyControlUpdatePayload(payload, 'audioBus')) {
+      const payload =
+        (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
-      if (payload && Object.prototype.hasOwnProperty.call(payload, 'mixerSettings')) {
-        const nextMixerLevels = normalizeBroadcastSettingsPayload(payload.mixerSettings);
+      if (
+        payload &&
+        Object.prototype.hasOwnProperty.call(payload, "mixerSettings")
+      ) {
+        const nextMixerLevels = normalizeBroadcastSettingsPayload(
+          payload.mixerSettings,
+        );
         mixerLevelsRef.current = nextMixerLevels;
         setMixerLevels(nextMixerLevels);
       }
-      const persistedSongSequence = normalizeProgramSongPlaylist(normalizeProgramSongSequence(payload?.songSequence) ?? normalizedSongSequence);
+      const persistedSongSequence = normalizeProgramSongPlaylist(
+        normalizeProgramSongSequence(payload?.songSequence) ??
+          normalizedSongSequence,
+      );
       setProgramAudioBusSettings({ songSequence: persistedSongSequence });
     } catch (err) {
-      console.error('Failed to save program audio bus settings:', err);
+      console.error("Failed to save program audio bus settings:", err);
     } finally {
       setIsSavingProgramAudioBus(false);
     }
   };
 
-   const takeProgramSongOffAir = async (targetProgramId: string = activeProgramId) => {
-     console.log(`[Control] takeProgramSongOffAir programId=${targetProgramId}`);
-     try {
-       const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song/off-air`), {
-         method: 'POST'
-       });
+  const takeProgramSongOffAir = async (
+    targetProgramId: string = activeProgramId,
+  ) => {
+    console.log(`[Control] takeProgramSongOffAir programId=${targetProgramId}`);
+    try {
+      const res = await fetch(
+        apiUrl(`/program/${encodeURIComponent(targetProgramId)}/song/off-air`),
+        {
+          method: "POST",
+        },
+      );
 
-       if (!res.ok) {
-         throw new Error(`HTTP ${res.status}`);
-       }
-       console.log(`[Control] takeProgramSongOffAir response ${res.status}`);
-     } catch (err) {
-       console.error('Failed to take song off air:', err);
-     }
-   };
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      console.log(`[Control] takeProgramSongOffAir response ${res.status}`);
+    } catch (err) {
+      console.error("Failed to take song off air:", err);
+    }
+  };
 
   function buildComponentPropsForScene(scene: Scene): Record<string, any> {
     const metadata = parseSceneMetadata(scene.metadata);
-    const legacyFifthBell = metadata?.fifthbell && typeof metadata.fifthbell === 'object' && !Array.isArray(metadata.fifthbell) ? metadata.fifthbell : {};
+    const legacyFifthBell =
+      metadata?.fifthbell &&
+      typeof metadata.fifthbell === "object" &&
+      !Array.isArray(metadata.fifthbell)
+        ? metadata.fifthbell
+        : {};
 
-    const components = scene.layout.componentType.split(',').filter(Boolean);
+    const components = scene.layout.componentType.split(",").filter(Boolean);
     const combined: Record<string, any> = {};
 
     for (const componentType of components) {
       const compatibleMetadata =
-        componentType === 'fifthbell-content' || componentType === 'fifthbell-marquee'
+        componentType === "fifthbell-content" ||
+        componentType === "fifthbell-marquee"
           ? { ...legacyFifthBell, ...(metadata[componentType] || {}) }
-          : componentType === 'toni-chyron' || componentType === 'fifthbell-chyron'
+          : componentType === "toni-chyron" ||
+              componentType === "fifthbell-chyron"
             ? {
-                ...(metadata['toni-chyron'] || {}),
-                ...(metadata['fifthbell-chyron'] || {}),
-                ...(metadata[componentType] || {})
+                ...(metadata["toni-chyron"] || {}),
+                ...(metadata["fifthbell-chyron"] || {}),
+                ...(metadata[componentType] || {}),
               }
-            : componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
+            : componentType === "toni-clock" ||
+                componentType === "fifthbell-clock" ||
+                componentType === "fifthbell-corner"
               ? {
                   ...legacyFifthBell,
-                  ...(metadata['fifthbell-corner'] || {}),
-                  ...(metadata['fifthbell-clock'] || {}),
-                  ...(metadata['toni-clock'] || {}),
-                  ...(metadata[componentType] || {})
+                  ...(metadata["fifthbell-corner"] || {}),
+                  ...(metadata["fifthbell-clock"] || {}),
+                  ...(metadata["toni-clock"] || {}),
+                  ...(metadata[componentType] || {}),
                 }
               : metadata[componentType] || {};
 
       combined[componentType] = {
         ...getDefaultPropsForComponent(componentType),
-        ...compatibleMetadata
+        ...compatibleMetadata,
       };
     }
 
     const sceneInstantConfig =
-      metadata?.sceneInstant && typeof metadata.sceneInstant === 'object' && !Array.isArray(metadata.sceneInstant)
+      metadata?.sceneInstant &&
+      typeof metadata.sceneInstant === "object" &&
+      !Array.isArray(metadata.sceneInstant)
         ? (metadata.sceneInstant as Record<string, unknown>)
         : null;
     combined.sceneInstant = {
-      instantId: normalizeSceneInstantId(sceneInstantConfig?.instantId) ?? null
+      instantId: normalizeSceneInstantId(sceneInstantConfig?.instantId) ?? null,
     };
 
     return combined;
@@ -1519,36 +1848,48 @@ export default function Control() {
     return assignedSceneEntries.map((entry) => entry.scene);
   }, [assignedSceneEntries]);
 
-  const isSceneAssigned = (sceneId: number) => assignedSceneEntries.some((programScene) => programScene.sceneId === sceneId);
+  const isSceneAssigned = (sceneId: number) =>
+    assignedSceneEntries.some(
+      (programScene) => programScene.sceneId === sceneId,
+    );
 
   const assignSceneToProgram = async (sceneId: number) => {
     try {
-      await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scenes`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId })
-      });
+      await fetch(
+        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scenes`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sceneId }),
+        },
+      );
       if (!isProgramRealtimeConnected) {
         await fetchProgramState(activeProgramId);
       }
     } catch (err) {
-      console.error('Failed to assign scene to program:', err);
+      console.error("Failed to assign scene to program:", err);
     }
   };
 
   const stageSceneForProgram = async (sceneId: number | null) => {
     try {
-      const response = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId })
-      });
+      const response = await fetch(
+        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sceneId }),
+        },
+      );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
       const result = (await response.json()) as StageSceneResponse;
-      const acceptedResult = acceptStageSceneResponse<Scene>(result, shouldApplyControlUpdatePayload);
+      const acceptedResult = acceptStageSceneResponse<Scene>(
+        result,
+        shouldApplyControlUpdatePayload,
+      );
       if (!acceptedResult) {
         return;
       }
@@ -1560,35 +1901,44 @@ export default function Control() {
           ? {
               ...previous,
               stagedSceneId,
-              stagedScene
+              stagedScene,
             }
-          : previous
+          : previous,
       );
 
       if (!isProgramRealtimeConnected) {
         await fetchProgramState(activeProgramId);
       }
     } catch (err) {
-      console.error('Failed to stage scene for program:', err);
+      console.error("Failed to stage scene for program:", err);
     }
   };
 
-  const activateScene = async (sceneId: number, transitionIdOverride?: string) => {
+  const activateScene = async (
+    sceneId: number,
+    transitionIdOverride?: string,
+  ) => {
     try {
       if (!isSceneAssigned(sceneId)) {
         await assignSceneToProgram(sceneId);
       }
-      await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/activate`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId, transitionId: transitionIdOverride ?? selectedTransitionId })
-      });
+      await fetch(
+        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/activate`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sceneId,
+            transitionId: transitionIdOverride ?? selectedTransitionId,
+          }),
+        },
+      );
       setSelectedScene(sceneId);
       if (!isProgramRealtimeConnected) {
         await fetchProgramState(activeProgramId);
       }
     } catch (err) {
-      console.error('Failed to activate scene:', err);
+      console.error("Failed to activate scene:", err);
     }
   };
 
@@ -1601,22 +1951,28 @@ export default function Control() {
       await flushSceneAttributeAutosaveForScene(selectedScene);
       await activateScene(selectedScene, transitionIdOverride);
     } catch (err) {
-      console.error('Could not save staged scene attributes before taking live:', err);
+      console.error(
+        "Could not save staged scene attributes before taking live:",
+        err,
+      );
     }
   };
 
   const setFadeToBlack = async (active: boolean) => {
     try {
-      const response = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/fade-to-black`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active })
-      });
+      const response = await fetch(
+        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/fade-to-black`),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ active }),
+        },
+      );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextState = normalizeProgramState(await response.json());
       if (nextState) syncProgramStateAndStagedScene(nextState);
     } catch (err) {
-      console.error('Failed to change fade-to-black state:', err);
+      console.error("Failed to change fade-to-black state:", err);
     }
   };
 
@@ -1644,15 +2000,19 @@ export default function Control() {
         pendingSceneAttributeSaveRef.current = null;
       }
     } catch (err) {
-      setSceneAttributeSaveError('Scene save failed. Please try again.');
-      console.error('Failed to save staged scene attributes:', err);
+      setSceneAttributeSaveError("Scene save failed. Please try again.");
+      console.error("Failed to save staged scene attributes:", err);
     } finally {
       setIsSavingSceneAttributes(false);
     }
   };
 
-  const takeSceneInstant = async (sceneId: number | null = selectedScene, instantIdOverride?: number | null) => {
-    const normalizedSceneId = typeof sceneId === 'number' && Number.isFinite(sceneId) ? sceneId : null;
+  const takeSceneInstant = async (
+    sceneId: number | null = selectedScene,
+    instantIdOverride?: number | null,
+  ) => {
+    const normalizedSceneId =
+      typeof sceneId === "number" && Number.isFinite(sceneId) ? sceneId : null;
     const normalizedInstantId = normalizeSceneInstantId(instantIdOverride);
     if (normalizedSceneId === null) {
       return;
@@ -1660,14 +2020,19 @@ export default function Control() {
 
     try {
       await flushSceneAttributeAutosaveForScene(normalizedSceneId);
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scene-instant/take`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sceneId: normalizedSceneId,
-          instantId: normalizedInstantId
-        })
-      });
+      const res = await fetch(
+        apiUrl(
+          `/program/${encodeURIComponent(activeProgramId)}/scene-instant/take`,
+        ),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sceneId: normalizedSceneId,
+            instantId: normalizedInstantId,
+          }),
+        },
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -1675,30 +2040,40 @@ export default function Control() {
       const payload = await res.json();
       setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
     } catch (err) {
-      console.error('Failed to take scene instant:', err);
+      console.error("Failed to take scene instant:", err);
     }
   };
 
   const stopSceneInstant = async () => {
     try {
-      const res = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scene-instant/stop`), {
-        method: 'POST'
-      });
+      const res = await fetch(
+        apiUrl(
+          `/program/${encodeURIComponent(activeProgramId)}/scene-instant/stop`,
+        ),
+        {
+          method: "POST",
+        },
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const payload = await res.json();
       setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
     } catch (err) {
-      console.error('Failed to stop scene instant:', err);
+      console.error("Failed to stop scene instant:", err);
     }
   };
 
   const triggerInstant = async (instantId: number) => {
     try {
-      const res = await fetch(apiUrl(`/instants/${instantId}/play?programId=${encodeURIComponent(activeProgramId)}`), {
-        method: 'POST'
-      });
+      const res = await fetch(
+        apiUrl(
+          `/instants/${instantId}/play?programId=${encodeURIComponent(activeProgramId)}`,
+        ),
+        {
+          method: "POST",
+        },
+      );
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -1715,11 +2090,14 @@ export default function Control() {
         ...prev,
         [instantId]: {
           startedAtMs,
-          endsAtMs: typeof durationMs === 'number' && durationMs > 0 ? startedAtMs + durationMs : null
-        }
+          endsAtMs:
+            typeof durationMs === "number" && durationMs > 0
+              ? startedAtMs + durationMs
+              : null,
+        },
       }));
 
-      if (typeof durationMs === 'number' && durationMs > 0) {
+      if (typeof durationMs === "number" && durationMs > 0) {
         const timeoutId = window.setTimeout(() => {
           delete instantPlaybackTimeoutsRef.current[instantId];
           setInstantPlayback((prev) => {
@@ -1734,15 +2112,20 @@ export default function Control() {
         instantPlaybackTimeoutsRef.current[instantId] = timeoutId;
       }
     } catch (err) {
-      console.error('Failed to trigger instant:', err);
+      console.error("Failed to trigger instant:", err);
     }
   };
 
   const stopAllInstants = async () => {
     try {
-      const res = await fetch(apiUrl(`/instants/stop-all?programId=${encodeURIComponent(activeProgramId)}`), {
-        method: 'POST'
-      });
+      const res = await fetch(
+        apiUrl(
+          `/instants/stop-all?programId=${encodeURIComponent(activeProgramId)}`,
+        ),
+        {
+          method: "POST",
+        },
+      );
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -1754,7 +2137,7 @@ export default function Control() {
       instantPlaybackTimeoutsRef.current = {};
       setInstantPlayback({});
     } catch (err) {
-      console.error('Failed to stop all instants:', err);
+      console.error("Failed to stop all instants:", err);
     }
   };
 
@@ -1812,7 +2195,11 @@ export default function Control() {
 
       const cachedDuration = instantDurationByUrlRef.current[instant.audioUrl];
       if (cachedDuration !== undefined) {
-        setInstantDurationsMs((prev) => (prev[instant.id] === cachedDuration ? prev : { ...prev, [instant.id]: cachedDuration }));
+        setInstantDurationsMs((prev) =>
+          prev[instant.id] === cachedDuration
+            ? prev
+            : { ...prev, [instant.id]: cachedDuration },
+        );
         return;
       }
 
@@ -1820,19 +2207,22 @@ export default function Control() {
       const cleanup = () => {
         audio.onloadedmetadata = null;
         audio.onerror = null;
-        audio.src = '';
+        audio.src = "";
       };
 
-      audio.preload = 'metadata';
+      audio.preload = "metadata";
       audio.onloadedmetadata = () => {
         const seconds = Number(audio.duration);
-        const durationMs = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null;
+        const durationMs =
+          Number.isFinite(seconds) && seconds > 0
+            ? Math.round(seconds * 1000)
+            : null;
         instantDurationByUrlRef.current[instant.audioUrl] = durationMs;
 
         if (!cancelled) {
           setInstantDurationsMs((prev) => ({
             ...prev,
-            [instant.id]: durationMs
+            [instant.id]: durationMs,
           }));
         }
 
@@ -1844,7 +2234,7 @@ export default function Control() {
         if (!cancelled) {
           setInstantDurationsMs((prev) => ({
             ...prev,
-            [instant.id]: null
+            [instant.id]: null,
           }));
         }
         cleanup();
@@ -1893,13 +2283,17 @@ export default function Control() {
     };
   }, []);
 
-  const updateSceneEditorProp = (componentType: string, propName: string, value: any) => {
+  const updateSceneEditorProp = (
+    componentType: string,
+    propName: string,
+    value: any,
+  ) => {
     const nextSceneProps = {
       ...sceneEditorPropsRef.current,
       [componentType]: {
         ...sceneEditorPropsRef.current[componentType],
-        [propName]: value
-      }
+        [propName]: value,
+      },
     };
     sceneEditorDirtyRef.current = true;
     sceneEditorPropsRef.current = nextSceneProps;
@@ -1909,10 +2303,13 @@ export default function Control() {
     }
   };
 
-  const replaceSceneEditorComponentProps = (componentType: string, nextProps: any) => {
+  const replaceSceneEditorComponentProps = (
+    componentType: string,
+    nextProps: any,
+  ) => {
     const nextSceneProps = {
       ...sceneEditorPropsRef.current,
-      [componentType]: nextProps
+      [componentType]: nextProps,
     };
     sceneEditorDirtyRef.current = true;
     sceneEditorPropsRef.current = nextSceneProps;
@@ -1922,10 +2319,13 @@ export default function Control() {
     }
   };
 
-  const syncSceneEditorComponentProps = (componentType: string, nextProps: any) => {
+  const syncSceneEditorComponentProps = (
+    componentType: string,
+    nextProps: any,
+  ) => {
     const nextSceneProps = {
       ...sceneEditorPropsRef.current,
-      [componentType]: nextProps
+      [componentType]: nextProps,
     };
     sceneEditorDirtyRef.current = false;
     pendingSceneAttributeSaveRef.current = null;
@@ -1939,15 +2339,15 @@ export default function Control() {
       const existingMetadata = sceneMetadataCacheRef.current[sceneId] ?? {};
       const nextMetadata = withIndependentProgramClockMetadata({
         ...existingMetadata,
-        ...nextSceneProps
+        ...nextSceneProps,
       });
 
       const response = await fetch(apiUrl(`/scenes/${sceneId}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          metadata: nextMetadata
-        })
+          metadata: nextMetadata,
+        }),
       });
 
       if (!response.ok) {
@@ -1957,7 +2357,7 @@ export default function Control() {
       const persistedScene = (await response.json()) as Scene;
       applySceneUpdateLocally(persistedScene);
     },
-    [applySceneUpdateLocally]
+    [applySceneUpdateLocally],
   );
 
   const flushQueuedSceneAttributeSaves = useCallback((): Promise<void> => {
@@ -1994,8 +2394,8 @@ export default function Control() {
             }
           } catch (err) {
             pendingSceneAttributeSaveRef.current = payload;
-            setSceneAttributeSaveError('Scene save failed. Retrying...');
-            console.error('Failed to update scene attributes:', err);
+            setSceneAttributeSaveError("Scene save failed. Retrying...");
+            console.error("Failed to update scene attributes:", err);
             lastError = err;
             break;
           }
@@ -2005,7 +2405,10 @@ export default function Control() {
       }
 
       if (lastError) {
-        if (pendingSceneAttributeSaveRef.current && sceneAttributeRetryTimerRef.current === null) {
+        if (
+          pendingSceneAttributeSaveRef.current &&
+          sceneAttributeRetryTimerRef.current === null
+        ) {
           const retryDelayMs = sceneAttributeRetryDelayMsRef.current;
           sceneAttributeRetryTimerRef.current = window.setTimeout(() => {
             sceneAttributeRetryTimerRef.current = null;
@@ -2013,7 +2416,10 @@ export default function Control() {
               // no-op, retry timer is rescheduled in flush on failure
             });
           }, retryDelayMs);
-          sceneAttributeRetryDelayMsRef.current = Math.min(8000, Math.round(retryDelayMs * 1.8));
+          sceneAttributeRetryDelayMsRef.current = Math.min(
+            8000,
+            Math.round(retryDelayMs * 1.8),
+          );
         }
         throw lastError;
       }
@@ -2028,7 +2434,11 @@ export default function Control() {
 
       // If a new payload was queued while the previous drain promise was
       // still resolving, guarantee we kick off another drain pass.
-      if (pendingSceneAttributeSaveRef.current && !sceneAttributeSaveDrainPromiseRef.current && sceneAttributeRetryTimerRef.current === null) {
+      if (
+        pendingSceneAttributeSaveRef.current &&
+        !sceneAttributeSaveDrainPromiseRef.current &&
+        sceneAttributeRetryTimerRef.current === null
+      ) {
         void flushQueuedSceneAttributeSaves().catch(() => {
           // no-op, retry timer is scheduled by flush
         });
@@ -2045,7 +2455,7 @@ export default function Control() {
         sceneId,
         signature,
         props: JSON.parse(signature) as ComponentPropsMap,
-        revision: ++sceneEditorRevisionRef.current
+        revision: ++sceneEditorRevisionRef.current,
       };
       pendingSceneAttributeSaveRef.current = payload;
       void flushQueuedSceneAttributeSaves().catch(() => {
@@ -2055,7 +2465,11 @@ export default function Control() {
       if (sceneAttributeFlushKickTimerRef.current === null) {
         sceneAttributeFlushKickTimerRef.current = window.setTimeout(() => {
           sceneAttributeFlushKickTimerRef.current = null;
-          if (pendingSceneAttributeSaveRef.current && !sceneAttributeSaveDrainPromiseRef.current && sceneAttributeRetryTimerRef.current === null) {
+          if (
+            pendingSceneAttributeSaveRef.current &&
+            !sceneAttributeSaveDrainPromiseRef.current &&
+            sceneAttributeRetryTimerRef.current === null
+          ) {
             void flushQueuedSceneAttributeSaves().catch(() => {
               // no-op, retry timer is scheduled by flush
             });
@@ -2063,7 +2477,7 @@ export default function Control() {
         }, 0);
       }
     },
-    [flushQueuedSceneAttributeSaves]
+    [flushQueuedSceneAttributeSaves],
   );
 
   const flushSceneAttributeAutosaveForScene = useCallback(
@@ -2086,13 +2500,16 @@ export default function Control() {
 
       await flushQueuedSceneAttributeSaves();
     },
-    [flushQueuedSceneAttributeSaves, queueSceneAttributePersist]
+    [flushQueuedSceneAttributeSaves, queueSceneAttributePersist],
   );
 
-  const commitSceneEditorComponentProps = async (componentType: string, nextProps: any) => {
+  const commitSceneEditorComponentProps = async (
+    componentType: string,
+    nextProps: any,
+  ) => {
     const nextSceneProps = {
       ...sceneEditorPropsRef.current,
-      [componentType]: nextProps
+      [componentType]: nextProps,
     };
     sceneEditorDirtyRef.current = true;
     sceneEditorPropsRef.current = nextSceneProps;
@@ -2102,14 +2519,17 @@ export default function Control() {
       try {
         await flushQueuedSceneAttributeSaves();
       } catch (err) {
-        console.error('Failed to commit scene editor component props:', err);
+        console.error("Failed to commit scene editor component props:", err);
       }
     }
   };
 
   useEffect(() => {
     const previousSelectedSceneId = previousSelectedSceneRef.current;
-    if (previousSelectedSceneId !== null && previousSelectedSceneId !== selectedScene) {
+    if (
+      previousSelectedSceneId !== null &&
+      previousSelectedSceneId !== selectedScene
+    ) {
       const previousProps = sceneEditorPropsRef.current;
       if (sceneEditorDirtyRef.current) {
         queueSceneAttributePersist(previousSelectedSceneId, previousProps);
@@ -2120,13 +2540,15 @@ export default function Control() {
     if (
       previousSelectedSceneId !== null &&
       previousSelectedSceneId === selectedScene &&
-      (sceneEditorDirtyRef.current || pendingSceneAttributeSaveRef.current || sceneAttributeSaveDrainPromiseRef.current)
+      (sceneEditorDirtyRef.current ||
+        pendingSceneAttributeSaveRef.current ||
+        sceneAttributeSaveDrainPromiseRef.current)
     ) {
       return;
     }
 
     if (!selectedScene) {
-      sceneEditorAutosaveSignatureRef.current = '';
+      sceneEditorAutosaveSignatureRef.current = "";
       sceneEditorDirtyRef.current = false;
       sceneEditorRevisionRef.current = 0;
       setSceneAttributeSaveError(null);
@@ -2135,9 +2557,11 @@ export default function Control() {
       return;
     }
 
-    const scene = assignedScenes.find((entry) => entry.id === selectedScene) ?? scenes.find((entry) => entry.id === selectedScene);
+    const scene =
+      assignedScenes.find((entry) => entry.id === selectedScene) ??
+      scenes.find((entry) => entry.id === selectedScene);
     if (!scene) {
-      sceneEditorAutosaveSignatureRef.current = '';
+      sceneEditorAutosaveSignatureRef.current = "";
       sceneEditorDirtyRef.current = false;
       sceneEditorRevisionRef.current = 0;
       setSceneAttributeSaveError(null);
@@ -2146,7 +2570,9 @@ export default function Control() {
       return;
     }
 
-    sceneMetadataCacheRef.current[selectedScene] = parseSceneMetadata(scene.metadata);
+    sceneMetadataCacheRef.current[selectedScene] = parseSceneMetadata(
+      scene.metadata,
+    );
     const nextProps = buildComponentPropsForScene(scene);
     sceneEditorAutosaveSignatureRef.current = JSON.stringify(nextProps);
     sceneEditorDirtyRef.current = false;
@@ -2174,7 +2600,10 @@ export default function Control() {
       if (!selectedSceneRef.current) {
         return;
       }
-      queueSceneAttributePersist(selectedSceneRef.current, sceneEditorPropsRef.current);
+      queueSceneAttributePersist(
+        selectedSceneRef.current,
+        sceneEditorPropsRef.current,
+      );
     }, 350);
 
     return () => {
@@ -2200,24 +2629,24 @@ export default function Control() {
       });
     };
 
-    window.addEventListener('pagehide', flushPendingSceneSaves);
-    window.addEventListener('beforeunload', flushPendingSceneSaves);
+    window.addEventListener("pagehide", flushPendingSceneSaves);
+    window.addEventListener("beforeunload", flushPendingSceneSaves);
     return () => {
-      window.removeEventListener('pagehide', flushPendingSceneSaves);
-      window.removeEventListener('beforeunload', flushPendingSceneSaves);
+      window.removeEventListener("pagehide", flushPendingSceneSaves);
+      window.removeEventListener("beforeunload", flushPendingSceneSaves);
     };
   }, [flushQueuedSceneAttributeSaves, flushSceneAttributeAutosaveForScene]);
 
   const openSceneModal = () => {
     if (layouts.length === 0) {
-      alert('Please create a layout first');
+      alert("Please create a layout first");
       return;
     }
     setEditingScene(null);
-    setNewSceneName('');
+    setNewSceneName("");
     setSelectedLayoutId(null);
     setSceneComponentProps({});
-    setSceneErrors({ name: '', layout: '', props: '' });
+    setSceneErrors({ name: "", layout: "", props: "" });
     setShowSceneModal(true);
   };
 
@@ -2228,34 +2657,38 @@ export default function Control() {
 
     try {
       const metadata = parseSceneMetadata(scene.metadata);
-      if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      if (
+        metadata &&
+        typeof metadata === "object" &&
+        !Array.isArray(metadata)
+      ) {
         setSceneComponentProps(buildComponentPropsForScene(scene));
       } else {
         handleLayoutSelect(scene.layoutId);
       }
     } catch (err) {
-      console.error('Failed to parse scene metadata:', err);
+      console.error("Failed to parse scene metadata:", err);
       handleLayoutSelect(scene.layoutId);
     }
 
-    setSceneErrors({ name: '', layout: '', props: '' });
+    setSceneErrors({ name: "", layout: "", props: "" });
     setShowSceneModal(true);
   };
 
   const closeSceneModal = () => {
     setShowSceneModal(false);
     setEditingScene(null);
-    setNewSceneName('');
+    setNewSceneName("");
     setSelectedLayoutId(null);
     setSceneComponentProps({});
-    setSceneErrors({ name: '', layout: '', props: '' });
+    setSceneErrors({ name: "", layout: "", props: "" });
   };
 
   const handleLayoutSelect = (layoutId: number) => {
     setSelectedLayoutId(layoutId);
     const layout = layouts.find((l) => l.id === layoutId);
     if (layout) {
-      const components = layout.componentType.split(',').filter(Boolean);
+      const components = layout.componentType.split(",").filter(Boolean);
       const initialProps: Record<string, any> = {};
       components.forEach((comp) => {
         initialProps[comp] = getDefaultPropsForComponent(comp);
@@ -2267,52 +2700,79 @@ export default function Control() {
   const getDefaultPropsForComponent = (componentType: string): any => {
     const base = getStaticDefaultProps(componentType);
     switch (componentType) {
-      case 'header':
-        return { ...base, date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) };
-      case 'reloj-digital-loop-clock':
-        return { ...base, textSequence: createProgramTextSequence('manual'), ctaSequence: createProgramTextSequence('manual') };
-      case 'modoitaliano-chyron':
-      case 'modoitaliano-giorgia-chyron':
-        return { ...base, textSequence: createProgramTextSequence('manual', { includeMarquee: true }), ctaSequence: createProgramTextSequence('manual') };
-      case 'fifthbell-content':
-        return { ...base, weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES] };
-      case 'fifthbell':
+      case "header":
         return {
-          ...getDefaultPropsForComponent('fifthbell-content'),
-          ...getDefaultPropsForComponent('fifthbell-marquee'),
-          ...getDefaultPropsForComponent('toni-clock')
+          ...base,
+          date: new Date().toLocaleDateString("es-ES", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }),
+        };
+      case "reloj-digital-loop-clock":
+        return {
+          ...base,
+          textSequence: createProgramTextSequence("manual"),
+          ctaSequence: createProgramTextSequence("manual"),
+        };
+      case "modoitaliano-chyron":
+      case "modoitaliano-giorgia-chyron":
+        return {
+          ...base,
+          textSequence: createProgramTextSequence("manual", {
+            includeMarquee: true,
+          }),
+          ctaSequence: createProgramTextSequence("manual"),
+        };
+      case "fifthbell-content":
+        return {
+          ...base,
+          weatherCities: [...FIFTHBELL_AVAILABLE_WEATHER_CITIES],
+        };
+      case "fifthbell":
+        return {
+          ...getDefaultPropsForComponent("fifthbell-content"),
+          ...getDefaultPropsForComponent("fifthbell-marquee"),
+          ...getDefaultPropsForComponent("toni-clock"),
         };
       default:
         return base;
     }
   };
 
-  const updateComponentProp = (componentType: string, propName: string, value: any) => {
+  const updateComponentProp = (
+    componentType: string,
+    propName: string,
+    value: any,
+  ) => {
     setSceneComponentProps((prev) => ({
       ...prev,
       [componentType]: {
         ...prev[componentType],
-        [propName]: value
-      }
+        [propName]: value,
+      },
     }));
   };
 
-  const replaceSceneComponentProps = (componentType: string, nextProps: any) => {
+  const replaceSceneComponentProps = (
+    componentType: string,
+    nextProps: any,
+  ) => {
     setSceneComponentProps((prev) => ({
       ...prev,
-      [componentType]: nextProps
+      [componentType]: nextProps,
     }));
   };
 
   const createScene = async () => {
-    const errors = { name: '', layout: '', props: '' };
+    const errors = { name: "", layout: "", props: "" };
 
     if (!newSceneName.trim()) {
-      errors.name = 'Please enter a scene name';
+      errors.name = "Please enter a scene name";
     }
 
     if (!selectedLayoutId) {
-      errors.layout = 'Please select a layout';
+      errors.layout = "Please select a layout";
     }
 
     if (errors.name || errors.layout) {
@@ -2323,23 +2783,27 @@ export default function Control() {
     setIsCreatingScene(true);
 
     try {
-      const existingMetadata = editingScene ? parseSceneMetadata(editingScene.metadata) : {};
+      const existingMetadata = editingScene
+        ? parseSceneMetadata(editingScene.metadata)
+        : {};
       const payload = {
         name: newSceneName,
         layoutId: selectedLayoutId,
         metadata: withIndependentProgramClockMetadata({
           ...existingMetadata,
-          ...sceneComponentProps
-        })
+          ...sceneComponentProps,
+        }),
       };
 
-      const url = editingScene ? apiUrl(`/scenes/${editingScene.id}`) : apiUrl('/scenes');
-      const method = editingScene ? 'PUT' : 'POST';
+      const url = editingScene
+        ? apiUrl(`/scenes/${editingScene.id}`)
+        : apiUrl("/scenes");
+      const method = editingScene ? "PUT" : "POST";
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -2349,19 +2813,22 @@ export default function Control() {
       await fetchScenes();
       closeSceneModal();
     } catch (err) {
-      console.error('Failed to save scene:', err);
-      setSceneErrors({ ...errors, name: 'Failed to save scene. Please try again.' });
+      console.error("Failed to save scene:", err);
+      setSceneErrors({
+        ...errors,
+        name: "Failed to save scene. Please try again.",
+      });
     } finally {
       setIsCreatingScene(false);
     }
   };
 
   const deleteScene = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this scene?')) return;
+    if (!confirm("Are you sure you want to delete this scene?")) return;
 
     try {
       await fetch(apiUrl(`/scenes/${id}`), {
-        method: 'DELETE'
+        method: "DELETE",
       });
       if (selectedScene === id) {
         setSelectedScene(null);
@@ -2372,7 +2839,7 @@ export default function Control() {
         fetchProgramState(activeProgramId);
       }
     } catch (err) {
-      console.error('Failed to delete scene:', err);
+      console.error("Failed to delete scene:", err);
     }
   };
 
@@ -2382,7 +2849,7 @@ export default function Control() {
     const handleSceneHotkey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
 
-      if (event.ctrlKey && key === 's') {
+      if (event.ctrlKey && key === "s") {
         event.preventDefault();
         sceneHotkeyArmedUntil = Date.now() + 1500;
         return;
@@ -2433,15 +2900,21 @@ export default function Control() {
       void triggerInstant(shortcutInstant.id);
     };
 
-    window.addEventListener('keydown', handleSceneHotkey);
+    window.addEventListener("keydown", handleSceneHotkey);
     return () => {
-      window.removeEventListener('keydown', handleSceneHotkey);
+      window.removeEventListener("keydown", handleSceneHotkey);
     };
-  }, [assignedScenes, instants, takeStagedSceneLive, triggerInstant, stageSceneForProgram]);
+  }, [
+    assignedScenes,
+    instants,
+    takeStagedSceneLive,
+    triggerInstant,
+    stageSceneForProgram,
+  ]);
 
   const handleProgramEvent = useCallback(
     (data: any) => {
-      if (!data || typeof data !== 'object') {
+      if (!data || typeof data !== "object") {
         return;
       }
 
@@ -2449,7 +2922,8 @@ export default function Control() {
         return;
       }
 
-      const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
+      const eventProgramId =
+        typeof data.programId === "string" ? data.programId : "";
       if (eventProgramId && eventProgramId !== activeProgramId) {
         return;
       }
@@ -2458,22 +2932,27 @@ export default function Control() {
         return;
       }
 
-      if (data.type === 'scene_change' || data.type === 'program_scenes_changed' || data.type === 'program_media_groups_changed') {
+      if (
+        data.type === "scene_change" ||
+        data.type === "program_scenes_changed" ||
+        data.type === "program_media_groups_changed"
+      ) {
         const normalizedProgramState = normalizeProgramState(data.state);
         syncProgramStateAndStagedScene(normalizedProgramState);
-        if (data.type === 'program_media_groups_changed') {
+        if (data.type === "program_media_groups_changed") {
           void fetchMediaGroups(activeProgramId);
         }
         return;
       }
 
-      if (data.type === 'fade_to_black') {
+      if (data.type === "fade_to_black") {
         syncProgramStateAndStagedScene(normalizeProgramState(data.state));
         return;
       }
 
-      if (data.type === 'scene_staged') {
-        const nextStagedSceneId = typeof data.stagedSceneId === 'number' ? data.stagedSceneId : null;
+      if (data.type === "scene_staged") {
+        const nextStagedSceneId =
+          typeof data.stagedSceneId === "number" ? data.stagedSceneId : null;
         setSelectedScene(nextStagedSceneId);
         setProgramState((previous) => {
           if (!previous) {
@@ -2482,114 +2961,179 @@ export default function Control() {
           return {
             ...previous,
             stagedSceneId: nextStagedSceneId,
-            stagedScene: data.scene && typeof data.scene === 'object' ? (data.scene as Scene) : null
+            stagedScene:
+              data.scene && typeof data.scene === "object"
+                ? (data.scene as Scene)
+                : null,
           };
         });
         return;
       }
 
-      if (data.type === 'scene_update') {
-        if (data.scene && typeof data.scene === 'object') {
+      if (data.type === "scene_update") {
+        if (data.scene && typeof data.scene === "object") {
           applySceneUpdateLocally(data.scene as Scene);
         }
         return;
       }
 
-      if (data.type === 'scene_cleared') {
+      if (data.type === "scene_cleared") {
         setProgramState((prev) => {
           if (!prev) {
             return prev;
           }
           return {
             ...prev,
-            activeSceneId: null
+            activeSceneId: null,
           };
         });
         return;
       }
 
-      if (data.type === 'audio_bus_update') {
-        const nextMixerSource = data.settings && typeof data.settings === 'object' ? (data.settings as { mixerSettings?: unknown }).mixerSettings : undefined;
+      if (data.type === "audio_bus_update") {
+        const nextMixerSource =
+          data.settings && typeof data.settings === "object"
+            ? (data.settings as { mixerSettings?: unknown }).mixerSettings
+            : undefined;
         if (nextMixerSource !== undefined) {
-          const nextMixerLevels = normalizeBroadcastSettingsPayload(nextMixerSource);
+          const nextMixerLevels =
+            normalizeBroadcastSettingsPayload(nextMixerSource);
           mixerLevelsRef.current = nextMixerLevels;
           setMixerLevels(nextMixerLevels);
         }
         const normalizedSongSequence = normalizeProgramSongPlaylist(
-          normalizeProgramSongSequence(data?.settings?.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+          normalizeProgramSongSequence(data?.settings?.songSequence) ?? {
+            ...createProgramSongSequence("manual"),
+            activeItemId: null,
+          },
         );
         setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
         return;
       }
 
-      if (data.type === 'audio_meter_update') {
-        setProgramAudioMeterLevels((previous) => reconcileProgramAudioMeter(previous, normalizeProgramAudioMeter(data.levels)));
+      if (data.type === "audio_meter_update") {
+        setProgramAudioMeterLevels((previous) =>
+          reconcileProgramAudioMeter(
+            previous,
+            normalizeProgramAudioMeter(data.levels),
+          ),
+        );
         return;
       }
 
-      if (data.type === 'song_playback_update') {
-        setProgramSongPlaybackState((previous) => reconcileProgramSongPlayback(previous, normalizeProgramSongPlayback(data.playback)));
+      if (data.type === "song_playback_update") {
+        setProgramSongPlaybackState((previous) =>
+          reconcileProgramSongPlayback(
+            previous,
+            normalizeProgramSongPlayback(data.playback),
+          ),
+        );
         return;
       }
 
-      if (data.type === 'scene_instant_state') {
+      if (data.type === "scene_instant_state") {
         setSceneInstantPlayback(normalizeSceneInstantPlayback(data.playback));
         return;
       }
 
-      if (data.type === 'scene_instant_take') {
+      if (data.type === "scene_instant_take") {
         setSceneInstantPlayback({
           sceneId: normalizeSceneInstantId(data.sceneId),
           instantId: normalizeSceneInstantId(data.instant?.id),
-          instantName: typeof data.instant?.name === 'string' ? data.instant.name : '',
+          instantName:
+            typeof data.instant?.name === "string" ? data.instant.name : "",
           isPlaying: true,
-          updatedAt: typeof data.triggeredAt === 'string' ? data.triggeredAt : new Date().toISOString()
+          updatedAt:
+            typeof data.triggeredAt === "string"
+              ? data.triggeredAt
+              : new Date().toISOString(),
         });
         return;
       }
 
-      if (data.type === 'scene_instant_stop') {
+      if (data.type === "scene_instant_stop") {
         setSceneInstantPlayback((previous) => ({
           ...previous,
           isPlaying: false,
-          updatedAt: typeof data.triggeredAt === 'string' ? data.triggeredAt : new Date().toISOString()
+          updatedAt:
+            typeof data.triggeredAt === "string"
+              ? data.triggeredAt
+              : new Date().toISOString(),
         }));
       }
     },
-    [activeProgramId, applySceneUpdateLocally, isProgramRealtimeConnected, shouldApplyControlUpdatePayload, syncProgramStateAndStagedScene]
+    [
+      activeProgramId,
+      applySceneUpdateLocally,
+      isProgramRealtimeConnected,
+      shouldApplyControlUpdatePayload,
+      syncProgramStateAndStagedScene,
+    ],
   );
 
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
     onMessage: handleProgramEvent,
-    enabled: !isProgramRealtimeConnected
+    enabled: !isProgramRealtimeConnected,
   });
 
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
-    ([componentType]) => componentType !== 'chyron' && hasConfigurableSceneAttributes(componentType)
+    ([componentType]) =>
+      componentType !== "chyron" &&
+      hasConfigurableSceneAttributes(componentType),
   );
-  const stagedSceneData = selectedScene ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null) : null;
+  const stagedSceneData = selectedScene
+    ? (assignedScenes.find((scene) => scene.id === selectedScene) ?? null)
+    : null;
   const activeSceneId = programState?.activeSceneId ?? null;
-  const selectedSceneInstantId = normalizeSceneInstantId(sceneEditorProps?.sceneInstant?.instantId);
-  const selectedSceneInstant = selectedSceneInstantId ? (instants.find((instant) => instant.id === selectedSceneInstantId) ?? null) : null;
-  const stagedIsOnAir = selectedScene !== null && selectedScene === activeSceneId;
+  const selectedSceneInstantId = normalizeSceneInstantId(
+    sceneEditorProps?.sceneInstant?.instantId,
+  );
+  const selectedSceneInstant = selectedSceneInstantId
+    ? (instants.find((instant) => instant.id === selectedSceneInstantId) ??
+      null)
+    : null;
+  const stagedIsOnAir =
+    selectedScene !== null && selectedScene === activeSceneId;
   const programAudioBusSongSequence = useMemo(
     () =>
       normalizeProgramSongPlaylist(
-        normalizeProgramSongSequence(programAudioBusSettings.songSequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }
+        normalizeProgramSongSequence(programAudioBusSettings.songSequence) ?? {
+          ...createProgramSongSequence("manual"),
+          activeItemId: null,
+        },
       ),
-    [programAudioBusSettings.songSequence]
+    [programAudioBusSettings.songSequence],
   );
-  const hasSoloChannel = mixerLevels.songSolo || mixerLevels.instantSolo || mixerLevels.sceneInstantSolo || mixerLevels.streamSolo;
-  const streamAudible = (hasSoloChannel ? mixerLevels.streamSolo : true) && !mixerLevels.streamMuted;
-  const songAudible = (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
-  const instantsAudible = (hasSoloChannel ? mixerLevels.instantSolo : true) && !mixerLevels.instantMuted;
-  const sceneInstantAudible = (hasSoloChannel ? mixerLevels.sceneInstantSolo : true) && !mixerLevels.sceneInstantMuted;
+  const hasSoloChannel =
+    mixerLevels.songSolo ||
+    mixerLevels.instantSolo ||
+    mixerLevels.sceneInstantSolo ||
+    mixerLevels.streamSolo;
+  const streamAudible =
+    (hasSoloChannel ? mixerLevels.streamSolo : true) &&
+    !mixerLevels.streamMuted;
+  const songAudible =
+    (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
+  const instantsAudible =
+    (hasSoloChannel ? mixerLevels.instantSolo : true) &&
+    !mixerLevels.instantMuted;
+  const sceneInstantAudible =
+    (hasSoloChannel ? mixerLevels.sceneInstantSolo : true) &&
+    !mixerLevels.sceneInstantMuted;
   const mainMixGain = faderToGain(mixerLevels.mainMasterVolume);
-  const songChannelGain = songAudible ? faderToGain(mixerLevels.songMasterVolume) : 0;
-  const instantsChannelGain = instantsAudible ? faderToGain(mixerLevels.instantMasterVolume) : 0;
-  const sceneInstantChannelGain = sceneInstantAudible ? faderToGain(mixerLevels.sceneInstantMasterVolume) : 0;
-  const streamChannelGain = streamAudible ? faderToGain(mixerLevels.streamMasterVolume) : 0;
+  const songChannelGain = songAudible
+    ? faderToGain(mixerLevels.songMasterVolume)
+    : 0;
+  const instantsChannelGain = instantsAudible
+    ? faderToGain(mixerLevels.instantMasterVolume)
+    : 0;
+  const sceneInstantChannelGain = sceneInstantAudible
+    ? faderToGain(mixerLevels.sceneInstantMasterVolume)
+    : 0;
+  const streamChannelGain = streamAudible
+    ? faderToGain(mixerLevels.streamMasterVolume)
+    : 0;
   const songOutputGain = songChannelGain * mainMixGain;
   const instantsOutputGain = instantsChannelGain * mainMixGain;
   const sceneInstantOutputGain = sceneInstantChannelGain * mainMixGain;
@@ -2600,8 +3144,12 @@ export default function Control() {
   const streamPresetBFader = dbToFader(mixerTakePresetsDb.stream.bDb);
   const instantsPresetAFader = dbToFader(mixerTakePresetsDb.instants.aDb);
   const instantsPresetBFader = dbToFader(mixerTakePresetsDb.instants.bDb);
-  const sceneInstantPresetAFader = dbToFader(mixerTakePresetsDb.sceneInstant.aDb);
-  const sceneInstantPresetBFader = dbToFader(mixerTakePresetsDb.sceneInstant.bDb);
+  const sceneInstantPresetAFader = dbToFader(
+    mixerTakePresetsDb.sceneInstant.aDb,
+  );
+  const sceneInstantPresetBFader = dbToFader(
+    mixerTakePresetsDb.sceneInstant.bDb,
+  );
   const mainPresetAFader = dbToFader(mixerTakePresetsDb.main.aDb);
   const mainPresetBFader = dbToFader(mixerTakePresetsDb.main.bDb);
   const sceneQuickActions = useMemo(() => {
@@ -2610,50 +3158,110 @@ export default function Control() {
       name: scene.name,
       isActive: scene.id === activeSceneId,
       isStaged: scene.id === selectedScene,
-      shortcutLabel: `^ Ctrl+${index < 9 ? (index + 1) % 10 : 0}`
+      shortcutLabel: `^ Ctrl+${index < 9 ? (index + 1) % 10 : 0}`,
     }));
   }, [assignedScenes, activeSceneId, selectedScene]);
-  const activeSceneComponentTypes = (programState?.activeScene?.layout.componentType || '').split(',').filter(Boolean);
-  const stagedSceneComponentTypes = (stagedSceneData?.layout.componentType || '').split(',').filter(Boolean);
-  const shouldShowStreamStrip = activeSceneComponentTypes.includes('video-stream') || stagedSceneComponentTypes.includes('video-stream');
+  const activeSceneComponentTypes = (
+    programState?.activeScene?.layout.componentType || ""
+  )
+    .split(",")
+    .filter(Boolean);
+  const stagedSceneComponentTypes = (
+    stagedSceneData?.layout.componentType || ""
+  )
+    .split(",")
+    .filter(Boolean);
+  const shouldShowStreamStrip =
+    activeSceneComponentTypes.includes("video-stream") ||
+    stagedSceneComponentTypes.includes("video-stream");
   const songMeterFill = meterLevelToFill(programAudioMeterLevels.song.vu);
   const songPeakFill = meterLevelToFill(programAudioMeterLevels.song.peak);
-  const songPeakHoldFill = meterLevelToFill(programAudioMeterLevels.song.peakHold);
-  const instantsMeterFill = meterLevelToFill(programAudioMeterLevels.instants.vu);
-  const instantsPeakFill = meterLevelToFill(programAudioMeterLevels.instants.peak);
-  const instantsPeakHoldFill = meterLevelToFill(programAudioMeterLevels.instants.peakHold);
-  const sceneInstantMeterFill = meterLevelToFill(programAudioMeterLevels.sceneInstant.vu);
-  const sceneInstantPeakFill = meterLevelToFill(programAudioMeterLevels.sceneInstant.peak);
-  const sceneInstantPeakHoldFill = meterLevelToFill(programAudioMeterLevels.sceneInstant.peakHold);
+  const songPeakHoldFill = meterLevelToFill(
+    programAudioMeterLevels.song.peakHold,
+  );
+  const instantsMeterFill = meterLevelToFill(
+    programAudioMeterLevels.instants.vu,
+  );
+  const instantsPeakFill = meterLevelToFill(
+    programAudioMeterLevels.instants.peak,
+  );
+  const instantsPeakHoldFill = meterLevelToFill(
+    programAudioMeterLevels.instants.peakHold,
+  );
+  const sceneInstantMeterFill = meterLevelToFill(
+    programAudioMeterLevels.sceneInstant.vu,
+  );
+  const sceneInstantPeakFill = meterLevelToFill(
+    programAudioMeterLevels.sceneInstant.peak,
+  );
+  const sceneInstantPeakHoldFill = meterLevelToFill(
+    programAudioMeterLevels.sceneInstant.peakHold,
+  );
   const mainMixMeterFill = meterLevelToFill(programAudioMeterLevels.main.vu);
   const mainMixPeakFill = meterLevelToFill(programAudioMeterLevels.main.peak);
-  const mainMixPeakHoldFill = meterLevelToFill(programAudioMeterLevels.main.peakHold);
-  const onlineStatusLabel = isProgramRealtimeConnected ? 'Realtime Online' : 'Fallback Mode';
-  const onlineStatusTone = isProgramRealtimeConnected ? 'text-sea bg-sea/15 border-sea/40' : 'text-text-primary bg-accent-blue/15 border-accent-blue/35';
-  const activeSongLabel = programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl ? 'Playing' : 'Idle';
-   const controlDeckGrowProps = { grow: true } as any;
+  const mainMixPeakHoldFill = meterLevelToFill(
+    programAudioMeterLevels.main.peakHold,
+  );
+  const onlineStatusLabel = isProgramRealtimeConnected
+    ? "Realtime Online"
+    : "Fallback Mode";
+  const onlineStatusTone = isProgramRealtimeConnected
+    ? "text-sea bg-sea/15 border-sea/40"
+    : "text-text-primary bg-accent-blue/15 border-accent-blue/35";
+  const activeSongLabel =
+    programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl
+      ? "Playing"
+      : "Idle";
+  const controlDeckGrowProps = { grow: true } as any;
 
-  if (programState?.type === 'radio') {
+  if (programState?.type === "radio") {
     return (
-       <RadioPanel
+      <RadioPanel
         programId={activeProgramId}
         songSequence={programAudioBusSongSequence}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}
-        onSaveSongSequence={async (seq) => { await saveProgramAudioBusSongSequence(seq); }}
-        onTakeOffAir={async () => { await takeProgramSongOffAir(activeProgramId); }}
+        onSaveSongSequence={async (seq) => {
+          await saveProgramAudioBusSongSequence(seq);
+        }}
+        onTakeOffAir={async () => {
+          await takeProgramSongOffAir(activeProgramId);
+        }}
         instants={instants}
         instantSearch={instantSearch}
         onInstantSearchChange={setInstantSearch}
         onTriggerInstant={(id) => triggerInstant(id)}
         onStopAllInstants={stopAllInstants}
         instantPlayback={instantPlayback}
+        mixer={{
+          song: {
+            volume: mixerLevels.songMasterVolume,
+            muted: mixerLevels.songMuted,
+            peak: programAudioMeterLevels.song.peak,
+          },
+          instants: {
+            volume: mixerLevels.instantMasterVolume,
+            muted: mixerLevels.instantMuted,
+            peak: programAudioMeterLevels.instants.peak,
+          },
+          main: {
+            volume: mixerLevels.mainMasterVolume,
+            peak: programAudioMeterLevels.main.peak,
+          },
+          saving: isSavingMixerLevels,
+          error: mixerSaveError,
+        }}
+        onSongVolumeChange={setSongMasterVolume}
+        onInstantVolumeChange={setInstantMasterVolume}
+        onMainVolumeChange={setMainMasterVolume}
+        onToggleSongMuted={toggleSongMuted}
+        onToggleInstantMuted={toggleInstantMuted}
       />
     );
   }
 
   return (
-    <div className='flex h-full w-full flex-1 min-h-0 flex-col overflow-hidden bg-dark-sand text-text-primary'>
+    <div className="flex h-full w-full flex-1 min-h-0 flex-col overflow-hidden bg-dark-sand text-text-primary">
       <style>
         {`
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
@@ -2686,356 +3294,496 @@ export default function Control() {
         onTransitionChange={setSelectedTransitionId}
         onStageScene={stageSceneForProgram}
         onTake={() => void takeStagedSceneLive()}
-        onCut={() => void takeStagedSceneLive('cut')}
-        onFadeToBlack={() => void setFadeToBlack(programState?.fadeToBlack !== true)}
+        onCut={() => void takeStagedSceneLive("cut")}
+        onFadeToBlack={() =>
+          void setFadeToBlack(programState?.fadeToBlack !== true)
+        }
       />
-      <div className={`flex-1 min-h-0 w-full overflow-hidden ${consoleWorkspace === 'compact' ? 'hidden' : ''}`} data-workspace-content={consoleWorkspace}>
-        <PanelLayout className='w-full h-full min-h-0' padding='p-0'>
-          <PanelColumn className='min-w-0' {...controlDeckGrowProps}>
-            {consoleWorkspace !== 'graphics' ? (
-            <Panel title='Mixer' accent='#38bdf8' variant='monitor' className='min-h-0' grow>
-              <div className='space-y-4'>
-                <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-                  {isLoadingMixerLevels ? (
-                    <span className='text-xs font-mono text-amber-500 animate-pulse'>LOADING STATE...</span>
-                  ) : isSavingMixerLevels ? (
-                    <span className='text-xs font-mono text-emerald-500 animate-pulse'>STORING...</span>
-                  ) : null}
-                </div>
+      <div
+        className={`flex-1 min-h-0 w-full overflow-hidden ${consoleWorkspace === "compact" ? "hidden" : ""}`}
+        data-workspace-content={consoleWorkspace}
+      >
+        <PanelLayout className="w-full h-full min-h-0" padding="p-0">
+          <PanelColumn className="min-w-0" {...controlDeckGrowProps}>
+            {consoleWorkspace !== "graphics" ? (
+              <Panel
+                title="Mixer"
+                accent="#38bdf8"
+                variant="monitor"
+                className="min-h-0"
+                grow
+              >
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    {isLoadingMixerLevels ? (
+                      <span className="text-xs font-mono text-amber-500 animate-pulse">
+                        LOADING STATE...
+                      </span>
+                    ) : isSavingMixerLevels ? (
+                      <span className="text-xs font-mono text-emerald-500 animate-pulse">
+                        STORING...
+                      </span>
+                    ) : null}
+                  </div>
 
-                <div className='rounded-xl border border-zinc-700 bg-zinc-900/70 p-2.5'>
-                  <div className='overflow-x-auto'>
-                    <div className='flex min-w-max items-end justify-between gap-3'>
-                      <div className='flex items-end gap-2'>
-                        <div className='flex items-center gap-2 self-end'>
-                          <p className='text-[10px] font-bold tracking-widest text-violet-300'>SCENE INSTANT</p>
-                          <Button
-                            type='button'
-                            onClick={toggleSceneInstantMuted}
-                            className={`flex h-8 items-center justify-center rounded px-2.5 transition-all font-bold text-[10px] uppercase tracking-wider ${mixerLevels.sceneInstantMuted ? 'bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'}`}
-                          >
-                            Mute
-                          </Button>
-                          <Button
-                            type='button'
-                            onClick={toggleSceneInstantSolo}
-                            className={`flex h-8 items-center justify-center rounded px-2.5 transition-all font-bold text-[10px] uppercase tracking-wider ${mixerLevels.sceneInstantSolo ? 'bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50'}`}
-                          >
-                            Solo
-                          </Button>
-                        </div>
-                        <div className='flex flex-col gap-1'>
-                          <label className='text-[10px] font-mono text-sky-300'>
-                            <span className='mb-0.5 block text-center'>A (dB)</span>
-                            <Input
-                              key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
-                              type='text'
-                              inputMode='decimal'
-                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.aDb)}
-                              onBlur={(event) => {
-                                const nextValue = commitTakePresetDbInput('sceneInstant', 'a', event.target.value, mixerTakePresetsDb.sceneInstant.aDb);
-                                event.target.value = formatTakePresetDbInputValue(nextValue);
-                              }}
-                              className='w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400'
-                            />
-                          </label>
-                          <Button
-                            type='button'
-                            onClick={() => triggerChannelTake('sceneInstant', 'a')}
-                            disabled={isApplyingTakePresetByChannel.sceneInstant}
-                            className='w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50'
-                          >
-                            TAKE A
-                          </Button>
-                        </div>
-                        <div className='flex flex-col gap-1'>
-                          <label className='text-[10px] font-mono text-amber-300'>
-                            <span className='mb-0.5 block text-center'>B (dB)</span>
-                            <Input
-                              key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
-                              type='text'
-                              inputMode='decimal'
-                              defaultValue={formatTakePresetDbInputValue(mixerTakePresetsDb.sceneInstant.bDb)}
-                              onBlur={(event) => {
-                                const nextValue = commitTakePresetDbInput('sceneInstant', 'b', event.target.value, mixerTakePresetsDb.sceneInstant.bDb);
-                                event.target.value = formatTakePresetDbInputValue(nextValue);
-                              }}
-                              className='w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400'
-                            />
-                          </label>
-                          <Button
-                            type='button'
-                            onClick={() => triggerChannelTake('sceneInstant', 'b')}
-                            disabled={isApplyingTakePresetByChannel.sceneInstant}
-                            className='w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50'
-                          >
-                            TAKE B
-                          </Button>
+                  <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-2.5">
+                    <div className="overflow-x-auto">
+                      <div className="flex min-w-max items-end justify-between gap-3">
+                        <div className="flex items-end gap-2">
+                          <div className="flex items-center gap-2 self-end">
+                            <p className="text-[10px] font-bold tracking-widest text-violet-300">
+                              SCENE INSTANT
+                            </p>
+                            <Button
+                              type="button"
+                              onClick={toggleSceneInstantMuted}
+                              className={`flex h-8 items-center justify-center rounded px-2.5 transition-all font-bold text-[10px] uppercase tracking-wider ${mixerLevels.sceneInstantMuted ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]" : "bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50"}`}
+                            >
+                              Mute
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={toggleSceneInstantSolo}
+                              className={`flex h-8 items-center justify-center rounded px-2.5 transition-all font-bold text-[10px] uppercase tracking-wider ${mixerLevels.sceneInstantSolo ? "bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]" : "bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50"}`}
+                            >
+                              Solo
+                            </Button>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-mono text-sky-300">
+                              <span className="mb-0.5 block text-center">
+                                A (dB)
+                              </span>
+                              <Input
+                                key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
+                                type="text"
+                                inputMode="decimal"
+                                defaultValue={formatTakePresetDbInputValue(
+                                  mixerTakePresetsDb.sceneInstant.aDb,
+                                )}
+                                onBlur={(event) => {
+                                  const nextValue = commitTakePresetDbInput(
+                                    "sceneInstant",
+                                    "a",
+                                    event.target.value,
+                                    mixerTakePresetsDb.sceneInstant.aDb,
+                                  );
+                                  event.target.value =
+                                    formatTakePresetDbInputValue(nextValue);
+                                }}
+                                className="w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400"
+                              />
+                            </label>
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                triggerChannelTake("sceneInstant", "a")
+                              }
+                              disabled={
+                                isApplyingTakePresetByChannel.sceneInstant
+                              }
+                              className="w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50"
+                            >
+                              TAKE A
+                            </Button>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-mono text-amber-300">
+                              <span className="mb-0.5 block text-center">
+                                B (dB)
+                              </span>
+                              <Input
+                                key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
+                                type="text"
+                                inputMode="decimal"
+                                defaultValue={formatTakePresetDbInputValue(
+                                  mixerTakePresetsDb.sceneInstant.bDb,
+                                )}
+                                onBlur={(event) => {
+                                  const nextValue = commitTakePresetDbInput(
+                                    "sceneInstant",
+                                    "b",
+                                    event.target.value,
+                                    mixerTakePresetsDb.sceneInstant.bDb,
+                                  );
+                                  event.target.value =
+                                    formatTakePresetDbInputValue(nextValue);
+                                }}
+                                className="w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400"
+                              />
+                            </label>
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                triggerChannelTake("sceneInstant", "b")
+                              }
+                              disabled={
+                                isApplyingTakePresetByChannel.sceneInstant
+                              }
+                              className="w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50"
+                            >
+                              TAKE B
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
+                    <div className="mt-2 px-1">
+                      <Input
+                        key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
+                        type="text"
+                        inputMode="decimal"
+                        defaultValue={formatMixerLevelInputValue(
+                          mixerLevels.sceneInstantMasterVolume,
+                        )}
+                        aria-label="Scene instant channel level in dB"
+                        onBlur={(event) => {
+                          const nextValue = parseMixerLevelInputToFader(
+                            event.target.value,
+                            mixerLevels.sceneInstantMasterVolume,
+                          );
+                          setSceneInstantMasterVolume(nextValue);
+                          event.target.value =
+                            formatMixerLevelInputValue(nextValue);
+                        }}
+                        className="h-8 w-full rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-xs font-bold text-violet-300 outline-none"
+                      />
+                    </div>
                   </div>
-                  <div className='mt-2 px-1'>
-                    <Input
-                      key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
-                      type='text'
-                      inputMode='decimal'
-                      defaultValue={formatMixerLevelInputValue(mixerLevels.sceneInstantMasterVolume)}
-                      aria-label='Scene instant channel level in dB'
-                      onBlur={(event) => {
-                        const nextValue = parseMixerLevelInputToFader(event.target.value, mixerLevels.sceneInstantMasterVolume);
-                        setSceneInstantMasterVolume(nextValue);
-                        event.target.value = formatMixerLevelInputValue(nextValue);
+
+                  <div className="flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div className="flex flex-1 overflow-x-auto pb-2 custom-scrollbar">
+                      <div className="flex min-w-max items-stretch gap-5 pr-3">
+                        <MixerStrip
+                          title="SONG"
+                          widthClass="w-44"
+                          stripClassName="rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg"
+                          headerClassName="border-zinc-700 bg-zinc-900"
+                          titleClassName="text-zinc-400"
+                          muted={mixerLevels.songMuted}
+                          solo={mixerLevels.songSolo}
+                          onToggleMuted={toggleSongMuted}
+                          onToggleSolo={toggleSongSolo}
+                          presetAKey={`song-preset-a-${mixerTakePresetsDb.song.aDb}`}
+                          presetBKey={`song-preset-b-${mixerTakePresetsDb.song.bDb}`}
+                          presetADb={mixerTakePresetsDb.song.aDb}
+                          presetBDb={mixerTakePresetsDb.song.bDb}
+                          onCommitPresetA={(raw) =>
+                            commitTakePresetDbInput(
+                              "song",
+                              "a",
+                              raw,
+                              mixerTakePresetsDb.song.aDb,
+                            )
+                          }
+                          onCommitPresetB={(raw) =>
+                            commitTakePresetDbInput(
+                              "song",
+                              "b",
+                              raw,
+                              mixerTakePresetsDb.song.bDb,
+                            )
+                          }
+                          onTakeA={() => triggerChannelTake("song", "a")}
+                          onTakeB={() => triggerChannelTake("song", "b")}
+                          isTakingA={isApplyingTakePresetByChannel.song}
+                          isTakingB={isApplyingTakePresetByChannel.song}
+                          levelKey={`song-level-${mixerLevels.songMasterVolume}`}
+                          levelValue={mixerLevels.songMasterVolume}
+                          levelAriaLabel="Song channel level in dB"
+                          onCommitLevel={(raw) => {
+                            const nextValue = parseMixerLevelInputToFader(
+                              raw,
+                              mixerLevels.songMasterVolume,
+                            );
+                            setSongMasterVolume(nextValue);
+                            return nextValue;
+                          }}
+                          levelContainerClassName="border-[#1a3525] bg-[#0a1510]"
+                          levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none"
+                          liveClassName="text-emerald-700"
+                          isLive={songOutputGain > 0}
+                          meterFill={songMeterFill}
+                          meterPeakFill={songPeakFill}
+                          meterPeakHoldFill={songPeakHoldFill}
+                          markerA={songPresetAFader}
+                          markerB={songPresetBFader}
+                          markerBorderClassName="border-sky-300/90"
+                          markerTextClassName="text-sky-300"
+                          markerTrackClassName="w-8"
+                        />
+
+                        {shouldShowStreamStrip ? (
+                          <MixerStrip
+                            title="STREAM"
+                            widthClass="w-44"
+                            stripClassName="rounded-lg border border-cyan-700/40 bg-zinc-800/80 shadow-lg"
+                            headerClassName="border-cyan-900/60 bg-cyan-950/20"
+                            titleClassName="text-violet-300"
+                            muted={mixerLevels.streamMuted}
+                            solo={mixerLevels.streamSolo}
+                            onToggleMuted={toggleStreamMuted}
+                            onToggleSolo={toggleStreamSolo}
+                            presetAKey={`stream-preset-a-${mixerTakePresetsDb.stream.aDb}`}
+                            presetBKey={`stream-preset-b-${mixerTakePresetsDb.stream.bDb}`}
+                            presetADb={mixerTakePresetsDb.stream.aDb}
+                            presetBDb={mixerTakePresetsDb.stream.bDb}
+                            onCommitPresetA={(raw) =>
+                              commitTakePresetDbInput(
+                                "stream",
+                                "a",
+                                raw,
+                                mixerTakePresetsDb.stream.aDb,
+                              )
+                            }
+                            onCommitPresetB={(raw) =>
+                              commitTakePresetDbInput(
+                                "stream",
+                                "b",
+                                raw,
+                                mixerTakePresetsDb.stream.bDb,
+                              )
+                            }
+                            onTakeA={() => triggerChannelTake("stream", "a")}
+                            onTakeB={() => triggerChannelTake("stream", "b")}
+                            isTakingA={isApplyingTakePresetByChannel.stream}
+                            isTakingB={isApplyingTakePresetByChannel.stream}
+                            levelKey={`stream-level-${mixerLevels.streamMasterVolume}`}
+                            levelValue={mixerLevels.streamMasterVolume}
+                            levelAriaLabel="Stream channel level in dB"
+                            onCommitLevel={(raw) => {
+                              const nextValue = parseMixerLevelInputToFader(
+                                raw,
+                                mixerLevels.streamMasterVolume,
+                              );
+                              setStreamMasterVolume(nextValue);
+                              return nextValue;
+                            }}
+                            levelContainerClassName="border-cyan-900/30 bg-[#07161a]"
+                            levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-sky-300 outline-none"
+                            liveClassName="text-sky-300"
+                            isLive={streamOutputGain > 0}
+                            showMeterSignal={false}
+                            markerA={streamPresetAFader}
+                            markerB={streamPresetBFader}
+                            markerBorderClassName="border-sky-300/90"
+                            markerTextClassName="text-sky-300"
+                            markerTrackClassName="w-8"
+                          />
+                        ) : null}
+
+                        <MixerStrip
+                          title="INSTANTS"
+                          widthClass="w-44"
+                          stripClassName="rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg"
+                          headerClassName="border-zinc-700 bg-zinc-900"
+                          titleClassName="text-zinc-400"
+                          muted={mixerLevels.instantMuted}
+                          solo={mixerLevels.instantSolo}
+                          onToggleMuted={toggleInstantMuted}
+                          onToggleSolo={toggleInstantSolo}
+                          presetAKey={`instants-preset-a-${mixerTakePresetsDb.instants.aDb}`}
+                          presetBKey={`instants-preset-b-${mixerTakePresetsDb.instants.bDb}`}
+                          presetADb={mixerTakePresetsDb.instants.aDb}
+                          presetBDb={mixerTakePresetsDb.instants.bDb}
+                          onCommitPresetA={(raw) =>
+                            commitTakePresetDbInput(
+                              "instants",
+                              "a",
+                              raw,
+                              mixerTakePresetsDb.instants.aDb,
+                            )
+                          }
+                          onCommitPresetB={(raw) =>
+                            commitTakePresetDbInput(
+                              "instants",
+                              "b",
+                              raw,
+                              mixerTakePresetsDb.instants.bDb,
+                            )
+                          }
+                          onTakeA={() => triggerChannelTake("instants", "a")}
+                          onTakeB={() => triggerChannelTake("instants", "b")}
+                          isTakingA={isApplyingTakePresetByChannel.instants}
+                          isTakingB={isApplyingTakePresetByChannel.instants}
+                          levelKey={`instants-level-${mixerLevels.instantMasterVolume}`}
+                          levelValue={mixerLevels.instantMasterVolume}
+                          levelAriaLabel="Instants channel level in dB"
+                          onCommitLevel={(raw) => {
+                            const nextValue = parseMixerLevelInputToFader(
+                              raw,
+                              mixerLevels.instantMasterVolume,
+                            );
+                            setInstantMasterVolume(nextValue);
+                            return nextValue;
+                          }}
+                          levelContainerClassName="border-[#1a3525] bg-[#0a1510]"
+                          levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none"
+                          liveClassName="text-emerald-700"
+                          isLive={instantsOutputGain > 0}
+                          meterFill={instantsMeterFill}
+                          meterPeakFill={instantsPeakFill}
+                          meterPeakHoldFill={instantsPeakHoldFill}
+                          markerA={instantsPresetAFader}
+                          markerB={instantsPresetBFader}
+                          markerBorderClassName="border-sky-300/90"
+                          markerTextClassName="text-sky-300"
+                          markerTrackClassName="w-8"
+                        />
+                      </div>
+                    </div>
+
+                    <MixerStrip
+                      title="MAIN MIX"
+                      widthClass="w-48"
+                      stripClassName="rounded-lg border border-red-700/40 bg-zinc-800 shadow-xl"
+                      headerClassName="border-red-900/50 bg-red-950/20"
+                      titleClassName="text-red-500"
+                      showMuteSolo={false}
+                      showPresets={false}
+                      presetAKey={`main-preset-a-${mixerTakePresetsDb.main.aDb}`}
+                      presetBKey={`main-preset-b-${mixerTakePresetsDb.main.bDb}`}
+                      presetADb={mixerTakePresetsDb.main.aDb}
+                      presetBDb={mixerTakePresetsDb.main.bDb}
+                      onCommitPresetA={(raw) =>
+                        commitTakePresetDbInput(
+                          "main",
+                          "a",
+                          raw,
+                          mixerTakePresetsDb.main.aDb,
+                        )
+                      }
+                      onCommitPresetB={(raw) =>
+                        commitTakePresetDbInput(
+                          "main",
+                          "b",
+                          raw,
+                          mixerTakePresetsDb.main.bDb,
+                        )
+                      }
+                      onTakeA={() => triggerChannelTake("main", "a")}
+                      onTakeB={() => triggerChannelTake("main", "b")}
+                      isTakingA={isApplyingTakePresetByChannel.main}
+                      isTakingB={isApplyingTakePresetByChannel.main}
+                      topPanel={
+                        <div className="flex flex-col gap-1 rounded border border-red-900/20 bg-zinc-900/50 px-2 py-1.5 shadow-inner">
+                          <label className="text-[10px] font-mono text-red-300">
+                            <span className="block text-center">
+                              TAKE FADE (ms)
+                            </span>
+                            <Input
+                              type="number"
+                              step={100}
+                              min={0}
+                              max={20000}
+                              value={takePresetFadeMs}
+                              onChange={(event) =>
+                                setTakePresetFadeMs(
+                                  normalizeTakeVolumeFadeMs(
+                                    Number(event.target.value),
+                                    takePresetFadeMs,
+                                  ),
+                                )
+                              }
+                              className="w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-red-200 outline-none focus:border-red-400"
+                            />
+                          </label>
+                        </div>
+                      }
+                      levelKey={`main-level-${mixerLevels.mainMasterVolume}`}
+                      levelValue={mixerLevels.mainMasterVolume}
+                      levelAriaLabel="Main mix level in dB"
+                      onCommitLevel={(raw) => {
+                        const nextValue = parseMixerLevelInputToFader(
+                          raw,
+                          mixerLevels.mainMasterVolume,
+                        );
+                        setMainMasterVolume(nextValue);
+                        return nextValue;
                       }}
-                      className='h-8 w-full rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-xs font-bold text-violet-300 outline-none'
+                      levelContainerClassName="border-red-950/50 bg-[#1a0a0a]"
+                      levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-300 outline-none"
+                      liveClassName="text-red-700"
+                      isLive={mainMixGain > 0}
+                      meterFill={mainMixMeterFill}
+                      meterPeakFill={mainMixPeakFill}
+                      meterPeakHoldFill={mainMixPeakHoldFill}
+                      meterBarCount={2}
+                      combineMarkerRail={true}
+                      markerA={mainPresetAFader}
+                      markerB={mainPresetBFader}
+                      markerBorderClassName="border-sky-300/90"
+                      markerTextClassName="text-sky-300"
+                      showMarkerLabels={false}
+                      combinedMarkerLineClassName="w-6"
+                      markerTrackClassName="w-8"
+                      scalePositiveClassName="text-red-400"
                     />
                   </div>
                 </div>
-
-                <div className='flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-3'>
-                  <div className='flex flex-1 overflow-x-auto pb-2 custom-scrollbar'>
-                    <div className='flex min-w-max items-stretch gap-5 pr-3'>
-                      <MixerStrip
-                        title='SONG'
-                        widthClass='w-44'
-                        stripClassName='rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg'
-                        headerClassName='border-zinc-700 bg-zinc-900'
-                        titleClassName='text-zinc-400'
-                        muted={mixerLevels.songMuted}
-                        solo={mixerLevels.songSolo}
-                        onToggleMuted={toggleSongMuted}
-                        onToggleSolo={toggleSongSolo}
-                        presetAKey={`song-preset-a-${mixerTakePresetsDb.song.aDb}`}
-                        presetBKey={`song-preset-b-${mixerTakePresetsDb.song.bDb}`}
-                        presetADb={mixerTakePresetsDb.song.aDb}
-                        presetBDb={mixerTakePresetsDb.song.bDb}
-                        onCommitPresetA={(raw) => commitTakePresetDbInput('song', 'a', raw, mixerTakePresetsDb.song.aDb)}
-                        onCommitPresetB={(raw) => commitTakePresetDbInput('song', 'b', raw, mixerTakePresetsDb.song.bDb)}
-                        onTakeA={() => triggerChannelTake('song', 'a')}
-                        onTakeB={() => triggerChannelTake('song', 'b')}
-                        isTakingA={isApplyingTakePresetByChannel.song}
-                        isTakingB={isApplyingTakePresetByChannel.song}
-                        levelKey={`song-level-${mixerLevels.songMasterVolume}`}
-                        levelValue={mixerLevels.songMasterVolume}
-                        levelAriaLabel='Song channel level in dB'
-                        onCommitLevel={(raw) => {
-                          const nextValue = parseMixerLevelInputToFader(raw, mixerLevels.songMasterVolume);
-                          setSongMasterVolume(nextValue);
-                          return nextValue;
-                        }}
-                        levelContainerClassName='border-[#1a3525] bg-[#0a1510]'
-                        levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
-                        liveClassName='text-emerald-700'
-                        isLive={songOutputGain > 0}
-                        meterFill={songMeterFill}
-                        meterPeakFill={songPeakFill}
-                        meterPeakHoldFill={songPeakHoldFill}
-                        markerA={songPresetAFader}
-                        markerB={songPresetBFader}
-                        markerBorderClassName='border-sky-300/90'
-                        markerTextClassName='text-sky-300'
-                        markerTrackClassName='w-8'
-                      />
-
-                      {shouldShowStreamStrip ? (
-                        <MixerStrip
-                          title='STREAM'
-                          widthClass='w-44'
-                          stripClassName='rounded-lg border border-cyan-700/40 bg-zinc-800/80 shadow-lg'
-                          headerClassName='border-cyan-900/60 bg-cyan-950/20'
-                          titleClassName='text-violet-300'
-                          muted={mixerLevels.streamMuted}
-                          solo={mixerLevels.streamSolo}
-                          onToggleMuted={toggleStreamMuted}
-                          onToggleSolo={toggleStreamSolo}
-                          presetAKey={`stream-preset-a-${mixerTakePresetsDb.stream.aDb}`}
-                          presetBKey={`stream-preset-b-${mixerTakePresetsDb.stream.bDb}`}
-                          presetADb={mixerTakePresetsDb.stream.aDb}
-                          presetBDb={mixerTakePresetsDb.stream.bDb}
-                          onCommitPresetA={(raw) => commitTakePresetDbInput('stream', 'a', raw, mixerTakePresetsDb.stream.aDb)}
-                          onCommitPresetB={(raw) => commitTakePresetDbInput('stream', 'b', raw, mixerTakePresetsDb.stream.bDb)}
-                          onTakeA={() => triggerChannelTake('stream', 'a')}
-                          onTakeB={() => triggerChannelTake('stream', 'b')}
-                          isTakingA={isApplyingTakePresetByChannel.stream}
-                          isTakingB={isApplyingTakePresetByChannel.stream}
-                          levelKey={`stream-level-${mixerLevels.streamMasterVolume}`}
-                          levelValue={mixerLevels.streamMasterVolume}
-                          levelAriaLabel='Stream channel level in dB'
-                          onCommitLevel={(raw) => {
-                            const nextValue = parseMixerLevelInputToFader(raw, mixerLevels.streamMasterVolume);
-                            setStreamMasterVolume(nextValue);
-                            return nextValue;
-                          }}
-                          levelContainerClassName='border-cyan-900/30 bg-[#07161a]'
-                          levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-sky-300 outline-none'
-                          liveClassName='text-sky-300'
-                          isLive={streamOutputGain > 0}
-                          showMeterSignal={false}
-                          markerA={streamPresetAFader}
-                          markerB={streamPresetBFader}
-                          markerBorderClassName='border-sky-300/90'
-                          markerTextClassName='text-sky-300'
-                          markerTrackClassName='w-8'
-                        />
-                      ) : null}
-
-                      <MixerStrip
-                        title='INSTANTS'
-                        widthClass='w-44'
-                        stripClassName='rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg'
-                        headerClassName='border-zinc-700 bg-zinc-900'
-                        titleClassName='text-zinc-400'
-                        muted={mixerLevels.instantMuted}
-                        solo={mixerLevels.instantSolo}
-                        onToggleMuted={toggleInstantMuted}
-                        onToggleSolo={toggleInstantSolo}
-                        presetAKey={`instants-preset-a-${mixerTakePresetsDb.instants.aDb}`}
-                        presetBKey={`instants-preset-b-${mixerTakePresetsDb.instants.bDb}`}
-                        presetADb={mixerTakePresetsDb.instants.aDb}
-                        presetBDb={mixerTakePresetsDb.instants.bDb}
-                        onCommitPresetA={(raw) => commitTakePresetDbInput('instants', 'a', raw, mixerTakePresetsDb.instants.aDb)}
-                        onCommitPresetB={(raw) => commitTakePresetDbInput('instants', 'b', raw, mixerTakePresetsDb.instants.bDb)}
-                        onTakeA={() => triggerChannelTake('instants', 'a')}
-                        onTakeB={() => triggerChannelTake('instants', 'b')}
-                        isTakingA={isApplyingTakePresetByChannel.instants}
-                        isTakingB={isApplyingTakePresetByChannel.instants}
-                        levelKey={`instants-level-${mixerLevels.instantMasterVolume}`}
-                        levelValue={mixerLevels.instantMasterVolume}
-                        levelAriaLabel='Instants channel level in dB'
-                        onCommitLevel={(raw) => {
-                          const nextValue = parseMixerLevelInputToFader(raw, mixerLevels.instantMasterVolume);
-                          setInstantMasterVolume(nextValue);
-                          return nextValue;
-                        }}
-                        levelContainerClassName='border-[#1a3525] bg-[#0a1510]'
-                        levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none'
-                        liveClassName='text-emerald-700'
-                        isLive={instantsOutputGain > 0}
-                        meterFill={instantsMeterFill}
-                        meterPeakFill={instantsPeakFill}
-                        meterPeakHoldFill={instantsPeakHoldFill}
-                        markerA={instantsPresetAFader}
-                        markerB={instantsPresetBFader}
-                        markerBorderClassName='border-sky-300/90'
-                        markerTextClassName='text-sky-300'
-                        markerTrackClassName='w-8'
-                      />
-                    </div>
-                  </div>
-
-                  <MixerStrip
-                    title='MAIN MIX'
-                    widthClass='w-48'
-                    stripClassName='rounded-lg border border-red-700/40 bg-zinc-800 shadow-xl'
-                    headerClassName='border-red-900/50 bg-red-950/20'
-                    titleClassName='text-red-500'
-                    showMuteSolo={false}
-                    showPresets={false}
-                    presetAKey={`main-preset-a-${mixerTakePresetsDb.main.aDb}`}
-                    presetBKey={`main-preset-b-${mixerTakePresetsDb.main.bDb}`}
-                    presetADb={mixerTakePresetsDb.main.aDb}
-                    presetBDb={mixerTakePresetsDb.main.bDb}
-                    onCommitPresetA={(raw) => commitTakePresetDbInput('main', 'a', raw, mixerTakePresetsDb.main.aDb)}
-                    onCommitPresetB={(raw) => commitTakePresetDbInput('main', 'b', raw, mixerTakePresetsDb.main.bDb)}
-                    onTakeA={() => triggerChannelTake('main', 'a')}
-                    onTakeB={() => triggerChannelTake('main', 'b')}
-                    isTakingA={isApplyingTakePresetByChannel.main}
-                    isTakingB={isApplyingTakePresetByChannel.main}
-                    topPanel={
-                      <div className='flex flex-col gap-1 rounded border border-red-900/20 bg-zinc-900/50 px-2 py-1.5 shadow-inner'>
-                        <label className='text-[10px] font-mono text-red-300'>
-                          <span className='block text-center'>TAKE FADE (ms)</span>
-                          <Input
-                            type='number'
-                            step={100}
-                            min={0}
-                            max={20000}
-                            value={takePresetFadeMs}
-                            onChange={(event) => setTakePresetFadeMs(normalizeTakeVolumeFadeMs(Number(event.target.value), takePresetFadeMs))}
-                            className='w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-red-200 outline-none focus:border-red-400'
-                          />
-                        </label>
-                      </div>
-                    }
-                    levelKey={`main-level-${mixerLevels.mainMasterVolume}`}
-                    levelValue={mixerLevels.mainMasterVolume}
-                    levelAriaLabel='Main mix level in dB'
-                    onCommitLevel={(raw) => {
-                      const nextValue = parseMixerLevelInputToFader(raw, mixerLevels.mainMasterVolume);
-                      setMainMasterVolume(nextValue);
-                      return nextValue;
-                    }}
-                    levelContainerClassName='border-red-950/50 bg-[#1a0a0a]'
-                    levelInputClassName='w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-300 outline-none'
-                    liveClassName='text-red-700'
-                    isLive={mainMixGain > 0}
-                    meterFill={mainMixMeterFill}
-                    meterPeakFill={mainMixPeakFill}
-                    meterPeakHoldFill={mainMixPeakHoldFill}
-                    meterBarCount={2}
-                    combineMarkerRail={true}
-                    markerA={mainPresetAFader}
-                    markerB={mainPresetBFader}
-                    markerBorderClassName='border-sky-300/90'
-                    markerTextClassName='text-sky-300'
-                    showMarkerLabels={false}
-                    combinedMarkerLineClassName='w-6'
-                    markerTrackClassName='w-8'
-                    scalePositiveClassName='text-red-400'
-                  />
-                </div>
-              </div>
-            </Panel>
+              </Panel>
             ) : null}
 
-            {consoleWorkspace !== 'audio' ? (
-            <Panel title='Stage Attributes' accent='#14b8a6' variant='monitor' className='min-h-0' grow>
-              <SceneAttributesPanel
-                selectedScene={selectedScene}
-                scenes={scenes}
-                stagedIsOnAir={stagedIsOnAir}
-                isSavingSceneAttributes={isSavingSceneAttributes}
-                sceneAttributeSaveError={sceneAttributeSaveError}
-                editableSceneComponentEntries={editableSceneComponentEntries}
-                componentTypes={componentTypes}
-                sceneEditorProps={sceneEditorProps}
-                selectedSceneInstantId={selectedSceneInstantId}
-                selectedSceneInstant={selectedSceneInstant}
-                sceneInstantPlayback={sceneInstantPlayback}
-                activeProgramId={activeProgramId}
-                instants={instants}
-                songCatalog={songCatalog}
-                mediaGroups={mediaGroups}
-                isLoadingMediaGroups={isLoadingMediaGroups}
-                onBlurCapture={(event) => {
-                  if (selectedSceneRef.current !== null) {
-                    void flushSceneAttributeAutosaveForScene(selectedSceneRef.current).catch(() => {});
+            {consoleWorkspace !== "audio" ? (
+              <Panel
+                title="Stage Attributes"
+                accent="#14b8a6"
+                variant="monitor"
+                className="min-h-0"
+                grow
+              >
+                <SceneAttributesPanel
+                  selectedScene={selectedScene}
+                  scenes={scenes}
+                  stagedIsOnAir={stagedIsOnAir}
+                  isSavingSceneAttributes={isSavingSceneAttributes}
+                  sceneAttributeSaveError={sceneAttributeSaveError}
+                  editableSceneComponentEntries={editableSceneComponentEntries}
+                  componentTypes={componentTypes}
+                  sceneEditorProps={sceneEditorProps}
+                  selectedSceneInstantId={selectedSceneInstantId}
+                  selectedSceneInstant={selectedSceneInstant}
+                  sceneInstantPlayback={sceneInstantPlayback}
+                  activeProgramId={activeProgramId}
+                  instants={instants}
+                  songCatalog={songCatalog}
+                  mediaGroups={mediaGroups}
+                  isLoadingMediaGroups={isLoadingMediaGroups}
+                  onBlurCapture={(event) => {
+                    if (selectedSceneRef.current !== null) {
+                      void flushSceneAttributeAutosaveForScene(
+                        selectedSceneRef.current,
+                      ).catch(() => {});
+                    }
+                  }}
+                  onSave={() => void saveStagedSceneAttributes()}
+                  onCommitComponentProps={(componentType, props) =>
+                    commitSceneEditorComponentProps(componentType, props)
                   }
-                }}
-                onSave={() => void saveStagedSceneAttributes()}
-                onCommitComponentProps={(componentType, props) => commitSceneEditorComponentProps(componentType, props)}
-                onUpdateProp={updateSceneEditorProp}
-                onReplaceProps={replaceSceneEditorComponentProps}
-                onSyncComponentProps={syncSceneEditorComponentProps}
-                onTakeSceneInstant={(sceneId, instantId) => takeSceneInstant(sceneId, instantId)}
-                onStopSceneInstant={() => stopSceneInstant()}
-              />
-            </Panel>
+                  onUpdateProp={updateSceneEditorProp}
+                  onReplaceProps={replaceSceneEditorComponentProps}
+                  onSyncComponentProps={syncSceneEditorComponentProps}
+                  onTakeSceneInstant={(sceneId, instantId) =>
+                    takeSceneInstant(sceneId, instantId)
+                  }
+                  onStopSceneInstant={() => stopSceneInstant()}
+                />
+              </Panel>
             ) : null}
           </PanelColumn>
 
           <PanelColumn style={{ width: 520, minWidth: 520 }}>
             <Panel
-              title='Playlist'
-              accent='#8b5cf6'
-              variant='monitor'
-              className='min-h-0'
+              title="Playlist"
+              accent="#8b5cf6"
+              variant="monitor"
+              className="min-h-0"
               grow
               toolbar={
-                <div className='flex w-full items-center justify-start'>
+                <div className="flex w-full items-center justify-start">
                   <Button
-                    size='sm'
-                    variant='secondary'
+                    size="sm"
+                    variant="secondary"
                     onClick={() => {
                       setIsPlaylistSheetOpen(true);
                     }}
@@ -3058,19 +3806,19 @@ export default function Control() {
               />
             </Panel>
             <Panel
-              title='Instants'
-              accent='#f59e0b'
-              variant='monitor'
-              className='min-h-0'
+              title="Instants"
+              accent="#f59e0b"
+              variant="monitor"
+              className="min-h-0"
               grow
               toolbar={
-                <div className='flex w-full items-center gap-2'>
+                <div className="flex w-full items-center gap-2">
                   <Input
-                    type='text'
-                    placeholder='Search instants…'
+                    type="text"
+                    placeholder="Search instants…"
                     value={instantSearch}
                     onChange={(e) => setInstantSearch(e.target.value)}
-                    className='min-w-0 flex-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent-blue/60 focus:outline-none dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:placeholder:text-text-secondary dark:focus:border-accent-blue/40'
+                    className="min-w-0 flex-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent-blue/60 focus:outline-none dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:placeholder:text-text-secondary dark:focus:border-accent-blue/40"
                   />
                 </div>
               }
@@ -3087,7 +3835,7 @@ export default function Control() {
           </PanelColumn>
         </PanelLayout>
       </div>
-      <div className='relative z-20 shrink-0'>
+      <div className="relative z-20 shrink-0">
         <PlaybackBar
           sequence={programAudioBusSongSequence}
           programSongPlayback={programSongPlaybackState}

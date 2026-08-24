@@ -39,7 +39,7 @@ export class RadioController {
     @Param('programId') programId: string,
     @Body() data: RadioSettingsPayload,
   ) {
-    const result = this.radioService.updateRadioSettings(programId, data);
+    const result = await this.radioService.updateRadioSettings(programId, data);
     await this.palazzoTelemetry.handleRadioSettingsChanged(programId);
     return result;
   }

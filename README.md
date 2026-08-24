@@ -122,6 +122,10 @@ operator choice of Manual remains authoritative. In autoplay, Alcantara advances
 to the next playlist item only after Palazzo reports that the active track ended;
 looped playlists wrap to the first item and non-looped playlists stop at the end.
 
+The radio control surface includes live Song, Instants / bumpers, and Main
+mixer controls. Mixer mutations are applied to Palazzo as well as persisted;
+bumper configuration fields are validated and saved by the radio settings API.
+
 ### Program Page (`/program`)
 
 - Fixed 1920x1080 Full HD resolution (hardcoded, not responsive)

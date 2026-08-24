@@ -179,6 +179,48 @@ describe('SongExecutionEngine authoritative playback', () => {
     );
   });
 
+  it('resumes autoplay when a track inherited across restart ends', async () => {
+    const { engine, radioService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingSnapshot('palazzo-a', 'boot-1', 1, 'previous-engine-request'),
+    );
+    await flush();
+    expect(radioService.playSong).not.toHaveBeenCalled();
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'previous-engine-request' },
+    });
+    await flush();
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(radioService.playSong.mock.calls[0][1]).toBe(
+      'https://example.test/song-1.mp3',
+    );
+  });
+
+  it('does not start an explicit manual sequence from an idle snapshot', async () => {
+    const { engine, radioService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+
+    engine.handleSequenceUpdated('radio-1', { ...SEQUENCE, mode: 'manual' });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    expect(radioService.playSong).not.toHaveBeenCalled();
+  });
+
   it('advances exactly once on a matching authoritative track end', async () => {
     const { engine, radioService, flightService } = createEngine({
       reconciled: true,

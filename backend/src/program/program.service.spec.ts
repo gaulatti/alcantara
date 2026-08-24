@@ -112,4 +112,69 @@ describe('ProgramService switcher state', () => {
       fadeToBlack: false,
     });
   });
+
+  it('applies persisted radio mixer changes to Palazzo', async () => {
+    let currentState = {
+      programId: 'palazzo',
+      type: 'radio',
+      songSequence: null,
+      audioMixer: null,
+    };
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve(currentState)),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            currentState = { ...currentState, ...data } as typeof currentState;
+            return Promise.resolve(currentState);
+          }),
+      },
+    };
+    const radioService = {
+      updateMixer: jest.fn().mockResolvedValue(undefined),
+    };
+    const songExecutionEngine = { handleSequenceUpdated: jest.fn() };
+    const service = new ProgramService(
+      prisma as never,
+      radioService as never,
+      songExecutionEngine as never,
+    );
+
+    await service.updateProgramAudioBus(
+      {
+        mixerSettings: {
+          mainMasterVolume: 1,
+          mixerChannels: [
+            {
+              id: 'song',
+              name: 'Song',
+              volume: 0.5,
+              muted: false,
+              solo: false,
+            },
+            {
+              id: 'instants',
+              name: 'Instants',
+              volume: 0.72,
+              muted: true,
+              solo: false,
+            },
+          ],
+        },
+      },
+      'palazzo',
+    );
+
+    expect(radioService.updateMixer).toHaveBeenCalledWith(
+      'palazzo',
+      expect.objectContaining({
+        mainVolume: 1,
+        songVolume: expect.closeTo(0.177828, 6),
+        instantMuted: true,
+      }),
+    );
+  });
 });

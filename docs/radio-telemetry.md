@@ -34,6 +34,9 @@ interpolates UI progress between authoritative updates.
   while an explicit `manual` mode remains an operator stop boundary.
 - A track played by Palazzo that Alcantara did not command is foreign: no
   state is adopted and no new commands are sent while it plays.
+- When Alcantara restarts during that foreign/inherited track, its authoritative
+  end or the following idle snapshot releases the handoff and resumes an
+  autoplay or shuffle sequence. Explicit manual mode remains idle.
 
 ## Transports and failure behavior
 
@@ -63,6 +66,14 @@ distinguishable from appliance unavailability.
 identity, telemetry freshness, and degraded flag per program. The radio panel
 surfaces this live, and `radio_leg_status` / `palazzo_audio_levels` events are
 forwarded to the realtime control console.
+
+The radio panel exposes the live Song, Instants / bumpers, and Main mixer
+channels. Changes persist in the program audio bus and are synchronously sent
+to Palazzo's Liquidsoap mixer. The shared instant bus controls both manually
+triggered instants and scheduled bumpers; each instant's own volume is then
+multiplied by that bus and the main output gain. Bumper settings persist
+`bumperEnabled`, `bumperInterval`, `bumperInstantIds`, and `bumperMode`; invalid
+intervals, IDs, or modes fail visibly instead of being dropped.
 
 ## Metrics
 
