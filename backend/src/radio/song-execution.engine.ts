@@ -403,6 +403,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
     if (event.type === 'track.started') {
       if (state.activeSong?.playbackRequestId === requestId) {
+        // The command is no longer pending once Palazzo confirms playback.
+        // Leaving successful request IDs here permanently blocks the next
+        // automatic song because maybeStartSequence treats any pending ID as
+        // an in-flight command.
+        state.pendingRequestIds.delete(requestId);
         if (
           !state.activeSong.coverUrl &&
           typeof event.data.coverUrl === 'string'
@@ -544,7 +549,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.handleSongEnded(programId);
     const endedSong = state.activeSong;
     state.activeSong = null;
-    state.pendingRequestIds.delete(requestId);
+    // An authoritative end is a command-reconciliation boundary. Palazzo is
+    // idle, so no older command can still legitimately be pending.
+    state.pendingRequestIds.clear();
     state.songCount++;
     state.busyWithForeignTrack = false;
     const hasSuccessor =
@@ -564,7 +571,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         hasSuccessor &&
         (st.sequence.mode === 'autoplay' || st.sequence.mode === 'shuffle')
       ) {
-        if (this.maybeStartSequence(programId)) return;
+        // This callback originates from an authoritative Palazzo end event;
+        // the general reconciliation/pending guards have already been
+        // satisfied above. Dispatch the resolved successor directly.
+        if (this.playNext(programId)) return;
+        this.logger.error(
+          `Successor could not be resolved on ${programId}: cursor=${st.sequence.activeItemId ?? 'none'}`,
+        );
       }
 
       this.metrics.recordTrackTransition('published-stopped');
