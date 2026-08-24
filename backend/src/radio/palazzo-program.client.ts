@@ -235,6 +235,11 @@ export class PalazzoProgramClient {
       this.rebaseCursor(state.bootId, state.sequence);
       this.lastSnapshotAt = Date.now();
       this.touch(event);
+      // A valid snapshot proves the SSE stream is connected. Waiting for the
+      // long-lived stream to close before marking it connected leaves the
+      // automation engine permanently "unreconciled" during healthy service
+      // and prevents idle startup recovery.
+      this.setConnection('connected', null);
       this.options.callbacks.onSnapshot(this.options.programId, state);
       return;
     }
