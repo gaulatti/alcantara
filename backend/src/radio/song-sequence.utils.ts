@@ -61,12 +61,99 @@ function asRecord(value: unknown): RecordValue | null {
 }
 
 function normalizeMode(value: unknown): ProgramSequenceMode {
-  if (value === 'autoplay') return 'autoplay';
   if (value === 'shuffle') return 'shuffle';
-  return 'manual';
+  if (value === 'manual') return 'manual';
+  return 'autoplay';
 }
 
-function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem {
+type SequenceAdvanceResult = 'advanced' | 'exhausted' | 'not-found';
+
+function resetSequenceCursor(sequence: ProgramSongSequence): void {
+  const first = sequence.items[0] ?? null;
+  sequence.activeItemId = first?.id ?? null;
+  if (first?.kind === 'sequence') resetSequenceCursor(first.sequence);
+}
+
+function advanceSequenceCursor(
+  sequence: ProgramSongSequence,
+  activeLeafId: string,
+): SequenceAdvanceResult {
+  for (let index = 0; index < sequence.items.length; index += 1) {
+    const item = sequence.items[index];
+    let found = item.kind === 'preset' && item.id === activeLeafId;
+
+    if (item.kind === 'sequence') {
+      const nestedResult = advanceSequenceCursor(item.sequence, activeLeafId);
+      if (nestedResult === 'advanced') return 'advanced';
+      found = nestedResult === 'exhausted';
+    }
+
+    if (!found) continue;
+
+    const next = sequence.items[index + 1] ?? null;
+    if (next) {
+      sequence.activeItemId = next.id;
+      sequence.startedAt = Date.now();
+      if (next.kind === 'sequence') resetSequenceCursor(next.sequence);
+      return 'advanced';
+    }
+
+    if (sequence.loop !== false && sequence.items.length > 0) {
+      resetSequenceCursor(sequence);
+      sequence.startedAt = Date.now();
+      return 'advanced';
+    }
+
+    sequence.activeItemId = null;
+    return 'exhausted';
+  }
+
+  return 'not-found';
+}
+
+/** Advances after an authoritative track end and reports whether a successor exists. */
+export function advanceProgramSongSequence(
+  sequence: ProgramSongSequence,
+  activeLeafId?: string | null,
+): boolean {
+  const leafId = activeLeafId?.trim();
+  if (leafId) {
+    const result = advanceSequenceCursor(sequence, leafId);
+    if (result !== 'not-found') return result === 'advanced';
+  }
+
+  const activeIndex = sequence.items.findIndex(
+    (item) => item.id === sequence.activeItemId,
+  );
+  if (activeIndex < 0) return false;
+  const active = sequence.items[activeIndex];
+  if (active.kind === 'sequence') {
+    const resolved = resolveProgramSongLeaf(sequence);
+    if (resolved) {
+      const result = advanceSequenceCursor(sequence, resolved.id);
+      if (result !== 'not-found') return result === 'advanced';
+    }
+  }
+
+  const next = sequence.items[activeIndex + 1] ?? null;
+  if (next) {
+    sequence.activeItemId = next.id;
+    sequence.startedAt = Date.now();
+    if (next.kind === 'sequence') resetSequenceCursor(next.sequence);
+    return true;
+  }
+  if (sequence.loop !== false && sequence.items.length > 0) {
+    resetSequenceCursor(sequence);
+    sequence.startedAt = Date.now();
+    return true;
+  }
+  sequence.activeItemId = null;
+  return false;
+}
+
+function normalizeSongLeafItem(
+  record: RecordValue,
+): ProgramSongSequenceLeafItem {
   const artist =
     typeof record.artist === 'string' && record.artist.trim()
       ? record.artist.trim()
@@ -91,7 +178,10 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
       : undefined;
 
   return {
-    id: typeof record.id === 'string' && record.id ? record.id : `song_${Date.now().toString(36)}`,
+    id:
+      typeof record.id === 'string' && record.id
+        ? record.id
+        : `song_${Date.now().toString(36)}`,
     kind: 'preset',
     artist,
     title,
@@ -101,7 +191,8 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
     earoneSongId:
       typeof record.earoneSongId === 'string' && record.earoneSongId.trim()
         ? record.earoneSongId.trim()
-        : typeof record.earoneSongId === 'number' && Number.isFinite(record.earoneSongId)
+        : typeof record.earoneSongId === 'number' &&
+            Number.isFinite(record.earoneSongId)
           ? String(record.earoneSongId)
           : undefined,
     earoneRank:
@@ -111,7 +202,8 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
     earoneSpins:
       typeof record.earoneSpins === 'string' && record.earoneSpins.trim()
         ? record.earoneSpins.trim()
-        : typeof record.earoneSpins === 'number' && Number.isFinite(record.earoneSpins)
+        : typeof record.earoneSpins === 'number' &&
+            Number.isFinite(record.earoneSpins)
           ? String(record.earoneSpins)
           : undefined,
   };
@@ -124,16 +216,19 @@ function withNormalizedSequenceShape<TItem extends BaseSequenceItem>(
   const activeItemId =
     record.activeItemId === null
       ? null
-      : typeof record.activeItemId === 'string' && items.some((item) => item.id === record.activeItemId)
+      : typeof record.activeItemId === 'string' &&
+          items.some((item) => item.id === record.activeItemId)
         ? record.activeItemId
-        : items[0]?.id ?? null;
+        : (items[0]?.id ?? null);
 
   return {
     mode: normalizeMode(record.mode),
     items,
     activeItemId,
     intervalMs:
-      typeof record.intervalMs === 'number' && Number.isFinite(record.intervalMs) && record.intervalMs >= 500
+      typeof record.intervalMs === 'number' &&
+      Number.isFinite(record.intervalMs) &&
+      record.intervalMs >= 500
         ? Math.floor(record.intervalMs)
         : 4000,
     loop: record.loop === undefined ? true : Boolean(record.loop),
@@ -154,14 +249,23 @@ function normalizeSongSequenceItem(
   }
 
   if (record.kind === 'sequence') {
-    const normalizedSequence = normalizeProgramSongSequence(record.sequence, depth + 1);
+    const normalizedSequence = normalizeProgramSongSequence(
+      record.sequence,
+      depth + 1,
+    );
     if (!normalizedSequence) {
       return null;
     }
 
     return {
-      id: typeof record.id === 'string' && record.id ? record.id : `sequence_${Date.now().toString(36)}`,
-      label: typeof record.label === 'string' && record.label.trim() ? record.label : 'Nested Sequence',
+      id:
+        typeof record.id === 'string' && record.id
+          ? record.id
+          : `sequence_${Date.now().toString(36)}`,
+      label:
+        typeof record.label === 'string' && record.label.trim()
+          ? record.label
+          : 'Nested Sequence',
       kind: 'sequence',
       sequence: normalizedSequence,
     };
@@ -198,7 +302,9 @@ function getBaseIndex<TItem extends BaseSequenceItem>(
     return null;
   }
 
-  const activeIndex = sequence.items.findIndex((item) => item.id === sequence.activeItemId);
+  const activeIndex = sequence.items.findIndex(
+    (item) => item.id === sequence.activeItemId,
+  );
   return activeIndex >= 0 ? activeIndex : 0;
 }
 
@@ -236,13 +342,20 @@ function getSelectedSongItem(
 
   const startedAt = sequence.startedAt ?? nowMs;
   const elapsedMs = Math.max(0, nowMs - startedAt);
-  const itemDurations = sequence.items.map((item) => getSongItemPlaybackDurationMs(item));
+  const itemDurations = sequence.items.map((item) =>
+    getSongItemPlaybackDurationMs(item),
+  );
 
   if (sequence.loop !== false) {
-    const hasUnknownDuration = itemDurations.some((durationMs) => durationMs === null);
+    const hasUnknownDuration = itemDurations.some(
+      (durationMs) => durationMs === null,
+    );
     if (!hasUnknownDuration) {
       const knownDurations = itemDurations as number[];
-      const cycleDurationMs = knownDurations.reduce((sum, durationMs) => sum + durationMs, 0);
+      const cycleDurationMs = knownDurations.reduce(
+        (sum, durationMs) => sum + durationMs,
+        0,
+      );
       if (cycleDurationMs <= 0) {
         return sequence.items[baseIndex] ?? null;
       }
@@ -313,10 +426,17 @@ function resolveSongSequenceRecursive(
 
   if (selected.kind === 'sequence') {
     const nextLabels = [...labels, selected.label];
-    return resolveSongSequenceRecursive(selected.sequence, nowMs, depth + 1, nextLabels);
+    return resolveSongSequenceRecursive(
+      selected.sequence,
+      nowMs,
+      depth + 1,
+      nextLabels,
+    );
   }
 
-  const songLabel = [selected.artist, selected.title].filter(Boolean).join(' - ');
+  const songLabel = [selected.artist, selected.title]
+    .filter(Boolean)
+    .join(' - ');
   return {
     id: selected.id,
     artist: selected.artist,

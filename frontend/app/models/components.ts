@@ -33,7 +33,11 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'Clock Widget',
     description: 'Live updating clock display',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { showIcon: true, iconUrl: '', timezone: 'America/Argentina/Buenos_Aires' }
+    defaultProps: {
+      showIcon: true,
+      iconUrl: '',
+      timezone: 'America/Argentina/Buenos_Aires'
+    }
   },
   {
     id: 'qr-code',
@@ -84,6 +88,13 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
       autoPlay: true,
       objectFit: 'cover'
     }
+  },
+  {
+    id: 'webrtc-guest',
+    name: 'WebRTC Guest Slot',
+    description: 'Reusable remote guest slot assigned from the Calls console',
+    hasConfigurableSceneAttributes: true,
+    defaultProps: { slotNumber: 1, objectFit: 'cover', showStatus: true }
   },
   {
     id: 'stream-wall',
@@ -148,7 +159,14 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'Reloj Digital',
     description: 'Broadcast-style digital clock with countdown and text/CTA sequences',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { timezone: 'America/New_York', mode: 'clock', countdownDuration: 300, countdownTargetSceneId: null, countdownTransitionId: 'cut', countdownCommand: 0 }
+    defaultProps: {
+      timezone: 'America/New_York',
+      mode: 'clock',
+      countdownDuration: 300,
+      countdownTargetSceneId: null,
+      countdownTransitionId: 'cut',
+      countdownCommand: 0
+    }
   },
   {
     id: 'reloj-clone',
@@ -162,14 +180,22 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'Toni Chyron',
     description: 'Chyron with social handles and presets',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] }
+    defaultProps: {
+      text: '',
+      useMarquee: false,
+      socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages']
+    }
   },
   {
     id: 'fifthbell-chyron',
     name: 'Fifth Bell Chyron',
     description: 'Fifth Bell branded chyron',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { text: '', useMarquee: false, socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'] }
+    defaultProps: {
+      text: '',
+      useMarquee: false,
+      socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages']
+    }
   },
   {
     id: 'toni-clock',

@@ -28,6 +28,10 @@ interpolates UI progress between authoritative updates.
 - `track.ended` with a matching request ID advances the sequence exactly
   once. Duplicate, stale, cross-program, or mismatched-request events are
   no-ops.
+- Autoplay advances the in-memory playlist cursor to the next item after that
+  authoritative end. Looped playlists wrap; explicitly non-looped playlists
+  publish stopped at their end. A missing song-sequence mode means autoplay,
+  while an explicit `manual` mode remains an operator stop boundary.
 - A track played by Palazzo that Alcantara did not command is foreign: no
   state is adopted and no new commands are sent while it plays.
 

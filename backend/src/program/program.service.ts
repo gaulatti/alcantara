@@ -97,7 +97,6 @@ export class ProgramService implements OnModuleInit {
     flight: new Map<string, number>(),
   };
   private globalBroadcastVersion = 0;
-  private stagedSceneByProgramId = new Map<string, number | null>();
   private programAudioMeterByProgramId = new Map<
     string,
     ProgramAudioMeterLevels
@@ -156,9 +155,6 @@ export class ProgramService implements OnModuleInit {
         audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
       },
     });
-    if (!this.stagedSceneByProgramId.has(ProgramService.DEFAULT_PROGRAM_ID)) {
-      this.stagedSceneByProgramId.set(ProgramService.DEFAULT_PROGRAM_ID, null);
-    }
   }
 
   private createDefaultBroadcastMixerChannels(): BroadcastMixerChannel[] {
@@ -1155,17 +1151,17 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Program not found');
     }
 
-    return this.withStagedSceneState(normalizedProgramId, state);
+    return this.withStagedSceneState(state);
   }
 
   private withStagedSceneState<T extends { scenes?: unknown }>(
-    programId: string,
     state: T,
   ): T & { stagedSceneId: number | null; stagedScene: any | null } {
-    const normalizedProgramId = this.normalizeProgramId(programId);
     const sceneEntries = Array.isArray(state.scenes) ? state.scenes : [];
     const currentStagedSceneId =
-      this.stagedSceneByProgramId.get(normalizedProgramId);
+      'stagedSceneId' in state
+        ? (state as { stagedSceneId?: unknown }).stagedSceneId
+        : null;
     const stagedSceneId =
       typeof currentStagedSceneId === 'number' ? currentStagedSceneId : null;
     const stagedSceneEntry =
@@ -1180,7 +1176,6 @@ export class ProgramService implements OnModuleInit {
           });
 
     if (stagedSceneId !== null && !stagedSceneEntry) {
-      this.stagedSceneByProgramId.set(normalizedProgramId, null);
       return {
         ...(state as any),
         stagedSceneId: null,
@@ -1223,8 +1218,6 @@ export class ProgramService implements OnModuleInit {
         audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
       },
     });
-    this.stagedSceneByProgramId.set(normalized, null);
-
     return this.getProgramStateWithScenes(normalized);
   }
 
@@ -1303,14 +1296,6 @@ export class ProgramService implements OnModuleInit {
       });
       this.programSceneInstantPlaybackByProgramId.delete(current);
     }
-    if (this.stagedSceneByProgramId.has(current)) {
-      this.stagedSceneByProgramId.set(
-        next,
-        this.stagedSceneByProgramId.get(current) ?? null,
-      );
-      this.stagedSceneByProgramId.delete(current);
-    }
-
     return this.getProgramStateWithScenes(next);
   }
 
@@ -1337,8 +1322,6 @@ export class ProgramService implements OnModuleInit {
     this.programAudioMeterByProgramId.delete(normalized);
     this.programSongPlaybackByProgramId.delete(normalized);
     this.programSceneInstantPlaybackByProgramId.delete(normalized);
-    this.stagedSceneByProgramId.delete(normalized);
-
     return { deletedProgramId: normalized };
   }
 
@@ -1381,9 +1364,7 @@ export class ProgramService implements OnModuleInit {
         },
       },
     });
-    return states.map((state) =>
-      this.withStagedSceneState(state.programId, state),
-    );
+    return states.map((state) => this.withStagedSceneState(state));
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
@@ -2104,7 +2085,7 @@ export class ProgramService implements OnModuleInit {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { id: true, activeSceneId: true },
+      select: { id: true, activeSceneId: true, stagedSceneId: true },
     });
 
     if (!state) {
@@ -2118,12 +2099,6 @@ export class ProgramService implements OnModuleInit {
       },
     });
 
-    if (
-      (this.stagedSceneByProgramId.get(normalizedProgramId) ?? null) === sceneId
-    ) {
-      this.stagedSceneByProgramId.set(normalizedProgramId, null);
-    }
-
     const sceneInstantPlayback =
       this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);
     if (
@@ -2133,10 +2108,13 @@ export class ProgramService implements OnModuleInit {
       await this.stopProgramSceneInstant(normalizedProgramId);
     }
 
-    if (state.activeSceneId === sceneId) {
+    if (state.activeSceneId === sceneId || state.stagedSceneId === sceneId) {
       await this.prisma.programState.update({
         where: { id: state.id },
-        data: { activeSceneId: null },
+        data: {
+          ...(state.activeSceneId === sceneId ? { activeSceneId: null } : {}),
+          ...(state.stagedSceneId === sceneId ? { stagedSceneId: null } : {}),
+        },
       });
     }
 
@@ -2452,7 +2430,10 @@ export class ProgramService implements OnModuleInit {
       stagedScene = assignedSceneEntry.scene;
     }
 
-    this.stagedSceneByProgramId.set(normalizedProgramId, nextStagedSceneId);
+    await this.prisma.programState.update({
+      where: { id: state.id },
+      data: { stagedSceneId: nextStagedSceneId },
+    });
 
     const payload = {
       type: 'scene_staged',
@@ -2495,30 +2476,17 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Scene is not assigned to this program');
     }
 
-    const updatedState = await this.prisma.programState.update({
+    await this.prisma.programState.update({
       where: { id: state.id },
-      data: { activeSceneId: sceneId },
-      include: {
-        activeScene: {
-          include: { layout: true },
-        },
-        scenes: {
-          orderBy: { position: 'asc' },
-          include: {
-            scene: {
-              include: { layout: true },
-            },
-          },
-        },
-      },
+      data: { activeSceneId: sceneId, stagedSceneId: sceneId },
     });
+    const updatedState =
+      await this.getProgramStateWithScenes(normalizedProgramId);
 
     const normalizedTransitionId =
       typeof transitionId === 'string' && transitionId.trim()
         ? transitionId.trim()
         : null;
-    this.stagedSceneByProgramId.set(normalizedProgramId, sceneId);
-
     const sceneInstantId = updatedState.activeScene?.metadata
       ? this.parseSceneInstantIdFromSceneMetadata(
           updatedState.activeScene.metadata,
@@ -2571,6 +2539,44 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  async setFadeToBlack(
+    active: boolean,
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const existing = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { id: true, fadeToBlack: true },
+    });
+    if (!existing) {
+      throw new Error('Program not found');
+    }
+
+    if (existing.fadeToBlack !== active) {
+      await this.prisma.programState.update({
+        where: { id: existing.id },
+        data: { fadeToBlack: active },
+      });
+    }
+    const state = await this.getProgramStateWithScenes(normalizedProgramId);
+
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'fade_to_black',
+      programId: normalizedProgramId,
+      active,
+      state: this.withStagedSceneState(state),
+      updatedAt: new Date().toISOString(),
+    });
+
+    return {
+      ...this.withStagedSceneState(state),
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'state'),
+    };
+  }
+
   async takeProgramOffAir(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
@@ -2583,7 +2589,7 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Program not found');
     }
 
-    if (!state.activeSceneId) {
+    if (!state.activeSceneId && !state.fadeToBlack) {
       const currentState =
         await this.getProgramStateWithScenes(normalizedProgramId);
       return {
@@ -2592,23 +2598,12 @@ export class ProgramService implements OnModuleInit {
       };
     }
 
-    const updatedState = await this.prisma.programState.update({
+    await this.prisma.programState.update({
       where: { id: state.id },
-      data: { activeSceneId: null },
-      include: {
-        activeScene: {
-          include: { layout: true },
-        },
-        scenes: {
-          orderBy: { position: 'asc' },
-          include: {
-            scene: {
-              include: { layout: true },
-            },
-          },
-        },
-      },
+      data: { activeSceneId: null, fadeToBlack: false },
     });
+    const updatedState =
+      await this.getProgramStateWithScenes(normalizedProgramId);
 
     const sceneInstantPlayback =
       this.programSceneInstantPlaybackByProgramId.get(normalizedProgramId);

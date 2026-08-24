@@ -195,7 +195,8 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
 
 function withNormalizedSequenceShape<TItem extends BaseSequenceItem>(
   record: RecordValue,
-  items: TItem[]
+  items: TItem[],
+  defaultMode: ProgramSequenceMode = 'manual'
 ): BaseSequence<TItem> {
   const activeItemId =
     record.activeItemId === null
@@ -205,7 +206,7 @@ function withNormalizedSequenceShape<TItem extends BaseSequenceItem>(
       : items[0]?.id ?? null;
 
   return {
-    mode: normalizeMode(record.mode),
+    mode: record.mode === undefined ? defaultMode : normalizeMode(record.mode),
     items,
     activeItemId,
     intervalMs:
@@ -510,7 +511,7 @@ export function normalizeProgramSongSequence(
     .map((item) => normalizeSongSequenceItem(item, depth))
     .filter((item): item is ProgramSongSequenceItem => item !== null);
 
-  return withNormalizedSequenceShape(record, items);
+  return withNormalizedSequenceShape(record, items, 'autoplay');
 }
 
 export function createProgramTextSequenceItem(
@@ -574,7 +575,7 @@ export function createProgramTextSequence(
 }
 
 export function createProgramSongSequence(
-  mode: ProgramSequenceMode = 'manual'
+  mode: ProgramSequenceMode = 'autoplay'
 ): ProgramSongSequence {
   return {
     mode,

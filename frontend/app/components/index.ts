@@ -23,6 +23,7 @@ export { CronicaReiteramos } from './CronicaReiteramos';
 export { Slideshow } from './Slideshow';
 export { VideoStream } from './VideoStream';
 export { StreamWall } from './StreamWall';
+export { WebrtcGuestSource } from './WebrtcGuestSource';
 export { Scoreboard } from './Scoreboard';
 export { default as RelojLoopClock } from './RelojLoopClock';
 export { default as RelojDigitalLoopClock } from './RelojDigitalLoopClock';

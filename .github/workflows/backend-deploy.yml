@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'infra/**'
       - '.github/workflows/backend-deploy.yml'
 
 jobs:
@@ -61,6 +62,19 @@ jobs:
     needs: build
 
     steps:
+      - name: Checkout deployment definitions
+        uses: actions/checkout@v4
+
+      - name: Upload LiveKit deployment definition
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: infra/compose.production.yml
+          target: /services/alcantara
+          strip_components: 1
+
       - name: Deploy to on-premises host
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -79,6 +93,15 @@ jobs:
             ghcr.io/${{ github.repository }}:latest \
             pnpm run db:migrate:deploy
 
+            if test -n "${{ secrets.LIVEKIT_CONFIG_B64 }}"; then
+              mkdir -p /services/alcantara/livekit-redis
+              printf "%s" "${{ secrets.LIVEKIT_CONFIG_B64 }}" | base64 --decode > /services/alcantara/livekit.yaml
+              chmod 600 /services/alcantara/livekit.yaml
+              docker compose -f /services/alcantara/compose.production.yml up -d
+            else
+              echo "LiveKit production configuration is absent; guest calls remain disabled"
+            fi
+
             docker stop alcantara-backend || true
             docker rm alcantara-backend || true
 
@@ -95,6 +118,12 @@ jobs:
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
+            -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \
+            -e LIVEKIT_API_URL="http://alcantara-livekit:7880" \
+            -e LIVEKIT_API_KEY="${{ secrets.LIVEKIT_API_KEY }}" \
+            -e LIVEKIT_API_SECRET="${{ secrets.LIVEKIT_API_SECRET }}" \
+            -e WEBRTC_SESSION_SECRET="${{ secrets.WEBRTC_SESSION_SECRET }}" \
+            -e WEBRTC_RENDERER_KEY="${{ secrets.WEBRTC_RENDERER_KEY }}" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=awslogs \

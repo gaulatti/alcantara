@@ -64,7 +64,6 @@ export function PlaybackBar({
   onTakeOffAir,
   onStopAllInstants,
   onStageScene,
-  onTakeScene,
 }: PlaybackBarProps) {
   const sequence = useMemo(() => {
     const n = normalizeProgramSongSequence(_sequence);
@@ -160,8 +159,7 @@ export function PlaybackBar({
               <Button
                 key={a.id}
                 onClick={() => onStageScene?.(a.id)}
-                onDoubleClick={() => onTakeScene?.(a.id)}
-                title={`${a.name} (click to stage, double-click to take)`}
+                title={`${a.name} (click to stage in Preview)`}
                 variant='ghost'
                 size='sm'
                 className={`relative min-w-[150px] max-w-[240px] shrink-0 overflow-hidden rounded border px-2 py-1.5 text-left text-[11px] font-medium leading-tight transition-colors ${a.isActive ? 'border-terracotta/80 bg-terracotta/35 text-white ring-1 ring-terracotta/50' : a.isStaged ? 'border-accent-blue/80 bg-accent-blue/35 text-white ring-1 ring-accent-blue/50' : 'border-sand/25 bg-dark-sand/80 text-text-primary hover:border-sea/40 hover:bg-sea/10'}`}

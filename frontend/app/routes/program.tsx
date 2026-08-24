@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
 import { apiUrl } from '../utils/apiBaseUrl';
 import {
@@ -27,6 +27,7 @@ import {
   CronicaReiteramos,
   Slideshow,
   VideoStream,
+  WebrtcGuestSource,
   StreamWall,
   Scoreboard
 } from '../components';
@@ -42,7 +43,7 @@ import {
   getProgramAudioBusSnapshot,
   setProgramAudioBusMasterVolume,
   stopProgramAudioBus,
-  subscribeProgramAudioBus,
+  subscribeProgramAudioBus
 } from '../utils/programAudioBus';
 import { faderToGain } from '../utils/audioTaper';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
@@ -74,6 +75,7 @@ interface ProgramState {
   activeScene: Scene | null;
   stagedSceneId?: number | null;
   stagedScene?: Scene | null;
+  fadeToBlack?: boolean;
   updatedAt: string;
 }
 
@@ -293,6 +295,7 @@ function resolveProgramUpdateTopicFromType(type: unknown): ProgramUpdateTopic | 
     case 'program_state_snapshot':
     case 'scene_change':
     case 'scene_staged':
+    case 'fade_to_black':
     case 'scene_update':
     case 'scene_cleared':
     case 'program_scenes_changed':
@@ -642,7 +645,7 @@ function sceneIncludesVideoStream(scene: Scene | null | undefined): boolean {
     .split(',')
     .map((componentType) => componentType.trim())
     .filter(Boolean)
-    .includes('video-stream');
+    .some((componentType) => componentType === 'video-stream' || componentType === 'webrtc-guest');
 }
 
 function normalizeSceneInstantNumericId(value: unknown): number | null {
@@ -666,12 +669,21 @@ function buildSceneInstantPlaybackToken(sceneId: number | null, instantId: numbe
 
 export default function Program() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const programId = id ?? 'main';
+  const confidenceMode = searchParams.get('confidence');
+  const rendererMode = searchParams.get('renderer') === '1';
 
-  return <SceneProgram programId={programId} />;
+  return (
+    <SceneProgram
+      programId={programId}
+      confidenceMode={confidenceMode === 'preview' ? 'preview' : confidenceMode === 'program' ? 'program' : null}
+      suppressGuestAudio={rendererMode}
+    />
+  );
 }
 
-function SceneProgram({ programId }: { programId: string }) {
+function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { programId: string; confidenceMode: 'preview' | 'program' | null; suppressGuestAudio: boolean }) {
   const [state, setState] = useState<ProgramState | null>(null);
   const [audioBusSettings, setAudioBusSettings] = useState<ProgramAudioBusSettings | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
@@ -679,6 +691,8 @@ function SceneProgram({ programId }: { programId: string }) {
   const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
+  const [fadeToBlackAudioGain, setFadeToBlackAudioGain] = useState(1);
+  const previousFadeToBlackRef = useRef<boolean | null>(null);
   const [bracketDrawCommands, setBracketDrawCommands] = useState<Record<number, any>>({});
   const transitionTimersRef = useRef<number[]>([]);
   const transitionSequenceRef = useRef(0);
@@ -765,15 +779,39 @@ function SceneProgram({ programId }: { programId: string }) {
   const resolvedSceneInstantChannelGain = sceneInstantMuted ? 0 : faderToGain(effectiveSceneInstantMasterFader);
   const resolvedStreamChannelGain = streamMuted ? 0 : faderToGain(effectiveStreamMasterFader);
   const mainMasterGain = faderToGain(mainMasterFader);
-  const resolvedSongMasterVolume = normalizeMasterVolume(resolvedSongChannelGain * mainMasterGain, 0);
-  const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain, 0);
-  const resolvedSceneInstantMasterVolume = normalizeMasterVolume(resolvedSceneInstantChannelGain * mainMasterGain, 0);
-  const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain, 0);
+  const outputGain = confidenceMode ? 0 : fadeToBlackAudioGain;
+  const resolvedSongMasterVolume = normalizeMasterVolume(resolvedSongChannelGain * mainMasterGain * outputGain, 0);
+  const resolvedInstantMasterVolume = normalizeMasterVolume(resolvedInstantChannelGain * mainMasterGain * outputGain, 0);
+  const resolvedSceneInstantMasterVolume = normalizeMasterVolume(resolvedSceneInstantChannelGain * mainMasterGain * outputGain, 0);
+  const resolvedStreamMasterVolume = normalizeMasterVolume(resolvedStreamChannelGain * mainMasterGain * outputGain, 0);
+  useEffect(() => {
+    if (confidenceMode) {
+      setFadeToBlackAudioGain(0);
+      return;
+    }
+
+    const target = state?.fadeToBlack ? 0 : 1;
+    if (!state || previousFadeToBlackRef.current === null) {
+      setFadeToBlackAudioGain(target);
+      if (state) previousFadeToBlackRef.current = state.fadeToBlack === true;
+      return;
+    }
+    let animationFrame = 0;
+    const startedAt = performance.now();
+    const startGain = fadeToBlackAudioGain;
+    const renderFrame = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / 1000);
+      setFadeToBlackAudioGain(startGain + (target - startGain) * progress);
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(renderFrame);
+      }
+    };
+    animationFrame = window.requestAnimationFrame(renderFrame);
+    previousFadeToBlackRef.current = state.fadeToBlack === true;
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [confidenceMode, state?.fadeToBlack]);
   const resolvedManualSong = useMemo(
-    () =>
-      normalizedSongSequence?.mode === 'manual'
-        ? resolveProgramSongLeaf({ sequence: normalizedSongSequence })
-        : null,
+    () => (normalizedSongSequence?.mode === 'manual' ? resolveProgramSongLeaf({ sequence: normalizedSongSequence }) : null),
     [normalizedSongSequence]
   );
   const activeSlideshowMediaGroupId = useMemo(() => {
@@ -834,7 +872,13 @@ function SceneProgram({ programId }: { programId: string }) {
 
     try {
       const attachFromStream = (): boolean => {
-        const stream = audio.captureStream?.() || (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.();
+        const stream =
+          audio.captureStream?.() ||
+          (
+            audio as HTMLAudioElement & {
+              mozCaptureStream?: () => MediaStream;
+            }
+          ).mozCaptureStream?.();
         if (!stream) {
           return false;
         }
@@ -907,7 +951,10 @@ function SceneProgram({ programId }: { programId: string }) {
     }
   }, []);
 
-  const readInstantSignalSnapshot = useCallback((): { rms: number; peak: number } => {
+  const readInstantSignalSnapshot = useCallback((): {
+    rms: number;
+    peak: number;
+  } => {
     let rmsPeak = 0;
     let peak = 0;
     for (const [audio, runtime] of activeInstantAudiosRef.current) {
@@ -943,7 +990,10 @@ function SceneProgram({ programId }: { programId: string }) {
     };
   }, []);
 
-  const readSceneInstantSignalSnapshot = useCallback((): { rms: number; peak: number } => {
+  const readSceneInstantSignalSnapshot = useCallback((): {
+    rms: number;
+    peak: number;
+  } => {
     const current = activeSceneInstantAudioRef.current;
     if (!current) {
       return { rms: 0, peak: 0 };
@@ -1268,8 +1318,7 @@ function SceneProgram({ programId }: { programId: string }) {
 
   const shouldApplyProgramUpdatePayload = useCallback((payload: unknown, topicOverride?: ProgramUpdateTopic): boolean => {
     const topic =
-      topicOverride ??
-      (payload && typeof payload === 'object' && !Array.isArray(payload) ? resolveProgramUpdateTopicFromType((payload as Record<string, unknown>).type) : null);
+      topicOverride ?? (payload && typeof payload === 'object' && !Array.isArray(payload) ? resolveProgramUpdateTopicFromType((payload as Record<string, unknown>).type) : null);
     if (!topic) {
       return true;
     }
@@ -1298,7 +1347,19 @@ function SceneProgram({ programId }: { programId: string }) {
         return;
       }
 
-      if (data.type === 'scene_staged') {
+      if (data.type === 'program_state_snapshot') {
+        if (data.state && typeof data.state === 'object') {
+          setState(data.state as ProgramState);
+        }
+      } else if (data.type === 'audio_bus_snapshot') {
+        setAudioBusSettings(normalizeProgramAudioBusSettings(data.settings));
+      } else if (data.type === 'broadcast_settings_snapshot') {
+        setBroadcastSettings(normalizeBroadcastSettings(data.settings));
+      } else if (data.type === 'fade_to_black') {
+        if (data.state && typeof data.state === 'object') {
+          setState(data.state as ProgramState);
+        }
+      } else if (data.type === 'scene_staged') {
         const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
         if (eventProgramId && eventProgramId !== programId) {
           return;
@@ -1405,6 +1466,7 @@ function SceneProgram({ programId }: { programId: string }) {
       } else if (data.type === 'broadcast_settings_update') {
         setBroadcastSettings(normalizeBroadcastSettings(data.settings));
       } else if (data.type === 'instant_play') {
+        if (confidenceMode) return;
         const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
         if (eventProgramId && eventProgramId !== programId) {
           return;
@@ -1417,6 +1479,7 @@ function SceneProgram({ programId }: { programId: string }) {
         }
         stopAllInstantAudio();
       } else if (data.type === 'scene_instant_take') {
+        if (confidenceMode) return;
         const eventProgramId = typeof data.programId === 'string' ? data.programId : '';
         if (eventProgramId && eventProgramId !== programId) {
           return;
@@ -1429,19 +1492,14 @@ function SceneProgram({ programId }: { programId: string }) {
         }
         stopSceneInstantAudio(data.fadeMs || 0);
       } else if (data.type === 'scene_instant_state') {
+        if (confidenceMode) return;
         const event = data as SceneInstantStateEvent;
         const eventProgramId = typeof event.programId === 'string' ? event.programId : '';
         if (eventProgramId && eventProgramId !== programId) {
           return;
         }
         const playback = event.playback;
-        if (
-          playback &&
-          playback.isPlaying &&
-          playback.instant &&
-          typeof playback.instant.audioUrl === 'string' &&
-          playback.instant.audioUrl.trim().length > 0
-        ) {
+        if (playback && playback.isPlaying && playback.instant && typeof playback.instant.audioUrl === 'string' && playback.instant.audioUrl.trim().length > 0) {
           const sceneId = normalizeSceneInstantNumericId(playback.sceneId);
           const instantId = normalizeSceneInstantNumericId(playback.instant.id);
           const timestamp = normalizeSceneInstantTimestamp(playback.startedAt) || normalizeSceneInstantTimestamp(playback.updatedAt);
@@ -1492,7 +1550,7 @@ function SceneProgram({ programId }: { programId: string }) {
                 audioUrl,
                 durationMs: typeof playback.durationMs === 'number' ? playback.durationMs : undefined,
                 artist: typeof playback.artist === 'string' ? playback.artist : undefined,
-                title: typeof playback.title === 'string' ? playback.title : undefined,
+                title: typeof playback.title === 'string' ? playback.title : undefined
               });
             }
           }
@@ -1531,6 +1589,7 @@ function SceneProgram({ programId }: { programId: string }) {
     },
     [
       programId,
+      confidenceMode,
       state?.activeScene,
       state?.activeSceneId,
       playInstantAudio,
@@ -1658,9 +1717,7 @@ function SceneProgram({ programId }: { programId: string }) {
         .then((playback) => {
           if (!cancelled) {
             const sceneInstantVersion =
-              playback && typeof playback === 'object' && !Array.isArray(playback)
-                ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
-                : null;
+              playback && typeof playback === 'object' && !Array.isArray(playback) ? normalizeUpdateVersion((playback as Record<string, unknown>).version) : null;
             handleProgramEventRef.current({
               type: 'scene_instant_state',
               programId,
@@ -1724,9 +1781,7 @@ function SceneProgram({ programId }: { programId: string }) {
         .then((playback) => {
           if (!cancelled) {
             const sceneInstantVersion =
-              playback && typeof playback === 'object' && !Array.isArray(playback)
-                ? normalizeUpdateVersion((playback as Record<string, unknown>).version)
-                : null;
+              playback && typeof playback === 'object' && !Array.isArray(playback) ? normalizeUpdateVersion((playback as Record<string, unknown>).version) : null;
             handleProgramEventRef.current({
               type: 'scene_instant_state',
               programId,
@@ -1762,10 +1817,16 @@ function SceneProgram({ programId }: { programId: string }) {
   }, [programId, shouldApplyProgramUpdatePayload]);
 
   useEffect(() => {
+    if (confidenceMode) {
+      return;
+    }
     setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
-  }, [programId, resolvedSongMasterVolume]);
+  }, [confidenceMode, programId, resolvedSongMasterVolume]);
 
   useEffect(() => {
+    if (confidenceMode) {
+      return;
+    }
     let lastEndedToken = '';
 
     return subscribeProgramAudioBus(programId, (snapshot) => {
@@ -1785,10 +1846,10 @@ function SceneProgram({ programId }: { programId: string }) {
         // The flight timeout remains the fallback if the connection drops at song end.
       }
     });
-  }, [programId]);
+  }, [confidenceMode, programId]);
 
   useEffect(() => {
-    if (!audioBusSettings || normalizedSongSequence?.mode !== 'manual') {
+    if (confidenceMode || !audioBusSettings || normalizedSongSequence?.mode !== 'manual') {
       return;
     }
 
@@ -1821,6 +1882,7 @@ function SceneProgram({ programId }: { programId: string }) {
     });
   }, [
     programId,
+    confidenceMode,
     audioBusSettings,
     normalizedSongSequence?.mode,
     resolvedManualSong?.id,
@@ -1881,7 +1943,7 @@ function SceneProgram({ programId }: { programId: string }) {
   }, [activeSlideshowMediaGroupId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (confidenceMode || typeof window === 'undefined') {
       return;
     }
 
@@ -1939,7 +2001,7 @@ function SceneProgram({ programId }: { programId: string }) {
         socket.close();
       }
     };
-  }, [programId]);
+  }, [confidenceMode, programId]);
 
   useEffect(() => {
     const componentTypes = state?.activeScene?.layout.componentType.split(',').filter(Boolean) || [];
@@ -2118,13 +2180,29 @@ function SceneProgram({ programId }: { programId: string }) {
             switch (componentType) {
               case 'ticker':
                 return (
-                  <div key={componentType} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+                  <div
+                    key={componentType}
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0
+                    }}
+                  >
                     <Ticker hashtag={props.hashtag || '#Default'} url={props.url || 'website.com'} />
                   </div>
                 );
               case 'chyron':
                 return (
-                  <div key={componentType} style={{ position: 'absolute', bottom: '120px', left: 0, right: 0 }}>
+                  <div
+                    key={componentType}
+                    style={{
+                      position: 'absolute',
+                      bottom: '120px',
+                      left: 0,
+                      right: 0
+                    }}
+                  >
                     <ChyronHolder text={props.text || 'Chyron'} show={true} />
                   </div>
                 );
@@ -2170,6 +2248,19 @@ function SceneProgram({ programId }: { programId: string }) {
                     urls={Array.isArray(props.urls) ? props.urls : []}
                     maxStreams={typeof props.maxStreams === 'number' ? props.maxStreams : 4}
                     title={typeof props.title === 'string' ? props.title : ''}
+                    suspended={outputGain <= 0.0001}
+                  />
+                );
+              case 'webrtc-guest':
+                return (
+                  <WebrtcGuestSource
+                    key={componentType}
+                    programId={programId}
+                    slotNumber={props.slotNumber}
+                    objectFit={props.objectFit}
+                    showStatus={props.showStatus}
+                    suppressAudio={suppressGuestAudio}
+                    channelGain={options?.forceStreamMuted ? 0 : resolvedStreamMasterVolume}
                   />
                 );
               case 'scoreboard':
@@ -2205,6 +2296,7 @@ function SceneProgram({ programId }: { programId: string }) {
                     countdownTargetSceneId={typeof props.countdownTargetSceneId === 'number' ? props.countdownTargetSceneId : null}
                     countdownTransitionId={props.countdownTransitionId || 'cut'}
                     countdownCommand={typeof props.countdownCommand === 'number' ? props.countdownCommand : 0}
+                    allowProgramActivation={!confidenceMode}
                   />
                 );
               case 'toni-chyron':
@@ -2220,11 +2312,7 @@ function SceneProgram({ programId }: { programId: string }) {
                     text={typeof fifthBellChyronProps.text === 'string' ? fifthBellChyronProps.text : ''}
                     show={true}
                     useMarquee={typeof fifthBellChyronProps.useMarquee === 'boolean' ? fifthBellChyronProps.useMarquee : undefined}
-                    contentMode={
-                      fifthBellChyronProps.contentMode === 'text' || fifthBellChyronProps.contentMode === 'sequence'
-                        ? fifthBellChyronProps.contentMode
-                        : undefined
-                    }
+                    contentMode={fifthBellChyronProps.contentMode === 'text' || fifthBellChyronProps.contentMode === 'sequence' ? fifthBellChyronProps.contentMode : undefined}
                     sequence={fifthBellChyronProps.sequence}
                     socialHandles={fifthBellChyronProps.socialHandles}
                   />
@@ -2247,12 +2335,8 @@ function SceneProgram({ programId }: { programId: string }) {
                     key={componentType}
                     timeOverride={globalTimeOverride}
                     cities={Array.isArray(fifthBellClockProps.worldClockCities) ? fifthBellClockProps.worldClockCities : undefined}
-                    rotationIntervalMs={
-                      typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined
-                    }
-                    transitionDurationMs={
-                      typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined
-                    }
+                    rotationIntervalMs={typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined}
+                    transitionDurationMs={typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined}
                     shuffleCities={typeof fifthBellClockProps.worldClockShuffle === 'boolean' ? fifthBellClockProps.worldClockShuffle : undefined}
                     widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
                     showWorldClocks={typeof fifthBellClockProps.showWorldClocks === 'boolean' ? fifthBellClockProps.showWorldClocks : undefined}
@@ -2364,6 +2448,7 @@ function SceneProgram({ programId }: { programId: string }) {
                     episodeTitle={typeof props.episodeTitle === 'string' ? props.episodeTitle : ''}
                     showName={typeof props.showName === 'string' ? props.showName : ''}
                     audioUrl={typeof props.audioUrl === 'string' ? props.audioUrl : ''}
+                    masterGain={outputGain}
                   />
                 );
               case 'toni-logo':
@@ -2385,7 +2470,7 @@ function SceneProgram({ programId }: { programId: string }) {
                 }
                 return (
                   <div key={componentType} className='absolute inset-0'>
-                    <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} />
+                    <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} masterGain={outputGain} />
                   </div>
                 );
               case 'corner-bug':
@@ -2403,7 +2488,16 @@ function SceneProgram({ programId }: { programId: string }) {
               default:
                 console.warn('Unknown component type:', componentType);
                 return (
-                  <div key={componentType} style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
+                  <div
+                    key={componentType}
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      color: 'white'
+                    }}
+                  >
                     Unknown component: {componentType}
                   </div>
                 );
@@ -2429,9 +2523,7 @@ function SceneProgram({ programId }: { programId: string }) {
                   text={modoItalianoDisclaimerProps.text || ''}
                   show
                   align={
-                    modoItalianoDisclaimerProps.align === 'left' ||
-                    modoItalianoDisclaimerProps.align === 'center' ||
-                    modoItalianoDisclaimerProps.align === 'right'
+                    modoItalianoDisclaimerProps.align === 'left' || modoItalianoDisclaimerProps.align === 'center' || modoItalianoDisclaimerProps.align === 'right'
                       ? modoItalianoDisclaimerProps.align
                       : 'right'
                   }
@@ -2493,8 +2585,28 @@ function SceneProgram({ programId }: { programId: string }) {
 
   const activeScene = state?.activeScene ?? null;
   const stagedScene = state?.stagedScene ?? null;
+  const confidenceScene = confidenceMode === 'preview' ? stagedScene : activeScene;
   const stagedSceneHasVideoStream = sceneIncludesVideoStream(stagedScene);
   const stagedSceneIsOnAir = stagedSceneHasVideoStream && stagedScene !== null && activeScene !== null && stagedScene.id === activeScene.id;
+  const shouldAnimateFadeToBlack = previousFadeToBlackRef.current !== null;
+
+  if (confidenceMode) {
+    return (
+      <div className='relative overflow-hidden bg-black' style={{ width: '1920px', height: '1080px' }} data-confidence-monitor={confidenceMode}>
+        <div className='absolute inset-0'>{renderScene(confidenceScene, { forceStreamMuted: true })}</div>
+        {confidenceMode === 'program' ? (
+          <div
+            className='pointer-events-none absolute inset-0 z-[2000] bg-black'
+            data-confidence-fade-to-black={state?.fadeToBlack ? 'active' : 'inactive'}
+            style={{
+              opacity: state?.fadeToBlack ? 1 : 0,
+              transition: shouldAnimateFadeToBlack ? 'opacity 1000ms linear' : 'none'
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
@@ -2503,6 +2615,14 @@ function SceneProgram({ programId }: { programId: string }) {
       </div>
       <div className='absolute inset-0'>{!stagedSceneIsOnAir ? renderScene(activeScene, { forceStreamMuted: false }) : null}</div>
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
+      <div
+        className='pointer-events-none absolute inset-0 z-[2000] bg-black'
+        data-fade-to-black={state?.fadeToBlack ? 'active' : 'inactive'}
+        style={{
+          opacity: state?.fadeToBlack ? 1 : 0,
+          transition: shouldAnimateFadeToBlack ? 'opacity 1000ms linear' : 'none'
+        }}
+      />
     </div>
   );
 }

@@ -38,6 +38,8 @@ model ProgramState {
   type                   String               @default("tv")
   activeSceneId          Int?
   activeScene            Scene?               @relation(fields: [activeSceneId], references: [id])
+  stagedSceneId          Int?
+  fadeToBlack            Boolean              @default(false)
   songSequence           Json?
   shuffleOrder           Json?
   audioMixer             Json?
@@ -218,4 +220,55 @@ model NowPlayingConsumer {
 
   @@unique([programStateId, name])
   @@unique([programStateId, position])
+}
+
+model GuestInvitation {
+  id                 String         @id @default(uuid())
+  tokenHash          String         @unique
+  programId          String
+  displayName        String
+  slotNumber         Int?
+  returnVideo        String         @default("program")
+  returnAudioBus     String         @default("master")
+  sourceGain         Float          @default(1)
+  sourceMuted        Boolean        @default(false)
+  sourceDelayMs      Int            @default(0)
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  activeSessionId    String?
+  activeSessionUntil DateTime?
+  createdByIdentity  String
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  commands           GuestCommand[]
+  events             GuestEvent[]
+
+  @@index([programId, expiresAt])
+  @@unique([programId, slotNumber])
+}
+
+model GuestCommand {
+  id             String          @id @default(uuid())
+  invitationId   String
+  invitation     GuestInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  type           String
+  payload        Json
+  status         String          @default("requested")
+  failureReason  String?
+  createdAt      DateTime        @default(now())
+  deliveredAt    DateTime?
+  acknowledgedAt DateTime?
+
+  @@index([invitationId, createdAt])
+}
+
+model GuestEvent {
+  id           String          @id @default(uuid())
+  invitationId String
+  invitation   GuestInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  type         String
+  details      Json?
+  createdAt    DateTime        @default(now())
+
+  @@index([invitationId, createdAt])
 }

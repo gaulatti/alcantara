@@ -6,7 +6,7 @@ A professional TV broadcast overlay control system built with a modern tech stac
 
 - **Frontend**: React Router v7 + Vite + Tailwind CSS
 - **Backend**: NestJS + Fastify + Prisma
-- **Database**: SQLite
+- **Database**: PostgreSQL
 - **Monorepo**: pnpm workspace
 
 ## Project Structure
@@ -39,6 +39,89 @@ alcantara/
 
 ## Features
 
+### Six-guest WebRTC contribution
+
+The Calls console at `/calls` provides six reusable guest slots. An operator
+with `alcantara:webrtc:operate` can create a persisted private invitation,
+choose its one-to-seven-day lifetime (24 hours by default), copy it, replace or
+revoke it, remove its current session, and select the guest's Program, Preview,
+or no return video plus Program/Master, monitor, or Aux 1-8 return audio.
+Invitation secrets are shown only at creation/replacement; the database stores
+only their SHA-256 hash. Guest and operator LiveKit credentials expire after
+five minutes and are scoped to one program room. The LiveKit API secret never
+enters either browser.
+
+Guests enter `/guest/:invitation` without Cognito, select devices, preview their
+camera, test their speaker/network, and confirm headphones before explicitly
+joining. A documented acoustic-risk override is available when headphones are
+impossible. Each invitation permits one active browser session. A signed
+session lease refreshed every 20 seconds preserves the stable slot for a
+60-second network-reconnect window; a second browser fails closed. Revocation
+disconnects the guest and prevents future credentials.
+
+Operator mute is immediate. Camera/microphone enable is delivered as a request
+that the guest accepts or rejects. Standby/live/wrap cues and private messages
+persist requested, delivered, acknowledged/read, rejected, or failed state.
+Private talkback publishes only to the target guest's N-1 route and never to the
+Program feed. Removing or disconnecting a guest does not mutate Preview or
+Program.
+
+Layouts use the `webrtc-guest` component with a generic slot number from 1-6,
+not a person or invitation identifier. Assigning a replacement invitation to
+the same slot therefore preserves reusable layouts. The normal Preview, CUT,
+and TAKE workflow remains the only way a guest reaches air.
+
+#### Return routing
+
+Alana remains the owner of captured Program/Preview output publication. Start
+its Program renderer with `?renderer=1` so guest microphones are excluded from
+the captured base bus, and publish the output to the matching
+`alcantara-<programId>` LiveKit room as `program-feed-<programId>` (and optional
+`preview-feed-<programId>`). Run one isolated
+`/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>` renderer alongside it.
+The fragment is immediately moved to session storage and removed from browser
+history; it is never sent in a URL request.
+
+The return router subscribes to the selected processed base bus, connected
+guest microphones, and targeted producer talkback. It creates and publishes a
+distinct Web Audio destination for every guest, excluding only that guest's
+own microphone. Guests subscribe only to their selected video output and their
+own `mixminus:<identity>:<bus>` track. This replaces the earlier fixed 250 ms
+browser relay and keeps isolated guest tracks out of the guest UI.
+
+#### Local and production operations
+
+`docker compose up --build` includes LiveKit 1.13.4 with fixed local-only
+credentials and TCP/UDP media ports. Alcantara continues to use its existing
+database and Pompeii authorization configuration; this stack does not start a
+second Pompeii service. From `/calls`, create six fictional guest
+links and open them in separate browser contexts. Chrome's fake-device flags
+may be used for repeatable automated media UAT. Verify all six show as connected
+without appearing on Preview/Program, assign slots to a reusable layout, then
+exercise Preview and TAKE deliberately. Restart one guest and verify its slot
+is held for 60 seconds. The machine-only return router requires the local
+`WEBRTC_RENDERER_KEY` from Compose.
+
+Production owns LiveKit, Redis, TLS, TURN/TLS, firewall rules, health checks,
+and secrets through Alcantara deployment infrastructure. Start from
+`infra/livekit.production.example.yaml`, generate real API/session/renderer
+secrets in the application-scoped secret. Route public LiveKit HTTPS/WSS through
+the existing port-443 edge, and expose WebRTC TCP 7881, TURN/TLS 5349, TURN UDP
+3478, and the configured UDP media/relay ranges. Validate TURN
+from a restrictive external network before scheduling remote guests. Never use
+the committed local credentials outside Compose. The Calls console reports the
+feature as unavailable until `LIVEKIT_CONFIG_B64`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET`, `WEBRTC_RENDERER_KEY`, and the
+public `LIVEKIT_WS_URL` deployment variable are configured; their absence does
+not block unrelated Alcantara deployments.
+
+### Radio automation
+
+Radio song sequences default to autoplay when their mode is absent. An explicit
+operator choice of Manual remains authoritative. In autoplay, Alcantara advances
+to the next playlist item only after Palazzo reports that the active track ended;
+looped playlists wrap to the first item and non-looped playlists stop at the end.
+
 ### Program Page (`/program`)
 
 - Fixed 1920x1080 Full HD resolution (hardcoded, not responsive)
@@ -51,6 +134,7 @@ alcantara/
 
 ### Control Page (`/control`)
 
+- Program/Preview switcher deck with CUT, TAKE, fade-to-black, and workspace modes
 - Scene selection and activation
 - Real-time chyron text updates
 - Create new scenes and layouts

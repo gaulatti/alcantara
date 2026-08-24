@@ -6,6 +6,7 @@ export interface ModoItalianoPodcastPlayerProps {
   episodeTitle?: string;
   showName?: string;
   audioUrl?: string;
+  masterGain?: number;
 }
 
 const ACCENT_COLOR = '#e91e8c';
@@ -26,7 +27,8 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
   coverUrl = '',
   episodeTitle = '',
   showName = '',
-  audioUrl = ''
+  audioUrl = '',
+  masterGain = 1
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -48,6 +50,12 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.volume = Math.max(0, Math.min(1, masterGain));
+    audioRef.current.muted = masterGain <= 0.0001;
+  }, [masterGain]);
 
   // ── Background canvas animation ──────────────────────────────────────────
   // Smooth animated mesh gradient: 4 color orbs drifting on slow sine paths,

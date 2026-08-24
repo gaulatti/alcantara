@@ -73,6 +73,22 @@ const SEQUENCE = {
   ],
 };
 
+const TWO_SONG_SEQUENCE = {
+  ...SEQUENCE,
+  items: [
+    SEQUENCE.items[0],
+    {
+      id: 'song-2',
+      kind: 'preset',
+      title: 'Song two',
+      artist: 'Artist two',
+      coverUrl: 'https://example.test/song-2.jpg',
+      audioUrl: 'https://example.test/song-2.mp3',
+      durationMs: 1000,
+    },
+  ],
+};
+
 function createEngine(opts: {
   reconciled: boolean;
   radio?: boolean;
@@ -130,7 +146,10 @@ describe('SongExecutionEngine authoritative playback', () => {
   });
 
   it('does not command playback before a Palazzo snapshot is reconciled', async () => {
-    const { engine, radioService } = createEngine({ reconciled: false, radio: true });
+    const { engine, radioService } = createEngine({
+      reconciled: false,
+      radio: true,
+    });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
     await flush();
@@ -139,11 +158,17 @@ describe('SongExecutionEngine authoritative playback', () => {
   });
 
   it('starts the sequence after the first reconciled idle snapshot', async () => {
-    const { engine, radioService } = createEngine({ reconciled: false, radio: true });
+    const { engine, radioService } = createEngine({
+      reconciled: false,
+      radio: true,
+    });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
     engine.setPalazzoTelemetry({ isReconciled: () => true });
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
 
     expect(radioService.playSong).toHaveBeenCalledTimes(1);
@@ -161,23 +186,121 @@ describe('SongExecutionEngine authoritative playback', () => {
     });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
     const requestId = radioService.playSong.mock.calls[0][4];
 
     engine.handlePalazzoEvent('radio-1', {
       type: 'track.started',
-      data: { playbackRequestId: requestId, url: 'https://example.test/song-1.mp3' },
+      data: {
+        playbackRequestId: requestId,
+        url: 'https://example.test/song-1.mp3',
+      },
     });
     engine.handlePalazzoEvent('radio-1', {
       type: 'track.ended',
-      data: { playbackRequestId: requestId, url: 'https://example.test/song-1.mp3' },
+      data: {
+        playbackRequestId: requestId,
+        url: 'https://example.test/song-1.mp3',
+      },
     });
     await flush();
 
     expect(flightService.handleSongEnded).toHaveBeenCalledTimes(1);
     // The looped sequence commands a successor without publishing stopped.
     expect(radioService.playSong).toHaveBeenCalledTimes(2);
+  });
+
+  it('commands the next playlist item after Palazzo reports track end', async () => {
+    const { engine, radioService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const firstRequestId = radioService.playSong.mock.calls[0][4];
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: firstRequestId },
+    });
+    await flush();
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(2);
+    expect(radioService.playSong.mock.calls[1][1]).toBe(
+      'https://example.test/song-2.mp3',
+    );
+  });
+
+  it('wraps a looped playlist and stops an explicitly non-looped playlist', async () => {
+    const looped = createEngine({ reconciled: true, radio: true });
+    looped.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    looped.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    let requestId = looped.radioService.playSong.mock.calls[0][4];
+    looped.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush();
+    requestId = looped.radioService.playSong.mock.calls[1][4];
+    looped.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush();
+    expect(looped.radioService.playSong.mock.calls[2][1]).toBe(
+      'https://example.test/song-1.mp3',
+    );
+
+    const nonLooped = createEngine({ reconciled: true, radio: true });
+    nonLooped.engine.handleSequenceUpdated('radio-1', {
+      ...SEQUENCE,
+      loop: false,
+    });
+    nonLooped.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-b', 'boot-2', 1),
+    );
+    await flush();
+    requestId = nonLooped.radioService.playSong.mock.calls[0][4];
+    nonLooped.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush();
+    expect(nonLooped.radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(nonLooped.nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(
+      1,
+    );
+  });
+
+  it('defaults an unspecified radio sequence mode to autoplay', async () => {
+    const { engine, radioService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    const { mode: _mode, ...withoutMode } = SEQUENCE;
+
+    engine.handleSequenceUpdated('radio-1', withoutMode);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
   });
 
   it('ignores duplicate track.ended events for the same request', async () => {
@@ -187,7 +310,10 @@ describe('SongExecutionEngine authoritative playback', () => {
     });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
     const requestId = radioService.playSong.mock.calls[0][4];
 
@@ -212,7 +338,10 @@ describe('SongExecutionEngine authoritative playback', () => {
     });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
 
     engine.handlePalazzoEvent('radio-1', {
@@ -230,7 +359,10 @@ describe('SongExecutionEngine authoritative playback', () => {
       createEngine({ reconciled: true, radio: true });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
     const requestId = radioService.playSong.mock.calls[0][4];
 
@@ -263,7 +395,10 @@ describe('SongExecutionEngine authoritative playback', () => {
     });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
     const requestId = radioService.playSong.mock.calls[0][4];
 
@@ -292,7 +427,10 @@ describe('SongExecutionEngine authoritative playback', () => {
       detail: null,
     });
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 5));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 5),
+    );
     await flush();
 
     expect(flightService.handleSongEnded).toHaveBeenCalledTimes(1);
@@ -301,10 +439,16 @@ describe('SongExecutionEngine authoritative playback', () => {
   });
 
   it('adopts authoritative position from playing snapshots', async () => {
-    const { engine, radioService } = createEngine({ reconciled: true, radio: true });
+    const { engine, radioService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
 
     engine.handleSequenceUpdated('radio-1', SEQUENCE);
-    engine.handlePalazzoSnapshot('radio-1', idleSnapshot('palazzo-a', 'boot-1', 1));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
     await flush();
     const requestId = radioService.playSong.mock.calls[0][4];
 

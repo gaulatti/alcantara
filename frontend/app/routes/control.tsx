@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useSSE } from '../hooks/useSSE';
 import { OVERLAY_COMPONENTS, getDefaultPropsForComponent as getStaticDefaultProps, hasConfigurableSceneAttributes } from '../models/components';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { authFetch } from '../services/api';
 import { dbToFader, faderToGain } from '../utils/audioTaper';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
+import { acceptStageSceneResponse, type StageSceneResponse } from '../utils/stageSceneResponse';
 import {
   createProgramSongSequence,
   createProgramTextSequence,
@@ -18,6 +20,7 @@ import type { Route } from './+types/control';
 
 import { PanelColumn } from '../components/editors';
 import { PlaybackBar } from '../components/PlaybackBar';
+import { BroadcastSwitcherDeck, readStoredConsoleWorkspace, type ConsoleWorkspace } from '../components/BroadcastSwitcherDeck';
 import { RadioPanel } from '../components/RadioPanel';
 import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel, SceneAttributesPanel } from '../components/panels';
 import type {
@@ -350,7 +353,8 @@ export default function Control() {
   const [sceneComponentProps, setSceneComponentProps] = useState<Record<string, any>>({});
   const [sceneErrors, setSceneErrors] = useState({ name: '', layout: '', props: '' });
   const [isCreatingScene, setIsCreatingScene] = useState(false);
-  const [selectedTransitionId] = useGlobalTransitionId(activeProgramId);
+  const [selectedTransitionId, setSelectedTransitionId] = useGlobalTransitionId(activeProgramId);
+  const [consoleWorkspace, setConsoleWorkspace] = useState<ConsoleWorkspace>(() => readStoredConsoleWorkspace());
   const [programAudioBusSettings, setProgramAudioBusSettings] = useState<ProgramAudioBusSettings>({
     songSequence: createProgramSongSequence('manual')
   });
@@ -630,7 +634,7 @@ export default function Control() {
 
   const syncProgramStateAndStagedScene = useCallback((nextProgramState: ProgramState | null) => {
     setProgramState(nextProgramState);
-    setSelectedScene((previousStagedSceneId) => {
+    setSelectedScene(() => {
       if (!nextProgramState) {
         return null;
       }
@@ -640,15 +644,7 @@ export default function Control() {
           ? nextProgramState.stagedSceneId
           : null;
 
-      if (nextStagedSceneId !== null) {
-        return nextStagedSceneId;
-      }
-
-      if (previousStagedSceneId !== null && nextProgramState.scenes.some((entry) => entry.sceneId === previousStagedSceneId)) {
-        return previousStagedSceneId;
-      }
-
-      return nextProgramState.activeSceneId ?? null;
+      return nextStagedSceneId;
     });
   }, []);
 
@@ -660,16 +656,28 @@ export default function Control() {
     let disposed = false;
     let reconnectTimer: number | null = null;
 
-    const connect = () => {
+    const connect = async () => {
       if (disposed) {
         return;
       }
 
       let socket: WebSocket;
       try {
-        socket = new WebSocket(getProgramRealtimeSocketUrl(activeProgramId, 'control'));
+        const ticketResponse = await authFetch('/auth/realtime-ticket', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ programId: activeProgramId })
+        });
+        if (!ticketResponse.ok) {
+          throw new Error(`Realtime ticket HTTP ${ticketResponse.status}`);
+        }
+        const ticketPayload = (await ticketResponse.json()) as { ticket?: unknown };
+        if (disposed || typeof ticketPayload.ticket !== 'string' || !ticketPayload.ticket) {
+          return;
+        }
+        socket = new WebSocket(getProgramRealtimeSocketUrl(activeProgramId, 'control', ticketPayload.ticket));
       } catch {
-        reconnectTimer = window.setTimeout(connect, 1500);
+        reconnectTimer = window.setTimeout(() => void connect(), 1500);
         return;
       }
 
@@ -750,6 +758,12 @@ export default function Control() {
               stagedScene: payload.scene && typeof payload.scene === 'object' ? (payload.scene as Scene) : null
             };
           });
+          return;
+        }
+
+        if (payload.type === 'fade_to_black') {
+          const normalizedProgramState = normalizeProgramState(payload.state);
+          syncProgramStateAndStagedScene(normalizedProgramState);
           return;
         }
 
@@ -874,7 +888,7 @@ export default function Control() {
         }
         setIsProgramRealtimeConnected(false);
         if (!disposed) {
-          reconnectTimer = window.setTimeout(connect, 1500);
+          reconnectTimer = window.setTimeout(() => void connect(), 1500);
         }
       });
 
@@ -887,7 +901,7 @@ export default function Control() {
       });
     };
 
-    connect();
+    void connect();
 
     return () => {
       disposed = true;
@@ -1533,32 +1547,23 @@ export default function Control() {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const result = (await response.json()) as {
-        stagedSceneId?: unknown;
-        stagedScene?: unknown;
-        version?: unknown;
-      };
-      if (shouldApplyControlUpdatePayload(result, 'state')) {
-        const stagedSceneId =
-          typeof result.stagedSceneId === 'number' && Number.isFinite(result.stagedSceneId)
-            ? result.stagedSceneId
-            : null;
-        const stagedScene =
-          result.stagedScene && typeof result.stagedScene === 'object'
-            ? (result.stagedScene as Scene)
-            : null;
-
-        setSelectedScene(stagedSceneId);
-        setProgramState((previous) =>
-          previous
-            ? {
-                ...previous,
-                stagedSceneId,
-                stagedScene
-              }
-            : previous
-        );
+      const result = (await response.json()) as StageSceneResponse;
+      const acceptedResult = acceptStageSceneResponse<Scene>(result, shouldApplyControlUpdatePayload);
+      if (!acceptedResult) {
+        return;
       }
+      const { stagedSceneId, stagedScene } = acceptedResult;
+
+      setSelectedScene(stagedSceneId);
+      setProgramState((previous) =>
+        previous
+          ? {
+              ...previous,
+              stagedSceneId,
+              stagedScene
+            }
+          : previous
+      );
 
       if (!isProgramRealtimeConnected) {
         await fetchProgramState(activeProgramId);
@@ -1568,7 +1573,7 @@ export default function Control() {
     }
   };
 
-  const activateScene = async (sceneId: number) => {
+  const activateScene = async (sceneId: number, transitionIdOverride?: string) => {
     try {
       if (!isSceneAssigned(sceneId)) {
         await assignSceneToProgram(sceneId);
@@ -1576,7 +1581,7 @@ export default function Control() {
       await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/activate`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId, transitionId: selectedTransitionId })
+        body: JSON.stringify({ sceneId, transitionId: transitionIdOverride ?? selectedTransitionId })
       });
       setSelectedScene(sceneId);
       if (!isProgramRealtimeConnected) {
@@ -1587,16 +1592,31 @@ export default function Control() {
     }
   };
 
-  const takeStagedSceneLive = async () => {
+  const takeStagedSceneLive = async (transitionIdOverride?: string) => {
     if (!selectedScene) {
       return;
     }
 
     try {
       await flushSceneAttributeAutosaveForScene(selectedScene);
-      await activateScene(selectedScene);
+      await activateScene(selectedScene, transitionIdOverride);
     } catch (err) {
       console.error('Could not save staged scene attributes before taking live:', err);
+    }
+  };
+
+  const setFadeToBlack = async (active: boolean) => {
+    try {
+      const response = await fetch(apiUrl(`/program/${encodeURIComponent(activeProgramId)}/fade-to-black`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const nextState = normalizeProgramState(await response.json());
+      if (nextState) syncProgramStateAndStagedScene(nextState);
+    } catch (err) {
+      console.error('Failed to change fade-to-black state:', err);
     }
   };
 
@@ -2376,12 +2396,6 @@ export default function Control() {
         return;
       }
 
-      if (event.code === 'Enter') {
-        event.preventDefault();
-        void takeStagedSceneLive();
-        return;
-      }
-
       const match = event.code.match(/^Digit(\d)$/);
       if (match && Date.now() <= sceneHotkeyArmedUntil) {
         const pressedDigit = Number(match[1]);
@@ -2450,6 +2464,11 @@ export default function Control() {
         if (data.type === 'program_media_groups_changed') {
           void fetchMediaGroups(activeProgramId);
         }
+        return;
+      }
+
+      if (data.type === 'fade_to_black') {
+        syncProgramStateAndStagedScene(normalizeProgramState(data.state));
         return;
       }
 
@@ -2654,9 +2673,26 @@ export default function Control() {
           }
         `}
       </style>
-      <div className='flex-1 min-h-0 w-full overflow-hidden'>
+      <BroadcastSwitcherDeck
+        programId={activeProgramId}
+        activeScene={programState?.activeScene ?? null}
+        stagedScene={stagedSceneData}
+        scenes={assignedScenes}
+        transitionId={selectedTransitionId}
+        realtimeConnected={isProgramRealtimeConnected}
+        fadeToBlack={programState?.fadeToBlack === true}
+        workspace={consoleWorkspace}
+        onWorkspaceChange={setConsoleWorkspace}
+        onTransitionChange={setSelectedTransitionId}
+        onStageScene={stageSceneForProgram}
+        onTake={() => void takeStagedSceneLive()}
+        onCut={() => void takeStagedSceneLive('cut')}
+        onFadeToBlack={() => void setFadeToBlack(programState?.fadeToBlack !== true)}
+      />
+      <div className={`flex-1 min-h-0 w-full overflow-hidden ${consoleWorkspace === 'compact' ? 'hidden' : ''}`} data-workspace-content={consoleWorkspace}>
         <PanelLayout className='w-full h-full min-h-0' padding='p-0'>
           <PanelColumn className='min-w-0' {...controlDeckGrowProps}>
+            {consoleWorkspace !== 'graphics' ? (
             <Panel title='Mixer' accent='#38bdf8' variant='monitor' className='min-h-0' grow>
               <div className='space-y-4'>
                 <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
@@ -2950,8 +2986,9 @@ export default function Control() {
                 </div>
               </div>
             </Panel>
+            ) : null}
 
-            {programState?.type !== 'radio' ? (
+            {consoleWorkspace !== 'audio' ? (
             <Panel title='Stage Attributes' accent='#14b8a6' variant='monitor' className='min-h-0' grow>
               <SceneAttributesPanel
                 selectedScene={selectedScene}
@@ -3069,9 +3106,6 @@ export default function Control() {
           }}
           onStageScene={(sceneId) => {
             void stageSceneForProgram(sceneId);
-          }}
-          onTakeScene={(sceneId) => {
-            void activateScene(sceneId);
           }}
         />
       </div>

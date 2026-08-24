@@ -1,0 +1,39 @@
+name: alcantara-media
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: alcantara-livekit-redis
+    command: ['redis-server', '--save', '60', '1', '--appendonly', 'yes']
+    volumes:
+      - /services/alcantara/livekit-redis:/data
+    restart: always
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  livekit:
+    image: livekit/livekit-server:v1.13.4
+    container_name: alcantara-livekit
+    command: ['--config', '/etc/livekit.yaml']
+    volumes:
+      - /services/alcantara/livekit.yaml:/etc/livekit.yaml:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      - '7880:7880/tcp'
+      - '7881:7881/tcp'
+      - '3478:3478/udp'
+      - '5349:5349/tcp'
+      - '30000-30100:30000-30100/udp'
+      - '50000-50100:50000-50100/udp'
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+networks:
+  default:
+    external: true
+    name: broadcast-control

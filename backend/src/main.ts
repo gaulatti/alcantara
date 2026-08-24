@@ -64,7 +64,7 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Renderer-Key'],
   });
 
   await app.listen(port, '0.0.0.0');
@@ -79,4 +79,4 @@ async function bootstrap() {
       : app.getHttpServer();
   programRealtimeService.attachToServer(upgradeServer as HttpServer);
 }
-bootstrap();
+void bootstrap();

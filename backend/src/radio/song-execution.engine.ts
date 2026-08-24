@@ -17,6 +17,7 @@ import type {
   PalazzoProgramStatus,
 } from './palazzo-contract';
 import {
+  advanceProgramSongSequence,
   normalizeProgramSongSequence,
   resolveProgramSongLeaf,
   type ProgramResolvedSongLeaf,
@@ -156,7 +157,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const state = this.ensureState(pid);
       state.sequence = seq;
       state.sequence.startedAt = Date.now();
-      this.logger.log(`Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`);
+      this.logger.log(
+        `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
+      );
     }
   }
 
@@ -321,7 +324,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.emit({ type: 'radio_leg_status', programId, status });
   }
 
-  handlePalazzoSnapshot(programId: string, snapshot: PalazzoPlaybackState): void {
+  handlePalazzoSnapshot(
+    programId: string,
+    snapshot: PalazzoPlaybackState,
+  ): void {
     if (!this.isRadioCapable(programId)) return;
     const state = this.ensureState(programId);
     const wasReconciled = state.reconciled;
@@ -484,7 +490,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (requestId && state.activeSong) {
       // Authoritative idle state while we believe our song is active: the
       // song ended without a lifecycle event reaching us (e.g. SSE loss).
-      this.handleAuthoritativeTrackEnded(programId, state, requestId, true);
+      this.handleAuthoritativeTrackEnded(programId, state, requestId);
       return;
     }
 
@@ -506,7 +512,6 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     state: SongEngineState,
     requestId: string,
-    fromSnapshot = false,
   ): void {
     if (!requestId) {
       this.metrics.recordTrackTransition('ignored-mismatch');
@@ -535,10 +540,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
     this.metrics.recordTrackTransition('advanced');
     this.handleSongEnded(programId);
+    const endedSong = state.activeSong;
     state.activeSong = null;
     state.pendingRequestIds.delete(requestId);
     state.songCount++;
     state.busyWithForeignTrack = false;
+    const hasSuccessor =
+      state.sequence?.mode === 'autoplay'
+        ? advanceProgramSongSequence(state.sequence, endedSong.itemId)
+        : state.sequence?.mode === 'shuffle';
 
     void this.maybeBumper(programId).then(() => {
       const st = this.states.get(programId);
@@ -546,6 +556,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
       if (
         st.sequence &&
+        hasSuccessor &&
         (st.sequence.mode === 'autoplay' || st.sequence.mode === 'shuffle')
       ) {
         if (this.maybeStartSequence(programId)) return;
@@ -583,11 +594,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.sequence.mode === 'shuffle') {
       resolved = this.resolveShuffle(programId);
     } else {
-      const seq: ProgramSongSequence = {
-        ...state.sequence,
-        activeItemId: state.sequence.items[0]?.id ?? null,
-      };
-      resolved = resolveProgramSongLeaf(seq, Date.now());
+      resolved = resolveProgramSongLeaf(state.sequence, Date.now());
     }
     if (!resolved?.audioUrl) return false;
 
@@ -702,15 +709,21 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const s = this.states.get(programId);
       if (!s) return;
       this.handleSongEnded(programId);
+      const endedSong = s.activeSong;
       s.activeSong = null;
       s.pendingRequestIds.clear();
       s.songCount++;
+      const hasSuccessor =
+        s.sequence?.mode === 'autoplay'
+          ? advanceProgramSongSequence(s.sequence, endedSong?.itemId)
+          : s.sequence?.mode === 'shuffle';
       void this.maybeBumper(programId).then(() => {
         const st = this.states.get(programId);
         if (!st || st.activeSong) return;
 
         if (
           st.sequence &&
+          hasSuccessor &&
           (st.sequence.mode === 'autoplay' || st.sequence.mode === 'shuffle')
         ) {
           if (this.maybeStartSequence(programId)) return;
@@ -821,10 +834,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private playbackData(
-    programId: string,
-    s: ActiveSong,
-  ): SongPlaybackData {
+  private playbackData(programId: string, s: ActiveSong): SongPlaybackData {
     const now = Date.now();
     let positionMs: number;
     let startedAt = s.startedAt;

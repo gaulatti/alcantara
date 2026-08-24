@@ -13,6 +13,7 @@ interface RelojDigitalLoopClockProps {
   countdownTargetSceneId?: number | null;
   countdownTransitionId?: string | null;
   countdownCommand?: number;
+  allowProgramActivation?: boolean;
 }
 
 interface LoopTimezone {
@@ -76,7 +77,8 @@ export default function RelojDigitalLoopClock({
   countdownDuration = 300,
   countdownTargetSceneId,
   countdownTransitionId = 'cut',
-  countdownCommand
+  countdownCommand,
+  allowProgramActivation = true
 }: RelojDigitalLoopClockProps) {
   const defaultIndex = useMemo(() => {
     const idx = LOOP_TIMEZONES.findIndex((item) => item.timezone === timezone);
@@ -185,7 +187,7 @@ export default function RelojDigitalLoopClock({
 
       if (countdownRunning && remaining <= 0 && !countdownFiredRef.current) {
         countdownFiredRef.current = true;
-        if (programId && countdownTargetSceneId) {
+        if (allowProgramActivation && programId && countdownTargetSceneId) {
           activateScene(programId, countdownTargetSceneId, countdownTransitionId);
         }
         return;
@@ -202,7 +204,7 @@ export default function RelojDigitalLoopClock({
       cancelAnimationFrame(rafId);
       window.clearTimeout(animationId);
     };
-  }, [mode, countdownRunning, countdownDuration, countdownTargetSceneId, countdownTransitionId, programId]);
+  }, [allowProgramActivation, mode, countdownRunning, countdownDuration, countdownTargetSceneId, countdownTransitionId, programId]);
 
   useEffect(() => {
     if (mode !== 'clock') return;
