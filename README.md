@@ -176,6 +176,12 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 
 ## Architecture
 
+Production places the backend on the external `broadcast-control` Docker
+network shared with Palazzo. The backend deployment verifies that the network
+exists before replacing the live container, then joins the replacement to it so
+the private `http://palazzo:3100` telemetry endpoint remains resolvable across
+deployments.
+
 ### Data Flow
 
 ```

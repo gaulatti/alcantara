@@ -70,6 +70,7 @@ jobs:
           script: |
             sh -c '
             set -eu
+            docker network inspect broadcast-control >/dev/null
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
             docker pull ghcr.io/${{ github.repository }}:latest
 
@@ -84,6 +85,7 @@ jobs:
             LOG_STREAM_UUID=$(uuidgen)
 
             docker run -d --name alcantara-backend \
+            --network broadcast-control \
             -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
             -e NODE_ENV=production \
             -e HTTP_PORT="${{ vars.HTTP_PORT }}" \
