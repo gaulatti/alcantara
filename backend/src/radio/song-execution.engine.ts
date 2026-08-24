@@ -230,6 +230,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     title?: string,
     artist?: string,
     durationMs?: number,
+    coverUrl?: string,
   ): void {
     const state = this.ensureState(programId);
     const dur =
@@ -242,7 +243,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       audioUrl,
       artist: artist || '',
       title: title || '',
-      coverUrl: '',
+      coverUrl: coverUrl || '',
       durationMs: dur,
       startedAt: Date.now(),
       itemId: '',
@@ -258,7 +259,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // estimated-duration completion behavior.
       this.setTimer(programId, dur);
     }
-    void this.pushCommand(programId, playbackRequestId, audioUrl, title, artist);
+    void this.pushCommand(
+      programId,
+      playbackRequestId,
+      audioUrl,
+      title,
+      artist,
+      coverUrl,
+    );
   }
 
   handleSongEnded(programId: string): void {
@@ -336,6 +344,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             playbackRequestId: string;
             title?: string | null;
             artist?: string | null;
+            coverUrl?: string | null;
             url?: string;
           };
         }
@@ -345,6 +354,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             playbackRequestId: string;
             title?: string | null;
             artist?: string | null;
+            coverUrl?: string | null;
             url?: string;
           };
         }
@@ -388,6 +398,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
     if (event.type === 'track.started') {
       if (state.activeSong?.playbackRequestId === requestId) {
+        if (
+          !state.activeSong.coverUrl &&
+          typeof event.data.coverUrl === 'string'
+        ) {
+          state.activeSong.coverUrl = event.data.coverUrl;
+        }
         state.activeSong.authoritativeStartedAt = Date.now();
         state.activeSong.authoritativePositionMs = 0;
         state.activeSong.authoritativeUpdatedAt = Date.now();
@@ -418,6 +434,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const requestId = snapshot.track?.playbackRequestId ?? '';
     if (state.activeSong && state.activeSong.playbackRequestId === requestId) {
       const song = state.activeSong;
+      if (!song.coverUrl && snapshot.track?.coverUrl) {
+        song.coverUrl = snapshot.track.coverUrl;
+      }
       const startedAt = Date.parse(snapshot.track?.startedAt ?? '');
       if (Number.isFinite(startedAt)) {
         song.authoritativeStartedAt = startedAt;
@@ -602,6 +621,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       resolved.audioUrl,
       resolved.title,
       resolved.artist,
+      resolved.coverUrl,
     );
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
@@ -638,6 +658,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     audioUrl: string,
     title?: string,
     artist?: string,
+    coverUrl?: string,
   ): Promise<void> {
     const result = await this.radioService.playSong(
       programId,
@@ -645,6 +666,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       title,
       artist,
       playbackRequestId,
+      coverUrl,
     );
     const state = this.states.get(programId);
     if (!state) return;

@@ -104,15 +104,37 @@ export class NowPlayingPublisherService {
     }
 
     const payload: NowPlayingPublisherPayload = {};
+    const artworkUrl = await this.resolveArtworkUrl(playback);
     if (playback.title) payload.title = playback.title;
     if (playback.artist) payload.artist = playback.artist;
-    if (playback.coverUrl) payload.artworkUrl = playback.coverUrl;
+    if (artworkUrl) payload.artworkUrl = artworkUrl;
     if (playback.startedAt) payload.startedAt = playback.startedAt;
     if (playback.durationMs > 0) {
       payload.durationSeconds = Math.round(playback.durationMs / 1000);
     }
 
     await this.publishToConsumers(programId, consumers, payload);
+  }
+
+  private async resolveArtworkUrl(
+    playback: SongPlaybackData,
+  ): Promise<string | undefined> {
+    const supplied = this.normalizeString(playback.coverUrl);
+    if (supplied) return supplied;
+    const audioUrl = this.normalizeString(playback.audioUrl);
+    if (!audioUrl) return undefined;
+    try {
+      const song = await this.prisma.song.findFirst({
+        where: { audioUrl },
+        select: { coverUrl: true },
+      });
+      return this.normalizeString(song?.coverUrl) ?? undefined;
+    } catch (err) {
+      this.logger.warn(
+        `Now-playing artwork lookup failed for ${playback.title || 'unknown track'}: ${err}`,
+      );
+      return undefined;
+    }
   }
 
   async publishStopped(programId: string): Promise<void> {

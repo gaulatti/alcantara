@@ -39,7 +39,7 @@ describe('NowPlayingPublisherService logging', () => {
       prisma as unknown as PrismaService,
     );
     const log = jest.spyOn(service['logger'], 'log').mockImplementation();
-    jest
+    const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(
         new Response(null, { status: 204, statusText: 'No Content' }),
@@ -53,6 +53,45 @@ describe('NowPlayingPublisherService logging', () => {
     expect(messages).toContain('Now-playing publish succeeded for main/spritz');
     expect(messages).toContain('Test song');
     expect(messages).not.toContain('secret-token');
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+      artworkUrl: 'https://example.test/cover.jpg',
+    });
+  });
+
+  it('restores missing artwork from the song catalog by audio URL', async () => {
+    const prisma = {
+      nowPlayingConsumer: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            name: 'spritz',
+            url: 'https://spritz.example.test/now-playing',
+            method: 'POST',
+            headers: {},
+          },
+        ]),
+      },
+      song: {
+        findFirst: jest.fn().mockResolvedValue({
+          coverUrl: 'https://example.test/catalog-cover.jpg',
+        }),
+      },
+    };
+    const service = new NowPlayingPublisherService(
+      prisma as unknown as PrismaService,
+    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await service.publishPlayback('main', { ...playback, coverUrl: '' });
+
+    expect(prisma.song.findFirst).toHaveBeenCalledWith({
+      where: { audioUrl: playback.audioUrl },
+      select: { coverUrl: true },
+    });
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+      artworkUrl: 'https://example.test/catalog-cover.jpg',
+    });
   });
 
   it('logs when an event has no enabled consumers', async () => {

@@ -66,6 +66,7 @@ const SEQUENCE = {
       kind: 'preset',
       title: 'Song one',
       artist: 'Artist one',
+      coverUrl: 'https://example.test/song-1.jpg',
       audioUrl: 'https://example.test/song-1.mp3',
       durationMs: 1000,
     },
@@ -148,6 +149,9 @@ describe('SongExecutionEngine authoritative playback', () => {
     expect(radioService.playSong).toHaveBeenCalledTimes(1);
     const [, , , , requestId] = radioService.playSong.mock.calls[0];
     expect(requestId).toEqual(expect.any(String));
+    expect(radioService.playSong.mock.calls[0][5]).toBe(
+      'https://example.test/song-1.jpg',
+    );
   });
 
   it('advances exactly once on a matching authoritative track end', async () => {

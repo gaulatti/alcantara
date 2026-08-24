@@ -15,6 +15,7 @@ export interface PalazzoTrackState {
   playbackRequestId: string;
   title: string | null;
   artist: string | null;
+  coverUrl: string | null;
   url: string;
   startedAt: string;
 }
@@ -83,6 +84,7 @@ export interface PalazzoTrackStartedData {
   playbackRequestId: string;
   title: string | null;
   artist: string | null;
+  coverUrl: string | null;
   url: string;
   liquidsoapSequence: number;
 }
@@ -91,6 +93,7 @@ export interface PalazzoTrackEndedData {
   playbackRequestId: string;
   title: string | null;
   artist: string | null;
+  coverUrl: string | null;
   url: string;
   liquidsoapSequence: number;
 }
@@ -144,6 +147,7 @@ function parsePalazzoTrack(value: unknown): PalazzoTrackState | null {
     playbackRequestId: record.playbackRequestId,
     title: stringOrNull(record.title),
     artist: stringOrNull(record.artist),
+    coverUrl: stringOrNull(record.coverUrl),
     url: typeof record.url === 'string' ? record.url : '',
     startedAt: typeof record.startedAt === 'string' ? record.startedAt : '',
   };

@@ -82,24 +82,20 @@ export class RadioController {
       audioUrl: string;
       title?: string;
       artist?: string;
+      coverUrl?: string;
       durationMs?: number;
     },
   ) {
     if (!data.audioUrl) {
       throw new BadRequestException('audioUrl is required');
     }
-    await this.radioService.playSong(
-      programId,
-      data.audioUrl,
-      data.title,
-      data.artist,
-    );
     this.songExecutionEngine.handleManualSong(
       programId,
       data.audioUrl,
       data.title,
       data.artist,
       data.durationMs,
+      data.coverUrl,
     );
     return { ok: true };
   }

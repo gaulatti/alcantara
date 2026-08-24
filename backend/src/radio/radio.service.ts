@@ -53,6 +53,7 @@ export class RadioService {
     title?: string,
     artist?: string,
     playbackRequestId?: string,
+    coverUrl?: string,
   ): Promise<{ ok: boolean; playbackRequestId?: string }> {
     const settings = await this.getRadioSettings(programId);
     if (!settings) return { ok: false };
@@ -61,7 +62,13 @@ export class RadioService {
       const res = await fetch(`${url}/song`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: audioUrl, title, artist, playbackRequestId }),
+        body: JSON.stringify({
+          url: audioUrl,
+          title,
+          artist,
+          coverUrl,
+          playbackRequestId,
+        }),
       });
       if (!res.ok) return { ok: false };
       const body = (await res.json().catch(() => null)) as
