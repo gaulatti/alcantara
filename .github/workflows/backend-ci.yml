@@ -25,10 +25,10 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Test and build backend
         run: |
-          pnpm --dir backend prisma:generate
-          pnpm --dir backend test --runInBand
-          METRICS_SCRAPE_OUTPUT=/tmp/alcantara.prom pnpm --dir backend test:e2e --runInBand --testPathPatterns=metrics
-          pnpm --dir backend build
+          pnpm --dir backend run prisma:generate
+          pnpm --dir backend exec jest --runInBand
+          METRICS_SCRAPE_OUTPUT=/tmp/alcantara.prom pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns=metrics
+          pnpm --dir backend run build
       - name: Parse actual authenticated scrape
         run: |
           test -s /tmp/alcantara.prom
