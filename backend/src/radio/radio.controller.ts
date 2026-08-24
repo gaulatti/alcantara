@@ -13,6 +13,7 @@ import {
   NowPlayingPublisherService,
   type NowPlayingConsumerPayload,
 } from './now-playing-publisher.service';
+import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 import type { RadioSettingsPayload } from './radio.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -24,6 +25,7 @@ export class RadioController {
     private readonly radioService: RadioService,
     private readonly songExecutionEngine: SongExecutionEngine,
     private readonly nowPlayingPublisherService: NowPlayingPublisherService,
+    private readonly palazzoTelemetry: PalazzoRadioTelemetryService,
   ) {}
 
   @Get(':programId/settings')
@@ -37,7 +39,14 @@ export class RadioController {
     @Param('programId') programId: string,
     @Body() data: RadioSettingsPayload,
   ) {
-    return this.radioService.updateRadioSettings(programId, data);
+    const result = this.radioService.updateRadioSettings(programId, data);
+    await this.palazzoTelemetry.handleRadioSettingsChanged(programId);
+    return result;
+  }
+
+  @Get(':programId/palazzo-status')
+  async getPalazzoStatus(@Param('programId') programId: string) {
+    return this.palazzoTelemetry.getStatus(programId);
   }
 
   @Get(':programId/now-playing-consumers')
