@@ -247,7 +247,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     if (!item?.audioUrl) return;
     await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/song`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audioUrl: item.audioUrl, title: item?.title, artist: item?.artist, durationMs: item?.durationMs }),
+      body: JSON.stringify({
+        audioUrl: item.audioUrl,
+        title: item?.title,
+        artist: item?.artist,
+        coverUrl: item?.coverUrl,
+        durationMs: item?.durationMs,
+      }),
     });
   }, [onSaveSongSequence, programId]);
 
