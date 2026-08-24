@@ -87,6 +87,16 @@ export class ManagedMetricsService {
 
   constructor() {
     collectDefaultMetrics({ prefix: 'alcantara_', register: this.registry });
+    // prom-client 15 exposes these as gauges despite the counter-only `_total`
+    // suffix. Prometheus 3 rejects that exposition, so retain the bounded
+    // per-type gauges and drop only the invalid aggregate aliases.
+    for (const name of [
+      'alcantara_nodejs_active_handles_total',
+      'alcantara_nodejs_active_requests_total',
+      'alcantara_nodejs_active_resources_total',
+    ]) {
+      this.registry.removeSingleMetric(name);
+    }
 
     new Gauge({
       name: 'alcantara_service_info',

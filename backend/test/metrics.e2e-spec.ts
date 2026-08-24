@@ -82,6 +82,9 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     const body = await response.text();
     expect(body).toContain('alcantara_service_info');
     expect(body).toContain('alcantara_process_cpu_user_seconds_total');
+    expect(body).not.toContain('alcantara_nodejs_active_handles_total');
+    expect(body).not.toContain('alcantara_nodejs_active_requests_total');
+    expect(body).not.toContain('alcantara_nodejs_active_resources_total');
     expect(body).toContain('alcantara_http_requests_total');
     expect(body).toContain('alcantara_dependency_operations_total');
     expect(body).toContain('alcantara_jobs_total');
