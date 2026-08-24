@@ -15,4 +15,4 @@ RUN pnpm run prisma:generate
 RUN pnpm run build
 RUN test -f /app/dist/src/proto/authorization.proto
 
-CMD ["sh", "-c", "pnpm prisma db push && pnpm start:prod"]
+CMD ["sh", "-c", "pnpm run db:migrate:deploy && pnpm start:prod"]

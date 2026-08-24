@@ -11,6 +11,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: alcantara_ci
+          POSTGRES_USER: alcantara
+          POSTGRES_PASSWORD: alcantara-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alcantara -d alcantara_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Checkout code
@@ -26,6 +40,17 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -f backend/Dockerfile -t ghcr.io/${{ github.repository }}:latest backend
+
+      - name: Verify production migrations are non-interactive and repeatable
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL=postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci \
+            ghcr.io/${{ github.repository }}:latest \
+            pnpm run db:migrate:deploy
+          docker run --rm --network host \
+            -e DATABASE_URL=postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci \
+            ghcr.io/${{ github.repository }}:latest \
+            pnpm run db:migrate:deploy
 
       - name: Push Docker image to GHCR
         run: |
@@ -44,8 +69,14 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             sh -c '
+            set -eu
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
             docker pull ghcr.io/${{ github.repository }}:latest
+
+            docker run --rm \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            ghcr.io/${{ github.repository }}:latest \
+            pnpm run db:migrate:deploy
 
             docker stop alcantara-backend || true
             docker rm alcantara-backend || true
@@ -70,4 +101,16 @@ jobs:
             --log-opt awslogs-stream="$LOG_STREAM_UUID" \
             -v ~/.aws:/root/.aws:ro \
             ghcr.io/${{ github.repository }}:latest
+
+            for attempt in $(seq 1 45); do
+              if docker exec alcantara-backend node -e "const socket=require(\"node:net\").connect(${{ vars.HTTP_PORT }},\"127.0.0.1\",()=>{socket.end();process.exit(0)});socket.setTimeout(1000,()=>{socket.destroy();process.exit(1)});socket.on(\"error\",()=>process.exit(1))"; then
+                echo "Alcantara backend startup check passed"
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Alcantara backend failed to start"
+            docker logs --tail 200 alcantara-backend || true
+            exit 1
             '
