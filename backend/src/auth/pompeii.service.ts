@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +19,7 @@ import {
 import { loadSync } from '@grpc/proto-loader';
 import { join } from 'node:path';
 import type { AlcantaraPermission } from './permissions';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 type AuthorizeWireResponse = {
   authenticated?: boolean;
@@ -60,9 +62,7 @@ type AuthorizationClientConstructor = new (
 export const PRODUCTION_POMPEII_GRPC_URL = 'api.pompeii.gaulatti.com:443';
 export const LOCAL_POMPEII_GRPC_URL = 'host.docker.internal:50087';
 
-export function resolvePompeiiGrpcUrl(
-  nodeEnv: string | undefined,
-): string {
+export function resolvePompeiiGrpcUrl(nodeEnv: string | undefined): string {
   if (nodeEnv === 'production') {
     return PRODUCTION_POMPEII_GRPC_URL;
   }
@@ -78,7 +78,10 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   private readonly isProduction: boolean;
   readonly teamId: number;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @Optional() private readonly metrics?: ManagedMetricsService,
+  ) {
     this.isProduction = config.get<string>('NODE_ENV') === 'production';
     this.grpcUrl = resolvePompeiiGrpcUrl(config.get<string>('NODE_ENV'));
     this.timeoutMs = this.positiveInteger(
@@ -112,7 +115,9 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
     };
     this.client = new loaded.pompeii.authorization.v1.AuthorizationService(
       this.grpcUrl,
-      this.isProduction ? credentials.createSsl() : credentials.createInsecure(),
+      this.isProduction
+        ? credentials.createSsl()
+        : credentials.createInsecure(),
     );
   }
 
@@ -141,6 +146,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   async checkConnection(
     timeoutMs = this.timeoutMs,
   ): Promise<{ target: string; ready: boolean; error?: string }> {
+    const started = process.hrtime.bigint();
     try {
       await new Promise<void>((resolve, reject) => {
         waitForClientReady(
@@ -149,8 +155,10 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
           (error) => (error ? reject(error) : resolve()),
         );
       });
+      this.recordMetric('connect', 'success', started);
       return { target: this.grpcUrl, ready: true };
     } catch (error) {
+      this.recordMetric('connect', 'unavailable', started);
       return {
         target: this.grpcUrl,
         ready: false,
@@ -163,6 +171,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
     bearerToken: string,
     permission: AlcantaraPermission,
   ): Promise<AuthorizationDecision> {
+    const started = process.hrtime.bigint();
     try {
       const response = await new Promise<AuthorizeWireResponse>(
         (resolve, reject) => {
@@ -180,7 +189,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
           );
         },
       );
-      return {
+      const decision = {
         authenticated: response.authenticated === true,
         allowed: response.allowed === true,
         reason: response.reason || 'DENY_UNSPECIFIED',
@@ -188,7 +197,14 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
         effectivePermissions: response.effective_permissions ?? [],
         roles: response.roles ?? [],
       };
+      this.recordMetric(
+        'authorize',
+        decision.authenticated && decision.allowed ? 'success' : 'denied',
+        started,
+      );
+      return decision;
     } catch (error) {
+      this.recordMetric('authorize', 'unavailable', started);
       this.logger.error(
         `Pompeii decision failed for ${permission}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -196,6 +212,19 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
         error: 'AUTHORIZATION_SERVICE_UNAVAILABLE',
       });
     }
+  }
+
+  private recordMetric(
+    operation: 'authorize' | 'connect',
+    result: 'success' | 'denied' | 'unavailable',
+    started: bigint,
+  ): void {
+    this.metrics?.recordDependency(
+      'pompeii',
+      operation,
+      result,
+      Number(process.hrtime.bigint() - started) / 1_000_000_000,
+    );
   }
 
   private positiveInteger(value: string | undefined, fallback: number): number {

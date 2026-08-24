@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import type { SongPlaybackData } from './song-execution.engine';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 type NowPlayingMethod = 'POST' | 'PUT' | 'PATCH';
 
@@ -34,7 +35,10 @@ type NowPlayingPublisherPayload =
 export class NowPlayingPublisherService {
   private readonly logger = new Logger(NowPlayingPublisherService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly metrics?: ManagedMetricsService,
+  ) {}
 
   async listConsumers(programId: string) {
     return this.prisma.nowPlayingConsumer.findMany({
@@ -211,6 +215,7 @@ export class NowPlayingPublisherService {
     consumer: NowPlayingConsumerConfig,
     payload: NowPlayingPublisherPayload,
   ): Promise<void> {
+    const started = process.hrtime.bigint();
     this.logger.log(
       `Now-playing publish attempt for ${programId}/${consumer.name}: ${consumer.method} ${consumer.endpointUrl} ${JSON.stringify(payload)}`,
     );
@@ -226,6 +231,7 @@ export class NowPlayingPublisherService {
         body: JSON.stringify(payload),
       });
     } catch (err) {
+      this.recordPublishMetric('unavailable', started);
       this.logger.error(
         `Now-playing publish failed for ${programId}/${consumer.name}: ${err}`,
       );
@@ -233,11 +239,14 @@ export class NowPlayingPublisherService {
     }
 
     if (response.ok) {
+      this.recordPublishMetric('success', started);
       this.logger.log(
         `Now-playing publish succeeded for ${programId}/${consumer.name}: ${response.status} ${response.statusText}`,
       );
       return;
     }
+
+    this.recordPublishMetric('http-error', started);
 
     let responseBody = '';
     try {
@@ -247,6 +256,18 @@ export class NowPlayingPublisherService {
     }
     this.logger.error(
       `Now-playing publish failed for ${programId}/${consumer.name}: ${response.status} ${response.statusText} ${responseBody}`,
+    );
+  }
+
+  private recordPublishMetric(
+    result: 'success' | 'http-error' | 'unavailable',
+    started: bigint,
+  ): void {
+    this.metrics?.recordDependency(
+      'now-playing',
+      'publish',
+      result,
+      Number(process.hrtime.bigint() - started) / 1_000_000_000,
     );
   }
 

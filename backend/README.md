@@ -25,6 +25,17 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Prometheus scrape boundary
+
+The backend exposes authenticated Prometheus text format at `GET /metrics`.
+Set `METRICS_TOKEN_FILE` to a root-readable file containing one bearer token;
+the default path is `/run/secrets/alcantara-metrics-token`. The endpoint returns
+`503` when the file is absent and `401` when the request does not provide the
+matching `Authorization: Bearer …` header. See
+[`../docs/radio-telemetry.md`](../docs/radio-telemetry.md#metrics) for metric
+families, bounded-label rules, verification, and the central deployment
+dependency.
+
 ## Project setup
 
 ```bash

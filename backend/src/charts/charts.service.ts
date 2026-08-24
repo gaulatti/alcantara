@@ -3,7 +3,9 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 export interface ChartEntry {
   normalizedKey: string;
@@ -108,6 +110,8 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     entries: [],
   };
 
+  constructor(@Optional() private readonly metrics?: ManagedMetricsService) {}
+
   onModuleInit() {
     void this.refreshCache();
     this.refreshTimer = setInterval(() => {
@@ -137,8 +141,10 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     this.refreshPromise = this.fetchAndMerge()
       .then((nextCache) => {
         this.cache = nextCache;
+        this.metrics?.recordJob('charts-refresh', 'success');
       })
       .catch((error) => {
+        this.metrics?.recordJob('charts-refresh', 'failure');
         this.logger.error(`Failed to refresh charts cache: ${String(error)}`);
       })
       .finally(() => {
@@ -250,10 +256,39 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async fetchJson(url: string) {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`${url} responded with ${response.status}`);
+    const dependency = url === EARONE_URL ? 'earone' : 'escplus';
+    const started = process.hrtime.bigint();
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        this.recordFetchMetric(dependency, 'http-error', started);
+        throw new Error(`${url} responded with ${response.status}`);
+      }
+      const payload = await response.json();
+      this.recordFetchMetric(dependency, 'success', started);
+      return payload;
+    } catch (error) {
+      if (
+        !(
+          error instanceof Error && error.message.startsWith(`${url} responded`)
+        )
+      ) {
+        this.recordFetchMetric(dependency, 'unavailable', started);
+      }
+      throw error;
     }
-    return response.json();
+  }
+
+  private recordFetchMetric(
+    dependency: 'earone' | 'escplus',
+    result: 'success' | 'http-error' | 'unavailable',
+    started: bigint,
+  ): void {
+    this.metrics?.recordDependency(
+      dependency,
+      'fetch',
+      result,
+      Number(process.hrtime.bigint() - started) / 1_000_000_000,
+    );
   }
 }

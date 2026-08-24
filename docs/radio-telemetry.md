@@ -77,11 +77,47 @@ intervals, IDs, or modes fail visibly instead of being dropped.
 
 ## Metrics
 
-`GET /metrics` exposes bounded-cardinality Prometheus telemetry:
+`GET /metrics` exposes Prometheus text format 0.0.4. The route is public only to
+Alcantara's application authorization guard so that a dedicated scraper can
+reach it; `MetricsTokenGuard` independently requires a bearer credential read
+from `METRICS_TOKEN_FILE` (default
+`/run/secrets/alcantara-metrics-token`). Missing credentials fail closed with
+`503`; absent or incorrect bearer values return `401`. Never publish or pass the
+credential as a build argument or ordinary environment value.
+
+| Metric family | Bounded labels | Operational meaning |
+| --- | --- | --- |
+| `alcantara_service_info` | `service`, `runtime`, `version` | Service/build identity |
+| `alcantara_process_*`, `alcantara_nodejs_*` | prom-client runtime labels only | Node.js and process health |
+| `alcantara_http_requests_total` | `method`, `route`, `status_class` | Normalized HTTP outcomes |
+| `alcantara_http_request_duration_seconds` | `method`, `route` | Normalized HTTP latency |
+| `alcantara_dependency_operations_total` | `dependency`, `operation`, `result` | Pompeii, publishing, and chart-source outcomes |
+| `alcantara_dependency_duration_seconds` | `dependency`, `operation` | Dependency latency |
+| `alcantara_jobs_total` | `job`, `result` | Background chart refresh outcomes |
+| `alcantara_job_last_success_timestamp_seconds` | `job` | Last successful chart refresh |
+
+The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,
 snapshot reconciliation results, ignored-event reasons, stale-telemetry and
 degraded program gauges, and track transition results. Program IDs, playback
-request IDs, URLs, song titles, and artists are never used as label values.
+request IDs, URLs, consumer names, song titles, artists, tokens, raw errors,
+and other external identifiers are never used as label values.
+
+To verify a running private target without printing the token:
+
+```bash
+curl --fail --silent \
+  --header "Authorization: Bearer $(< /run/secrets/alcantara-metrics-token)" \
+  http://127.0.0.1:3000/metrics > /tmp/alcantara.prom
+promtool check metrics < /tmp/alcantara.prom
+```
+
+Alcantara owns application instrumentation, endpoint protection, and metric
+documentation. `gaulatti/prometheus` separately owns private network
+reachability, credential creation and delivery, scrape configuration,
+retention, dashboards, and alerts. Production scraping remains disabled until
+that repository provisions the token file and mounts it read-only at the
+configured path.
 
 ## Schema
 
