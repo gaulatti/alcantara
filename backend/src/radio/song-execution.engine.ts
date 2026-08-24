@@ -551,6 +551,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       state.sequence?.mode === 'autoplay'
         ? advanceProgramSongSequence(state.sequence, endedSong.itemId)
         : state.sequence?.mode === 'shuffle';
+    this.logger.log(
+      `Authoritative end on ${programId}: mode=${state.sequence?.mode ?? 'none'} loop=${state.sequence?.loop ?? false} cursor=${state.sequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
+    );
 
     void this.maybeBumper(programId).then(() => {
       const st = this.states.get(programId);

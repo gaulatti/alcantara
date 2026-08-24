@@ -125,7 +125,17 @@ export function advanceProgramSongSequence(
   const activeIndex = sequence.items.findIndex(
     (item) => item.id === sequence.activeItemId,
   );
-  if (activeIndex < 0) return false;
+  if (activeIndex < 0) {
+    // Autoplay must not stop because a browser/manual handoff persisted a
+    // stale or empty cursor. A looped sequence always has a valid recovery
+    // target: its first playable branch.
+    if (sequence.loop !== false && sequence.items.length > 0) {
+      resetSequenceCursor(sequence);
+      sequence.startedAt = Date.now();
+      return true;
+    }
+    return false;
+  }
   const active = sequence.items[activeIndex];
   if (active.kind === 'sequence') {
     const resolved = resolveProgramSongLeaf(sequence);
