@@ -6,7 +6,7 @@ services:
     container_name: alcantara-livekit-redis
     command: ['redis-server', '--save', '60', '1', '--appendonly', 'yes']
     volumes:
-      - /services/alcantara/livekit-redis:/data
+      - ${ALCANTARA_SERVICE_DIR:-/services/alcantara}/livekit-redis:/data
     restart: always
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
@@ -19,7 +19,7 @@ services:
     container_name: alcantara-livekit
     command: ['--config', '/etc/livekit.yaml']
     volumes:
-      - /services/alcantara/livekit.yaml:/etc/livekit.yaml:ro
+      - ${ALCANTARA_SERVICE_DIR:-/services/alcantara}/livekit.yaml:/etc/livekit.yaml:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     ports:
       - '7880:7880/tcp'

@@ -60,19 +60,22 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    env:
+      LIVEKIT_CONFIG_B64: ${{ secrets.LIVEKIT_CONFIG_B64 }}
 
     steps:
       - name: Checkout deployment definitions
         uses: actions/checkout@v4
 
       - name: Upload LiveKit deployment definition
+        if: ${{ env.LIVEKIT_CONFIG_B64 != '' }}
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: infra/compose.production.yml
-          target: /services/alcantara
+          target: /home/${{ secrets.DEPLOY_USER }}/.alcantara
           strip_components: 1
 
       - name: Deploy to on-premises host
@@ -94,10 +97,10 @@ jobs:
             pnpm run db:migrate:deploy
 
             if test -n "${{ secrets.LIVEKIT_CONFIG_B64 }}"; then
-              mkdir -p /services/alcantara/livekit-redis
-              printf "%s" "${{ secrets.LIVEKIT_CONFIG_B64 }}" | base64 --decode > /services/alcantara/livekit.yaml
-              chmod 600 /services/alcantara/livekit.yaml
-              docker compose -f /services/alcantara/compose.production.yml up -d
+              mkdir -p "$HOME/.alcantara/livekit-redis"
+              printf "%s" "${{ secrets.LIVEKIT_CONFIG_B64 }}" | base64 --decode > "$HOME/.alcantara/livekit.yaml"
+              chmod 600 "$HOME/.alcantara/livekit.yaml"
+              ALCANTARA_SERVICE_DIR="$HOME/.alcantara" docker compose -f "$HOME/.alcantara/compose.production.yml" up -d
             else
               echo "LiveKit production configuration is absent; guest calls remain disabled"
             fi
