@@ -36,6 +36,8 @@ services:
       WEBRTC_SESSION_SECRET: alcantara-local-session-secret-change-me-now
       WEBRTC_RENDERER_KEY: alcantara-local-renderer-secret-change-me-now
       METRICS_TOKEN_FILE: /run/secrets/alcantara-metrics-token
+      PALAZZO_CONTROL_TOKEN: palazzo-local-control-token
+      PALAZZO_ALLOWED_URLS: http://palazzo:3100
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma

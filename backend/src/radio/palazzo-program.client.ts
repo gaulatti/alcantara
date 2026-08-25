@@ -6,8 +6,9 @@ import type {
   PalazzoProgramStatus,
   PalazzoProgramType,
 } from './palazzo-contract';
-import { parsePalazzoState } from './palazzo-contract';
+import { parsePalazzoEvent, parsePalazzoState } from './palazzo-contract';
 import type { RadioMetricsService } from './radio-metrics.service';
+import { PalazzoMachineClient } from './palazzo-machine.client';
 
 export type PalazzoInstanceValidation = 'ok' | 'mismatch' | 'conflict';
 
@@ -15,7 +16,10 @@ export interface PalazzoProgramClientCallbacks {
   onSnapshot: (programId: string, state: PalazzoPlaybackState) => void;
   onEvent: (programId: string, event: PalazzoPlaybackEvent) => void;
   onStatus: (programId: string, status: PalazzoProgramStatus) => void;
-  validateInstance: (programId: string, instanceId: string) => PalazzoInstanceValidation;
+  validateInstance: (
+    programId: string,
+    instanceId: string,
+  ) => PalazzoInstanceValidation;
 }
 
 export interface PalazzoProgramClientOptions {
@@ -24,7 +28,7 @@ export interface PalazzoProgramClientOptions {
   palazzoUrl: string;
   metrics: RadioMetricsService;
   callbacks: PalazzoProgramClientCallbacks;
-  fetchImpl?: typeof fetch;
+  machineClient: PalazzoMachineClient;
   pollIntervalMs?: number;
   stalenessMs?: number;
 }
@@ -44,17 +48,17 @@ const DEFAULT_STALENESS_MS = 15_000;
  * Consumes one Palazzo instance's authoritative playback telemetry for one
  * radio-capable program.
  *
- * The client opens a single SSE connection to `/playback/events`, validates
+ * The client opens a single SSE connection to the authenticated program-scoped
+ * `/v1/programs/{programId}/playback/events` route, validates
  * the instance identity reported by Palazzo before any telemetry is accepted,
  * deduplicates events by `bootId + sequence`, and falls back to polling the
- * private `/playback/state` endpoint while SSE reconnects. When both
+ * private program-scoped playback-state endpoint while SSE reconnects. When both
  * transports are unavailable the program's radio leg is marked unavailable and
  * no telemetry is forwarded, so the engine freezes rather than advancing on
  * guesses.
  */
 export class PalazzoProgramClient {
   private readonly logger: Logger;
-  private readonly fetchImpl: typeof fetch;
   private readonly pollIntervalMs: number;
   private readonly stalenessMs: number;
 
@@ -76,7 +80,6 @@ export class PalazzoProgramClient {
 
   constructor(private readonly options: PalazzoProgramClientOptions) {
     this.logger = new Logger(`PalazzoClient(${options.programId})`);
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.stalenessMs = options.stalenessMs ?? DEFAULT_STALENESS_MS;
   }
@@ -147,17 +150,15 @@ export class PalazzoProgramClient {
 
   private async connectOnce(): Promise<boolean> {
     this.abort = new AbortController();
-    const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-    };
     const lastId = this.lastAcceptedEventId();
-    if (lastId) headers['Last-Event-ID'] = lastId;
 
     let response: Response;
     try {
-      response = await this.fetchImpl(
-        `${this.options.palazzoUrl.replace(/\/+$/, '')}/playback/events`,
-        { headers, signal: this.abort.signal },
+      response = await this.options.machineClient.connectEvents(
+        this.options.palazzoUrl,
+        this.options.programId,
+        lastId,
+        this.abort.signal,
       );
     } catch {
       return false;
@@ -198,7 +199,7 @@ export class PalazzoProgramClient {
         while ((separatorIndex = buffer.indexOf('\n\n')) >= 0) {
           const rawFrame = buffer.slice(0, separatorIndex);
           buffer = buffer.slice(separatorIndex + 2);
-          this.handleFrame(rawFrame);
+          await this.handleFrame(rawFrame);
           if (this.stopped) {
             await reader.cancel();
             return;
@@ -210,27 +211,44 @@ export class PalazzoProgramClient {
     }
   }
 
-  private handleFrame(rawFrame: string): void {
+  private async handleFrame(rawFrame: string): Promise<void> {
     const frame = parseSseFrame(rawFrame);
     if (!frame) return;
-    let event: PalazzoPlaybackEvent | null = null;
+    let decoded: unknown;
     try {
-      event = JSON.parse(frame.data) as PalazzoPlaybackEvent;
+      decoded = JSON.parse(frame.data);
     } catch {
-      this.logger.warn(`Discarding malformed Palazzo event on ${this.options.programId}`);
-      return;
+      this.options.metrics.recordEventIgnored('malformed');
+      throw new Error('malformed Palazzo event');
     }
-    if (!event || typeof event !== 'object' || typeof event.bootId !== 'string') {
-      return;
+    const event = parsePalazzoEvent(decoded);
+    if (!event) {
+      this.options.metrics.recordEventIgnored('malformed');
+      throw new Error('malformed Palazzo event');
     }
     if (frame.id) event.id = frame.id;
-    this.acceptEvent(event);
+    await this.acceptEvent(event);
   }
 
-  private acceptEvent(event: PalazzoPlaybackEvent): void {
+  private async acceptEvent(event: PalazzoPlaybackEvent): Promise<void> {
+    const eventProgramId = event.data?.programId;
+    if (
+      typeof eventProgramId === 'string' &&
+      eventProgramId !== this.options.programId
+    ) {
+      this.options.metrics.recordEventIgnored('cross-program');
+      return;
+    }
     if (event.type === 'snapshot') {
       const state = parsePalazzoState(event.data?.state);
-      if (!state) return;
+      if (!state) {
+        this.options.metrics.recordEventIgnored('malformed');
+        throw new Error('malformed Palazzo snapshot');
+      }
+      if (state.intro && state.intro.programId !== this.options.programId) {
+        this.options.metrics.recordEventIgnored('cross-program');
+        return;
+      }
       if (!this.validateInstanceId(state.instanceId)) return;
       this.rebaseCursor(state.bootId, state.sequence);
       this.lastSnapshotAt = Date.now();
@@ -244,7 +262,11 @@ export class PalazzoProgramClient {
       return;
     }
 
-    if (event.instanceId && this.instanceId && event.instanceId !== this.instanceId) {
+    if (
+      event.instanceId &&
+      this.instanceId &&
+      event.instanceId !== this.instanceId
+    ) {
       this.options.metrics.recordEventIgnored('superseded-boot');
       return;
     }
@@ -268,10 +290,34 @@ export class PalazzoProgramClient {
       this.options.metrics.recordEventIgnored('stale-sequence');
       return;
     }
+    if (event.sequence > this.lastSequence + 1) {
+      this.options.metrics.recordEventIgnored('sequence-gap');
+      if (isLifecycleEvent(event.type)) {
+        await this.reconcileGap();
+        return;
+      }
+    }
 
     this.lastSequence = event.sequence;
     this.touch(event);
     this.options.callbacks.onEvent(this.options.programId, event);
+  }
+
+  private async reconcileGap(): Promise<void> {
+    const state = await this.options.machineClient.getPlaybackState(
+      this.options.palazzoUrl,
+      this.options.programId,
+      this.abort?.signal,
+    );
+    if (!this.validateInstanceId(state.instanceId)) return;
+    if (state.intro && state.intro.programId !== this.options.programId) {
+      this.options.metrics.recordEventIgnored('cross-program');
+      throw new Error('cross-program Palazzo state');
+    }
+    this.rebaseCursor(state.bootId, state.sequence);
+    this.lastSnapshotAt = Date.now();
+    this.lastEventAt = Date.now();
+    this.options.callbacks.onSnapshot(this.options.programId, state);
   }
 
   private rebaseCursor(bootId: string, sequence: number): void {
@@ -348,7 +394,10 @@ export class PalazzoProgramClient {
       const state = await this.fetchState();
       if (!state) {
         if (this.isTerminalConnection()) {
-          this.setConnection('unavailable', 'sse and state endpoint unreachable');
+          this.setConnection(
+            'unavailable',
+            'sse and state endpoint unreachable',
+          );
         }
         return;
       }
@@ -357,7 +406,10 @@ export class PalazzoProgramClient {
       this.lastSnapshotAt = Date.now();
       this.lastEventAt = Date.now();
       if (this.isTransientConnection()) {
-        this.setConnection('polling', 'sse unavailable; polling state endpoint');
+        this.setConnection(
+          'polling',
+          'sse unavailable; polling state endpoint',
+        );
       }
       this.options.callbacks.onSnapshot(this.options.programId, state);
     } catch {
@@ -387,12 +439,11 @@ export class PalazzoProgramClient {
 
   private async fetchState(): Promise<PalazzoPlaybackState | null> {
     try {
-      const response = await this.fetchImpl(
-        `${this.options.palazzoUrl.replace(/\/+$/, '')}/playback/state`,
-        { signal: this.abort?.signal },
+      return await this.options.machineClient.getPlaybackState(
+        this.options.palazzoUrl,
+        this.options.programId,
+        this.abort?.signal,
       );
-      if (!response.ok) return null;
-      return parsePalazzoState(await response.json());
     } catch {
       return null;
     }
@@ -445,7 +496,10 @@ export class PalazzoProgramClient {
     return false;
   }
 
-  private setConnection(state: PalazzoConnectionState, detail: string | null): void {
+  private setConnection(
+    state: PalazzoConnectionState,
+    detail: string | null,
+  ): void {
     if (this.connection === state && this.detail === detail) return;
     const previous = this.connection;
     this.connection = state;
@@ -480,4 +534,14 @@ function parseSseFrame(rawFrame: string): SseFrame | null {
 
 function isoOrNull(timestamp: number | null): string | null {
   return timestamp === null ? null : new Date(timestamp).toISOString();
+}
+
+function isLifecycleEvent(type: PalazzoPlaybackEvent['type']): boolean {
+  return (
+    type === 'track.started' ||
+    type === 'track.ended' ||
+    type === 'intro.started' ||
+    type === 'intro.ended' ||
+    type === 'intro.failed'
+  );
 }

@@ -1765,7 +1765,7 @@ export class ProgramService implements OnModuleInit {
         previousPlayback.token !== token ||
         previousPlayback.audioUrl !== audioUrl)
     ) {
-      void this.forwardSongToRadio(normalizedProgramId, audioUrl);
+      await this.forwardSongToRadio(normalizedProgramId, audioUrl);
     }
 
     const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
@@ -2705,7 +2705,7 @@ export class ProgramService implements OnModuleInit {
       playback: stoppedPlayback,
     });
 
-    void this.forwardStopSongToRadio(normalizedProgramId);
+    await this.forwardStopSongToRadio(normalizedProgramId);
     console.log(
       `[ProgramService] takeProgramSongOffAir → forwarded stop to radio for ${normalizedProgramId}`,
     );
@@ -2935,7 +2935,7 @@ export class ProgramService implements OnModuleInit {
       triggeredAt: new Date().toISOString(),
     });
 
-    void this.forwardInstantToRadio(
+    await this.forwardInstantToRadio(
       normalizedProgramId,
       instant.audioUrl,
       instant.volume,
@@ -2952,7 +2952,7 @@ export class ProgramService implements OnModuleInit {
       triggeredAt: new Date().toISOString(),
     });
 
-    void this.forwardStopInstantsToRadio(normalizedProgramId);
+    await this.forwardStopInstantsToRadio(normalizedProgramId);
 
     return { ok: true };
   }
@@ -3119,12 +3119,12 @@ export class ProgramService implements OnModuleInit {
     volume: number,
   ): Promise<void> {
     if (!(await this.isRadioCapable(programId))) return;
-    void this.radioService.playInstant(programId, audioUrl, volume);
+    await this.radioService.playInstant(programId, audioUrl, volume);
   }
 
   private async forwardStopInstantsToRadio(programId: string): Promise<void> {
     if (!(await this.isRadioCapable(programId))) return;
-    void this.radioService.stopAllInstants(programId);
+    await this.radioService.stopAllInstants(programId);
   }
 
   private async forwardSongToRadio(
@@ -3132,7 +3132,10 @@ export class ProgramService implements OnModuleInit {
     audioUrl: string,
   ): Promise<void> {
     if (!(await this.isRadioCapable(programId))) return;
-    void this.radioService.playSong(programId, audioUrl);
+    const result = await this.radioService.playSong(programId, audioUrl);
+    if (!result.ok) {
+      throw new BadGatewayException('Palazzo rejected the song command');
+    }
   }
 
   private async forwardStopSongToRadio(programId: string): Promise<void> {
@@ -3145,7 +3148,7 @@ export class ProgramService implements OnModuleInit {
     console.log(
       `[ProgramService] forwardStopSongToRadio → calling radioService.stopSong for ${programId}`,
     );
-    void this.radioService.stopSong(programId);
+    await this.radioService.stopSong(programId);
   }
 
   getEventStream(

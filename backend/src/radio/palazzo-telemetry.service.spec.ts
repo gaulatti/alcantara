@@ -18,10 +18,16 @@ function createService() {
     handlePalazzoStatus: jest.fn(),
   };
   const metrics = new RadioMetricsService();
+  const machineClient = {
+    validateBaseUrl: jest.fn((value: string) => value),
+    connectEvents: jest.fn().mockRejectedValue(new Error('offline')),
+    getPlaybackState: jest.fn().mockRejectedValue(new Error('offline')),
+  };
   const service = new PalazzoRadioTelemetryService(
     prisma as unknown as PrismaService,
     engine as unknown as SongExecutionEngine,
     metrics,
+    machineClient as any,
   );
   return { service, prisma, engine, metrics };
 }
@@ -63,11 +69,9 @@ describe('PalazzoRadioTelemetryService instance ownership', () => {
 
   it('rejects a second program claiming the same Palazzo instance', () => {
     const { service } = createService();
-    const validate = (
-      service as unknown as {
-        validateInstance: (pid: string, iid: string) => string;
-      }
-    );
+    const validate = service as unknown as {
+      validateInstance: (pid: string, iid: string) => string;
+    };
     expect(validate.validateInstance('radio-1', 'palazzo-a')).toBe('ok');
     expect(validate.validateInstance('radio-2', 'palazzo-a')).toBe('conflict');
     expect(validate.validateInstance('radio-2', 'palazzo-b')).toBe('ok');
@@ -76,11 +80,9 @@ describe('PalazzoRadioTelemetryService instance ownership', () => {
 
   it('rejects an instance identity change under the same program', () => {
     const { service } = createService();
-    const validate = (
-      service as unknown as {
-        validateInstance: (pid: string, iid: string) => string;
-      }
-    );
+    const validate = service as unknown as {
+      validateInstance: (pid: string, iid: string) => string;
+    };
     expect(validate.validateInstance('radio-1', 'palazzo-a')).toBe('ok');
     expect(validate.validateInstance('radio-1', 'palazzo-z')).toBe('mismatch');
     service.onModuleDestroy();

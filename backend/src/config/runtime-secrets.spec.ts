@@ -1,0 +1,57 @@
+import { loadRuntimeSecrets } from './runtime-secrets';
+
+function productionEnvironment() {
+  return {
+    NODE_ENV: 'production',
+    AWS_REGION: 'us-east-1',
+    ALCANTARA_CONFIG_SECRET_ID: 'alcantara/production/config',
+  };
+}
+
+describe('loadRuntimeSecrets', () => {
+  it('selects only allowlisted Palazzo scalars from the production payload', async () => {
+    const environment = productionEnvironment();
+    const send = jest.fn().mockResolvedValue({
+      SecretString: JSON.stringify({
+        palazzoControlToken: 'fictional-production-token',
+        palazzoAllowedUrls: 'http://palazzo:3100',
+        untrustedProperty: 'must-not-enter-environment',
+      }),
+    });
+    await loadRuntimeSecrets(environment, { send });
+    expect(environment).toMatchObject({
+      PALAZZO_CONTROL_TOKEN: 'fictional-production-token',
+      PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+    });
+    expect(environment).not.toHaveProperty('untrustedProperty');
+  });
+
+  it('fails production startup before client construction when secret config is unavailable or malformed', async () => {
+    await expect(
+      loadRuntimeSecrets(productionEnvironment(), {
+        send: jest.fn().mockRejectedValue(new Error('provider detail')),
+      }),
+    ).rejects.toThrow('runtime configuration is unavailable');
+    await expect(
+      loadRuntimeSecrets(productionEnvironment(), {
+        send: jest.fn().mockResolvedValue({ SecretString: '{}' }),
+      }),
+    ).rejects.toThrow('Palazzo configuration is incomplete');
+    await expect(
+      loadRuntimeSecrets({ NODE_ENV: 'production', AWS_REGION: 'us-east-1' }),
+    ).rejects.toThrow('ALCANTARA_CONFIG_SECRET_ID is required');
+  });
+
+  it('does not contact AWS for explicit non-production configuration', async () => {
+    const send = jest.fn();
+    await loadRuntimeSecrets(
+      {
+        NODE_ENV: 'development',
+        PALAZZO_CONTROL_TOKEN: 'palazzo-local-control-token',
+        PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+      },
+      { send },
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+});

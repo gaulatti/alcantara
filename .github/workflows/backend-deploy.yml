@@ -125,6 +125,7 @@ jobs:
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
+            -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
             -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \

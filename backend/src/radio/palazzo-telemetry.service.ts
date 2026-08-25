@@ -17,6 +17,7 @@ import type {
   PalazzoProgramStatus,
   PalazzoProgramType,
 } from './palazzo-contract';
+import { PalazzoMachineClient } from './palazzo-machine.client';
 
 const RADIO_PROGRAM_TYPES = ['radio', 'both'];
 
@@ -31,7 +32,9 @@ const RADIO_PROGRAM_TYPES = ['radio', 'both'];
  *   mismatch, degrading only that program's radio leg.
  */
 @Injectable()
-export class PalazzoRadioTelemetryService implements OnModuleInit, OnModuleDestroy {
+export class PalazzoRadioTelemetryService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PalazzoRadioTelemetryService.name);
   private readonly clients = new Map<string, PalazzoProgramClient>();
   private readonly statusByProgram = new Map<string, PalazzoProgramStatus>();
@@ -43,6 +46,7 @@ export class PalazzoRadioTelemetryService implements OnModuleInit, OnModuleDestr
     @Inject(forwardRef(() => SongExecutionEngine))
     private readonly engine: SongExecutionEngine,
     private readonly metrics: RadioMetricsService,
+    private readonly machineClient: PalazzoMachineClient,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -72,7 +76,11 @@ export class PalazzoRadioTelemetryService implements OnModuleInit, OnModuleDestr
       const programType = setting.programState.type;
       if (!RADIO_PROGRAM_TYPES.includes(programType)) continue;
       if (!setting.palazzoUrl) continue;
-      this.startClient(programId, programType as PalazzoProgramType, setting.palazzoUrl);
+      this.startClient(
+        programId,
+        programType as PalazzoProgramType,
+        setting.palazzoUrl,
+      );
     }
   }
 
@@ -125,22 +133,33 @@ export class PalazzoRadioTelemetryService implements OnModuleInit, OnModuleDestr
     palazzoUrl: string,
   ): void {
     if (this.clients.has(programId)) return;
+    let approvedUrl: string;
+    try {
+      approvedUrl = this.machineClient.validateBaseUrl(palazzoUrl);
+    } catch {
+      this.logger.error(`Palazzo URL configuration rejected for ${programId}`);
+      return;
+    }
     this.engine.registerRadioProgram(programId);
     const client = new PalazzoProgramClient({
       programId,
       programType,
-      palazzoUrl,
+      palazzoUrl: approvedUrl,
       metrics: this.metrics,
+      machineClient: this.machineClient,
       callbacks: {
-        onSnapshot: (pid, state) => this.engine.handlePalazzoSnapshot(pid, state),
-        onEvent: (pid, event) => this.engine.handlePalazzoEvent(pid, event as never),
+        onSnapshot: (pid, state) =>
+          this.engine.handlePalazzoSnapshot(pid, state),
+        onEvent: (pid, event) =>
+          this.engine.handlePalazzoEvent(pid, event as never),
         onStatus: (pid, status) => this.handleStatus(pid, status),
-        validateInstance: (pid, instanceId) => this.validateInstance(pid, instanceId),
+        validateInstance: (pid, instanceId) =>
+          this.validateInstance(pid, instanceId),
       },
     });
     this.clients.set(programId, client);
     this.logger.log(
-      `Consuming Palazzo telemetry for ${programId} (${programType}) at ${palazzoUrl}`,
+      `Consuming authenticated Palazzo telemetry for ${programId} (${programType})`,
     );
     client.start();
   }
