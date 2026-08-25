@@ -41,6 +41,9 @@ alcantara/
 
 - Per-song recorded intro assignment, validation, and stable sequence identity
   are documented in [Song intro editorial model](docs/song-intros.md).
+- The proposed managed RTMP/WHIP/HLS/SRT source boundary, local measurements,
+  security findings, and phased rollout are documented in
+  [ADR 001: LiveKit external-source ingress](docs/adr-001-livekit-external-source-ingress.md).
 
 ### Six-guest WebRTC contribution
 
