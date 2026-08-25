@@ -51,6 +51,7 @@ export interface ProgramResolvedTextLeaf {
 
 export interface ProgramSongSequenceLeafItem extends BaseSequenceItem {
   kind: 'preset';
+  songId?: number;
   artist: string;
   title: string;
   coverUrl: string;
@@ -75,6 +76,7 @@ export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem>;
 
 export interface ProgramResolvedSongLeaf {
   id: string;
+  songId?: number;
   artist: string;
   title: string;
   coverUrl: string;
@@ -169,6 +171,10 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
   return {
     id: typeof record.id === 'string' && record.id ? record.id : createId('song'),
     kind: 'preset',
+    songId:
+      typeof record.songId === 'number' && Number.isInteger(record.songId) && record.songId > 0
+        ? record.songId
+        : undefined,
     artist,
     title,
     coverUrl,
@@ -459,6 +465,7 @@ function resolveSongSequenceRecursive(
   const songLabel = [selected.artist, selected.title].filter(Boolean).join(' - ');
   return {
     id: selected.id,
+    songId: selected.songId,
     artist: selected.artist,
     title: selected.title,
     coverUrl: selected.coverUrl,

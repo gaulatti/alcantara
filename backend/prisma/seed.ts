@@ -66,6 +66,85 @@ async function main() {
     },
   });
 
+  const assignedIntro = await prisma.instant.upsert({
+    where: { id: 9001 },
+    update: {
+      name: 'Local demo song intro',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      volume: 0.72,
+      enabled: true,
+      position: 9001,
+    },
+    create: {
+      id: 9001,
+      name: 'Local demo song intro',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      volume: 0.72,
+      enabled: true,
+      position: 9001,
+    },
+  });
+  await prisma.instant.upsert({
+    where: { id: 9002 },
+    update: {
+      name: 'Local available voice recording',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      volume: 0.9,
+      enabled: true,
+      position: 9002,
+    },
+    create: {
+      id: 9002,
+      name: 'Local available voice recording',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      volume: 0.9,
+      enabled: true,
+      position: 9002,
+    },
+  });
+
+  const assignedSong = await prisma.song.upsert({
+    where: { id: 9001 },
+    update: {
+      artist: 'Seed Artist',
+      title: 'Song with recorded intro',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      enabled: true,
+    },
+    create: {
+      id: 9001,
+      artist: 'Seed Artist',
+      title: 'Song with recorded intro',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      enabled: true,
+    },
+  });
+  await prisma.song.upsert({
+    where: { id: 9002 },
+    update: {
+      artist: 'Seed Artist',
+      title: 'Song without intro',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      enabled: true,
+    },
+    create: {
+      id: 9002,
+      artist: 'Seed Artist',
+      title: 'Song without intro',
+      audioUrl: '/fifthbell/audio/pipes.ogg',
+      enabled: true,
+    },
+  });
+  await prisma.songIntro.upsert({
+    where: { songId: assignedSong.id },
+    update: { instantId: assignedIntro.id, programId: 'main' },
+    create: {
+      songId: assignedSong.id,
+      instantId: assignedIntro.id,
+      programId: 'main',
+    },
+  });
+
   console.log('Seeding complete!');
 }
 

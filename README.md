@@ -39,6 +39,9 @@ alcantara/
 
 ## Features
 
+- Per-song recorded intro assignment, validation, and stable sequence identity
+  are documented in [Song intro editorial model](docs/song-intros.md).
+
 ### Six-guest WebRTC contribution
 
 The Calls console at `/calls` provides six reusable guest slots. An operator

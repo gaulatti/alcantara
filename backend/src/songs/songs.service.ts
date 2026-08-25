@@ -16,6 +16,8 @@ interface SongInput {
   earoneRank?: string | number | null;
   earoneSpins?: string | number | null;
   enabled?: boolean;
+  programId?: string;
+  introInstantId?: number | null;
 }
 
 interface FindAllParams {
@@ -25,6 +27,7 @@ interface FindAllParams {
   sortOrder?: string;
   page: number;
   limit: number;
+  programId?: string;
 }
 
 const ALLOWED_SORT_FIELDS = [
@@ -43,6 +46,7 @@ export class SongsService {
 
   async findAll(params: FindAllParams) {
     const { search, enabled, sortBy, sortOrder, page, limit } = params;
+    const programId = this.normalizeProgramId(params.programId);
 
     const where: Prisma.SongWhereInput = {};
 
@@ -81,6 +85,7 @@ export class SongsService {
         this.prisma.song.findMany({
           where,
           orderBy,
+          include: { intro: { include: { instant: true } } },
           ...(limit > 0 ? { skip, take: limit } : {}),
         }),
         this.prisma.song.count({ where }),
@@ -93,7 +98,7 @@ export class SongsService {
       ]);
 
     return {
-      data,
+      data: data.map((song) => this.scopeIntro(song, programId)),
       meta: {
         total,
         page,
@@ -107,12 +112,16 @@ export class SongsService {
     };
   }
 
-  async findOne(id: number) {
-    const song = await this.prisma.song.findUnique({ where: { id } });
+  async findOne(id: number, requestedProgramId?: string) {
+    const programId = this.normalizeProgramId(requestedProgramId);
+    const song = await this.prisma.song.findUnique({
+      where: { id },
+      include: { intro: { include: { instant: true } } },
+    });
     if (!song) {
       throw new NotFoundException('Song not found');
     }
-    return song;
+    return this.scopeIntro(song, programId);
   }
 
   async create(data: SongInput) {
@@ -124,23 +133,40 @@ export class SongsService {
       throw new BadRequestException('artist or title is required');
     }
 
-    return this.prisma.song.create({
-      data: {
-        artist,
-        title,
-        audioUrl,
-        coverUrl: this.toOptionalTrimmedString(data.coverUrl),
-        durationMs: this.toDurationMs(data.durationMs),
-        earoneSongId: this.toOptionalStringValue(data.earoneSongId),
-        earoneRank: this.toOptionalStringValue(data.earoneRank),
-        earoneSpins: this.toOptionalStringValue(data.earoneSpins),
-        enabled: data.enabled === undefined ? true : Boolean(data.enabled),
-      },
-    });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const song = await tx.song.create({
+          data: {
+            artist,
+            title,
+            audioUrl,
+            coverUrl: this.toOptionalTrimmedString(data.coverUrl),
+            durationMs: this.toDurationMs(data.durationMs),
+            earoneSongId: this.toOptionalStringValue(data.earoneSongId),
+            earoneRank: this.toOptionalStringValue(data.earoneRank),
+            earoneSpins: this.toOptionalStringValue(data.earoneSpins),
+            enabled: data.enabled === undefined ? true : Boolean(data.enabled),
+          },
+        });
+        if (data.introInstantId !== undefined) {
+          await this.setIntro(tx, song.id, data.programId, data.introInstantId);
+        }
+        const saved = await tx.song.findUniqueOrThrow({
+          where: { id: song.id },
+          include: { intro: { include: { instant: true } } },
+        });
+        return this.scopeIntro(saved, this.normalizeProgramId(data.programId));
+      });
+    } catch (error) {
+      this.rethrowIntroConflict(error);
+    }
   }
 
   async update(id: number, data: SongInput) {
-    const existing = await this.findOne(id);
+    const existing = await this.prisma.song.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Song not found');
+    }
     const artist =
       data.artist === undefined
         ? existing.artist
@@ -190,16 +216,121 @@ export class SongsService {
       updateData.enabled = Boolean(data.enabled);
     }
 
-    return this.prisma.song.update({
-      where: { id },
-      data: updateData,
-    });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.song.update({ where: { id }, data: updateData });
+        if (data.introInstantId !== undefined) {
+          await this.setIntro(tx, id, data.programId, data.introInstantId);
+        }
+        const saved = await tx.song.findUniqueOrThrow({
+          where: { id },
+          include: { intro: { include: { instant: true } } },
+        });
+        return this.scopeIntro(saved, this.normalizeProgramId(data.programId));
+      });
+    } catch (error) {
+      this.rethrowIntroConflict(error);
+    }
   }
 
   async remove(id: number) {
-    await this.findOne(id);
+    const existing = await this.prisma.song.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Song not found');
+    }
     await this.prisma.song.delete({ where: { id } });
     return { deletedSongId: id };
+  }
+
+  private normalizeProgramId(value: unknown): string {
+    if (value === undefined || value === null) return 'main';
+    if (
+      typeof value !== 'string' ||
+      !value.trim() ||
+      value.trim().length > 100
+    ) {
+      throw new BadRequestException(
+        'programId must be a non-empty bounded string',
+      );
+    }
+    return value.trim();
+  }
+
+  private scopeIntro<
+    T extends {
+      intro: ({ programId: string } & Record<string, unknown>) | null;
+    },
+  >(song: T, programId: string): T {
+    return {
+      ...song,
+      intro: song.intro?.programId === programId ? song.intro : null,
+    };
+  }
+
+  private async setIntro(
+    tx: Prisma.TransactionClient,
+    songId: number,
+    requestedProgramId: string | undefined,
+    instantId: number | null,
+  ): Promise<void> {
+    const programId = this.normalizeProgramId(requestedProgramId);
+    const program = await tx.programState.findUnique({
+      where: { programId },
+      select: { programId: true },
+    });
+    if (!program) {
+      throw new BadRequestException('Program not found');
+    }
+
+    const current = await tx.songIntro.findUnique({
+      where: { songId },
+      select: { id: true, programId: true, instantId: true },
+    });
+    if (current && current.programId !== programId) {
+      throw new BadRequestException('Song intro belongs to another program');
+    }
+    if (instantId === null) {
+      if (current) await tx.songIntro.delete({ where: { id: current.id } });
+      return;
+    }
+    if (!Number.isInteger(instantId) || instantId <= 0) {
+      throw new BadRequestException('introInstantId must identify an Instant');
+    }
+    const instant = await tx.instant.findUnique({
+      where: { id: instantId },
+      select: { id: true, enabled: true, audioUrl: true },
+    });
+    if (!instant || !instant.enabled || !instant.audioUrl.trim()) {
+      throw new BadRequestException(
+        'Song intro Instant is missing or unavailable',
+      );
+    }
+    const assigned = await tx.songIntro.findUnique({
+      where: { instantId },
+      select: { songId: true, programId: true },
+    });
+    if (assigned && assigned.songId !== songId) {
+      throw new BadRequestException(
+        'Instant is already assigned as a song intro',
+      );
+    }
+    await tx.songIntro.upsert({
+      where: { songId },
+      create: { songId, instantId, programId },
+      update: { instantId },
+    });
+  }
+
+  private rethrowIntroConflict(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new BadRequestException(
+        'Song or Instant already has an active intro assignment',
+      );
+    }
+    throw error;
   }
 
   private toTrimmedString(value: unknown): string {

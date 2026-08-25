@@ -48,6 +48,16 @@ export interface InstantItem {
   volume: number;
   enabled: boolean;
   position: number;
+  availableForSongIntro?: boolean;
+  assignedSongId?: number | null;
+}
+
+export interface SongIntroAssignment {
+  id: number;
+  songId: number;
+  instantId: number;
+  programId: string;
+  instant: InstantItem;
 }
 
 export interface InstantPlaybackState {
@@ -68,6 +78,7 @@ export interface SongCatalogItem {
   enabled: boolean;
   createdAt?: string;
   updatedAt?: string;
+  intro?: SongIntroAssignment | null;
 }
 
 export interface PaginationMeta {

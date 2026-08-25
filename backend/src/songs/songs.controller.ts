@@ -25,6 +25,7 @@ export class SongsController {
     @Query('sortOrder') sortOrder?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('programId') programId?: string,
   ) {
     return this.songsService.findAll({
       search,
@@ -33,12 +34,16 @@ export class SongsController {
       sortOrder,
       page: page ? Math.max(1, Number(page)) : 1,
       limit: limit ? Math.max(0, Number(limit)) : 50,
+      programId,
     });
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.songsService.findOne(Number(id));
+  async findOne(
+    @Param('id') id: string,
+    @Query('programId') programId?: string,
+  ) {
+    return this.songsService.findOne(Number(id), programId);
   }
 
   @Post()
@@ -55,6 +60,8 @@ export class SongsController {
       earoneRank?: string | number | null;
       earoneSpins?: string | number | null;
       enabled?: boolean;
+      programId?: string;
+      introInstantId?: number | null;
     },
   ) {
     return this.songsService.create(data);
@@ -75,6 +82,8 @@ export class SongsController {
       earoneRank?: string | number | null;
       earoneSpins?: string | number | null;
       enabled?: boolean;
+      programId?: string;
+      introInstantId?: number | null;
     },
   ) {
     return this.songsService.update(Number(id), data);

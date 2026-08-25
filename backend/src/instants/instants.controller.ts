@@ -18,8 +18,8 @@ export class InstantsController {
   constructor(private readonly programService: ProgramService) {}
 
   @Get()
-  async listInstants() {
-    return this.programService.listInstants();
+  async listInstants(@Query('programId') programId?: string) {
+    return this.programService.listInstants(programId);
   }
 
   @Post()

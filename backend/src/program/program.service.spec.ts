@@ -177,4 +177,27 @@ describe('ProgramService switcher state', () => {
       }),
     );
   });
+
+  it('prevents deletion of an Instant assigned as a song intro', async () => {
+    const prisma = {
+      instant: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 12,
+          position: 1,
+          songIntro: { songId: 42 },
+        }),
+      },
+      $transaction: jest.fn(),
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.deleteInstant(12)).rejects.toThrow(
+      'remove the assignment before deleting it',
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 });

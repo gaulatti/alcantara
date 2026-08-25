@@ -1,8 +1,9 @@
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { InstantItem } from '../models/broadcast';
 
-export async function fetchInstants(): Promise<InstantItem[]> {
-  const res = await fetch(apiUrl('/instants'));
+export async function fetchInstants(programId?: string): Promise<InstantItem[]> {
+  const query = programId ? `?programId=${encodeURIComponent(programId)}` : '';
+  const res = await fetch(apiUrl(`/instants${query}`));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

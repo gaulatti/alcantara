@@ -18,6 +18,7 @@ export default [
       route('preview', 'routes/preview.tsx'),
       route('layout-demo', 'routes/layout-demo.tsx'),
       route('console-fixture', 'routes/console-fixture.tsx'),
+      route('song-intro-fixture', 'routes/song-intro-fixture.tsx'),
       route('flight', 'routes/flight.tsx')
     ]),
     route('overlay', 'routes/overlay.tsx')

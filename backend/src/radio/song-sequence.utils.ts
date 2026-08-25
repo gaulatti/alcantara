@@ -18,6 +18,7 @@ interface BaseSequence<TItem extends BaseSequenceItem> {
 
 export interface ProgramSongSequenceLeafItem extends BaseSequenceItem {
   kind: 'preset';
+  songId?: number;
   artist: string;
   title: string;
   coverUrl: string;
@@ -42,6 +43,7 @@ export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem>;
 
 export interface ProgramResolvedSongLeaf {
   id: string;
+  songId?: number;
   artist: string;
   title: string;
   coverUrl: string;
@@ -193,6 +195,12 @@ function normalizeSongLeafItem(
         ? record.id
         : `song_${Date.now().toString(36)}`,
     kind: 'preset',
+    songId:
+      typeof record.songId === 'number' &&
+      Number.isInteger(record.songId) &&
+      record.songId > 0
+        ? record.songId
+        : undefined,
     artist,
     title,
     coverUrl,
@@ -449,6 +457,7 @@ function resolveSongSequenceRecursive(
     .join(' - ');
   return {
     id: selected.id,
+    songId: selected.songId,
     artist: selected.artist,
     title: selected.title,
     coverUrl: selected.coverUrl,
