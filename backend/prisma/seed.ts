@@ -145,6 +145,80 @@ async function main() {
     },
   });
 
+  const seededProfiles = [
+    ['test:alcantara:operator-a', 'desktop', 'director', false, true, 340],
+    ['test:alcantara:operator-a', 'tablet', 'compact', true, false, 300],
+    ['test:alcantara:operator-a', 'phone', 'compact', true, false, null],
+    ['test:alcantara:operator-b', 'desktop', 'graphics', false, true, 360],
+    ['test:alcantara:viewer', 'desktop', 'director', false, true, 320],
+  ] as const;
+  for (const [
+    subject,
+    deviceClass,
+    workspace,
+    touchMode,
+    shortcutsEnabled,
+    dockWidth,
+  ] of seededProfiles) {
+    const profile = {
+      workspace,
+      ...(dockWidth === null ? {} : { dockWidth }),
+      touchMode,
+      shortcutsEnabled,
+      selectedProgramId: 'main',
+      transitions: { main: 'crescendo-prism' },
+    };
+    await prisma.operatorPreference.upsert({
+      where: { subject_deviceClass: { subject, deviceClass } },
+      update: { version: 1, profile },
+      create: {
+        subject,
+        deviceClass,
+        profile,
+      },
+    });
+  }
+  await prisma.sharedConsoleLayout.upsert({
+    where: {
+      scope_scopeId_name: {
+        scope: 'program',
+        scopeId: 'main',
+        name: 'Local rehearsal',
+      },
+    },
+    update: {
+      ownerSubject: 'test:alcantara:operator-a',
+      description: 'Fictional seeded desktop console layout.',
+      sourceDeviceClass: 'desktop',
+      version: 1,
+      retiredAt: null,
+      profile: {
+        workspace: 'director',
+        dockWidth: 380,
+        touchMode: false,
+        shortcutsEnabled: true,
+        selectedProgramId: 'main',
+        transitions: { main: 'crescendo-prism' },
+      },
+    },
+    create: {
+      ownerSubject: 'test:alcantara:operator-a',
+      name: 'Local rehearsal',
+      description: 'Fictional seeded desktop console layout.',
+      scope: 'program',
+      scopeId: 'main',
+      sourceDeviceClass: 'desktop',
+      profile: {
+        workspace: 'director',
+        dockWidth: 380,
+        touchMode: false,
+        shortcutsEnabled: true,
+        selectedProgramId: 'main',
+        transitions: { main: 'crescendo-prism' },
+      },
+    },
+  });
+
   console.log('Seeding complete!');
 }
 

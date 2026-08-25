@@ -239,6 +239,37 @@ model NowPlayingConsumer {
   @@unique([programStateId, position])
 }
 
+model OperatorPreference {
+  subject     String
+  deviceClass String
+  version     Int      @default(1)
+  profile     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@id([subject, deviceClass])
+  @@index([subject])
+}
+
+model SharedConsoleLayout {
+  id                String    @id @default(uuid())
+  ownerSubject      String
+  name              String
+  description       String?
+  scope             String
+  scopeId           String
+  sourceDeviceClass String
+  version           Int       @default(1)
+  profile           Json
+  retiredAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([scope, scopeId, name])
+  @@index([scope, scopeId, retiredAt])
+  @@index([ownerSubject])
+}
+
 model GuestInvitation {
   id                 String         @id @default(uuid())
   tokenHash          String         @unique
