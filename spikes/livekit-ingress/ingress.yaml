@@ -1,0 +1,23 @@
+# v1.5.0's RTMP info logs include the full publishing name (the stream key).
+# The current structured logging field is required; the legacy log_level field
+# is accepted but did not suppress the RTMP library's info output in this proof.
+logging:
+  level: warn
+api_key: devkey
+api_secret: devsecret-devsecret-devsecret-devsecret
+ws_url: ws://livekit:7880
+redis:
+  address: redis:6379
+health_port: 8081
+prometheus_port: 8082
+rtmp_port: 1935
+whip_port: 8080
+rtc_config:
+  udp_port: 7885
+  use_external_ip: false
+cpu_cost:
+  rtmp_cpu_cost: 2.0
+  whip_cpu_cost: 2.0
+  whip_bypass_transcoding_cpu_cost: 0.1
+  url_cpu_cost: 2.0
+  min_idle_ratio: 0.3
