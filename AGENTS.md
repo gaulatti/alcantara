@@ -13,7 +13,8 @@ weaken or contradict these rules.
   root.
 - The updater must fetch the central `agentic-coding` standard and, when a newer
   version exists, refresh only the managed rules and centrally owned skills in
-  the current repository. For public repositories it must also verify the
+  the current repository and create a narrowly scoped Conventional Commit for
+  those managed files. For public repositories it must also verify the
   repository wiki checkout at `./wiki`, clone the repository's wiki there when
   the remote wiki exists, and validate that an existing checkout points to the
   expected wiki remote. Reread the updated root `AGENTS.md`, any applicable
@@ -23,8 +24,13 @@ weaken or contradict these rules.
   cannot be verified or the update fails, stop before other repository mutations
   and report the exact failure.
 - The freshness update must preserve repository-local instructions, local-only
-  skills, wiki changes, and unrelated worktree changes. It must not commit,
-  push, deploy, reset, rebase, or discard changes.
+  skills, wiki changes, and unrelated worktree changes. It must not include
+  product files in its metadata commit, and it must not push, deploy, reset,
+  rebase, or discard changes.
+- Do not continue product work with dirty managed metadata. If the updater
+  cannot commit its `AGENTS.md`, managed-skills manifest, and centrally owned
+  skills cleanly, stop and report the failure instead of treating those files
+  as unrelated product work or repeatedly narrating their presence.
 
 ## Repository wiki and documentation
 
@@ -170,6 +176,44 @@ weaken or contradict these rules.
   checks, local documentation, and browser verification together.
 - Do not call a full-stack change complete until the application has been built
   and exercised through the Compose-served browser UI and normal backend path.
+
+## Prometheus observability for managed backends
+
+- Before changing backend behavior, inspect the repository's existing metrics,
+  collectors, instrumentation helpers, private metrics endpoint, and Prometheus
+  scrape boundary. Preserve established names and semantics unless the task
+  explicitly includes a documented metric migration.
+- A managed backend must expose the applicable baseline telemetry for its
+  architecture: service/build information, a runtime/process collector,
+  normalized HTTP or RPC request count/duration/result metrics, dependency and
+  retry signals, queue or job signals, bounded domain metrics, and a private
+  scraper endpoint when the framework supports one. A component that genuinely
+  does not have a listed concern need not fabricate a metric for it.
+- Backend behavior changes must add or update behavior-specific metrics when
+  they affect dependencies, retries, queues or jobs, persistence, delivery,
+  lifecycle state, freshness, or degraded/unavailable state. Instrument both
+  successful and failed transitions so operators can distinguish healthy work,
+  rejection, retry, and failure.
+- Use stable metric names, Prometheus base-unit suffixes, and bounded labels
+  derived from controlled enums or normalized route/result classifications.
+  Document metric meaning and any deliberate rename or semantic migration.
+- Never use unbounded, sensitive, or content-bearing labels. Prohibited labels
+  include user IDs, unbounded tenant IDs, tokens, credentials, URLs, request or
+  response bodies, content text, device identifiers, free-form error strings,
+  and raw external identifiers. Put correlation details in appropriately
+  protected logs, not metric labels.
+- Application repositories own their instrumentation, private exposure,
+  behavior-specific tests, and metric documentation. Prometheus deployment,
+  scrape configuration, storage, dashboards, and alerts belong to the
+  observability infrastructure repository unless the ticket explicitly places
+  those surfaces in scope.
+- Tests must cover success and error transitions and assert bounded label sets.
+  Verification must also exercise and parse the real collector or `/metrics`
+  output; unit assertions that only prove an increment call are insufficient.
+- Update the applicable wiki or in-repository observability documentation with
+  metrics, labels, endpoint/security boundaries, and operational meaning. When
+  an inspected backend change genuinely has no metrics impact, record that
+  conclusion explicitly in the handoff rather than silently omitting telemetry.
 
 ## Configuration ownership and AWS Secrets Manager
 

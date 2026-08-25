@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
 import { MetricsController } from './metrics.controller';
 import { WebrtcModule } from './webrtc/webrtc.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ObservabilityModule } from './observability/observability.module';
     StingersModule,
     RadioModule,
     WebrtcModule,
+    OperatorPreferencesModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],

@@ -1,41 +1,50 @@
-import { Provider } from 'react-redux';
-import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
-import type { ReactNode } from 'react';
-import 'aws-amplify/auth/enable-oauth-listener';
+import { Provider } from "react-redux";
+import {
+  isRouteErrorResponse,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+} from "react-router";
+import type { ReactNode } from "react";
+import "aws-amplify/auth/enable-oauth-listener";
 
-import type { Route } from './+types/root';
-import './app.css';
-import './services/auth';
-import { installAuthenticatedFetch } from './services/authenticatedFetch';
-import AuthListener from './components/common/AuthListener';
-import { getStore } from './state';
+import type { Route } from "./+types/root";
+import "./app.css";
+import "./services/auth";
+import { installAuthenticatedFetch } from "./services/authenticatedFetch";
+import AuthListener from "./components/common/AuthListener";
+import { getStore } from "./state";
+import { isTestAuth } from "./services/session";
+import { ConsolePreferencesProvider } from "./contexts/ConsolePreferencesContext";
 
 installAuthenticatedFetch();
 
 export const links: Route.LinksFunction = () => [
-  { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
-  { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+  { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+  { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
-    rel: 'preconnect',
-    href: 'https://fonts.gstatic.com',
-    crossOrigin: 'anonymous'
+    rel: "preconnect",
+    href: "https://fonts.gstatic.com",
+    crossOrigin: "anonymous",
   },
   {
-    rel: 'stylesheet',
-    href: 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=EB+Garamond:wght@400;700&family=Encode+Sans:wght@700&family=JetBrains+Mono:wght@400;700&family=Libre+Franklin:wght@300;400;500;600;700&family=Outfit:wght@500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap'
-  }
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=EB+Garamond:wght@400;700&family=Encode+Sans:wght@700&family=JetBrains+Mono:wght@400;700&family=Libre+Franklin:wght@300;400;500;600;700&family=Outfit:wght@500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap",
+  },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang='en' className='dark h-full'>
+    <html lang="en" className="dark h-full">
       <head>
-        <meta charSet='utf-8' />
-        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
       </head>
-      <body className='h-full bg-dark-sand text-text-primary'>
+      <body className="h-full bg-dark-sand text-text-primary">
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -49,33 +58,47 @@ export default function App() {
 
   return (
     <Provider store={store}>
-      <AuthListener />
-      <Outlet />
+      <ConsolePreferencesProvider>
+        <AuthListener />
+        {isTestAuth() ? (
+          <div className="fixed bottom-3 right-3 z-[1000] rounded bg-amber-300 px-3 py-1 text-xs font-black tracking-widest text-black shadow-lg">
+            TEST AUTH
+          </div>
+        ) : null}
+        <Outlet />
+      </ConsolePreferencesProvider>
     </Provider>
   );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = 'Oops!';
-  let details = 'An unexpected error occurred.';
+  let message = "Oops!";
+  let details = "An unexpected error occurred.";
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? '404' : 'Error';
-    details = error.status === 404 ? 'The requested page could not be found.' : error.statusText || details;
+    message = error.status === 404 ? "404" : "Error";
+    details =
+      error.status === 404
+        ? "The requested page could not be found."
+        : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;
   }
 
   return (
-    <div className='min-h-screen flex flex-col'>
-      <main className='flex-1 flex items-center justify-center bg-light-sand dark:bg-dark-sand p-6'>
-        <div className='text-center px-4 max-w-2xl mx-auto'>
-          <h1 className='text-6xl font-bold text-text-primary dark:text-text-primary mb-4'>{message}</h1>
-          <p className='text-xl text-text-secondary dark:text-text-secondary mb-8'>{details}</p>
+    <div className="min-h-screen flex flex-col">
+      <main className="flex-1 flex items-center justify-center bg-light-sand dark:bg-dark-sand p-6">
+        <div className="text-center px-4 max-w-2xl mx-auto">
+          <h1 className="text-6xl font-bold text-text-primary dark:text-text-primary mb-4">
+            {message}
+          </h1>
+          <p className="text-xl text-text-secondary dark:text-text-secondary mb-8">
+            {details}
+          </p>
           {stack && (
-            <pre className='w-full p-4 overflow-x-auto bg-white/50 rounded-lg text-left text-sm'>
+            <pre className="w-full p-4 overflow-x-auto bg-white/50 rounded-lg text-left text-sm">
               <code>{stack}</code>
             </pre>
           )}

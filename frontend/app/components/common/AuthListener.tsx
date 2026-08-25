@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
-import { useDispatch } from 'react-redux';
-import type { Dispatch } from 'redux';
-import { fetchAuthSession } from 'aws-amplify/auth';
-import { login, logout } from '../../state/dispatchers/auth';
-import type { ReduxAction } from '../../state/dispatchers/base';
-import { useAuthStatus } from '../../hooks/useAuth';
-import { SESSION_INVALID_EVENT } from '../../services/session-events';
+import { useEffect } from "react";
+import { useDispatch } from "react-redux";
+import type { Dispatch } from "redux";
+import { login, logout } from "../../state/dispatchers/auth";
+import type { ReduxAction } from "../../state/dispatchers/base";
+import { useAuthStatus } from "../../hooks/useAuth";
+import { SESSION_INVALID_EVENT } from "../../services/session-events";
+import { getAppSession } from "../../services/session";
 
 export default function AuthListener() {
   const dispatch = useDispatch<Dispatch<ReduxAction>>();
@@ -17,14 +17,14 @@ export default function AuthListener() {
 
     const checkSession = async () => {
       try {
-        const session = await fetchAuthSession();
-        if (session.userSub && session.tokens) {
-          const payload = session.tokens.idToken?.payload;
+        const session = await getAppSession();
+        if (session.userSub && session.token) {
+          const payload = session.payload;
           const user = {
             id: session.userSub,
-            email: (payload?.email as string) || '',
+            email: (payload?.email as string) || "",
             name: payload?.name as string,
-            picture: payload?.picture as string
+            picture: payload?.picture as string,
           };
           dispatch(login(user));
         } else {

@@ -19,6 +19,7 @@ const HTTP_ROUTES = new Set([
   'root',
   'metrics',
   'auth',
+  'operator-preferences',
   'program',
   'radio',
   'scenes',
@@ -65,6 +66,21 @@ const DEPENDENCY_RESULTS = new Set([
 ]);
 const JOBS = new Set(['charts-refresh', 'unknown']);
 const JOB_RESULTS = new Set(['success', 'failure', 'skipped', 'unknown']);
+const PREFERENCE_ACTIONS = new Set([
+  'read',
+  'write',
+  'reset-class',
+  'reset-all',
+  'publish',
+  'retire',
+  'load-shared',
+]);
+const PREFERENCE_RESULTS = new Set([
+  'success',
+  'default',
+  'conflict',
+  'failure',
+]);
 
 function bounded(value: string, allowed: Set<string>): string {
   return allowed.has(value) ? value : 'unknown';
@@ -84,6 +100,7 @@ export class ManagedMetricsService {
   private readonly dependencyDuration: Histogram<string>;
   private readonly jobs: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
+  private readonly preferenceOperations: Counter<string>;
 
   constructor() {
     collectDefaultMetrics({ prefix: 'alcantara_', register: this.registry });
@@ -146,6 +163,12 @@ export class ManagedMetricsService {
       labelNames: ['job'],
       registers: [this.registry],
     });
+    this.preferenceOperations = new Counter({
+      name: 'alcantara_operator_preference_operations_total',
+      help: 'Operator preference operations by bounded action and result.',
+      labelNames: ['action', 'result'],
+      registers: [this.registry],
+    });
   }
 
   recordHttp(
@@ -195,6 +218,13 @@ export class ManagedMetricsService {
     if (normalizedResult === 'success') {
       this.jobLastSuccess.set({ job: normalizedJob }, Date.now() / 1000);
     }
+  }
+
+  recordPreference(action: string, result: string): void {
+    this.preferenceOperations.inc({
+      action: bounded(action, PREFERENCE_ACTIONS),
+      result: bounded(result, PREFERENCE_RESULTS),
+    });
   }
 
   async render(radioMetrics: string): Promise<string> {

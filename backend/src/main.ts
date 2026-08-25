@@ -8,6 +8,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import { ProgramRealtimeService } from './program/program.realtime.service';
+import { assertTestAuthSafety } from './auth/test-auth.service';
 
 function getAllowedOrigins(): Set<string> {
   const configuredOrigins = (
@@ -28,6 +29,7 @@ function getAllowedOrigins(): Set<string> {
 }
 
 async function bootstrap() {
+  assertTestAuthSafety();
   const configuredPort = Number.parseInt(
     process.env.PORT ?? process.env.HTTP_PORT ?? '3000',
     10,

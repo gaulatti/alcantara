@@ -49,6 +49,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       0.02,
     );
     metrics.recordJob('charts-refresh', 'failure');
+    metrics.recordPreference('write', 'conflict');
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -89,6 +90,9 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain('alcantara_dependency_operations_total');
     expect(body).toContain('alcantara_jobs_total');
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    expect(body).toContain(
+      'alcantara_operator_preference_operations_total{action="write",result="conflict"} 1',
+    );
     expect(body).toContain('method="unknown"');
     expect(body).toContain('route="unknown"');
     expect(body).not.toContain('private-scrape-token');
