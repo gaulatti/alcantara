@@ -1,0 +1,35 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/backend-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm install --frozen-lockfile
+      - name: Test and build backend
+        run: |
+          pnpm --dir backend run prisma:generate
+          pnpm --dir backend exec jest --runInBand
+          METRICS_SCRAPE_OUTPUT=/tmp/alcantara.prom pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns=metrics
+          pnpm --dir backend run build
+      - name: Parse actual authenticated scrape
+        run: |
+          test -s /tmp/alcantara.prom
+          docker run --rm -i --entrypoint /bin/promtool prom/prometheus:v3.9.0 check metrics < /tmp/alcantara.prom

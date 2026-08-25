@@ -20,6 +20,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+      args:
+        ALCANTARA_BUILD_VERSION: ${ALCANTARA_BUILD_VERSION:-dev}
     ports:
       - "${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}"
     env_file: ./backend/.env
@@ -33,6 +35,7 @@ services:
       LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-devsecret
       WEBRTC_SESSION_SECRET: alcantara-local-session-secret-change-me-now
       WEBRTC_RENDERER_KEY: alcantara-local-renderer-secret-change-me-now
+      METRICS_TOKEN_FILE: /run/secrets/alcantara-metrics-token
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma

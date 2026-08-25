@@ -1,5 +1,7 @@
 FROM node:22-alpine AS builder
 
+ARG ALCANTARA_BUILD_VERSION=dev
+
 WORKDIR /app
 
 # Install pnpm (v9 avoids interactive approve-builds flow in CI)
@@ -14,5 +16,7 @@ COPY . .
 RUN pnpm run prisma:generate
 RUN pnpm run build
 RUN test -f /app/dist/src/proto/authorization.proto
+
+ENV ALCANTARA_BUILD_VERSION=${ALCANTARA_BUILD_VERSION}
 
 CMD ["sh", "-c", "pnpm run db:migrate:deploy && pnpm start:prod"]

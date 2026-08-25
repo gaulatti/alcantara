@@ -40,7 +40,11 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -f backend/Dockerfile -t ghcr.io/${{ github.repository }}:latest backend
+          docker build \
+            --build-arg ALCANTARA_BUILD_VERSION=${{ github.sha }} \
+            -f backend/Dockerfile \
+            -t ghcr.io/${{ github.repository }}:latest \
+            backend
 
       - name: Verify production migrations are non-interactive and repeatable
         run: |
@@ -116,6 +120,8 @@ jobs:
             -e NODE_ENV=production \
             -e HTTP_PORT="${{ vars.HTTP_PORT }}" \
             -e PORT="${{ vars.HTTP_PORT }}" \
+            -e ALCANTARA_BUILD_VERSION="${{ github.sha }}" \
+            -e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \

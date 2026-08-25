@@ -16,12 +16,14 @@ import { RadioModule } from './radio/radio.module';
 import { AuthModule } from './auth/auth.module';
 import { MetricsController } from './metrics.controller';
 import { WebrtcModule } from './webrtc/webrtc.module';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ObservabilityModule,
     AuthModule,
     ProgramModule,
     ScenesModule,
