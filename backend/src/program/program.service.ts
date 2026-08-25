@@ -2780,10 +2780,20 @@ export class ProgramService implements OnModuleInit {
     return [...new Set(rows.map((row) => row.programState.programId))];
   }
 
-  async listInstants() {
-    return this.prisma.instant.findMany({
+  async listInstants(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const instants = await this.prisma.instant.findMany({
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
+      include: {
+        songIntro: { select: { songId: true, programId: true } },
+      },
     });
+    return instants.map(({ songIntro, ...instant }) => ({
+      ...instant,
+      availableForSongIntro: songIntro === null,
+      assignedSongId:
+        songIntro?.programId === normalizedProgramId ? songIntro.songId : null,
+    }));
   }
 
   async createInstant(data: {
@@ -2877,11 +2887,20 @@ export class ProgramService implements OnModuleInit {
   async deleteInstant(instantId: number) {
     const instant = await this.prisma.instant.findUnique({
       where: { id: instantId },
-      select: { id: true, position: true },
+      select: {
+        id: true,
+        position: true,
+        songIntro: { select: { songId: true } },
+      },
     });
 
     if (!instant) {
       throw new NotFoundException('Instant not found');
+    }
+    if (instant.songIntro) {
+      throw new BadRequestException(
+        'Instant is assigned as a song intro; remove the assignment before deleting it',
+      );
     }
 
     const positionShiftOffset = 1_000_000;

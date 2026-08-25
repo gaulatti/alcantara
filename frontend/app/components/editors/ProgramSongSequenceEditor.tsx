@@ -179,6 +179,7 @@ export function ProgramSongSequenceEditor({
       if (nextItem.kind !== 'preset') return;
       const filled = {
         ...nextItem,
+        songId: selectedSong.id,
         artist: selectedSong.artist || '',
         title: selectedSong.title || '',
         coverUrl: selectedSong.coverUrl || '',
@@ -245,6 +246,7 @@ export function ProgramSongSequenceEditor({
     (index: number, item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>, song: SongCatalogItem) => {
       updateItem(index, {
         ...item,
+        songId: song.id,
         artist: song.artist || item.artist,
         title: song.title || item.title,
         coverUrl: song.coverUrl || item.coverUrl,
@@ -305,6 +307,7 @@ export function ProgramSongSequenceEditor({
                       const selectedCatalogSong =
                         displayItem.kind === 'preset'
                           ? availableSongCatalog.find((song) => {
+                              if (displayItem.songId === song.id) return true;
                               if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) return true;
                               return (
                                 (song.artist || '').trim() === displayItem.artist.trim() &&

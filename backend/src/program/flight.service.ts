@@ -712,6 +712,7 @@ export class FlightService implements OnModuleDestroy {
             {
               id: itemId,
               kind: 'preset',
+              songId: song.id,
               artist: song.artist,
               title: song.title,
               coverUrl: song.coverUrl ?? '',
