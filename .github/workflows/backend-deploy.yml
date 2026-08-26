@@ -95,6 +95,23 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
             docker pull ghcr.io/${{ github.repository }}:latest
 
+            PALAZZO_TOKEN_SOURCE=""
+            for container_id in $(docker ps -q --filter network=broadcast-control); do
+              candidate=$(docker inspect "$container_id" --format "{{range .Mounts}}{{if eq .Destination \"/run/secrets/palazzo-control-token\"}}{{.Source}}{{end}}{{end}}")
+              if test -z "$candidate"; then
+                continue
+              fi
+              if test -n "$PALAZZO_TOKEN_SOURCE" && test "$PALAZZO_TOKEN_SOURCE" != "$candidate"; then
+                echo "Multiple Palazzo control-token mounts found; refusing replacement"
+                exit 1
+              fi
+              PALAZZO_TOKEN_SOURCE="$candidate"
+            done
+            if test -z "$PALAZZO_TOKEN_SOURCE"; then
+              echo "Palazzo control-token mount not found; refusing replacement"
+              exit 1
+            fi
+
             # Resolve and validate the new runtime before touching the live
             # backend. This entrypoint does not construct Nest or send any
             # Palazzo playback commands.
@@ -104,7 +121,7 @@ jobs:
             -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
             -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
             -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
-            -v /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
+            -v "$PALAZZO_TOKEN_SOURCE:/run/secrets/palazzo-control-token:ro" \
             -v "$HOME/.aws:/root/.aws:ro" \
             ghcr.io/${{ github.repository }}:latest \
             pnpm run preflight:runtime
@@ -180,7 +197,7 @@ jobs:
             --log-opt awslogs-group=${{ vars.LOGS_GROUP }} \
             --log-opt awslogs-stream="$LOG_STREAM_UUID" \
             -v ~/.aws:/root/.aws:ro \
-            -v /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
+            -v "$PALAZZO_TOKEN_SOURCE:/run/secrets/palazzo-control-token:ro" \
             ghcr.io/${{ github.repository }}:latest; then
               echo "Replacement Alcantara backend could not be created"
               rollback_backend || true

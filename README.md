@@ -326,9 +326,10 @@ The replacement joins `broadcast-control` so the private
 `http://palazzo:3100` program-scoped machine API remains resolvable. Set the
 production `ALCANTARA_CONFIG_SECRET_ID` repository variable to the
 application-scoped Secrets Manager payload. During migration, deployment also
-mounts Palazzo's existing `/etc/palazzo/control-token` as a backwards-compatible
-credential source. Preflight fails without replacing the live backend when
-neither source is available or when configuration is invalid.
+discovers and mounts the running Palazzo container's existing control-token
+file as a backwards-compatible credential source. Preflight fails without
+replacing the live backend when that mount is absent or ambiguous, neither
+source is available, or configuration is invalid.
 
 ### Data Flow
 

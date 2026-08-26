@@ -113,7 +113,8 @@ only `secretsmanager:GetSecretValue` for this one Alcantara configuration
 secret (plus `kms:Decrypt` only when a customer-managed key requires it).
 
 For backwards-compatible migration of the existing Palazzo installation,
-deployment may instead mount its established control-token file and set
+deployment may instead discover the running Palazzo container's established
+control-token mount and set
 `PALAZZO_CONTROL_TOKEN_FILE` plus the fixed private
 `PALAZZO_ALLOWED_URLS=http://palazzo:3100`. The file is read before Nest starts
 and is never exposed to the browser or command output. Secrets Manager remains
