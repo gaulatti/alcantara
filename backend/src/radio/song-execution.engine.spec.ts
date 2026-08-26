@@ -40,15 +40,18 @@ function playingSnapshot(
   bootId: string,
   sequence: number,
   playbackRequestId: string,
+  url = 'https://example.test/song-1.mp3',
+  title = 'Song one',
+  artist = 'Artist one',
 ): PalazzoPlaybackState {
   return {
     ...idleSnapshot(instanceId, bootId, sequence),
     status: 'playing',
     track: {
       playbackRequestId,
-      title: 'Song one',
-      artist: 'Artist one',
-      url: 'https://example.test/song-1.mp3',
+      title,
+      artist,
+      url,
       startedAt: new Date().toISOString(),
     },
     positionSeconds: 1,
@@ -179,19 +182,35 @@ describe('SongExecutionEngine authoritative playback', () => {
     );
   });
 
-  it('resumes autoplay when a track inherited across restart ends', async () => {
-    const { engine, radioService } = createEngine({
-      reconciled: true,
-      radio: true,
-    });
+  it('adopts an inherited live track and advances to its exact successor', async () => {
+    const { engine, radioService, flightService, nowPlayingPublisher } =
+      createEngine({
+        reconciled: true,
+        radio: true,
+      });
 
+    // The persisted cursor is still song 1, but Palazzo is already playing
+    // song 2 from the previous Alcantara process.
     engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
     engine.handlePalazzoSnapshot(
       'radio-1',
-      playingSnapshot('palazzo-a', 'boot-1', 1, 'previous-engine-request'),
+      playingSnapshot(
+        'palazzo-a',
+        'boot-1',
+        1,
+        'previous-engine-request',
+        'https://example.test/song-2.mp3',
+        'Song two',
+        'Artist two',
+      ),
     );
     await flush();
     expect(radioService.playSong).not.toHaveBeenCalled();
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      audioUrl: 'https://example.test/song-2.mp3',
+      title: 'Song two',
+    });
+    expect(nowPlayingPublisher.publishPlayback).toHaveBeenCalledTimes(1);
 
     engine.handlePalazzoEvent('radio-1', {
       type: 'track.ended',
@@ -199,10 +218,40 @@ describe('SongExecutionEngine authoritative playback', () => {
     });
     await flush();
 
+    expect(flightService.handleSongEnded).toHaveBeenCalledTimes(1);
     expect(radioService.playSong).toHaveBeenCalledTimes(1);
     expect(radioService.playSong.mock.calls[0][1]).toBe(
       'https://example.test/song-1.mp3',
     );
+  });
+
+  it('does not adopt or command an unknown inherited track', async () => {
+    const { engine, radioService, flightService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingSnapshot(
+        'palazzo-a',
+        'boot-1',
+        1,
+        'foreign-request',
+        'https://example.test/unknown.mp3',
+      ),
+    );
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'foreign-request' },
+    });
+    await flush();
+
+    expect(engine.getPlaybackState('radio-1')).toBeNull();
+    expect(flightService.handleSongEnded).not.toHaveBeenCalled();
+    expect(radioService.playSong).not.toHaveBeenCalled();
   });
 
   it('does not start an explicit manual sequence from an idle snapshot', async () => {

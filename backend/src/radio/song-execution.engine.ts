@@ -18,6 +18,7 @@ import type {
 } from './palazzo-contract';
 import {
   advanceProgramSongSequence,
+  findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
   resolveProgramSongLeaf,
   type ProgramResolvedSongLeaf,
@@ -215,7 +216,6 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.sequence?.startedAt && seq)
       seq.startedAt = state.sequence.startedAt;
     state.sequence = seq;
-    state.busyWithForeignTrack = false;
     if (
       seq &&
       (seq.mode === 'autoplay' || seq.mode === 'shuffle') &&
@@ -473,6 +473,44 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const inheritedSong = findUniqueProgramSongLeafByAudioUrl(
+      state.sequence,
+      snapshot.track?.url ?? '',
+    );
+    if (requestId && inheritedSong?.audioUrl) {
+      const positionMs = Math.max(
+        0,
+        Math.round(snapshot.positionSeconds * 1000),
+      );
+      const parsedStartedAt = Date.parse(snapshot.track?.startedAt ?? '');
+      const authoritativeStartedAt = Number.isFinite(parsedStartedAt)
+        ? parsedStartedAt
+        : Date.now() - positionMs;
+      state.activeSong = {
+        token: `${inheritedSong.id}:${inheritedSong.audioUrl}`,
+        playbackRequestId: requestId,
+        audioUrl: inheritedSong.audioUrl,
+        artist: snapshot.track?.artist || inheritedSong.artist,
+        title: snapshot.track?.title || inheritedSong.title,
+        coverUrl: snapshot.track?.coverUrl || inheritedSong.coverUrl,
+        durationMs: inheritedSong.durationMs ?? 300000,
+        startedAt: authoritativeStartedAt,
+        itemId: inheritedSong.id,
+        authoritativeStartedAt,
+        authoritativePositionMs: positionMs,
+        authoritativeUpdatedAt: Date.now(),
+      };
+      state.busyWithForeignTrack = false;
+      this.logger.log(
+        `Adopted inherited Palazzo playback ${requestId} on ${programId}`,
+      );
+      this.metrics.recordTrackTransition('adopted');
+      this.emitPlaybackActive(programId, state.activeSong);
+      void this.publishNowPlaying(programId, state.activeSong);
+      this.startProgress(programId);
+      return;
+    }
+
     // A track we did not command is playing. Never advance or publish
     // anything from foreign playback; just avoid double audio.
     if (!state.busyWithForeignTrack) {
@@ -540,7 +578,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordTrackTransition('ignored-no-active');
       if (!state.activeSong && state.busyWithForeignTrack) {
         state.busyWithForeignTrack = false;
-        this.maybeStartSequence(programId);
+        this.logger.warn(
+          `Foreign track ended on ${programId}; awaiting an authoritative idle snapshot`,
+        );
       }
       return;
     }

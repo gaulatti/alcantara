@@ -1,4 +1,7 @@
-import { loadRuntimeSecrets } from './runtime-secrets';
+import {
+  loadRuntimeSecrets,
+  validatePalazzoRuntimeConfiguration,
+} from './runtime-secrets';
 
 function productionEnvironment() {
   return {
@@ -53,5 +56,20 @@ describe('loadRuntimeSecrets', () => {
       { send },
     );
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed runtime tokens and approved URL lists', () => {
+    expect(() =>
+      validatePalazzoRuntimeConfiguration({
+        PALAZZO_CONTROL_TOKEN: 'short',
+        PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+      }),
+    ).toThrow('PALAZZO_CONTROL_TOKEN is missing or invalid');
+    expect(() =>
+      validatePalazzoRuntimeConfiguration({
+        PALAZZO_CONTROL_TOKEN: 'fictional-control-token',
+        PALAZZO_ALLOWED_URLS: 'http://user:password@palazzo:3100',
+      }),
+    ).toThrow('PALAZZO_ALLOWED_URLS contains an invalid URL');
   });
 });

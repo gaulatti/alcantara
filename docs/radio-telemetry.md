@@ -42,11 +42,15 @@ routes.
   authoritative end. Looped playlists wrap; explicitly non-looped playlists
   publish stopped at their end. A missing song-sequence mode means autoplay,
   while an explicit `manual` mode remains an operator stop boundary.
-- A track played by Palazzo that Alcantara did not command is foreign: no
-  state is adopted and no new commands are sent while it plays.
-- When Alcantara restarts during that foreign/inherited track, its authoritative
-  end or the following idle snapshot releases the handoff and resumes an
-  autoplay or shuffle sequence. Explicit manual mode remains idle.
+- When Alcantara restarts during playback, it adopts the inherited Palazzo
+  track only when the authoritative audio URL identifies exactly one leaf in
+  the configured sequence. Adoption preserves Palazzo's request ID, start time,
+  and position, sends no competing play command, and advances from that exact
+  leaf when its authoritative end arrives.
+- An unknown URL, or a URL reused by multiple sequence leaves, remains foreign:
+  Alcantara sends no command while it plays and does not guess a successor from
+  its end event. It waits for an authoritative idle snapshot before normal
+  automatic recovery. Explicit manual mode remains idle.
 
 ## Transports and failure behavior
 

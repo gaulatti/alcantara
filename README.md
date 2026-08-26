@@ -315,13 +315,18 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 ## Architecture
 
 Production places the backend on the external `broadcast-control` Docker
-network shared with Palazzo. The backend deployment verifies that the network
-exists before replacing the live container, then joins the replacement to it so
-the private `http://palazzo:3100` program-scoped machine API remains resolvable
-across deployments. Set the production `ALCANTARA_CONFIG_SECRET_ID` repository
-variable to the application-scoped Secrets Manager payload; startup fails
-before client construction when its Palazzo credential or approved URL list is
-unavailable.
+network shared with Palazzo. Before stopping the live backend, deployment runs
+a side-effect-free runtime preflight in the new image to resolve and validate
+the Palazzo credential and approved URL list. The previous container is retained
+until the replacement passes its startup check and is automatically restored if
+the replacement fails. This keeps the existing radio controller alive when a
+configuration or startup defect reaches deployment.
+
+The replacement joins `broadcast-control` so the private
+`http://palazzo:3100` program-scoped machine API remains resolvable. Set the
+production `ALCANTARA_CONFIG_SECRET_ID` repository variable to the
+application-scoped Secrets Manager payload; preflight fails without replacing
+the live backend when that configuration is unavailable or invalid.
 
 ### Data Flow
 

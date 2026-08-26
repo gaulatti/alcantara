@@ -11,6 +11,10 @@ import {
   type PalazzoMachineOperation,
   type PalazzoMachineResult,
 } from './radio-metrics.service';
+import {
+  isValidPalazzoControlToken,
+  normalizePalazzoBaseUrl,
+} from '../config/runtime-secrets';
 
 export class PalazzoMachineError extends Error {
   constructor(
@@ -46,16 +50,6 @@ interface RequestOptions {
 }
 
 const MAX_ATTEMPTS = 3;
-function isValidControlToken(value: string): boolean {
-  return (
-    value.length >= 16 &&
-    value.length <= 4096 &&
-    ![...value].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x20 || code === 0x7f;
-    })
-  );
-}
 
 /**
  * Sole transport boundary for Palazzo's authenticated, program-scoped API.
@@ -79,14 +73,14 @@ export class PalazzoMachineClient {
     const configuredUrls =
       config.get<string>('PALAZZO_ALLOWED_URLS')?.trim() ||
       (nodeEnvironment === 'test' ? 'http://palazzo:3100' : '');
-    if (!isValidControlToken(token)) {
+    if (!isValidPalazzoControlToken(token)) {
       throw new Error('PALAZZO_CONTROL_TOKEN is missing or invalid');
     }
     const allowedUrls = configuredUrls
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean)
-      .map(normalizeBaseUrl);
+      .map(normalizePalazzoBaseUrl);
     if (!allowedUrls.length) {
       throw new Error('PALAZZO_ALLOWED_URLS must contain an approved URL');
     }
@@ -98,7 +92,7 @@ export class PalazzoMachineClient {
   validateBaseUrl(value: string): string {
     let normalized: string;
     try {
-      normalized = normalizeBaseUrl(value);
+      normalized = normalizePalazzoBaseUrl(value);
     } catch {
       throw new PalazzoMachineError('rejected');
     }
@@ -392,26 +386,6 @@ async function responseJson(
     metrics.recordMachineRequest(operation, 'malformed');
     throw new PalazzoMachineError('malformed');
   }
-}
-
-function normalizeBaseUrl(value: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error('Palazzo URL is invalid');
-  }
-  if (
-    !['http:', 'https:'].includes(parsed.protocol) ||
-    parsed.username ||
-    parsed.password ||
-    parsed.search ||
-    parsed.hash ||
-    (parsed.pathname !== '/' && parsed.pathname !== '')
-  ) {
-    throw new Error('Palazzo URL is invalid');
-  }
-  return parsed.origin;
 }
 
 function validateProgramId(value: string): string {
