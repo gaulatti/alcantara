@@ -2,6 +2,10 @@ import {
   loadRuntimeSecrets,
   validatePalazzoRuntimeConfiguration,
 } from './runtime-secrets';
+import { readFile } from 'node:fs/promises';
+
+jest.mock('node:fs/promises', () => ({ readFile: jest.fn() }));
+const readFileMock = jest.mocked(readFile);
 
 function productionEnvironment() {
   return {
@@ -42,7 +46,28 @@ describe('loadRuntimeSecrets', () => {
     ).rejects.toThrow('Palazzo configuration is incomplete');
     await expect(
       loadRuntimeSecrets({ NODE_ENV: 'production', AWS_REGION: 'us-east-1' }),
-    ).rejects.toThrow('ALCANTARA_CONFIG_SECRET_ID is required');
+    ).rejects.toThrow(
+      'ALCANTARA_CONFIG_SECRET_ID or PALAZZO_CONTROL_TOKEN_FILE is required',
+    );
+  });
+
+  it('supports the existing Palazzo token file during production migration', async () => {
+    readFileMock.mockResolvedValue('existing-palazzo-control-token\n');
+    const environment = {
+      NODE_ENV: 'production',
+      PALAZZO_CONTROL_TOKEN_FILE: '/run/secrets/palazzo-control-token',
+      PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+    };
+
+    await loadRuntimeSecrets(environment);
+
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/run/secrets/palazzo-control-token',
+      'utf8',
+    );
+    expect(environment).toMatchObject({
+      PALAZZO_CONTROL_TOKEN: 'existing-palazzo-control-token',
+    });
   });
 
   it('does not contact AWS for explicit non-production configuration', async () => {

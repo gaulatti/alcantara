@@ -102,6 +102,9 @@ jobs:
             -e NODE_ENV=production \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
             -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
+            -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
+            -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
+            -v /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
             -v "$HOME/.aws:/root/.aws:ro" \
             ghcr.io/${{ github.repository }}:latest \
             pnpm run preflight:runtime
@@ -160,6 +163,8 @@ jobs:
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
             -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
+            -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
+            -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
             -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \
@@ -175,6 +180,7 @@ jobs:
             --log-opt awslogs-group=${{ vars.LOGS_GROUP }} \
             --log-opt awslogs-stream="$LOG_STREAM_UUID" \
             -v ~/.aws:/root/.aws:ro \
+            -v /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
             ghcr.io/${{ github.repository }}:latest; then
               echo "Replacement Alcantara backend could not be created"
               rollback_backend || true

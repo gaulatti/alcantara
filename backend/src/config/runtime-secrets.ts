@@ -2,6 +2,7 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
+import { readFile } from 'node:fs/promises';
 
 interface SecretClient {
   send(command: GetSecretValueCommand): Promise<{ SecretString?: string }>;
@@ -13,6 +14,7 @@ interface RuntimeEnvironment {
   AWS_DEFAULT_REGION?: string;
   ALCANTARA_CONFIG_SECRET_ID?: string;
   PALAZZO_CONTROL_TOKEN?: string;
+  PALAZZO_CONTROL_TOKEN_FILE?: string;
   PALAZZO_ALLOWED_URLS?: string;
   [key: string]: string | undefined;
 }
@@ -78,10 +80,26 @@ export async function loadRuntimeSecrets(
 ): Promise<void> {
   if (environment.NODE_ENV !== 'production') return;
   const secretId = environment.ALCANTARA_CONFIG_SECRET_ID?.trim();
+  if (!secretId) {
+    const tokenFile = environment.PALAZZO_CONTROL_TOKEN_FILE?.trim();
+    if (!tokenFile) {
+      throw new Error(
+        'ALCANTARA_CONFIG_SECRET_ID or PALAZZO_CONTROL_TOKEN_FILE is required',
+      );
+    }
+    try {
+      environment.PALAZZO_CONTROL_TOKEN = (
+        await readFile(tokenFile, 'utf8')
+      ).trim();
+    } catch {
+      throw new Error('Alcantara runtime configuration is unavailable');
+    }
+    validatePalazzoRuntimeConfiguration(environment);
+    return;
+  }
   const region = (
     environment.AWS_REGION ?? environment.AWS_DEFAULT_REGION
   )?.trim();
-  if (!secretId) throw new Error('ALCANTARA_CONFIG_SECRET_ID is required');
   if (!region) throw new Error('AWS_REGION is required');
   const secrets = client ?? new SecretsManagerClient({ region });
   let response: { SecretString?: string };

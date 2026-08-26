@@ -108,9 +108,17 @@ Secrets Manager JSON and selects only these scalar fields:
 ```
 
 Retrieval failure, malformed values, or either missing field fails startup.
-There is no production environment fallback. The runtime IAM identity needs
+There is no plaintext production token environment fallback. The runtime IAM identity needs
 only `secretsmanager:GetSecretValue` for this one Alcantara configuration
 secret (plus `kms:Decrypt` only when a customer-managed key requires it).
+
+For backwards-compatible migration of the existing Palazzo installation,
+deployment may instead mount its established control-token file and set
+`PALAZZO_CONTROL_TOKEN_FILE` plus the fixed private
+`PALAZZO_ALLOWED_URLS=http://palazzo:3100`. The file is read before Nest starts
+and is never exposed to the browser or command output. Secrets Manager remains
+the preferred long-term bootstrap; if neither source validates, deployment
+leaves the current backend untouched.
 `palazzoAllowedUrls` is enforced before attaching the bearer token, preventing
 an operator-editable `palazzoUrl` from redirecting the credential elsewhere.
 
