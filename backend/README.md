@@ -28,6 +28,9 @@
 ## Prometheus scrape boundary
 
 The backend exposes authenticated Prometheus text format at `GET /metrics`.
+
+The external-source control plane is documented in
+[`../docs/external-source-registry.md`](../docs/external-source-registry.md).
 Set `METRICS_TOKEN_FILE` to a root-readable file containing one bearer token;
 the default path is `/run/secrets/alcantara-metrics-token`. The endpoint returns
 `503` when the file is absent and `401` when the request does not provide the

@@ -1,11 +1,13 @@
 import {
   loadRuntimeSecrets,
+  validateExternalSourceEncryption,
   validatePalazzoRuntimeConfiguration,
 } from './runtime-secrets';
 import { readFile } from 'node:fs/promises';
 
 jest.mock('node:fs/promises', () => ({ readFile: jest.fn() }));
 const readFileMock = jest.mocked(readFile);
+const sourceKeys = '{"1":"YWxjYW50YXJhLWxvY2FsLXNvdXJjZS1rZXktMDAwMDA="}';
 
 function productionEnvironment() {
   return {
@@ -22,6 +24,8 @@ describe('loadRuntimeSecrets', () => {
       SecretString: JSON.stringify({
         palazzoControlToken: 'fictional-production-token',
         palazzoAllowedUrls: 'http://palazzo:3100',
+        externalSourceConfigCurrentVersion: '1',
+        externalSourceConfigKeys: sourceKeys,
         untrustedProperty: 'must-not-enter-environment',
       }),
     });
@@ -29,6 +33,8 @@ describe('loadRuntimeSecrets', () => {
     expect(environment).toMatchObject({
       PALAZZO_CONTROL_TOKEN: 'fictional-production-token',
       PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+      EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '1',
+      EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
     });
     expect(environment).not.toHaveProperty('untrustedProperty');
   });
@@ -43,7 +49,7 @@ describe('loadRuntimeSecrets', () => {
       loadRuntimeSecrets(productionEnvironment(), {
         send: jest.fn().mockResolvedValue({ SecretString: '{}' }),
       }),
-    ).rejects.toThrow('Palazzo configuration is incomplete');
+    ).rejects.toThrow('runtime configuration is incomplete');
     await expect(
       loadRuntimeSecrets({ NODE_ENV: 'production', AWS_REGION: 'us-east-1' }),
     ).rejects.toThrow(
@@ -57,6 +63,8 @@ describe('loadRuntimeSecrets', () => {
       NODE_ENV: 'production',
       PALAZZO_CONTROL_TOKEN_FILE: '/run/secrets/palazzo-control-token',
       PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+      EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '1',
+      EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
     };
 
     await loadRuntimeSecrets(environment);
@@ -68,6 +76,16 @@ describe('loadRuntimeSecrets', () => {
     expect(environment).toMatchObject({
       PALAZZO_CONTROL_TOKEN: 'existing-palazzo-control-token',
     });
+  });
+
+  it('fails closed for an absent or malformed external-source keyring', () => {
+    expect(() => validateExternalSourceEncryption({})).toThrow('malformed');
+    expect(() =>
+      validateExternalSourceEncryption({
+        EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '2',
+        EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
+      }),
+    ).toThrow('malformed');
   });
 
   it('does not contact AWS for explicit non-production configuration', async () => {

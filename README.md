@@ -314,6 +314,8 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 
 ## Architecture
 
+- [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.
+
 Production places the backend on the external `broadcast-control` Docker
 network shared with Palazzo. Before stopping the live backend, deployment runs
 a side-effect-free runtime preflight in the new image to resolve and validate

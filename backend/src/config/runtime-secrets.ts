@@ -16,12 +16,16 @@ interface RuntimeEnvironment {
   PALAZZO_CONTROL_TOKEN?: string;
   PALAZZO_CONTROL_TOKEN_FILE?: string;
   PALAZZO_ALLOWED_URLS?: string;
+  EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION?: string;
+  EXTERNAL_SOURCE_CONFIG_KEYS?: string;
   [key: string]: string | undefined;
 }
 
 const ALLOWED_SECRET_FIELDS = new Set([
   'palazzoControlToken',
   'palazzoAllowedUrls',
+  'externalSourceConfigCurrentVersion',
+  'externalSourceConfigKeys',
 ]);
 
 export function isValidPalazzoControlToken(value: string): boolean {
@@ -95,6 +99,7 @@ export async function loadRuntimeSecrets(
       throw new Error('Alcantara runtime configuration is unavailable');
     }
     validatePalazzoRuntimeConfiguration(environment);
+    validateExternalSourceEncryption(environment);
     return;
   }
   const region = (
@@ -127,10 +132,52 @@ export async function loadRuntimeSecrets(
     }
     selected[key] = value.trim();
   }
-  if (!selected.palazzoControlToken || !selected.palazzoAllowedUrls) {
-    throw new Error('Alcantara Palazzo configuration is incomplete');
+  if (
+    !selected.palazzoControlToken ||
+    !selected.palazzoAllowedUrls ||
+    !selected.externalSourceConfigCurrentVersion ||
+    !selected.externalSourceConfigKeys
+  ) {
+    throw new Error('Alcantara runtime configuration is incomplete');
   }
   environment.PALAZZO_CONTROL_TOKEN = selected.palazzoControlToken;
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
+  environment.EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION =
+    selected.externalSourceConfigCurrentVersion;
+  environment.EXTERNAL_SOURCE_CONFIG_KEYS = selected.externalSourceConfigKeys;
   validatePalazzoRuntimeConfiguration(environment);
+  validateExternalSourceEncryption(environment);
+}
+
+export function validateExternalSourceEncryption(
+  environment: RuntimeEnvironment = process.env,
+): void {
+  const current = Number(environment.EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(environment.EXTERNAL_SOURCE_CONFIG_KEYS ?? '');
+  } catch {
+    throw new Error('External source encryption configuration is malformed');
+  }
+  if (
+    !Number.isSafeInteger(current) ||
+    current < 1 ||
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed)
+  )
+    throw new Error('External source encryption configuration is malformed');
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  if (!entries.length || !Object.hasOwn(parsed, String(current)))
+    throw new Error('External source encryption configuration is malformed');
+  for (const [version, encoded] of entries) {
+    if (
+      !/^\d+$/.test(version) ||
+      Number(version) < 1 ||
+      typeof encoded !== 'string' ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) ||
+      Buffer.from(encoded, 'base64').length !== 32
+    )
+      throw new Error('External source encryption configuration is malformed');
+  }
 }
