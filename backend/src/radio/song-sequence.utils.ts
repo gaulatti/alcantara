@@ -481,6 +481,47 @@ export function resolveProgramSongLeaf(
   return resolveSongSequenceRecursive(sequence, nowMs, 0, []);
 }
 
+function collectSongLeavesByAudioUrl(
+  sequence: ProgramSongSequence,
+  audioUrl: string,
+  labels: string[],
+  matches: ProgramResolvedSongLeaf[],
+  depth: number,
+): void {
+  if (depth > MAX_DEPTH || matches.length > 1) return;
+
+  for (const item of sequence.items) {
+    if (item.kind === 'sequence') {
+      collectSongLeavesByAudioUrl(
+        item.sequence,
+        audioUrl,
+        [...labels, item.label],
+        matches,
+        depth + 1,
+      );
+      continue;
+    }
+    if (item.audioUrl !== audioUrl) continue;
+    const songLabel = [item.artist, item.title].filter(Boolean).join(' - ');
+    matches.push({
+      ...item,
+      activePathLabels: [...labels, songLabel || 'Song Preset'],
+    });
+  }
+}
+
+/** Returns a leaf only when an authoritative URL identifies exactly one song. */
+export function findUniqueProgramSongLeafByAudioUrl(
+  sequence: ProgramSongSequence | null,
+  audioUrl: string,
+): ProgramResolvedSongLeaf | null {
+  const normalizedUrl = audioUrl.trim();
+  if (!sequence || !normalizedUrl) return null;
+  const matches: ProgramResolvedSongLeaf[] = [];
+  collectSongLeavesByAudioUrl(sequence, normalizedUrl, [], matches, 0);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function getProgramSongSequenceSelectedItemId(
   sequence: ProgramSongSequence,
   nowMs: number = Date.now(),

@@ -95,6 +95,20 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.DEPLOYMENT_TOKEN }}
             docker pull ghcr.io/${{ github.repository }}:latest
 
+            # Resolve and validate the new runtime before touching the live
+            # backend. This entrypoint does not construct Nest or send any
+            # Palazzo playback commands.
+            docker run --rm \
+            -e NODE_ENV=production \
+            -e AWS_REGION="${{ vars.AWS_REGION }}" \
+            -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
+            -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
+            -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
+            -v /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
+            -v "$HOME/.aws:/root/.aws:ro" \
+            ghcr.io/${{ github.repository }}:latest \
+            pnpm run preflight:runtime
+
             docker run --rm \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             ghcr.io/${{ github.repository }}:latest \
@@ -109,12 +123,35 @@ jobs:
               echo "LiveKit production configuration is absent; guest calls remain disabled"
             fi
 
-            docker stop alcantara-backend || true
-            docker rm alcantara-backend || true
+            had_previous=0
+            docker rm -f alcantara-backend-previous >/dev/null 2>&1 || true
+            if docker inspect alcantara-backend >/dev/null 2>&1; then
+              docker stop alcantara-backend
+              docker rename alcantara-backend alcantara-backend-previous
+              had_previous=1
+            fi
+
+            rollback_backend() {
+              echo "Restoring previous Alcantara backend"
+              docker rm -f alcantara-backend >/dev/null 2>&1 || true
+              if test "$had_previous" -eq 1; then
+                docker rename alcantara-backend-previous alcantara-backend
+                docker start alcantara-backend
+                for rollback_attempt in $(seq 1 30); do
+                  if docker exec alcantara-backend node -e "const socket=require(\"node:net\").connect(${{ vars.HTTP_PORT }},\"127.0.0.1\",()=>{socket.end();process.exit(0)});socket.setTimeout(1000,()=>{socket.destroy();process.exit(1)});socket.on(\"error\",()=>process.exit(1))"; then
+                    echo "Previous Alcantara backend restored"
+                    return 0
+                  fi
+                  sleep 2
+                done
+                echo "Previous Alcantara backend did not recover"
+              fi
+              return 1
+            }
 
             LOG_STREAM_UUID=$(uuidgen)
 
-            docker run -d --name alcantara-backend \
+            if ! docker run -d --name alcantara-backend \
             --network broadcast-control \
             -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
             -e NODE_ENV=production \
@@ -125,6 +162,9 @@ jobs:
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
+            -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
+            -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
+            -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
             -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \
@@ -140,11 +180,19 @@ jobs:
             --log-opt awslogs-group=${{ vars.LOGS_GROUP }} \
             --log-opt awslogs-stream="$LOG_STREAM_UUID" \
             -v ~/.aws:/root/.aws:ro \
-            ghcr.io/${{ github.repository }}:latest
+            -v /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
+            ghcr.io/${{ github.repository }}:latest; then
+              echo "Replacement Alcantara backend could not be created"
+              rollback_backend || true
+              exit 1
+            fi
 
             for attempt in $(seq 1 45); do
               if docker exec alcantara-backend node -e "const socket=require(\"node:net\").connect(${{ vars.HTTP_PORT }},\"127.0.0.1\",()=>{socket.end();process.exit(0)});socket.setTimeout(1000,()=>{socket.destroy();process.exit(1)});socket.on(\"error\",()=>process.exit(1))"; then
                 echo "Alcantara backend startup check passed"
+                if test "$had_previous" -eq 1; then
+                  docker rm alcantara-backend-previous
+                fi
                 exit 0
               fi
               sleep 2
@@ -152,5 +200,6 @@ jobs:
 
             echo "Alcantara backend failed to start"
             docker logs --tail 200 alcantara-backend || true
+            rollback_backend || true
             exit 1
             '

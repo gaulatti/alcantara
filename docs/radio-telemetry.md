@@ -16,6 +16,13 @@ interpolates UI progress between authoritative updates.
 - A Palazzo instance that changes identity under a program is rejected as an
   `instance-mismatch`, degrading only that program.
 
+`PalazzoMachineClient` is the sole outbound transport. Song automation, manual
+song controls, Flight and scene instants, scheduled bumpers, mixer reads and
+writes, status hydration, SSE, polling, and startup recovery all use
+`/v1/programs/{programId}` with the same backend-only bearer credential. A
+repository-wide production caller must not use Palazzo's legacy root playback
+routes.
+
 ## Correlation
 
 - Every song, bumper, and manual playback command carries a unique
@@ -23,6 +30,9 @@ interpolates UI progress between authoritative updates.
 - Palazzo event identity is `bootId + sequence`. The client deduplicates
   events per program, ignoring duplicates, older sequences, and events from
   superseded boots once a newer snapshot is accepted.
+- A cursor gap aborts that SSE stream and reconciles the authenticated state
+  snapshot before another lifecycle event can mutate the engine. Malformed and
+  explicitly cross-program state/events are rejected.
 - `track.started` with a matching request ID establishes authoritative start
   time and position.
 - `track.ended` with a matching request ID advances the sequence exactly
@@ -32,19 +42,23 @@ interpolates UI progress between authoritative updates.
   authoritative end. Looped playlists wrap; explicitly non-looped playlists
   publish stopped at their end. A missing song-sequence mode means autoplay,
   while an explicit `manual` mode remains an operator stop boundary.
-- A track played by Palazzo that Alcantara did not command is foreign: no
-  state is adopted and no new commands are sent while it plays.
-- When Alcantara restarts during that foreign/inherited track, its authoritative
-  end or the following idle snapshot releases the handoff and resumes an
-  autoplay or shuffle sequence. Explicit manual mode remains idle.
+- When Alcantara restarts during playback, it adopts the inherited Palazzo
+  track only when the authoritative audio URL identifies exactly one leaf in
+  the configured sequence. Adoption preserves Palazzo's request ID, start time,
+  and position, sends no competing play command, and advances from that exact
+  leaf when its authoritative end arrives.
+- An unknown URL, or a URL reused by multiple sequence leaves, remains foreign:
+  Alcantara sends no command while it plays and does not guess a successor from
+  its end event. It waits for an authoritative idle snapshot before normal
+  automatic recovery. Explicit manual mode remains idle.
 
 ## Transports and failure behavior
 
 Each program's client opens one SSE connection to the Palazzo
-`/playback/events` endpoint. Every connection begins with a complete
+`/v1/programs/{programId}/playback/events` endpoint. Every connection begins with a complete
 `snapshot` event; reconnections replay missed events via `Last-Event-ID`.
 
-- If SSE fails but `/playback/state` responds, the client polls that endpoint
+- If SSE fails but `/v1/programs/{programId}/playback/state` responds, the client polls that endpoint
   (connection state `polling`) and reconciles snapshots while SSE reconnects
   with capped exponential backoff.
 - If both transports are unavailable, the program's radio leg is marked
@@ -75,6 +89,39 @@ multiplied by that bus and the main output gain. Bumper settings persist
 `bumperEnabled`, `bumperInterval`, `bumperInstantIds`, and `bumperMode`; invalid
 intervals, IDs, or modes fail visibly instead of being dropped.
 
+## Machine credential and configuration
+
+The browser calls Alcantara only and never receives or transmits the Palazzo
+credential. Local Compose supplies the fictional `PALAZZO_CONTROL_TOKEN` and
+`PALAZZO_ALLOWED_URLS=http://palazzo:3100`; Palazzo must be reachable on the
+local/private Docker network for radio integration tests.
+
+Production sets only the bootstrap `ALCANTARA_CONFIG_SECRET_ID` and AWS region.
+Before Nest constructs `AppModule` or any Palazzo client, Alcantara reads that
+Secrets Manager JSON and selects only these scalar fields:
+
+```json
+{
+  "palazzoControlToken": "replace-in-secrets-manager",
+  "palazzoAllowedUrls": "http://palazzo:3100"
+}
+```
+
+Retrieval failure, malformed values, or either missing field fails startup.
+There is no plaintext production token environment fallback. The runtime IAM identity needs
+only `secretsmanager:GetSecretValue` for this one Alcantara configuration
+secret (plus `kms:Decrypt` only when a customer-managed key requires it).
+
+For backwards-compatible migration of the existing Palazzo installation,
+deployment may instead mount its established control-token file and set
+`PALAZZO_CONTROL_TOKEN_FILE` plus the fixed private
+`PALAZZO_ALLOWED_URLS=http://palazzo:3100`. The file is read before Nest starts
+and is never exposed to the browser or command output. Secrets Manager remains
+the preferred long-term bootstrap; if neither source validates, deployment
+leaves the current backend untouched.
+`palazzoAllowedUrls` is enforced before attaching the bearer token, preventing
+an operator-editable `palazzoUrl` from redirecting the credential elsewhere.
+
 ## Metrics
 
 `GET /metrics` exposes Prometheus text format 0.0.4. The route is public only to
@@ -99,7 +146,12 @@ credential as a build argument or ordinary environment value.
 The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,
 snapshot reconciliation results, ignored-event reasons, stale-telemetry and
-degraded program gauges, and track transition results. Program IDs, playback
+degraded program gauges, track transition results,
+`alcantara_palazzo_machine_requests_total{operation,result}`, and
+`alcantara_palazzo_machine_retries_total{operation}`. The operation/result
+sets are closed enums covering success, deduplication, authentication,
+rejection, unavailability, malformed responses, and cross-program rejection.
+Program IDs, playback
 request IDs, URLs, consumer names, song titles, artists, tokens, raw errors,
 and other external identifiers are never used as label values.
 

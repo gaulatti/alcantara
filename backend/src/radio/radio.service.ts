@@ -4,7 +4,13 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
+import {
+  PalazzoMachineClient,
+  PalazzoMachineError,
+} from './palazzo-machine.client';
+import type { PalazzoPlaybackState } from './palazzo-contract';
 
 export interface RadioSettingsPayload {
   palazzoUrl?: string;
@@ -27,7 +33,10 @@ export interface RadioMixerPayload {
 export class RadioService {
   private readonly logger = new Logger(RadioService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly palazzo: PalazzoMachineClient,
+  ) {}
 
   async getRadioSettings(programId: string) {
     const state = await this.prisma.programState.findUnique({
@@ -44,6 +53,9 @@ export class RadioService {
       select: { id: true },
     });
     if (!state) throw new Error('Program not found');
+    if (data.palazzoUrl !== undefined) {
+      data.palazzoUrl = this.palazzo.validateBaseUrl(data.palazzoUrl);
+    }
 
     const bumperInterval = this.normalizeBumperInterval(data.bumperInterval);
     const bumperInstantIds = this.normalizeBumperInstantIds(
@@ -112,8 +124,15 @@ export class RadioService {
     return value;
   }
 
-  private palazzoUrl(settings: any): string {
-    return (settings?.palazzoUrl || 'http://palazzo:3100').replace(/\/+$/, '');
+  private palazzoUrl(settings: unknown): string {
+    const value =
+      settings && typeof settings === 'object' && 'palazzoUrl' in settings
+        ? settings.palazzoUrl
+        : undefined;
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new BadGatewayException('Palazzo URL is not configured');
+    }
+    return value.trim();
   }
 
   async playSong(
@@ -126,43 +145,36 @@ export class RadioService {
   ): Promise<{ ok: boolean; playbackRequestId?: string }> {
     const settings = await this.getRadioSettings(programId);
     if (!settings) return { ok: false };
-    const url = this.palazzoUrl(settings);
+    const requestId = playbackRequestId?.trim() || randomUUID();
     try {
-      const res = await fetch(`${url}/song`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const result = await this.palazzo.playSong(
+        this.palazzoUrl(settings),
+        programId,
+        {
+          playbackId: requestId,
           url: audioUrl,
           title,
           artist,
           coverUrl,
-          playbackRequestId,
-        }),
-      });
-      if (!res.ok) return { ok: false };
-      const body = (await res.json().catch(() => null)) as {
-        playbackRequestId?: string;
-      } | null;
+        },
+      );
       return {
         ok: true,
-        playbackRequestId:
-          typeof body?.playbackRequestId === 'string'
-            ? body.playbackRequestId
-            : playbackRequestId,
+        playbackRequestId: result.playbackRequestId,
       };
-    } catch (err) {
-      this.logger.error(`playSong failed: ${err}`);
-      return { ok: false };
+    } catch (error) {
+      this.logMachineFailure('playSong', programId, error);
+      return { ok: false, playbackRequestId: requestId };
     }
   }
 
   async stopSong(programId: string): Promise<void> {
-    const settings = await this.getRadioSettings(programId);
-    if (!settings) return;
+    const settings = await this.requireRadioSettings(programId);
     try {
-      await fetch(`${this.palazzoUrl(settings)}/song/stop`, { method: 'POST' });
-    } catch (err) {
-      this.logger.error(`stopSong failed: ${err}`);
+      await this.palazzo.stopSong(this.palazzoUrl(settings), programId);
+    } catch (error) {
+      this.logMachineFailure('stopSong', programId, error);
+      throw new BadGatewayException('Palazzo rejected the song stop');
     }
   }
 
@@ -172,16 +184,17 @@ export class RadioService {
     volume?: number,
     playbackRequestId?: string,
   ): Promise<void> {
-    const settings = await this.getRadioSettings(programId);
-    if (!settings) return;
+    const settings = await this.requireRadioSettings(programId);
+    const requestId = playbackRequestId?.trim() || randomUUID();
     try {
-      await fetch(`${this.palazzoUrl(settings)}/instant`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: audioUrl, volume, playbackRequestId }),
+      await this.palazzo.playInstant(this.palazzoUrl(settings), programId, {
+        playbackId: requestId,
+        url: audioUrl,
+        volume,
       });
-    } catch (err) {
-      this.logger.error(`playInstant failed: ${err}`);
+    } catch (error) {
+      this.logMachineFailure('playInstant', programId, error);
+      throw new BadGatewayException('Palazzo rejected the instant');
     }
   }
 
@@ -189,55 +202,76 @@ export class RadioService {
     programId: string,
     mixer: RadioMixerPayload,
   ): Promise<void> {
-    const settings = await this.getRadioSettings(programId);
-    if (!settings)
-      throw new BadGatewayException('Radio settings are unavailable');
+    const settings = await this.requireRadioSettings(programId);
     try {
-      const res = await fetch(`${this.palazzoUrl(settings)}/mixer`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mixer),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-    } catch (err) {
-      this.logger.error(`updateMixer failed: ${err}`);
+      await this.palazzo.updateMixer(
+        this.palazzoUrl(settings),
+        programId,
+        mixer,
+      );
+    } catch (error) {
+      this.logMachineFailure('updateMixer', programId, error);
       throw new BadGatewayException('Palazzo rejected the radio mixer update');
     }
   }
 
-  async getPlaybackState(programId: string): Promise<unknown | null> {
-    const settings = await this.getRadioSettings(programId);
-    if (!settings) return null;
+  async getPlaybackState(programId: string): Promise<PalazzoPlaybackState> {
+    const settings = await this.requireRadioSettings(programId);
     try {
-      const res = await fetch(`${this.palazzoUrl(settings)}/playback/state`);
-      return res.ok ? res.json() : null;
-    } catch {
-      return null;
+      return await this.palazzo.getPlaybackState(
+        this.palazzoUrl(settings),
+        programId,
+      );
+    } catch (error) {
+      this.logMachineFailure('getPlaybackState', programId, error);
+      throw new BadGatewayException('Palazzo playback state is unavailable');
     }
   }
 
   async stopAllInstants(programId: string): Promise<void> {
-    const settings = await this.getRadioSettings(programId);
-    if (!settings) return;
+    const settings = await this.requireRadioSettings(programId);
     try {
-      await fetch(`${this.palazzoUrl(settings)}/instant/stop`, {
-        method: 'POST',
-      });
-    } catch (err) {
-      this.logger.error(`stopAllInstants failed: ${err}`);
+      await this.palazzo.stopInstants(this.palazzoUrl(settings), programId);
+    } catch (error) {
+      this.logMachineFailure('stopAllInstants', programId, error);
+      throw new BadGatewayException('Palazzo rejected the instant stop');
     }
   }
 
-  async getPalazzoStatus(programId: string): Promise<unknown | null> {
+  async getPalazzoStatus(programId: string): Promise<{
+    running: boolean;
+    uptime: null;
+  }> {
+    const state = await this.getPlaybackState(programId);
+    return {
+      running:
+        state.liquidsoap.running &&
+        state.liquidsoap.connected &&
+        state.icecast.connected,
+      uptime: null,
+    };
+  }
+
+  private async requireRadioSettings(programId: string) {
     const settings = await this.getRadioSettings(programId);
-    if (!settings) return null;
-    try {
-      const res = await fetch(`${this.palazzoUrl(settings)}/status`);
-      return res.ok ? res.json() : null;
-    } catch {
-      return null;
+    if (!settings) {
+      throw new BadGatewayException('Radio settings are unavailable');
     }
+    return settings;
+  }
+
+  private logMachineFailure(
+    operation: string,
+    programId: string,
+    error: unknown,
+  ): void {
+    const reason =
+      error instanceof PalazzoMachineError ? error.reason : 'unavailable';
+    this.logger.error({
+      event: 'palazzo.machine.failed',
+      operation,
+      programId,
+      reason,
+    });
   }
 }

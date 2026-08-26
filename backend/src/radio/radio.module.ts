@@ -5,6 +5,7 @@ import { SongExecutionEngine } from './song-execution.engine';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 import { RadioMetricsService } from './radio-metrics.service';
+import { PalazzoMachineClient } from './palazzo-machine.client';
 import { PrismaService } from '../prisma.service';
 
 @Global()
@@ -16,6 +17,7 @@ import { PrismaService } from '../prisma.service';
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,
     RadioMetricsService,
+    PalazzoMachineClient,
     PrismaService,
   ],
   exports: [
@@ -24,6 +26,7 @@ import { PrismaService } from '../prisma.service';
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,
     RadioMetricsService,
+    PalazzoMachineClient,
   ],
 })
 export class RadioModule {}

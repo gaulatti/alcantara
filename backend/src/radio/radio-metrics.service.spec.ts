@@ -15,6 +15,10 @@ describe('RadioMetricsService', () => {
     metrics.recordStaleTelemetryPrograms(1);
     metrics.recordTrackTransition('advanced');
     metrics.recordTrackTransition('ignored-frozen');
+    metrics.recordMachineRequest('song-play', 'success');
+    metrics.recordMachineRequest('song-play', 'deduplicated');
+    metrics.recordMachineRequest('event-connect', 'unauthorized');
+    metrics.recordMachineRetry('song-play');
 
     const rendered = metrics.render();
     expect(rendered).toContain(
@@ -23,9 +27,7 @@ describe('RadioMetricsService', () => {
     expect(rendered).toContain(
       'alcantara_palazzo_sse_connections{state="unavailable"} 1',
     );
-    expect(rendered).toContain(
-      'alcantara_palazzo_reconnect_attempts_total 1',
-    );
+    expect(rendered).toContain('alcantara_palazzo_reconnect_attempts_total 1');
     expect(rendered).toContain(
       'alcantara_palazzo_snapshot_reconciliation_total{result="accepted"} 1',
     );
@@ -38,6 +40,15 @@ describe('RadioMetricsService', () => {
     );
     expect(rendered).toContain(
       'alcantara_radio_track_transitions_total{result="ignored-frozen"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_palazzo_machine_requests_total{operation="song-play",result="success"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_palazzo_machine_requests_total{operation="event-connect",result="unauthorized"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_palazzo_machine_retries_total{operation="song-play"} 1',
     );
   });
 

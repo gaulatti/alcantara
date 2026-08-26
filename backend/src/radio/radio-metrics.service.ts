@@ -1,11 +1,31 @@
 import { Injectable } from '@nestjs/common';
 
-type CounterKey = string;
-
 export type PalazzoEventIgnoreReason =
   | 'duplicate'
   | 'stale-sequence'
-  | 'superseded-boot';
+  | 'superseded-boot'
+  | 'sequence-gap'
+  | 'cross-program'
+  | 'malformed';
+
+export type PalazzoMachineOperation =
+  | 'song-play'
+  | 'song-stop'
+  | 'instant-play'
+  | 'instant-stop'
+  | 'mixer-read'
+  | 'mixer-update'
+  | 'state-read'
+  | 'event-connect';
+
+export type PalazzoMachineResult =
+  | 'success'
+  | 'deduplicated'
+  | 'unauthorized'
+  | 'rejected'
+  | 'unavailable'
+  | 'malformed'
+  | 'cross-program';
 
 export type TrackTransitionResult =
   | 'advanced'
@@ -30,6 +50,8 @@ export interface RadioMetricsSnapshot {
   degradedPrograms: number;
   trackTransitions: Record<string, number>;
   staleTelemetryPrograms: number;
+  machineRequests: Record<string, number>;
+  machineRetries: Record<string, number>;
 }
 
 const CONNECTION_STATES = [
@@ -51,6 +73,30 @@ const IGNORE_REASONS: PalazzoEventIgnoreReason[] = [
   'duplicate',
   'stale-sequence',
   'superseded-boot',
+  'sequence-gap',
+  'cross-program',
+  'malformed',
+];
+
+const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
+  'song-play',
+  'song-stop',
+  'instant-play',
+  'instant-stop',
+  'mixer-read',
+  'mixer-update',
+  'state-read',
+  'event-connect',
+];
+
+const MACHINE_RESULTS: PalazzoMachineResult[] = [
+  'success',
+  'deduplicated',
+  'unauthorized',
+  'rejected',
+  'unavailable',
+  'malformed',
+  'cross-program',
 ];
 
 const TRANSITION_RESULTS: TrackTransitionResult[] = [
@@ -80,13 +126,14 @@ export class RadioMetricsService {
   private degradedPrograms = 0;
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
+  private readonly machineRequests = new Map<string, number>();
+  private readonly machineRetries = new Map<string, number>();
 
   recordConnectionState(
     state: (typeof CONNECTION_STATES)[number],
     delta: 1 | -1,
   ): void {
-    if (!CONNECTION_STATES.includes(state as (typeof CONNECTION_STATES)[number]))
-      return;
+    if (!CONNECTION_STATES.includes(state)) return;
     const current = this.connectionsByState.get(state) ?? 0;
     const next = Math.max(0, current + delta);
     if (next === 0) this.connectionsByState.delete(state);
@@ -130,6 +177,27 @@ export class RadioMetricsService {
     );
   }
 
+  recordMachineRequest(
+    operation: PalazzoMachineOperation,
+    result: PalazzoMachineResult,
+  ): void {
+    if (
+      !MACHINE_OPERATIONS.includes(operation) ||
+      !MACHINE_RESULTS.includes(result)
+    )
+      return;
+    const key = `${operation}:${result}`;
+    this.machineRequests.set(key, (this.machineRequests.get(key) ?? 0) + 1);
+  }
+
+  recordMachineRetry(operation: PalazzoMachineOperation): void {
+    if (!MACHINE_OPERATIONS.includes(operation)) return;
+    this.machineRetries.set(
+      operation,
+      (this.machineRetries.get(operation) ?? 0) + 1,
+    );
+  }
+
   snapshot(): RadioMetricsSnapshot {
     return {
       connectionsByState: Object.fromEntries(this.connectionsByState),
@@ -140,6 +208,8 @@ export class RadioMetricsService {
       degradedPrograms: this.degradedPrograms,
       trackTransitions: Object.fromEntries(this.trackTransitions),
       staleTelemetryPrograms: this.staleTelemetryPrograms,
+      machineRequests: Object.fromEntries(this.machineRequests),
+      machineRetries: Object.fromEntries(this.machineRetries),
     };
   }
 
@@ -190,6 +260,26 @@ export class RadioMetricsService {
     for (const result of TRANSITION_RESULTS) {
       lines.push(
         `alcantara_radio_track_transitions_total{result="${result}"} ${this.trackTransitions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_palazzo_machine_requests_total Program-scoped Palazzo machine requests by bounded operation and result.',
+      '# TYPE alcantara_palazzo_machine_requests_total counter',
+    );
+    for (const operation of MACHINE_OPERATIONS) {
+      for (const result of MACHINE_RESULTS) {
+        lines.push(
+          `alcantara_palazzo_machine_requests_total{operation="${operation}",result="${result}"} ${this.machineRequests.get(`${operation}:${result}`) ?? 0}`,
+        );
+      }
+    }
+    lines.push(
+      '# HELP alcantara_palazzo_machine_retries_total Retried idempotent Palazzo machine requests by bounded operation.',
+      '# TYPE alcantara_palazzo_machine_retries_total counter',
+    );
+    for (const operation of MACHINE_OPERATIONS) {
+      lines.push(
+        `alcantara_palazzo_machine_retries_total{operation="${operation}"} ${this.machineRetries.get(operation) ?? 0}`,
       );
     }
     lines.push('');

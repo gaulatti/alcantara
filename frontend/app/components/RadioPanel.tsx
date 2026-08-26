@@ -62,7 +62,7 @@ interface RadioPanelProps {
 
 interface StreamStatus {
   running: boolean;
-  uptime: number;
+  uptime: number | null;
 }
 
 interface PalazzoStatus {

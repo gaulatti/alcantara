@@ -131,6 +131,11 @@ looped playlists wrap to the first item and non-looped playlists stop at the end
 The radio control surface includes live Song, Instants / bumpers, and Main
 mixer controls. Mixer mutations are applied to Palazzo as well as persisted;
 bumper configuration fields are validated and saved by the radio settings API.
+All Palazzo traffic is backend-only, bearer-authenticated, and explicitly
+program-scoped. The shared machine client preserves playback/idempotency IDs
+across retries and is also used by telemetry reconnect and startup recovery.
+See [`docs/radio-telemetry.md`](docs/radio-telemetry.md) for the contract,
+Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 
 ### Program Page (`/program`)
 
@@ -310,10 +315,20 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 ## Architecture
 
 Production places the backend on the external `broadcast-control` Docker
-network shared with Palazzo. The backend deployment verifies that the network
-exists before replacing the live container, then joins the replacement to it so
-the private `http://palazzo:3100` telemetry endpoint remains resolvable across
-deployments.
+network shared with Palazzo. Before stopping the live backend, deployment runs
+a side-effect-free runtime preflight in the new image to resolve and validate
+the Palazzo credential and approved URL list. The previous container is retained
+until the replacement passes its startup check and is automatically restored if
+the replacement fails. This keeps the existing radio controller alive when a
+configuration or startup defect reaches deployment.
+
+The replacement joins `broadcast-control` so the private
+`http://palazzo:3100` program-scoped machine API remains resolvable. Set the
+production `ALCANTARA_CONFIG_SECRET_ID` repository variable to the
+application-scoped Secrets Manager payload. During migration, deployment also
+mounts Palazzo's existing `/etc/palazzo/control-token` as a backwards-compatible
+credential source. Preflight fails without replacing the live backend when
+neither source is available or when configuration is invalid.
 
 ### Data Flow
 

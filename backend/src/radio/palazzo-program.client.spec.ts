@@ -3,7 +3,11 @@ import {
   type PalazzoProgramClientCallbacks,
 } from './palazzo-program.client';
 import { RadioMetricsService } from './radio-metrics.service';
-import type { PalazzoPlaybackEvent, PalazzoPlaybackState } from './palazzo-contract';
+import { PalazzoMachineClient } from './palazzo-machine.client';
+import type {
+  PalazzoPlaybackEvent,
+  PalazzoPlaybackState,
+} from './palazzo-contract';
 
 function snapshotEvent(
   instanceId: string,
@@ -60,7 +64,9 @@ function idleState(
       staleSince: null,
       lastSampleAt: new Date().toISOString(),
     },
+    icecast: { connected: true },
     track: null,
+    intro: null,
     positionSeconds: 0,
     remainingSeconds: null,
     levels: {
@@ -103,13 +109,26 @@ function createClient(
     validateInstance: jest.fn().mockReturnValue('ok'),
     ...callbacks,
   };
+  const config = {
+    get: (key: string) =>
+      ({
+        NODE_ENV: 'test',
+        PALAZZO_CONTROL_TOKEN: 'palazzo-test-control-token',
+        PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+      })[key],
+  } as any;
+  const machineClient = new PalazzoMachineClient(
+    config,
+    metrics,
+    fetchImpl as unknown as typeof fetch,
+  );
   const client = new PalazzoProgramClient({
     programId: 'radio-1',
     programType: 'radio',
     palazzoUrl: 'http://palazzo:3100',
     metrics,
     callbacks: fullCallbacks,
-    fetchImpl: fetchImpl as unknown as typeof fetch,
+    machineClient,
     pollIntervalMs: 5,
   });
   return { client, metrics, callbacks: fullCallbacks };
@@ -122,10 +141,21 @@ describe('PalazzoProgramClient', () => {
 
   it('accepts the initial snapshot and forwards lifecycle events', async () => {
     const snapshot = idleState('palazzo-a', 'boot-1', 1);
-    const started = lifecycleEvent('palazzo-a', 'boot-1', 2, 'track.started', 'req-1');
-    const fetchImpl = jest.fn().mockResolvedValue(
-      sseResponse([frame(snapshotEvent('palazzo-a', 'boot-1', 1, snapshot)), frame(started)]),
+    const started = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      2,
+      'track.started',
+      'req-1',
     );
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 1, snapshot)),
+          frame(started),
+        ]),
+      );
     const { client, callbacks } = createClient(fetchImpl);
 
     client.start();
@@ -138,17 +168,37 @@ describe('PalazzoProgramClient', () => {
 
   it('ignores duplicate and stale sequences within the same boot', async () => {
     const snapshot = idleState('palazzo-a', 'boot-1', 5);
-    const duplicate = lifecycleEvent('palazzo-a', 'boot-1', 5, 'track.ended', 'req-1');
-    const stale = lifecycleEvent('palazzo-a', 'boot-1', 3, 'track.ended', 'req-1');
-    const fresh = lifecycleEvent('palazzo-a', 'boot-1', 6, 'track.ended', 'req-1');
-    const fetchImpl = jest.fn().mockResolvedValue(
-      sseResponse([
-        frame(snapshotEvent('palazzo-a', 'boot-1', 5, snapshot)),
-        frame(duplicate),
-        frame(stale),
-        frame(fresh),
-      ]),
+    const duplicate = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      5,
+      'track.ended',
+      'req-1',
     );
+    const stale = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      3,
+      'track.ended',
+      'req-1',
+    );
+    const fresh = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      6,
+      'track.ended',
+      'req-1',
+    );
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 5, snapshot)),
+          frame(duplicate),
+          frame(stale),
+          frame(fresh),
+        ]),
+      );
     const { client, callbacks, metrics } = createClient(fetchImpl);
 
     client.start();
@@ -166,14 +216,22 @@ describe('PalazzoProgramClient', () => {
   it('ignores events from a superseded boot until a newer snapshot arrives', async () => {
     const first = idleState('palazzo-a', 'boot-1', 5);
     const second = idleState('palazzo-a', 'boot-2', 1);
-    const oldBootEvent = lifecycleEvent('palazzo-a', 'boot-1', 6, 'track.ended', 'req-1');
-    const fetchImpl = jest.fn().mockResolvedValue(
-      sseResponse([
-        frame(snapshotEvent('palazzo-a', 'boot-1', 5, first)),
-        frame(snapshotEvent('palazzo-a', 'boot-2', 1, second)),
-        frame(oldBootEvent),
-      ]),
+    const oldBootEvent = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      6,
+      'track.ended',
+      'req-1',
     );
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 5, first)),
+          frame(snapshotEvent('palazzo-a', 'boot-2', 1, second)),
+          frame(oldBootEvent),
+        ]),
+      );
     const { client, callbacks, metrics } = createClient(fetchImpl);
 
     client.start();
@@ -188,12 +246,14 @@ describe('PalazzoProgramClient', () => {
   it('rejects an instance identity mismatch and stops consuming', async () => {
     const first = idleState('palazzo-a', 'boot-1', 1);
     const second = idleState('palazzo-b', 'boot-1', 2);
-    const fetchImpl = jest.fn().mockResolvedValue(
-      sseResponse([
-        frame(snapshotEvent('palazzo-a', 'boot-1', 1, first)),
-        frame(snapshotEvent('palazzo-b', 'boot-1', 2, second)),
-      ]),
-    );
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 1, first)),
+          frame(snapshotEvent('palazzo-b', 'boot-1', 2, second)),
+        ]),
+      );
     const { client, callbacks } = createClient(fetchImpl);
 
     client.start();
@@ -209,9 +269,11 @@ describe('PalazzoProgramClient', () => {
     const sseFailure = jest
       .fn()
       .mockRejectedValue(new Error('connection refused'));
-    const stateFetch = jest.fn().mockImplementation(async () =>
-      new Response(JSON.stringify(state), { status: 200 }),
-    );
+    const stateFetch = jest
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify(state), { status: 200 }),
+      );
     const fetchImpl = jest.fn((url: string) =>
       url.includes('/playback/events') ? sseFailure() : stateFetch(),
     );
@@ -237,5 +299,66 @@ describe('PalazzoProgramClient', () => {
     expect(callbacks.onSnapshot).not.toHaveBeenCalled();
     expect(client.getStatus().connection).toBe('unavailable');
     expect(client.getStatus().degraded).toBe(true);
+  });
+
+  it('reconciles an SSE sequence gap through authenticated state without applying the gap event', async () => {
+    const snapshot = idleState('palazzo-a', 'boot-1', 1);
+    const gap = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      3,
+      'track.ended',
+      'req-1',
+    );
+    const fetchImpl = jest.fn((url: string) =>
+      url.includes('/playback/events')
+        ? Promise.resolve(
+            sseResponse([
+              frame(snapshotEvent('palazzo-a', 'boot-1', 1, snapshot)),
+              frame(gap),
+            ]),
+          )
+        : Promise.resolve(Response.json(idleState('palazzo-a', 'boot-1', 3))),
+    );
+    const { client, callbacks, metrics } = createClient(fetchImpl);
+
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    client.stop();
+
+    expect(callbacks.onEvent).not.toHaveBeenCalled();
+    expect(callbacks.onSnapshot).toHaveBeenLastCalledWith(
+      'radio-1',
+      expect.objectContaining({ sequence: 3 }),
+    );
+    expect(metrics.snapshot().eventsIgnored['sequence-gap']).toBe(1);
+  });
+
+  it('rejects a cross-program event before it reaches the engine', async () => {
+    const snapshot = idleState('palazzo-a', 'boot-1', 1);
+    const event = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      2,
+      'track.started',
+      'req-1',
+    );
+    event.data.programId = 'another-program';
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 1, snapshot)),
+          frame(event),
+        ]),
+      );
+    const { client, callbacks, metrics } = createClient(fetchImpl);
+
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    client.stop();
+
+    expect(callbacks.onEvent).not.toHaveBeenCalled();
+    expect(metrics.snapshot().eventsIgnored['cross-program']).toBe(1);
   });
 });

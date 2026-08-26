@@ -50,6 +50,11 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     );
     metrics.recordJob('charts-refresh', 'failure');
     metrics.recordPreference('write', 'conflict');
+    const radioMetrics = app.get(RadioMetricsService);
+    radioMetrics.recordMachineRequest('song-play', 'deduplicated');
+    radioMetrics.recordMachineRequest('event-connect', 'unauthorized');
+    radioMetrics.recordMachineRetry('song-play');
+    radioMetrics.recordEventIgnored('sequence-gap');
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -92,6 +97,18 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain('alcantara_palazzo_sse_connections');
     expect(body).toContain(
       'alcantara_operator_preference_operations_total{action="write",result="conflict"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_palazzo_machine_requests_total{operation="song-play",result="deduplicated"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_palazzo_machine_requests_total{operation="event-connect",result="unauthorized"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_palazzo_machine_retries_total{operation="song-play"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_palazzo_events_ignored_total{reason="sequence-gap"} 1',
     );
     expect(body).toContain('method="unknown"');
     expect(body).toContain('route="unknown"');
