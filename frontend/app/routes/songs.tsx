@@ -6,7 +6,10 @@ import type { Route } from './+types/songs';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { fetchSongsPage } from '../services/songs';
-import type { SongCatalogItem } from '../models/broadcast';
+import { fetchInstants } from '../services/instants';
+import type { InstantItem, SongCatalogItem } from '../models/broadcast';
+import { useGlobalProgramId } from '../utils/globalProgram';
+import { SongIntroField } from '../components/editors/SongIntroField';
 
 async function extractErrorMessage(res: Response): Promise<string> {
   const text = await res.text();
@@ -103,7 +106,9 @@ export function meta({}: Route.MetaArgs) {
 
 export default function SongsCatalog() {
   const navigate = useNavigate();
+  const [activeProgramId] = useGlobalProgramId();
   const [songs, setSongs] = useState<SongCatalogItem[]>([]);
+  const [instants, setInstants] = useState<InstantItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -129,6 +134,8 @@ export default function SongsCatalog() {
   const [earoneRankInput, setEaroneRankInput] = useState('');
   const [earoneSpinsInput, setEaroneSpinsInput] = useState('');
   const [enabledInput, setEnabledInput] = useState(true);
+  const [introInstantIdInput, setIntroInstantIdInput] = useState('');
+  const [previewingIntroId, setPreviewingIntroId] = useState<number | null>(null);
   const [songFile, setSongFile] = useState<File | null>(null);
   const [isUploadingSong, setIsUploadingSong] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
@@ -145,6 +152,7 @@ export default function SongsCatalog() {
         sortBy,
         sortOrder,
         page,
+        programId: activeProgramId,
       });
       setSongs(result.data);
       setTotalPages(result.meta.totalPages);
@@ -159,7 +167,11 @@ export default function SongsCatalog() {
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSearch, showDisabledSongs, sortBy, sortOrder, page]);
+  }, [debouncedSearch, showDisabledSongs, sortBy, sortOrder, page, activeProgramId]);
+
+  const loadInstants = useCallback(async () => {
+    setInstants(await fetchInstants(activeProgramId));
+  }, [activeProgramId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -175,6 +187,13 @@ export default function SongsCatalog() {
   useEffect(() => {
     fetchSongs();
   }, [fetchSongs]);
+
+  useEffect(() => {
+    void loadInstants().catch((err) => {
+      console.error('Failed to load song intro assets:', err);
+      showAlert('Failed to load Instant assets for song intros.', 'error');
+    });
+  }, [loadInstants]);
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -215,6 +234,8 @@ export default function SongsCatalog() {
     setEaroneRankInput('');
     setEaroneSpinsInput('');
     setEnabledInput(true);
+    setIntroInstantIdInput('');
+    setPreviewingIntroId(null);
     setSongFile(null);
     setError('');
     setIsUploadingSong(false);
@@ -272,6 +293,7 @@ export default function SongsCatalog() {
     setEaroneRankInput(song.earoneRank || '');
     setEaroneSpinsInput(song.earoneSpins || '');
     setEnabledInput(song.enabled);
+    setIntroInstantIdInput(song.intro ? String(song.intro.instantId) : '');
     setSongFile(null);
     setError('');
     setIsModalOpen(true);
@@ -387,7 +409,9 @@ export default function SongsCatalog() {
           earoneSongId: earoneSongIdInput.trim() || null,
           earoneRank: earoneRankInput.trim() || null,
           earoneSpins: earoneSpinsInput.trim() || null,
-          enabled: enabledInput
+          enabled: enabledInput,
+          programId: activeProgramId,
+          introInstantId: introInstantIdInput ? Number(introInstantIdInput) : null
         })
       });
 
@@ -396,6 +420,7 @@ export default function SongsCatalog() {
       }
 
       await fetchSongs();
+      await loadInstants();
       closeModal();
       showAlert(isEditing ? 'Song updated.' : 'Song created.', 'success');
     } catch (err) {
@@ -545,6 +570,9 @@ export default function SongsCatalog() {
                       {/* Title only */}
                       <div className='min-w-0'>
                         <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{song.title || 'Untitled'}</div>
+                        <div className='truncate text-[11px] text-text-secondary dark:text-text-secondary'>
+                          {song.intro ? `Song intro: ${song.intro.instant.name}` : 'No song intro'}
+                        </div>
                       </div>
 
                       {/* Artist */}
@@ -748,6 +776,23 @@ export default function SongsCatalog() {
                   <Input type='text' value={earoneSpinsInput} onChange={(event) => setEaroneSpinsInput(event.target.value)} />
                 </div>
               </div>
+
+              <SongIntroField
+                instants={instants}
+                songId={editingSong.id}
+                currentIntroInstantId={editingSong.intro?.instantId}
+                selectedInstantId={introInstantIdInput}
+                previewing={previewingIntroId === Number(introInstantIdInput)}
+                onChange={setIntroInstantIdInput}
+                onPreview={(instant) => {
+                  const audio = new Audio(instant.audioUrl);
+                  setPreviewingIntroId(instant.id);
+                  const clear = () => setPreviewingIntroId(null);
+                  audio.onended = clear;
+                  audio.onerror = clear;
+                  void audio.play().catch(clear);
+                }}
+              />
 
               {error ? <p className='text-sm text-terracotta'>{error}</p> : null}
 

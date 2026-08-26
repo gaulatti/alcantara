@@ -39,6 +39,12 @@ alcantara/
 
 ## Features
 
+- Per-song recorded intro assignment, validation, and stable sequence identity
+  are documented in [Song intro editorial model](docs/song-intros.md).
+- The proposed managed RTMP/WHIP/HLS/SRT source boundary, local measurements,
+  security findings, and phased rollout are documented in
+  [ADR 001: LiveKit external-source ingress](docs/adr-001-livekit-external-source-ingress.md).
+
 ### Six-guest WebRTC contribution
 
 The Calls console at `/calls` provides six reusable guest slots. An operator
@@ -174,14 +180,49 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 #### Option 1: Using Docker Compose (recommended)
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
-This builds and starts both services (ports configurable via `.env`):
+This starts PostgreSQL, applies every committed migration non-interactively,
+loads deterministic fictional data, and starts the backend, frontend, and
+LiveKit. No AWS or Cognito account is needed for local development. Ports are
+configurable via `.env`:
 - **Backend** (NestJS, default port 3000) with hot reload via `nest start --watch`
 - **Frontend** (React Router/Vite, default port 5173) with HMR
 
 Source directories are mounted so changes are reflected immediately.
+
+Local browser authentication is visibly marked `TEST AUTH`. It uses short-lived
+tokens with a local-only issuer and these deterministic identities:
+
+- `operator-a` (default) and `operator-b`: normal operator permissions
+- `viewer`: read-only, including denial of shared-layout publication
+
+Choose an identity before starting or recreating the frontend:
+
+```bash
+TEST_AUTH_IDENTITY=viewer docker compose up --build
+```
+
+Re-running the backend seed restores the deterministic profiles and shared
+layout without creating duplicates:
+
+```bash
+docker compose exec backend pnpm seed
+```
+
+To deliberately erase the disposable local database and replay migrations and
+seed data from an empty volume:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+The `postgres-data` volume otherwise preserves local changes across restarts.
+`AUTH_MODE=test` fails startup under `NODE_ENV=production`; the issuance route
+is absent when test auth is disabled, and test tokens use a distinct issuer and
+audience that production verification does not accept.
 
 The backend uses the code-owned `host.docker.internal:50087` endpoint while
 developing in Compose and the code-owned `api.pompeii.gaulatti.com:443` TLS
@@ -195,6 +236,10 @@ browser identity and returns the operator to login.
 To populate a slideshow, select its media group on the Media Groups tab, switch
 to Media Library, and use each image's add-to-group action. The selected group
 and its ordered membership remain active across the tab switch.
+
+Console preference ownership, device classification, offline behavior,
+concurrency, sharing, reset, privacy, and API behavior are documented in
+[Operator console preferences](docs/operator-preferences.md).
 
 Rebuild images after dependency changes:
 ```bash

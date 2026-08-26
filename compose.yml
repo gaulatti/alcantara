@@ -1,17 +1,34 @@
 name: alcantara
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: alcantara
+      POSTGRES_USER: alcantara
+      POSTGRES_PASSWORD: alcantara-local-development
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
   livekit:
     image: livekit/livekit-server:v1.13.4
-    command: ['--config', '/etc/livekit.yaml', '--bind', '0.0.0.0']
+    command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0"]
     volumes:
       - ./infra/livekit.dev.yaml:/etc/livekit.yaml:ro
     ports:
-      - '7880:7880'
-      - '7881:7881'
-      - '7882:7882/udp'
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:7880 || exit 1']
+      test:
+        ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7880 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -24,11 +41,20 @@ services:
         ALCANTARA_BUILD_VERSION: ${ALCANTARA_BUILD_VERSION:-dev}
     ports:
       - "${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}"
-    env_file: ./backend/.env
+    command:
+      ["sh", "-c", "pnpm db:migrate:prisma && pnpm seed && pnpm start:dev"]
+    env_file:
+      - path: ./backend/.env
+        required: false
     environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://alcantara:alcantara-local-development@postgres:5432/alcantara?schema=public
+      AUTH_MODE: test
+      TEST_AUTH_SECRET: alcantara-local-browser-test-secret-change-me
+      POMPEII_TEAM_ID: "1"
       PORT: ${BACKEND_PORT:-3000}
       ALLOWED_ORIGINS: http://localhost:${VITE_PORT:-5173}
-      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_USEPOLLING: "true"
       LIVEKIT_WS_URL: ws://localhost:7880
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
@@ -58,8 +84,22 @@ services:
           path: ./backend/package.json
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       livekit:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   frontend:
     build:
@@ -67,10 +107,15 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
-    env_file: ./frontend/.env
+    env_file:
+      - path: ./frontend/.env
+        required: false
     environment:
       - VITE_PORT=${VITE_PORT:-5173}
       - VITE_USE_POLLING=true
+      - VITE_AUTH_MODE=test
+      - VITE_TEST_AUTH_IDENTITY=${TEST_AUTH_IDENTITY:-operator-a}
+      - VITE_API_BASE_URL=http://localhost:${BACKEND_PORT:-3000}
     volumes:
       - ./frontend/app:/app/app
       - ./frontend/vite.config.ts:/app/vite.config.ts
@@ -86,4 +131,10 @@ services:
         - action: rebuild
           path: ./frontend/package.json
     command: sh -c "npm run dev"
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  postgres-data:

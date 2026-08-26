@@ -76,6 +76,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   private readonly timeoutMs: number;
   private readonly client: AuthorizationClient;
   private readonly isProduction: boolean;
+  private readonly isTestAuth: boolean;
   readonly teamId: number;
 
   constructor(
@@ -83,6 +84,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly metrics?: ManagedMetricsService,
   ) {
     this.isProduction = config.get<string>('NODE_ENV') === 'production';
+    this.isTestAuth = config.get<string>('AUTH_MODE') === 'test';
     this.grpcUrl = resolvePompeiiGrpcUrl(config.get<string>('NODE_ENV'));
     this.timeoutMs = this.positiveInteger(
       config.get<string>('POMPEII_GRPC_TIMEOUT_MS'),
@@ -122,6 +124,12 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.isTestAuth) {
+      this.logger.log(
+        'Pompeii network authorization replaced by local test-token verification',
+      );
+      return;
+    }
     const status = await this.checkConnection(this.timeoutMs);
     if (status.ready) {
       this.logger.log(

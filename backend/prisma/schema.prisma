@@ -50,6 +50,7 @@ model ProgramState {
   stingers               ProgramStinger[]
   radioSettings          RadioSettings?
   nowPlayingConsumers    NowPlayingConsumer[]
+  songIntros             SongIntro[]
   updatedAt              DateTime             @updatedAt
 }
 
@@ -108,6 +109,7 @@ model Instant {
   position  Int      @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  songIntro SongIntro?
 }
 
 model Song {
@@ -123,6 +125,21 @@ model Song {
   enabled      Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  intro        SongIntro?
+}
+
+model SongIntro {
+  id        Int          @id @default(autoincrement())
+  songId    Int          @unique
+  instantId Int          @unique
+  programId String
+  song      Song         @relation(fields: [songId], references: [id], onDelete: Cascade)
+  instant   Instant      @relation(fields: [instantId], references: [id], onDelete: Restrict)
+  program   ProgramState @relation(fields: [programId], references: [programId], onDelete: Restrict)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([programId])
 }
 
 model Media {
@@ -220,6 +237,37 @@ model NowPlayingConsumer {
 
   @@unique([programStateId, name])
   @@unique([programStateId, position])
+}
+
+model OperatorPreference {
+  subject     String
+  deviceClass String
+  version     Int      @default(1)
+  profile     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@id([subject, deviceClass])
+  @@index([subject])
+}
+
+model SharedConsoleLayout {
+  id                String    @id @default(uuid())
+  ownerSubject      String
+  name              String
+  description       String?
+  scope             String
+  scopeId           String
+  sourceDeviceClass String
+  version           Int       @default(1)
+  profile           Json
+  retiredAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([scope, scopeId, name])
+  @@index([scope, scopeId, retiredAt])
+  @@index([ownerSubject])
 }
 
 model GuestInvitation {

@@ -9,6 +9,7 @@ import {
 import { AppModule } from './app.module';
 import { ProgramRealtimeService } from './program/program.realtime.service';
 import { loadRuntimeSecrets } from './config/runtime-secrets';
+import { assertTestAuthSafety } from './auth/test-auth.service';
 
 function getAllowedOrigins(): Set<string> {
   const configuredOrigins = (
@@ -29,6 +30,7 @@ function getAllowedOrigins(): Set<string> {
 }
 
 async function bootstrap() {
+  assertTestAuthSafety();
   await loadRuntimeSecrets();
   const configuredPort = Number.parseInt(
     process.env.PORT ?? process.env.HTTP_PORT ?? '3000',

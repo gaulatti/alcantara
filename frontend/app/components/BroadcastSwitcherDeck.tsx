@@ -10,8 +10,14 @@ import {
 } from "lucide-react";
 import type { Scene } from "../models/broadcast";
 import { SCENE_TRANSITIONS } from "../utils/sceneTransitions";
+import {
+  useConsolePreferences,
+  type ConsoleWorkspace,
+} from "../contexts/ConsolePreferencesContext";
+import { getApiBaseUrl } from "../utils/apiBaseUrl";
+import { useFeatures } from "../hooks/useFeatures";
 
-export type ConsoleWorkspace = "director" | "audio" | "graphics" | "compact";
+export type { ConsoleWorkspace } from "../contexts/ConsolePreferencesContext";
 
 const WORKSPACES: Array<{ id: ConsoleWorkspace; label: string }> = [
   { id: "director", label: "Director" },
@@ -20,25 +26,281 @@ const WORKSPACES: Array<{ id: ConsoleWorkspace; label: string }> = [
   { id: "compact", label: "Compact / touch" },
 ];
 
-const WORKSPACE_KEY = "alcantara.console.workspace";
-const DOCK_WIDTH_KEY = "alcantara.console.dockWidth";
-const TOUCH_KEY = "alcantara.console.touchMode";
-const SHORTCUTS_KEY = "alcantara.console.shortcutsEnabled";
-
-export function readStoredConsoleWorkspace(): ConsoleWorkspace {
-  if (typeof window === "undefined") return "director";
-  const value = window.localStorage.getItem(WORKSPACE_KEY);
-  return WORKSPACES.some((workspace) => workspace.id === value)
-    ? (value as ConsoleWorkspace)
-    : "director";
-}
-
 function blocksBroadcastShortcut(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(
     target.closest(
       'input, textarea, select, button, a, [contenteditable="true"], [role="button"], [role="slider"], [role="dialog"]',
     ),
+  );
+}
+
+interface SharedLayout {
+  id: string;
+  name: string;
+  description: string | null;
+  sourceDeviceClass: string;
+  version: number;
+}
+
+function ConsolePreferenceControls({ programId }: { programId: string }) {
+  const preferences = useConsolePreferences();
+  const { context } = useFeatures();
+  const [open, setOpen] = useState(false);
+  const [layouts, setLayouts] = useState<SharedLayout[]>([]);
+  const [message, setMessage] = useState("");
+  const [scope, setScope] = useState<"program" | "team">("program");
+  const [layoutName, setLayoutName] = useState("");
+  const teamId = context?.authorization?.teamId;
+  const scopeId = scope === "program" ? programId : String(teamId ?? "");
+
+  const refresh = async () => {
+    if (!scopeId) {
+      setLayouts([]);
+      return;
+    }
+    const response = await fetch(
+      `${getApiBaseUrl()}/operator-preferences/shared?scope=${scope}&scopeId=${encodeURIComponent(scopeId)}`,
+    );
+    if (!response.ok)
+      throw new Error(`Shared layouts failed (${response.status})`);
+    setLayouts((await response.json()) as SharedLayout[]);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    void refresh().catch((error: unknown) =>
+      setMessage(
+        error instanceof Error ? error.message : "Shared layouts unavailable",
+      ),
+    );
+  }, [open, scope, scopeId]);
+
+  const publish = async () => {
+    const name = layoutName.trim();
+    if (!name) return;
+    const response = await fetch(
+      `${getApiBaseUrl()}/operator-preferences/shared`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          scope,
+          scopeId,
+          sourceDeviceClass: preferences.deviceClass,
+          profile: preferences.profile,
+        }),
+      },
+    );
+    if (!response.ok) {
+      setMessage(
+        response.status === 403
+          ? "You do not have permission to publish layouts."
+          : `Publish failed (${response.status})`,
+      );
+      return;
+    }
+    setMessage("Layout published.");
+    setLayoutName("");
+    await refresh();
+  };
+
+  const load = async (layout: SharedLayout) => {
+    const response = await fetch(
+      `${getApiBaseUrl()}/operator-preferences/shared/${layout.id}/load`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceClass: preferences.deviceClass,
+          version: preferences.version,
+        }),
+      },
+    );
+    if (!response.ok) {
+      setMessage(
+        response.status === 409
+          ? "This layout targets another device class or your profile changed. Refresh and try again."
+          : `Load failed (${response.status})`,
+      );
+      return;
+    }
+    const result = (await response.json()) as {
+      preference: { version: number; profile: typeof preferences.profile };
+    };
+    preferences.adoptAcknowledged(
+      result.preference.version,
+      result.preference.profile,
+    );
+    setMessage(`Loaded ${layout.name}.`);
+  };
+
+  const retire = async (layout: SharedLayout) => {
+    const response = await fetch(
+      `${getApiBaseUrl()}/operator-preferences/shared/${layout.id}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) {
+      setMessage(
+        response.status === 403
+          ? "You do not have permission to retire layouts."
+          : `Retire failed (${response.status})`,
+      );
+      return;
+    }
+    setMessage(`Retired ${layout.name}.`);
+    await refresh();
+  };
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <span
+        className={`rounded px-2 py-1 text-[10px] font-bold uppercase ${preferences.syncState === "synced" ? "bg-emerald-950 text-emerald-300" : preferences.syncState === "conflict" ? "bg-red-950 text-red-300" : "bg-amber-950 text-amber-300"}`}
+      >
+        {preferences.syncState}
+      </span>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="rounded bg-zinc-800 px-2 py-1 text-xs"
+      >
+        {preferences.deviceClass} prefs
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-9 z-50 w-80 space-y-3 rounded border border-zinc-700 bg-zinc-950 p-3 shadow-2xl">
+          <label className="block text-xs text-zinc-400">
+            Device class override
+            <select
+              value={preferences.deviceClass}
+              onChange={(event) =>
+                preferences.setDeviceClassOverride(
+                  event.target.value as "desktop" | "tablet" | "phone",
+                )
+              }
+              className="mt-1 w-full rounded bg-zinc-900 p-2"
+            >
+              <option value="desktop">Desktop</option>
+              <option value="tablet">Tablet</option>
+              <option value="phone">Phone</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => preferences.setDeviceClassOverride(null)}
+            className="text-xs text-sky-300"
+          >
+            Use detected {preferences.detectedDeviceClass}
+          </button>
+          {preferences.conflict ? (
+            <div className="rounded border border-red-800 p-2 text-xs">
+              A newer profile exists.
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={preferences.useAuthoritative}
+                  className="rounded bg-zinc-700 px-2 py-1"
+                >
+                  Use server
+                </button>
+                <button
+                  type="button"
+                  onClick={preferences.retryLocal}
+                  className="rounded bg-red-800 px-2 py-1"
+                >
+                  Retry mine
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => void preferences.resetCurrent()}
+              className="rounded bg-zinc-800 px-2 py-1"
+            >
+              Reset class
+            </button>
+            <button
+              type="button"
+              onClick={() => void preferences.resetAll()}
+              className="rounded bg-zinc-800 px-2 py-1"
+            >
+              Reset all
+            </button>
+          </div>
+          <div className="border-t border-zinc-800 pt-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase text-zinc-400">
+                Shared layouts
+              </span>
+            </div>
+            <label className="mt-2 block text-xs text-zinc-400">
+              Visibility
+              <select
+                value={scope}
+                onChange={(event) => {
+                  setScope(event.target.value as "program" | "team");
+                  setMessage("");
+                }}
+                className="mt-1 w-full rounded bg-zinc-900 p-2"
+              >
+                <option value="program">This program</option>
+                {teamId ? <option value="team">My team</option> : null}
+              </select>
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                aria-label={`New ${scope} layout name`}
+                value={layoutName}
+                onChange={(event) => setLayoutName(event.target.value)}
+                placeholder="Layout name"
+                className="min-w-0 flex-1 rounded bg-zinc-900 p-2 text-xs"
+              />
+              <button
+                type="button"
+                disabled={!layoutName.trim() || !scopeId}
+                onClick={() => void publish()}
+                className="rounded bg-sky-800 px-2 py-1 text-xs disabled:opacity-40"
+              >
+                Publish
+              </button>
+            </div>
+            <div className="mt-2 space-y-1">
+              {layouts.map((layout) => (
+                <div
+                  key={layout.id}
+                  className="flex items-center gap-2 rounded bg-zinc-900 p-2 text-xs"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {layout.name} · v{layout.version} ·{" "}
+                    {layout.sourceDeviceClass}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void load(layout)}
+                    className="text-sky-300"
+                  >
+                    Load
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void retire(layout)}
+                    className="text-red-300"
+                  >
+                    Retire
+                  </button>
+                </div>
+              ))}
+              {!layouts.length ? (
+                <p className="text-xs text-zinc-500">No published layouts.</p>
+              ) : null}
+            </div>
+          </div>
+          {message ? <p className="text-xs text-amber-300">{message}</p> : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -132,11 +394,11 @@ interface Props {
 }
 
 export function BroadcastSwitcherDeck(props: Props) {
+  const preferences = useConsolePreferences();
   const latestPropsRef = useRef(props);
   latestPropsRef.current = props;
-  const [touchMode, setTouchMode] = useState(false);
-  const [shortcutsEnabled, setShortcutsEnabled] = useState(true);
-  const [dockWidth, setDockWidth] = useState(320);
+  const { touchMode, shortcutsEnabled } = preferences.profile;
+  const dockWidth = preferences.profile.dockWidth ?? 300;
   const pendingStageRef = useRef<Promise<void>>(Promise.resolve());
 
   const stageScene = (sceneId: number | null) => {
@@ -146,35 +408,18 @@ export function BroadcastSwitcherDeck(props: Props) {
   };
   const takeStagedScene = async () => {
     await pendingStageRef.current;
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve()),
+    );
     latestPropsRef.current.onTake();
   };
   const cutStagedScene = async () => {
     await pendingStageRef.current;
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve()),
+    );
     latestPropsRef.current.onCut();
   };
-
-  useEffect(() => {
-    try {
-      setTouchMode(
-        window.localStorage.getItem(TOUCH_KEY) === "true" ||
-          new URLSearchParams(window.location.search).get("surface") ===
-            "touch",
-      );
-      setShortcutsEnabled(
-        window.localStorage.getItem(SHORTCUTS_KEY) !== "false",
-      );
-      const width = Number(window.localStorage.getItem(DOCK_WIDTH_KEY));
-      setDockWidth(
-        Number.isFinite(width) && width >= 260 && width <= 520 ? width : 320,
-      );
-    } catch {
-      setTouchMode(false);
-      setShortcutsEnabled(true);
-      setDockWidth(320);
-    }
-  }, []);
 
   useEffect(() => {
     if (!shortcutsEnabled) return;
@@ -217,18 +462,16 @@ export function BroadcastSwitcherDeck(props: Props) {
   ]);
 
   const selectWorkspace = (workspace: ConsoleWorkspace) => {
-    window.localStorage.setItem(WORKSPACE_KEY, workspace);
+    preferences.updateProfile({ workspace });
     props.onWorkspaceChange(workspace);
   };
   const toggleTouch = () => {
     const next = !touchMode;
-    setTouchMode(next);
-    window.localStorage.setItem(TOUCH_KEY, String(next));
+    preferences.updateProfile({ touchMode: next });
   };
   const toggleShortcuts = () => {
     const next = !shortcutsEnabled;
-    setShortcutsEnabled(next);
-    window.localStorage.setItem(SHORTCUTS_KEY, String(next));
+    preferences.updateProfile({ shortcutsEnabled: next });
   };
 
   return (
@@ -257,6 +500,7 @@ export function BroadcastSwitcherDeck(props: Props) {
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
+          <ConsolePreferenceControls programId={props.programId} />
           <button
             type="button"
             aria-label="Toggle keyboard shortcuts"
@@ -358,8 +602,7 @@ export function BroadcastSwitcherDeck(props: Props) {
               value={dockWidth}
               onChange={(event) => {
                 const next = Number(event.target.value);
-                setDockWidth(next);
-                window.localStorage.setItem(DOCK_WIDTH_KEY, String(next));
+                preferences.updateProfile({ dockWidth: next });
               }}
               className="mt-1 w-full"
             />

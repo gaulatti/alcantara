@@ -8,6 +8,7 @@ export interface FetchSongsParams {
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+  programId?: string;
 }
 
 export async function fetchSongCatalog(): Promise<SongCatalogItem[]> {
@@ -25,6 +26,7 @@ export async function fetchSongsPage(params?: FetchSongsParams): Promise<Paginat
   if (params?.sortOrder) query.set('sortOrder', params.sortOrder);
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.programId) query.set('programId', params.programId);
 
   const qs = query.toString();
   const res = await fetch(apiUrl(`/songs${qs ? `?${qs}` : ''}`));

@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
-import { fetchAuthSession } from 'aws-amplify/auth';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { reportInvalidSession } from './session-events';
+import { getAppSession } from './session';
 
 export const api = axios.create({
   baseURL: getApiBaseUrl(),
@@ -13,8 +13,8 @@ export const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
+      const session = await getAppSession();
+      const token = session.token;
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -39,8 +39,8 @@ api.interceptors.response.use(
 
     request._authRetry = true;
     try {
-      const refreshed = await fetchAuthSession({ forceRefresh: true });
-      const token = refreshed.tokens?.idToken?.toString();
+      const refreshed = await getAppSession(true);
+      const token = refreshed.token;
       if (!token) throw new Error('Refreshed session has no ID token');
       request.headers.set('Authorization', `Bearer ${token}`);
       return await api.request(request);
@@ -55,8 +55,8 @@ export const authFetch = async (input: string, init?: RequestInit): Promise<Resp
   const headers = new Headers(init?.headers);
 
   try {
-    const session = await fetchAuthSession();
-    const token = session.tokens?.idToken?.toString();
+    const session = await getAppSession();
+    const token = session.token;
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }

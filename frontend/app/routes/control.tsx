@@ -34,11 +34,8 @@ import type { Route } from "./+types/control";
 
 import { PanelColumn } from "../components/editors";
 import { PlaybackBar } from "../components/PlaybackBar";
-import {
-  BroadcastSwitcherDeck,
-  readStoredConsoleWorkspace,
-  type ConsoleWorkspace,
-} from "../components/BroadcastSwitcherDeck";
+import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
+import { useConsolePreferences } from "../contexts/ConsolePreferencesContext";
 import { RadioPanel } from "../components/RadioPanel";
 import {
   InstantsPanel,
@@ -372,6 +369,7 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Control() {
+  const consolePreferences = useConsolePreferences();
   const [activeProgramId] = useGlobalProgramId();
   const [programState, setProgramState] = useState<ProgramState | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -434,9 +432,7 @@ export default function Control() {
   const [isCreatingScene, setIsCreatingScene] = useState(false);
   const [selectedTransitionId, setSelectedTransitionId] =
     useGlobalTransitionId(activeProgramId);
-  const [consoleWorkspace, setConsoleWorkspace] = useState<ConsoleWorkspace>(
-    () => readStoredConsoleWorkspace(),
-  );
+  const consoleWorkspace = consolePreferences.profile.workspace;
   const [programAudioBusSettings, setProgramAudioBusSettings] =
     useState<ProgramAudioBusSettings>({
       songSequence: createProgramSongSequence("manual"),
@@ -3290,7 +3286,9 @@ export default function Control() {
         realtimeConnected={isProgramRealtimeConnected}
         fadeToBlack={programState?.fadeToBlack === true}
         workspace={consoleWorkspace}
-        onWorkspaceChange={setConsoleWorkspace}
+        onWorkspaceChange={(workspace) =>
+          consolePreferences.updateProfile({ workspace })
+        }
         onTransitionChange={setSelectedTransitionId}
         onStageScene={stageSceneForProgram}
         onTake={() => void takeStagedSceneLive()}

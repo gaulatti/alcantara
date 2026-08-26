@@ -1,0 +1,89 @@
+name: alcantara-ingress-proof
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  livekit:
+    image: livekit/livekit-server:v1.13.4
+    command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "17880:7880"
+      - "17881:7881"
+      - "17882:7882/udp"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7880 || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  ingress:
+    image: livekit/ingress:v1.5.0
+    environment:
+      INGRESS_CONFIG_FILE: /etc/ingress.yaml
+    volumes:
+      - ./ingress.yaml:/etc/ingress.yaml:ro
+    ports:
+      - "19350:1935"
+      - "18080:8080"
+      - "18081:8081"
+      - "18082:8082"
+      - "17885:7885/udp"
+    depends_on:
+      livekit:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  media:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./media:/usr/share/nginx/html:ro
+    ports:
+      - "18088:80"
+
+  srt-source:
+    image: jrottenberg/ffmpeg:7.1-alpine
+    command:
+      - -hide_banner
+      - -loglevel
+      - warning
+      - -re
+      - -f
+      - lavfi
+      - -i
+      - testsrc2=size=1280x720:rate=30
+      - -f
+      - lavfi
+      - -i
+      - sine=frequency=880:sample_rate=48000
+      - -c:v
+      - libx264
+      - -preset
+      - ultrafast
+      - -tune
+      - zerolatency
+      - -g
+      - "30"
+      - -b:v
+      - 2M
+      - -pix_fmt
+      - yuv420p
+      - -c:a
+      - aac
+      - -b:a
+      - 128k
+      - -f
+      - mpegts
+      - srt://0.0.0.0:19000?mode=listener&latency=200000

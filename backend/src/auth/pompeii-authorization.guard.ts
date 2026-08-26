@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -10,6 +11,7 @@ import { PompeiiService } from './pompeii.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { REQUIRED_PERMISSION_KEY } from './require-permission.decorator';
 import type { AlcantaraPermission } from './permissions';
+import { TestAuthService } from './test-auth.service';
 
 type AuthorizedRequest = {
   headers: { authorization?: string };
@@ -21,6 +23,7 @@ export class PompeiiAuthorizationGuard {
   constructor(
     private readonly reflector: Reflector,
     private readonly pompeii: PompeiiService,
+    @Optional() private readonly testAuth?: TestAuthService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,7 +47,9 @@ export class PompeiiAuthorizationGuard {
     const bearerToken = request.headers.authorization;
     if (!bearerToken) throw new UnauthorizedException('Bearer token required');
 
-    const decision = await this.pompeii.authorize(bearerToken, permission);
+    const decision = this.testAuth?.isEnabled()
+      ? this.testAuth.authorize(bearerToken, permission, this.pompeii.teamId)
+      : await this.pompeii.authorize(bearerToken, permission);
     if (!decision.authenticated) {
       throw new UnauthorizedException({
         error: 'UNAUTHENTICATED',
