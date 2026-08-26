@@ -122,6 +122,50 @@ describe('PalazzoMachineClient', () => {
     );
   });
 
+  it('sends a song and intro as one idempotent program-scoped command', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      Response.json({
+        ok: true,
+        playbackRequestId: 'song-1',
+        introPlaybackId: 'song-1:intro',
+      }),
+    );
+    const client = new PalazzoMachineClient(
+      config(),
+      new RadioMetricsService(),
+      fetchImpl,
+    );
+
+    await expect(
+      client.playSong(BASE_URL, PROGRAM_ID, {
+        playbackId: 'song-1',
+        url: 'https://media.example/song.mp3',
+        intro: {
+          playbackId: 'song-1:intro',
+          url: 'https://media.example/intro.mp3',
+          gain: 0.7,
+        },
+      }),
+    ).resolves.toEqual({
+      playbackRequestId: 'song-1',
+      duplicate: false,
+      introPlaybackId: 'song-1:intro',
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({
+      song: {
+        programId: PROGRAM_ID,
+        playbackId: 'song-1',
+        url: 'https://media.example/song.mp3',
+      },
+      intro: {
+        programId: PROGRAM_ID,
+        playbackId: 'song-1:intro',
+        url: 'https://media.example/intro.mp3',
+        gain: 0.7,
+      },
+    });
+  });
+
   it('uses authenticated program routes for instant, mixer, state, stop, and SSE', async () => {
     const fetchImpl = jest.fn(async (url: string, init: RequestInit) => {
       if (url.endsWith('/playback/instant')) {

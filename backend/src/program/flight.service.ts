@@ -473,14 +473,18 @@ export class FlightService implements OnModuleDestroy {
     const runtime = this.runtimes.get(normalizedProgramId);
 
     if (!runtime || !runtime.isRunning) {
-      console.log(`[Flight] go(${normalizedProgramId}): runtime not running, calling start()`);
+      console.log(
+        `[Flight] go(${normalizedProgramId}): runtime not running, calling start()`,
+      );
       return this.start(normalizedProgramId);
     }
 
     this.clearTimer(runtime);
     runtime.waitingForSongEnd = false;
     runtime.generation += 1;
-    console.log(`[Flight] go(${normalizedProgramId}): advancing from cue #${runtime.activeIndex} to #${runtime.activeIndex + 1}`);
+    console.log(
+      `[Flight] go(${normalizedProgramId}): advancing from cue #${runtime.activeIndex} to #${runtime.activeIndex + 1}`,
+    );
 
     const nextIndex = runtime.activeIndex + 1;
     if (nextIndex >= runtime.items.length) {
@@ -535,13 +539,15 @@ export class FlightService implements OnModuleDestroy {
     if (!runtime || !runtime.isRunning || !runtime.waitingForSongEnd) {
       console.log(
         `[Flight] handleSongEnded(${normalizedProgramId}): ` +
-        `runtime=${!!runtime} isRunning=${runtime?.isRunning} ` +
-        `waitingForSongEnd=${runtime?.waitingForSongEnd}`,
+          `runtime=${!!runtime} isRunning=${runtime?.isRunning} ` +
+          `waitingForSongEnd=${runtime?.waitingForSongEnd}`,
       );
       return { ok: false };
     }
 
-    console.log(`[Flight] handleSongEnded(${normalizedProgramId}): advancing from cue #${runtime.activeIndex}`);
+    console.log(
+      `[Flight] handleSongEnded(${normalizedProgramId}): advancing from cue #${runtime.activeIndex}`,
+    );
     this.clearTimer(runtime);
     runtime.waitingForSongEnd = false;
     runtime.generation += 1;
@@ -699,12 +705,21 @@ export class FlightService implements OnModuleDestroy {
     cue: FlightCue,
   ): Promise<void> {
     let songSequence: unknown = null;
+    let selectedSong: {
+      id: number;
+      audioUrl: string;
+      title: string;
+      artist: string;
+      coverUrl: string | null;
+      durationMs: number | null;
+    } | null = null;
 
     if (typeof cue.songId === 'number') {
       const song = await this.prisma.song.findUnique({
         where: { id: cue.songId },
       });
       if (song) {
+        selectedSong = song;
         const itemId = createId('song');
         songSequence = {
           mode: 'manual',
@@ -732,6 +747,9 @@ export class FlightService implements OnModuleDestroy {
       { songSequence },
       programId,
     );
+    if (selectedSong) {
+      this.programService.takeCatalogSongOnAir(programId, selectedSong);
+    }
   }
 
   private async executeSceneUpdateCue(

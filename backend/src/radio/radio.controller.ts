@@ -84,6 +84,7 @@ export class RadioController {
       artist?: string;
       coverUrl?: string;
       durationMs?: number;
+      songId?: number;
     },
   ) {
     if (!data.audioUrl) {
@@ -96,6 +97,7 @@ export class RadioController {
       data.artist,
       data.durationMs,
       data.coverUrl,
+      data.songId,
     );
     return { ok: true };
   }
