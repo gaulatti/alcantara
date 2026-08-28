@@ -5,6 +5,7 @@ import {
   createProgramSongSequence,
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
+  shuffleProgramSongSequence,
   type ProgramSongSequence,
 } from '../utils/programSequence';
 import type { ProgramSongPlaybackState } from '../models/broadcast';
@@ -363,13 +364,14 @@ export function PlaybackBar({
             </Button>
             <Button
               onClick={() =>
-                applySequence({
-                  ...sequence,
-                  mode: 'shuffle',
-                  startedAt: Date.now()
-                })
+                applySequence(
+                  shuffleProgramSongSequence(sequence, runtimeActiveItemId ?? sequence.activeItemId ?? null)
+                )
               }
-              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${sequence.mode === 'shuffle' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+              disabled={sequence.items.length < 2}
+              title='Shuffle playlist'
+              aria-label='Shuffle playlist'
+              className='flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40'
               size='sm'
               variant='secondary'
             >
