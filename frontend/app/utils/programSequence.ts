@@ -74,6 +74,38 @@ export type ProgramSongSequenceItem =
 
 export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem>;
 
+export function shuffleProgramSongSequence(
+  sequence: ProgramSongSequence,
+  activeItemId: string | null = sequence.activeItemId ?? null,
+  random: () => number = Math.random
+): ProgramSongSequence {
+  if (sequence.items.length < 2) return sequence;
+
+  const anchoredItem = activeItemId
+    ? sequence.items.find((item) => item.id === activeItemId) ?? null
+    : null;
+  const shuffledItems = anchoredItem
+    ? sequence.items.filter((item) => item.id !== anchoredItem.id)
+    : [...sequence.items];
+
+  for (let index = shuffledItems.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.min(index, Math.max(0, Math.floor(random() * (index + 1))));
+    [shuffledItems[index], shuffledItems[swapIndex]] = [shuffledItems[swapIndex], shuffledItems[index]];
+  }
+
+  const nextItems = anchoredItem ? [anchoredItem, ...shuffledItems] : shuffledItems;
+  if (!nextItems.some((item, index) => item.id !== sequence.items[index]?.id) && shuffledItems.length > 1) {
+    shuffledItems.push(shuffledItems.shift()!);
+  }
+
+  return {
+    ...sequence,
+    mode: 'autoplay',
+    items: anchoredItem ? [anchoredItem, ...shuffledItems] : shuffledItems,
+    activeItemId: anchoredItem?.id ?? sequence.activeItemId ?? null
+  };
+}
+
 export interface ProgramResolvedSongLeaf {
   id: string;
   songId?: number;
