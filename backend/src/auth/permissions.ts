@@ -48,6 +48,11 @@ export const ALCANTARA_PERMISSIONS = {
   upload: {
     create: 'alcantara:upload:create',
   },
+  broadcast: {
+    view: 'broadcast.view',
+    operate: 'broadcast.operate',
+    manage: 'broadcast.manage',
+  },
 } as const;
 
 type PermissionLeaf<T> = T extends string
@@ -56,6 +61,4 @@ type PermissionLeaf<T> = T extends string
     ? PermissionLeaf<T[keyof T]>
     : never;
 
-export type AlcantaraPermission = PermissionLeaf<
-  typeof ALCANTARA_PERMISSIONS
->;
+export type AlcantaraPermission = PermissionLeaf<typeof ALCANTARA_PERMISSIONS>;

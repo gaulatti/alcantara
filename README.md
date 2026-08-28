@@ -2,6 +2,12 @@
 
 A professional TV broadcast overlay control system built with a modern tech stack.
 
+Alcantara also owns the versioned public-destination decision for each explicit
+television Start. The command always follows Alcantara → Alana → Croccante;
+only Croccante resolves stream-key-bearing Secrets Manager values. See
+[`docs/broadcast-destinations.md`](docs/broadcast-destinations.md) for the
+catalog, permission, immutable selection, recovery, and redaction contracts.
+
 ## Tech Stack
 
 - **Frontend**: React Router v7 + Vite + Tailwind CSS
@@ -189,6 +195,13 @@ LiveKit. No AWS or Cognito account is needed for local development. Ports are
 configurable via `.env`:
 - **Backend** (NestJS, default port 3000) with hot reload via `nest start --watch`
 - **Frontend** (React Router/Vite, default port 5173) with HMR
+- **Broadcast destinations** (`/broadcasts`) with two fictional, version-pinned
+  local catalog entries. This exercises the normal API, authorization guards,
+  PostgreSQL snapshots, and Alana client boundary.
+- **Alana contract fixture** on the private Compose network, used only for local
+  destination reload/Start/Stop exercises. It validates authentication,
+  sequencing, and exact selection acknowledgement without AWS or public output;
+  it is not a deployment or a substitute for production Alana/Croccante proof.
 
 Source directories are mounted so changes are reflected immediately.
 

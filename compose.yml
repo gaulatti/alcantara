@@ -33,6 +33,28 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+  alana:
+    image: node:22-alpine
+    working_dir: /fixture
+    command: ["node", "alana-control-stub.mjs"]
+    environment:
+      PORT: "8080"
+      PROGRAM_ID: main
+      ALANA_CONTROL_TOKEN: alana-local-control-token
+    volumes:
+      - ./backend/test/fixtures/alana-control-stub.mjs:/fixture/alana-control-stub.mjs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
   backend:
     build:
       context: ./backend
@@ -64,6 +86,8 @@ services:
       METRICS_TOKEN_FILE: /run/secrets/alcantara-metrics-token
       PALAZZO_CONTROL_TOKEN: palazzo-local-control-token
       PALAZZO_ALLOWED_URLS: http://palazzo:3100
+      ALANA_CONTROL_URL: http://alana:8080
+      ALANA_CONTROL_TOKEN: alana-local-control-token
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
@@ -87,6 +111,8 @@ services:
       postgres:
         condition: service_healthy
       livekit:
+        condition: service_healthy
+      alana:
         condition: service_healthy
     healthcheck:
       test:

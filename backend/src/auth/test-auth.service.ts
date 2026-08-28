@@ -69,6 +69,7 @@ export class TestAuthService {
             ALCANTARA_PERMISSIONS.access,
             ALCANTARA_PERMISSIONS.program.read,
             ALCANTARA_PERMISSIONS.layout.read,
+            ALCANTARA_PERMISSIONS.broadcast.view,
           ]
         : allPermissions();
     const expiresIn = 60 * 60;

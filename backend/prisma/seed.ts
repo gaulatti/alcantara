@@ -66,6 +66,30 @@ async function main() {
     },
   });
 
+  const localDestinations = [
+    {
+      id: 'primary',
+      displayName: 'Primary rehearsal destination',
+      secretId: 'broadcast/local/primary',
+      secretVersionId: 'fictional-version-1',
+      position: 0,
+    },
+    {
+      id: 'secondary',
+      displayName: 'Secondary rehearsal destination',
+      secretId: 'broadcast/local/secondary',
+      secretVersionId: 'fictional-version-1',
+      position: 1,
+    },
+  ];
+  for (const destination of localDestinations) {
+    await prisma.broadcastDestination.upsert({
+      where: { id: destination.id },
+      update: {},
+      create: destination,
+    });
+  }
+
   const assignedIntro = await prisma.instant.upsert({
     where: { id: 9001 },
     update: {

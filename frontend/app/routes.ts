@@ -14,6 +14,7 @@ export default [
       route('calls', 'routes/calls.tsx'),
       route('scenes', 'routes/scenes.tsx'),
       route('programs', 'routes/programs.tsx'),
+      route('broadcasts', 'routes/broadcasts.tsx'),
       route('layouts', 'routes/layouts.tsx'),
       route('preview', 'routes/preview.tsx'),
       route('layout-demo', 'routes/layout-demo.tsx'),

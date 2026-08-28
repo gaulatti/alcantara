@@ -32,6 +32,7 @@ const HTTP_ROUTES = new Set([
   'media-groups',
   'stingers',
   'webrtc',
+  'broadcast',
   'unknown',
 ]);
 const DEPENDENCIES = new Set([
@@ -43,6 +44,7 @@ const DEPENDENCIES = new Set([
   'postgres',
   's3',
   'livekit',
+  'alana',
   'unknown',
 ]);
 const DEPENDENCY_OPERATIONS = new Set([
@@ -52,6 +54,10 @@ const DEPENDENCY_OPERATIONS = new Set([
   'fetch',
   'read',
   'write',
+  'status',
+  'reload',
+  'start',
+  'stop',
   'unknown',
 ]);
 const DEPENDENCY_RESULTS = new Set([
@@ -101,6 +107,7 @@ export class ManagedMetricsService {
   private readonly jobs: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
+  private readonly broadcastDestinationOperations: Counter<string>;
 
   constructor() {
     collectDefaultMetrics({ prefix: 'alcantara_', register: this.registry });
@@ -169,6 +176,12 @@ export class ManagedMetricsService {
       labelNames: ['action', 'result'],
       registers: [this.registry],
     });
+    this.broadcastDestinationOperations = new Counter({
+      name: 'alcantara_broadcast_destination_operations_total',
+      help: 'Versioned broadcast destination operations by bounded action and result.',
+      labelNames: ['action', 'result'],
+      registers: [this.registry],
+    });
   }
 
   recordHttp(
@@ -224,6 +237,15 @@ export class ManagedMetricsService {
     this.preferenceOperations.inc({
       action: bounded(action, PREFERENCE_ACTIONS),
       result: bounded(result, PREFERENCE_RESULTS),
+    });
+  }
+
+  recordBroadcastDestination(action: string, result: string): void {
+    const actions = new Set(['reload', 'start', 'stop', 'command']);
+    const results = new Set(['succeeded', 'failed', 'conflict']);
+    this.broadcastDestinationOperations.inc({
+      action: bounded(action, actions),
+      result: bounded(result, results),
     });
   }
 

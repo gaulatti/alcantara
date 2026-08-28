@@ -51,7 +51,80 @@ model ProgramState {
   radioSettings          RadioSettings?
   nowPlayingConsumers    NowPlayingConsumer[]
   songIntros             SongIntro[]
+  broadcastSelections    BroadcastDestinationSelection[]
+  broadcastCommands      BroadcastDestinationCommand[]
   updatedAt              DateTime             @updatedAt
+}
+
+model BroadcastDestination {
+  id              String   @id
+  displayName     String
+  secretId        String
+  secretVersionId String
+  position        Int
+  retiredAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([retiredAt, position])
+}
+
+model BroadcastDestinationSelection {
+  id               String                                @id @default(uuid())
+  version          String                                @unique
+  programId        String
+  program          ProgramState                          @relation(fields: [programId], references: [programId], onDelete: Restrict)
+  selectionHash    String
+  createdBySubject String
+  createdAt        DateTime                              @default(now())
+  destinations     BroadcastDestinationSelectionItem[]
+  commands         BroadcastDestinationCommand[]
+
+  @@index([programId, createdAt])
+}
+
+model BroadcastDestinationSelectionItem {
+  id               String                        @id @default(uuid())
+  selectionId      String
+  selection        BroadcastDestinationSelection @relation(fields: [selectionId], references: [id], onDelete: Restrict)
+  destinationId    String
+  displayName      String
+  secretId         String
+  secretVersionId  String
+  position         Int
+
+  @@unique([selectionId, destinationId])
+  @@index([selectionId, position])
+}
+
+model BroadcastDestinationCommand {
+  id               String                         @id
+  programId        String
+  program          ProgramState                   @relation(fields: [programId], references: [programId], onDelete: Restrict)
+  action           String
+  requestHash      String
+  sequence         Int
+  selectionId      String?
+  selection        BroadcastDestinationSelection? @relation(fields: [selectionId], references: [id], onDelete: Restrict)
+  actorSubject     String
+  status           String
+  downstreamStatus Json?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  @@unique([programId, sequence])
+  @@index([programId, createdAt])
+  @@index([selectionId])
+}
+
+model BroadcastDestinationRuntime {
+  programId          String   @id
+  nextSequence       Int      @default(1)
+  requestedState     String   @default("stopped")
+  actualState        String   @default("unknown")
+  pendingSelectionId String?
+  activeSelectionId  String?
+  updatedAt          DateTime @updatedAt
 }
 
 model FlightSequence {
