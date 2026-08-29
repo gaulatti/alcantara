@@ -30,6 +30,10 @@ model Scene {
   programScenes ProgramScene[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  externalSourceId String?
+  externalSource ExternalSource? @relation(fields: [externalSourceId], references: [id], onDelete: SetNull)
+
+  @@index([externalSourceId])
 }
 
 model ProgramState {
@@ -51,7 +55,59 @@ model ProgramState {
   radioSettings          RadioSettings?
   nowPlayingConsumers    NowPlayingConsumer[]
   songIntros             SongIntro[]
+  externalSourceAssignments ExternalSourceProgram[]
   updatedAt              DateTime             @updatedAt
+}
+
+model ExternalSource {
+  id                        String                  @id @default(uuid())
+  teamId                    Int
+  name                      String
+  transport                 String
+  lifecycle                 String                  @default("unconfigured")
+  health                    String                  @default("unknown")
+  normalizationProfile      String                  @default("720p30")
+  transportConfigCiphertext String
+  transportConfigNonce      String
+  configKeyVersion          Int
+  credentialVersion         Int                     @default(0)
+  ingressId                 String?
+  participantIdentity       String?
+  lastConnectedAt           DateTime?
+  revokedAt                 DateTime?
+  createdBySubject          String
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  programs                  ExternalSourceProgram[]
+  credentials               ExternalSourceCredential[]
+  scenes                    Scene[]
+
+  @@index([teamId, lifecycle])
+  @@index([transport, health])
+}
+
+model ExternalSourceProgram {
+  sourceId  String
+  programId String
+  source    ExternalSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  program   ProgramState   @relation(fields: [programId], references: [programId], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@id([sourceId, programId])
+  @@index([programId])
+}
+
+model ExternalSourceCredential {
+  id         String         @id @default(uuid())
+  sourceId   String
+  source     ExternalSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  version    Int
+  secretHash String
+  revokedAt  DateTime?
+  createdAt  DateTime       @default(now())
+
+  @@unique([sourceId, version])
+  @@index([sourceId, revokedAt])
 }
 
 model FlightSequence {

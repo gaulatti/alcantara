@@ -64,6 +64,9 @@ services:
       METRICS_TOKEN_FILE: /run/secrets/alcantara-metrics-token
       PALAZZO_CONTROL_TOKEN: palazzo-local-control-token
       PALAZZO_ALLOWED_URLS: http://palazzo:3100
+      EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: "1"
+      EXTERNAL_SOURCE_CONFIG_KEYS: '{"1":"YWxjYW50YXJhLWxvY2FsLXNvdXJjZS1rZXktMDAwMDA="}'
+      EXTERNAL_SOURCE_TEAM_QUOTA: "16"
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma

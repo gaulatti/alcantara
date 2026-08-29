@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { setTimeout as delay } from 'node:timers/promises';
 import type {
@@ -64,6 +64,8 @@ export class PalazzoMachineClient {
   constructor(
     config: ConfigService,
     private readonly metrics: RadioMetricsService,
+    @Optional()
+    @Inject('PALAZZO_FETCH')
     fetchImpl: typeof fetch = globalThis.fetch,
   ) {
     const nodeEnvironment = config.get<string>('NODE_ENV') ?? 'development';
