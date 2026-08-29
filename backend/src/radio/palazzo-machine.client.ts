@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { setTimeout as delay } from 'node:timers/promises';
 import type {
@@ -31,6 +31,16 @@ export interface PalazzoSongCommand {
   title?: string;
   artist?: string;
   coverUrl?: string;
+  intro?: PalazzoIntroCommand;
+}
+
+export interface PalazzoIntroCommand {
+  playbackId: string;
+  url: string;
+  gain?: number;
+  duckGain?: number;
+  fadeInSeconds?: number;
+  fadeOutSeconds?: number;
 }
 
 export interface PalazzoInstantCommand {
@@ -64,7 +74,7 @@ export class PalazzoMachineClient {
   constructor(
     config: ConfigService,
     private readonly metrics: RadioMetricsService,
-    fetchImpl: typeof fetch = globalThis.fetch,
+    @Optional() @Inject('PALAZZO_FETCH') fetchImpl?: typeof fetch,
   ) {
     const nodeEnvironment = config.get<string>('NODE_ENV') ?? 'development';
     const token =
@@ -86,7 +96,7 @@ export class PalazzoMachineClient {
     }
     this.token = token;
     this.allowedUrls = new Set(allowedUrls);
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   validateBaseUrl(value: string): string {
@@ -106,7 +116,11 @@ export class PalazzoMachineClient {
     palazzoUrl: string,
     programId: string,
     command: PalazzoSongCommand,
-  ): Promise<{ playbackRequestId: string; duplicate: boolean }> {
+  ): Promise<{
+    playbackRequestId: string;
+    duplicate: boolean;
+    introPlaybackId?: string | null;
+  }> {
     const response = await this.request(
       palazzoUrl,
       programId,
@@ -125,6 +139,17 @@ export class PalazzoMachineClient {
             artist: command.artist,
             coverUrl: command.coverUrl,
           },
+          ...(command.intro && {
+            intro: {
+              programId,
+              playbackId: command.intro.playbackId,
+              url: command.intro.url,
+              gain: command.intro.gain,
+              duckGain: command.intro.duckGain,
+              fadeInSeconds: command.intro.fadeInSeconds,
+              fadeOutSeconds: command.intro.fadeOutSeconds,
+            },
+          }),
         },
       },
     );
@@ -132,7 +157,13 @@ export class PalazzoMachineClient {
     if (
       body.ok !== true ||
       body.playbackRequestId !== command.playbackId ||
-      (body.duplicate !== undefined && typeof body.duplicate !== 'boolean')
+      (body.duplicate !== undefined && typeof body.duplicate !== 'boolean') ||
+      (body.introPlaybackId !== undefined &&
+        body.introPlaybackId !== null &&
+        typeof body.introPlaybackId !== 'string') ||
+      (command.intro &&
+        body.introPlaybackId !== null &&
+        body.introPlaybackId !== command.intro.playbackId)
     ) {
       return this.failMalformed('song-play');
     }
@@ -141,7 +172,16 @@ export class PalazzoMachineClient {
       'song-play',
       duplicate ? 'deduplicated' : 'success',
     );
-    return { playbackRequestId: command.playbackId, duplicate };
+    return {
+      playbackRequestId: command.playbackId,
+      duplicate,
+      ...(command.intro && {
+        introPlaybackId:
+          typeof body.introPlaybackId === 'string'
+            ? body.introPlaybackId
+            : null,
+      }),
+    };
   }
 
   async stopSong(palazzoUrl: string, programId: string): Promise<void> {

@@ -176,6 +176,8 @@ export interface ProgramSongPlaybackState {
   isPlaying: boolean;
   startedAt?: string;
   updatedAt: string;
+  introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+  introFailureReason?: string | null;
 }
 
 export type ComponentPropsMap = Record<string, any>;

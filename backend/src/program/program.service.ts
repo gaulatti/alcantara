@@ -1511,6 +1511,28 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  takeCatalogSongOnAir(
+    programId: string,
+    song: {
+      id: number;
+      audioUrl: string;
+      title: string;
+      artist: string;
+      coverUrl: string | null;
+      durationMs: number | null;
+    },
+  ): void {
+    this.songExecutionEngine.handleManualSong(
+      this.normalizeProgramId(programId),
+      song.audioUrl,
+      song.title,
+      song.artist,
+      song.durationMs ?? undefined,
+      song.coverUrl ?? undefined,
+      song.id,
+    );
+  }
+
   async getProgramAudioMeter(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
@@ -3068,6 +3090,8 @@ export class ProgramService implements OnModuleInit {
           isPlaying: event.playback.isPlaying,
           startedAt: event.playback.startedAt,
           updatedAt: event.playback.updatedAt,
+          introStatus: event.playback.introStatus,
+          introFailureReason: event.playback.introFailureReason,
         };
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
@@ -3091,6 +3115,8 @@ export class ProgramService implements OnModuleInit {
           isPlaying: event.playback.isPlaying,
           startedAt: event.playback.startedAt,
           updatedAt: event.playback.updatedAt,
+          introStatus: event.playback.introStatus,
+          introFailureReason: event.playback.introFailureReason,
         };
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);

@@ -47,6 +47,8 @@ interface ProgramSongPlayback {
   durationMs: number | null;
   isPlaying: boolean;
   updatedAt: string;
+  introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+  introFailureReason?: string | null;
 }
 
 @Injectable()

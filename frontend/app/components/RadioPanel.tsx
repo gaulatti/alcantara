@@ -396,6 +396,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           artist: item?.artist,
           coverUrl: item?.coverUrl,
           durationMs: item?.durationMs,
+          songId: item?.songId,
         }),
       });
     },
@@ -535,6 +536,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     <p className="text-sm text-text-secondary">
                       {programSongPlayback.artist || "Unknown Artist"}
                     </p>
+                    {programSongPlayback.introStatus === "degraded" ? (
+                      <p className="text-xs font-medium text-amber-300">
+                        Intro unavailable
+                        {programSongPlayback.introFailureReason
+                          ? `: ${programSongPlayback.introFailureReason}`
+                          : ""}
+                      </p>
+                    ) : programSongPlayback.introStatus === "playing" ? (
+                      <p className="text-xs font-medium text-violet-300">
+                        Intro playing
+                      </p>
+                    ) : null}
                     {programSongPlayback.durationMs ? (
                       <div className="mt-3 space-y-1">
                         <div className="h-1.5 w-full rounded-full bg-sand/20 overflow-hidden">
