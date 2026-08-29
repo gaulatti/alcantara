@@ -1,10 +1,4 @@
-/**
- * Runtime-only compatibility entry for Bleecker 0.1.36.
- *
- * The published root barrel references a missing `dist/tokens.js` file. Every
- * export below comes from a documented public component/layout subpath; Vite
- * aliases only the broken root barrel here until Bleecker republishes it.
- */
+/** Runtime compatibility entry that keeps Bleecker subpath imports centralized. */
 export * from '@gaulatti/bleecker/components/alert';
 export * from '@gaulatti/bleecker/components/button';
 export * from '@gaulatti/bleecker/components/card';
@@ -34,6 +28,7 @@ export * from '@gaulatti/bleecker/components/table';
 export * from '@gaulatti/bleecker/components/tabs';
 export * from '@gaulatti/bleecker/components/textarea';
 export * from '@gaulatti/bleecker/layout/app-shell';
+export * from '@gaulatti/bleecker/layout/auth-shell';
 export * from '@gaulatti/bleecker/layout/footer';
 export * from '@gaulatti/bleecker/layout/header';
 export * from '@gaulatti/bleecker/layout/panel-layout';
