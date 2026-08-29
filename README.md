@@ -198,6 +198,12 @@ tokens with a local-only issuer and these deterministic identities:
 - `operator-a` (default) and `operator-b`: normal operator permissions
 - `viewer`: read-only, including denial of shared-layout publication
 
+For visual review of the shared login shell, append `?auth-state=` to `/login`
+while running the frontend in development. Supported fixtures are `loading`,
+`ready`, `submitting`, `failure`, and `authenticated`; production builds ignore
+the parameter. The authenticated fixture holds the visible redirect state for
+inspection, while a real authenticated session continues immediately to `/`.
+
 Choose an identity before starting or recreating the frontend:
 
 ```bash
