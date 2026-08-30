@@ -2,6 +2,8 @@ import {
   PalazzoMachineClient,
   PalazzoMachineError,
 } from './palazzo-machine.client';
+import { ConfigService } from '@nestjs/config';
+import { Test } from '@nestjs/testing';
 import { RadioMetricsService } from './radio-metrics.service';
 
 const PROGRAM_ID = 'radio-1';
@@ -64,6 +66,20 @@ function state(introProgramId = PROGRAM_ID) {
 }
 
 describe('PalazzoMachineClient', () => {
+  it('uses the global fetch implementation when Nest has no test transport provider', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        PalazzoMachineClient,
+        { provide: ConfigService, useValue: config() },
+        { provide: RadioMetricsService, useValue: new RadioMetricsService() },
+      ],
+    }).compile();
+
+    expect(module.get(PalazzoMachineClient)).toBeInstanceOf(
+      PalazzoMachineClient,
+    );
+  });
+
   it('fails construction without production credentials or an allowlisted target', () => {
     expect(
       () =>
