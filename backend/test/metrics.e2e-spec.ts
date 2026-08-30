@@ -50,6 +50,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     );
     metrics.recordJob('charts-refresh', 'failure');
     metrics.recordPreference('write', 'conflict');
+    metrics.recordBroadcastDestination('start', 'failed');
     const radioMetrics = app.get(RadioMetricsService);
     radioMetrics.recordMachineRequest('song-play', 'deduplicated');
     radioMetrics.recordMachineRequest('event-connect', 'unauthorized');
@@ -97,6 +98,9 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain('alcantara_palazzo_sse_connections');
     expect(body).toContain(
       'alcantara_operator_preference_operations_total{action="write",result="conflict"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_broadcast_destination_operations_total{action="start",result="failed"} 1',
     );
     expect(body).toContain(
       'alcantara_palazzo_machine_requests_total{operation="song-play",result="deduplicated"} 1',

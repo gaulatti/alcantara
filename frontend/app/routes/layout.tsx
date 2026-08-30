@@ -38,6 +38,7 @@ import { useGlobalProgramId } from '../utils/globalProgram';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
+import { useFeatures } from '../hooks/useFeatures';
 
 const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
 
@@ -91,6 +92,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useLogout();
+  const { hasPermission } = useFeatures();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
   const [knownInstants, setKnownInstants] = useState<InstantSummary[]>([]);
@@ -297,6 +299,7 @@ export default function Layout() {
     { href: '/calls', label: 'Guest Calls' },
     { href: '/scenes', label: 'Scenes' },
     { href: '/programs', label: 'Programs' },
+    ...(hasPermission('broadcast.view') ? [{ href: '/broadcasts', label: 'Broadcasts' }] : []),
     { href: '/preview', label: 'Preview' },
     { href: '/layouts', label: 'Layouts' }
   ];
@@ -312,7 +315,8 @@ export default function Layout() {
         { href: '/media', label: 'Media' },
         { href: '/calls', label: 'Guest Calls' },
         { href: '/scenes', label: 'Scenes' },
-        { href: '/programs', label: 'Programs' }
+        { href: '/programs', label: 'Programs' },
+        ...(hasPermission('broadcast.view') ? [{ href: '/broadcasts', label: 'Broadcasts' }] : [])
       ]
     },
     {
@@ -455,6 +459,18 @@ export default function Layout() {
         icon: <PhoneCall size={16} />,
         onSelect: () => navigate('/calls')
       },
+      ...(hasPermission('broadcast.view')
+        ? [
+            {
+              id: 'nav-broadcasts',
+              title: 'Go to Broadcasts',
+              description: 'Select public destinations and operate the television leg',
+              group: 'Navigation',
+              icon: <Radio size={16} />,
+              onSelect: () => navigate('/broadcasts')
+            }
+          ]
+        : []),
       {
         id: 'nav-programs',
         title: 'Go to Programs',

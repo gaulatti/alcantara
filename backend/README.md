@@ -82,10 +82,12 @@ both non-interactive execution and repeatability.
 
 The application process also requires `ALCANTARA_CONFIG_SECRET_ID` and
 `AWS_REGION` in production. Before constructing Nest providers it loads the
-allowlisted `palazzoControlToken` and `palazzoAllowedUrls` fields from that
-Secrets Manager payload. Missing, malformed, or unavailable configuration
-fails startup; the token is never a frontend variable or Docker build argument.
-See [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md).
+allowlisted `palazzoControlToken`, `palazzoAllowedUrls`, `alanaControlUrl`, and
+`alanaControlToken` fields from that Secrets Manager payload. Missing,
+malformed, or unavailable configuration fails startup; neither machine token is
+a frontend variable or Docker build argument. See
+[`../docs/radio-telemetry.md`](../docs/radio-telemetry.md) and
+[`../docs/broadcast-destinations.md`](../docs/broadcast-destinations.md).
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

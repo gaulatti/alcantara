@@ -18,6 +18,7 @@ import { MetricsController } from './metrics.controller';
 import { WebrtcModule } from './webrtc/webrtc.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
+import { BroadcastDestinationsModule } from './broadcast-destinations/broadcast-destinations.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { OperatorPreferencesModule } from './operator-preferences/operator-prefe
     RadioModule,
     WebrtcModule,
     OperatorPreferencesModule,
+    BroadcastDestinationsModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],
