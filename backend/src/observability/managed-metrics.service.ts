@@ -81,6 +81,7 @@ const PREFERENCE_RESULTS = new Set([
   'conflict',
   'failure',
 ]);
+const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 
 function bounded(value: string, allowed: Set<string>): string {
   return allowed.has(value) ? value : 'unknown';
@@ -101,6 +102,8 @@ export class ManagedMetricsService {
   private readonly jobs: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
+  private readonly programSseConnections: Gauge<string>;
+  private readonly programSseSnapshots: Counter<string>;
 
   constructor() {
     collectDefaultMetrics({ prefix: 'alcantara_', register: this.registry });
@@ -169,6 +172,17 @@ export class ManagedMetricsService {
       labelNames: ['action', 'result'],
       registers: [this.registry],
     });
+    this.programSseConnections = new Gauge({
+      name: 'alcantara_program_sse_connections',
+      help: 'Currently open program SSE subscriber connections.',
+      registers: [this.registry],
+    });
+    this.programSseSnapshots = new Counter({
+      name: 'alcantara_program_sse_snapshots_total',
+      help: 'Initial program SSE snapshots by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
   }
 
   recordHttp(
@@ -224,6 +238,16 @@ export class ManagedMetricsService {
     this.preferenceOperations.inc({
       action: bounded(action, PREFERENCE_ACTIONS),
       result: bounded(result, PREFERENCE_RESULTS),
+    });
+  }
+
+  recordProgramSseConnection(delta: 1 | -1): void {
+    this.programSseConnections.inc(delta);
+  }
+
+  recordProgramSseSnapshot(result: string): void {
+    this.programSseSnapshots.inc({
+      result: bounded(result, PROGRAM_SSE_SNAPSHOT_RESULTS),
     });
   }
 

@@ -1804,11 +1804,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     };
 
     const pollTimer = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        return;
-      }
       pollSnapshots();
     }, 5000);
+
+    pollSnapshots();
 
     return () => {
       cancelled = true;

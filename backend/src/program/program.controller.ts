@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Header,
   Post,
   Body,
   Sse,
@@ -457,6 +458,7 @@ export class ProgramController {
 
   @Sse(':programId/events')
   @Public()
+  @Header('X-Accel-Buffering', 'no')
   eventsById(
     @Param('programId') programId: string,
   ): Observable<{ data: string }> {
@@ -465,6 +467,7 @@ export class ProgramController {
 
   @Sse('events')
   @Public()
+  @Header('X-Accel-Buffering', 'no')
   events(): Observable<{ data: string }> {
     return this.programService.getEventStream();
   }
