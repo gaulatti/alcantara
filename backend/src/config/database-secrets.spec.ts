@@ -21,7 +21,7 @@ describe('loadDatabaseSecret', () => {
     await loadDatabaseSecret(environment, { send });
 
     expect(environment.DATABASE_URL).toBe(
-      'postgresql://alcantara:fictional%20p%40ssword@arauco.private.example:5432/alcantara?schema=public&sslmode=require',
+      'postgresql://alcantara:fictional%20p%40ssword@arauco.private.example:5432/alcantara?schema=public&sslmode=verify-full&sslrootcert=%2Fapp%2Fcerts%2Fglobal-bundle.pem',
     );
   });
 

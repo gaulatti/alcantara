@@ -96,8 +96,9 @@ media storage and logs. Macondo grants its instance role access to the database
 secrets it provisions. Set the non-secret `ARAUCO_SECRET_ARN` and
 `MEDIA_S3_BUCKET` repository variables; the container resolves Arauco
 credentials through the instance profile and requires TLS for the RDS
-connection, so database credentials never pass through GitHub or appear in
-Docker configuration.
+connection with Amazon's bundled RDS CA and full hostname verification, so
+database credentials never pass through GitHub or appear in Docker
+configuration.
 
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks
