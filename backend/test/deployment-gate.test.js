@@ -12,12 +12,11 @@ test('preserves on-premises deployment and selects Cumulus when the gate is not 
   assert.match(workflow, /role\/alcantara-github-deploy/);
   assert.match(workflow, /Name=tag:Name,Values=macondo-services/);
   assert.match(workflow, /Expected exactly one running Macondo service host/);
-  assert.match(workflow, /MacondoStackBroadcastRuntimeSecretArn/);
-  assert.match(workflow, /MacondoStackAlcantaraDatabaseSecretArn/);
-  assert.match(workflow, /MacondoStackAlcantaraAssetsBucketName/);
-  assert.match(workflow, /MacondoStackHostedZoneId/);
-  assert.match(workflow, /api\.alcantara\.gaulatti\.com/);
-  assert.match(workflow, /route53 change-resource-record-sets/);
+  assert.match(workflow, /broadcast\/production\/config/);
+  assert.match(workflow, /vars\.ARAUCO_SECRET_ARN/);
+  assert.match(workflow, /vars\.MEDIA_S3_BUCKET/);
+  assert.doesNotMatch(workflow, /MacondoStack/);
+  assert.doesNotMatch(workflow, /route53 change-resource-record-sets/);
   assert.match(workflow, /ghcr\.io\/\$\{\{ github\.repository \}\}:\$\{\{ github\.sha \}\}/);
 });
 

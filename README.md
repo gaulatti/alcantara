@@ -175,6 +175,13 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 
 - Docker & Docker Compose
 
+### AWS infrastructure ownership
+
+Macondo provisions the shared Cumulus host, network, and Arauco database. The
+service-specific AWS integration lives in [`infra/aws`](infra/aws): Alcántara
+owns its GitHub OIDC deployment role, API DNS record, and the policies granting
+the Cumulus host access to Arauco credentials, media storage, and logs.
+
 ### Development
 
 #### Option 1: Using Docker Compose (recommended)

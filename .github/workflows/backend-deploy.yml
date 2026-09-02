@@ -253,31 +253,13 @@ jobs:
           fi
           CUMULUS_INSTANCE_ID="$(jq -r '.[0]' <<<"$INSTANCE_IDS")"
 
-          stack_output() {
-            aws cloudformation describe-stacks \
-              --stack-name MacondoStack \
-              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" \
-              --output text
-          }
-          BROADCAST_SECRET_ID="$(stack_output MacondoStackBroadcastRuntimeSecretArn)"
-          DATABASE_SECRET_ID="$(stack_output MacondoStackAlcantaraDatabaseSecretArn)"
-          MEDIA_BUCKET="$(stack_output MacondoStackAlcantaraAssetsBucketName)"
-          CUMULUS_PUBLIC_IP="$(stack_output MacondoStackServicePublicIp)"
-          HOSTED_ZONE_ID="$(stack_output MacondoStackHostedZoneId)"
-          for value in "$BROADCAST_SECRET_ID" "$DATABASE_SECRET_ID" "$MEDIA_BUCKET" "$CUMULUS_PUBLIC_IP" "$HOSTED_ZONE_ID"; do
+          BROADCAST_SECRET_ID='broadcast/production/config'
+          DATABASE_SECRET_ID='${{ vars.ARAUCO_SECRET_ARN }}'
+          MEDIA_BUCKET='${{ vars.MEDIA_S3_BUCKET }}'
+          for value in "$DATABASE_SECRET_ID" "$MEDIA_BUCKET"; do
             test -n "$value"
             test "$value" != None
           done
-
-          DNS_CHANGE="$(jq -cn \
-            --arg ip "$CUMULUS_PUBLIC_IP" \
-            '{Changes:[{Action:"UPSERT",ResourceRecordSet:{Name:"api.alcantara.gaulatti.com",Type:"A",TTL:60,ResourceRecords:[{Value:$ip}]}}]}')"
-          DNS_CHANGE_ID="$(aws route53 change-resource-record-sets \
-            --hosted-zone-id "$HOSTED_ZONE_ID" \
-            --change-batch "$DNS_CHANGE" \
-            --query ChangeInfo.Id \
-            --output text)"
-          aws route53 wait resource-record-sets-changed --id "$DNS_CHANGE_ID"
 
           SCRIPT_BASE64="$(base64 -w 0 deploy/cumulus.sh)"
           NGINX_BASE64="$(base64 -w 0 deploy/cumulus.nginx.conf)"
