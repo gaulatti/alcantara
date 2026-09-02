@@ -69,6 +69,7 @@ const databaseUrl = (payload: DatabaseSecretPayload): string => {
   url.port = String(payload.port);
   url.pathname = `/${payload.dbname}`;
   url.searchParams.set('schema', 'public');
+  url.searchParams.set('sslmode', 'require');
   return url.toString();
 };
 
