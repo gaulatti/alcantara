@@ -87,6 +87,21 @@ Secrets Manager payload. Missing, malformed, or unavailable configuration
 fails startup; the token is never a frontend variable or Docker build argument.
 See [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md).
 
+The deployment workflow keeps the existing host path when the repository
+variable `ON_PREMISES` is exactly `true`. When it is false or absent, GitHub
+OIDC assumes the `alcantara-github-deploy` role and uses SSM to deploy to the
+single EC2 host tagged `Name=macondo-services`. That path reads the broadcast
+configuration, Arauco credentials, and media bucket from `MacondoStack`
+outputs; database credentials do not pass through GitHub.
+
+The Cumulus path deliberately refuses to migrate or start against a fresh,
+empty Arauco database. Restore the production backup first. Deployment checks
+for the restored `ProgramState` table and at least one program row before it
+runs the committed Prisma migrations. The backend listens only on loopback and
+nginx terminates TLS for `api.alcantara.gaulatti.com` with buffering disabled
+for SSE and WebSocket traffic. LiveKit remains disabled on Cumulus until its
+separate public media-port and secret contract is provisioned.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
