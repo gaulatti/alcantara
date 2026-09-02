@@ -180,7 +180,9 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 Macondo provisions the shared Cumulus host, network, and Arauco database. The
 service-specific AWS integration lives in [`infra/aws`](infra/aws): Alcántara
 owns its GitHub OIDC deployment role, API DNS record, and the policies granting
-the Cumulus host access to Arauco credentials, media storage, and logs.
+the Cumulus host access to media storage and logs. Macondo grants its instance
+role access to every database secret it provisions; the backend resolves
+Arauco credentials inside the container through that instance profile.
 
 ### Development
 

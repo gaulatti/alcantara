@@ -92,10 +92,11 @@ variable `ON_PREMISES` is exactly `true`. When it is false or absent, GitHub
 OIDC assumes the `alcantara-github-deploy` role and uses SSM to deploy to the
 single EC2 host tagged `Name=macondo-services`. The service-owned stack in
 `infra/aws` owns that role, the API DNS record, and the Cumulus host grants for
-Arauco credentials, media storage, and logs. Macondo grants none of those
-service permissions. Set the non-secret `ARAUCO_SECRET_ARN` and
-`MEDIA_S3_BUCKET` repository variables from the service infrastructure inputs;
-database credentials themselves do not pass through GitHub.
+media storage and logs. Macondo grants its instance role access to the database
+secrets it provisions. Set the non-secret `ARAUCO_SECRET_ARN` and
+`MEDIA_S3_BUCKET` repository variables; the container resolves Arauco
+credentials through the instance profile, so database credentials never pass
+through GitHub or appear in Docker configuration.
 
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks

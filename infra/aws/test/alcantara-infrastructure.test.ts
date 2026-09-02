@@ -7,8 +7,6 @@ const template = (): Template => {
   return Template.fromStack(
     new AlcantaraInfrastructureStack(app, 'AlcantaraInfrastructureStack', {
       config: {
-        araucoSecretArn:
-          'arn:aws:secretsmanager:us-east-1:123456789012:secret:arauco-example-AbCd12',
         hostedZoneId: 'Z00000000000000000000',
         mediaBucketName: 'example-alcantara-assets',
         serviceHostIp: '203.0.113.10',
@@ -20,10 +18,9 @@ const template = (): Template => {
   );
 };
 
-test('owns Alcantara runtime permissions outside Macondo', () => {
+test('owns Alcantara application permissions outside Macondo', () => {
   const policies = JSON.stringify(template().findResources('AWS::IAM::Policy'));
-  expect(policies).toContain('secretsmanager:GetSecretValue');
-  expect(policies).toContain('arauco-example');
+  expect(policies).not.toContain('secretsmanager:GetSecretValue');
   expect(policies).toContain('s3:PutObject');
   expect(policies).toContain('example-alcantara-assets');
   expect(policies).toContain('logs:PutLogEvents');

@@ -10,6 +10,7 @@
     "build": "pnpm run prisma:generate && nest build",
     "db:push": "prisma db push",
     "db:migrate:deploy": "node scripts/deploy-migrations.mjs",
+    "db:verify:restored": "node scripts/verify-restored-database.mjs",
     "db:migrate:prisma": "prisma migrate deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

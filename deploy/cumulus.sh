@@ -15,30 +15,6 @@ for value in "$broadcast_secret_id" "$database_secret_id" "$media_bucket"; do
   test -n "$value"
 done
 
-database_payload="$(aws secretsmanager get-secret-value \
-  --region us-east-1 \
-  --secret-id "$database_secret_id" \
-  --query SecretString \
-  --output text)"
-database_url="$(DATABASE_PAYLOAD="$database_payload" python3 - <<'PY'
-import json
-import os
-from urllib.parse import quote
-
-payload = json.loads(os.environ['DATABASE_PAYLOAD'])
-required = ('username', 'password', 'host', 'port', 'dbname')
-if any(key not in payload or payload[key] in ('', None) for key in required):
-    raise SystemExit('Arauco database secret is incomplete')
-username = quote(str(payload['username']), safe='')
-password = quote(str(payload['password']), safe='')
-host = str(payload['host'])
-port = int(payload['port'])
-database = quote(str(payload['dbname']), safe='')
-print(f'postgresql://{username}:{password}@{host}:{port}/{database}?schema=public')
-PY
-)"
-unset database_payload
-
 rm -rf "$docker_config_dir"
 install -d -m 0700 "$docker_config_dir"
 printf '%s' "$ghcr_token_base64" | base64 -d | docker --config "$docker_config_dir" login ghcr.io --username "$ghcr_user" --password-stdin
@@ -53,34 +29,11 @@ if docker inspect alcantara-backend-previous >/dev/null 2>&1; then
   exit 1
 fi
 
-docker run --rm -i \
-  -e DATABASE_URL="$database_url" \
+docker run --rm \
+  -e AWS_REGION=us-east-1 \
+  -e ARAUCO_SECRET_ID="$database_secret_id" \
   "$image" \
-  node - <<'NODE'
-const { Client } = require('pg');
-
-async function verifyRestore() {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
-  try {
-    const table = await client.query(`SELECT to_regclass('public."ProgramState"') AS name`);
-    if (!table.rows[0]?.name) {
-      throw new Error('Arauco has not been restored: ProgramState is absent');
-    }
-    const data = await client.query('SELECT count(*)::int AS count FROM "ProgramState"');
-    if ((data.rows[0]?.count ?? 0) < 1) {
-      throw new Error('Arauco has not been restored: ProgramState is empty');
-    }
-  } finally {
-    await client.end();
-  }
-}
-
-verifyRestore().catch((error) => {
-  console.error(error.message);
-  process.exit(1);
-});
-NODE
+  pnpm run db:verify:restored
 
 docker run --rm \
   -e NODE_ENV=production \
@@ -90,7 +43,8 @@ docker run --rm \
   pnpm run preflight:runtime
 
 docker run --rm \
-  -e DATABASE_URL="$database_url" \
+  -e AWS_REGION=us-east-1 \
+  -e ARAUCO_SECRET_ID="$database_secret_id" \
   "$image" \
   pnpm run db:migrate:deploy
 
@@ -117,9 +71,9 @@ if ! docker run -d --name alcantara-backend \
   -e HTTP_PORT=3006 \
   -e PORT=3006 \
   -e AWS_REGION=us-east-1 \
+  -e ARAUCO_SECRET_ID="$database_secret_id" \
   -e ALCANTARA_BUILD_VERSION="${image##*:}" \
   -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
-  -e DATABASE_URL="$database_url" \
   -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com \
   -e POMPEII_TEAM_ID=1 \
   -e MEDIA_S3_BUCKET="$media_bucket" \
@@ -134,7 +88,6 @@ if ! docker run -d --name alcantara-backend \
   rollback_backend
   exit 1
 fi
-unset database_url
 
 deployed_ready=false
 for _ in $(seq 1 45); do

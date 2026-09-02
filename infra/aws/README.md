@@ -5,8 +5,6 @@ shared Cumulus host, network, and Arauco database. This stack owns:
 
 - `alcantara-github-deploy`, restricted to `gaulatti/alcantara` `main` and SSM
   commands to the EC2 instance tagged `Name=macondo-services`;
-- the policy attached to the Cumulus host role that permits reading Arauco's
-  generated credential secret;
 - the host grants for Alcántara media and `/services/alcantara` logs; and
 - `api.alcantara.gaulatti.com` pointing to the Cumulus Elastic IP.
 
@@ -23,6 +21,9 @@ pnpm run build
 pnpm exec cdk diff AlcantaraInfrastructureStack
 ```
 
-The existing Route 53 record must be adopted into this stack during the first
-deployment rather than duplicated. After deployment, set the GitHub repository
-variables `ARAUCO_SECRET_ARN` and `MEDIA_S3_BUCKET` to the same identifiers.
+Macondo grants the Cumulus instance role read access to the database secrets it
+provisions. Alcántara's containers receive only the non-secret Arauco secret
+identifier and resolve credentials through that instance profile. The existing
+Route 53 record must be adopted into this stack during the first deployment
+rather than duplicated. After deployment, set the GitHub repository variables
+`ARAUCO_SECRET_ARN` and `MEDIA_S3_BUCKET` to the corresponding identifiers.

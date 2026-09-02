@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 import pg from 'pg';
+import { loadDatabaseSecret } from '../dist/src/config/database-secrets.js';
 
 const { Client } = pg;
 const baselineMigration = '0_postgresql_baseline';
@@ -22,6 +23,8 @@ const requiredTables = [
   'Song',
   'Stinger',
 ];
+
+await loadDatabaseSecret();
 
 function runPrisma(args) {
   const result = spawnSync('pnpm', ['exec', 'prisma', ...args], {

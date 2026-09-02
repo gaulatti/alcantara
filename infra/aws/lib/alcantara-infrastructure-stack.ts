@@ -3,7 +3,6 @@ import { Role } from 'aws-cdk-lib/aws-iam';
 import { LogGroup } from 'aws-cdk-lib/aws-logs';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
-import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { AlcantaraInfrastructureConfig } from './config';
 import { createGitHubDeployRole } from './github-deploy';
@@ -27,11 +26,6 @@ export class AlcantaraInfrastructureStack extends Stack {
       config.serviceHostRoleArn,
       { mutable: true },
     );
-    Secret.fromSecretCompleteArn(
-      this,
-      'AraucoCredentials',
-      config.araucoSecretArn,
-    ).grantRead(hostRole);
     Bucket.fromBucketName(
       this,
       'MediaBucket',

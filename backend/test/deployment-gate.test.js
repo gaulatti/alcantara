@@ -2,8 +2,15 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const test = require('node:test');
 
-const workflow = readFileSync('../.github/workflows/backend-deploy.yml', 'utf8');
+const workflow = readFileSync(
+  '../.github/workflows/backend-deploy.yml',
+  'utf8',
+);
 const deployScript = readFileSync('../deploy/cumulus.sh', 'utf8');
+const restoreCheck = readFileSync(
+  './scripts/verify-restored-database.mjs',
+  'utf8',
+);
 const nginx = readFileSync('../deploy/cumulus.nginx.conf', 'utf8');
 
 test('preserves on-premises deployment and selects Cumulus when the gate is not true', () => {
@@ -17,17 +24,28 @@ test('preserves on-premises deployment and selects Cumulus when the gate is not 
   assert.match(workflow, /vars\.MEDIA_S3_BUCKET/);
   assert.doesNotMatch(workflow, /MacondoStack/);
   assert.doesNotMatch(workflow, /route53 change-resource-record-sets/);
-  assert.match(workflow, /ghcr\.io\/\$\{\{ github\.repository \}\}:\$\{\{ github\.sha \}\}/);
+  assert.match(
+    workflow,
+    /ghcr\.io\/\$\{\{ github\.repository \}\}:\$\{\{ github\.sha \}\}/,
+  );
 });
 
 test('fails closed until Arauco contains restored Alcantara production data', () => {
-  assert.match(deployScript, /ProgramState is absent/);
-  assert.match(deployScript, /ProgramState is empty/);
+  assert.match(restoreCheck, /ProgramState is absent/);
+  assert.match(restoreCheck, /ProgramState is empty/);
+  assert.match(deployScript, /pnpm run db:verify:restored/);
   assert.match(deployScript, /pnpm run db:migrate:deploy/);
   assert.ok(
-    deployScript.indexOf('ProgramState is absent') <
+    deployScript.indexOf('pnpm run db:verify:restored') <
       deployScript.indexOf('pnpm run db:migrate:deploy'),
   );
+});
+
+test('hydrates database credentials inside containers through the instance profile', () => {
+  assert.match(deployScript, /-e ARAUCO_SECRET_ID="\$database_secret_id"/);
+  assert.match(deployScript, /-e AWS_REGION=us-east-1/);
+  assert.doesNotMatch(deployScript, /-e DATABASE_URL=/);
+  assert.doesNotMatch(deployScript, /secretsmanager get-secret-value/);
 });
 
 test('keeps the backend private to nginx and preserves realtime proxy behavior', () => {
