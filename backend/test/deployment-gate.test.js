@@ -28,6 +28,8 @@ test('preserves on-premises deployment and selects Cumulus when the gate is not 
     workflow,
     /ghcr\.io\/\$\{\{ github\.repository \}\}:\$\{\{ github\.sha \}\}/,
   );
+  assert.match(workflow, /deployment_status=0/);
+  assert.match(workflow, /exit \$deployment_status/);
 });
 
 test('fails closed until Arauco contains restored Alcantara production data', () => {

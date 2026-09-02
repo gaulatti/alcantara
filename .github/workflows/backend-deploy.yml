@@ -276,8 +276,7 @@ jobs:
             '[
               "printf %s " + ($script | @sh) + " | base64 -d > /tmp/deploy-alcantara.sh",
               "chmod 0700 /tmp/deploy-alcantara.sh",
-              "/tmp/deploy-alcantara.sh " + ([$user, $token, $broadcastSecret, $databaseSecret, $image, $nginx, $mediaBucket] | map(@sh) | join(" ")),
-              "rm -f /tmp/deploy-alcantara.sh"
+              "deployment_status=0; /tmp/deploy-alcantara.sh " + ([$user, $token, $broadcastSecret, $databaseSecret, $image, $nginx, $mediaBucket] | map(@sh) | join(" ")) + " || deployment_status=$?; rm -f /tmp/deploy-alcantara.sh; exit $deployment_status"
             ] | join("\n")')"
           PARAMETERS="$(jq -cn --arg command "$REMOTE_COMMAND" '{commands:[$command],executionTimeout:["900"]}')"
           COMMAND_ID="$(aws ssm send-command \
