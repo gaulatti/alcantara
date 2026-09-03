@@ -30,6 +30,8 @@ test('preserves on-premises deployment and selects Cumulus when the gate is not 
   );
   assert.match(workflow, /deployment_status=0/);
   assert.match(workflow, /exit \$deployment_status/);
+  assert.match(workflow, /InvocationDoesNotExist/);
+  assert.match(workflow, /sleep 5\s+continue/);
 });
 
 test('fails closed until Arauco contains restored Alcantara production data', () => {
