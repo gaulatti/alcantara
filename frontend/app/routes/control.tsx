@@ -2929,6 +2929,7 @@ export default function Control() {
       }
 
       if (
+        data.type === "program_state_snapshot" ||
         data.type === "scene_change" ||
         data.type === "program_scenes_changed" ||
         data.type === "program_media_groups_changed"
