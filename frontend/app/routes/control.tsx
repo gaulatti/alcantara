@@ -3258,7 +3258,7 @@ export default function Control() {
   }
 
   return (
-    <div className="flex h-full w-full flex-1 min-h-0 flex-col overflow-hidden bg-dark-sand text-text-primary">
+    <div className="flex h-full w-full flex-1 min-h-0 flex-col overflow-y-auto bg-dark-sand text-text-primary">
       <style>
         {`
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
@@ -3299,12 +3299,12 @@ export default function Control() {
         }
       />
       <div
-        className={`flex-1 min-h-0 w-full overflow-hidden ${consoleWorkspace === "compact" ? "hidden" : ""}`}
+        className={`flex-1 min-h-[420px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
         data-workspace-content={consoleWorkspace}
       >
-        <PanelLayout className="w-full h-full min-h-0" padding="p-0">
-          <PanelColumn className="min-w-0" {...controlDeckGrowProps}>
-            {consoleWorkspace !== "graphics" ? (
+        <div className={`grid w-full h-full min-h-0 grid-cols-1 ${consoleWorkspace === "audio" ? "md:grid-cols-2" : ""}`}>
+          <PanelColumn className="min-w-0 flex-1">
+            {consoleWorkspace === "audio" ? (
               <Panel
                 title="Mixer"
                 accent="#38bdf8"
@@ -3771,7 +3771,7 @@ export default function Control() {
             ) : null}
           </PanelColumn>
 
-          <PanelColumn style={{ width: 520, minWidth: 520 }}>
+          {consoleWorkspace === "audio" && <PanelColumn className="min-w-0 flex-1">
             <Panel
               title="Playlist"
               accent="#8b5cf6"
@@ -3831,14 +3831,14 @@ export default function Control() {
                 onTrigger={(id) => void triggerInstant(id)}
               />
             </Panel>
-          </PanelColumn>
-        </PanelLayout>
+          </PanelColumn>}
+        </div>
       </div>
-      <div className="relative z-20 shrink-0">
+      {consoleWorkspace === "audio" && <div className="relative z-20 shrink-0">
         <PlaybackBar
           sequence={programAudioBusSongSequence}
           programSongPlayback={programSongPlaybackState}
-          sceneQuickActions={sceneQuickActions}
+          sceneQuickActions={[]}
           onChange={(nextSequence) => {
             void saveProgramAudioBusSongSequence(nextSequence);
           }}
@@ -3855,7 +3855,7 @@ export default function Control() {
             void stageSceneForProgram(sceneId);
           }}
         />
-      </div>
+      </div>}
       <PlaylistSheetPanel
         isOpen={isPlaylistSheetOpen}
         onClose={() => setIsPlaylistSheetOpen(false)}

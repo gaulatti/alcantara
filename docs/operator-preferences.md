@@ -8,6 +8,14 @@ Another subject cannot address or overwrite that row through the API.
 
 ## Device classification and override
 
+Director and Graphics reserve the lower workspace for staged-scene properties;
+the full mixer, playlist, instants and playback bar live in Audio. Audio keeps a
+small Program confidence monitor, without the scene grid or video switcher.
+Confidence monitors have bounded height and the scene strip scrolls independently.
+The properties workspace retains at least 420 px of height; smaller windows can
+scroll the console instead of clipping the editor. Switching workspaces does not
+change the staged scene or take anything on air.
+
 Classification is deterministic at browser startup:
 
 - `phone`: iPhone, iPod, Android Mobile, or a viewport under 768 px
