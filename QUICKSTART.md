@@ -191,6 +191,16 @@ npx prisma migrate dev --name <migration_name>
 
 ## Troubleshooting
 
+### Prisma P3015: missing migration.sql
+
+Check for empty, untracked directories under `backend/prisma/migrations` left
+behind after migration renames. Compare with `git ls-files backend/prisma/migrations`.
+Remove only confirmed empty, untracked directories with `rmdir`; do not delete
+tracked migrations or reset the database. Then restart Compose.
+
+The backend health check uses its configured `PORT`, including custom
+`BACKEND_PORT` values, so frontend startup waits for the actual listener.
+
 ### Port Already in Use
 If the default ports are already in use, set custom ports via environment variables:
 
