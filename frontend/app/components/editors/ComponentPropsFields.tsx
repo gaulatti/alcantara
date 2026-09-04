@@ -736,6 +736,7 @@ export function ComponentPropsFields({
         />
       );
     case 'modoitaliano-podcast-player':
+    case 'modoitaliano-giorgia-podcast-player':
       return (
         <ModoItalianoPodcastPlayerEditorFields
           componentType={componentType}

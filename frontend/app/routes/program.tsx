@@ -22,6 +22,7 @@ import {
   ModoItalianoDisclaimer,
   ModoItalianoBracket,
   ModoItalianoPodcastPlayer,
+  ModoItalianoGiorgiaPodcastPlayer,
   CronicaChyron,
   CronicaBackground,
   CronicaReiteramos,
@@ -2101,7 +2102,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
     const hasCronicaChyronComponent = components.includes('cronica-chyron');
     const hasProgramBracketComponent = components.includes('modoitaliano-bracket');
-    const hasProgramPodcastPlayerComponent = components.includes('modoitaliano-podcast-player');
+    const hasProgramPodcastPlayerComponent = components.includes('modoitaliano-podcast-player') || components.includes('modoitaliano-giorgia-podcast-player');
     const shouldRenderProgramRow =
       hasProgramClockComponent &&
       (hasProgramChyronComponent ||
@@ -2439,8 +2440,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'modoitaliano-podcast-player':
+              case 'modoitaliano-giorgia-podcast-player': {
+                const PodcastPlayer = componentType === 'modoitaliano-giorgia-podcast-player' ? ModoItalianoGiorgiaPodcastPlayer : ModoItalianoPodcastPlayer;
                 return (
-                  <ModoItalianoPodcastPlayer
+                  <PodcastPlayer
                     key={componentType}
                     show={typeof props.show === 'boolean' ? props.show : true}
                     coverUrl={typeof props.coverUrl === 'string' ? props.coverUrl : ''}
@@ -2450,6 +2453,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     masterGain={outputGain}
                   />
                 );
+              }
               case 'toni-logo':
                 return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
               case 'earone':
