@@ -26,13 +26,16 @@ it('registers an independent template without replacing the legacy player', () =
   });
 });
 
-it('renders full long copy and centered cover without additional branding', () => {
+it('renders full long copy, centered cover and exactly one ModoItaliano logo', () => {
   const title = 'Una lunghissima conversazione sulla musica italiana e le canzoni che ci accompagnano ogni giorno';
   render(<ModoItalianoGiorgiaPodcastPlayer episodeTitle={title} showName='Modo Italiano' coverUrl='/cover.jpg' />);
   expect(screen.getByRole('heading')).toHaveTextContent(title);
   expect(screen.getByRole('heading')).toHaveStyle({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
   expect(screen.getByRole('img', { name: 'Episode cover' })).toHaveStyle({ objectPosition: 'center center' });
-  expect(screen.getAllByRole('img')).toHaveLength(1);
+  expect(screen.getAllByRole('img', { name: 'ModoItaliano' })).toHaveLength(1);
+  expect(screen.getByRole('img', { name: 'ModoItaliano' })).toHaveAttribute('src', '/mi.svg');
+  expect(screen.getByRole('img', { name: 'ModoItaliano' })).toHaveStyle({ top: '69px', left: '96px', width: '222px' });
+  expect(screen.getAllByRole('img')).toHaveLength(2);
 });
 
 it('passes audio, master gain, timing and seeking through to the player', async () => {

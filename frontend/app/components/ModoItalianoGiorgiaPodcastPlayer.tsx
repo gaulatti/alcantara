@@ -123,7 +123,8 @@ export function ModoItalianoGiorgiaPodcastPlayer({
         onError={() => setFailed(true)}
       />
       <section aria-label='Episode artwork and title' style={{ position: 'absolute', inset: 0 }}>
-        {!coverUrl && <p style={{ position: 'absolute', top: '100px', left: '110px', fontSize: '32px' }}>No cover selected</p>}
+        <img src='/mi.svg' alt='ModoItaliano' style={{ position: 'absolute', top: '69px', left: '96px', width: '222px', height: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1) drop-shadow(0 15px 51px rgba(0,0,0,0.72))' }} />
+        {!coverUrl && <p style={{ position: 'absolute', top: '180px', left: '110px', fontSize: '32px' }}>No cover selected</p>}
         <div style={{ position: 'absolute', left: '110px', right: '110px', bottom: '280px', paddingLeft: '44px', borderLeft: `10px solid ${THEME.signal}` }}>
             <p style={{ margin: '0 0 26px', fontFamily: THEME.font, fontSize: '34px', fontWeight: 600, color: '#fff',
               letterSpacing: '0.12em', textTransform: 'uppercase', overflowWrap: 'anywhere' }}>{showName}</p>

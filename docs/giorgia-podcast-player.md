@@ -11,7 +11,10 @@ through the normal program scene path. Output master gain still controls audio.
 The 1920 × 1080 composition uses a single full-bleed, center-center cropped cover,
 a continuous photo/navy fade, and oversized uppercase Barlow Condensed text
 anchored by a vertical magenta rule. Playback lives in a restrained full-width
-footer with a magenta spectrum and focus-visible seek control; there is no separate
+footer. A single white ModoItaliano logo sits in the upper-left safe area,
+matching the Giorgia YouTube thumbnail placement scaled to 1920 × 1080,
+using the shared `/mi.svg` asset without a surrounding panel. Playback uses a
+magenta spectrum and focus-visible seek control; there is no separate
 cover card. Long titles wrap rather than being
 ellipsized. The cover is optional and its absence is explicitly shown.
 
