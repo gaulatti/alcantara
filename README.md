@@ -142,6 +142,8 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 - Fixed 1920x1080 Full HD resolution (hardcoded, not responsive)
 - Real-time updates via SSE
 - Auto-reconnecting SSE client
+- Frontend deploys invalidate every CloudFront SPA route; the HTML shell is never
+  cached as immutable, while content-hashed assets retain long-lived caching
 - Supports multiple layout types:
   - Lower Third
   - Full Screen
