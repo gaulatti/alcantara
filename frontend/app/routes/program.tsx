@@ -53,6 +53,7 @@ import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/s
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import { getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
+import { sceneInstantBelongsToActiveScene } from '../utils/programSceneInstant';
 
 interface Layout {
   id: number;
@@ -703,6 +704,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     audio: HTMLAudioElement;
     runtime: InstantAudioRuntimeState;
     playbackToken: string;
+    sceneId: number | null;
   } | null>(null);
   const sceneInstantTakeSequenceRef = useRef(0);
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
@@ -1213,7 +1215,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           console.error(`Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
           cleanup();
         };
-        activeSceneInstantAudioRef.current = { audio, runtime, playbackToken };
+        activeSceneInstantAudioRef.current = { audio, runtime, playbackToken, sceneId };
 
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
@@ -1237,6 +1239,16 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     },
     [ensureInstantAudioMeter, resolvedSceneInstantMasterVolume, stopSceneInstantAudio]
   );
+
+  useEffect(() => {
+    const current = activeSceneInstantAudioRef.current;
+    if (!current) return;
+    const activeSceneId = normalizeSceneInstantNumericId(state?.activeSceneId);
+    if (!sceneInstantBelongsToActiveScene(current.sceneId, activeSceneId)) {
+      sceneInstantTakeSequenceRef.current += 1;
+      stopSceneInstantAudio(SCENE_INSTANT_SWITCH_FADE_MS);
+    }
+  }, [state?.activeSceneId, stopSceneInstantAudio]);
 
   const playInstantAudio = (event: InstantPlayEvent) => {
     const audio = new Audio(event.instant.audioUrl);
