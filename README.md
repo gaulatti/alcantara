@@ -95,6 +95,12 @@ own microphone. Guests subscribe only to their selected video output and their
 own `mixminus:<identity>:<bus>` track. This replaces the earlier fixed 250 ms
 browser relay and keeps isolated guest tracks out of the guest UI.
 
+Authorized operators can control Alana's independent composed-Program recorder
+without treating a requested or finalizing operation as safe media. See
+[`docs/program-recording.md`](docs/program-recording.md) for the pinned Alana
+contract, state semantics, permissions, idempotency, local fixture, private
+configuration, metrics, and recovery boundary.
+
 #### Local and production operations
 
 `docker compose up --build` includes LiveKit 1.13.4 with fixed local-only
@@ -332,7 +338,8 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 ## Architecture
 
 Production places the backend on the external `broadcast-control` Docker
-network shared with Palazzo. Before stopping the live backend, deployment runs
+network shared with Palazzo and Alana. Before stopping the live backend,
+deployment runs
 a side-effect-free runtime preflight in the new image to resolve and validate
 the Palazzo credential and approved URL list. The previous container is retained
 until the replacement passes its startup check and is automatically restored if
@@ -342,7 +349,8 @@ configuration or startup defect reaches deployment.
 The replacement joins `broadcast-control` so the private
 `http://palazzo:3100` program-scoped machine API remains resolvable. Set the
 production `ALCANTARA_CONFIG_SECRET_ID` repository variable to the
-application-scoped Secrets Manager payload. During migration, deployment also
+application-scoped Secrets Manager payload, including Alana's private recording
+control URL and token. During migration, deployment also
 discovers and inherits the running Palazzo container's existing read-only
 control-token mount as a backwards-compatible credential source. Preflight fails without
 replacing the live backend when that mount is absent or ambiguous, neither
@@ -352,8 +360,9 @@ source is available, or configuration is invalid.
 
 ```
 Control Panel → REST API → Database → SSE Broadcast → Program Page
-                              ↓
-                        Program State Update
+      │                       ↓
+      └── Recording API → private Alana control → composed capture state
+                         Program State Update
 ```
 
 1. Control page sends scene activation/chyron update via REST

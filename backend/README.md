@@ -82,10 +82,12 @@ both non-interactive execution and repeatability.
 
 The application process also requires `ALCANTARA_CONFIG_SECRET_ID` and
 `AWS_REGION` in production. Before constructing Nest providers it loads the
-allowlisted `palazzoControlToken` and `palazzoAllowedUrls` fields from that
-Secrets Manager payload. Missing, malformed, or unavailable configuration
-fails startup; the token is never a frontend variable or Docker build argument.
-See [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md).
+allowlisted `palazzoControlToken`, `palazzoAllowedUrls`, `alanaControlToken`,
+and `alanaControlUrl` fields from that Secrets Manager payload. Missing,
+malformed, or unavailable configuration fails startup; tokens are never
+frontend variables or Docker build arguments. See
+[`../docs/radio-telemetry.md`](../docs/radio-telemetry.md) and
+[`../docs/program-recording.md`](../docs/program-recording.md).
 
 The deployment workflow keeps the existing host path when the repository
 variable `ON_PREMISES` is exactly `true`. When it is false or absent, GitHub
