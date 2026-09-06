@@ -19,6 +19,10 @@ broadcast-settings, scene-instant, and stinger snapshots immediately and every
 five seconds, including while the document is hidden. Polling is reconciliation
 for an open renderer, not exclusive ownership or a replacement for SSE.
 
+Generic slideshow scenes eagerly preload every media-group image and advance
+only among frames that have finished loading. This is required for offscreen
+broadcast renderers, which may indefinitely defer opacity-hidden lazy images.
+
 The private Prometheus endpoint exposes:
 
 - `alcantara_program_sse_connections`: currently open program SSE subscribers.
