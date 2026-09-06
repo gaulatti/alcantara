@@ -6,6 +6,9 @@ const nativeFetch = globalThis.fetch.bind(globalThis);
 let installed = false;
 class SessionUnavailableError extends Error {}
 
+export const isPublicProgramRendererPath = (pathname: string): boolean =>
+  /^\/program\/[^/]+\/?$/.test(pathname);
+
 const isBackendRequest = (input: RequestInfo | URL): boolean => {
   const requestUrl =
     typeof input === "string"
@@ -74,7 +77,7 @@ export const installAuthenticatedFetch = (): void => {
 
   installed = true;
   globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) =>
-    isBackendRequest(input)
+    isBackendRequest(input) && !isPublicProgramRendererPath(window.location.pathname)
       ? authenticatedBackendFetch(input, init)
       : nativeFetch(input, init);
 };
