@@ -37,6 +37,7 @@ import { PlaybackBar } from "../components/PlaybackBar";
 import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
 import { useConsolePreferences } from "../contexts/ConsolePreferencesContext";
 import { RadioPanel } from "../components/RadioPanel";
+import { RecordingPanel } from "../components/RecordingPanel";
 import {
   InstantsPanel,
   PlaylistPanel,
@@ -3298,6 +3299,7 @@ export default function Control() {
           void setFadeToBlack(programState?.fadeToBlack !== true)
         }
       />
+      <RecordingPanel programId={activeProgramId} />
       <div
         className={`flex-1 min-h-[420px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
         data-workspace-content={consoleWorkspace}
