@@ -45,7 +45,10 @@ authentication. A missing row returns safe class defaults at version zero.
 Changes are sent after a bounded 700 ms debounce with the last acknowledged
 version. The backend update is atomic. A stale version returns HTTP 409 with
 the authoritative value, and the UI offers “Use server” or “Retry mine”; it
-never silently overwrites the other session.
+never silently overwrites the other session. The optimistic update also binds
+the ownership mode selected by the read: a canonical row must still have the
+same principal, while a legacy row must still have the current subject and a
+null principal.
 
 The last acknowledged profile is cached locally under the canonical principal
 when the backend returns one, with the current subject as the rollout fallback.

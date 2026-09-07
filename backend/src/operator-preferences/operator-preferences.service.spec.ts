@@ -207,7 +207,50 @@ describe('OperatorPreferencesService authorization boundaries', () => {
           subject: 'shared-pool-subject',
           deviceClass: 'desktop',
           version: 3,
-          OR: [{ principalId: 'principal-a' }, { principalId: null }],
+          principalId: null,
+        },
+      }),
+    );
+  });
+
+  it('does not treat a canonical row that concurrently becomes unowned as a legacy fallback', async () => {
+    prisma.operatorPreference.findMany.mockResolvedValue([
+      {
+        deviceClass: 'desktop',
+        principalId: 'principal-a',
+        subject: 'subject-from-first-pool',
+        version: 3,
+      },
+    ]);
+    // Simulates principal-a changing to null after findPreference selected the
+    // canonical row but before the optimistic update runs.
+    transaction.operatorPreference.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.save(
+        { principalId: 'principal-a', subject: 'subject-from-second-pool' },
+        'desktop',
+        {
+          version: 3,
+          profile: {
+            workspace: 'director',
+            dockWidth: 320,
+            touchMode: false,
+            shortcutsEnabled: true,
+            selectedProgramId: 'main',
+            transitions: { main: 'crescendo-prism' },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(transaction.operatorPreference.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          subject: 'subject-from-first-pool',
+          deviceClass: 'desktop',
+          version: 3,
+          principalId: 'principal-a',
         },
       }),
     );

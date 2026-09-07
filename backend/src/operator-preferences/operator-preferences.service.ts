@@ -99,6 +99,14 @@ export class OperatorPreferencesService {
     // different pool subject after a migration.
     const existing = await this.findPreference(identity, deviceClass);
     const subject = existing?.subject ?? identity.subject;
+    // Bind the optimistic write to the ownership mode selected above. A
+    // canonical match must remain owned by that principal; it cannot become an
+    // eligible legacy fallback merely by changing to a null principal between
+    // the read and update. A legacy match remains restricted to the caller's
+    // current subject and a null principal.
+    const selectedOwnership = existing?.principalId
+      ? { principalId: existing.principalId }
+      : { principalId: null, subject: identity.subject };
     const version = integerVersion(body.version);
     const profile = parseProfile(
       body.profile,
@@ -123,12 +131,7 @@ export class OperatorPreferencesService {
             subject,
             deviceClass,
             version,
-            OR: [
-              ...(identity.principalId
-                ? [{ principalId: identity.principalId }]
-                : []),
-              { principalId: null },
-            ],
+            ...selectedOwnership,
           },
           data: {
             profile,
