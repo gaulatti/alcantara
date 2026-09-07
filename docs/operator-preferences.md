@@ -1,10 +1,11 @@
 # Operator console preferences
 
-Alcantara owns console UI preferences. Pompeii supplies the authenticated
-subject and authorization decision, but it does not store these preferences.
-Private profiles are keyed by `(subject, deviceClass)`, so two laptops for the
-same operator share the desktop profile while tablet and phone remain isolated.
-Another subject cannot address or overwrite that row through the API.
+Alcantara owns console UI preferences. Pompeii supplies both the authenticated
+pool subject and, when verified, its canonical principal; Pompeii does not store
+these preferences. The legacy primary key remains `(subject, deviceClass)`, but
+reads prefer one matching `(principalId, deviceClass)` row and otherwise fall
+back to the current subject. Two linked pool identities therefore reach the same
+migrated profile, while an unresolved identity can reach only its legacy row.
 
 ## Device classification and override
 
@@ -42,23 +43,25 @@ version. The backend update is atomic. A stale version returns HTTP 409 with
 the authoritative value, and the UI offers “Use server” or “Retry mine”; it
 never silently overwrites the other session.
 
-The last acknowledged `(subject, class)` profile is cached locally. If the
-backend is unavailable, Alcantara starts with that cache or safe defaults,
-marks synchronization degraded, and leaves broadcast controls usable. Dirty
-writes and clean reads retry every five seconds. Tokens are not stored in that
-preference cache.
+The last acknowledged profile is cached locally under the canonical principal
+when the backend returns one, with the current subject as the rollout fallback.
+If the backend is unavailable, Alcantara starts with the available cache or safe
+defaults, marks synchronization degraded, and leaves broadcast controls usable.
+Dirty writes and clean reads retry every five seconds. Tokens are not stored in
+that preference cache.
 
-“Reset class” deletes only the current server row and local cache. “Reset all”
-deletes the authenticated subject's three server rows and all three local
-caches. Neither operation affects shared layouts or another operator.
+“Reset class” deletes the caller's matching subject/canonical server row and
+local cache. “Reset all” deletes that caller's subject and canonical preference
+rows for all three classes and clears both forms of local cache. Neither
+operation affects shared layouts or another operator.
 
 ## Shared program and team layouts
 
 Publication is an explicit action in the preferences panel. A layout stores a
-name, optional description, owner subject, `program` or `team` scope and ID,
-source device class, version, timestamps, and the normalized profile. Publishing
-the same name in the same scope creates a new version; retiring also increments
-the version and removes it from discovery.
+name, optional description, owner subject, nullable canonical owner, `program`
+or `team` scope and ID, source device class, version, timestamps, and the
+normalized profile. Publishing the same name in the same scope creates a new
+version; retiring also increments the version and removes it from discovery.
 
 Discovery and load require access to the referenced program or team. Publish,
 replace, and retire additionally require `alcantara:layout:manage`. Those checks

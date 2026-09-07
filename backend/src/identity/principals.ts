@@ -27,6 +27,12 @@ export type SubjectMapping = {
   principalId: string;
 };
 
+/** The backward-compatible identity Alcantara receives from Pompeii. */
+export type CanonicalIdentity = {
+  subject: string;
+  principalId: string | null;
+};
+
 /** Every table and column in Alcantara that carries a pool-local subject. */
 export const SUBJECT_BEARING_FIELDS = [
   {
@@ -47,6 +53,12 @@ export const SUBJECT_BEARING_FIELDS = [
     model: 'GuestInvitation',
     subjectColumn: 'createdByIdentity',
   },
+  {
+    canonicalColumn: 'details.operatorPrincipalId',
+    kind: 'audit',
+    model: 'GuestEvent',
+    subjectColumn: 'details.operatorIdentity',
+  },
 ] as const;
 
 export type SubjectBearingField = (typeof SUBJECT_BEARING_FIELDS)[number];
@@ -62,6 +74,8 @@ export type RowClassification =
   | 'conflicting'
   /** The subject appears in the mapping more than once, with different principals. */
   | 'ambiguous'
+  /** Multiple owned rows would converge on one principal-specific key. */
+  | 'colliding'
   /** The row carries no subject at all. */
   | 'orphan';
 
@@ -72,6 +86,11 @@ export type IdentityRow = {
   model: SubjectBearingField['model'];
   principalId: string | null;
   subject: string | null;
+  /**
+   * The model-local uniqueness suffix used to detect ownership collisions.
+   * Operator preferences use their device class; non-unique models omit it.
+   */
+  collisionScope?: string;
 };
 
 export type PlanRow = {
@@ -93,6 +112,7 @@ const CLASSIFICATIONS: readonly RowClassification[] = [
   'missing',
   'conflicting',
   'ambiguous',
+  'colliding',
   'orphan',
 ];
 
@@ -134,15 +154,27 @@ function classify(
     return { ...base, classification: 'orphan', principalId: row.principalId };
   }
   if (ambiguous.has(subject)) {
-    return { ...base, classification: 'ambiguous', principalId: row.principalId };
+    return {
+      ...base,
+      classification: 'ambiguous',
+      principalId: row.principalId,
+    };
   }
 
   const mapped = bySubject.get(subject) ?? null;
   if (row.principalId) {
     if (mapped && mapped !== row.principalId) {
-      return { ...base, classification: 'conflicting', principalId: row.principalId };
+      return {
+        ...base,
+        classification: 'conflicting',
+        principalId: row.principalId,
+      };
     }
-    return { ...base, classification: 'already-migrated', principalId: row.principalId };
+    return {
+      ...base,
+      classification: 'already-migrated',
+      principalId: row.principalId,
+    };
   }
   if (!mapped) {
     return { ...base, classification: 'missing', principalId: null };
@@ -160,6 +192,36 @@ export function planMigration(
 ): MigrationPlan {
   const { ambiguous, bySubject } = indexMappings(mappings);
   const planned = rows.map((row) => classify(row, bySubject, ambiguous));
+
+  // OperatorPreference remains keyed by the legacy subject during rollout.
+  // Two pool subjects for the same person and device would therefore become
+  // two canonical matches, making reads nondeterministic. Report both rows and
+  // refuse to apply either one until an operator reconciles them explicitly.
+  const collisionGroups = new Map<string, number[]>();
+  rows.forEach((row, index) => {
+    if (row.model !== 'OperatorPreference' || !row.collisionScope) return;
+    const principalId = planned[index].principalId;
+    if (!principalId) return;
+    const key = `${principalId}\u0000${row.collisionScope}`;
+    const group = collisionGroups.get(key) ?? [];
+    group.push(index);
+    collisionGroups.set(key, group);
+  });
+  for (const group of collisionGroups.values()) {
+    if (group.length < 2) continue;
+    for (const index of group) {
+      if (
+        planned[index].classification !== 'ambiguous' &&
+        planned[index].classification !== 'conflicting'
+      ) {
+        planned[index] = {
+          ...planned[index],
+          classification: 'colliding',
+        };
+      }
+    }
+  }
+
   const summary = Object.fromEntries(
     CLASSIFICATIONS.map((key) => [key, 0]),
   ) as Record<RowClassification, number>;
@@ -174,12 +236,16 @@ export function applicableChanges(plan: MigrationPlan): PlanRow[] {
 
 /** True when the plan contains anything a person must resolve before applying. */
 export function hasConflicts(plan: MigrationPlan): boolean {
-  return plan.summary.conflicting > 0 || plan.summary.ambiguous > 0;
+  return (
+    plan.summary.conflicting > 0 ||
+    plan.summary.ambiguous > 0 ||
+    plan.summary.colliding > 0
+  );
 }
 
 /**
- * A human-readable dry-run report. It contains counts and opaque row ids only —
- * never a subject, a principal, or an email.
+ * A human-readable dry-run report. It contains counts only — never a subject,
+ * principal, email, mapping value, or record identifier.
  */
 export function formatPlan(plan: MigrationPlan): string {
   const lines = ['Canonical principal migration — dry run', ''];
@@ -194,15 +260,19 @@ export function formatPlan(plan: MigrationPlan): string {
     }
   }
   lines.push('', 'Totals:');
-  for (const key of CLASSIFICATIONS) lines.push(`  ${key}: ${plan.summary[key]}`);
+  for (const key of CLASSIFICATIONS)
+    lines.push(`  ${key}: ${plan.summary[key]}`);
   if (plan.ambiguousSubjects > 0) {
-    lines.push('', `${plan.ambiguousSubjects} subject(s) map to more than one principal and are skipped.`);
+    lines.push(
+      '',
+      `${plan.ambiguousSubjects} subject(s) map to more than one principal and are skipped.`,
+    );
   }
   if (hasConflicts(plan)) {
-    lines.push('', 'Conflicts found. Nothing is rewritten automatically; resolve them first.');
-    for (const row of plan.rows.filter((item) => item.classification === 'conflicting')) {
-      lines.push(`  ${row.model} ${row.id} already names a different principal`);
-    }
+    lines.push(
+      '',
+      'Conflicts found. Nothing is rewritten automatically; resolve them first.',
+    );
   }
   return lines.join('\n');
 }
@@ -228,7 +298,9 @@ export function ownsRow(
   identity: { principalId: string | null; subject: string },
 ): boolean {
   if (row.principalId) {
-    return identity.principalId !== null && row.principalId === identity.principalId;
+    return (
+      identity.principalId !== null && row.principalId === identity.principalId
+    );
   }
   return row.subject === identity.subject;
 }

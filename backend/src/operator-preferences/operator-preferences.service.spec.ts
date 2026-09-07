@@ -1,10 +1,11 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { OperatorPreferencesService } from './operator-preferences.service';
 
 describe('OperatorPreferencesService authorization boundaries', () => {
   const prisma = {
     operatorPreference: {
+      findMany: jest.fn(),
       findUnique: jest.fn(),
     },
     sharedConsoleLayout: {
@@ -21,12 +22,16 @@ describe('OperatorPreferencesService authorization boundaries', () => {
     metrics as never,
   );
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.operatorPreference.findMany.mockResolvedValue([]);
+    prisma.operatorPreference.findUnique.mockResolvedValue(null);
+  });
 
   it('always scopes private profile reads to the authenticated subject and class', async () => {
     prisma.operatorPreference.findUnique.mockResolvedValue(null);
 
-    await service.get('subject-a', 'desktop');
+    await service.get({ principalId: null, subject: 'subject-a' }, 'desktop');
 
     expect(prisma.operatorPreference.findUnique).toHaveBeenCalledWith({
       where: {
@@ -36,6 +41,60 @@ describe('OperatorPreferencesService authorization boundaries', () => {
         },
       },
     });
+  });
+
+  it('prefers one canonical match across pools', async () => {
+    const migrated = {
+      deviceClass: 'desktop',
+      principalId: 'principal-a',
+      subject: 'subject-from-first-pool',
+    };
+    prisma.operatorPreference.findMany.mockResolvedValue([migrated]);
+
+    await expect(
+      service.get(
+        { principalId: 'principal-a', subject: 'subject-from-second-pool' },
+        'desktop',
+      ),
+    ).resolves.toBe(migrated);
+
+    expect(prisma.operatorPreference.findMany).toHaveBeenCalledWith({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
+      where: { deviceClass: 'desktop', principalId: 'principal-a' },
+    });
+    expect(prisma.operatorPreference.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('falls back only to the current subject while a row is unmigrated', async () => {
+    await service.get(
+      { principalId: 'principal-a', subject: 'subject-a' },
+      'desktop',
+    );
+
+    expect(prisma.operatorPreference.findUnique).toHaveBeenCalledWith({
+      where: {
+        subject_deviceClass: {
+          subject: 'subject-a',
+          deviceClass: 'desktop',
+        },
+      },
+    });
+  });
+
+  it('fails visibly when multiple rows claim one canonical device profile', async () => {
+    prisma.operatorPreference.findMany.mockResolvedValue([
+      { principalId: 'principal-a', subject: 'subject-a' },
+      { principalId: 'principal-a', subject: 'subject-b' },
+    ]);
+
+    await expect(
+      service.get(
+        { principalId: 'principal-a', subject: 'subject-a' },
+        'desktop',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(metrics.recordPreference).toHaveBeenCalledWith('read', 'conflict');
   });
 
   it('rejects discovery for another team before querying layouts', async () => {
@@ -61,7 +120,7 @@ describe('OperatorPreferencesService authorization boundaries', () => {
   it('rejects direct publication without layout management permission', async () => {
     await expect(
       service.publish(
-        'subject-a',
+        { principalId: null, subject: 'subject-a' },
         {
           name: 'Forbidden layout',
           scope: 'team',

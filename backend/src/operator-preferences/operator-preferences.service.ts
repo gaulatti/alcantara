@@ -6,24 +6,14 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import type { CanonicalIdentity } from '../identity/principals';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import {
   defaultProfile,
   parseDeviceClass,
   parseProfile,
-  type DeviceClass,
 } from './operator-preferences.types';
-
-/**
- * The identity a preference or shared layout is recorded against. The canonical
- * principal is `null` until Pompeii resolves one, which is the expected state
- * during rollout.
- */
-export type OperatorIdentity = {
-  principalId: string | null;
-  subject: string;
-};
 
 export interface OperatorAuthorization {
   permissions: string[];
@@ -38,14 +28,15 @@ export class OperatorPreferencesService {
   ) {}
 
   /**
-   * Normalizes a caller identity. A bare subject means "no canonical principal
-   * is known" — the rollout state for an identity Pompeii has not linked yet —
-   * so accepting a plain string is part of the contract, not shorthand.
+   * Normalizes the identity attached by the authorization guard. A null
+   * principal is the explicit rollout state for an identity Pompeii has not
+   * linked yet; callers cannot silently discard a resolved principal.
    */
-  private identity(value: string | OperatorIdentity): OperatorIdentity {
-    return typeof value === 'string'
-      ? { subject: value, principalId: null }
-      : { subject: value.subject, principalId: value.principalId?.trim() || null };
+  private identity(value: CanonicalIdentity): CanonicalIdentity {
+    return {
+      subject: value.subject,
+      principalId: value.principalId?.trim() || null,
+    };
   }
 
   /**
@@ -53,12 +44,21 @@ export class OperatorPreferencesService {
    * migrated row is still theirs after they move pools, and falling back to the
    * pool subject so an unmigrated row stays reachable.
    */
-  private async findPreference(identity: OperatorIdentity, deviceClass: string) {
+  private async findPreference(
+    identity: CanonicalIdentity,
+    deviceClass: string,
+  ) {
     if (identity.principalId) {
-      const byPrincipal = await this.prisma.operatorPreference.findFirst({
+      const byPrincipal = await this.prisma.operatorPreference.findMany({
+        orderBy: { updatedAt: 'desc' },
+        take: 2,
         where: { principalId: identity.principalId, deviceClass },
       });
-      if (byPrincipal) return byPrincipal;
+      if (byPrincipal.length > 1) {
+        this.metrics.recordPreference('read', 'conflict');
+        throw new ConflictException('CANONICAL_IDENTITY_COLLISION');
+      }
+      if (byPrincipal[0]) return byPrincipal[0];
     }
     return this.prisma.operatorPreference.findUnique({
       where: {
@@ -67,7 +67,7 @@ export class OperatorPreferencesService {
     });
   }
 
-  async get(caller: string | OperatorIdentity, rawDeviceClass: string) {
+  async get(caller: CanonicalIdentity, rawDeviceClass: string) {
     const identity = this.identity(caller);
     const subject = identity.subject;
     const deviceClass = parseDeviceClass(rawDeviceClass);
@@ -86,7 +86,7 @@ export class OperatorPreferencesService {
   }
 
   async save(
-    caller: string | OperatorIdentity,
+    caller: CanonicalIdentity,
     rawDeviceClass: string,
     body: { version?: unknown; profile?: unknown },
   ) {
@@ -152,7 +152,7 @@ export class OperatorPreferencesService {
     }
   }
 
-  async reset(caller: string | OperatorIdentity, rawDeviceClass?: string) {
+  async reset(caller: CanonicalIdentity, rawDeviceClass?: string) {
     const identity = this.identity(caller);
     // Both identities are cleared, so a reset after a pool move does not leave
     // the operator's migrated row behind.
@@ -185,7 +185,7 @@ export class OperatorPreferencesService {
   }
 
   async publish(
-    caller: string | OperatorIdentity,
+    caller: CanonicalIdentity,
     body: Record<string, unknown>,
     authorization: OperatorAuthorization,
   ) {
@@ -194,7 +194,7 @@ export class OperatorPreferencesService {
     const scopeId = boundedText(body.scopeId, 'scopeId', 128);
     await this.assertScopeAccess(scope, scopeId, authorization, true);
     const sourceDeviceClass = parseDeviceClass(
-      String(body.sourceDeviceClass ?? ''),
+      stringInput(body.sourceDeviceClass),
     );
     const name = boundedText(body.name, 'name', 120);
     const description = optionalText(body.description, 500);
@@ -248,7 +248,7 @@ export class OperatorPreferencesService {
   }
 
   async load(
-    caller: string | OperatorIdentity,
+    caller: CanonicalIdentity,
     id: string,
     body: { deviceClass?: unknown; version?: unknown },
     authorization: OperatorAuthorization,
@@ -263,7 +263,7 @@ export class OperatorPreferencesService {
       authorization,
       false,
     );
-    const deviceClass = parseDeviceClass(String(body.deviceClass ?? ''));
+    const deviceClass = parseDeviceClass(stringInput(body.deviceClass));
     if (deviceClass !== layout.sourceDeviceClass) {
       throw new ConflictException({
         error: 'DEVICE_CLASS_MISMATCH',
@@ -309,6 +309,10 @@ function integerVersion(value: unknown): number {
   if (!Number.isSafeInteger(version) || version < 0)
     throw new ConflictException('PROFILE_VERSION_REQUIRED');
   return version;
+}
+
+function stringInput(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function parseScope(value: unknown): 'program' | 'team' {

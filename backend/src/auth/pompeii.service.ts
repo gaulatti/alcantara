@@ -46,6 +46,20 @@ export type AuthorizationDecision = {
   roles: string[];
 };
 
+export function mapAuthorizationDecision(
+  response: AuthorizeWireResponse,
+): AuthorizationDecision {
+  return {
+    authenticated: response.authenticated === true,
+    allowed: response.allowed === true,
+    reason: response.reason || 'DENY_UNSPECIFIED',
+    subject: response.subject || '',
+    principalId: response.principal_id?.trim() || null,
+    effectivePermissions: response.effective_permissions ?? [],
+    roles: response.roles ?? [],
+  };
+}
+
 type AuthorizationClient = Client & {
   authorize(
     request: {
@@ -204,15 +218,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
           );
         },
       );
-      const decision = {
-        authenticated: response.authenticated === true,
-        allowed: response.allowed === true,
-        reason: response.reason || 'DENY_UNSPECIFIED',
-        subject: response.subject || '',
-        principalId: response.principal_id?.trim() || null,
-        effectivePermissions: response.effective_permissions ?? [],
-        roles: response.roles ?? [],
-      };
+      const decision = mapAuthorizationDecision(response);
       this.recordMetric(
         'authorize',
         decision.authenticated && decision.allowed ? 'success' : 'denied',

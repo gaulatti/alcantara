@@ -48,6 +48,13 @@ interface ConsolePreferencesValue {
 const Context = createContext<ConsolePreferencesValue | null>(null);
 const OVERRIDE_KEY = "alcantara.console.deviceClassOverride";
 
+export function preferenceCacheIdentity(user?: {
+  id: string;
+  principalId?: string | null;
+}): string | undefined {
+  return user?.principalId?.trim() || user?.id;
+}
+
 export function detectDeviceClass(
   scope?: Pick<Window, "innerWidth" | "navigator">,
 ): DeviceClass {
@@ -123,6 +130,7 @@ export function ConsolePreferencesProvider({
 }) {
   const user = useSelector(currentUser);
   const authLoaded = useSelector(isAuthLoaded);
+  const preferenceIdentity = preferenceCacheIdentity(user);
   const detectedDeviceClass = useMemo(() => detectDeviceClass(), []);
   const [deviceClass, setDeviceClass] = useState<DeviceClass>(
     () => readOverride() ?? detectedDeviceClass,
@@ -152,11 +160,11 @@ export function ConsolePreferencesProvider({
   );
 
   useEffect(() => {
-    if (!authLoaded || !user?.id) return;
+    if (!authLoaded || !preferenceIdentity) return;
     dirty.current = false;
     setConflict(null);
-    const cached = readCache(user.id, deviceClass);
-    if (cached) acknowledge(user.id, cached.version, cached.profile);
+    const cached = readCache(preferenceIdentity, deviceClass);
+    if (cached) acknowledge(preferenceIdentity, cached.version, cached.profile);
     else {
       setProfile(defaultConsoleProfile(deviceClass));
       setVersion(0);
@@ -171,14 +179,14 @@ export function ConsolePreferencesProvider({
         }>;
       })
       .then((payload) => {
-        acknowledge(user.id, payload.version, payload.profile);
+        acknowledge(preferenceIdentity, payload.version, payload.profile);
         setSyncState("synced");
       })
       .catch(() => setSyncState("degraded"));
-  }, [acknowledge, authLoaded, deviceClass, user?.id]);
+  }, [acknowledge, authLoaded, deviceClass, preferenceIdentity]);
 
   const save = useCallback(async () => {
-    if (!user?.id || !dirty.current || conflict) return;
+    if (!preferenceIdentity || !dirty.current || conflict) return;
     dirty.current = false;
     const local = profileRef.current;
     setSyncState("saving");
@@ -208,13 +216,13 @@ export function ConsolePreferencesProvider({
         version: number;
         profile: ConsoleProfile;
       };
-      acknowledge(user.id, saved.version, saved.profile);
+      acknowledge(preferenceIdentity, saved.version, saved.profile);
       setSyncState("synced");
     } catch {
       dirty.current = true;
       setSyncState("degraded");
     }
-  }, [acknowledge, conflict, deviceClass, user?.id]);
+  }, [acknowledge, conflict, deviceClass, preferenceIdentity]);
 
   useEffect(() => {
     if (!dirty.current || conflict) return;
@@ -233,7 +241,7 @@ export function ConsolePreferencesProvider({
       syncState !== "degraded" ||
       dirty.current ||
       conflict ||
-      !user?.id
+      !preferenceIdentity
     )
       return;
     const timer = window.setInterval(() => {
@@ -246,13 +254,13 @@ export function ConsolePreferencesProvider({
           }>;
         })
         .then((payload) => {
-          acknowledge(user.id, payload.version, payload.profile);
+          acknowledge(preferenceIdentity, payload.version, payload.profile);
           setSyncState("synced");
         })
         .catch(() => setSyncState("degraded"));
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [acknowledge, conflict, deviceClass, syncState, user?.id]);
+  }, [acknowledge, conflict, deviceClass, preferenceIdentity, syncState]);
 
   const updateProfile = useCallback((update: Partial<ConsoleProfile>) => {
     dirty.current = true;
@@ -270,7 +278,7 @@ export function ConsolePreferencesProvider({
 
   const reset = useCallback(
     async (all: boolean) => {
-      if (!user?.id) return;
+      if (!user?.id || !preferenceIdentity) return;
       const response = await fetch(
         `${getApiBaseUrl()}/operator-preferences${all ? "" : `/${deviceClass}`}`,
         { method: "DELETE" },
@@ -278,16 +286,20 @@ export function ConsolePreferencesProvider({
       if (!response.ok) throw new Error(`Reset failed (${response.status})`);
       if (all) {
         (["desktop", "tablet", "phone"] as DeviceClass[]).forEach((target) =>
-          window.localStorage.removeItem(cacheKey(user.id, target)),
+          [user.id, preferenceIdentity].forEach((identity) =>
+            window.localStorage.removeItem(cacheKey(identity, target)),
+          ),
         );
       } else {
-        window.localStorage.removeItem(cacheKey(user.id, deviceClass));
+        [user.id, preferenceIdentity].forEach((identity) =>
+          window.localStorage.removeItem(cacheKey(identity, deviceClass)),
+        );
       }
-      acknowledge(user.id, 0, defaultConsoleProfile(deviceClass));
+      acknowledge(preferenceIdentity, 0, defaultConsoleProfile(deviceClass));
       dirty.current = false;
       setSyncState("synced");
     },
-    [acknowledge, deviceClass, user?.id],
+    [acknowledge, deviceClass, preferenceIdentity, user?.id],
   );
 
   const value: ConsolePreferencesValue = {
@@ -302,8 +314,8 @@ export function ConsolePreferencesProvider({
     resetCurrent: () => reset(false),
     resetAll: () => reset(true),
     useAuthoritative: () => {
-      if (!conflict || !user?.id) return;
-      acknowledge(user.id, conflict.version, conflict.authoritative);
+      if (!conflict || !preferenceIdentity) return;
+      acknowledge(preferenceIdentity, conflict.version, conflict.authoritative);
       setConflict(null);
       setSyncState("synced");
     },
@@ -316,9 +328,9 @@ export function ConsolePreferencesProvider({
       setSyncState("degraded");
     },
     adoptAcknowledged: (nextVersion, nextProfile) => {
-      if (!user?.id) return;
+      if (!preferenceIdentity) return;
       dirty.current = false;
-      acknowledge(user.id, nextVersion, nextProfile);
+      acknowledge(preferenceIdentity, nextVersion, nextProfile);
       setConflict(null);
       setSyncState("synced");
     },

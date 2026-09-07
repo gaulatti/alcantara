@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { readMappingFile } from './principals-cli';
 import {
   applicableChanges,
   formatPlan,
@@ -23,12 +27,19 @@ describe('subject inventory', () => {
   it('accounts for every subject-bearing field in the schema', () => {
     // Kept in step with prisma/schema.prisma by hand; a new subject column that
     // is not listed here would silently escape both the report and the apply.
-    expect(SUBJECT_BEARING_FIELDS.map((field) => `${field.model}.${field.subjectColumn}`)).toEqual([
+    expect(
+      SUBJECT_BEARING_FIELDS.map(
+        (field) => `${field.model}.${field.subjectColumn}`,
+      ),
+    ).toEqual([
       'OperatorPreference.subject',
       'SharedConsoleLayout.ownerSubject',
       'GuestInvitation.createdByIdentity',
+      'GuestEvent.details.operatorIdentity',
     ]);
-    expect(SUBJECT_BEARING_FIELDS.filter((field) => field.kind === 'audit')).toHaveLength(1);
+    expect(
+      SUBJECT_BEARING_FIELDS.filter((field) => field.kind === 'audit'),
+    ).toHaveLength(2);
   });
 });
 
@@ -50,6 +61,7 @@ describe('dry run', () => {
       missing: 1,
       conflicting: 0,
       ambiguous: 0,
+      colliding: 0,
       orphan: 1,
     });
     expect(plan.rows).toHaveLength(4);
@@ -57,7 +69,10 @@ describe('dry run', () => {
   });
 
   it('reports a row that already names a different principal and never overwrites it', () => {
-    const plan = planMigration([row({ principalId: 'principal-other' })], mapping);
+    const plan = planMigration(
+      [row({ principalId: 'principal-other' })],
+      mapping,
+    );
 
     expect(plan.rows[0].classification).toBe('conflicting');
     expect(plan.rows[0].principalId).toBe('principal-other');
@@ -99,6 +114,58 @@ describe('dry run', () => {
     expect(plan.rows[0].principalId).toBeNull();
     expect(applicableChanges(plan)).toEqual([]);
   });
+
+  it('reports rows that would collide on one canonical device profile', () => {
+    const plan = planMigration(
+      [
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-a',
+          model: 'OperatorPreference',
+          subject: 'subject-a',
+        }),
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-b',
+          model: 'OperatorPreference',
+          subject: 'subject-b',
+        }),
+      ],
+      [
+        { principalId: 'principal-a', subject: 'subject-a' },
+        { principalId: 'principal-a', subject: 'subject-b' },
+      ],
+    );
+
+    expect(plan.rows.map((item) => item.classification)).toEqual([
+      'colliding',
+      'colliding',
+    ]);
+    expect(plan.summary.colliding).toBe(2);
+    expect(applicableChanges(plan)).toEqual([]);
+    expect(hasConflicts(plan)).toBe(true);
+  });
+
+  it('does not call distinct device profiles a collision', () => {
+    const plan = planMigration(
+      [
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-a',
+          model: 'OperatorPreference',
+        }),
+        row({
+          collisionScope: 'phone',
+          id: 'preference-b',
+          model: 'OperatorPreference',
+        }),
+      ],
+      mapping,
+    );
+
+    expect(plan.summary.mapped).toBe(2);
+    expect(plan.summary.colliding).toBe(0);
+  });
 });
 
 describe('idempotence', () => {
@@ -127,7 +194,10 @@ describe('the report', () => {
   it('names no subject, principal, or email', () => {
     const report = formatPlan(
       planMigration(
-        [row({ principalId: 'principal-other' }), row({ id: 'row-2', model: 'GuestInvitation' })],
+        [
+          row({ id: 'subject-a::desktop', principalId: 'principal-other' }),
+          row({ id: 'row-2', model: 'GuestInvitation' }),
+        ],
         mapping,
       ),
     );
@@ -135,6 +205,7 @@ describe('the report', () => {
     expect(report).not.toContain('subject-a');
     expect(report).not.toContain('principal-a');
     expect(report).not.toContain('principal-other');
+    expect(report).not.toContain('subject-a::desktop');
     expect(report).not.toMatch(/@/);
     expect(report).toContain('conflicting: 1');
     expect(report).toContain('GuestInvitation.createdByIdentity');
@@ -145,55 +216,89 @@ describe('reads during the migration window', () => {
   it('matches a migrated row by canonical principal, across pools', () => {
     const migrated = { principalId: 'principal-a', subject: 'subject-a' };
 
-    expect(ownsRow(migrated, { principalId: 'principal-a', subject: 'subject-b' })).toBe(true);
-    expect(ownsRow(migrated, { principalId: 'principal-b', subject: 'subject-a' })).toBe(false);
+    expect(
+      ownsRow(migrated, { principalId: 'principal-a', subject: 'subject-b' }),
+    ).toBe(true);
+    expect(
+      ownsRow(migrated, { principalId: 'principal-b', subject: 'subject-a' }),
+    ).toBe(false);
     // The pool subject alone no longer opens a migrated row.
-    expect(ownsRow(migrated, { principalId: null, subject: 'subject-a' })).toBe(false);
+    expect(ownsRow(migrated, { principalId: null, subject: 'subject-a' })).toBe(
+      false,
+    );
   });
 
   it('matches an unmigrated row by its pool subject', () => {
     const legacy = { principalId: null, subject: 'subject-a' };
 
-    expect(ownsRow(legacy, { principalId: 'principal-a', subject: 'subject-a' })).toBe(true);
-    expect(ownsRow(legacy, { principalId: null, subject: 'subject-a' })).toBe(true);
-    expect(ownsRow(legacy, { principalId: 'principal-a', subject: 'subject-z' })).toBe(false);
+    expect(
+      ownsRow(legacy, { principalId: 'principal-a', subject: 'subject-a' }),
+    ).toBe(true);
+    expect(ownsRow(legacy, { principalId: null, subject: 'subject-a' })).toBe(
+      true,
+    );
+    expect(
+      ownsRow(legacy, { principalId: 'principal-a', subject: 'subject-z' }),
+    ).toBe(false);
   });
 
   it('never falls through to another person when no principal is resolved', () => {
-    expect(ownsRow({ principalId: null, subject: 'subject-a' }, { principalId: null, subject: 'subject-z' })).toBe(false);
-    expect(ownsRow({ principalId: null, subject: null }, { principalId: null, subject: 'subject-a' })).toBe(false);
+    expect(
+      ownsRow(
+        { principalId: null, subject: 'subject-a' },
+        { principalId: null, subject: 'subject-z' },
+      ),
+    ).toBe(false);
+    expect(
+      ownsRow(
+        { principalId: null, subject: null },
+        { principalId: null, subject: 'subject-a' },
+      ),
+    ).toBe(false);
   });
 });
 
 describe('the mapping file', () => {
-  const { readMappingFile } = require('./principals-cli') as typeof import('./principals-cli');
-  const { writeFileSync, mkdtempSync } = require('node:fs');
-  const { join } = require('node:path');
-  const { tmpdir } = require('node:os');
-
   const write = (contents: unknown) => {
-    const path = join(mkdtempSync(join(tmpdir(), 'principals-')), 'mapping.json');
+    const path = join(
+      mkdtempSync(join(tmpdir(), 'principals-')),
+      'mapping.json',
+    );
     writeFileSync(path, JSON.stringify(contents));
     return path;
   };
 
   it('accepts verified subject-to-principal pairs', () => {
-    expect(readMappingFile(write([{ principalId: 'principal-a', subject: 'subject-a' }]))).toEqual([
-      { principalId: 'principal-a', subject: 'subject-a' },
-    ]);
+    expect(
+      readMappingFile(
+        write([{ principalId: 'principal-a', subject: 'subject-a' }]),
+      ),
+    ).toEqual([{ principalId: 'principal-a', subject: 'subject-a' }]);
   });
 
   it('refuses an entry carrying an email, so identities cannot be joined by one', () => {
     expect(() =>
-      readMappingFile(write([
-        { email: 'person@example.com', principalId: 'principal-a', subject: 'subject-a' },
-      ])),
+      readMappingFile(
+        write([
+          {
+            email: 'person@example.com',
+            principalId: 'principal-a',
+            subject: 'subject-a',
+          },
+        ]),
+      ),
     ).toThrow(/never from an email address/);
   });
 
   it('refuses a malformed file rather than importing a partial mapping', () => {
-    expect(() => readMappingFile(write({ subject: 'subject-a' }))).toThrow(/JSON array/);
-    expect(() => readMappingFile(write([{ subject: 'subject-a' }]))).toThrow(/principalId/);
-    expect(() => readMappingFile(write(['subject-a']))).toThrow(/not an object/);
+    expect(() => readMappingFile(write({ subject: 'subject-a' }))).toThrow(
+      /JSON array/,
+    );
+    expect(() => readMappingFile(write([{ subject: 'subject-a' }]))).toThrow(
+      /principalId/,
+    );
+    expect(() => readMappingFile(write(['subject-a']))).toThrow(
+      /not an object/,
+    );
   });
 });
