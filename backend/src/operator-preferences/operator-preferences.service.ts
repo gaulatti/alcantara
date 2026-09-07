@@ -39,6 +39,13 @@ export class OperatorPreferencesService {
     };
   }
 
+  private ownedPreferenceWhere(identity: CanonicalIdentity) {
+    return [
+      ...(identity.principalId ? [{ principalId: identity.principalId }] : []),
+      { principalId: null, subject: identity.subject },
+    ];
+  }
+
   /**
    * Finds the row for this operator, preferring the canonical principal so a
    * migrated row is still theirs after they move pools, and falling back to the
@@ -48,29 +55,19 @@ export class OperatorPreferencesService {
     identity: CanonicalIdentity,
     deviceClass: string,
   ) {
-    if (identity.principalId) {
-      const candidates = await this.prisma.operatorPreference.findMany({
-        orderBy: { updatedAt: 'desc' },
-        take: 2,
-        where: {
-          deviceClass,
-          OR: [
-            { principalId: identity.principalId },
-            { subject: identity.subject },
-          ],
-        },
-      });
-      if (candidates.length > 1) {
-        this.metrics.recordPreference('read', 'conflict');
-        throw new ConflictException('CANONICAL_IDENTITY_COLLISION');
-      }
-      return candidates[0] ?? null;
-    }
-    return this.prisma.operatorPreference.findUnique({
+    const candidates = await this.prisma.operatorPreference.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
       where: {
-        subject_deviceClass: { subject: identity.subject, deviceClass },
+        deviceClass,
+        OR: this.ownedPreferenceWhere(identity),
       },
     });
+    if (candidates.length > 1) {
+      this.metrics.recordPreference('read', 'conflict');
+      throw new ConflictException('CANONICAL_IDENTITY_COLLISION');
+    }
+    return candidates[0] ?? null;
   }
 
   async get(caller: CanonicalIdentity, rawDeviceClass: string) {
@@ -122,7 +119,17 @@ export class OperatorPreferencesService {
           });
         }
         const updated = await transaction.operatorPreference.updateMany({
-          where: { subject, deviceClass, version },
+          where: {
+            subject,
+            deviceClass,
+            version,
+            OR: [
+              ...(identity.principalId
+                ? [{ principalId: identity.principalId }]
+                : []),
+              { principalId: null },
+            ],
+          },
           data: {
             profile,
             version: { increment: 1 },
@@ -160,11 +167,9 @@ export class OperatorPreferencesService {
 
   async reset(caller: CanonicalIdentity, rawDeviceClass?: string) {
     const identity = this.identity(caller);
-    // Both identities are cleared, so a reset after a pool move does not leave
-    // the operator's migrated row behind.
-    const owned = identity.principalId
-      ? [{ subject: identity.subject }, { principalId: identity.principalId }]
-      : [{ subject: identity.subject }];
+    // Clear the canonical row plus an unmigrated current-subject row. A subject
+    // row already owned by another principal is never this caller's fallback.
+    const owned = this.ownedPreferenceWhere(identity);
     if (rawDeviceClass) {
       const deviceClass = parseDeviceClass(rawDeviceClass);
       await this.prisma.operatorPreference.deleteMany({

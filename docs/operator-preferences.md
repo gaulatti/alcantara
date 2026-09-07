@@ -6,8 +6,10 @@ these preferences. The legacy primary key remains `(subject, deviceClass)`, but
 reads query both `(principalId, deviceClass)` and the current
 `(subject, deviceClass)` together. Two linked pool identities therefore reach
 one migrated profile, while an unresolved identity can reach only its legacy
-row. Distinct matches fail with `CANONICAL_IDENTITY_COLLISION`; a canonical row
-must never hide a separate legacy profile for the current subject.
+row whose canonical owner is still null. A matching subject cannot access a row
+already owned by another principal. Distinct owned matches fail with
+`CANONICAL_IDENTITY_COLLISION`; a canonical row must never hide a separate legacy
+profile for the current subject.
 
 ## Device classification and override
 
@@ -54,10 +56,11 @@ safe defaults, marks synchronization degraded, and leaves broadcast controls usa
 Dirty writes and clean reads retry every five seconds. Tokens are not stored in
 that preference cache.
 
-“Reset class” deletes the caller's matching subject/canonical server row and
-local cache. “Reset all” deletes that caller's subject and canonical preference
-rows for all three classes and clears both forms of local cache. Neither
-operation affects shared layouts or another operator.
+“Reset class” deletes the caller's canonical row and any still-unmigrated current
+subject row, plus local cache. “Reset all” does the same for all three classes and
+clears both forms of local cache. A subject row already owned by another
+principal is never a reset target. Neither operation affects shared layouts or
+another operator.
 
 ## Shared program and team layouts
 

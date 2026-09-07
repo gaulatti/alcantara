@@ -3,8 +3,20 @@ import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { OperatorPreferencesService } from './operator-preferences.service';
 
 describe('OperatorPreferencesService authorization boundaries', () => {
-  const prisma = {
+  const transaction = {
     operatorPreference: {
+      create: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      updateMany: jest.fn(),
+    },
+  };
+  const prisma = {
+    $transaction: jest.fn(
+      async (callback: (value: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+    ),
+    operatorPreference: {
+      deleteMany: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },
@@ -26,6 +38,9 @@ describe('OperatorPreferencesService authorization boundaries', () => {
     jest.clearAllMocks();
     prisma.operatorPreference.findMany.mockResolvedValue([]);
     prisma.operatorPreference.findUnique.mockResolvedValue(null);
+    prisma.operatorPreference.deleteMany.mockResolvedValue({ count: 0 });
+    transaction.operatorPreference.updateMany.mockResolvedValue({ count: 1 });
+    transaction.operatorPreference.findUniqueOrThrow.mockResolvedValue({});
   });
 
   it('always scopes private profile reads to the authenticated subject and class', async () => {
@@ -33,12 +48,12 @@ describe('OperatorPreferencesService authorization boundaries', () => {
 
     await service.get({ principalId: null, subject: 'subject-a' }, 'desktop');
 
-    expect(prisma.operatorPreference.findUnique).toHaveBeenCalledWith({
+    expect(prisma.operatorPreference.findMany).toHaveBeenCalledWith({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
       where: {
-        subject_deviceClass: {
-          subject: 'subject-a',
-          deviceClass: 'desktop',
-        },
+        deviceClass: 'desktop',
+        OR: [{ principalId: null, subject: 'subject-a' }],
       },
     });
   });
@@ -65,7 +80,7 @@ describe('OperatorPreferencesService authorization boundaries', () => {
         deviceClass: 'desktop',
         OR: [
           { principalId: 'principal-a' },
-          { subject: 'subject-from-second-pool' },
+          { principalId: null, subject: 'subject-from-second-pool' },
         ],
       },
     });
@@ -83,7 +98,10 @@ describe('OperatorPreferencesService authorization boundaries', () => {
       take: 2,
       where: {
         deviceClass: 'desktop',
-        OR: [{ principalId: 'principal-a' }, { subject: 'subject-a' }],
+        OR: [
+          { principalId: 'principal-a' },
+          { principalId: null, subject: 'subject-a' },
+        ],
       },
     });
   });
@@ -131,11 +149,85 @@ describe('OperatorPreferencesService authorization boundaries', () => {
         deviceClass: 'desktop',
         OR: [
           { principalId: 'principal-a' },
-          { subject: 'subject-from-second-pool' },
+          { principalId: null, subject: 'subject-from-second-pool' },
         ],
       },
     });
     expect(metrics.recordPreference).toHaveBeenCalledWith('read', 'conflict');
+  });
+
+  it('does not read a current-subject row owned by another principal', async () => {
+    await expect(
+      service.get(
+        { principalId: 'principal-a', subject: 'shared-pool-subject' },
+        'desktop',
+      ),
+    ).resolves.toMatchObject({
+      subject: 'shared-pool-subject',
+      version: 0,
+    });
+
+    expect(prisma.operatorPreference.findMany).toHaveBeenCalledWith({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
+      where: {
+        deviceClass: 'desktop',
+        OR: [
+          { principalId: 'principal-a' },
+          { principalId: null, subject: 'shared-pool-subject' },
+        ],
+      },
+    });
+  });
+
+  it('does not update a current-subject row owned by another principal', async () => {
+    transaction.operatorPreference.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.save(
+        { principalId: 'principal-a', subject: 'shared-pool-subject' },
+        'desktop',
+        {
+          version: 3,
+          profile: {
+            workspace: 'director',
+            dockWidth: 320,
+            touchMode: false,
+            shortcutsEnabled: true,
+            selectedProgramId: 'main',
+            transitions: { main: 'crescendo-prism' },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(transaction.operatorPreference.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          subject: 'shared-pool-subject',
+          deviceClass: 'desktop',
+          version: 3,
+          OR: [{ principalId: 'principal-a' }, { principalId: null }],
+        },
+      }),
+    );
+  });
+
+  it('does not reset a current-subject row owned by another principal', async () => {
+    await service.reset(
+      { principalId: 'principal-a', subject: 'shared-pool-subject' },
+      'desktop',
+    );
+
+    expect(prisma.operatorPreference.deleteMany).toHaveBeenCalledWith({
+      where: {
+        deviceClass: 'desktop',
+        OR: [
+          { principalId: 'principal-a' },
+          { principalId: null, subject: 'shared-pool-subject' },
+        ],
+      },
+    });
   });
 
   it('rejects discovery for another team before querying layouts', async () => {

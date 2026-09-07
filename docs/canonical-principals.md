@@ -46,10 +46,12 @@ row has none         ->  caller's subject must match
 together, so an operator who moves pools still finds their own profile without
 hiding an unmigrated row for the new pool subject. A write targets the single row
 they already own and backfills the canonical principal on it the first time they
-sign in with one resolved. If those two identities find distinct rows, or two
-pool-specific rows claim the same principal and device class, reads fail with
-`CANONICAL_IDENTITY_COLLISION` until an operator reconciles them; Alcantara never
-picks one nondeterministically.
+sign in with one resolved. Subject fallback is limited to rows whose canonical
+principal is still null; a row already owned by another principal cannot be read,
+updated, or reset through a matching legacy subject. If those two identities find
+distinct owned rows, or two pool-specific rows claim the same principal and
+device class, reads fail with `CANONICAL_IDENTITY_COLLISION` until an operator
+reconciles them; Alcantara never picks one nondeterministically.
 
 New shared layouts and guest invitations record both identities immediately.
 Guest lifecycle audit events retain `operatorIdentity` and add
