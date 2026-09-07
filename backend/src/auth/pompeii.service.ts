@@ -28,6 +28,7 @@ type AuthorizeWireResponse = {
   subject?: string;
   effective_permissions?: string[];
   roles?: string[];
+  principal_id?: string;
 };
 
 export type AuthorizationDecision = {
@@ -35,6 +36,12 @@ export type AuthorizationDecision = {
   allowed: boolean;
   reason: string;
   subject: string;
+  /**
+   * Pompeii's canonical principal, stable for one real person across Cognito
+   * pools. `null` while an identity has not been resolved to a principal yet,
+   * which is the expected state during rollout. Never derived from an email.
+   */
+  principalId: string | null;
   effectivePermissions: string[];
   roles: string[];
 };
@@ -202,6 +209,7 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
         allowed: response.allowed === true,
         reason: response.reason || 'DENY_UNSPECIFIED',
         subject: response.subject || '',
+        principalId: response.principal_id?.trim() || null,
         effectivePermissions: response.effective_permissions ?? [],
         roles: response.roles ?? [],
       };

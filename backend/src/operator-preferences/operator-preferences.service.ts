@@ -15,6 +15,16 @@ import {
   type DeviceClass,
 } from './operator-preferences.types';
 
+/**
+ * The identity a preference or shared layout is recorded against. The canonical
+ * principal is `null` until Pompeii resolves one, which is the expected state
+ * during rollout.
+ */
+export type OperatorIdentity = {
+  principalId: string | null;
+  subject: string;
+};
+
 export interface OperatorAuthorization {
   permissions: string[];
   teamId: number;
@@ -27,11 +37,41 @@ export class OperatorPreferencesService {
     private readonly metrics: ManagedMetricsService,
   ) {}
 
-  async get(subject: string, rawDeviceClass: string) {
-    const deviceClass = parseDeviceClass(rawDeviceClass);
-    const stored = await this.prisma.operatorPreference.findUnique({
-      where: { subject_deviceClass: { subject, deviceClass } },
+  /**
+   * Normalizes a caller identity. A bare subject means "no canonical principal
+   * is known" — the rollout state for an identity Pompeii has not linked yet —
+   * so accepting a plain string is part of the contract, not shorthand.
+   */
+  private identity(value: string | OperatorIdentity): OperatorIdentity {
+    return typeof value === 'string'
+      ? { subject: value, principalId: null }
+      : { subject: value.subject, principalId: value.principalId?.trim() || null };
+  }
+
+  /**
+   * Finds the row for this operator, preferring the canonical principal so a
+   * migrated row is still theirs after they move pools, and falling back to the
+   * pool subject so an unmigrated row stays reachable.
+   */
+  private async findPreference(identity: OperatorIdentity, deviceClass: string) {
+    if (identity.principalId) {
+      const byPrincipal = await this.prisma.operatorPreference.findFirst({
+        where: { principalId: identity.principalId, deviceClass },
+      });
+      if (byPrincipal) return byPrincipal;
+    }
+    return this.prisma.operatorPreference.findUnique({
+      where: {
+        subject_deviceClass: { subject: identity.subject, deviceClass },
+      },
     });
+  }
+
+  async get(caller: string | OperatorIdentity, rawDeviceClass: string) {
+    const identity = this.identity(caller);
+    const subject = identity.subject;
+    const deviceClass = parseDeviceClass(rawDeviceClass);
+    const stored = await this.findPreference(identity, deviceClass);
     this.metrics.recordPreference('read', stored ? 'success' : 'default');
     return (
       stored ?? {
@@ -46,11 +86,16 @@ export class OperatorPreferencesService {
   }
 
   async save(
-    subject: string,
+    caller: string | OperatorIdentity,
     rawDeviceClass: string,
     body: { version?: unknown; profile?: unknown },
   ) {
+    const identity = this.identity(caller);
     const deviceClass = parseDeviceClass(rawDeviceClass);
+    // Writes target whichever row this operator already owns, which may carry a
+    // different pool subject after a migration.
+    const existing = await this.findPreference(identity, deviceClass);
+    const subject = existing?.subject ?? identity.subject;
     const version = integerVersion(body.version);
     const profile = parseProfile(
       body.profile,
@@ -60,12 +105,27 @@ export class OperatorPreferencesService {
       const saved = await this.prisma.$transaction(async (transaction) => {
         if (version === 0) {
           return transaction.operatorPreference.create({
-            data: { subject, deviceClass, profile },
+            // The canonical principal is recorded only once Pompeii resolved
+            // one; it is never guessed from the subject or an email.
+            data: {
+              subject,
+              principalId: identity.principalId,
+              deviceClass,
+              profile,
+            },
           });
         }
         const updated = await transaction.operatorPreference.updateMany({
           where: { subject, deviceClass, version },
-          data: { profile, version: { increment: 1 } },
+          data: {
+            profile,
+            version: { increment: 1 },
+            // Backfills the canonical principal on an existing row the first
+            // time its owner signs in with one resolved.
+            ...(identity.principalId && !existing?.principalId
+              ? { principalId: identity.principalId }
+              : {}),
+          },
         });
         if (updated.count !== 1)
           throw new ConflictException('PROFILE_VERSION_CONFLICT');
@@ -84,7 +144,7 @@ export class OperatorPreferencesService {
         this.metrics.recordPreference('write', 'conflict');
         throw new ConflictException({
           error: 'PROFILE_VERSION_CONFLICT',
-          authoritative: await this.get(subject, deviceClass),
+          authoritative: await this.get(identity, deviceClass),
         });
       }
       this.metrics.recordPreference('write', 'failure');
@@ -92,16 +152,22 @@ export class OperatorPreferencesService {
     }
   }
 
-  async reset(subject: string, rawDeviceClass?: string) {
+  async reset(caller: string | OperatorIdentity, rawDeviceClass?: string) {
+    const identity = this.identity(caller);
+    // Both identities are cleared, so a reset after a pool move does not leave
+    // the operator's migrated row behind.
+    const owned = identity.principalId
+      ? [{ subject: identity.subject }, { principalId: identity.principalId }]
+      : [{ subject: identity.subject }];
     if (rawDeviceClass) {
       const deviceClass = parseDeviceClass(rawDeviceClass);
       await this.prisma.operatorPreference.deleteMany({
-        where: { subject, deviceClass },
+        where: { OR: owned, deviceClass },
       });
       this.metrics.recordPreference('reset-class', 'success');
       return { deviceClass, version: 0, profile: defaultProfile(deviceClass) };
     }
-    await this.prisma.operatorPreference.deleteMany({ where: { subject } });
+    await this.prisma.operatorPreference.deleteMany({ where: { OR: owned } });
     this.metrics.recordPreference('reset-all', 'success');
     return { ok: true };
   }
@@ -119,10 +185,11 @@ export class OperatorPreferencesService {
   }
 
   async publish(
-    subject: string,
+    caller: string | OperatorIdentity,
     body: Record<string, unknown>,
     authorization: OperatorAuthorization,
   ) {
+    const identity = this.identity(caller);
     const scope = parseScope(body.scope);
     const scopeId = boundedText(body.scopeId, 'scopeId', 128);
     await this.assertScopeAccess(scope, scopeId, authorization, true);
@@ -138,7 +205,8 @@ export class OperatorPreferencesService {
     const saved = await this.prisma.sharedConsoleLayout.upsert({
       where: { scope_scopeId_name: { scope, scopeId, name } },
       create: {
-        ownerSubject: subject,
+        ownerSubject: identity.subject,
+        ownerPrincipalId: identity.principalId,
         name,
         description,
         scope,
@@ -147,7 +215,8 @@ export class OperatorPreferencesService {
         profile,
       },
       update: {
-        ownerSubject: subject,
+        ownerSubject: identity.subject,
+        ownerPrincipalId: identity.principalId,
         description,
         sourceDeviceClass,
         profile,
@@ -179,7 +248,7 @@ export class OperatorPreferencesService {
   }
 
   async load(
-    subject: string,
+    caller: string | OperatorIdentity,
     id: string,
     body: { deviceClass?: unknown; version?: unknown },
     authorization: OperatorAuthorization,
@@ -201,7 +270,7 @@ export class OperatorPreferencesService {
         sourceDeviceClass: layout.sourceDeviceClass,
       });
     }
-    const saved = await this.save(subject, deviceClass, {
+    const saved = await this.save(caller, deviceClass, {
       version: body.version,
       profile: layout.profile,
     });

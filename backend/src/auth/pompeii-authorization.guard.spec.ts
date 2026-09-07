@@ -187,3 +187,49 @@ describe('PompeiiAuthorizationGuard', () => {
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
+
+describe('canonical principal', () => {
+  const requestFor = () => ({ headers: { authorization: 'Bearer token' }, user: { sub: 'user' } });
+  const contextWith = (request: object): ExecutionContext =>
+    ({
+      getHandler: () => function handler() {},
+      getClass: () => class Controller {},
+      switchToHttp: () => ({ getRequest: () => request }),
+    }) as unknown as ExecutionContext;
+
+  const guardFor = (principalId: string | null) => {
+    const reflector = {
+      getAllAndOverride: jest
+        .fn()
+        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(ALCANTARA_PERMISSIONS.program.operate),
+    } as unknown as Reflector;
+    const pompeii = {
+      teamId: 1,
+      authorize: jest.fn().mockResolvedValue({
+        authenticated: true,
+        allowed: true,
+        reason: 'ALLOW',
+        subject: 'cognito-subject',
+        principalId,
+        effectivePermissions: [ALCANTARA_PERMISSIONS.program.operate],
+        roles: [],
+      }),
+    } as unknown as PompeiiService;
+    return new PompeiiAuthorizationGuard(reflector, pompeii);
+  };
+
+  it('carries the canonical principal onto the request when Pompeii resolves one', async () => {
+    const request = requestFor();
+    await expect(guardFor('principal-a').canActivate(contextWith(request))).resolves.toBe(true);
+
+    expect(request.user).toMatchObject({ principalId: 'principal-a', sub: 'cognito-subject' });
+  });
+
+  it('leaves the canonical principal absent rather than inventing one', async () => {
+    const request = requestFor();
+    await expect(guardFor(null).canActivate(contextWith(request))).resolves.toBe(true);
+
+    expect(request.user).toMatchObject({ principalId: null, sub: 'cognito-subject' });
+  });
+});

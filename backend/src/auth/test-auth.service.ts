@@ -120,6 +120,7 @@ export class TestAuthService {
         allowed: false,
         reason: 'DENY_INVALID_TEST_TOKEN',
         subject: '',
+        principalId: null,
         effectivePermissions: [],
         roles: [],
       };
@@ -142,6 +143,9 @@ export class TestAuthService {
         ? 'ALLOW_TEST_AUTH'
         : 'DENY_PERMISSION',
       subject,
+      // Local test auth issues pool subjects only; it never fabricates a
+      // canonical principal, so the legacy read path is what it exercises.
+      principalId: null,
       effectivePermissions: permissions,
       roles: [...roles, `team:${teamId}`],
     };
