@@ -80,12 +80,14 @@ Fresh databases replay the PostgreSQL baseline normally. Production never uses
 complete migration history twice against a fresh PostgreSQL database to verify
 both non-interactive execution and repeatability.
 
-The application process also requires `ALCANTARA_CONFIG_SECRET_ID` and
-`AWS_REGION` in production. Before constructing Nest providers it loads the
-allowlisted `palazzoControlToken`, `palazzoAllowedUrls`, `alanaControlToken`,
-and `alanaControlUrl` fields from that Secrets Manager payload. Missing,
-malformed, or unavailable configuration fails startup; tokens are never
-frontend variables or Docker build arguments. See
+The application process uses the code-owned `broadcast/production/config`
+secret identifier and requires `AWS_REGION` in production. Before constructing
+Nest providers it loads the allowlisted `palazzoControlToken`,
+`palazzoAllowedUrls`, `alanaControlToken`, and `alanaControlUrl` fields from that
+Secrets Manager payload. Missing, malformed, or unavailable configuration fails
+startup; tokens are never frontend variables or Docker build arguments. The
+GitHub deployment workflow performs the same value-redacting payload check
+before registry login, image build, or push. See
 [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md) and
 [`../docs/program-recording.md`](../docs/program-recording.md).
 

@@ -204,6 +204,7 @@ This starts PostgreSQL, applies every committed migration non-interactively,
 loads deterministic fictional data, and starts the backend, frontend, and
 LiveKit. No AWS or Cognito account is needed for local development. Ports are
 configurable via `.env`:
+
 - **Backend** (NestJS, default port 3000) with hot reload via `nest start --watch`
 - **Frontend** (React Router/Vite, default port 5173) with HMR
 
@@ -265,11 +266,13 @@ concurrency, sharing, reset, privacy, and API behavior are documented in
 [Operator console preferences](docs/operator-preferences.md).
 
 Rebuild images after dependency changes:
+
 ```bash
 docker compose up --build
 ```
 
 Run in background:
+
 ```bash
 docker compose up -d
 ```
@@ -354,10 +357,11 @@ write grant to start, restart, or roll back. See
 and rollback procedures.
 
 The replacement joins `broadcast-control` so the private
-`http://palazzo:3100` program-scoped machine API remains resolvable. Set the
-production `ALCANTARA_CONFIG_SECRET_ID` repository variable to the
-application-scoped Secrets Manager payload, including Alana's private recording
-control URL and token. During migration, deployment also
+`http://palazzo:3100` program-scoped machine API remains resolvable. Production
+uses the code-owned `broadcast/production/config` Secrets Manager payload,
+including Alana's private recording control URL and token. The deployment
+workflow validates that payload without printing it before image build or push.
+During migration, deployment also
 discovers and inherits the running Palazzo container's existing read-only
 control-token mount as a backwards-compatible credential source. Preflight fails without
 replacing the live backend when that mount is absent or ambiguous, neither

@@ -3,9 +3,12 @@ name: Backend CI
 on:
   pull_request:
     paths:
-      - 'backend/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/backend-ci.yml'
+      - "backend/**"
+      - "deploy/**"
+      - "infra/aws/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/backend-ci.yml"
+      - ".github/workflows/backend-deploy.yml"
 
 permissions:
   contents: read
@@ -28,7 +31,10 @@ jobs:
           pnpm --dir backend run prisma:generate
           pnpm --dir backend exec jest --runInBand
           METRICS_SCRAPE_OUTPUT=/tmp/alcantara.prom pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns=metrics
+          pnpm --dir backend run test:deployment
           pnpm --dir backend run build
+          pnpm --dir infra/aws exec jest --runInBand
+          pnpm --dir infra/aws run build
       - name: Parse actual authenticated scrape
         run: |
           test -s /tmp/alcantara.prom

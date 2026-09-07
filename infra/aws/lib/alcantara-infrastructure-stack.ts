@@ -1,4 +1,11 @@
-import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
+import {
+  Arn,
+  ArnFormat,
+  CfnOutput,
+  Duration,
+  Stack,
+  StackProps,
+} from "aws-cdk-lib";
 import { Policy, PolicyStatement, Role } from "aws-cdk-lib/aws-iam";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { Bucket } from "aws-cdk-lib/aws-s3";
@@ -63,7 +70,19 @@ export class AlcantaraInfrastructureStack extends Stack {
       ttl: Duration.minutes(5),
     });
 
-    const githubDeployRole = createGitHubDeployRole(this);
+    const runtimeConfigSecretArn = Arn.format(
+      {
+        service: "secretsmanager",
+        resource: "secret",
+        resourceName: "broadcast/production/config-*",
+        arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+      },
+      this,
+    );
+    const githubDeployRole = createGitHubDeployRole(
+      this,
+      runtimeConfigSecretArn,
+    );
     new CfnOutput(this, "GitHubDeployRoleArn", {
       value: githubDeployRole.roleArn,
     });

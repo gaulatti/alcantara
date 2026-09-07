@@ -41,7 +41,7 @@ services:
     environment:
       PORT: "8080"
       PROGRAM_ID: modoitaliano
-      ALANA_CONTROL_TOKEN: alana-local-control-token
+      ALANA_CONTROL_TOKEN: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     healthcheck:
       test:
         [
@@ -85,7 +85,7 @@ services:
       METRICS_TOKEN_FILE: /run/secrets/alcantara-metrics-token
       PALAZZO_CONTROL_TOKEN: palazzo-local-control-token
       PALAZZO_ALLOWED_URLS: http://palazzo:3100
-      ALANA_CONTROL_TOKEN: alana-local-control-token
+      ALANA_CONTROL_TOKEN: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       ALANA_CONTROL_URL: http://alana-recording-fixture:8080
     volumes:
       - ./backend/src:/app/src
