@@ -43,7 +43,7 @@ describe('OperatorPreferencesService authorization boundaries', () => {
     });
   });
 
-  it('prefers one canonical match across pools', async () => {
+  it('finds one canonical match while also checking the current subject', async () => {
     const migrated = {
       deviceClass: 'desktop',
       principalId: 'principal-a',
@@ -61,7 +61,13 @@ describe('OperatorPreferencesService authorization boundaries', () => {
     expect(prisma.operatorPreference.findMany).toHaveBeenCalledWith({
       orderBy: { updatedAt: 'desc' },
       take: 2,
-      where: { deviceClass: 'desktop', principalId: 'principal-a' },
+      where: {
+        deviceClass: 'desktop',
+        OR: [
+          { principalId: 'principal-a' },
+          { subject: 'subject-from-second-pool' },
+        ],
+      },
     });
     expect(prisma.operatorPreference.findUnique).not.toHaveBeenCalled();
   });
@@ -72,12 +78,12 @@ describe('OperatorPreferencesService authorization boundaries', () => {
       'desktop',
     );
 
-    expect(prisma.operatorPreference.findUnique).toHaveBeenCalledWith({
+    expect(prisma.operatorPreference.findMany).toHaveBeenCalledWith({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
       where: {
-        subject_deviceClass: {
-          subject: 'subject-a',
-          deviceClass: 'desktop',
-        },
+        deviceClass: 'desktop',
+        OR: [{ principalId: 'principal-a' }, { subject: 'subject-a' }],
       },
     });
   });
@@ -94,6 +100,41 @@ describe('OperatorPreferencesService authorization boundaries', () => {
         'desktop',
       ),
     ).rejects.toBeInstanceOf(ConflictException);
+    expect(metrics.recordPreference).toHaveBeenCalledWith('read', 'conflict');
+  });
+
+  it('fails when a canonical row and the current subjects legacy row converge', async () => {
+    prisma.operatorPreference.findMany.mockResolvedValue([
+      {
+        deviceClass: 'desktop',
+        principalId: 'principal-a',
+        subject: 'subject-from-first-pool',
+      },
+      {
+        deviceClass: 'desktop',
+        principalId: null,
+        subject: 'subject-from-second-pool',
+      },
+    ]);
+
+    await expect(
+      service.get(
+        { principalId: 'principal-a', subject: 'subject-from-second-pool' },
+        'desktop',
+      ),
+    ).rejects.toThrow('CANONICAL_IDENTITY_COLLISION');
+
+    expect(prisma.operatorPreference.findMany).toHaveBeenCalledWith({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
+      where: {
+        deviceClass: 'desktop',
+        OR: [
+          { principalId: 'principal-a' },
+          { subject: 'subject-from-second-pool' },
+        ],
+      },
+    });
     expect(metrics.recordPreference).toHaveBeenCalledWith('read', 'conflict');
   });
 

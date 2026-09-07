@@ -105,10 +105,11 @@ function cacheKey(subject: string, deviceClass: DeviceClass): string {
 function readCache(
   subject: string,
   deviceClass: DeviceClass,
+  storage: Pick<Storage, "getItem"> = window.localStorage,
 ): { version: number; profile: ConsoleProfile } | null {
   try {
     const value = JSON.parse(
-      window.localStorage.getItem(cacheKey(subject, deviceClass)) ?? "null",
+      storage.getItem(cacheKey(subject, deviceClass)) ?? "null",
     ) as { version?: unknown; profile?: unknown } | null;
     if (
       !value ||
@@ -121,6 +122,26 @@ function readCache(
   } catch {
     return null;
   }
+}
+
+export function readPreferenceCache(
+  user: { id: string; principalId?: string | null } | undefined,
+  deviceClass: DeviceClass,
+  storage: Pick<Storage, "getItem" | "setItem"> = window.localStorage,
+): { version: number; profile: ConsoleProfile } | null {
+  const preferredIdentity = preferenceCacheIdentity(user);
+  if (!preferredIdentity) return null;
+
+  const preferred = readCache(preferredIdentity, deviceClass, storage);
+  if (preferred || !user?.id || preferredIdentity === user.id) return preferred;
+
+  const legacy = readCache(user.id, deviceClass, storage);
+  if (!legacy) return null;
+  storage.setItem(
+    cacheKey(preferredIdentity, deviceClass),
+    JSON.stringify(legacy),
+  );
+  return legacy;
 }
 
 export function ConsolePreferencesProvider({
@@ -163,7 +184,7 @@ export function ConsolePreferencesProvider({
     if (!authLoaded || !preferenceIdentity) return;
     dirty.current = false;
     setConflict(null);
-    const cached = readCache(preferenceIdentity, deviceClass);
+    const cached = readPreferenceCache(user, deviceClass);
     if (cached) acknowledge(preferenceIdentity, cached.version, cached.profile);
     else {
       setProfile(defaultConsoleProfile(deviceClass));
@@ -183,7 +204,7 @@ export function ConsolePreferencesProvider({
         setSyncState("synced");
       })
       .catch(() => setSyncState("degraded"));
-  }, [acknowledge, authLoaded, deviceClass, preferenceIdentity]);
+  }, [acknowledge, authLoaded, deviceClass, preferenceIdentity, user]);
 
   const save = useCallback(async () => {
     if (!preferenceIdentity || !dirty.current || conflict) return;

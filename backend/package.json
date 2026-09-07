@@ -26,6 +26,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:deployment": "node --test test/deployment-gate.test.js",
     "seed": "ts-node prisma/seed.ts",
+    "principals:export": "ts-node src/identity/principals-cli.ts export",
     "principals:report": "ts-node src/identity/principals-cli.ts report",
     "principals:apply": "ts-node src/identity/principals-cli.ts apply"
   },

@@ -1,7 +1,3 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { readMappingFile } from './principals-cli';
 import {
   applicableChanges,
   formatPlan,
@@ -255,50 +251,5 @@ describe('reads during the migration window', () => {
         { principalId: null, subject: 'subject-a' },
       ),
     ).toBe(false);
-  });
-});
-
-describe('the mapping file', () => {
-  const write = (contents: unknown) => {
-    const path = join(
-      mkdtempSync(join(tmpdir(), 'principals-')),
-      'mapping.json',
-    );
-    writeFileSync(path, JSON.stringify(contents));
-    return path;
-  };
-
-  it('accepts verified subject-to-principal pairs', () => {
-    expect(
-      readMappingFile(
-        write([{ principalId: 'principal-a', subject: 'subject-a' }]),
-      ),
-    ).toEqual([{ principalId: 'principal-a', subject: 'subject-a' }]);
-  });
-
-  it('refuses an entry carrying an email, so identities cannot be joined by one', () => {
-    expect(() =>
-      readMappingFile(
-        write([
-          {
-            email: 'person@example.com',
-            principalId: 'principal-a',
-            subject: 'subject-a',
-          },
-        ]),
-      ),
-    ).toThrow(/never from an email address/);
-  });
-
-  it('refuses a malformed file rather than importing a partial mapping', () => {
-    expect(() => readMappingFile(write({ subject: 'subject-a' }))).toThrow(
-      /JSON array/,
-    );
-    expect(() => readMappingFile(write([{ subject: 'subject-a' }]))).toThrow(
-      /principalId/,
-    );
-    expect(() => readMappingFile(write(['subject-a']))).toThrow(
-      /not an object/,
-    );
   });
 });

@@ -42,11 +42,12 @@ row has principalId  ->  caller's principalId must match
 row has none         ->  caller's subject must match
 ```
 
-`OperatorPreference` lookups try the principal first and fall back to the
-subject, so an operator who moves pools still finds their own profile. A write
-targets whichever row they already own, and backfills the canonical principal on
-it the first time they sign in with one resolved. If two pool-specific rows would
-claim the same principal and device class, reads fail with
+`OperatorPreference` lookups query the canonical principal and current subject
+together, so an operator who moves pools still finds their own profile without
+hiding an unmigrated row for the new pool subject. A write targets the single row
+they already own and backfills the canonical principal on it the first time they
+sign in with one resolved. If those two identities find distinct rows, or two
+pool-specific rows claim the same principal and device class, reads fail with
 `CANONICAL_IDENTITY_COLLISION` until an operator reconciles them; Alcantara never
 picks one nondeterministically.
 
@@ -62,14 +63,25 @@ two indexes and **backfills nothing** — mapping a legacy subject to a canonica
 principal requires Pompeii and must never be inferred locally. Every statement is
 `IF NOT EXISTS`, so a restart part-way through re-runs safely.
 
-The backfill is a separate, explicit step driven by a verified mapping file — a
-JSON array of `{"subject": "...", "principalId": "..."}` pairs from Pompeii:
+The backfill is a separate, explicit exchange with Pompeii. Alcantara first
+exports the exact consumer/reference/subject inventory; Pompeii resolves that
+file and produces its native `{references, collisions, missing}` report, which
+Alcantara consumes directly without hand-editing or identity reshaping:
 
 ```bash
 cd backend
-pnpm principals:report ./mapping.json   # dry run; changes nothing
-pnpm principals:apply  ./mapping.json
+pnpm principals:export ./alcantara-references.json
+# Run Pompeii's principal-migration-dry-run using that file and capture its JSON.
+pnpm principals:report ./pompeii-report.json   # changes nothing
+pnpm principals:apply  ./pompeii-report.json
 ```
+
+The export is created with mode `0600` and refuses to overwrite an existing file.
+It contains identity references: keep it out of Git and logs, transfer it only
+through an approved protected channel, and delete it after the migration window.
+Every entry must use consumer `alcantara` and the deterministic model/reference
+key Alcantara exported. Report/apply reject another consumer, an unknown or
+changed reference, or a report that does not cover the current inventory.
 
 The report classifies every row:
 
@@ -83,19 +95,28 @@ The report classifies every row:
 | `colliding`        | multiple preference rows would claim one principal/device key | ❌      |
 | `orphan`           | the row carries no subject at all                             | ❌      |
 
-`apply` runs in one transaction, writes only `mapped` rows, and makes each write
-conditional on the canonical column still being null — so it is safe to re-run
-and a crash resumes cleanly. It refuses to run while conflicts remain unless
-`--allow-conflicts` is passed, and even then migrates only the clean rows.
+Before any export, report, or apply database access, the CLI runs the canonical
+Arauco secret bootstrap; production therefore resolves `DATABASE_URL` from
+`ARAUCO_SECRET_ID` before constructing Prisma. Bootstrap failure performs no
+database work.
+
+`apply` re-collects and re-plans inside one serializable transaction, writes only
+`mapped` rows, and compare-and-sets every legacy owner and canonical-null field.
+GuestEvent compares the complete original JSON before adding the principal, so a
+concurrent audit update cannot be overwritten. Every affected count must equal
+one or the whole transaction aborts. It is safe to re-run and a crash resumes
+cleanly. Any collision or missing reference in the Pompeii report always blocks
+apply. Alcantara conflicts also block unless `--allow-conflicts` is passed, and
+even then only clean rows migrate.
 
 The report contains counts only: **no subject, principal, email, or raw mapping
 value ever appears in it**.
 
 ## The two guarantees
 
-- **Identities are never joined by email.** The only accepted input is a mapping
-  Pompeii verified. `readMappingFile` refuses an entry that even _contains_ an
-  `email` field.
+- **Identities are never joined by email.** The only accepted input is Pompeii's
+  native verified report. The importer refuses a reference that even _contains_
+  an `email` field.
 - **Audit attribution is never rewritten.** `GuestInvitation.createdByIdentity`
   keeps its original value forever; the canonical principal is recorded beside
   it. A historical actor still displays when no mapping exists, and no link is
@@ -117,12 +138,13 @@ and are ignored by legacy code.
 
 Reconciling after a partial or aborted rollout:
 
-1. Re-run `pnpm principals:report ./mapping.json`. Rows already applied come
+1. Re-export the current inventory, regenerate the Pompeii report, and run
+   `pnpm principals:report ./pompeii-report.json`. Rows already applied come
    back as `already-migrated`; nothing needs undoing.
 2. Resolve any `conflicting`, `ambiguous`, or `colliding` rows by hand — those
    are decisions about who a record belongs to, which is why the tool refuses to
    make them.
-3. Re-run `pnpm principals:apply`. It is idempotent.
+3. Re-run `pnpm principals:apply ./pompeii-report.json`. It is idempotent.
 
 Unresolved legacy records stay usable and visible throughout; they are never
 hidden or orphaned while awaiting remediation.

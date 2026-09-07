@@ -49,16 +49,22 @@ export class OperatorPreferencesService {
     deviceClass: string,
   ) {
     if (identity.principalId) {
-      const byPrincipal = await this.prisma.operatorPreference.findMany({
+      const candidates = await this.prisma.operatorPreference.findMany({
         orderBy: { updatedAt: 'desc' },
         take: 2,
-        where: { principalId: identity.principalId, deviceClass },
+        where: {
+          deviceClass,
+          OR: [
+            { principalId: identity.principalId },
+            { subject: identity.subject },
+          ],
+        },
       });
-      if (byPrincipal.length > 1) {
+      if (candidates.length > 1) {
         this.metrics.recordPreference('read', 'conflict');
         throw new ConflictException('CANONICAL_IDENTITY_COLLISION');
       }
-      if (byPrincipal[0]) return byPrincipal[0];
+      return candidates[0] ?? null;
     }
     return this.prisma.operatorPreference.findUnique({
       where: {

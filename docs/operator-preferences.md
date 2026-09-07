@@ -3,9 +3,11 @@
 Alcantara owns console UI preferences. Pompeii supplies both the authenticated
 pool subject and, when verified, its canonical principal; Pompeii does not store
 these preferences. The legacy primary key remains `(subject, deviceClass)`, but
-reads prefer one matching `(principalId, deviceClass)` row and otherwise fall
-back to the current subject. Two linked pool identities therefore reach the same
-migrated profile, while an unresolved identity can reach only its legacy row.
+reads query both `(principalId, deviceClass)` and the current
+`(subject, deviceClass)` together. Two linked pool identities therefore reach
+one migrated profile, while an unresolved identity can reach only its legacy
+row. Distinct matches fail with `CANONICAL_IDENTITY_COLLISION`; a canonical row
+must never hide a separate legacy profile for the current subject.
 
 ## Device classification and override
 
@@ -45,8 +47,10 @@ never silently overwrites the other session.
 
 The last acknowledged profile is cached locally under the canonical principal
 when the backend returns one, with the current subject as the rollout fallback.
-If the backend is unavailable, Alcantara starts with the available cache or safe
-defaults, marks synchronization degraded, and leaves broadcast controls usable.
+On the first upgraded session, Alcantara prefers an existing principal cache,
+then copies a valid legacy subject cache to the principal key when needed. If the
+backend is unavailable, Alcantara therefore starts with the available cache or
+safe defaults, marks synchronization degraded, and leaves broadcast controls usable.
 Dirty writes and clean reads retry every five seconds. Tokens are not stored in
 that preference cache.
 
