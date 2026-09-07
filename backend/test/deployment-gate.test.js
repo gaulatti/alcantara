@@ -58,3 +58,36 @@ test('keeps the backend private to nginx and preserves realtime proxy behavior',
   assert.match(nginx, /proxy_set_header Upgrade \$http_upgrade/);
   assert.match(nginx, /proxy_read_timeout 24h/);
 });
+
+test('uses bounded host-local logs without a CloudWatch dependency', () => {
+  for (const deployment of [workflow, deployScript]) {
+    assert.match(deployment, /--log-driver=local/);
+    assert.match(deployment, /--log-opt max-size=10m/);
+    assert.match(deployment, /--log-opt max-file=3/);
+    assert.doesNotMatch(deployment, /--log-driver=awslogs/);
+    assert.doesNotMatch(deployment, /awslogs-/);
+    assert.doesNotMatch(deployment, /LOGS_GROUP/);
+  }
+});
+
+test('retains the previous container until the local-logging replacement is healthy', () => {
+  for (const deployment of [workflow, deployScript]) {
+    const retainPrevious = deployment.indexOf(
+      'docker rename alcantara-backend alcantara-backend-previous',
+    );
+    const createReplacement = deployment.indexOf('--log-driver=local');
+    const removePrevious = deployment.lastIndexOf(
+      'docker rm alcantara-backend-previous',
+    );
+
+    assert.ok(retainPrevious >= 0);
+    assert.ok(createReplacement > retainPrevious);
+    assert.ok(removePrevious > createReplacement);
+    assert.match(deployment, /rollback_backend\(\)/);
+    assert.match(
+      deployment,
+      /docker rename alcantara-backend-previous alcantara-backend/,
+    );
+    assert.match(deployment, /docker start alcantara-backend/);
+  }
+});

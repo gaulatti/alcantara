@@ -175,8 +175,6 @@ jobs:
               return 1
             }
 
-            LOG_STREAM_UUID=$(uuidgen)
-
             if ! docker run -d --name alcantara-backend \
             --network broadcast-control \
             -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
@@ -201,10 +199,9 @@ jobs:
             -e WEBRTC_RENDERER_KEY="${{ secrets.WEBRTC_RENDERER_KEY }}" \
             -e CONTAINERIZED=true \
             --restart=always \
-            --log-driver=awslogs \
-            --log-opt awslogs-region=${{ vars.AWS_REGION }} \
-            --log-opt awslogs-group=${{ vars.LOGS_GROUP }} \
-            --log-opt awslogs-stream="$LOG_STREAM_UUID" \
+            --log-driver=local \
+            --log-opt max-size=10m \
+            --log-opt max-file=3 \
             -v ~/.aws:/root/.aws:ro \
             --volumes-from "$PALAZZO_CONTAINER_ID:ro" \
             ghcr.io/${{ github.repository }}:latest; then

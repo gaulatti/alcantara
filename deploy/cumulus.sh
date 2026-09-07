@@ -80,10 +80,9 @@ if ! docker run -d --name alcantara-backend \
   -e CONTAINERIZED=true \
   --volume /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
   --restart=always \
-  --log-driver=awslogs \
-  --log-opt awslogs-region=us-east-1 \
-  --log-opt awslogs-group=/services/alcantara \
-  --log-opt "awslogs-stream=alcantara-$(date +%Y%m%dT%H%M%S)" \
+  --log-driver=local \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   "$image"; then
   rollback_backend
   exit 1
