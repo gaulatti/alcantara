@@ -94,13 +94,20 @@ variable `ON_PREMISES` is exactly `true`. When it is false or absent, GitHub
 OIDC assumes the `alcantara-github-deploy` role and uses SSM to deploy to the
 single EC2 host tagged `Name=macondo-services`. The service-owned stack in
 `infra/aws` owns that role, the API DNS record, and the Cumulus host grants for
-media storage and logs. Macondo grants its instance role access to the database
+media storage. Macondo grants its instance role access to the database
 secrets it provisions. Set the non-secret `ARAUCO_SECRET_ARN` and
 `MEDIA_S3_BUCKET` repository variables; the container resolves Arauco
 credentials through the instance profile and requires TLS for the RDS
 connection with Amazon's bundled RDS CA and full hostname verification, so
 database credentials never pass through GitHub or appear in Docker
 configuration.
+
+Both production host paths use Docker's bounded host-local `local` log driver
+(`max-size=10m`, `max-file=3`). Application stdout and stderr remain available
+through `docker logs`; startup, restart, and rollback do not require a
+CloudWatch Logs group or writer grant. See
+[`../docs/production-backend-logging.md`](../docs/production-backend-logging.md)
+for cutover validation and rollback.
 
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks

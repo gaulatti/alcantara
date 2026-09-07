@@ -188,7 +188,7 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 Macondo provisions the shared Cumulus host, network, and Arauco database. The
 service-specific AWS integration lives in [`infra/aws`](infra/aws): Alcántara
 owns its GitHub OIDC deployment role, API DNS record, and the policies granting
-the Cumulus host access to media storage and logs. Macondo grants its instance
+the Cumulus host access to media storage. Macondo grants its instance
 role access to every database secret it provisions; the backend resolves
 Arauco credentials inside the container through that instance profile.
 
@@ -345,6 +345,13 @@ the Palazzo credential and approved URL list. The previous container is retained
 until the replacement passes its startup check and is automatically restored if
 the replacement fails. This keeps the existing radio controller alive when a
 configuration or startup defect reaches deployment.
+
+Production backend stdout and stderr remain available through `docker logs`,
+using Docker's host-local `local` driver with a 10 MiB maximum per file and
+three retained files. Alcantara does not require a CloudWatch Logs group or
+write grant to start, restart, or roll back. See
+[Production backend logging](docs/production-backend-logging.md) for validation
+and rollback procedures.
 
 The replacement joins `broadcast-control` so the private
 `http://palazzo:3100` program-scoped machine API remains resolvable. Set the

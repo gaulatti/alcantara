@@ -1,6 +1,5 @@
 import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
 import { Policy, PolicyStatement, Role } from "aws-cdk-lib/aws-iam";
-import { LogGroup } from "aws-cdk-lib/aws-logs";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -31,11 +30,6 @@ export class AlcantaraInfrastructureStack extends Stack {
       "MediaBucket",
       config.mediaBucketName,
     );
-    const backendLogGroup = LogGroup.fromLogGroupName(
-      this,
-      "BackendLogGroup",
-      "/services/alcantara",
-    );
     const hostPolicy = new Policy(this, "AlcantaraCumulusHostPolicy", {
       policyName: "alcantara-cumulus-host",
       statements: [
@@ -53,10 +47,6 @@ export class AlcantaraInfrastructureStack extends Stack {
             "s3:PutObjectVersionTagging",
           ],
           resources: [mediaBucket.bucketArn, `${mediaBucket.bucketArn}/*`],
-        }),
-        new PolicyStatement({
-          actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
-          resources: [backendLogGroup.logGroupArn],
         }),
       ],
     });
