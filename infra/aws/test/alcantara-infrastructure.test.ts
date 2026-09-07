@@ -18,7 +18,7 @@ const template = (): Template => {
   );
 };
 
-test("owns Alcantara application permissions outside Macondo", () => {
+test("owns only the Alcantara application permissions needed on Cumulus", () => {
   const rendered = template();
   rendered.hasResourceProperties("AWS::IAM::Policy", {
     PolicyName: "alcantara-cumulus-host",
@@ -27,8 +27,9 @@ test("owns Alcantara application permissions outside Macondo", () => {
   expect(policies).not.toContain("secretsmanager:GetSecretValue");
   expect(policies).toContain("s3:PutObject");
   expect(policies).toContain("example-alcantara-assets");
-  expect(policies).toContain("logs:PutLogEvents");
-  expect(policies).toContain("/services/alcantara");
+  expect(policies).not.toContain("logs:");
+  expect(policies).not.toContain("/services/alcantara");
+  rendered.resourceCountIs("AWS::Logs::LogGroup", 0);
 });
 
 test("owns the API record and main-branch deployment role", () => {

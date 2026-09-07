@@ -82,23 +82,32 @@ both non-interactive execution and repeatability.
 
 The application process also requires `ALCANTARA_CONFIG_SECRET_ID` and
 `AWS_REGION` in production. Before constructing Nest providers it loads the
-allowlisted `palazzoControlToken` and `palazzoAllowedUrls` fields from that
-Secrets Manager payload. Missing, malformed, or unavailable configuration
-fails startup; the token is never a frontend variable or Docker build argument.
-See [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md).
+allowlisted `palazzoControlToken`, `palazzoAllowedUrls`, `alanaControlToken`,
+and `alanaControlUrl` fields from that Secrets Manager payload. Missing,
+malformed, or unavailable configuration fails startup; tokens are never
+frontend variables or Docker build arguments. See
+[`../docs/radio-telemetry.md`](../docs/radio-telemetry.md) and
+[`../docs/program-recording.md`](../docs/program-recording.md).
 
 The deployment workflow keeps the existing host path when the repository
 variable `ON_PREMISES` is exactly `true`. When it is false or absent, GitHub
 OIDC assumes the `alcantara-github-deploy` role and uses SSM to deploy to the
 single EC2 host tagged `Name=macondo-services`. The service-owned stack in
 `infra/aws` owns that role, the API DNS record, and the Cumulus host grants for
-media storage and logs. Macondo grants its instance role access to the database
+media storage. Macondo grants its instance role access to the database
 secrets it provisions. Set the non-secret `ARAUCO_SECRET_ARN` and
 `MEDIA_S3_BUCKET` repository variables; the container resolves Arauco
 credentials through the instance profile and requires TLS for the RDS
 connection with Amazon's bundled RDS CA and full hostname verification, so
 database credentials never pass through GitHub or appear in Docker
 configuration.
+
+Both production host paths use Docker's bounded host-local `local` log driver
+(`max-size=10m`, `max-file=3`). Application stdout and stderr remain available
+through `docker logs`; startup, restart, and rollback do not require a
+CloudWatch Logs group or writer grant. See
+[`../docs/production-backend-logging.md`](../docs/production-backend-logging.md)
+for cutover validation and rollback.
 
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks
