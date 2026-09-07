@@ -10,18 +10,29 @@ async function json(response) {
   return { status: response.status, body: await response.json() };
 }
 
-async function waitForScheduled(scheduled) {
-  for (let attempt = 0; attempt < 20 && scheduled.length === 0; attempt += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.equal(scheduled.length, 1);
+function controlledScheduler() {
+  const callbacks = [];
+  const waiters = [];
+  return {
+    schedule(callback) {
+      callbacks.push(callback);
+      waiters.shift()?.();
+    },
+    async runNext() {
+      if (callbacks.length === 0) {
+        await new Promise((resolve) => waiters.push(resolve));
+      }
+      assert.equal(callbacks.length, 1);
+      callbacks.shift()();
+    },
+  };
 }
 
 test('fake Alana deterministically covers start, status, stop, finalize, and errors', async (t) => {
-  const scheduled = [];
+  const scheduler = controlledScheduler();
   const server = createAlanaRecordingFixture({
     token,
-    schedule: (callback) => scheduled.push(callback),
+    schedule: scheduler.schedule,
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -64,8 +75,7 @@ test('fake Alana deterministically covers start, status, stop, finalize, and err
     { status: started.status, state: started.body.state },
     { status: 202, state: 'requested' },
   );
-  assert.equal(scheduled.length, 1);
-  scheduled.shift()();
+  await scheduler.runNext();
 
   const active = await json(await fetch(`${origin}${path}`, { headers }));
   assert.deepEqual(
@@ -92,8 +102,7 @@ test('fake Alana deterministically covers start, status, stop, finalize, and err
     method: 'POST',
     headers: { ...headers, 'Idempotency-Key': 'stop-1' },
   });
-  await waitForScheduled(scheduled);
-  scheduled.shift()();
+  await scheduler.runNext();
   const complete = await json(await stopping);
   assert.deepEqual(
     {
