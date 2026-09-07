@@ -101,3 +101,22 @@ test('invalid production input fails with redacted evidence', () => {
   assert.doesNotMatch(result.stdout + result.stderr, /DO_NOT_PRINT_THIS_VALUE/);
   assert.doesNotMatch(result.stdout + result.stderr, /public\.example\.com/);
 });
+
+test('incomplete production input names only the missing keys', () => {
+  const payload = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  delete payload.alanaControlToken;
+  delete payload.alanaControlUrl;
+  const result = spawnSync(process.execPath, [contractPath], {
+    encoding: 'utf8',
+    input: JSON.stringify(payload),
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /missing keys: alanaControlToken, alanaControlUrl/,
+  );
+  for (const value of Object.values(payload)) {
+    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(value));
+  }
+});

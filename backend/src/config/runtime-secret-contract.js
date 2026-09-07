@@ -110,15 +110,20 @@ function parseRuntimeSecretPayload(secretString) {
   for (const [key, value] of Object.entries(payload)) {
     if (!allowedSecretFields.has(key)) continue;
     if (typeof value !== 'string' || !value.trim()) {
-      throw new Error('Alcantara runtime configuration is malformed');
+      throw new Error(
+        `Alcantara runtime configuration field ${key} is malformed`,
+      );
     }
     if (key === 'alanaControlToken' && value !== value.trim()) {
       throw new Error('ALANA_CONTROL_TOKEN is missing or invalid');
     }
     selected[key] = value.trim();
   }
-  if (RUNTIME_SECRET_KEYS.some((key) => !selected[key])) {
-    throw new Error('Alcantara private service configuration is incomplete');
+  const missingKeys = RUNTIME_SECRET_KEYS.filter((key) => !selected[key]);
+  if (missingKeys.length) {
+    throw new Error(
+      `Alcantara private service configuration is incomplete; missing keys: ${missingKeys.join(', ')}`,
+    );
   }
   if (!isValidPrivateControlToken(selected.palazzoControlToken)) {
     throw new Error('PALAZZO_CONTROL_TOKEN is missing or invalid');
