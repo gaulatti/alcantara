@@ -18,6 +18,7 @@ import { MetricsController } from './metrics.controller';
 import { WebrtcModule } from './webrtc/webrtc.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
+import { ExternalSourcesModule } from './external-sources/external-sources.module';
 import { RecordingModule } from './recording/recording.module';
 
 @Module({
@@ -40,6 +41,7 @@ import { RecordingModule } from './recording/recording.module';
     RadioModule,
     WebrtcModule,
     OperatorPreferencesModule,
+    ExternalSourcesModule,
     RecordingModule,
   ],
   controllers: [AppController, MetricsController],

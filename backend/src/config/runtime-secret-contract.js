@@ -5,6 +5,8 @@ const RUNTIME_SECRET_KEYS = Object.freeze([
   'palazzoAllowedUrls',
   'alanaControlToken',
   'alanaControlUrl',
+  'externalSourceConfigCurrentVersion',
+  'externalSourceConfigKeys',
 ]);
 const allowedSecretFields = new Set(RUNTIME_SECRET_KEYS);
 const alanaTokenPattern = /^[a-f0-9]{64}$/;
@@ -95,6 +97,40 @@ function normalizeAlanaControlUrl(value) {
   return normalized;
 }
 
+function validateExternalSourceEncryption(currentVersion, encodedKeys) {
+  const current = Number(currentVersion);
+  let parsed;
+  try {
+    parsed = JSON.parse(encodedKeys ?? '');
+  } catch {
+    throw new Error('External source encryption configuration is malformed');
+  }
+  if (
+    !Number.isSafeInteger(current) ||
+    current < 1 ||
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error('External source encryption configuration is malformed');
+  }
+  const entries = Object.entries(parsed);
+  if (!entries.length || !Object.hasOwn(parsed, String(current))) {
+    throw new Error('External source encryption configuration is malformed');
+  }
+  for (const [version, encoded] of entries) {
+    if (
+      !/^\d+$/.test(version) ||
+      Number(version) < 1 ||
+      typeof encoded !== 'string' ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) ||
+      Buffer.from(encoded, 'base64').length !== 32
+    ) {
+      throw new Error('External source encryption configuration is malformed');
+    }
+  }
+}
+
 function parseRuntimeSecretPayload(secretString) {
   let payload;
   try {
@@ -122,7 +158,7 @@ function parseRuntimeSecretPayload(secretString) {
   const missingKeys = RUNTIME_SECRET_KEYS.filter((key) => !selected[key]);
   if (missingKeys.length) {
     throw new Error(
-      `Alcantara private service configuration is incomplete; missing keys: ${missingKeys.join(', ')}`,
+      `Alcantara runtime configuration is incomplete; missing keys: ${missingKeys.join(', ')}`,
     );
   }
   if (!isValidPrivateControlToken(selected.palazzoControlToken)) {
@@ -140,6 +176,10 @@ function parseRuntimeSecretPayload(secretString) {
     throw new Error('ALANA_CONTROL_TOKEN is missing or invalid');
   }
   normalizeAlanaControlUrl(selected.alanaControlUrl);
+  validateExternalSourceEncryption(
+    selected.externalSourceConfigCurrentVersion,
+    selected.externalSourceConfigKeys,
+  );
   return selected;
 }
 
@@ -179,4 +219,5 @@ module.exports = {
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
   parseRuntimeSecretPayload,
+  validateExternalSourceEncryption,
 };

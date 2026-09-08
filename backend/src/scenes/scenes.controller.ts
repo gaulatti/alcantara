@@ -35,6 +35,7 @@ export class ScenesController {
       layoutId: number;
       chyronText?: string;
       metadata?: any;
+      externalSourceId?: string;
     },
   ) {
     return this.scenesService.create(data);
@@ -50,6 +51,7 @@ export class ScenesController {
       layoutId?: number;
       chyronText?: string;
       metadata?: any;
+      externalSourceId?: string | null;
     },
   ) {
     return this.scenesService.update(+id, data);

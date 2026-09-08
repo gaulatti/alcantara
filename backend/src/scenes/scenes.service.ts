@@ -29,13 +29,16 @@ export class ScenesService {
     layoutId: number;
     chyronText?: string;
     metadata?: any;
+    externalSourceId?: string;
   }) {
+    await this.validateExternalSourceReference(data.layoutId, data.externalSourceId, data.metadata);
     const scene = await this.prisma.scene.create({
       data: {
         name: data.name,
         layoutId: data.layoutId,
         chyronText: data.chyronText,
         metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+        externalSourceId: data.externalSourceId ?? null,
       },
       include: { layout: true },
     });
@@ -49,6 +52,7 @@ export class ScenesService {
       layoutId?: number;
       chyronText?: string;
       metadata?: any;
+      externalSourceId?: string | null;
     },
   ) {
     const updateData: any = {};
@@ -57,6 +61,10 @@ export class ScenesService {
     if (data.chyronText !== undefined) updateData.chyronText = data.chyronText;
     if (data.metadata !== undefined)
       updateData.metadata = JSON.stringify(data.metadata);
+    if (data.externalSourceId !== undefined) updateData.externalSourceId = data.externalSourceId;
+    const existing = await this.prisma.scene.findUnique({ where: { id } });
+    if (!existing) throw new BadRequestException('Scene not found');
+    await this.validateExternalSourceReference(data.layoutId ?? existing.layoutId, data.externalSourceId === undefined ? existing.externalSourceId ?? undefined : data.externalSourceId ?? undefined, data.metadata);
 
     this.cancelModoItalianoBracketDraw(id);
     const scene = await this.prisma.scene.update({
@@ -282,6 +290,16 @@ export class ScenesService {
     return Number.isFinite(duration) && duration > 0 ? Math.floor(duration) : Number.isFinite(fallbackDuration) && fallbackDuration > 0 ? Math.floor(fallbackDuration) : 5;
   }
 
+  private async validateExternalSourceReference(layoutId: number, sourceId: string | undefined, metadata: unknown) {
+    const layout = await this.prisma.layout.findUnique({ where: { id: layoutId }, select: { componentType: true } });
+    if (!layout) throw new BadRequestException('Layout not found');
+    if (layout.componentType !== 'video-stream') return;
+    if (containsSourceUrl(metadata)) throw new BadRequestException('Video stream scenes reference externalSourceId, not a URL');
+    if (!sourceId) throw new BadRequestException('Video stream scenes require externalSourceId');
+    const source = await this.prisma.externalSource.findFirst({ where: { id: sourceId, revokedAt: null }, select: { id: true } });
+    if (!source) throw new BadRequestException('External source not found');
+  }
+
   private seededShuffle(ids: number[], seed: number): number[] {
     let state = seed >>> 0;
     const random = () => {
@@ -323,4 +341,10 @@ export class ScenesService {
 
     return deleted;
   }
+}
+
+function containsSourceUrl(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some(containsSourceUrl);
+  return Object.entries(value).some(([key, nested]) => key === 'sourceUrl' || containsSourceUrl(nested));
 }

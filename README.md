@@ -354,6 +354,8 @@ the dry-run report, and the rollback and reconciliation procedure.
 
 ## Architecture
 
+- [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.
+
 Production places the backend on the external `broadcast-control` Docker
 network shared with Palazzo and Alana. Before stopping the live backend,
 deployment runs
@@ -373,9 +375,9 @@ and rollback procedures.
 The replacement joins `broadcast-control` so the private
 `http://palazzo:3100` program-scoped machine API remains resolvable. Production
 uses the code-owned `broadcast/production/config` Secrets Manager payload,
-including Alana's private recording control URL and token. The deployment
-workflow validates that payload without printing it before image build or push.
-During migration, deployment also
+including Alana's private recording control URL and token and the external-source
+encryption keyring. The deployment workflow validates that payload without
+printing it before image build or push. During migration, deployment also
 discovers and inherits the running Palazzo container's existing read-only
 control-token mount as a backwards-compatible credential source. Preflight fails without
 replacing the live backend when that mount is absent or ambiguous, neither

@@ -1,5 +1,6 @@
 import {
   loadRuntimeSecrets,
+  validateExternalSourceEncryption,
   validateAlanaRuntimeConfiguration,
   validatePalazzoRuntimeConfiguration,
 } from './runtime-secrets';
@@ -7,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 
 jest.mock('node:fs/promises', () => ({ readFile: jest.fn() }));
 const readFileMock = jest.mocked(readFile);
+const sourceKeys = '{"1":"YWxjYW50YXJhLWxvY2FsLXNvdXJjZS1rZXktMDAwMDA="}';
 
 function productionEnvironment() {
   return {
@@ -28,6 +30,8 @@ describe('loadRuntimeSecrets', () => {
         palazzoAllowedUrls: 'http://palazzo:3100',
         alanaControlToken: ALANA_TOKEN,
         alanaControlUrl: 'http://alana:8080',
+        externalSourceConfigCurrentVersion: '1',
+        externalSourceConfigKeys: sourceKeys,
         untrustedProperty: 'must-not-enter-environment',
       }),
     });
@@ -37,6 +41,8 @@ describe('loadRuntimeSecrets', () => {
       PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
       ALANA_CONTROL_TOKEN: ALANA_TOKEN,
       ALANA_CONTROL_URL: 'http://alana:8080',
+      EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '1',
+      EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
     });
     expect(environment).not.toHaveProperty('untrustedProperty');
   });
@@ -51,7 +57,7 @@ describe('loadRuntimeSecrets', () => {
       loadRuntimeSecrets(productionEnvironment(), {
         send: jest.fn().mockResolvedValue({ SecretString: '{}' }),
       }),
-    ).rejects.toThrow('private service configuration is incomplete');
+    ).rejects.toThrow('runtime configuration is incomplete');
     await expect(
       loadRuntimeSecrets({ NODE_ENV: 'production', AWS_REGION: 'us-east-1' }),
     ).rejects.toThrow(
@@ -69,6 +75,8 @@ describe('loadRuntimeSecrets', () => {
       PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
       ALANA_CONTROL_TOKEN_FILE: '/run/secrets/alana-control-token',
       ALANA_CONTROL_URL: 'http://alana:8080',
+      EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '1',
+      EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
     };
 
     await loadRuntimeSecrets(environment);
@@ -81,6 +89,16 @@ describe('loadRuntimeSecrets', () => {
       PALAZZO_CONTROL_TOKEN: 'existing-palazzo-control-token',
       ALANA_CONTROL_TOKEN: ALANA_TOKEN,
     });
+  });
+
+  it('fails closed for an absent or malformed external-source keyring', () => {
+    expect(() => validateExternalSourceEncryption({})).toThrow('malformed');
+    expect(() =>
+      validateExternalSourceEncryption({
+        EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '2',
+        EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
+      }),
+    ).toThrow('malformed');
   });
 
   it('does not contact AWS for explicit non-production configuration', async () => {

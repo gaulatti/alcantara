@@ -8,6 +8,7 @@ const {
   isValidAlanaControlToken,
   normalizeAlanaControlUrl,
   parseRuntimeSecretPayload,
+  validateExternalSourceEncryption,
 } = require('../src/config/runtime-secret-contract');
 
 const fixturePath = join(
@@ -69,6 +70,25 @@ test('allows only origin-only private Alana service targets', () => {
   );
 });
 
+test('requires a complete versioned external-source keyring', () => {
+  const payload = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  assert.doesNotThrow(() =>
+    validateExternalSourceEncryption(
+      payload.externalSourceConfigCurrentVersion,
+      payload.externalSourceConfigKeys,
+    ),
+  );
+  assert.throws(
+    () =>
+      validateExternalSourceEncryption('2', payload.externalSourceConfigKeys),
+    /External source encryption configuration is malformed/,
+  );
+  assert.throws(
+    () => validateExternalSourceEncryption('1', '{"1":"not-a-32-byte-key"}'),
+    /External source encryption configuration is malformed/,
+  );
+});
+
 test('the fixture-driven production preflight never prints configuration values', () => {
   const input = readFileSync(fixturePath, 'utf8');
   const result = spawnSync(process.execPath, [contractPath], {
@@ -85,12 +105,10 @@ test('the fixture-driven production preflight never prints configuration values'
 
 test('invalid production input fails with redacted evidence', () => {
   const sensitiveValue = 'DO_NOT_PRINT_THIS_VALUE';
-  const input = JSON.stringify({
-    palazzoControlToken: 'fictional-palazzo-control-token',
-    palazzoAllowedUrls: 'http://palazzo:3100',
-    alanaControlToken: sensitiveValue,
-    alanaControlUrl: 'https://public.example.com',
-  });
+  const payload = JSON.parse(readFileSync(fixturePath, 'utf8'));
+  payload.alanaControlToken = sensitiveValue;
+  payload.alanaControlUrl = 'https://public.example.com';
+  const input = JSON.stringify(payload);
   const result = spawnSync(process.execPath, [contractPath], {
     encoding: 'utf8',
     input,
