@@ -33,6 +33,7 @@ const HTTP_ROUTES = new Set([
   'stingers',
   'webrtc',
   'broadcast',
+  'external-sources',
   'unknown',
 ]);
 const DEPENDENCIES = new Set([
@@ -87,6 +88,16 @@ const PREFERENCE_RESULTS = new Set([
   'conflict',
   'failure',
 ]);
+const SOURCE_ACTIONS = new Set([
+  'create',
+  'update',
+  'read',
+  'rotate',
+  'revoke',
+  'reconcile',
+  'redirect',
+]);
+const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
 const RECORDING_ACTIONS = new Set(['start', 'stop']);
 const RECORDING_STATES = new Set([
@@ -140,6 +151,8 @@ export class ManagedMetricsService {
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
+  private readonly sourceOperations: Counter<string>;
+  private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
   private readonly recordingCommands: Counter<string>;
@@ -216,6 +229,18 @@ export class ManagedMetricsService {
       name: 'alcantara_broadcast_destination_operations_total',
       help: 'Versioned broadcast destination operations by bounded action and result.',
       labelNames: ['action', 'result'],
+      registers: [this.registry],
+    });
+    this.sourceOperations = new Counter({
+      name: 'alcantara_external_source_operations_total',
+      help: 'External source registry operations by bounded action and result.',
+      labelNames: ['action', 'result'],
+      registers: [this.registry],
+    });
+    this.sourceInventory = new Gauge({
+      name: 'alcantara_external_source_inventory',
+      help: 'Current external source inventory by bounded transport and lifecycle.',
+      labelNames: ['transport', 'lifecycle'],
       registers: [this.registry],
     });
     this.programSseConnections = new Gauge({
@@ -306,6 +331,43 @@ export class ManagedMetricsService {
       action: bounded(action, actions),
       result: bounded(result, results),
     });
+  }
+
+  recordExternalSource(action: string, result: string): void {
+    this.sourceOperations.inc({
+      action: bounded(action, SOURCE_ACTIONS),
+      result: bounded(result, SOURCE_RESULTS),
+    });
+  }
+
+  setExternalSourceInventory(
+    rows: Array<{ transport: string; lifecycle: string; count: number }>,
+  ): void {
+    this.sourceInventory.reset();
+    for (const row of rows) {
+      this.sourceInventory.set(
+        {
+          transport: bounded(
+            row.transport,
+            new Set(['rtmp', 'whip', 'hls', 'srt']),
+          ),
+          lifecycle: bounded(
+            row.lifecycle,
+            new Set([
+              'unconfigured',
+              'provisioning',
+              'waiting',
+              'connected',
+              'degraded',
+              'reconnecting',
+              'offline',
+              'revoked',
+            ]),
+          ),
+        },
+        Math.max(0, row.count),
+      );
+    }
   }
 
   recordProgramSseConnection(delta: 1 | -1): void {

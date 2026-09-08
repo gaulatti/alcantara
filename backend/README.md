@@ -28,6 +28,9 @@
 ## Prometheus scrape boundary
 
 The backend exposes authenticated Prometheus text format at `GET /metrics`.
+
+The external-source control plane is documented in
+[`../docs/external-source-registry.md`](../docs/external-source-registry.md).
 Set `METRICS_TOKEN_FILE` to a root-readable file containing one bearer token;
 the default path is `/run/secrets/alcantara-metrics-token`. The endpoint returns
 `503` when the file is absent and `401` when the request does not provide the
@@ -83,14 +86,16 @@ both non-interactive execution and repeatability.
 The application process uses the code-owned `broadcast/production/config`
 secret identifier and requires `AWS_REGION` in production. Before constructing
 Nest providers it loads the allowlisted `palazzoControlToken`,
-`palazzoAllowedUrls`, `alanaControlToken`, and `alanaControlUrl` fields from that
-Secrets Manager payload. Missing, malformed, or unavailable configuration fails
-startup; tokens are never frontend variables or Docker build arguments. The
-GitHub deployment workflow performs the same value-redacting payload check
-before registry login, image build, or push. See
+`palazzoAllowedUrls`, `alanaControlToken`, `alanaControlUrl`,
+`externalSourceConfigCurrentVersion`, and `externalSourceConfigKeys` fields from
+that Secrets Manager payload. Missing, malformed, or unavailable configuration
+fails startup; tokens and encryption keys are never frontend variables or
+Docker build arguments. The GitHub deployment workflow performs the same
+value-redacting payload check before registry login, image build, or push. See
 [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md),
-[`../docs/broadcast-destinations.md`](../docs/broadcast-destinations.md), and
-[`../docs/program-recording.md`](../docs/program-recording.md).
+[`../docs/broadcast-destinations.md`](../docs/broadcast-destinations.md),
+[`../docs/program-recording.md`](../docs/program-recording.md), and
+[`../docs/external-source-registry.md`](../docs/external-source-registry.md).
 
 The deployment workflow keeps the existing host path when the repository
 variable `ON_PREMISES` is exactly `true`. When it is false or absent, GitHub

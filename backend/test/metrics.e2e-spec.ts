@@ -51,6 +51,11 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     metrics.recordJob('charts-refresh', 'failure');
     metrics.recordPreference('write', 'conflict');
     metrics.recordBroadcastDestination('start', 'failed');
+    metrics.recordExternalSource('create', 'success');
+    metrics.recordExternalSource('private-source-id', 'private-url');
+    metrics.setExternalSourceInventory([
+      { transport: 'whip', lifecycle: 'connected', count: 1 },
+    ]);
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingStatus('active', 'success');
     const radioMetrics = app.get(RadioMetricsService);
@@ -98,6 +103,12 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain('alcantara_dependency_operations_total');
     expect(body).toContain('alcantara_jobs_total');
     expect(body).toContain(
+      'alcantara_external_source_operations_total{action="create",result="success"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_external_source_inventory{transport="whip",lifecycle="connected"} 1',
+    );
+    expect(body).toContain(
       'alcantara_recording_commands_total{action="start",result="accepted"} 1',
     );
     expect(body).toContain(
@@ -129,6 +140,8 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).not.toContain('raw-error-value');
     expect(body).not.toContain('credential-value');
     expect(body).not.toContain('https://private.invalid/program/secret');
+    expect(body).not.toContain('private-source-id');
+    expect(body).not.toContain('private-url');
     if (process.env.METRICS_SCRAPE_OUTPUT) {
       writeFileSync(process.env.METRICS_SCRAPE_OUTPUT, body);
     }

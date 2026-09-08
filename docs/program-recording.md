@@ -55,9 +55,10 @@ after a reload or reconnect.
 ## Private service configuration
 
 Production uses the code-owned Secrets Manager identifier
-`broadcast/production/config`. The payload must contain all four exact private
-service keys below. The loader ignores every other key rather than injecting it
-into the process environment.
+`broadcast/production/config`. The payload must contain the four exact private
+service keys below and the external-source encryption fields documented in
+[External source registry](external-source-registry.md). The loader ignores
+every other key rather than injecting it into the process environment.
 
 | Secret key            | Contract                                                                          | Owner                                                                         |
 | --------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |

@@ -113,12 +113,17 @@ Secrets Manager JSON and selects only these scalar fields:
 ```json
 {
   "palazzoControlToken": "replace-in-secrets-manager",
-  "palazzoAllowedUrls": "http://palazzo:3100"
+  "palazzoAllowedUrls": "http://palazzo:3100",
+  "alanaControlToken": "replace-in-secrets-manager",
+  "alanaControlUrl": "http://alana:8080",
+  "externalSourceConfigCurrentVersion": "1",
+  "externalSourceConfigKeys": "{\"1\":\"base64-encoded-32-byte-root\"}"
 }
 ```
 
-Retrieval failure, malformed values, or either missing field fails startup.
-There is no plaintext production token environment fallback. The runtime IAM identity needs
+Retrieval failure, malformed values, or any missing field fails startup. There
+is no plaintext production token or encryption-key environment fallback when
+the Secrets Manager bootstrap is configured. The runtime IAM identity needs
 only `secretsmanager:GetSecretValue` for this one Alcantara configuration
 secret (plus `kms:Decrypt` only when a customer-managed key requires it).
 

@@ -9,6 +9,7 @@ import {
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
   parseRuntimeSecretPayload,
+  validateExternalSourceEncryption as validateExternalSourceEncryptionValues,
 } from './runtime-secret-contract';
 
 interface SecretClient {
@@ -26,6 +27,8 @@ interface RuntimeEnvironment {
   ALANA_CONTROL_TOKEN?: string;
   ALANA_CONTROL_TOKEN_FILE?: string;
   ALANA_CONTROL_URL?: string;
+  EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION?: string;
+  EXTERNAL_SOURCE_CONFIG_KEYS?: string;
   [key: string]: string | undefined;
 }
 
@@ -70,6 +73,7 @@ export function validateRuntimeConfiguration(
 ): void {
   validatePalazzoRuntimeConfiguration(environment);
   validateAlanaRuntimeConfiguration(environment);
+  validateExternalSourceEncryption(environment);
 }
 
 /** Load the production Palazzo credential before Nest constructs any client. */
@@ -118,5 +122,17 @@ export async function loadRuntimeSecrets(
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
   environment.ALANA_CONTROL_TOKEN = selected.alanaControlToken;
   environment.ALANA_CONTROL_URL = selected.alanaControlUrl;
+  environment.EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION =
+    selected.externalSourceConfigCurrentVersion;
+  environment.EXTERNAL_SOURCE_CONFIG_KEYS = selected.externalSourceConfigKeys;
   validateRuntimeConfiguration(environment);
+}
+
+export function validateExternalSourceEncryption(
+  environment: RuntimeEnvironment = process.env,
+): void {
+  validateExternalSourceEncryptionValues(
+    environment.EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION,
+    environment.EXTERNAL_SOURCE_CONFIG_KEYS,
+  );
 }
