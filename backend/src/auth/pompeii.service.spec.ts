@@ -3,17 +3,39 @@ import {
   LOCAL_POMPEII_GRPC_URL,
   PRODUCTION_POMPEII_GRPC_URL,
   PompeiiService,
+  mapAuthorizationDecision,
   resolvePompeiiGrpcUrl,
 } from './pompeii.service';
 
 describe('PompeiiService production contract', () => {
+  it('keeps the landed canonical principal beside the legacy subject', () => {
+    expect(
+      mapAuthorizationDecision({
+        authenticated: true,
+        allowed: true,
+        principal_id: ' principal-a ',
+        subject: 'pool-subject-a',
+      }),
+    ).toMatchObject({
+      authenticated: true,
+      allowed: true,
+      principalId: 'principal-a',
+      subject: 'pool-subject-a',
+    });
+    expect(
+      mapAuthorizationDecision({
+        authenticated: true,
+        allowed: true,
+        subject: 'legacy-subject',
+      }).principalId,
+    ).toBeNull();
+  });
+
   it('uses the code-owned production endpoint regardless of an override', () => {
     expect(resolvePompeiiGrpcUrl('production')).toBe(
       PRODUCTION_POMPEII_GRPC_URL,
     );
-    expect(PRODUCTION_POMPEII_GRPC_URL).toBe(
-      'api.pompeii.gaulatti.com:443',
-    );
+    expect(PRODUCTION_POMPEII_GRPC_URL).toBe('api.pompeii.gaulatti.com:443');
   });
 
   it('uses the code-owned local endpoint outside production', () => {

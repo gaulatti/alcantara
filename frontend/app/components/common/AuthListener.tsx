@@ -6,6 +6,7 @@ import type { ReduxAction } from "../../state/dispatchers/base";
 import { useAuthStatus } from "../../hooks/useAuth";
 import { SESSION_INVALID_EVENT } from "../../services/session-events";
 import { getAppSession } from "../../services/session";
+import { getApiBaseUrl } from "../../utils/apiBaseUrl";
 
 export default function AuthListener() {
   const dispatch = useDispatch<Dispatch<ReduxAction>>();
@@ -20,8 +21,21 @@ export default function AuthListener() {
         const session = await getAppSession();
         if (session.userSub && session.token) {
           const payload = session.payload;
+          const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
+            headers: { Authorization: `Bearer ${session.token}` },
+          });
+          if (!response.ok)
+            throw new Error(`Authorization failed (${response.status})`);
+          const authorized = (await response.json()) as {
+            principalId?: unknown;
+          };
           const user = {
             id: session.userSub,
+            principalId:
+              typeof authorized.principalId === "string" &&
+              authorized.principalId.trim()
+                ? authorized.principalId.trim()
+                : null,
             email: (payload?.email as string) || "",
             name: payload?.name as string,
             picture: payload?.picture as string,

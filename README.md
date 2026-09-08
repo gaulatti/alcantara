@@ -338,6 +338,20 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 
 4. View the program page to see the live broadcast overlay
 
+## Identity
+
+Alcantara authorizes through Pompeii, which now returns a canonical
+`principal_id` alongside the pool subject. Operator preferences, shared console
+layouts, guest invitations, and guest lifecycle audit events record it beside
+the subject through nullable/additive references; ownership matches the
+canonical principal when a row names one and falls back to the pool subject when
+it does not, so migrated and unmigrated rows both work during rollout.
+
+Identities are never joined by email, no ownership row changes without a verified
+Pompeii mapping, and audit attribution is never rewritten. See
+[`docs/canonical-principals.md`](docs/canonical-principals.md) for the inventory,
+the dry-run report, and the rollback and reconciliation procedure.
+
 ## Architecture
 
 Production places the backend on the external `broadcast-control` Docker
