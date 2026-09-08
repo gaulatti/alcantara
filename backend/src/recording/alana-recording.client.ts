@@ -14,9 +14,9 @@ import {
   type RecordingStatus,
 } from './recording.contract';
 import {
-  isValidPrivateControlToken,
-  normalizePrivateServiceUrl,
-} from '../config/runtime-secrets';
+  isValidAlanaControlToken,
+  normalizeAlanaControlUrl,
+} from '../config/runtime-secret-contract';
 
 export const ALANA_RECORDING_FETCH = Symbol('ALANA_RECORDING_FETCH');
 
@@ -42,15 +42,16 @@ export class AlanaRecordingClient {
     transport?: RecordingFetch,
   ) {
     const isTest = config.get<string>('NODE_ENV') === 'test';
-    this.baseUrl = normalizePrivateServiceUrl(
+    this.baseUrl = normalizeAlanaControlUrl(
       config.get<string>('ALANA_CONTROL_URL') ??
-        (isTest ? 'http://alana.test:8080' : ''),
-      'ALANA_CONTROL_URL',
+        (isTest ? 'http://alana:8080' : ''),
     );
     this.token =
-      config.get<string>('ALANA_CONTROL_TOKEN')?.trim() ??
-      (isTest ? 'alana-test-control-token' : '');
-    if (!isValidPrivateControlToken(this.token)) {
+      config.get<string>('ALANA_CONTROL_TOKEN') ??
+      (isTest
+        ? '0000000000000000000000000000000000000000000000000000000000000000'
+        : '');
+    if (!isValidAlanaControlToken(this.token)) {
       throw new Error('ALANA_CONTROL_TOKEN is missing or invalid');
     }
     this.timeoutMs = 5_000;

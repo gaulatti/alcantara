@@ -222,7 +222,9 @@ export function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybac
     progress: normalizeAudioMeterLevel(r.progress),
     currentTimeMs, durationMs,
     isPlaying: Boolean(r.isPlaying),
-    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString()
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString(),
+    introStatus: r.introStatus === 'pending' || r.introStatus === 'playing' || r.introStatus === 'completed' || r.introStatus === 'degraded' ? r.introStatus : 'none',
+    introFailureReason: typeof r.introFailureReason === 'string' ? r.introFailureReason.trim().slice(0, 200) || null : null
   };
 }
 

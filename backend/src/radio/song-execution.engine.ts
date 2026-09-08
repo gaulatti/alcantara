@@ -39,7 +39,16 @@ export interface SongPlaybackData {
   startedAt: string;
   updatedAt: string;
   telemetryStale: boolean;
+  introStatus: IntroPlaybackStatus;
+  introFailureReason: string | null;
 }
+
+export type IntroPlaybackStatus =
+  | 'none'
+  | 'pending'
+  | 'playing'
+  | 'completed'
+  | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -78,6 +87,10 @@ interface ActiveSong {
   durationMs: number;
   startedAt: number;
   itemId: string;
+  songId: number | null;
+  introPlaybackId: string | null;
+  introStatus: IntroPlaybackStatus;
+  introFailureReason: string | null;
   authoritativeStartedAt: number | null;
   authoritativePositionMs: number | null;
   authoritativeUpdatedAt: number | null;
@@ -234,6 +247,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     artist?: string,
     durationMs?: number,
     coverUrl?: string,
+    songId?: number,
   ): void {
     const state = this.ensureState(programId);
     const dur =
@@ -250,6 +264,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       durationMs: dur,
       startedAt: Date.now(),
       itemId: '',
+      songId:
+        Number.isInteger(songId) && (songId as number) > 0 ? songId! : null,
+      introPlaybackId: null,
+      introStatus: 'none',
+      introFailureReason: null,
       authoritativeStartedAt: null,
       authoritativePositionMs: null,
       authoritativeUpdatedAt: null,
@@ -269,6 +288,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       title,
       artist,
       coverUrl,
+      Number.isInteger(songId) && (songId as number) > 0 ? songId : undefined,
     );
   }
 
@@ -375,6 +395,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       | {
           type: 'audio.levels';
           data: PalazzoPlaybackState['levels'];
+        }
+      | {
+          type: 'intro.started' | 'intro.ended' | 'intro.failed';
+          data: {
+            programId: string;
+            playbackId: string;
+            parentPlaybackId: string;
+            failureReason?: string;
+            reason?: string;
+          };
         },
   ): void {
     if (!this.isRadioCapable(programId)) return;
@@ -396,29 +426,37 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    if (
+      event.type === 'intro.started' ||
+      event.type === 'intro.ended' ||
+      event.type === 'intro.failed'
+    ) {
+      this.handleIntroEvent(programId, state, event);
+      return;
+    }
+
     const requestId =
+      'playbackRequestId' in event.data &&
       typeof event.data.playbackRequestId === 'string'
         ? event.data.playbackRequestId
         : '';
 
     if (event.type === 'track.started') {
-      if (state.activeSong?.playbackRequestId === requestId) {
+      const activeSong = state.activeSong;
+      if (activeSong?.playbackRequestId === requestId) {
         // The command is no longer pending once Palazzo confirms playback.
         // Leaving successful request IDs here permanently blocks the next
         // automatic song because maybeStartSequence treats any pending ID as
         // an in-flight command.
         state.pendingRequestIds.delete(requestId);
-        if (
-          !state.activeSong.coverUrl &&
-          typeof event.data.coverUrl === 'string'
-        ) {
-          state.activeSong.coverUrl = event.data.coverUrl;
+        if (!activeSong.coverUrl && typeof event.data.coverUrl === 'string') {
+          activeSong.coverUrl = event.data.coverUrl;
         }
-        state.activeSong.authoritativeStartedAt = Date.now();
-        state.activeSong.authoritativePositionMs = 0;
-        state.activeSong.authoritativeUpdatedAt = Date.now();
+        activeSong.authoritativeStartedAt = Date.now();
+        activeSong.authoritativePositionMs = 0;
+        activeSong.authoritativeUpdatedAt = Date.now();
         this.metrics.recordTrackTransition('adopted');
-        this.emitPlaybackUpdate(programId, state.activeSong);
+        this.emitPlaybackUpdate(programId, activeSong);
       } else if (state.pendingRequestIds.has(requestId)) {
         // A command is confirmed before the engine optimistically activated it.
         this.metrics.recordTrackTransition('adopted');
@@ -444,6 +482,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const requestId = snapshot.track?.playbackRequestId ?? '';
     if (state.activeSong && state.activeSong.playbackRequestId === requestId) {
       const song = state.activeSong;
+      this.reconcileIntroSnapshot(song, snapshot);
       if (!song.coverUrl && snapshot.track?.coverUrl) {
         song.coverUrl = snapshot.track.coverUrl;
       }
@@ -496,6 +535,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         durationMs: inheritedSong.durationMs ?? 300000,
         startedAt: authoritativeStartedAt,
         itemId: inheritedSong.id,
+        songId: inheritedSong.songId ?? null,
+        introPlaybackId: snapshot.intro?.playbackId ?? null,
+        introStatus:
+          snapshot.intro?.status === 'playing'
+            ? 'playing'
+            : snapshot.intro?.status === 'failed'
+              ? 'degraded'
+              : 'none',
+        introFailureReason: this.boundedFailureReason(
+          snapshot.intro?.failureReason,
+        ),
         authoritativeStartedAt,
         authoritativePositionMs: positionMs,
         authoritativeUpdatedAt: Date.now(),
@@ -674,6 +724,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       durationMs: dur,
       startedAt: Date.now(),
       itemId: resolved.id,
+      songId: resolved.songId ?? null,
+      introPlaybackId: null,
+      introStatus: 'none',
+      introFailureReason: null,
       authoritativeStartedAt: null,
       authoritativePositionMs: null,
       authoritativeUpdatedAt: null,
@@ -689,6 +743,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       resolved.title,
       resolved.artist,
       resolved.coverUrl,
+      resolved.songId,
     );
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
@@ -715,6 +770,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       artist: p.artist,
       coverUrl: p.coverUrl,
       durationMs: p.durationMs,
+      songId: p.songId,
       activePathLabels: [],
     };
   }
@@ -726,7 +782,71 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     title?: string,
     artist?: string,
     coverUrl?: string,
+    songId?: number,
   ): Promise<void> {
+    const stateBeforeCommand = this.states.get(programId);
+    const activeSong = stateBeforeCommand?.activeSong;
+    let intro: { playbackId: string; url: string; gain?: number } | undefined;
+    if (
+      activeSong?.playbackRequestId === playbackRequestId &&
+      Number.isInteger(songId) &&
+      (songId as number) > 0
+    ) {
+      try {
+        const assignment = await this.prisma.songIntro.findUnique({
+          where: { songId: songId as number },
+          include: {
+            instant: {
+              select: { audioUrl: true, volume: true, enabled: true },
+            },
+          },
+        });
+        if (assignment?.programId === programId) {
+          if (
+            assignment.instant.enabled &&
+            assignment.instant.audioUrl.trim()
+          ) {
+            intro = {
+              playbackId: `${playbackRequestId}:intro`,
+              url: assignment.instant.audioUrl,
+              gain: assignment.instant.volume,
+            };
+            activeSong.introPlaybackId = intro.playbackId;
+            activeSong.introStatus = 'pending';
+            activeSong.introFailureReason = null;
+            this.metrics.recordIntroTransition('submitted');
+            this.emitPlaybackUpdate(programId, activeSong);
+          } else {
+            this.degradeIntro(
+              programId,
+              activeSong,
+              'Assigned intro is unavailable',
+            );
+          }
+        } else if (assignment) {
+          this.degradeIntro(
+            programId,
+            activeSong,
+            'Assigned intro belongs to another program',
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `Intro lookup failed on ${programId}: ${String(error)}`,
+        );
+        this.degradeIntro(
+          programId,
+          activeSong,
+          'Intro assignment lookup failed',
+        );
+      }
+    }
+    if (
+      this.states.get(programId)?.activeSong?.playbackRequestId !==
+      playbackRequestId
+    ) {
+      return;
+    }
     const result = await this.radioService.playSong(
       programId,
       audioUrl,
@@ -734,10 +854,23 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       artist,
       playbackRequestId,
       coverUrl,
+      intro,
     );
     const state = this.states.get(programId);
     if (!state) return;
     if (result.ok && result.playbackRequestId) {
+      if (intro && state.activeSong?.playbackRequestId === playbackRequestId) {
+        if (result.introPlaybackId === intro.playbackId) {
+          state.activeSong.introPlaybackId = result.introPlaybackId;
+          this.metrics.recordIntroTransition('accepted');
+        } else {
+          this.degradeIntro(
+            programId,
+            state.activeSong,
+            'Palazzo did not accept the assigned intro',
+          );
+        }
+      }
       // Adopt Palazzo's authoritative request ID when it generated its own.
       if (result.playbackRequestId !== playbackRequestId) {
         state.pendingRequestIds.delete(playbackRequestId);
@@ -928,7 +1061,81 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         this.isRadioCapable(programId) &&
         (s.authoritativeUpdatedAt === null ||
           now - s.authoritativeUpdatedAt > 15_000),
+      introStatus: s.introStatus,
+      introFailureReason: s.introFailureReason,
     };
+  }
+
+  private reconcileIntroSnapshot(
+    song: ActiveSong,
+    snapshot: PalazzoPlaybackState,
+  ): void {
+    const intro = snapshot.intro;
+    if (!intro || intro.parentPlaybackId !== song.playbackRequestId) return;
+    song.introPlaybackId = intro.playbackId;
+    song.introStatus = intro.status === 'playing' ? 'playing' : 'degraded';
+    song.introFailureReason = this.boundedFailureReason(intro.failureReason);
+  }
+
+  private handleIntroEvent(
+    programId: string,
+    state: SongEngineState,
+    event: {
+      type: 'intro.started' | 'intro.ended' | 'intro.failed';
+      data: {
+        programId: string;
+        playbackId: string;
+        parentPlaybackId: string;
+        failureReason?: string;
+        reason?: string;
+      };
+    },
+  ): void {
+    const song = state.activeSong;
+    if (
+      !song ||
+      event.data.programId !== programId ||
+      event.data.parentPlaybackId !== song.playbackRequestId ||
+      (song.introPlaybackId && event.data.playbackId !== song.introPlaybackId)
+    ) {
+      this.metrics.recordIntroTransition('ignored-mismatch');
+      return;
+    }
+    song.introPlaybackId = event.data.playbackId;
+    if (event.type === 'intro.started') {
+      song.introStatus = 'playing';
+      song.introFailureReason = null;
+      this.metrics.recordIntroTransition('started');
+    } else if (event.type === 'intro.ended') {
+      song.introStatus = 'completed';
+      song.introFailureReason = null;
+      this.metrics.recordIntroTransition('ended');
+    } else {
+      song.introStatus = 'degraded';
+      song.introFailureReason =
+        this.boundedFailureReason(
+          event.data.failureReason ?? event.data.reason,
+        ) ?? 'Intro playback failed';
+      this.metrics.recordIntroTransition('failed');
+    }
+    this.emitPlaybackUpdate(programId, song);
+  }
+
+  private degradeIntro(
+    programId: string,
+    song: ActiveSong,
+    reason: string,
+  ): void {
+    song.introStatus = 'degraded';
+    song.introFailureReason = this.boundedFailureReason(reason);
+    this.metrics.recordIntroTransition('failed');
+    this.emitPlaybackUpdate(programId, song);
+  }
+
+  private boundedFailureReason(value: unknown): string | null {
+    return typeof value === 'string' && value.trim()
+      ? value.trim().slice(0, 200)
+      : null;
   }
 
   private publishNowPlaying(

@@ -13,6 +13,31 @@ const restoreCheck = readFileSync(
 );
 const nginx = readFileSync('../deploy/cumulus.nginx.conf', 'utf8');
 
+test('validates the production secret contract before build, push, or host mutation', () => {
+  const preflight = workflow.indexOf('  production-config-preflight:');
+  const build = workflow.indexOf('\n  build:');
+  const deploy = workflow.indexOf('\n  deploy:');
+
+  assert.ok(preflight >= 0);
+  assert.ok(build > preflight);
+  assert.ok(deploy > build);
+  assert.match(workflow, /build:\n    needs: production-config-preflight/);
+  assert.match(
+    workflow,
+    /deploy:\n    runs-on: ubuntu-latest\n    needs: build/,
+  );
+  assert.match(workflow, /secretsmanager get-secret-value/);
+  assert.match(
+    workflow,
+    /node backend\/src\/config\/runtime-secret-contract\.js/,
+  );
+  assert.match(
+    workflow,
+    /ALCANTARA_CONFIG_SECRET_ID: broadcast\/production\/config/,
+  );
+  assert.doesNotMatch(workflow, /echo .*SecretString/);
+});
+
 test('preserves on-premises deployment and selects Cumulus when the gate is not true', () => {
   assert.match(workflow, /if: vars\.ON_PREMISES == 'true'/);
   assert.match(workflow, /if: vars\.ON_PREMISES != 'true'/);

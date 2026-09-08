@@ -48,10 +48,35 @@ without an intro, the already-assigned (therefore unavailable) Instant, and an
 available voice recording. Run the documented Compose migration and seed path
 to restore those fixtures.
 
+## Playout
+
+Immediately before every catalog-song command, Alcantara resolves the current
+assignment by the sequence item's stable `songId`. Autoplay, shuffle, manual
+catalog takes, and Flight song cues therefore use the same lookup path. Items
+without a catalog identity remain song-only; Alcantara never guesses an
+assignment from URL or display metadata.
+
+An available assignment is sent with the song in one Palazzo
+`POST /v1/programs/{programId}/playback/song` request. The song's
+`playbackRequestId` is both the request idempotency key and the intro's parent
+identity; the deterministic intro ID is `{playbackRequestId}:intro`, so a retry
+cannot create a second intro. The Instant's authored volume becomes the intro
+gain. Palazzo owns ducking, fades, validation, and the atomic mixer transition.
+
+Alcantara consumes the correlated `intro.started`, `intro.ended`, and
+`intro.failed` lifecycle. Intro completion never advances or stops the song.
+An unavailable assignment or intro failure leaves the song playing and shows
+an **Intro unavailable** state in the radio console. Scheduled bumpers and
+manual instants remain independent commands.
+
 ## Metrics and ownership boundary
 
 The existing normalized `songs` and `instants` HTTP metrics cover successful
 and rejected reads/mutations without placing program, song, or Instant IDs in
 labels. No content, media URL, or external identity is added to Prometheus
-labels. This ticket models and edits the relationship only; Palazzo command and
-mixer behavior are owned by the dependent atomic playout work.
+labels. Atomic playout adds
+`alcantara_radio_intro_transitions_total{result}` with the closed results
+`submitted`, `accepted`, `started`, `ended`, `failed`, and
+`ignored-mismatch`. Palazzo continues to own mixer execution; Alcantara owns
+editorial resolution, command correlation, operator state, and lifecycle
+metrics.

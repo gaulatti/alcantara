@@ -18,6 +18,9 @@ function productionEnvironment() {
   };
 }
 
+const ALANA_TOKEN =
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
 describe('loadRuntimeSecrets', () => {
   it('selects only allowlisted private-service scalars from the production payload', async () => {
     const environment = productionEnvironment();
@@ -25,7 +28,7 @@ describe('loadRuntimeSecrets', () => {
       SecretString: JSON.stringify({
         palazzoControlToken: 'fictional-production-token',
         palazzoAllowedUrls: 'http://palazzo:3100',
-        alanaControlToken: 'fictional-alana-control-token',
+        alanaControlToken: ALANA_TOKEN,
         alanaControlUrl: 'http://alana:8080',
         externalSourceConfigCurrentVersion: '1',
         externalSourceConfigKeys: sourceKeys,
@@ -36,7 +39,7 @@ describe('loadRuntimeSecrets', () => {
     expect(environment).toMatchObject({
       PALAZZO_CONTROL_TOKEN: 'fictional-production-token',
       PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
-      ALANA_CONTROL_TOKEN: 'fictional-alana-control-token',
+      ALANA_CONTROL_TOKEN: ALANA_TOKEN,
       ALANA_CONTROL_URL: 'http://alana:8080',
       EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: '1',
       EXTERNAL_SOURCE_CONFIG_KEYS: sourceKeys,
@@ -65,7 +68,7 @@ describe('loadRuntimeSecrets', () => {
   it('supports explicit token files for both private services during production migration', async () => {
     readFileMock
       .mockResolvedValueOnce('existing-palazzo-control-token\n')
-      .mockResolvedValueOnce('existing-alana-control-token\n');
+      .mockResolvedValueOnce(`${ALANA_TOKEN}\n`);
     const environment = {
       NODE_ENV: 'production',
       PALAZZO_CONTROL_TOKEN_FILE: '/run/secrets/palazzo-control-token',
@@ -84,7 +87,7 @@ describe('loadRuntimeSecrets', () => {
     );
     expect(environment).toMatchObject({
       PALAZZO_CONTROL_TOKEN: 'existing-palazzo-control-token',
-      ALANA_CONTROL_TOKEN: 'existing-alana-control-token',
+      ALANA_CONTROL_TOKEN: ALANA_TOKEN,
     });
   });
 
@@ -126,7 +129,7 @@ describe('loadRuntimeSecrets', () => {
     ).toThrow('PALAZZO_ALLOWED_URLS contains an invalid URL');
     expect(() =>
       validateAlanaRuntimeConfiguration({
-        ALANA_CONTROL_TOKEN: 'fictional-alana-control-token',
+        ALANA_CONTROL_TOKEN: ALANA_TOKEN,
         ALANA_CONTROL_URL: 'http://alana:8080/private/path',
       }),
     ).toThrow('ALANA_CONTROL_URL contains an invalid URL');

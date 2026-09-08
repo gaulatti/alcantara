@@ -23,7 +23,12 @@ test("owns only the Alcantara application permissions needed on Cumulus", () => 
   rendered.hasResourceProperties("AWS::IAM::Policy", {
     PolicyName: "alcantara-cumulus-host",
   });
-  const policies = JSON.stringify(rendered.findResources("AWS::IAM::Policy"));
+  const policies = JSON.stringify(
+    Object.values(rendered.findResources("AWS::IAM::Policy")).filter(
+      (resource) =>
+        resource.Properties?.PolicyName === "alcantara-cumulus-host",
+    ),
+  );
   expect(policies).not.toContain("secretsmanager:GetSecretValue");
   expect(policies).toContain("s3:PutObject");
   expect(policies).toContain("example-alcantara-assets");
@@ -61,4 +66,9 @@ test("owns the API record and main-branch deployment role", () => {
   expect(policies).toContain("ssm:SendCommand");
   expect(policies).toContain("ssm:resourceTag/Name");
   expect(policies).toContain("macondo-services");
+  expect(policies).toContain("secretsmanager:GetSecretValue");
+  expect(policies).toContain(
+    ":secretsmanager:us-east-1:123456789012:secret:broadcast/production/config-*",
+  );
+  expect(policies).not.toContain("secret:*");
 });

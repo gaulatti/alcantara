@@ -310,6 +310,13 @@ export function PlaybackBar({
                     <div className='min-w-0 flex-1'>
                       <div className='truncate text-xs font-semibold text-sea'>{displayItem.title || ''}</div>
                       <div className='truncate text-[10px] text-text-secondary'>{displayItem.artist || ''}</div>
+                      {programSongPlayback?.introStatus === 'degraded' ? (
+                        <div className='truncate text-[10px] font-medium text-amber-300'>
+                          Intro unavailable{programSongPlayback.introFailureReason ? `: ${programSongPlayback.introFailureReason}` : ''}
+                        </div>
+                      ) : programSongPlayback?.introStatus === 'playing' ? (
+                        <div className='text-[10px] font-medium text-violet-300'>Intro playing</div>
+                      ) : null}
                     </div>
                     <div className='shrink-0 text-right text-[10px] tabular-nums text-text-secondary'>
                       {hasTimeline && (
