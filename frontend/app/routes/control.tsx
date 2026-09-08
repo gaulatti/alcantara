@@ -1755,6 +1755,32 @@ export default function Control() {
     }
   };
 
+  const takeProgramSongSelection = async (
+    nextSequence: ProgramSongSequence,
+  ) => {
+    await saveProgramAudioBusSongSequence(nextSequence);
+    const item = nextSequence.items.find(
+      (candidate) => candidate.id === nextSequence.activeItemId,
+    );
+    if (!item || item.kind !== "preset" || !item.audioUrl) return;
+    const res = await fetch(
+      apiUrl(`/radio/${encodeURIComponent(activeProgramId)}/song`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: item.audioUrl,
+          title: item.title,
+          artist: item.artist,
+          coverUrl: item.coverUrl,
+          durationMs: item.durationMs,
+          songId: item.songId,
+        }),
+      },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  };
+
   const takeProgramSongOffAir = async (
     targetProgramId: string = activeProgramId,
   ) => {
@@ -3802,7 +3828,7 @@ export default function Control() {
                   void saveProgramAudioBusSongSequence(nextSequence);
                 }}
                 onTakeSelection={async (nextSequence) => {
-                  await saveProgramAudioBusSongSequence(nextSequence);
+                  await takeProgramSongSelection(nextSequence);
                 }}
               />
             </Panel>
@@ -3845,7 +3871,7 @@ export default function Control() {
             void saveProgramAudioBusSongSequence(nextSequence);
           }}
           onTakeSelection={async (nextSequence) => {
-            await saveProgramAudioBusSongSequence(nextSequence);
+            await takeProgramSongSelection(nextSequence);
           }}
           onTakeOffAir={async () => {
             await takeProgramSongOffAir();
@@ -3869,7 +3895,7 @@ export default function Control() {
           void saveProgramAudioBusSongSequence(nextSequence);
         }}
         onTakeSelection={async (nextSequence) => {
-          await saveProgramAudioBusSongSequence(nextSequence);
+          await takeProgramSongSelection(nextSequence);
         }}
       />
     </div>
