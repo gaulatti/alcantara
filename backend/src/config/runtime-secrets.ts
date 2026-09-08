@@ -16,6 +16,9 @@ interface RuntimeEnvironment {
   PALAZZO_CONTROL_TOKEN?: string;
   PALAZZO_CONTROL_TOKEN_FILE?: string;
   PALAZZO_ALLOWED_URLS?: string;
+  ALANA_CONTROL_TOKEN?: string;
+  ALANA_CONTROL_TOKEN_FILE?: string;
+  ALANA_CONTROL_URL?: string;
   EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION?: string;
   EXTERNAL_SOURCE_CONFIG_KEYS?: string;
   [key: string]: string | undefined;
@@ -24,11 +27,13 @@ interface RuntimeEnvironment {
 const ALLOWED_SECRET_FIELDS = new Set([
   'palazzoControlToken',
   'palazzoAllowedUrls',
+  'alanaControlToken',
+  'alanaControlUrl',
   'externalSourceConfigCurrentVersion',
   'externalSourceConfigKeys',
 ]);
 
-export function isValidPalazzoControlToken(value: string): boolean {
+export function isValidPrivateControlToken(value: string): boolean {
   return (
     value.length >= 16 &&
     value.length <= 4096 &&
@@ -39,12 +44,17 @@ export function isValidPalazzoControlToken(value: string): boolean {
   );
 }
 
-export function normalizePalazzoBaseUrl(value: string): string {
+export const isValidPalazzoControlToken = isValidPrivateControlToken;
+
+export function normalizePrivateServiceUrl(
+  value: string,
+  fieldName: string,
+): string {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error('PALAZZO_ALLOWED_URLS contains an invalid URL');
+    throw new Error(`${fieldName} contains an invalid URL`);
   }
   if (
     !['http:', 'https:'].includes(parsed.protocol) ||
@@ -54,9 +64,13 @@ export function normalizePalazzoBaseUrl(value: string): string {
     parsed.hash ||
     (parsed.pathname !== '/' && parsed.pathname !== '')
   ) {
-    throw new Error('PALAZZO_ALLOWED_URLS contains an invalid URL');
+    throw new Error(`${fieldName} contains an invalid URL`);
   }
   return parsed.origin;
+}
+
+export function normalizePalazzoBaseUrl(value: string): string {
+  return normalizePrivateServiceUrl(value, 'PALAZZO_ALLOWED_URLS');
 }
 
 /** Validate the Palazzo machine configuration without constructing Nest. */
@@ -77,6 +91,27 @@ export function validatePalazzoRuntimeConfiguration(
   }
 }
 
+export function validateAlanaRuntimeConfiguration(
+  environment: RuntimeEnvironment = process.env,
+): void {
+  const token = environment.ALANA_CONTROL_TOKEN?.trim() ?? '';
+  if (!isValidPrivateControlToken(token)) {
+    throw new Error('ALANA_CONTROL_TOKEN is missing or invalid');
+  }
+  normalizePrivateServiceUrl(
+    environment.ALANA_CONTROL_URL?.trim() ?? '',
+    'ALANA_CONTROL_URL',
+  );
+}
+
+export function validateRuntimeConfiguration(
+  environment: RuntimeEnvironment = process.env,
+): void {
+  validatePalazzoRuntimeConfiguration(environment);
+  validateAlanaRuntimeConfiguration(environment);
+  validateExternalSourceEncryption(environment);
+}
+
 /** Load the production Palazzo credential before Nest constructs any client. */
 export async function loadRuntimeSecrets(
   environment: RuntimeEnvironment = process.env,
@@ -86,20 +121,23 @@ export async function loadRuntimeSecrets(
   const secretId = environment.ALCANTARA_CONFIG_SECRET_ID?.trim();
   if (!secretId) {
     const tokenFile = environment.PALAZZO_CONTROL_TOKEN_FILE?.trim();
-    if (!tokenFile) {
+    const alanaTokenFile = environment.ALANA_CONTROL_TOKEN_FILE?.trim();
+    if (!tokenFile || !alanaTokenFile) {
       throw new Error(
-        'ALCANTARA_CONFIG_SECRET_ID or PALAZZO_CONTROL_TOKEN_FILE is required',
+        'ALCANTARA_CONFIG_SECRET_ID or both private control token files are required',
       );
     }
     try {
-      environment.PALAZZO_CONTROL_TOKEN = (
-        await readFile(tokenFile, 'utf8')
-      ).trim();
+      const [palazzoToken, alanaToken] = await Promise.all([
+        readFile(tokenFile, 'utf8'),
+        readFile(alanaTokenFile, 'utf8'),
+      ]);
+      environment.PALAZZO_CONTROL_TOKEN = palazzoToken.trim();
+      environment.ALANA_CONTROL_TOKEN = alanaToken.trim();
     } catch {
       throw new Error('Alcantara runtime configuration is unavailable');
     }
-    validatePalazzoRuntimeConfiguration(environment);
-    validateExternalSourceEncryption(environment);
+    validateRuntimeConfiguration(environment);
     return;
   }
   const region = (
@@ -135,6 +173,8 @@ export async function loadRuntimeSecrets(
   if (
     !selected.palazzoControlToken ||
     !selected.palazzoAllowedUrls ||
+    !selected.alanaControlToken ||
+    !selected.alanaControlUrl ||
     !selected.externalSourceConfigCurrentVersion ||
     !selected.externalSourceConfigKeys
   ) {
@@ -142,11 +182,12 @@ export async function loadRuntimeSecrets(
   }
   environment.PALAZZO_CONTROL_TOKEN = selected.palazzoControlToken;
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
+  environment.ALANA_CONTROL_TOKEN = selected.alanaControlToken;
+  environment.ALANA_CONTROL_URL = selected.alanaControlUrl;
   environment.EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION =
     selected.externalSourceConfigCurrentVersion;
   environment.EXTERNAL_SOURCE_CONFIG_KEYS = selected.externalSourceConfigKeys;
-  validatePalazzoRuntimeConfiguration(environment);
-  validateExternalSourceEncryption(environment);
+  validateRuntimeConfiguration(environment);
 }
 
 export function validateExternalSourceEncryption(

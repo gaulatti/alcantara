@@ -7,6 +7,13 @@ WORKDIR /app
 # Install pnpm (v9 avoids interactive approve-builds flow in CI)
 RUN npm install -g pnpm@9
 
+# Trust Amazon RDS while retaining full certificate and hostname verification.
+RUN mkdir -p /app/certs \
+    && wget --quiet \
+      --output-document=/app/certs/global-bundle.pem \
+      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+    && test -s /app/certs/global-bundle.pem
+
 # Install dependencies
 COPY package*.json ./
 RUN pnpm install --no-frozen-lockfile

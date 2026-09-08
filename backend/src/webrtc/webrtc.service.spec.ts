@@ -9,6 +9,10 @@ import { createHash } from 'node:crypto';
 import { WebrtcService } from './webrtc.service';
 
 describe('WebrtcService', () => {
+  const operator = {
+    principalId: 'principal-1',
+    subject: 'operator-1',
+  };
   const invitation = {
     id: '11111111-1111-4111-8111-111111111111',
     tokenHash: '',
@@ -22,6 +26,7 @@ describe('WebrtcService', () => {
     activeSessionId: null as string | null,
     activeSessionUntil: null as Date | null,
     createdByIdentity: 'operator-1',
+    createdByPrincipalId: 'principal-1',
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -80,7 +85,7 @@ describe('WebrtcService', () => {
 
   it('persists a default 24-hour invitation in the first reusable slot', async () => {
     const { service, prisma, livekit } = setup();
-    const created = await service.createInvitation('operator-1', {
+    const created = await service.createInvitation(operator, {
       programId: 'MAIN',
       displayName: ' Fictional Guest ',
     });
@@ -96,6 +101,16 @@ describe('WebrtcService', () => {
         data: expect.objectContaining({
           tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
           createdByIdentity: 'operator-1',
+          createdByPrincipalId: 'principal-1',
+          events: {
+            create: {
+              type: 'created',
+              details: expect.objectContaining({
+                operatorIdentity: 'operator-1',
+                operatorPrincipalId: 'principal-1',
+              }),
+            },
+          },
         }),
       }),
     );
@@ -157,7 +172,7 @@ describe('WebrtcService', () => {
   it('revokes persistence and removes an active participant', async () => {
     const { service, prisma, livekit } = setup();
     await expect(
-      service.revokeInvitation('operator-1', invitation.id),
+      service.revokeInvitation(operator, invitation.id),
     ).resolves.toEqual({ id: invitation.id, status: 'revoked' });
     expect(prisma.guestInvitation.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -165,6 +180,15 @@ describe('WebrtcService', () => {
         data: expect.objectContaining({
           revokedAt: expect.any(Date),
           activeSessionId: null,
+          events: {
+            create: {
+              type: 'revoked',
+              details: {
+                operatorIdentity: 'operator-1',
+                operatorPrincipalId: 'principal-1',
+              },
+            },
+          },
         }),
       }),
     );

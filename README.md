@@ -95,6 +95,12 @@ own microphone. Guests subscribe only to their selected video output and their
 own `mixminus:<identity>:<bus>` track. This replaces the earlier fixed 250 ms
 browser relay and keeps isolated guest tracks out of the guest UI.
 
+Authorized operators can control Alana's independent composed-Program recorder
+without treating a requested or finalizing operation as safe media. See
+[`docs/program-recording.md`](docs/program-recording.md) for the pinned Alana
+contract, state semantics, permissions, idempotency, local fixture, private
+configuration, metrics, and recovery boundary.
+
 #### Local and production operations
 
 `docker compose up --build` includes LiveKit 1.13.4 with fixed local-only
@@ -142,6 +148,8 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 - Fixed 1920x1080 Full HD resolution (hardcoded, not responsive)
 - Real-time updates via SSE
 - Auto-reconnecting SSE client
+- Frontend deploys invalidate every CloudFront SPA route; the HTML shell is never
+  cached as immutable, while content-hashed assets retain long-lived caching
 - Supports multiple layout types:
   - Lower Third
   - Full Screen
@@ -175,6 +183,15 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 
 - Docker & Docker Compose
 
+### AWS infrastructure ownership
+
+Macondo provisions the shared Cumulus host, network, and Arauco database. The
+service-specific AWS integration lives in [`infra/aws`](infra/aws): Alcántara
+owns its GitHub OIDC deployment role, API DNS record, and the policies granting
+the Cumulus host access to media storage. Macondo grants its instance
+role access to every database secret it provisions; the backend resolves
+Arauco credentials inside the container through that instance profile.
+
 ### Development
 
 #### Option 1: Using Docker Compose (recommended)
@@ -197,6 +214,12 @@ tokens with a local-only issuer and these deterministic identities:
 
 - `operator-a` (default) and `operator-b`: normal operator permissions
 - `viewer`: read-only, including denial of shared-layout publication
+
+For visual review of the shared login shell, append `?auth-state=` to `/login`
+while running the frontend in development. Supported fixtures are `loading`,
+`ready`, `submitting`, `failure`, and `authenticated`; production builds ignore
+the parameter. The authenticated fixture holds the visible redirect state for
+inspection, while a real authenticated session continues immediately to `/`.
 
 Choose an identity before starting or recreating the frontend:
 
@@ -312,22 +335,46 @@ BACKEND_PORT=3000 VITE_PORT=5173 docker compose up
 
 4. View the program page to see the live broadcast overlay
 
+## Identity
+
+Alcantara authorizes through Pompeii, which now returns a canonical
+`principal_id` alongside the pool subject. Operator preferences, shared console
+layouts, guest invitations, and guest lifecycle audit events record it beside
+the subject through nullable/additive references; ownership matches the
+canonical principal when a row names one and falls back to the pool subject when
+it does not, so migrated and unmigrated rows both work during rollout.
+
+Identities are never joined by email, no ownership row changes without a verified
+Pompeii mapping, and audit attribution is never rewritten. See
+[`docs/canonical-principals.md`](docs/canonical-principals.md) for the inventory,
+the dry-run report, and the rollback and reconciliation procedure.
+
 ## Architecture
 
 - [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.
 
 Production places the backend on the external `broadcast-control` Docker
-network shared with Palazzo. Before stopping the live backend, deployment runs
+network shared with Palazzo and Alana. Before stopping the live backend,
+deployment runs
 a side-effect-free runtime preflight in the new image to resolve and validate
 the Palazzo credential and approved URL list. The previous container is retained
 until the replacement passes its startup check and is automatically restored if
 the replacement fails. This keeps the existing radio controller alive when a
 configuration or startup defect reaches deployment.
 
+Production backend stdout and stderr remain available through `docker logs`,
+using Docker's host-local `local` driver with a 10 MiB maximum per file and
+three retained files. Alcantara does not require a CloudWatch Logs group or
+write grant to start, restart, or roll back. See
+[Production backend logging](docs/production-backend-logging.md) for validation
+and rollback procedures.
+
 The replacement joins `broadcast-control` so the private
 `http://palazzo:3100` program-scoped machine API remains resolvable. Set the
 production `ALCANTARA_CONFIG_SECRET_ID` repository variable to the
-application-scoped Secrets Manager payload. During migration, deployment also
+application-scoped Secrets Manager payload, including Alana's private recording
+control URL and token and the external-source encryption keyring. During
+migration, deployment also
 discovers and inherits the running Palazzo container's existing read-only
 control-token mount as a backwards-compatible credential source. Preflight fails without
 replacing the live backend when that mount is absent or ambiguous, neither
@@ -337,8 +384,9 @@ source is available, or configuration is invalid.
 
 ```
 Control Panel → REST API → Database → SSE Broadcast → Program Page
-                              ↓
-                        Program State Update
+      │                       ↓
+      └── Recording API → private Alana control → composed capture state
+                         Program State Update
 ```
 
 1. Control page sends scene activation/chyron update via REST

@@ -22,8 +22,9 @@ adapter must call `POST /external-sources/:id/redirects/validate` before followi
 each redirect and must never log the URL.
 
 Transport configuration is AES-256-GCM ciphertext authenticated to team and
-stable source ID with a unique nonce. Production supplies these allowlisted
-Secrets Manager scalars:
+stable source ID with a unique nonce. In addition to the private Palazzo and
+Alana configuration, production supplies these allowlisted Secrets Manager
+scalars:
 
 ```json
 {

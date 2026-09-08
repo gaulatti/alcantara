@@ -22,6 +22,7 @@ import {
   ModoItalianoDisclaimer,
   ModoItalianoBracket,
   ModoItalianoPodcastPlayer,
+  ModoItalianoGiorgiaPodcastPlayer,
   CronicaChyron,
   CronicaBackground,
   CronicaReiteramos,
@@ -51,6 +52,8 @@ import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
+import { getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
+import { sceneInstantBelongsToActiveScene } from '../utils/programSceneInstant';
 
 interface Layout {
   id: number;
@@ -701,6 +704,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     audio: HTMLAudioElement;
     runtime: InstantAudioRuntimeState;
     playbackToken: string;
+    sceneId: number | null;
   } | null>(null);
   const sceneInstantTakeSequenceRef = useRef(0);
   const instantAudioMeterContextRef = useRef<AudioContext | null>(null);
@@ -814,26 +818,26 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     () => (normalizedSongSequence?.mode === 'manual' ? resolveProgramSongLeaf({ sequence: normalizedSongSequence }) : null),
     [normalizedSongSequence]
   );
-  const activeSlideshowMediaGroupId = useMemo(() => {
-    const activeScene = state?.activeScene;
-    if (!activeScene?.layout?.componentType?.includes('slideshow')) {
-      return null;
-    }
-
-    try {
-      const parsed = activeScene.metadata ? JSON.parse(activeScene.metadata) : {};
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return null;
-      }
-      const slideshowProps = (parsed as Record<string, unknown>).slideshow;
-      if (!slideshowProps || typeof slideshowProps !== 'object' || Array.isArray(slideshowProps)) {
-        return null;
-      }
-      return normalizeSlideshowMediaGroupId((slideshowProps as Record<string, unknown>).mediaGroupId);
-    } catch {
-      return null;
-    }
-  }, [state?.activeScene?.id, state?.activeScene?.metadata, state?.activeScene?.layout?.componentType]);
+  const slideshowMediaGroupIds = useMemo(
+    () => getProgramSlideshowMediaGroupIds(state?.activeScene, state?.stagedScene),
+    [
+      state?.activeScene?.id,
+      state?.activeScene?.metadata,
+      state?.activeScene?.layout?.componentType,
+      state?.stagedScene?.id,
+      state?.stagedScene?.metadata,
+      state?.stagedScene?.layout?.componentType
+    ]
+  );
+  // A long-running program output must refresh even when two scenes reuse the
+  // same group ID or the active scene's slideshow configuration is edited.
+  const slideshowMediaGroupRequestKey = [
+    slideshowMediaGroupIds.join(','),
+    state?.activeScene?.id ?? '',
+    state?.activeScene?.metadata ?? '',
+    state?.stagedScene?.id ?? '',
+    state?.stagedScene?.metadata ?? ''
+  ].join('|');
 
   const resolveSlideshowImages = useCallback(
     (slideshowProps: Record<string, unknown>): unknown => {
@@ -1211,7 +1215,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           console.error(`Scene instant playback error for "${event.instant.name}" (${event.instant.audioUrl})`);
           cleanup();
         };
-        activeSceneInstantAudioRef.current = { audio, runtime, playbackToken };
+        activeSceneInstantAudioRef.current = { audio, runtime, playbackToken, sceneId };
 
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
@@ -1235,6 +1239,16 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     },
     [ensureInstantAudioMeter, resolvedSceneInstantMasterVolume, stopSceneInstantAudio]
   );
+
+  useEffect(() => {
+    const current = activeSceneInstantAudioRef.current;
+    if (!current) return;
+    const activeSceneId = normalizeSceneInstantNumericId(state?.activeSceneId);
+    if (!sceneInstantBelongsToActiveScene(current.sceneId, activeSceneId)) {
+      sceneInstantTakeSequenceRef.current += 1;
+      stopSceneInstantAudio(SCENE_INSTANT_SWITCH_FADE_MS);
+    }
+  }, [state?.activeSceneId, stopSceneInstantAudio]);
 
   const playInstantAudio = (event: InstantPlayEvent) => {
     const audio = new Audio(event.instant.audioUrl);
@@ -1804,11 +1818,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     };
 
     const pollTimer = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        return;
-      }
       pollSnapshots();
     }, 5000);
+
+    pollSnapshots();
 
     return () => {
       cancelled = true;
@@ -1911,36 +1924,37 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   }, [resolvedSceneInstantMasterVolume]);
 
   useEffect(() => {
-    if (activeSlideshowMediaGroupId === null) {
+    if (!slideshowMediaGroupIds.length) {
       return;
     }
 
     let cancelled = false;
 
-    fetch(apiUrl(`/media-groups/${activeSlideshowMediaGroupId}`))
-      .then(async (res) => {
+    Promise.all(
+      slideshowMediaGroupIds.map(async (mediaGroupId) => {
+        const res = await fetch(apiUrl(`/media-groups/${mediaGroupId}`));
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          throw new Error(`Media group ${mediaGroupId}: HTTP ${res.status}`);
         }
         return (await res.json()) as SlideshowMediaGroup;
       })
-      .then((payload) => {
-        if (cancelled) {
-          return;
-        }
-        setSlideshowMediaGroupsById((prev) => ({
-          ...prev,
-          [payload.id]: payload
-        }));
+    )
+      .then((payloads) => {
+        if (cancelled) return;
+        setSlideshowMediaGroupsById((prev) => {
+          const next = { ...prev };
+          payloads.forEach((payload) => {
+            next[payload.id] = payload;
+          });
+          return next;
+        });
       })
-      .catch((err) => {
-        console.error('Failed to load slideshow media group:', err);
-      });
+      .catch((err) => console.error('Failed to load slideshow media groups:', err));
 
     return () => {
       cancelled = true;
     };
-  }, [activeSlideshowMediaGroupId]);
+  }, [slideshowMediaGroupRequestKey]);
 
   useEffect(() => {
     if (confidenceMode || typeof window === 'undefined') {
@@ -2102,7 +2116,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
     const hasCronicaChyronComponent = components.includes('cronica-chyron');
     const hasProgramBracketComponent = components.includes('modoitaliano-bracket');
-    const hasProgramPodcastPlayerComponent = components.includes('modoitaliano-podcast-player');
+    const hasProgramPodcastPlayerComponent = components.includes('modoitaliano-podcast-player') || components.includes('modoitaliano-giorgia-podcast-player');
     const shouldRenderProgramRow =
       hasProgramClockComponent &&
       (hasProgramChyronComponent ||
@@ -2440,8 +2454,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'modoitaliano-podcast-player':
+              case 'modoitaliano-giorgia-podcast-player': {
+                const PodcastPlayer = componentType === 'modoitaliano-giorgia-podcast-player' ? ModoItalianoGiorgiaPodcastPlayer : ModoItalianoPodcastPlayer;
                 return (
-                  <ModoItalianoPodcastPlayer
+                  <PodcastPlayer
                     key={componentType}
                     show={typeof props.show === 'boolean' ? props.show : true}
                     coverUrl={typeof props.coverUrl === 'string' ? props.coverUrl : ''}
@@ -2451,6 +2467,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     masterGain={outputGain}
                   />
                 );
+              }
               case 'toni-logo':
                 return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
               case 'earone':

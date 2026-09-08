@@ -41,6 +41,46 @@ export interface ProgramState {
   mediaGroups: ProgramMediaGroupEntry[];
 }
 
+export type RecordingState =
+  | "disabled"
+  | "idle"
+  | "requested"
+  | "active"
+  | "finalizing"
+  | "complete"
+  | "failed";
+
+export interface RecordingStatus {
+  enabled: boolean;
+  state: RecordingState;
+  requestedAt: string | null;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  finalizedAt: string | null;
+  updatedAt: string | null;
+  segmentCount: number;
+  bytes: number;
+  durationSeconds: number;
+  droppedFrames: number;
+  errors: number;
+  restarts: number;
+  finalizationState: "not-requested" | "pending" | "verified" | "failed";
+  finalBytes: number;
+  error: string | null;
+  disk: {
+    freeBytes: number;
+    usageBytes: number;
+    quotaBytes: number;
+    minimumFreeBytes: number;
+  } | null;
+  commandResult?: {
+    action: "start" | "stop";
+    status: number;
+    result: string;
+    duplicate: boolean;
+  };
+}
+
 export interface InstantItem {
   id: number;
   name: string;

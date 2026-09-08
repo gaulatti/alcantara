@@ -4,13 +4,14 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Optional,
   OnModuleInit,
   NotFoundException,
 } from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
 import { PrismaService } from '../prisma.service';
 import { RadioService } from '../radio/radio.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { toRadioMixerPayload } from '../radio/radio-mixer.utils';
 import {
   SongExecutionEngine,
@@ -137,6 +138,7 @@ export class ProgramService implements OnModuleInit {
     private readonly radioService: RadioService,
     @Inject(forwardRef(() => SongExecutionEngine))
     private readonly songExecutionEngine: SongExecutionEngine,
+    @Optional() private readonly metrics?: ManagedMetricsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -3173,12 +3175,56 @@ export class ProgramService implements OnModuleInit {
   getEventStream(
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ): Observable<{ data: string }> {
-    return this.getEventSubject(programId)
-      .asObservable()
-      .pipe(
-        map((data) => ({
-          data: JSON.stringify(data),
-        })),
-      );
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const subject = this.getEventSubject(normalizedProgramId);
+
+    return new Observable<{ data: string }>((subscriber) => {
+      let snapshotDelivered = false;
+      let closed = false;
+      const pendingEvents: unknown[] = [];
+      const serialize = (data: unknown) => ({ data: JSON.stringify(data) });
+
+      this.metrics?.recordProgramSseConnection(1);
+      const liveSubscription = subject.subscribe({
+        next: (data) => {
+          if (snapshotDelivered) {
+            subscriber.next(serialize(data));
+            return;
+          }
+          pendingEvents.push(data);
+        },
+        error: (error) => subscriber.error(error),
+      });
+
+      void this.getState(normalizedProgramId)
+        .then((state) => {
+          if (closed) return;
+          subscriber.next(
+            serialize({
+              type: 'program_state_snapshot',
+              programId: normalizedProgramId,
+              state,
+              version: state.version,
+            }),
+          );
+          snapshotDelivered = true;
+          for (const event of pendingEvents) {
+            subscriber.next(serialize(event));
+          }
+          pendingEvents.length = 0;
+          this.metrics?.recordProgramSseSnapshot('success');
+        })
+        .catch((error: unknown) => {
+          if (closed) return;
+          this.metrics?.recordProgramSseSnapshot('failure');
+          subscriber.error(error);
+        });
+
+      return () => {
+        closed = true;
+        liveSubscription.unsubscribe();
+        this.metrics?.recordProgramSseConnection(-1);
+      };
+    });
   }
 }

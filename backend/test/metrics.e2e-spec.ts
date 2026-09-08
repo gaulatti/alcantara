@@ -55,6 +55,8 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     metrics.setExternalSourceInventory([
       { transport: 'whip', lifecycle: 'connected', count: 1 },
     ]);
+    metrics.recordRecordingCommand('start', 'accepted');
+    metrics.recordRecordingStatus('active', 'success');
     const radioMetrics = app.get(RadioMetricsService);
     radioMetrics.recordMachineRequest('song-play', 'deduplicated');
     radioMetrics.recordMachineRequest('event-connect', 'unauthorized');
@@ -104,6 +106,12 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     );
     expect(body).toContain(
       'alcantara_external_source_inventory{transport="whip",lifecycle="connected"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_recording_commands_total{action="start",result="accepted"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_recording_reconciliations_total{state="active",result="success"} 1',
     );
     expect(body).toContain('alcantara_palazzo_sse_connections');
     expect(body).toContain(
