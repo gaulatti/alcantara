@@ -11,7 +11,7 @@ import {
   QRCodeWidget,
   LiveIndicator,
   LogoWidget,
-  FifthBellChyron,
+  ToniChyron,
   ToniClock,
   ToniLogo,
   Earone,
@@ -35,7 +35,6 @@ import {
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
-import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import {
@@ -274,8 +273,6 @@ const PEAK_RELEASE_MS = 300;
 const PEAK_HOLD_MS = 900;
 const METER_TICK_INTERVAL_MS = 60;
 const SCENE_INSTANT_SWITCH_FADE_MS = 1500;
-
-const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner', 'fifthbell-clock']);
 
 function normalizeUpdateVersion(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value);
@@ -2091,24 +2088,13 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       console.error('Failed to parse scene metadata:', err);
     }
 
-    const mergedFifthBellChyronProps = {
-      ...(metadata['toni-chyron'] || {}),
-      ...(metadata['fifthbell-chyron'] || {})
-    } as Record<string, unknown>;
-    const activeToniLeaf = resolveToniChyronLeaf(mergedFifthBellChyronProps);
+    const toniChyronProps = (metadata['toni-chyron'] || {}) as Record<string, unknown>;
+    const activeToniLeaf = resolveToniChyronLeaf(toniChyronProps);
     const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
       earoneSongId: activeToniLeaf?.earoneSongId || null,
       text: activeToniLeaf?.text || null
     });
-    const firstClockComponentType = components.find(
-      (componentType) => componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
-    );
-    const fifthBellClockProps = {
-      ...(metadata['fifthbell'] || {}),
-      ...(metadata['fifthbell-corner'] || {}),
-      ...(metadata['fifthbell-clock'] || {}),
-      ...(metadata['toni-clock'] || {})
-    } as Record<string, unknown>;
+    const toniClockProps = (metadata['toni-clock'] || {}) as Record<string, unknown>;
     const hasProgramClockComponent = components.includes('modoitaliano-clock');
     const hasProgramChyronComponent = components.includes('modoitaliano-chyron');
     const hasGiorgiaClockComponent = components.includes('modoitaliano-giorgia-clock');
@@ -2180,8 +2166,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
         />
       );
     }
-
-    const firstFifthBellComponentType = components.find((componentType) => FIFTHBELL_DRIVER_COMPONENT_TYPES.has(componentType));
 
     // Handle multi-component custom layouts
     return (
@@ -2313,48 +2297,31 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     allowProgramActivation={!confidenceMode}
                   />
                 );
-              case 'toni-chyron':
-              case 'fifthbell-chyron': {
-                const fifthBellChyronProps = {
-                  ...(metadata['toni-chyron'] || {}),
-                  ...(metadata['fifthbell-chyron'] || {}),
-                  ...(metadata[componentType] || {})
-                } as Record<string, unknown>;
+              case 'toni-chyron': {
                 return (
-                  <FifthBellChyron
+                  <ToniChyron
                     key={componentType}
-                    text={typeof fifthBellChyronProps.text === 'string' ? fifthBellChyronProps.text : ''}
+                    text={typeof toniChyronProps.text === 'string' ? toniChyronProps.text : ''}
                     show={true}
-                    useMarquee={typeof fifthBellChyronProps.useMarquee === 'boolean' ? fifthBellChyronProps.useMarquee : undefined}
-                    contentMode={fifthBellChyronProps.contentMode === 'text' || fifthBellChyronProps.contentMode === 'sequence' ? fifthBellChyronProps.contentMode : undefined}
-                    sequence={fifthBellChyronProps.sequence}
-                    socialHandles={fifthBellChyronProps.socialHandles}
+                    useMarquee={typeof toniChyronProps.useMarquee === 'boolean' ? toniChyronProps.useMarquee : undefined}
+                    contentMode={toniChyronProps.contentMode === 'text' || toniChyronProps.contentMode === 'sequence' ? toniChyronProps.contentMode : undefined}
+                    sequence={toniChyronProps.sequence}
+                    socialHandles={toniChyronProps.socialHandles}
                   />
                 );
               }
               case 'toni-clock':
-              case 'fifthbell-clock':
-              case 'fifthbell-corner':
-                if (firstClockComponentType !== componentType) {
-                  return null;
-                }
-                const resolvedShowBellIcon =
-                  componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
-                    ? true
-                    : typeof fifthBellClockProps.showBellIcon === 'boolean'
-                      ? fifthBellClockProps.showBellIcon
-                      : undefined;
                 return (
                   <ToniClock
                     key={componentType}
                     timeOverride={globalTimeOverride}
-                    cities={Array.isArray(fifthBellClockProps.worldClockCities) ? fifthBellClockProps.worldClockCities : undefined}
-                    rotationIntervalMs={typeof fifthBellClockProps.worldClockRotateIntervalMs === 'number' ? fifthBellClockProps.worldClockRotateIntervalMs : undefined}
-                    transitionDurationMs={typeof fifthBellClockProps.worldClockTransitionMs === 'number' ? fifthBellClockProps.worldClockTransitionMs : undefined}
-                    shuffleCities={typeof fifthBellClockProps.worldClockShuffle === 'boolean' ? fifthBellClockProps.worldClockShuffle : undefined}
-                    widthPx={typeof fifthBellClockProps.worldClockWidthPx === 'number' ? fifthBellClockProps.worldClockWidthPx : undefined}
-                    showWorldClocks={typeof fifthBellClockProps.showWorldClocks === 'boolean' ? fifthBellClockProps.showWorldClocks : undefined}
-                    showBellIcon={resolvedShowBellIcon}
+                    cities={Array.isArray(toniClockProps.worldClockCities) ? toniClockProps.worldClockCities : undefined}
+                    rotationIntervalMs={typeof toniClockProps.worldClockRotateIntervalMs === 'number' ? toniClockProps.worldClockRotateIntervalMs : undefined}
+                    transitionDurationMs={typeof toniClockProps.worldClockTransitionMs === 'number' ? toniClockProps.worldClockTransitionMs : undefined}
+                    shuffleCities={typeof toniClockProps.worldClockShuffle === 'boolean' ? toniClockProps.worldClockShuffle : undefined}
+                    widthPx={typeof toniClockProps.worldClockWidthPx === 'number' ? toniClockProps.worldClockWidthPx : undefined}
+                    showWorldClocks={typeof toniClockProps.showWorldClocks === 'boolean' ? toniClockProps.showWorldClocks : undefined}
+                    showBellIcon={typeof toniClockProps.showBellIcon === 'boolean' ? toniClockProps.showBellIcon : undefined}
                   />
                 );
               case 'modoitaliano-clock': {
@@ -2478,17 +2445,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     rank={props.rank || matchedEaroneEntry?.ranking || activeToniLeaf?.earoneRank}
                     spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
                   />
-                );
-              case 'fifthbell':
-              case 'fifthbell-content':
-              case 'fifthbell-marquee':
-                if (firstFifthBellComponentType !== componentType) {
-                  return null;
-                }
-                return (
-                  <div key={componentType} className='absolute inset-0'>
-                    <FifthBellProgram programId={programId} embedded sceneMetadata={metadata} activeComponents={components} masterGain={outputGain} />
-                  </div>
                 );
               case 'corner-bug':
                 return (

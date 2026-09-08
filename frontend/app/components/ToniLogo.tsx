@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './ToniLogo.css';
 
-export const DEFAULT_TONI_LOGOS = ['/fifthbell/images/fifthbell.png', '/hn.png', '/mi.png'];
+export const DEFAULT_TONI_LOGOS = ['/hn.png', '/mi.png'];
 const DEFAULT_INTERVAL_MS = 10000;
 
 interface ToniLogoProps {

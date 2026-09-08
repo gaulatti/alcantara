@@ -50,7 +50,18 @@ documentation networks. Each redirect is checked again.
 
 Registration stores the final manifest URL, the normalized contract, its
 same-origin entrypoint URL, and the verification time. It does not load or
-execute template JavaScript inside the Alcantara application.
+execute template JavaScript inside the Alcantara application. Programs without
+a verified manifest have no output link; operators must register a template
+instead of falling back to an Alcantara-owned page. Create, update, and delete
+operations immediately refresh the shell selector and output action from the
+authoritative program list; no page reload is required.
+
+The protected `/console-fixture?state=unregistered-output` visual fixture shows
+the disabled output control and its registration guidance for local UI checks.
+Every frontend production build also runs `verify:program-ownership`, which
+fails if Fifthbell presentation files, Alcantara-hosted Fifthbell asset paths,
+or local Fifthbell render cases are reintroduced. Fifthbell component models
+and editors remain valid control-plane metadata for the external renderer.
 
 ## Public state and signals
 
@@ -62,8 +73,8 @@ metadata, and unrelated persistence fields.
 `GET /program/:programId/events` begins with the bounded snapshot, forwards only
 signal types declared by the stored manifest, projects each signal to its
 renderer fields, and emits a 15-second heartbeat when declared. Existing
-unregistered programs keep the legacy response during migration so the current
-renderer remains a rollback path.
+unregistered programs keep the legacy response contract for transitional
+consumers, but the control UI does not route them to a local output renderer.
 
 The private authenticated `/metrics` collector includes:
 
@@ -89,10 +100,14 @@ Release in dependency order:
 5. Verify the CDN manifest and entrypoint, browser CORS, initial state, live SSE
    scene changes, audio control, and reconnect heartbeat.
 6. Remove `frontend/app/programs/fifthbell/**`,
-   `frontend/public/fifthbell/**`, and the legacy Alcantara output route only
-   after the external renderer has passed those production checks.
+   `frontend/public/fifthbell/**`, the Fifthbell-only fixture, and Fifthbell
+   component rendering from Alcantara only after the external renderer has
+   passed those production checks. The generic `/program/:programId` route may
+   remain temporarily for non-Fifthbell programs, but it does not render or
+   import Fifthbell presentation code.
 
-Rollback is data-only until step 6: clear the program's Template URL to return
-to the legacy Alcantara renderer. After step 6, roll back by redeploying the
-last frontend version containing that route or register a previously verified
-immutable Brokaw release. Never overwrite an immutable release prefix.
+Before step 6, clearing a Template URL can temporarily expose the old local
+renderer. After step 6, the preferred rollback is to register a previously
+verified immutable Brokaw release. If no compatible release is available,
+redeploy the last frontend image containing the Fifthbell renderer. Never
+overwrite an immutable release prefix.

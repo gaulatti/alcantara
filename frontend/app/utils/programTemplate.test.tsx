@@ -42,13 +42,13 @@ describe("program template URLs", () => {
     );
   });
 
-  it("retains the transitional Alcantara renderer for unregistered programs", () => {
+  it("reports no output for an unregistered program", () => {
     expect(
       resolveProgramOutputUrl(
         { programId: "modo italiano" },
         "https://api.test",
       ),
-    ).toBe("/program/modo%20italiano");
+    ).toBeNull();
   });
 
   it("reports only capabilities declared by the template", () => {

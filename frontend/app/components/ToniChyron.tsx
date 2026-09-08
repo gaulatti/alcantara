@@ -9,10 +9,10 @@ import {
 const LABELS = ['EN VIVO', 'LIVE'];
 const LABEL_INTERVAL_MS = 4000;
 const LABEL_FADE_MS = 350;
-const DEFAULT_SOCIAL_HANDLES = ['@modoitaliano.oficial', '@fifth.bell', '@hnmages'];
+const DEFAULT_SOCIAL_HANDLES = ['@modoitaliano.oficial', '@hnmages'];
 const SOCIAL_INTERVAL_MS = 4000;
 
-interface FifthBellChyronProps {
+interface ToniChyronProps {
   text?: string;
   show?: boolean;
   useMarquee?: boolean;
@@ -32,7 +32,7 @@ function normalizeSocialHandles(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-export const FifthBellChyron: React.FC<FifthBellChyronProps> = ({
+export const ToniChyron: React.FC<ToniChyronProps> = ({
   text = '',
   show = false,
   useMarquee,
@@ -153,6 +153,3 @@ export const FifthBellChyron: React.FC<FifthBellChyronProps> = ({
     </div>
   );
 };
-
-// Legacy alias to avoid breaking existing imports while exposing the FifthBell rebrand.
-export const ToniChyron = FifthBellChyron;
