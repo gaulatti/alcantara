@@ -10,7 +10,8 @@ import {
   type RecordingFetch,
 } from './alana-recording.client';
 
-const TOKEN = 'alana-fictional-control-token';
+const TOKEN =
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const BASE_URL = 'http://alana:8080';
 
 const status = (overrides: Record<string, unknown> = {}) => ({
