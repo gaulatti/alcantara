@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Input, SectionHeader } from '@gaulatti/bleecker';
 import {
   BroadcastLayout,
@@ -12,7 +12,8 @@ import {
   RelojDigitalLoopClock,
   RelojClone,
   ModoItalianoGiorgiaClock,
-  ModoItalianoGiorgiaChyron
+  ModoItalianoGiorgiaChyron,
+  ModoItalianoGiorgiaPodcastPlayer
 } from '../components';
 import { OVERLAY_COMPONENTS, getComponentMetadata } from '../models/components';
 
@@ -39,9 +40,29 @@ export default function Preview() {
   const [activeDemo, setActiveDemo] = useState<string>('ticker');
   const [chyronText, setChyronText] = useState('LAS INTROS DEL FESTIVAL DE SANREMO');
   const [showChyron, setShowChyron] = useState(false);
+  const previewRef = useRef<HTMLElement>(null);
+  const [previewWidth, setPreviewWidth] = useState(1920);
+  useEffect(() => {
+    const element = previewRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setPreviewWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const renderDemo = () => {
     switch (activeDemo) {
+      case 'modoitaliano-giorgia-podcast-player':
+        return (
+          <div className={STAGE_CLASS}>
+            <div style={{ position: 'relative', width: '1920px', height: '1080px', transform: `scale(${previewWidth / 1920})`, transformOrigin: 'top left' }}>
+              <ModoItalianoGiorgiaPodcastPlayer coverUrl='/cover.jpg' showName='Modo Italiano · Estrenos'
+                episodeTitle='La musica italiana, senza compromessi' />
+            </div>
+          </div>
+        );
       case 'ticker':
         return (
           <div className={STAGE_CLASS}>
@@ -179,7 +200,7 @@ export default function Preview() {
         </div>
       </aside>
 
-      <main className='relative flex-1 overflow-hidden'>{renderDemo()}</main>
+      <main ref={previewRef} className='relative flex-1 min-w-0 overflow-hidden'>{renderDemo()}</main>
     </div>
   );
 }

@@ -60,6 +60,7 @@ interface RequestOptions {
 }
 
 const MAX_ATTEMPTS = 3;
+export const PALAZZO_FETCH = 'PALAZZO_FETCH';
 
 /**
  * Sole transport boundary for Palazzo's authenticated, program-scoped API.
@@ -74,7 +75,7 @@ export class PalazzoMachineClient {
   constructor(
     config: ConfigService,
     private readonly metrics: RadioMetricsService,
-    @Optional() @Inject('PALAZZO_FETCH') fetchImpl?: typeof fetch,
+    @Optional() @Inject(PALAZZO_FETCH) fetchImpl?: typeof fetch,
   ) {
     const nodeEnvironment = config.get<string>('NODE_ENV') ?? 'development';
     const token =

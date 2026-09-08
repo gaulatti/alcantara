@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface SlideshowProps {
   images?: unknown;
@@ -92,22 +92,24 @@ function normalizeImageUrls(value: unknown): string[] {
   return unique;
 }
 
-function pickNextIndex(current: number, count: number, shuffle: boolean): number {
-  if (count <= 1) {
-    return 0;
-  }
-  if (!shuffle) {
-    return (current + 1) % count;
-  }
-  if (count === 2) {
-    return current === 0 ? 1 : 0;
+function pickNextLoadedIndex(current: number, loadedIndices: number[], shuffle: boolean): number {
+  if (loadedIndices.length <= 1) {
+    return loadedIndices[0] ?? 0;
   }
 
-  let next = current;
-  while (next === current) {
-    next = Math.floor(Math.random() * count);
+  const currentPosition = loadedIndices.indexOf(current);
+  if (!shuffle) {
+    return loadedIndices[(currentPosition + 1) % loadedIndices.length] ?? loadedIndices[0];
   }
-  return next;
+  if (currentPosition < 0) {
+    return loadedIndices[0];
+  }
+
+  let nextPosition = currentPosition;
+  while (nextPosition === currentPosition) {
+    nextPosition = Math.floor(Math.random() * loadedIndices.length);
+  }
+  return loadedIndices[nextPosition];
 }
 
 export function Slideshow({
@@ -125,28 +127,64 @@ export function Slideshow({
   const shouldKenBurns = toBoolean(kenBurns, true);
   const imageFit = fitMode === 'contain' ? 'contain' : 'cover';
   const [activeIndex, setActiveIndex] = useState(0);
+  const [loadedUrls, setLoadedUrls] = useState<Set<string>>(() => new Set());
+  const imageUrlsKey = imageUrls.join('\u0000');
+  const loadedIndices = useMemo(
+    () =>
+      imageUrls.reduce<number[]>((indices, url, index) => {
+        if (loadedUrls.has(url)) indices.push(index);
+        return indices;
+      }, []),
+    [imageUrlsKey, loadedUrls]
+  );
+
+  const markImageLoaded = useCallback((url: string) => {
+    setLoadedUrls((current) => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
+  }, []);
+
+  const markImageFailed = useCallback((url: string) => {
+    setLoadedUrls((current) => {
+      if (!current.has(url)) return current;
+      const next = new Set(current);
+      next.delete(url);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!imageUrls.length) {
       setActiveIndex(0);
+      setLoadedUrls(new Set());
       return;
     }
     setActiveIndex((current) => Math.min(current, imageUrls.length - 1));
-  }, [imageUrls.length]);
+    setLoadedUrls((current) => new Set([...current].filter((url) => imageUrls.includes(url))));
+  }, [imageUrlsKey]);
 
   useEffect(() => {
-    if (imageUrls.length <= 1) {
+    if (loadedIndices.length > 0 && !loadedIndices.includes(activeIndex)) {
+      setActiveIndex(loadedIndices[0]);
+    }
+  }, [activeIndex, loadedIndices]);
+
+  useEffect(() => {
+    if (loadedIndices.length <= 1) {
       return;
     }
 
     const timer = window.setInterval(() => {
-      setActiveIndex((current) => pickNextIndex(current, imageUrls.length, shouldShuffle));
+      setActiveIndex((current) => pickNextLoadedIndex(current, loadedIndices, shouldShuffle));
     }, displayMs);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [imageUrls.length, displayMs, shouldShuffle]);
+  }, [imageUrlsKey, loadedIndices, displayMs, shouldShuffle]);
 
   if (!imageUrls.length) {
     return null;
@@ -173,13 +211,16 @@ export function Slideshow({
       `}</style>
 
       {imageUrls.map((url, index) => {
-        const isActive = index === activeIndex;
+        const isActive = index === activeIndex && loadedUrls.has(url);
         return (
           <img
             key={url}
             src={url}
             alt={`Slideshow frame ${index + 1}`}
-            loading={isActive ? 'eager' : 'lazy'}
+            loading='eager'
+            decoding='async'
+            onLoad={() => markImageLoaded(url)}
+            onError={() => markImageFailed(url)}
             style={{
               position: 'absolute',
               inset: 0,

@@ -1,0 +1,36 @@
+# Program realtime delivery
+
+Every `GET /program/{programId}/events` SSE connection is an independent
+subscriber. The backend subscribes it to live program events before reading
+state, sends a complete `program_state_snapshot`, and then flushes any events
+that arrived while the snapshot was loading. This ordering prevents a newly
+loaded renderer from missing a transition between its initial read and live
+subscription.
+
+The `/program/{programId}` renderer and its backend reads are public. The
+frontend authentication interceptor must leave every backend request from that
+document untouched; authorization remains required for Control and all Program
+mutations. This keeps unattended broadcast renderers independent of an operator
+login session without weakening protected API boundaries.
+
+Control consumes the initial `program_state_snapshot` on both WebSocket and
+SSE. The SSE snapshot must hydrate the scene strip and active/staged monitors,
+not merely advance the shared state-version watermark. Otherwise an SSE-first
+startup discards the equal-version WebSocket snapshot and HTTP reconciliation,
+leaving the console empty while its connection indicator says SYNCED.
+
+The SSE response sets `X-Accel-Buffering: no` so nginx forwards events without
+buffering. Program renderers also reconcile the public state, audio-bus,
+broadcast-settings, scene-instant, and stinger snapshots immediately and every
+five seconds, including while the document is hidden. Polling is reconciliation
+for an open renderer, not exclusive ownership or a replacement for SSE.
+
+Generic slideshow scenes eagerly preload every media-group image and advance
+only among frames that have finished loading. This is required for offscreen
+broadcast renderers, which may indefinitely defer opacity-hidden lazy images.
+
+The private Prometheus endpoint exposes:
+
+- `alcantara_program_sse_connections`: currently open program SSE subscribers.
+- `alcantara_program_sse_snapshots_total{result}`: initial snapshot outcomes;
+  `result` is bounded to `success`, `failure`, or `unknown`.

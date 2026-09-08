@@ -33,6 +33,27 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+  alana-recording-fixture:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["node", "test/fixtures/alana-recording-server.mjs"]
+    environment:
+      PORT: "8080"
+      PROGRAM_ID: modoitaliano
+      ALANA_CONTROL_TOKEN: alana-local-control-token
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
   backend:
     build:
       context: ./backend
@@ -64,6 +85,8 @@ services:
       METRICS_TOKEN_FILE: /run/secrets/alcantara-metrics-token
       PALAZZO_CONTROL_TOKEN: palazzo-local-control-token
       PALAZZO_ALLOWED_URLS: http://palazzo:3100
+      ALANA_CONTROL_TOKEN: alana-local-control-token
+      ALANA_CONTROL_URL: http://alana-recording-fixture:8080
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
@@ -88,13 +111,15 @@ services:
         condition: service_healthy
       livekit:
         condition: service_healthy
+      alana-recording-fixture:
+        condition: service_healthy
     healthcheck:
       test:
         [
           "CMD",
           "node",
           "-e",
-          "fetch('http://localhost:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+          "fetch('http://localhost:' + process.env.PORT + '/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
         ]
       interval: 10s
       timeout: 5s

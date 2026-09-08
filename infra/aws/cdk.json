@@ -1,0 +1,10 @@
+{
+  "app": "pnpm exec ts-node --prefer-ts-exts bin/alcantara-infrastructure.ts",
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/core:validateSnapshotRemovalPolicy": true,
+    "@aws-cdk/aws-iam:oidcRejectUnauthorizedConnections": true,
+    "@aws-cdk/aws-s3:publicAccessBlockedByDefault": true
+  }
+}

@@ -338,6 +338,13 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     }
   },
   {
+    id: 'modoitaliano-giorgia-podcast-player',
+    name: 'Modo Italiano Giorgia Podcast Player',
+    description: 'Photo-led Giorgia podcast player with navy fades, magenta spectrum and readable episode typography',
+    hasConfigurableSceneAttributes: true,
+    defaultProps: { show: true, coverUrl: '', episodeTitle: '', showName: '', audioUrl: '' }
+  },
+  {
     id: 'toni-logo',
     name: 'Toni Logo',
     description: 'Station logo with callsign',

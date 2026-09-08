@@ -11,14 +11,26 @@ import {
 } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import type { CanonicalIdentity } from '../identity/principals';
 import {
   OperatorPreferencesService,
   type OperatorAuthorization,
 } from './operator-preferences.service';
 
 type AuthorizedRequest = {
-  user: { sub: string; authorization: OperatorAuthorization };
+  user: {
+    sub: string;
+    principalId: string | null;
+    authorization: OperatorAuthorization;
+  };
 };
+
+function identityFrom(request: AuthorizedRequest): CanonicalIdentity {
+  return {
+    subject: request.user.sub,
+    principalId: request.user.principalId,
+  };
+}
 
 @Controller('operator-preferences')
 @RequirePermission(ALCANTARA_PERMISSIONS.access)
@@ -45,7 +57,7 @@ export class OperatorPreferencesController {
     @Req() request: AuthorizedRequest,
   ) {
     return this.preferences.publish(
-      request.user.sub,
+      identityFrom(request),
       body,
       request.user.authorization,
     );
@@ -58,7 +70,7 @@ export class OperatorPreferencesController {
     @Req() request: AuthorizedRequest,
   ) {
     return this.preferences.load(
-      request.user.sub,
+      identityFrom(request),
       id,
       body,
       request.user.authorization,
@@ -76,7 +88,7 @@ export class OperatorPreferencesController {
     @Param('deviceClass') deviceClass: string,
     @Req() request: AuthorizedRequest,
   ) {
-    return this.preferences.get(request.user.sub, deviceClass);
+    return this.preferences.get(identityFrom(request), deviceClass);
   }
 
   @Put(':deviceClass')
@@ -85,7 +97,7 @@ export class OperatorPreferencesController {
     @Body() body: { version?: unknown; profile?: unknown },
     @Req() request: AuthorizedRequest,
   ) {
-    return this.preferences.save(request.user.sub, deviceClass, body);
+    return this.preferences.save(identityFrom(request), deviceClass, body);
   }
 
   @Delete(':deviceClass')
@@ -93,11 +105,11 @@ export class OperatorPreferencesController {
     @Param('deviceClass') deviceClass: string,
     @Req() request: AuthorizedRequest,
   ) {
-    return this.preferences.reset(request.user.sub, deviceClass);
+    return this.preferences.reset(identityFrom(request), deviceClass);
   }
 
   @Delete()
   resetAll(@Req() request: AuthorizedRequest) {
-    return this.preferences.reset(request.user.sub);
+    return this.preferences.reset(identityFrom(request));
   }
 }

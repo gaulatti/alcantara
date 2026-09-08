@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'deploy/**'
       - 'infra/**'
       - '.github/workflows/backend-deploy.yml'
 
@@ -43,6 +44,7 @@ jobs:
           docker build \
             --build-arg ALCANTARA_BUILD_VERSION=${{ github.sha }} \
             -f backend/Dockerfile \
+            -t ghcr.io/${{ github.repository }}:${{ github.sha }} \
             -t ghcr.io/${{ github.repository }}:latest \
             backend
 
@@ -59,11 +61,15 @@ jobs:
 
       - name: Push Docker image to GHCR
         run: |
+          docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
           docker push ghcr.io/${{ github.repository }}:latest
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: read
+      id-token: write
     env:
       LIVEKIT_CONFIG_B64: ${{ secrets.LIVEKIT_CONFIG_B64 }}
 
@@ -72,7 +78,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Upload LiveKit deployment definition
-        if: ${{ env.LIVEKIT_CONFIG_B64 != '' }}
+        if: vars.ON_PREMISES == 'true' && env.LIVEKIT_CONFIG_B64 != ''
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -83,6 +89,7 @@ jobs:
           strip_components: 1
 
       - name: Deploy to on-premises host
+        if: vars.ON_PREMISES == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -168,8 +175,6 @@ jobs:
               return 1
             }
 
-            LOG_STREAM_UUID=$(uuidgen)
-
             if ! docker run -d --name alcantara-backend \
             --network broadcast-control \
             -p ${{ vars.HTTP_PORT }}:${{ vars.HTTP_PORT }} \
@@ -194,10 +199,9 @@ jobs:
             -e WEBRTC_RENDERER_KEY="${{ secrets.WEBRTC_RENDERER_KEY }}" \
             -e CONTAINERIZED=true \
             --restart=always \
-            --log-driver=awslogs \
-            --log-opt awslogs-region=${{ vars.AWS_REGION }} \
-            --log-opt awslogs-group=${{ vars.LOGS_GROUP }} \
-            --log-opt awslogs-stream="$LOG_STREAM_UUID" \
+            --log-driver=local \
+            --log-opt max-size=10m \
+            --log-opt max-file=3 \
             -v ~/.aws:/root/.aws:ro \
             --volumes-from "$PALAZZO_CONTAINER_ID:ro" \
             ghcr.io/${{ github.repository }}:latest; then
@@ -222,3 +226,100 @@ jobs:
             rollback_backend || true
             exit 1
             '
+
+      - name: Configure AWS credentials
+        if: vars.ON_PREMISES != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::792025092931:role/alcantara-github-deploy
+
+      - name: Deploy to Cumulus through SSM
+        if: vars.ON_PREMISES != 'true'
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS="$(aws ec2 describe-instances \
+            --filters Name=tag:Name,Values=macondo-services Name=instance-state-name,Values=running \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output json)"
+          if [ "$(jq 'length' <<<"$INSTANCE_IDS")" -ne 1 ]; then
+            echo 'Expected exactly one running Macondo service host'
+            exit 1
+          fi
+          CUMULUS_INSTANCE_ID="$(jq -r '.[0]' <<<"$INSTANCE_IDS")"
+
+          BROADCAST_SECRET_ID='broadcast/production/config'
+          DATABASE_SECRET_ID='${{ vars.ARAUCO_SECRET_ARN }}'
+          MEDIA_BUCKET='${{ vars.MEDIA_S3_BUCKET }}'
+          for value in "$DATABASE_SECRET_ID" "$MEDIA_BUCKET"; do
+            test -n "$value"
+            test "$value" != None
+          done
+
+          SCRIPT_BASE64="$(base64 -w 0 deploy/cumulus.sh)"
+          NGINX_BASE64="$(base64 -w 0 deploy/cumulus.nginx.conf)"
+          TOKEN_BASE64="$(printf '%s' "$DEPLOYMENT_TOKEN" | base64 -w 0)"
+          REMOTE_COMMAND="$(jq -nr \
+            --arg script "$SCRIPT_BASE64" \
+            --arg user "$GITHUB_ACTOR" \
+            --arg token "$TOKEN_BASE64" \
+            --arg broadcastSecret "$BROADCAST_SECRET_ID" \
+            --arg databaseSecret "$DATABASE_SECRET_ID" \
+            --arg image "ghcr.io/${GITHUB_REPOSITORY}:${GITHUB_SHA}" \
+            --arg nginx "$NGINX_BASE64" \
+            --arg mediaBucket "$MEDIA_BUCKET" \
+            '[
+              "printf %s " + ($script | @sh) + " | base64 -d > /tmp/deploy-alcantara.sh",
+              "chmod 0700 /tmp/deploy-alcantara.sh",
+              "deployment_status=0; /tmp/deploy-alcantara.sh " + ([$user, $token, $broadcastSecret, $databaseSecret, $image, $nginx, $mediaBucket] | map(@sh) | join(" ")) + " || deployment_status=$?; rm -f /tmp/deploy-alcantara.sh; exit $deployment_status"
+            ] | join("\n")')"
+          PARAMETERS="$(jq -cn --arg command "$REMOTE_COMMAND" '{commands:[$command],executionTimeout:["900"]}')"
+          COMMAND_ID="$(aws ssm send-command \
+            --instance-ids "$CUMULUS_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment 'Deploy Alcantara to Cumulus' \
+            --parameters "$PARAMETERS" \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          for _ in $(seq 1 180); do
+            if ! COMMAND_STATUS="$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$CUMULUS_INSTANCE_ID" \
+              --query Status \
+              --output text 2>&1)"; then
+              case "$COMMAND_STATUS" in
+                *InvocationDoesNotExist*)
+                  sleep 5
+                  continue
+                  ;;
+                *)
+                  printf '%s\n' "$COMMAND_STATUS" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+            case "$COMMAND_STATUS" in
+              Success)
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$CUMULUS_INSTANCE_ID" \
+                  --query StandardOutputContent \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$CUMULUS_INSTANCE_ID" \
+                  --query '{Output:StandardOutputContent,Error:StandardErrorContent}' \
+                  --output json
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo 'Timed out waiting for Alcantara deployment'
+          exit 1

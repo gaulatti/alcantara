@@ -22,6 +22,7 @@ import {
   RoomServiceClient,
   TrackSource,
 } from 'livekit-server-sdk';
+import type { CanonicalIdentity } from '../identity/principals';
 import { PrismaService } from '../prisma.service';
 
 type ReturnVideo = 'program' | 'preview' | 'none';
@@ -59,7 +60,7 @@ export class WebrtcService {
   }
 
   async createInvitation(
-    operatorIdentity: string,
+    operator: CanonicalIdentity,
     body: Record<string, unknown>,
   ) {
     this.requireConfiguration();
@@ -91,9 +92,17 @@ export class WebrtcService {
         sourceMuted,
         sourceDelayMs,
         expiresAt,
-        createdByIdentity: operatorIdentity,
+        createdByIdentity: operator.subject,
+        createdByPrincipalId: operator.principalId,
         events: {
-          create: { type: 'created', details: { expiresInHours, slotNumber } },
+          create: {
+            type: 'created',
+            details: {
+              ...this.operatorAudit(operator),
+              expiresInHours,
+              slotNumber,
+            },
+          },
         },
       },
     });
@@ -104,10 +113,10 @@ export class WebrtcService {
     };
   }
 
-  async replaceInvitation(operatorIdentity: string, id: string) {
+  async replaceInvitation(operator: CanonicalIdentity, id: string) {
     const existing = await this.requireInvitation(id);
-    await this.revokeInvitation(operatorIdentity, id);
-    return this.createInvitation(operatorIdentity, {
+    await this.revokeInvitation(operator, id);
+    return this.createInvitation(operator, {
       programId: existing.programId,
       displayName: existing.displayName,
       expiresInHours: Math.max(
@@ -123,7 +132,7 @@ export class WebrtcService {
     });
   }
 
-  async revokeInvitation(operatorIdentity: string, id: string) {
+  async revokeInvitation(operator: CanonicalIdentity, id: string) {
     const invitation = await this.requireInvitation(id);
     if (!invitation.revokedAt) {
       await this.prisma.guestInvitation.update({
@@ -134,7 +143,10 @@ export class WebrtcService {
           activeSessionId: null,
           activeSessionUntil: null,
           events: {
-            create: { type: 'revoked', details: { operatorIdentity } },
+            create: {
+              type: 'revoked',
+              details: this.operatorAudit(operator),
+            },
           },
         },
       });
@@ -147,7 +159,7 @@ export class WebrtcService {
   }
 
   async updateReturn(
-    operatorIdentity: string,
+    operator: CanonicalIdentity,
     id: string,
     body: Record<string, unknown>,
   ) {
@@ -169,7 +181,7 @@ export class WebrtcService {
           create: {
             type: 'return_changed',
             details: {
-              operatorIdentity,
+              ...this.operatorAudit(operator),
               returnVideo,
               returnAudioBus,
               sourceGain,
@@ -429,7 +441,7 @@ export class WebrtcService {
   }
 
   async removeParticipant(
-    operatorIdentity: string,
+    operator: CanonicalIdentity,
     programIdValue: unknown,
     identityValue: unknown,
   ) {
@@ -442,7 +454,12 @@ export class WebrtcService {
       data: {
         activeSessionId: null,
         activeSessionUntil: null,
-        events: { create: { type: 'removed', details: { operatorIdentity } } },
+        events: {
+          create: {
+            type: 'removed',
+            details: this.operatorAudit(operator),
+          },
+        },
       },
     });
     return { identity, status: 'removed' };
@@ -535,11 +552,17 @@ export class WebrtcService {
     };
   }
 
-  async createOperatorToken(operatorIdentity: string, programIdValue: unknown) {
+  async createOperatorToken(
+    operator: CanonicalIdentity,
+    programIdValue: unknown,
+  ) {
     this.requireConfiguration();
     const programId = this.normalizeProgramId(programIdValue);
     const token = new AccessToken(this.apiKey, this.apiSecret, {
-      identity: `operator-${createHash('sha256').update(operatorIdentity).digest('hex').slice(0, 20)}-${randomUUID()}`,
+      identity: `operator-${createHash('sha256')
+        .update(operator.principalId ?? operator.subject)
+        .digest('hex')
+        .slice(0, 20)}-${randomUUID()}`,
       name: 'Alcantara operator',
       ttl: '5m',
       metadata: JSON.stringify({ role: 'operator' }),
@@ -932,6 +955,15 @@ export class WebrtcService {
 
   private hash(value: string) {
     return createHash('sha256').update(value).digest('hex');
+  }
+
+  private operatorAudit(operator: CanonicalIdentity) {
+    return {
+      // Keep the historical pool subject for display and add the verified
+      // canonical principal beside it. Neither value is derived from email.
+      operatorIdentity: operator.subject,
+      operatorPrincipalId: operator.principalId,
+    };
   }
 
   private safeEqual(left: string, right: string) {
