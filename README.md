@@ -16,7 +16,7 @@ alcantara/
 ├── frontend/          # React Router v7 application
 │   ├── app/
 │   │   ├── routes/
-│   │   │   ├── program.tsx    # TV display page (1920x1080 fixed)
+│   │   │   ├── programs.tsx   # Program and template registration
 │   │   │   └── control.tsx    # Admin control panel
 │   │   └── hooks/
 │   │       └── useSSE.ts      # SSE client with auto-reconnect
@@ -41,6 +41,8 @@ alcantara/
 
 - Per-song recorded intro assignment, validation, and stable sequence identity
   are documented in [Song intro editorial model](docs/song-intros.md).
+- External renderer registration and the versioned manifest boundary are
+  documented in [Program template contracts](docs/program-templates.md).
 - The proposed managed RTMP/WHIP/HLS/SRT source boundary, local measurements,
   security findings, and phased rollout are documented in
   [ADR 001: LiveKit external-source ingress](docs/adr-001-livekit-external-source-ingress.md).
@@ -143,17 +145,16 @@ across retries and is also used by telemetry reconnect and startup recovery.
 See [`docs/radio-telemetry.md`](docs/radio-telemetry.md) for the contract,
 Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 
-### Program Page (`/program`)
+### Program output
 
-- Fixed 1920x1080 Full HD resolution (hardcoded, not responsive)
-- Real-time updates via SSE
-- Auto-reconnecting SSE client
-- Frontend deploys invalidate every CloudFront SPA route; the HTML shell is never
-  cached as immutable, while content-hashed assets retain long-lived caching
-- Supports multiple layout types:
-  - Lower Third
-  - Full Screen
-  - Corner Bug
+Alcantara is the program control plane. A program can reference an immutable
+template manifest published by Cronkite; the operator UI opens that external
+renderer with the program ID and Alcantara API origin from the manifest's
+runtime-parameter contract. The legacy `/program/:programId` renderer remains
+only as a temporary rollback path until the Fifthbell registration and live
+cutover have been verified. See
+[Program template contracts](docs/program-templates.md) for registration,
+security, state/SSE projection, metrics, and removal gates.
 
 ### Control Page (`/control`)
 

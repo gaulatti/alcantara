@@ -17,6 +17,13 @@ import {
   SongExecutionEngine,
   type SongEngineEvent,
 } from '../radio/song-execution.engine';
+import {
+  projectProgramTemplateSignal,
+  projectProgramTemplateState,
+  readProgramTemplateManifest,
+  type ProgramTemplateManifest,
+  type ProgramTemplateRegistration,
+} from './program-template.service';
 
 export interface ProgramAudioMeterChannel {
   vu: number;
@@ -1045,6 +1052,23 @@ export class ProgramService implements OnModuleInit {
     return normalized;
   }
 
+  private programTemplateUpdateData(
+    template: ProgramTemplateRegistration | null,
+  ): Record<string, unknown> {
+    if (!template) {
+      return {
+        templateUrl: null,
+        templateManifest: null,
+        templateVerifiedAt: null,
+      };
+    }
+    return {
+      templateUrl: template.templateUrl,
+      templateManifest: template.templateManifest as any,
+      templateVerifiedAt: template.templateVerifiedAt,
+    };
+  }
+
   private async getProgramStateRecord(programId: string) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     let state = await this.prisma.programState.findUnique({
@@ -1199,7 +1223,11 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
-  async createProgram(programId: string, type?: string) {
+  async createProgram(
+    programId: string,
+    type?: string,
+    template?: ProgramTemplateRegistration | null,
+  ) {
     const normalized = this.normalizeProgramId(programId);
     const programType =
       type === 'radio' || type === 'both' || type === 'tv' ? type : 'tv';
@@ -1217,6 +1245,7 @@ export class ProgramService implements OnModuleInit {
       data: {
         programId: normalized,
         type: programType,
+        ...this.programTemplateUpdateData(template ?? null),
         activeSceneId: null,
         audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
       },
@@ -1224,10 +1253,15 @@ export class ProgramService implements OnModuleInit {
     return this.getProgramStateWithScenes(normalized);
   }
 
-  async renameProgram(programId: string, nextProgramId: string, type?: string) {
+  async renameProgram(
+    programId: string,
+    nextProgramId: string,
+    type?: string,
+    template?: ProgramTemplateRegistration | null,
+  ) {
     const current = this.normalizeProgramId(programId);
     const next = this.normalizeProgramId(nextProgramId);
-    if (current === next && type === undefined) {
+    if (current === next && type === undefined && template === undefined) {
       return this.getProgramStateWithScenes(current);
     }
 
@@ -1238,10 +1272,15 @@ export class ProgramService implements OnModuleInit {
         : undefined;
 
     if (current === next) {
-      if (programType) {
+      if (programType || template !== undefined) {
         await this.prisma.programState.update({
           where: { programId: current },
-          data: { type: programType },
+          data: {
+            ...(programType ? { type: programType } : {}),
+            ...(template !== undefined
+              ? this.programTemplateUpdateData(template)
+              : {}),
+          },
         });
       }
       return this.getProgramStateWithScenes(current);
@@ -1266,6 +1305,9 @@ export class ProgramService implements OnModuleInit {
     const updateData: Record<string, unknown> = { programId: next };
     if (programType) {
       updateData.type = programType;
+    }
+    if (template !== undefined) {
+      Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
     await this.prisma.programState.update({
@@ -1377,6 +1419,14 @@ export class ProgramService implements OnModuleInit {
       ...state,
       version: this.getProgramTopicVersion(normalizedProgramId, 'state'),
     };
+  }
+
+  async getPublicState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
+    const state = await this.getState(programId);
+    const manifest = readProgramTemplateManifest(state.templateManifest);
+    return manifest
+      ? projectProgramTemplateState(state as Record<string, unknown>)
+      : state;
   }
 
   async getStagedScene(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
@@ -3207,14 +3257,22 @@ export class ProgramService implements OnModuleInit {
     return new Observable<{ data: string }>((subscriber) => {
       let snapshotDelivered = false;
       let closed = false;
+      let templateManifest: ProgramTemplateManifest | null = null;
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       const pendingEvents: unknown[] = [];
       const serialize = (data: unknown) => ({ data: JSON.stringify(data) });
+      const sendEvent = (data: unknown) => {
+        const projected = templateManifest
+          ? projectProgramTemplateSignal(data, templateManifest)
+          : data;
+        if (projected) subscriber.next(serialize(projected));
+      };
 
       this.metrics?.recordProgramSseConnection(1);
       const liveSubscription = subject.subscribe({
         next: (data) => {
           if (snapshotDelivered) {
-            subscriber.next(serialize(data));
+            sendEvent(data);
             return;
           }
           pendingEvents.push(data);
@@ -3225,19 +3283,41 @@ export class ProgramService implements OnModuleInit {
       void this.getState(normalizedProgramId)
         .then((state) => {
           if (closed) return;
+          templateManifest = readProgramTemplateManifest(
+            state.templateManifest,
+          );
+          const publicState = templateManifest
+            ? projectProgramTemplateState(
+                state as unknown as Record<string, unknown>,
+              )
+            : state;
           subscriber.next(
             serialize({
               type: 'program_state_snapshot',
               programId: normalizedProgramId,
-              state,
+              ...(templateManifest ? { schemaVersion: 1 } : {}),
+              state: publicState,
               version: state.version,
             }),
           );
           snapshotDelivered = true;
           for (const event of pendingEvents) {
-            subscriber.next(serialize(event));
+            sendEvent(event);
           }
           pendingEvents.length = 0;
+          if (templateManifest?.control.signals.includes('heartbeat')) {
+            heartbeatTimer = setInterval(() => {
+              sendEvent({
+                type: 'heartbeat',
+                programId: normalizedProgramId,
+                version: this.getProgramTopicVersion(
+                  normalizedProgramId,
+                  'state',
+                ),
+                sentAt: new Date().toISOString(),
+              });
+            }, 15_000);
+          }
           this.metrics?.recordProgramSseSnapshot('success');
         })
         .catch((error: unknown) => {
@@ -3248,6 +3328,7 @@ export class ProgramService implements OnModuleInit {
 
       return () => {
         closed = true;
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
         liveSubscription.unsubscribe();
         this.metrics?.recordProgramSseConnection(-1);
       };

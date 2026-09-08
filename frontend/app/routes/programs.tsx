@@ -1,10 +1,11 @@
 import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
-import { Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
+import { ExternalLink, Link2, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/programs';
-import { apiUrl } from '../utils/apiBaseUrl';
+import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
+import { hasProgramCapability, resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
 
 interface SceneSummary {
   id: number;
@@ -13,7 +14,6 @@ interface SceneSummary {
     name?: string;
   } | null;
 }
-
 interface ProgramSceneEntry {
   id: number;
   sceneId: number;
@@ -54,6 +54,9 @@ interface ProgramState {
   scenes: ProgramSceneEntry[];
   mediaGroups: ProgramMediaGroupEntry[];
   stingers: ProgramStingerEntry[];
+  templateUrl?: string | null;
+  templateManifest?: ProgramTemplateManifest | null;
+  templateVerifiedAt?: string | null;
 }
 
 export function meta({}: Route.MetaArgs) {
@@ -73,6 +76,10 @@ export default function ProgramsAdmin() {
   const [showModal, setShowModal] = useState(false);
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [programIdInput, setProgramIdInput] = useState('');
+  const [templateUrlInput, setTemplateUrlInput] = useState('');
+  const [templatePreview, setTemplatePreview] = useState<ProgramTemplateManifest | null>(null);
+  const [isInspectingTemplate, setIsInspectingTemplate] = useState(false);
+  const [templateError, setTemplateError] = useState('');
   const [selectedSceneIds, setSelectedSceneIds] = useState<number[]>([]);
   const [selectedMediaGroupIds, setSelectedMediaGroupIds] = useState<number[]>(
     [],
@@ -170,6 +177,9 @@ export default function ProgramsAdmin() {
   const openCreateModal = () => {
     setEditingProgramId(null);
     setProgramIdInput('');
+    setTemplateUrlInput('');
+    setTemplatePreview(null);
+    setTemplateError('');
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
@@ -183,6 +193,9 @@ export default function ProgramsAdmin() {
   const openEditModal = (program: ProgramState) => {
     setEditingProgramId(program.programId);
     setProgramIdInput(program.programId);
+    setTemplateUrlInput(program.templateUrl || '');
+    setTemplatePreview(program.templateManifest || null);
+    setTemplateError('');
     setSelectedSceneIds(program.scenes.map((entry) => entry.sceneId));
     setSelectedMediaGroupIds(
       (program.mediaGroups || []).map((entry) => entry.mediaGroupId),
@@ -201,6 +214,9 @@ export default function ProgramsAdmin() {
     setShowModal(false);
     setEditingProgramId(null);
     setProgramIdInput('');
+    setTemplateUrlInput('');
+    setTemplatePreview(null);
+    setTemplateError('');
     setSelectedSceneIds([]);
     setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
@@ -363,6 +379,39 @@ export default function ProgramsAdmin() {
     }
   };
 
+  const inspectTemplate = async () => {
+    const templateUrl = templateUrlInput.trim();
+    if (!templateUrl) {
+      setTemplatePreview(null);
+      setTemplateError('Enter a template manifest URL to inspect.');
+      return;
+    }
+
+    setIsInspectingTemplate(true);
+    setTemplateError('');
+    try {
+      const response = await fetch(apiUrl('/program/template/inspect'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateUrl }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `HTTP ${response.status}`);
+      }
+      const registration = (await response.json()) as {
+        templateManifest: ProgramTemplateManifest;
+      };
+      setTemplatePreview(registration.templateManifest);
+    } catch (inspectionError) {
+      console.error('Failed to inspect program template:', inspectionError);
+      setTemplatePreview(null);
+      setTemplateError('The template contract could not be verified.');
+    } finally {
+      setIsInspectingTemplate(false);
+    }
+  };
+
   const saveProgram = async () => {
     const nextProgramId = programIdInput.trim();
     if (!nextProgramId) {
@@ -374,61 +423,62 @@ export default function ProgramsAdmin() {
     try {
       const isEditing = !!editingProgramId;
       const editingProgram = isEditing ? programs.find((program) => program.programId === editingProgramId) || null : null;
+      let savedProgram: ProgramState;
+      const templateUrl = templateUrlInput.trim() || null;
 
       if (isEditing) {
-        const needsRename = editingProgramId !== nextProgramId;
-        if (needsRename) {
-          const renameBody: Record<string, unknown> = { nextProgramId };
-          if (selectedType !== (editingProgram?.type || 'tv')) {
-            renameBody.type = selectedType;
-          }
-          const res = await fetch(apiUrl(`/program/${encodeURIComponent(editingProgramId)}`), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(renameBody)
-          });
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || `HTTP ${res.status}`);
-          }
-        } else if (selectedType !== (editingProgram?.type || 'tv')) {
-          const res = await fetch(apiUrl(`/program/${encodeURIComponent(editingProgramId)}`), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nextProgramId, type: selectedType })
-          });
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || `HTTP ${res.status}`);
-          }
+        const res = await fetch(apiUrl(`/program/${encodeURIComponent(editingProgramId)}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nextProgramId,
+            type: selectedType,
+            templateUrl,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `HTTP ${res.status}`);
         }
+        savedProgram = (await res.json()) as ProgramState;
 
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
-        const currentMediaGroupIds =
-          editingProgram?.mediaGroups.map((entry) => entry.mediaGroupId) || [];
-        const currentStingerIds =
-          editingProgram?.stingers.map((entry) => entry.stingerId) || [];
-        await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
-        await syncProgramMediaGroups(
-          nextProgramId,
-          currentMediaGroupIds,
-          selectedMediaGroupIds,
-        );
-        await syncProgramStingers(nextProgramId, currentStingerIds, selectedStingerIds);
+        const currentMediaGroupIds = editingProgram?.mediaGroups.map((entry) => entry.mediaGroupId) || [];
+        const currentStingerIds = editingProgram?.stingers.map((entry) => entry.stingerId) || [];
+        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
+          await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
+        }
+        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups')) {
+          await syncProgramMediaGroups(nextProgramId, currentMediaGroupIds, selectedMediaGroupIds);
+        }
+        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions')) {
+          await syncProgramStingers(nextProgramId, currentStingerIds, selectedStingerIds);
+        }
       } else {
         const createRes = await fetch(apiUrl('/program'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ programId: nextProgramId, type: selectedType })
+          body: JSON.stringify({
+            programId: nextProgramId,
+            type: selectedType,
+            templateUrl,
+          }),
         });
         if (!createRes.ok) {
           const text = await createRes.text();
           throw new Error(text || `HTTP ${createRes.status}`);
         }
+        savedProgram = (await createRes.json()) as ProgramState;
 
-        await syncProgramScenes(nextProgramId, [], selectedSceneIds);
-        await syncProgramMediaGroups(nextProgramId, [], selectedMediaGroupIds);
-        await syncProgramStingers(nextProgramId, [], selectedStingerIds);
+        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
+          await syncProgramScenes(nextProgramId, [], selectedSceneIds);
+        }
+        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups')) {
+          await syncProgramMediaGroups(nextProgramId, [], selectedMediaGroupIds);
+        }
+        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions')) {
+          await syncProgramStingers(nextProgramId, [], selectedStingerIds);
+        }
       }
 
       if (isEditing && editingProgramId === selectedProgramId) {
@@ -448,6 +498,10 @@ export default function ProgramsAdmin() {
       setIsSaving(false);
     }
   };
+
+  const supportsSceneConfiguration = !templatePreview || hasProgramCapability(templatePreview, 'scene.configuration');
+  const supportsMediaGroups = !templatePreview || hasProgramCapability(templatePreview, 'media.groups');
+  const supportsStingers = !templatePreview || hasProgramCapability(templatePreview, 'stinger.transitions');
 
   const deleteProgram = async (programId: string) => {
     if (!confirm(`Delete program "${programId}"? This removes its scene assignments and active scene state.`)) return;
@@ -533,6 +587,20 @@ export default function ProgramsAdmin() {
                           Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
                           {program.activeSceneId ?? 'none'}
                         </p>
+                        {program.templateManifest ? (
+                          <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
+                            <Link2 size={13} />
+                            <span>
+                              {program.templateManifest.name} · {program.templateManifest.bundleVersion}
+                            </span>
+                            <a href={resolveProgramOutputUrl(program, getApiBaseUrl())} target='_blank' rel='noopener noreferrer' className='inline-flex items-center gap-1 font-medium text-sea underline-offset-2 hover:underline'>
+                              Open renderer <ExternalLink size={12} />
+                            </a>
+                          </div>
+                        ) : (
+                          <p className='mt-3 text-xs text-terracotta'>Transitional Alcantara renderer · no external template registered</p>
+                        )}
+
                       </div>
                       <div className='flex items-start gap-2'>
                         <Button size='sm' variant={isSelected ? 'secondary' : 'ghost'} onClick={() => setSelectedProgramId(program.programId)} className='px-3'>
@@ -584,6 +652,49 @@ export default function ProgramsAdmin() {
             </div>
 
             <div>
+              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template URL</label>
+              <div className='flex items-start gap-2'>
+                <Input
+                  type='url'
+                  value={templateUrlInput}
+                  onChange={(event) => {
+                    setTemplateUrlInput(event.target.value);
+                    setTemplatePreview(null);
+                    setTemplateError('');
+                  }}
+                  placeholder='https://cdn.fifthbell.com/html/program-releases/0.1.65/live-program-manifest.json'
+                  aria-describedby='template-url-help'
+                  error={!!templateError}
+                />
+                <Button type='button' variant='secondary' onClick={() => void inspectTemplate()} disabled={isInspectingTemplate || !templateUrlInput.trim()}>
+                  {isInspectingTemplate ? 'Inspecting…' : 'Inspect'}
+                </Button>
+              </div>
+              <p id='template-url-help' className='mt-2 text-xs text-text-secondary'>
+                Reference the immutable JSON manifest published with the template. Alcantara verifies its contract before saving.
+              </p>
+              {templateError ? (
+                <p className='mt-2 text-sm text-terracotta' role='alert'>
+                  {templateError}
+                </p>
+              ) : null}
+              {templatePreview ? (
+                <div className='mt-3 rounded-xl border border-sea/20 bg-sea/5 p-3'>
+                  <p className='text-sm font-medium text-text-primary'>
+                    {templatePreview.name} · {templatePreview.bundleVersion}
+                  </p>
+                  <div className='mt-2 flex flex-wrap gap-1.5'>
+                    {templatePreview.capabilities.map((capability) => (
+                      <span key={capability} className='rounded-full border border-sea/20 bg-white/70 px-2 py-0.5 text-xs text-sea dark:bg-dark-sand/70'>
+                        {capability}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
               <div className='flex gap-2'>
                 {(['tv', 'radio', 'both'] as const).map((type) => (
@@ -604,121 +715,97 @@ export default function ProgramsAdmin() {
               </div>
             </div>
 
-            <div>
-              <div className='mb-2 flex items-center justify-between'>
-                <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Scenes</label>
-                <Button size='sm' variant='ghost' onClick={() => navigate('/scenes')}>
-                  Manage Scenes
-                </Button>
-              </div>
-              {sortedScenes.length === 0 ? (
-                <p className='text-sm text-text-secondary dark:text-text-secondary'>No scenes available. Create scenes first.</p>
-              ) : (
-                <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-                  <Input
-                    type='search'
-                    value={sceneSearch}
-                    onChange={(event) => setSceneSearch(event.target.value)}
-                    placeholder='Search scenes by name or layout…'
-                    aria-label='Search program scenes'
-                    className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95'
-                  />
-                  {filteredScenes.map((scene) => {
-                    const checked = selectedSceneIds.includes(scene.id);
-                    return (
-                      <label key={scene.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
-                        <Checkbox checked={checked} onChange={() => toggleSceneSelection(scene.id)} />
-                        <span className='min-w-0'>
-                          <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{scene.name}</span>
-                          <span className='block text-xs text-text-secondary dark:text-text-secondary'>{scene.layout?.name || 'No layout'}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {filteredScenes.length === 0 ? (
-                    <p className='px-2 py-4 text-center text-sm text-text-secondary'>No scenes match “{sceneSearch}”.</p>
-                  ) : null}
+            {supportsSceneConfiguration ? (
+              <div>
+                <div className='mb-2 flex items-center justify-between'>
+                  <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Scenes</label>
+                  <Button size='sm' variant='ghost' onClick={() => navigate('/scenes')}>
+                    Manage Scenes
+                  </Button>
                 </div>
-              )}
-            </div>
-
-            <div>
-              <div className='mb-2 flex items-center justify-between'>
-                <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Media Groups</label>
-                <Button size='sm' variant='ghost' onClick={() => navigate('/media')}>
-                  Manage Media
-                </Button>
-              </div>
-              {sortedMediaGroups.length === 0 ? (
-                <p className='text-sm text-text-secondary dark:text-text-secondary'>No media groups available. Create media groups first.</p>
-              ) : (
-                <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-                  <Input
-                    type='search'
-                    value={mediaGroupSearch}
-                    onChange={(event) => setMediaGroupSearch(event.target.value)}
-                    placeholder='Search media groups by name or description…'
-                    aria-label='Search program media groups'
-                    className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95'
-                  />
-                  {filteredMediaGroups.map((mediaGroup) => {
-                    const checked = selectedMediaGroupIds.includes(mediaGroup.id);
-                    return (
-                      <label
-                        key={mediaGroup.id}
-                        className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onChange={() => toggleMediaGroupSelection(mediaGroup.id)}
-                        />
-                        <span className='min-w-0'>
-                          <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{mediaGroup.name}</span>
-                          <span className='block text-xs text-text-secondary dark:text-text-secondary'>
-                            {mediaGroup.description || 'No description'}
+                {sortedScenes.length === 0 ? (
+                  <p className='text-sm text-text-secondary dark:text-text-secondary'>No scenes available. Create scenes first.</p>
+                ) : (
+                  <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
+                    <Input type='search' value={sceneSearch} onChange={(event) => setSceneSearch(event.target.value)} placeholder='Search scenes by name or layout…' aria-label='Search program scenes' className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95' />
+                    {filteredScenes.map((scene) => {
+                      const checked = selectedSceneIds.includes(scene.id);
+                      return (
+                        <label key={scene.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
+                          <Checkbox checked={checked} onChange={() => toggleSceneSelection(scene.id)} />
+                          <span className='min-w-0'>
+                            <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{scene.name}</span>
+                            <span className='block text-xs text-text-secondary dark:text-text-secondary'>{scene.layout?.name || 'No layout'}</span>
                           </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {filteredMediaGroups.length === 0 ? (
-                    <p className='px-2 py-4 text-center text-sm text-text-secondary'>No media groups match “{mediaGroupSearch}”.</p>
-                  ) : null}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <div className='mb-2 flex items-center justify-between'>
-                <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Stingers</label>
-                <Button size='sm' variant='ghost' onClick={() => navigate('/stingers')}>
-                  Manage Stingers
-                </Button>
+                        </label>
+                      );
+                    })}
+                    {filteredScenes.length === 0 ? <p className='px-2 py-4 text-center text-sm text-text-secondary'>No scenes match “{sceneSearch}”.</p> : null}
+                  </div>
+                )}
               </div>
-              {sortedStingers.length === 0 ? (
-                <p className='text-sm text-text-secondary dark:text-text-secondary'>No stingers available. Create stingers first.</p>
-              ) : (
-                <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-                  {sortedStingers.map((stinger) => {
-                    const checked = selectedStingerIds.includes(stinger.id);
-                    return (
-                      <label
-                        key={stinger.id}
-                        className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onChange={() => toggleStingerSelection(stinger.id)}
-                        />
-                        <span className='min-w-0'>
-                          <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{stinger.name}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
+            ) : (
+              <p className='rounded-xl border border-sand/20 bg-white/60 p-3 text-sm text-text-secondary dark:bg-dark-sand/50'>Scene assignment is unavailable because this template does not declare scene configuration.</p>
+            )}
+
+            {supportsMediaGroups ? (
+              <div>
+                <div className='mb-2 flex items-center justify-between'>
+                  <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Media Groups</label>
+                  <Button size='sm' variant='ghost' onClick={() => navigate('/media')}>
+                    Manage Media
+                  </Button>
                 </div>
-              )}
-            </div>
+                {sortedMediaGroups.length === 0 ? (
+                  <p className='text-sm text-text-secondary dark:text-text-secondary'>No media groups available. Create media groups first.</p>
+                ) : (
+                  <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
+                    <Input type='search' value={mediaGroupSearch} onChange={(event) => setMediaGroupSearch(event.target.value)} placeholder='Search media groups by name or description…' aria-label='Search program media groups' className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95' />
+                    {filteredMediaGroups.map((mediaGroup) => {
+                      const checked = selectedMediaGroupIds.includes(mediaGroup.id);
+                      return (
+                        <label key={mediaGroup.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
+                          <Checkbox checked={checked} onChange={() => toggleMediaGroupSelection(mediaGroup.id)} />
+                          <span className='min-w-0'>
+                            <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{mediaGroup.name}</span>
+                            <span className='block text-xs text-text-secondary dark:text-text-secondary'>{mediaGroup.description || 'No description'}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {filteredMediaGroups.length === 0 ? <p className='px-2 py-4 text-center text-sm text-text-secondary'>No media groups match “{mediaGroupSearch}”.</p> : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {supportsStingers ? (
+              <div>
+                <div className='mb-2 flex items-center justify-between'>
+                  <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Stingers</label>
+                  <Button size='sm' variant='ghost' onClick={() => navigate('/stingers')}>
+                    Manage Stingers
+                  </Button>
+                </div>
+                {sortedStingers.length === 0 ? (
+                  <p className='text-sm text-text-secondary dark:text-text-secondary'>No stingers available. Create stingers first.</p>
+                ) : (
+                  <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
+                    {sortedStingers.map((stinger) => {
+                      const checked = selectedStingerIds.includes(stinger.id);
+                      return (
+                        <label key={stinger.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
+                          <Checkbox checked={checked} onChange={() => toggleStingerSelection(stinger.id)} />
+                          <span className='min-w-0'>
+                            <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{stinger.name}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             {error ? <p className='text-sm text-terracotta'>{error}</p> : null}
 

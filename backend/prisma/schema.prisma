@@ -36,6 +36,9 @@ model ProgramState {
   id                     Int                  @id @default(autoincrement())
   programId              String               @unique
   type                   String               @default("tv")
+  templateUrl            String?
+  templateManifest       Json?
+  templateVerifiedAt     DateTime?
   activeSceneId          Int?
   activeScene            Scene?               @relation(fields: [activeSceneId], references: [id])
   stagedSceneId          Int?

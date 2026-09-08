@@ -26,6 +26,8 @@ function getAllowedOrigins(): Set<string> {
     'https://alcantara.gaulatti.com',
     'https://alcantara.dev',
     'https://alcantara.gt',
+    'https://fifthbell.com',
+    'https://cdn.fifthbell.com',
     ...configuredOrigins,
   ]);
 }
