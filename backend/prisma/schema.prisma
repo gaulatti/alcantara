@@ -241,6 +241,10 @@ model NowPlayingConsumer {
 
 model OperatorPreference {
   subject     String
+  // Canonical Pompeii principal, once resolved. Nullable and additive: the
+  // primary key stays on the pool subject so no existing row moves, and reads
+  // resolve by principal first with a subject fallback.
+  principalId String?
   deviceClass String
   version     Int      @default(1)
   profile     Json
@@ -249,11 +253,15 @@ model OperatorPreference {
 
   @@id([subject, deviceClass])
   @@index([subject])
+  @@index([principalId, deviceClass])
 }
 
 model SharedConsoleLayout {
   id                String    @id @default(uuid())
   ownerSubject      String
+  /// Canonical Pompeii principal for the owner, once resolved. Ownership
+  /// matches this when present and falls back to ownerSubject when absent.
+  ownerPrincipalId  String?
   name              String
   description       String?
   scope             String
@@ -268,6 +276,7 @@ model SharedConsoleLayout {
   @@unique([scope, scopeId, name])
   @@index([scope, scopeId, retiredAt])
   @@index([ownerSubject])
+  @@index([ownerPrincipalId])
 }
 
 model GuestInvitation {
@@ -286,6 +295,10 @@ model GuestInvitation {
   activeSessionId    String?
   activeSessionUntil DateTime?
   createdByIdentity  String
+  /// Canonical Pompeii principal of the operator who created this invitation.
+  /// Audit only. createdByIdentity is never rewritten, so historical actor
+  /// display survives even when no verified mapping exists.
+  createdByPrincipalId String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   commands           GuestCommand[]

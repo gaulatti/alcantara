@@ -6,13 +6,13 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import type { CanonicalIdentity } from '../identity/principals';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import {
   defaultProfile,
   parseDeviceClass,
   parseProfile,
-  type DeviceClass,
 } from './operator-preferences.types';
 
 export interface OperatorAuthorization {
@@ -27,11 +27,54 @@ export class OperatorPreferencesService {
     private readonly metrics: ManagedMetricsService,
   ) {}
 
-  async get(subject: string, rawDeviceClass: string) {
-    const deviceClass = parseDeviceClass(rawDeviceClass);
-    const stored = await this.prisma.operatorPreference.findUnique({
-      where: { subject_deviceClass: { subject, deviceClass } },
+  /**
+   * Normalizes the identity attached by the authorization guard. A null
+   * principal is the explicit rollout state for an identity Pompeii has not
+   * linked yet; callers cannot silently discard a resolved principal.
+   */
+  private identity(value: CanonicalIdentity): CanonicalIdentity {
+    return {
+      subject: value.subject,
+      principalId: value.principalId?.trim() || null,
+    };
+  }
+
+  private ownedPreferenceWhere(identity: CanonicalIdentity) {
+    return [
+      ...(identity.principalId ? [{ principalId: identity.principalId }] : []),
+      { principalId: null, subject: identity.subject },
+    ];
+  }
+
+  /**
+   * Finds the row for this operator, preferring the canonical principal so a
+   * migrated row is still theirs after they move pools, and falling back to the
+   * pool subject so an unmigrated row stays reachable.
+   */
+  private async findPreference(
+    identity: CanonicalIdentity,
+    deviceClass: string,
+  ) {
+    const candidates = await this.prisma.operatorPreference.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: 2,
+      where: {
+        deviceClass,
+        OR: this.ownedPreferenceWhere(identity),
+      },
     });
+    if (candidates.length > 1) {
+      this.metrics.recordPreference('read', 'conflict');
+      throw new ConflictException('CANONICAL_IDENTITY_COLLISION');
+    }
+    return candidates[0] ?? null;
+  }
+
+  async get(caller: CanonicalIdentity, rawDeviceClass: string) {
+    const identity = this.identity(caller);
+    const subject = identity.subject;
+    const deviceClass = parseDeviceClass(rawDeviceClass);
+    const stored = await this.findPreference(identity, deviceClass);
     this.metrics.recordPreference('read', stored ? 'success' : 'default');
     return (
       stored ?? {
@@ -46,11 +89,24 @@ export class OperatorPreferencesService {
   }
 
   async save(
-    subject: string,
+    caller: CanonicalIdentity,
     rawDeviceClass: string,
     body: { version?: unknown; profile?: unknown },
   ) {
+    const identity = this.identity(caller);
     const deviceClass = parseDeviceClass(rawDeviceClass);
+    // Writes target whichever row this operator already owns, which may carry a
+    // different pool subject after a migration.
+    const existing = await this.findPreference(identity, deviceClass);
+    const subject = existing?.subject ?? identity.subject;
+    // Bind the optimistic write to the ownership mode selected above. A
+    // canonical match must remain owned by that principal; it cannot become an
+    // eligible legacy fallback merely by changing to a null principal between
+    // the read and update. A legacy match remains restricted to the caller's
+    // current subject and a null principal.
+    const selectedOwnership = existing?.principalId
+      ? { principalId: existing.principalId }
+      : { principalId: null, subject: identity.subject };
     const version = integerVersion(body.version);
     const profile = parseProfile(
       body.profile,
@@ -60,12 +116,32 @@ export class OperatorPreferencesService {
       const saved = await this.prisma.$transaction(async (transaction) => {
         if (version === 0) {
           return transaction.operatorPreference.create({
-            data: { subject, deviceClass, profile },
+            // The canonical principal is recorded only once Pompeii resolved
+            // one; it is never guessed from the subject or an email.
+            data: {
+              subject,
+              principalId: identity.principalId,
+              deviceClass,
+              profile,
+            },
           });
         }
         const updated = await transaction.operatorPreference.updateMany({
-          where: { subject, deviceClass, version },
-          data: { profile, version: { increment: 1 } },
+          where: {
+            subject,
+            deviceClass,
+            version,
+            ...selectedOwnership,
+          },
+          data: {
+            profile,
+            version: { increment: 1 },
+            // Backfills the canonical principal on an existing row the first
+            // time its owner signs in with one resolved.
+            ...(identity.principalId && !existing?.principalId
+              ? { principalId: identity.principalId }
+              : {}),
+          },
         });
         if (updated.count !== 1)
           throw new ConflictException('PROFILE_VERSION_CONFLICT');
@@ -84,7 +160,7 @@ export class OperatorPreferencesService {
         this.metrics.recordPreference('write', 'conflict');
         throw new ConflictException({
           error: 'PROFILE_VERSION_CONFLICT',
-          authoritative: await this.get(subject, deviceClass),
+          authoritative: await this.get(identity, deviceClass),
         });
       }
       this.metrics.recordPreference('write', 'failure');
@@ -92,16 +168,20 @@ export class OperatorPreferencesService {
     }
   }
 
-  async reset(subject: string, rawDeviceClass?: string) {
+  async reset(caller: CanonicalIdentity, rawDeviceClass?: string) {
+    const identity = this.identity(caller);
+    // Clear the canonical row plus an unmigrated current-subject row. A subject
+    // row already owned by another principal is never this caller's fallback.
+    const owned = this.ownedPreferenceWhere(identity);
     if (rawDeviceClass) {
       const deviceClass = parseDeviceClass(rawDeviceClass);
       await this.prisma.operatorPreference.deleteMany({
-        where: { subject, deviceClass },
+        where: { OR: owned, deviceClass },
       });
       this.metrics.recordPreference('reset-class', 'success');
       return { deviceClass, version: 0, profile: defaultProfile(deviceClass) };
     }
-    await this.prisma.operatorPreference.deleteMany({ where: { subject } });
+    await this.prisma.operatorPreference.deleteMany({ where: { OR: owned } });
     this.metrics.recordPreference('reset-all', 'success');
     return { ok: true };
   }
@@ -119,15 +199,16 @@ export class OperatorPreferencesService {
   }
 
   async publish(
-    subject: string,
+    caller: CanonicalIdentity,
     body: Record<string, unknown>,
     authorization: OperatorAuthorization,
   ) {
+    const identity = this.identity(caller);
     const scope = parseScope(body.scope);
     const scopeId = boundedText(body.scopeId, 'scopeId', 128);
     await this.assertScopeAccess(scope, scopeId, authorization, true);
     const sourceDeviceClass = parseDeviceClass(
-      String(body.sourceDeviceClass ?? ''),
+      stringInput(body.sourceDeviceClass),
     );
     const name = boundedText(body.name, 'name', 120);
     const description = optionalText(body.description, 500);
@@ -138,7 +219,8 @@ export class OperatorPreferencesService {
     const saved = await this.prisma.sharedConsoleLayout.upsert({
       where: { scope_scopeId_name: { scope, scopeId, name } },
       create: {
-        ownerSubject: subject,
+        ownerSubject: identity.subject,
+        ownerPrincipalId: identity.principalId,
         name,
         description,
         scope,
@@ -147,7 +229,8 @@ export class OperatorPreferencesService {
         profile,
       },
       update: {
-        ownerSubject: subject,
+        ownerSubject: identity.subject,
+        ownerPrincipalId: identity.principalId,
         description,
         sourceDeviceClass,
         profile,
@@ -179,7 +262,7 @@ export class OperatorPreferencesService {
   }
 
   async load(
-    subject: string,
+    caller: CanonicalIdentity,
     id: string,
     body: { deviceClass?: unknown; version?: unknown },
     authorization: OperatorAuthorization,
@@ -194,14 +277,14 @@ export class OperatorPreferencesService {
       authorization,
       false,
     );
-    const deviceClass = parseDeviceClass(String(body.deviceClass ?? ''));
+    const deviceClass = parseDeviceClass(stringInput(body.deviceClass));
     if (deviceClass !== layout.sourceDeviceClass) {
       throw new ConflictException({
         error: 'DEVICE_CLASS_MISMATCH',
         sourceDeviceClass: layout.sourceDeviceClass,
       });
     }
-    const saved = await this.save(subject, deviceClass, {
+    const saved = await this.save(caller, deviceClass, {
       version: body.version,
       profile: layout.profile,
     });
@@ -240,6 +323,10 @@ function integerVersion(value: unknown): number {
   if (!Number.isSafeInteger(version) || version < 0)
     throw new ConflictException('PROFILE_VERSION_REQUIRED');
   return version;
+}
+
+function stringInput(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function parseScope(value: unknown): 'program' | 'team' {

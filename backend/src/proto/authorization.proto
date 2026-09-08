@@ -24,4 +24,8 @@ message AuthorizeResponse {
   string subject = 4;
   repeated string effective_permissions = 5;
   repeated string roles = 6;
+  // Pompeii's canonical principal: stable for one real person across pools.
+  // Empty while an identity has not been resolved to a principal yet, which is
+  // the expected state during rollout.
+  string principal_id = 7;
 }

@@ -12,9 +12,19 @@ import {
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import type { CanonicalIdentity } from '../identity/principals';
 import { WebrtcService } from './webrtc.service';
 
-type OperatorRequest = { user: { sub: string } };
+type OperatorRequest = {
+  user: { sub: string; principalId: string | null };
+};
+
+function identityFrom(request: OperatorRequest): CanonicalIdentity {
+  return {
+    subject: request.user.sub,
+    principalId: request.user.principalId,
+  };
+}
 
 @Controller('webrtc')
 @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.read)
@@ -38,19 +48,19 @@ export class WebrtcController {
     @Req() request: OperatorRequest,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.webrtc.createInvitation(request.user.sub, body);
+    return this.webrtc.createInvitation(identityFrom(request), body);
   }
 
   @Post('invitations/:id/replace')
   @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
   replaceInvitation(@Req() request: OperatorRequest, @Param('id') id: string) {
-    return this.webrtc.replaceInvitation(request.user.sub, id);
+    return this.webrtc.replaceInvitation(identityFrom(request), id);
   }
 
   @Delete('invitations/:id')
   @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
   revokeInvitation(@Req() request: OperatorRequest, @Param('id') id: string) {
-    return this.webrtc.revokeInvitation(request.user.sub, id);
+    return this.webrtc.revokeInvitation(identityFrom(request), id);
   }
 
   @Patch('invitations/:id/return')
@@ -60,7 +70,7 @@ export class WebrtcController {
     @Param('id') id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.webrtc.updateReturn(request.user.sub, id, body);
+    return this.webrtc.updateReturn(identityFrom(request), id, body);
   }
 
   @Post('join')
@@ -99,7 +109,10 @@ export class WebrtcController {
     @Req() request: OperatorRequest,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.webrtc.createOperatorToken(request.user.sub, body.programId);
+    return this.webrtc.createOperatorToken(
+      identityFrom(request),
+      body.programId,
+    );
   }
 
   @Post('rooms/:programId/participants/:identity/control')
@@ -119,7 +132,11 @@ export class WebrtcController {
     @Param('programId') programId: string,
     @Param('identity') identity: string,
   ) {
-    return this.webrtc.removeParticipant(request.user.sub, programId, identity);
+    return this.webrtc.removeParticipant(
+      identityFrom(request),
+      programId,
+      identity,
+    );
   }
 
   @Post('renderer-token')
