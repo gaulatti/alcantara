@@ -213,7 +213,7 @@ jobs:
             -e ALCANTARA_BUILD_VERSION="${{ github.sha }}" \
             -e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
+            -e ALLOWED_ORIGINS="${{ vars.FQDN }},https://fifthbell.com,https://cdn.fifthbell.com" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
             -e ALCANTARA_CONFIG_SECRET_ID="${{ env.ALCANTARA_CONFIG_SECRET_ID }}" \
             -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \

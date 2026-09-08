@@ -33,8 +33,9 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { apiUrl } from '../utils/apiBaseUrl';
+import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
+import { resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
@@ -44,6 +45,7 @@ const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
 interface ProgramSummary {
   programId: string;
   type?: 'tv' | 'radio' | 'both';
+  templateManifest?: ProgramTemplateManifest | null;
 }
 
 interface SceneSummary {
@@ -344,7 +346,8 @@ export default function Layout() {
     />
   );
 
-  const openProgramUrl = `/program/${encodeURIComponent(selectedProgramId)}`;
+  const selectedProgram = knownPrograms.find((program) => program.programId === selectedProgramId) ?? { programId: selectedProgramId };
+  const openProgramUrl = resolveProgramOutputUrl(selectedProgram, getApiBaseUrl());
   const triggerProgramReload = useCallback(async () => {
     if (!selectedProgramId.trim()) {
       return;
@@ -402,7 +405,6 @@ export default function Layout() {
   );
 
   const commandActions = useMemo<CommandSpotlightAction[]>(() => {
-    const selectedProgramPath = `/program/${encodeURIComponent(selectedProgramId)}`;
     const selectedProgramTitle = `Open Program Output (${selectedProgramId})`;
     const selectedProgramQuery = `programId=${encodeURIComponent(selectedProgramId)}`;
 
@@ -498,7 +500,7 @@ export default function Layout() {
         icon: <Radio size={16} />,
         onSelect: () => {
           if (typeof window === 'undefined') return;
-          window.open(selectedProgramPath, '_blank', 'noopener,noreferrer');
+          window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
         }
       },
       {
@@ -645,6 +647,7 @@ export default function Layout() {
     clearBroadcastTimeOverride,
     loadBroadcastSettings,
     navigate,
+    openProgramUrl,
     programOptions,
     selectedProgramId,
     selectedTransition,

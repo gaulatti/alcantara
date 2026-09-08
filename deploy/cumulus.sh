@@ -74,7 +74,7 @@ if ! docker run -d --name alcantara-backend \
   -e ARAUCO_SECRET_ID="$database_secret_id" \
   -e ALCANTARA_BUILD_VERSION="${image##*:}" \
   -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
-  -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com \
+  -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com,https://fifthbell.com,https://cdn.fifthbell.com \
   -e POMPEII_TEAM_ID=1 \
   -e MEDIA_S3_BUCKET="$media_bucket" \
   -e CONTAINERIZED=true \

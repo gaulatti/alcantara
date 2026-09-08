@@ -259,4 +259,95 @@ describe('ProgramService switcher state', () => {
     firstSubscription.unsubscribe();
     secondSubscription.unsubscribe();
   });
+
+  it('projects registered template snapshots and forwards only declared signals', async () => {
+    const { service } = buildService({
+      id: 1,
+      programId: 'fifthbell',
+      activeSceneId: scene.id,
+      stagedSceneId: null,
+      fadeToBlack: false,
+    });
+    const templateManifest = {
+      kind: 'alcantara.program-template',
+      contractVersion: 1,
+      id: 'fifthbell.live-program',
+      name: 'Fifthbell Live Program',
+      package: '@fifthbell/brokaw',
+      bundleVersion: '0.1.65',
+      schemaVersion: 1,
+      entrypoint: 'index.html',
+      entrypointUrl:
+        'https://cdn.fifthbell.com/html/program-releases/0.1.65/index.html',
+      capabilities: ['scene.configuration'],
+      control: {
+        protocol: 'alcantara.program.v1',
+        transport: 'server-sent-events',
+        snapshotPath: 'state',
+        eventsPath: 'events',
+        runtimeParameters: {
+          programId: 'programId',
+          apiBaseUrl: 'apiBaseUrl',
+        },
+        signals: ['program_state_snapshot', 'scene_change'],
+      },
+    };
+    jest.spyOn(service, 'getState').mockResolvedValue({
+      id: 1,
+      programId: 'fifthbell',
+      activeSceneId: scene.id,
+      activeScene: scene,
+      stagedSceneId: null,
+      stagedScene: null,
+      fadeToBlack: false,
+      updatedAt: '2026-09-08T18:00:00.000Z',
+      version: 0,
+      templateManifest,
+      operatorQueue: [{ secret: true }],
+    } as never);
+
+    const events: Array<Record<string, unknown>> = [];
+    const subscription = service
+      .getEventStream('fifthbell')
+      .subscribe((event) => events.push(JSON.parse(event.data)));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    service.broadcastUpdate('fifthbell', {
+      type: 'operator_snapshot',
+      secret: true,
+    });
+    service.broadcastUpdate('fifthbell', {
+      type: 'scene_change',
+      programId: 'fifthbell',
+      state: {
+        id: 1,
+        programId: 'fifthbell',
+        activeSceneId: scene.id,
+        activeScene: scene,
+        stagedSceneId: null,
+        stagedScene: null,
+        fadeToBlack: false,
+        updatedAt: '2026-09-08T18:01:00.000Z',
+        secret: true,
+      },
+      secret: true,
+    });
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      type: 'program_state_snapshot',
+      schemaVersion: 1,
+      state: { programId: 'fifthbell', activeSceneId: scene.id },
+    });
+    expect(events[0].state).not.toHaveProperty('operatorQueue');
+    expect(events[1]).toMatchObject({
+      type: 'scene_change',
+      schemaVersion: 1,
+      state: { programId: 'fifthbell', activeSceneId: scene.id },
+    });
+    expect(events[1]).not.toHaveProperty('secret');
+    expect(events[1].state).not.toHaveProperty('secret');
+
+    subscription.unsubscribe();
+  });
 });

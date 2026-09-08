@@ -10,6 +10,7 @@ describe('ManagedMetricsService program SSE metrics', () => {
     metrics.recordProgramSseSnapshot('success');
     metrics.recordProgramSseSnapshot('failure');
     metrics.recordProgramSseSnapshot('unbounded-value');
+    metrics.recordDependency('program-template', 'fetch', 'success', 0.25);
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingCommand('private-action', 'private-result');
     metrics.recordRecordingStatus('finalizing', 'success');
@@ -27,6 +28,9 @@ describe('ManagedMetricsService program SSE metrics', () => {
       'alcantara_program_sse_snapshots_total{result="unknown"} 1',
     );
     expect(output).not.toContain('result="unbounded-value"');
+    expect(output).toContain(
+      'alcantara_dependency_operations_total{dependency="program-template",operation="fetch",result="success"} 1',
+    );
     expect(output).toContain(
       'alcantara_recording_commands_total{action="start",result="accepted"} 1',
     );

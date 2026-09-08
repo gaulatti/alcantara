@@ -45,6 +45,7 @@ const DEPENDENCIES = new Set([
   's3',
   'livekit',
   'alana',
+  'program-template',
   'unknown',
 ]);
 const DEPENDENCY_OPERATIONS = new Set([

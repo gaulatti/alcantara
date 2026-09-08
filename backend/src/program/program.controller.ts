@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Header,
@@ -17,6 +18,10 @@ import { FlightService } from './flight.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { Public } from '../auth/public.decorator';
 import { RequirePermission } from '../auth/require-permission.decorator';
+import {
+  ProgramTemplateService,
+  type ProgramTemplateRegistration,
+} from './program-template.service';
 
 @Controller('program')
 @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
@@ -24,6 +29,7 @@ export class ProgramController {
   constructor(
     private readonly programService: ProgramService,
     private readonly flightService: FlightService,
+    private readonly programTemplateService: ProgramTemplateService,
   ) {}
 
   @Get()
@@ -31,22 +37,50 @@ export class ProgramController {
     return this.programService.listPrograms();
   }
 
+  @Post('template/inspect')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.manage)
+  async inspectTemplate(@Body() data: { templateUrl?: string }) {
+    if (typeof data?.templateUrl !== 'string' || !data.templateUrl.trim()) {
+      throw new BadRequestException('templateUrl is required');
+    }
+    return this.programTemplateService.inspect(data.templateUrl);
+  }
+
   @Post()
   @RequirePermission(ALCANTARA_PERMISSIONS.program.manage)
-  async createProgram(@Body() data: { programId: string; type?: string }) {
-    return this.programService.createProgram(data.programId, data.type);
+  async createProgram(
+    @Body()
+    data: {
+      programId: string;
+      type?: string;
+      templateUrl?: string | null;
+    },
+  ) {
+    const template = await this.resolveTemplateRegistration(data.templateUrl);
+    return this.programService.createProgram(
+      data.programId,
+      data.type,
+      template,
+    );
   }
 
   @Put(':programId')
   @RequirePermission(ALCANTARA_PERMISSIONS.program.manage)
   async renameProgram(
     @Param('programId') programId: string,
-    @Body() data: { nextProgramId: string; type?: string },
+    @Body()
+    data: {
+      nextProgramId: string;
+      type?: string;
+      templateUrl?: string | null;
+    },
   ) {
+    const template = await this.resolveTemplateRegistration(data.templateUrl);
     return this.programService.renameProgram(
       programId,
       data.nextProgramId,
       data.type,
+      template,
     );
   }
 
@@ -95,7 +129,7 @@ export class ProgramController {
   @Get(':programId/state')
   @Public()
   async getStateById(@Param('programId') programId: string) {
-    return this.programService.getState(programId);
+    return this.programService.getPublicState(programId);
   }
 
   @Get(':programId/audio-bus')
@@ -470,5 +504,13 @@ export class ProgramController {
   @Header('X-Accel-Buffering', 'no')
   events(): Observable<{ data: string }> {
     return this.programService.getEventStream();
+  }
+
+  private async resolveTemplateRegistration(
+    templateUrl: string | null | undefined,
+  ): Promise<ProgramTemplateRegistration | null | undefined> {
+    if (templateUrl === undefined) return undefined;
+    if (templateUrl === null || !templateUrl.trim()) return null;
+    return this.programTemplateService.inspect(templateUrl);
   }
 }
