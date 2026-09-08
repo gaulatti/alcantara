@@ -16,20 +16,20 @@ interface RuntimeEnvironment {
   PALAZZO_CONTROL_TOKEN?: string;
   PALAZZO_CONTROL_TOKEN_FILE?: string;
   PALAZZO_ALLOWED_URLS?: string;
-  ALANA_CONTROL_URL?: string;
   ALANA_CONTROL_TOKEN?: string;
   ALANA_CONTROL_TOKEN_FILE?: string;
+  ALANA_CONTROL_URL?: string;
   [key: string]: string | undefined;
 }
 
 const ALLOWED_SECRET_FIELDS = new Set([
   'palazzoControlToken',
   'palazzoAllowedUrls',
-  'alanaControlUrl',
   'alanaControlToken',
+  'alanaControlUrl',
 ]);
 
-export function isValidPalazzoControlToken(value: string): boolean {
+export function isValidPrivateControlToken(value: string): boolean {
   return (
     value.length >= 16 &&
     value.length <= 4096 &&
@@ -40,12 +40,17 @@ export function isValidPalazzoControlToken(value: string): boolean {
   );
 }
 
-export function normalizePalazzoBaseUrl(value: string): string {
+export const isValidPalazzoControlToken = isValidPrivateControlToken;
+
+export function normalizePrivateServiceUrl(
+  value: string,
+  fieldName: string,
+): string {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error('PALAZZO_ALLOWED_URLS contains an invalid URL');
+    throw new Error(`${fieldName} contains an invalid URL`);
   }
   if (
     !['http:', 'https:'].includes(parsed.protocol) ||
@@ -55,9 +60,13 @@ export function normalizePalazzoBaseUrl(value: string): string {
     parsed.hash ||
     (parsed.pathname !== '/' && parsed.pathname !== '')
   ) {
-    throw new Error('PALAZZO_ALLOWED_URLS contains an invalid URL');
+    throw new Error(`${fieldName} contains an invalid URL`);
   }
   return parsed.origin;
+}
+
+export function normalizePalazzoBaseUrl(value: string): string {
+  return normalizePrivateServiceUrl(value, 'PALAZZO_ALLOWED_URLS');
 }
 
 /** Validate the Palazzo machine configuration without constructing Nest. */
@@ -81,27 +90,21 @@ export function validatePalazzoRuntimeConfiguration(
 export function validateAlanaRuntimeConfiguration(
   environment: RuntimeEnvironment = process.env,
 ): void {
-  const controlUrl = environment.ALANA_CONTROL_URL?.trim() ?? '';
-  let parsed: URL;
-  try {
-    parsed = new URL(controlUrl);
-  } catch {
-    throw new Error('ALANA_CONTROL_URL is missing or invalid');
-  }
-  if (
-    !['http:', 'https:'].includes(parsed.protocol) ||
-    parsed.username ||
-    parsed.password ||
-    parsed.search ||
-    parsed.hash ||
-    (parsed.pathname !== '/' && parsed.pathname !== '')
-  ) {
-    throw new Error('ALANA_CONTROL_URL is missing or invalid');
-  }
   const token = environment.ALANA_CONTROL_TOKEN?.trim() ?? '';
-  if (token.length < 16 || token.length > 4096) {
+  if (!isValidPrivateControlToken(token)) {
     throw new Error('ALANA_CONTROL_TOKEN is missing or invalid');
   }
+  normalizePrivateServiceUrl(
+    environment.ALANA_CONTROL_URL?.trim() ?? '',
+    'ALANA_CONTROL_URL',
+  );
+}
+
+export function validateRuntimeConfiguration(
+  environment: RuntimeEnvironment = process.env,
+): void {
+  validatePalazzoRuntimeConfiguration(environment);
+  validateAlanaRuntimeConfiguration(environment);
 }
 
 /** Load the production Palazzo credential before Nest constructs any client. */
@@ -116,7 +119,7 @@ export async function loadRuntimeSecrets(
     const alanaTokenFile = environment.ALANA_CONTROL_TOKEN_FILE?.trim();
     if (!tokenFile || !alanaTokenFile) {
       throw new Error(
-        'ALCANTARA_CONFIG_SECRET_ID or both executor token files are required',
+        'ALCANTARA_CONFIG_SECRET_ID or both private control token files are required',
       );
     }
     try {
@@ -129,8 +132,7 @@ export async function loadRuntimeSecrets(
     } catch {
       throw new Error('Alcantara runtime configuration is unavailable');
     }
-    validatePalazzoRuntimeConfiguration(environment);
-    validateAlanaRuntimeConfiguration(environment);
+    validateRuntimeConfiguration(environment);
     return;
   }
   const region = (
@@ -166,15 +168,14 @@ export async function loadRuntimeSecrets(
   if (
     !selected.palazzoControlToken ||
     !selected.palazzoAllowedUrls ||
-    !selected.alanaControlUrl ||
-    !selected.alanaControlToken
+    !selected.alanaControlToken ||
+    !selected.alanaControlUrl
   ) {
-    throw new Error('Alcantara runtime configuration is incomplete');
+    throw new Error('Alcantara private service configuration is incomplete');
   }
   environment.PALAZZO_CONTROL_TOKEN = selected.palazzoControlToken;
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
-  environment.ALANA_CONTROL_URL = selected.alanaControlUrl;
   environment.ALANA_CONTROL_TOKEN = selected.alanaControlToken;
-  validatePalazzoRuntimeConfiguration(environment);
-  validateAlanaRuntimeConfiguration(environment);
+  environment.ALANA_CONTROL_URL = selected.alanaControlUrl;
+  validateRuntimeConfiguration(environment);
 }

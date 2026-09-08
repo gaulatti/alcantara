@@ -1,12 +1,25 @@
 # Operator console preferences
 
-Alcantara owns console UI preferences. Pompeii supplies the authenticated
-subject and authorization decision, but it does not store these preferences.
-Private profiles are keyed by `(subject, deviceClass)`, so two laptops for the
-same operator share the desktop profile while tablet and phone remain isolated.
-Another subject cannot address or overwrite that row through the API.
+Alcantara owns console UI preferences. Pompeii supplies both the authenticated
+pool subject and, when verified, its canonical principal; Pompeii does not store
+these preferences. The legacy primary key remains `(subject, deviceClass)`, but
+reads query both `(principalId, deviceClass)` and the current
+`(subject, deviceClass)` together. Two linked pool identities therefore reach
+one migrated profile, while an unresolved identity can reach only its legacy
+row whose canonical owner is still null. A matching subject cannot access a row
+already owned by another principal. Distinct owned matches fail with
+`CANONICAL_IDENTITY_COLLISION`; a canonical row must never hide a separate legacy
+profile for the current subject.
 
 ## Device classification and override
+
+Director and Graphics reserve the lower workspace for staged-scene properties;
+the full mixer, playlist, instants and playback bar live in Audio. Audio keeps a
+small Program confidence monitor, without the scene grid or video switcher.
+Confidence monitors have bounded height and the scene strip scrolls independently.
+The properties workspace retains at least 420 px of height; smaller windows can
+scroll the console instead of clipping the editor. Switching workspaces does not
+change the staged scene or take anything on air.
 
 Classification is deterministic at browser startup:
 
@@ -32,25 +45,33 @@ authentication. A missing row returns safe class defaults at version zero.
 Changes are sent after a bounded 700 ms debounce with the last acknowledged
 version. The backend update is atomic. A stale version returns HTTP 409 with
 the authoritative value, and the UI offers “Use server” or “Retry mine”; it
-never silently overwrites the other session.
+never silently overwrites the other session. The optimistic update also binds
+the ownership mode selected by the read: a canonical row must still have the
+same principal, while a legacy row must still have the current subject and a
+null principal.
 
-The last acknowledged `(subject, class)` profile is cached locally. If the
-backend is unavailable, Alcantara starts with that cache or safe defaults,
-marks synchronization degraded, and leaves broadcast controls usable. Dirty
-writes and clean reads retry every five seconds. Tokens are not stored in that
-preference cache.
+The last acknowledged profile is cached locally under the canonical principal
+when the backend returns one, with the current subject as the rollout fallback.
+On the first upgraded session, Alcantara prefers an existing principal cache,
+then copies a valid legacy subject cache to the principal key when needed. If the
+backend is unavailable, Alcantara therefore starts with the available cache or
+safe defaults, marks synchronization degraded, and leaves broadcast controls usable.
+Dirty writes and clean reads retry every five seconds. Tokens are not stored in
+that preference cache.
 
-“Reset class” deletes only the current server row and local cache. “Reset all”
-deletes the authenticated subject's three server rows and all three local
-caches. Neither operation affects shared layouts or another operator.
+“Reset class” deletes the caller's canonical row and any still-unmigrated current
+subject row, plus local cache. “Reset all” does the same for all three classes and
+clears both forms of local cache. A subject row already owned by another
+principal is never a reset target. Neither operation affects shared layouts or
+another operator.
 
 ## Shared program and team layouts
 
 Publication is an explicit action in the preferences panel. A layout stores a
-name, optional description, owner subject, `program` or `team` scope and ID,
-source device class, version, timestamps, and the normalized profile. Publishing
-the same name in the same scope creates a new version; retiring also increments
-the version and removes it from discovery.
+name, optional description, owner subject, nullable canonical owner, `program`
+or `team` scope and ID, source device class, version, timestamps, and the
+normalized profile. Publishing the same name in the same scope creates a new
+version; retiring also increments the version and removes it from discovery.
 
 Discovery and load require access to the referenced program or team. Publish,
 replace, and retire additionally require `alcantara:layout:manage`. Those checks

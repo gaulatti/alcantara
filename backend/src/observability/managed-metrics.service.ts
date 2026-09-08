@@ -87,6 +87,38 @@ const PREFERENCE_RESULTS = new Set([
   'conflict',
   'failure',
 ]);
+const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
+const RECORDING_ACTIONS = new Set(['start', 'stop']);
+const RECORDING_STATES = new Set([
+  'disabled',
+  'idle',
+  'requested',
+  'active',
+  'finalizing',
+  'complete',
+  'failed',
+]);
+const RECORDING_RESULTS = new Set([
+  'success',
+  'accepted',
+  'complete',
+  'failed',
+  'disabled',
+  'already-active',
+  'not-active',
+  'pipeline-not-ready',
+  'disk-exhausted',
+  'quota-exhausted',
+  'capture-failed',
+  'restart-exhausted',
+  'manifest-corrupt',
+  'segment-corrupt',
+  'finalize-failed',
+  'final-artifact-invalid',
+  'unavailable',
+  'invalid-response',
+  'failure',
+]);
 
 function bounded(value: string, allowed: Set<string>): string {
   return allowed.has(value) ? value : 'unknown';
@@ -108,6 +140,10 @@ export class ManagedMetricsService {
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
+  private readonly programSseConnections: Gauge<string>;
+  private readonly programSseSnapshots: Counter<string>;
+  private readonly recordingCommands: Counter<string>;
+  private readonly recordingReconciliations: Counter<string>;
 
   constructor() {
     collectDefaultMetrics({ prefix: 'alcantara_', register: this.registry });
@@ -182,6 +218,29 @@ export class ManagedMetricsService {
       labelNames: ['action', 'result'],
       registers: [this.registry],
     });
+    this.programSseConnections = new Gauge({
+      name: 'alcantara_program_sse_connections',
+      help: 'Currently open program SSE subscriber connections.',
+      registers: [this.registry],
+    });
+    this.programSseSnapshots = new Counter({
+      name: 'alcantara_program_sse_snapshots_total',
+      help: 'Initial program SSE snapshots by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.recordingCommands = new Counter({
+      name: 'alcantara_recording_commands_total',
+      help: 'Recording control commands by bounded action and result.',
+      labelNames: ['action', 'result'],
+      registers: [this.registry],
+    });
+    this.recordingReconciliations = new Counter({
+      name: 'alcantara_recording_reconciliations_total',
+      help: 'Alana recording status reconciliations by bounded state and result.',
+      labelNames: ['state', 'result'],
+      registers: [this.registry],
+    });
   }
 
   recordHttp(
@@ -246,6 +305,30 @@ export class ManagedMetricsService {
     this.broadcastDestinationOperations.inc({
       action: bounded(action, actions),
       result: bounded(result, results),
+    });
+  }
+
+  recordProgramSseConnection(delta: 1 | -1): void {
+    this.programSseConnections.inc(delta);
+  }
+
+  recordProgramSseSnapshot(result: string): void {
+    this.programSseSnapshots.inc({
+      result: bounded(result, PROGRAM_SSE_SNAPSHOT_RESULTS),
+    });
+  }
+
+  recordRecordingCommand(action: string, result: string): void {
+    this.recordingCommands.inc({
+      action: bounded(action, RECORDING_ACTIONS),
+      result: bounded(result, RECORDING_RESULTS),
+    });
+  }
+
+  recordRecordingStatus(state: string, result: string): void {
+    this.recordingReconciliations.inc({
+      state: bounded(state, RECORDING_STATES),
+      result: bounded(result, RECORDING_RESULTS),
     });
   }
 

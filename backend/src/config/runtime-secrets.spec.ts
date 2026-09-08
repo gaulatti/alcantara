@@ -17,14 +17,14 @@ function productionEnvironment() {
 }
 
 describe('loadRuntimeSecrets', () => {
-  it('selects only allowlisted Palazzo scalars from the production payload', async () => {
+  it('selects only allowlisted private-service scalars from the production payload', async () => {
     const environment = productionEnvironment();
     const send = jest.fn().mockResolvedValue({
       SecretString: JSON.stringify({
         palazzoControlToken: 'fictional-production-token',
         palazzoAllowedUrls: 'http://palazzo:3100',
+        alanaControlToken: 'fictional-alana-control-token',
         alanaControlUrl: 'http://alana:8080',
-        alanaControlToken: 'fictional-alana-production-token',
         untrustedProperty: 'must-not-enter-environment',
       }),
     });
@@ -32,8 +32,8 @@ describe('loadRuntimeSecrets', () => {
     expect(environment).toMatchObject({
       PALAZZO_CONTROL_TOKEN: 'fictional-production-token',
       PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+      ALANA_CONTROL_TOKEN: 'fictional-alana-control-token',
       ALANA_CONTROL_URL: 'http://alana:8080',
-      ALANA_CONTROL_TOKEN: 'fictional-alana-production-token',
     });
     expect(environment).not.toHaveProperty('untrustedProperty');
   });
@@ -48,15 +48,15 @@ describe('loadRuntimeSecrets', () => {
       loadRuntimeSecrets(productionEnvironment(), {
         send: jest.fn().mockResolvedValue({ SecretString: '{}' }),
       }),
-    ).rejects.toThrow('runtime configuration is incomplete');
+    ).rejects.toThrow('private service configuration is incomplete');
     await expect(
       loadRuntimeSecrets({ NODE_ENV: 'production', AWS_REGION: 'us-east-1' }),
     ).rejects.toThrow(
-      'ALCANTARA_CONFIG_SECRET_ID or both executor token files are required',
+      'ALCANTARA_CONFIG_SECRET_ID or both private control token files are required',
     );
   });
 
-  it('supports explicit executor token files during production migration', async () => {
+  it('supports explicit token files for both private services during production migration', async () => {
     readFileMock
       .mockResolvedValueOnce('existing-palazzo-control-token\n')
       .mockResolvedValueOnce('existing-alana-control-token\n');
@@ -105,7 +105,7 @@ describe('loadRuntimeSecrets', () => {
         ALANA_CONTROL_URL: 'http://user:password@alana:8080',
         ALANA_CONTROL_TOKEN: 'fictional-control-token',
       }),
-    ).toThrow('ALANA_CONTROL_URL is missing or invalid');
+    ).toThrow('ALANA_CONTROL_URL contains an invalid URL');
     expect(() =>
       validateAlanaRuntimeConfiguration({
         ALANA_CONTROL_URL: 'http://alana:8080',
@@ -127,5 +127,11 @@ describe('loadRuntimeSecrets', () => {
         PALAZZO_ALLOWED_URLS: 'http://user:password@palazzo:3100',
       }),
     ).toThrow('PALAZZO_ALLOWED_URLS contains an invalid URL');
+    expect(() =>
+      validateAlanaRuntimeConfiguration({
+        ALANA_CONTROL_TOKEN: 'fictional-alana-control-token',
+        ALANA_CONTROL_URL: 'http://alana:8080/private/path',
+      }),
+    ).toThrow('ALANA_CONTROL_URL contains an invalid URL');
   });
 });

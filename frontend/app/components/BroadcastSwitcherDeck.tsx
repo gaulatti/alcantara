@@ -346,7 +346,7 @@ function ConfidenceMonitor({
       </header>
       <div
         ref={monitorRef}
-        className="relative aspect-video overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
+        className="relative h-[clamp(110px,20vh,210px)] overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
       >
         {scene ? (
           <iframe
@@ -354,12 +354,12 @@ function ConfidenceMonitor({
             src={src}
             tabIndex={-1}
             aria-hidden="true"
-            className="pointer-events-none absolute left-0 top-0 border-0"
+            className="pointer-events-none absolute left-1/2 top-1/2 border-0"
             style={{
               width: 1920,
               height: 1080,
-              transform: `scale(${scale})`,
-              transformOrigin: "top left",
+              transform: `translate(-50%, -50%) scale(${scale})`,
+              transformOrigin: "center",
               visibility: scale > 0 ? "visible" : "hidden",
             }}
           />
@@ -476,7 +476,7 @@ export function BroadcastSwitcherDeck(props: Props) {
 
   return (
     <section
-      className={`border-b border-zinc-700 bg-zinc-950 text-zinc-100 ${touchMode ? "text-base" : "text-sm"}`}
+      className={`shrink-0 border-b border-zinc-700 bg-zinc-950 text-zinc-100 ${touchMode ? "text-base" : "text-sm"}`}
       data-console-workspace={props.workspace}
       data-touch-mode={touchMode}
     >
@@ -532,22 +532,22 @@ export function BroadcastSwitcherDeck(props: Props) {
       </div>
 
       <div
-        className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_var(--dock-width)]"
+        className={props.workspace === "audio" ? "grid max-w-sm gap-3 p-3" : "grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_var(--dock-width)]"}
         style={{ "--dock-width": `${dockWidth}px` } as CSSProperties}
       >
-        <ConfidenceMonitor
+        {props.workspace !== "audio" && <ConfidenceMonitor
           label="PREVIEW"
           tone="preview"
           scene={props.stagedScene}
           src={`/program/${encodeURIComponent(props.programId)}?confidence=preview`}
-        />
+        />}
         <ConfidenceMonitor
           label="PROGRAM"
           tone="program"
           scene={props.activeScene}
           src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
         />
-        <aside className="min-w-0 border border-zinc-700 bg-zinc-900 p-3">
+        {props.workspace !== "audio" && <aside className="min-w-0 border border-zinc-700 bg-zinc-900 p-3">
           <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400">
             <PanelRight size={15} />
             Switcher
@@ -607,10 +607,10 @@ export function BroadcastSwitcherDeck(props: Props) {
               className="mt-1 w-full"
             />
           </label>
-        </aside>
+        </aside>}
       </div>
 
-      <div className="border-t border-zinc-800 px-3 py-3">
+      {props.workspace !== "audio" && <div className="max-h-36 overflow-y-auto border-t border-zinc-800 px-3 py-3" aria-label="Assigned scenes">
         <div
           className={`grid gap-2 ${touchMode ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : "grid-cols-3 sm:grid-cols-5 lg:grid-cols-8"}`}
         >
@@ -636,7 +636,7 @@ export function BroadcastSwitcherDeck(props: Props) {
             );
           })}
         </div>
-      </div>
+      </div>}
     </section>
   );
 }

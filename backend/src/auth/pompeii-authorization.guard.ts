@@ -73,6 +73,9 @@ export class PompeiiAuthorizationGuard {
     request.user = {
       ...(request.user ?? {}),
       sub: decision.subject,
+      // Recorded on new writes and used to read migrated rows. Absent until
+      // Pompeii resolves one, which keeps legacy rows reachable meanwhile.
+      principalId: decision.principalId,
       authorization: {
         permission,
         permissions: decision.effectivePermissions,

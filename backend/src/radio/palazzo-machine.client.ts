@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { setTimeout as delay } from 'node:timers/promises';
 import type {
@@ -50,6 +50,7 @@ interface RequestOptions {
 }
 
 const MAX_ATTEMPTS = 3;
+export const PALAZZO_FETCH = 'PALAZZO_FETCH';
 
 /**
  * Sole transport boundary for Palazzo's authenticated, program-scoped API.
@@ -64,7 +65,7 @@ export class PalazzoMachineClient {
   constructor(
     config: ConfigService,
     private readonly metrics: RadioMetricsService,
-    fetchImpl: typeof fetch = globalThis.fetch,
+    @Optional() @Inject(PALAZZO_FETCH) fetchImpl?: typeof fetch,
   ) {
     const nodeEnvironment = config.get<string>('NODE_ENV') ?? 'development';
     const token =
@@ -86,7 +87,7 @@ export class PalazzoMachineClient {
     }
     this.token = token;
     this.allowedUrls = new Set(allowedUrls);
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
 
   validateBaseUrl(value: string): string {

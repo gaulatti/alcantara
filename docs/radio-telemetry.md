@@ -89,6 +89,11 @@ multiplied by that bus and the main output gain. Bumper settings persist
 `bumperEnabled`, `bumperInterval`, `bumperInstantIds`, and `bumperMode`; invalid
 intervals, IDs, or modes fail visibly instead of being dropped.
 
+The playback bar's Shuffle action persists a newly randomized playlist order,
+anchors the authoritative current track at the front, and continues in autoplay
+through every remaining item once before loop behavior applies. Shuffle does
+not reset the current track's start time or change the loop setting.
+
 ## Machine credential and configuration
 
 The browser calls Alcantara only and never receives or transmits the Palazzo

@@ -19,6 +19,7 @@ import { WebrtcModule } from './webrtc/webrtc.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
 import { BroadcastDestinationsModule } from './broadcast-destinations/broadcast-destinations.module';
+import { RecordingModule } from './recording/recording.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { BroadcastDestinationsModule } from './broadcast-destinations/broadcast-
     WebrtcModule,
     OperatorPreferencesModule,
     BroadcastDestinationsModule,
+    RecordingModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],

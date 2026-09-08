@@ -14,6 +14,7 @@ export class AuthController {
     req: {
       user: {
         sub: string;
+        principalId: string | null;
         authorization?: {
           permission: string;
           permissions: string[];

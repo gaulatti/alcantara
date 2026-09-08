@@ -1,0 +1,24 @@
+{
+  "references": [
+    {
+      "consumer": "alcantara",
+      "reference": "SharedConsoleLayout:layout-1",
+      "subject": "fictional-subject-a",
+      "principal_id": "fictional-principal-a"
+    },
+    {
+      "consumer": "alcantara",
+      "reference": "GuestInvitation:invitation-1",
+      "subject": "fictional-subject-b",
+      "principal_id": "fictional-principal-b"
+    },
+    {
+      "consumer": "alcantara",
+      "reference": "GuestEvent:event-1",
+      "subject": "fictional-subject-b",
+      "principal_id": "fictional-principal-b"
+    }
+  ],
+  "collisions": [],
+  "missing": []
+}

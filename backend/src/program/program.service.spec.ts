@@ -200,4 +200,63 @@ describe('ProgramService switcher state', () => {
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it('hydrates every SSE subscriber before delivering queued live updates', async () => {
+    const { service } = buildService({
+      id: 1,
+      programId: 'modoitaliano',
+      activeSceneId: scene.id,
+      stagedSceneId: null,
+      fadeToBlack: false,
+    });
+    let resolveState: ((state: Record<string, unknown>) => void) | undefined;
+    const statePromise = new Promise<Record<string, unknown>>((resolve) => {
+      resolveState = resolve;
+    });
+    jest
+      .spyOn(service, 'getState')
+      .mockImplementation(() => statePromise as never);
+
+    const first: Array<Record<string, unknown>> = [];
+    const second: Array<Record<string, unknown>> = [];
+    const firstSubscription = service
+      .getEventStream('modoitaliano')
+      .subscribe((event) => first.push(JSON.parse(event.data)));
+    const secondSubscription = service
+      .getEventStream('modoitaliano')
+      .subscribe((event) => second.push(JSON.parse(event.data)));
+
+    service.broadcastUpdate('modoitaliano', {
+      type: 'scene_change',
+      programId: 'modoitaliano',
+      state: { activeSceneId: 8 },
+    });
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
+
+    resolveState?.({
+      programId: 'modoitaliano',
+      activeSceneId: scene.id,
+      version: 0,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    for (const events of [first, second]) {
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({
+        type: 'program_state_snapshot',
+        programId: 'modoitaliano',
+        state: { activeSceneId: scene.id },
+        version: 0,
+      });
+      expect(events[1]).toMatchObject({
+        type: 'scene_change',
+        programId: 'modoitaliano',
+        version: 1,
+      });
+    }
+
+    firstSubscription.unsubscribe();
+    secondSubscription.unsubscribe();
+  });
 });

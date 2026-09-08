@@ -85,7 +85,8 @@ Production loads `alanaControlUrl` and `alanaControlToken` from the allowlisted
 Alcantara Secrets Manager payload. During the documented file-mount migration,
 `ALANA_CONTROL_TOKEN_FILE` and the non-secret `ALANA_CONTROL_URL` may be used
 alongside the Palazzo executor token file. Local Compose supplies explicit
-fictional values and requires no AWS access.
+fictional values and routes the `main` program through the shared private Alana
+recording-and-destination fixture, requiring no AWS access.
 
 The private metrics endpoint exposes:
 

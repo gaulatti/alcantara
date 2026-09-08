@@ -2,15 +2,13 @@ import 'dotenv/config';
 import { assertTestAuthSafety } from '../auth/test-auth.service';
 import {
   loadRuntimeSecrets,
-  validateAlanaRuntimeConfiguration,
-  validatePalazzoRuntimeConfiguration,
+  validateRuntimeConfiguration,
 } from './runtime-secrets';
 
 async function preflight(): Promise<void> {
   assertTestAuthSafety();
   await loadRuntimeSecrets();
-  validatePalazzoRuntimeConfiguration();
-  validateAlanaRuntimeConfiguration();
+  validateRuntimeConfiguration();
   process.stdout.write('Alcantara runtime preflight passed\n');
 }
 
