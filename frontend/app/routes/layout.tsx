@@ -18,7 +18,6 @@ import {
   Clock3,
   Clapperboard,
   Eye,
-  ExternalLink,
   Images,
   LayoutTemplate,
   List,
@@ -35,18 +34,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
-import { resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
+import { resolveProgramOutputUrl } from '../utils/programTemplate';
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
+import { ProgramOutputButton } from '../components';
+import { PROGRAMS_CHANGED_EVENT, type ProgramSummary } from '../utils/programEvents';
 
 const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
-
-interface ProgramSummary {
-  programId: string;
-  type?: 'tv' | 'radio' | 'both';
-  templateManifest?: ProgramTemplateManifest | null;
-}
 
 interface SceneSummary {
   id: number;
@@ -124,25 +119,35 @@ export default function Layout() {
     }
   }, []);
 
-  useEffect(() => {
-    const loadPrograms = async () => {
-      try {
-        const res = await fetch(apiUrl('/program'));
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
-        if (Array.isArray(payload)) {
-          setKnownPrograms(payload);
-        }
-      } catch (err) {
-        console.error('Failed to fetch programs for site header selector:', err);
+  const loadPrograms = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/program'));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
       }
-    };
 
-    void loadPrograms();
+      const payload = await res.json();
+      if (Array.isArray(payload)) {
+        setKnownPrograms(payload);
+      }
+    } catch (err) {
+      console.error('Failed to fetch programs for site header selector:', err);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadPrograms();
+
+    const handleProgramsChanged = (event: Event) => {
+      if (event instanceof CustomEvent && Array.isArray(event.detail)) {
+        setKnownPrograms(event.detail as ProgramSummary[]);
+        return;
+      }
+      void loadPrograms();
+    };
+    window.addEventListener(PROGRAMS_CHANGED_EVENT, handleProgramsChanged);
+    return () => window.removeEventListener(PROGRAMS_CHANGED_EVENT, handleProgramsChanged);
+  }, [loadPrograms]);
 
   useEffect(() => {
     if (knownPrograms.length === 0) {
@@ -368,19 +373,7 @@ export default function Layout() {
     }
   }, [selectedProgramId]);
 
-  const renderOpenProgramButton = () => (
-    <IconButton
-      type='button'
-      title='Open Program Output'
-      aria-label='Open Program Output'
-      onClick={() => {
-        window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
-      }}
-      className='border-sand/20 bg-white text-text-primary hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
-    >
-      <ExternalLink size={16} strokeWidth={1.8} />
-    </IconButton>
-  );
+  const renderOpenProgramButton = () => <ProgramOutputButton outputUrl={openProgramUrl} />;
 
   const renderRefreshProgramButton = () => (
     <IconButton
@@ -495,11 +488,12 @@ export default function Layout() {
       {
         id: 'open-selected-program',
         title: selectedProgramTitle,
-        description: 'Launch selected program output in a new tab',
+        description: openProgramUrl ? 'Launch selected program output in a new tab' : 'Register a verified template to make this output available',
         group: 'Programs',
         icon: <Radio size={16} />,
+        disabled: !openProgramUrl,
         onSelect: () => {
-          if (typeof window === 'undefined') return;
+          if (typeof window === 'undefined' || !openProgramUrl) return;
           window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
         }
       },

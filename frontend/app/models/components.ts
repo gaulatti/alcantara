@@ -183,7 +183,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     defaultProps: {
       text: '',
       useMarquee: false,
-      socialHandles: ['@modoitaliano.oficial', '@fifth.bell', '@hnmages']
+      socialHandles: ['@modoitaliano.oficial', '@hnmages']
     }
   },
   {

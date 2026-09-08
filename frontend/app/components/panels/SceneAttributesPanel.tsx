@@ -103,7 +103,7 @@ export function SceneAttributesPanel({
         <div className='space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40'>
           {activeProgramId === 'fifthbell' && (
             <p className='text-xs text-text-secondary dark:text-text-secondary'>
-              FifthBell runtime settings are stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` / `toni-clock`).
+              The external Fifthbell renderer consumes settings stored per component metadata (`fifthbell-content`, `fifthbell-marquee`, `fifthbell-clock` / `toni-clock`).
             </p>
           )}
 

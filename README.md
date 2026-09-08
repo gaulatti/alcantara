@@ -150,9 +150,10 @@ Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 Alcantara is the program control plane. A program can reference an immutable
 template manifest published by Cronkite; the operator UI opens that external
 renderer with the program ID and Alcantara API origin from the manifest's
-runtime-parameter contract. The legacy `/program/:programId` renderer remains
-only as a temporary rollback path until the Fifthbell registration and live
-cutover have been verified. See
+runtime-parameter contract. Programs without a verified manifest expose no
+output link. The generic `/program/:programId` route remains only for
+transitional non-Fifthbell programs; Alcantara no longer imports or serves the
+Fifthbell presentation. See
 [Program template contracts](docs/program-templates.md) for registration,
 security, state/SSE projection, metrics, and removal gates.
 

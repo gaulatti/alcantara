@@ -39,10 +39,10 @@ export function hasProgramCapability(
 export function resolveProgramOutputUrl(
   program: ProgramWithTemplate,
   apiBaseUrl: string,
-): string {
+): string | null {
   const manifest = program.templateManifest;
   if (!manifest?.entrypointUrl) {
-    return `/program/${encodeURIComponent(program.programId)}`;
+    return null;
   }
 
   const output = new URL(manifest.entrypointUrl);

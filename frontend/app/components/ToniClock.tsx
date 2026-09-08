@@ -2,8 +2,8 @@ import React from 'react';
 import { BellRing } from 'lucide-react';
 import './ToniClock.css';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
-import { WorldClocks } from '../programs/fifthbell/components/WorldClocks';
-import type { SupportedLanguage } from '../programs/fifthbell/i18n';
+import { WorldClocks } from './WorldClocks';
+import type { SupportedLanguage } from './worldClockI18n';
 
 export interface ToniClockCity {
   city: string;
@@ -72,7 +72,7 @@ export const ToniClock: React.FC<ToniClockProps> = ({
       {showBellIcon && (
         <div className='toni-clock-bell'>
           {bellLogoUrl ? (
-            <img src={bellLogoUrl} alt='FifthBell logo' className='toni-clock-bell-logo' style={{ width: `${bellSize}px`, height: `${bellSize}px` }} />
+            <img src={bellLogoUrl} alt='Bell logo' className='toni-clock-bell-logo' style={{ width: `${bellSize}px`, height: `${bellSize}px` }} />
           ) : (
             <BellRing size={bellSize} strokeWidth={2} />
           )}

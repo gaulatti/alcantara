@@ -3,11 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "react-router build",
+    "build": "npm run verify:program-ownership && react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "test": "vitest run",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "verify:program-ownership": "node scripts/verify-program-ownership.mjs"
   },
   "dependencies": {
     "@gaulatti/bleecker": "0.1.41",

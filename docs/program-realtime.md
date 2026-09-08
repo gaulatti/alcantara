@@ -7,11 +7,14 @@ that arrived while the snapshot was loading. This ordering prevents a newly
 loaded renderer from missing a transition between its initial read and live
 subscription.
 
-The `/program/{programId}` renderer and its backend reads are public. The
-frontend authentication interceptor must leave every backend request from that
-document untouched; authorization remains required for Control and all Program
+Registered external renderers and the transitional `/program/{programId}`
+renderer for non-Fifthbell programs use public backend reads. The frontend
+authentication interceptor must leave every backend request from those
+documents untouched; authorization remains required for Control and all Program
 mutations. This keeps unattended broadcast renderers independent of an operator
-login session without weakening protected API boundaries.
+login session without weakening protected API boundaries. Fifthbell rendering
+is owned by Brokaw and published by Cronkite; Alcantara supplies only state and
+signals for that template.
 
 Control consumes the initial `program_state_snapshot` on both WebSocket and
 SSE. The SSE snapshot must hydrate the scene strip and active/staged monitors,

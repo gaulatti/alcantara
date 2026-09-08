@@ -62,6 +62,18 @@ describe("Programs template registration", () => {
               templateManifest: manifest,
               templateVerifiedAt: "2026-09-08T18:00:00.000Z",
             },
+            {
+              id: 2,
+              programId: "unregistered",
+              type: "tv",
+              activeSceneId: null,
+              scenes: [],
+              mediaGroups: [],
+              stingers: [],
+              templateUrl: null,
+              templateManifest: null,
+              templateVerifiedAt: null,
+            },
           ]);
         }
         if (url.includes("/media-groups")) {
@@ -97,5 +109,20 @@ describe("Programs template registration", () => {
     expect(screen.getByText("Program Scenes")).toBeInTheDocument();
     expect(screen.queryByText("Program Media Groups")).not.toBeInTheDocument();
     expect(screen.queryByText("Program Stingers")).not.toBeInTheDocument();
+  });
+
+  it("shows an unavailable output instead of a local renderer fallback", async () => {
+    render(
+      <MemoryRouter>
+        <ProgramsAdmin />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("No external template registered · output unavailable"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /open renderer/i })).toHaveLength(
+      1,
+    );
   });
 });

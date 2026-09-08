@@ -6,6 +6,7 @@ import type { Route } from './+types/programs';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { hasProgramCapability, resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
+import { notifyProgramsChanged } from '../utils/programEvents';
 
 interface SceneSummary {
   id: number;
@@ -481,13 +482,15 @@ export default function ProgramsAdmin() {
         }
       }
 
+      const nextPrograms = await fetchPrograms();
+      notifyProgramsChanged(nextPrograms);
+
       if (isEditing && editingProgramId === selectedProgramId) {
         setSelectedProgramId(nextProgramId);
       } else if (!isEditing) {
         setSelectedProgramId(nextProgramId);
       }
 
-      await fetchPrograms();
       closeModal();
       showAlert(isEditing ? 'Program updated.' : 'Program created.', 'success');
     } catch (err) {
@@ -517,6 +520,7 @@ export default function ProgramsAdmin() {
       }
 
       const nextPrograms = await fetchPrograms();
+      notifyProgramsChanged(nextPrograms);
       if (selectedProgramId === programId) {
         const fallbackProgramId = nextPrograms[0]?.programId || 'main';
         setSelectedProgramId(fallbackProgramId);
@@ -560,6 +564,7 @@ export default function ProgramsAdmin() {
             <div className='space-y-3'>
               {sortedPrograms.map((program) => {
                 const isSelected = selectedProgramId === program.programId;
+                const rendererUrl = resolveProgramOutputUrl(program, getApiBaseUrl());
 
                 return (
                   <article
@@ -587,18 +592,18 @@ export default function ProgramsAdmin() {
                           Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
                           {program.activeSceneId ?? 'none'}
                         </p>
-                        {program.templateManifest ? (
+                        {program.templateManifest && rendererUrl ? (
                           <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
                             <Link2 size={13} />
                             <span>
                               {program.templateManifest.name} · {program.templateManifest.bundleVersion}
                             </span>
-                            <a href={resolveProgramOutputUrl(program, getApiBaseUrl())} target='_blank' rel='noopener noreferrer' className='inline-flex items-center gap-1 font-medium text-sea underline-offset-2 hover:underline'>
+                            <a href={rendererUrl} target='_blank' rel='noopener noreferrer' className='inline-flex items-center gap-1 font-medium text-sea underline-offset-2 hover:underline'>
                               Open renderer <ExternalLink size={12} />
                             </a>
                           </div>
                         ) : (
-                          <p className='mt-3 text-xs text-terracotta'>Transitional Alcantara renderer · no external template registered</p>
+                          <p className='mt-3 text-xs text-terracotta'>No external template registered · output unavailable</p>
                         )}
 
                       </div>
