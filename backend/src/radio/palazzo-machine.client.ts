@@ -31,6 +31,16 @@ export interface PalazzoSongCommand {
   title?: string;
   artist?: string;
   coverUrl?: string;
+  intro?: PalazzoIntroCommand;
+}
+
+export interface PalazzoIntroCommand {
+  playbackId: string;
+  url: string;
+  gain?: number;
+  duckGain?: number;
+  fadeInSeconds?: number;
+  fadeOutSeconds?: number;
 }
 
 export interface PalazzoInstantCommand {
@@ -107,7 +117,11 @@ export class PalazzoMachineClient {
     palazzoUrl: string,
     programId: string,
     command: PalazzoSongCommand,
-  ): Promise<{ playbackRequestId: string; duplicate: boolean }> {
+  ): Promise<{
+    playbackRequestId: string;
+    duplicate: boolean;
+    introPlaybackId?: string | null;
+  }> {
     const response = await this.request(
       palazzoUrl,
       programId,
@@ -126,6 +140,17 @@ export class PalazzoMachineClient {
             artist: command.artist,
             coverUrl: command.coverUrl,
           },
+          ...(command.intro && {
+            intro: {
+              programId,
+              playbackId: command.intro.playbackId,
+              url: command.intro.url,
+              gain: command.intro.gain,
+              duckGain: command.intro.duckGain,
+              fadeInSeconds: command.intro.fadeInSeconds,
+              fadeOutSeconds: command.intro.fadeOutSeconds,
+            },
+          }),
         },
       },
     );
@@ -133,7 +158,13 @@ export class PalazzoMachineClient {
     if (
       body.ok !== true ||
       body.playbackRequestId !== command.playbackId ||
-      (body.duplicate !== undefined && typeof body.duplicate !== 'boolean')
+      (body.duplicate !== undefined && typeof body.duplicate !== 'boolean') ||
+      (body.introPlaybackId !== undefined &&
+        body.introPlaybackId !== null &&
+        typeof body.introPlaybackId !== 'string') ||
+      (command.intro &&
+        body.introPlaybackId !== null &&
+        body.introPlaybackId !== command.intro.playbackId)
     ) {
       return this.failMalformed('song-play');
     }
@@ -142,7 +173,16 @@ export class PalazzoMachineClient {
       'song-play',
       duplicate ? 'deduplicated' : 'success',
     );
-    return { playbackRequestId: command.playbackId, duplicate };
+    return {
+      playbackRequestId: command.playbackId,
+      duplicate,
+      ...(command.intro && {
+        introPlaybackId:
+          typeof body.introPlaybackId === 'string'
+            ? body.introPlaybackId
+            : null,
+      }),
+    };
   }
 
   async stopSong(palazzoUrl: string, programId: string): Promise<void> {

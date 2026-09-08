@@ -25,6 +25,8 @@ function idleSnapshot(
       lastSampleAt: new Date().toISOString(),
     },
     track: null,
+    intro: null,
+    icecast: { connected: true },
     positionSeconds: 0,
     remainingSeconds: null,
     levels: {
@@ -72,6 +74,7 @@ const SEQUENCE = {
       coverUrl: 'https://example.test/song-1.jpg',
       audioUrl: 'https://example.test/song-1.mp3',
       durationMs: 1000,
+      songId: 101,
     },
   ],
 };
@@ -97,6 +100,10 @@ function createEngine(opts: {
   radio?: boolean;
   tv?: boolean;
 }) {
+  const prisma = {
+    songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
+    instant: { findUnique: jest.fn().mockResolvedValue(null) },
+  };
   const nowPlayingPublisher = {
     publishPlayback: jest.fn().mockResolvedValue(undefined),
     publishStopped: jest.fn().mockResolvedValue(undefined),
@@ -111,6 +118,7 @@ function createEngine(opts: {
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordIntroTransition: jest.fn(),
     recordEventIgnored: jest.fn(),
     recordDegradedPrograms: jest.fn(),
     recordStaleTelemetryPrograms: jest.fn(),
@@ -122,7 +130,7 @@ function createEngine(opts: {
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
     flightService as unknown as FlightService,
-    {} as PrismaService,
+    prisma as unknown as PrismaService,
     nowPlayingPublisher as unknown as NowPlayingPublisherService,
     metrics as unknown as RadioMetricsService,
   );
@@ -130,7 +138,14 @@ function createEngine(opts: {
     isReconciled: () => opts.reconciled,
   });
   if (opts.radio) engine.registerRadioProgram('radio-1');
-  return { engine, radioService, flightService, nowPlayingPublisher, metrics };
+  return {
+    engine,
+    radioService,
+    flightService,
+    nowPlayingPublisher,
+    metrics,
+    prisma,
+  };
 }
 
 async function flush(times = 6): Promise<void> {
@@ -146,6 +161,149 @@ describe('SongExecutionEngine authoritative playback', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('submits an assigned intro atomically and reconciles its lifecycle without ending the song', async () => {
+    const { engine, radioService, flightService, prisma, metrics } =
+      createEngine({ reconciled: true, radio: true });
+    prisma.songIntro.findUnique.mockResolvedValue({
+      programId: 'radio-1',
+      instant: {
+        audioUrl: 'https://example.test/intro-1.mp3',
+        volume: 0.8,
+        enabled: true,
+      },
+    });
+    radioService.playSong.mockImplementation(
+      async (_programId, _url, _title, _artist, requestId, _cover, intro) => ({
+        ok: true,
+        playbackRequestId: requestId,
+        introPlaybackId: intro?.playbackId,
+      }),
+    );
+
+    engine.handleSequenceUpdated('radio-1', SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    expect(prisma.songIntro.findUnique).toHaveBeenCalledWith({
+      where: { songId: 101 },
+      include: {
+        instant: { select: { audioUrl: true, volume: true, enabled: true } },
+      },
+    });
+    const requestId = radioService.playSong.mock.calls[0][4];
+    expect(radioService.playSong.mock.calls[0][6]).toEqual({
+      playbackId: `${requestId}:intro`,
+      url: 'https://example.test/intro-1.mp3',
+      gain: 0.8,
+    });
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'intro.started',
+      data: {
+        programId: 'radio-1',
+        playbackId: `${requestId}:intro`,
+        parentPlaybackId: requestId,
+      },
+    });
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      introStatus: 'playing',
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'intro.ended',
+      data: {
+        programId: 'radio-1',
+        playbackId: `${requestId}:intro`,
+        parentPlaybackId: requestId,
+      },
+    });
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      isPlaying: true,
+      introStatus: 'completed',
+    });
+    expect(flightService.handleSongEnded).not.toHaveBeenCalled();
+    expect(metrics.recordIntroTransition).toHaveBeenCalledWith('submitted');
+    expect(metrics.recordIntroTransition).toHaveBeenCalledWith('accepted');
+    expect(metrics.recordIntroTransition).toHaveBeenCalledWith('started');
+    expect(metrics.recordIntroTransition).toHaveBeenCalledWith('ended');
+  });
+
+  it('preserves catalog identity when shuffle resolves a song intro', async () => {
+    const { engine, prisma } = createEngine({ reconciled: true, radio: true });
+    prisma.songIntro.findUnique.mockResolvedValue({
+      programId: 'radio-1',
+      instant: {
+        audioUrl: 'https://example.test/intro-1.mp3',
+        volume: 1,
+        enabled: true,
+      },
+    });
+
+    engine.handleSequenceUpdated('radio-1', {
+      ...SEQUENCE,
+      mode: 'shuffle',
+    });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    expect(prisma.songIntro.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { songId: 101 } }),
+    );
+  });
+
+  it('keeps the song active and exposes a bounded degraded state when an intro fails', async () => {
+    const { engine, radioService, flightService, prisma } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    prisma.songIntro.findUnique.mockResolvedValue({
+      programId: 'radio-1',
+      instant: {
+        audioUrl: 'https://example.test/intro-1.mp3',
+        volume: 1,
+        enabled: true,
+      },
+    });
+    radioService.playSong.mockImplementation(
+      async (_programId, _url, _title, _artist, requestId, _cover, intro) => ({
+        ok: true,
+        playbackRequestId: requestId,
+        introPlaybackId: intro?.playbackId,
+      }),
+    );
+    engine.handleSequenceUpdated('radio-1', SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const requestId = radioService.playSong.mock.calls[0][4];
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'intro.failed',
+      data: {
+        programId: 'radio-1',
+        playbackId: `${requestId}:intro`,
+        parentPlaybackId: requestId,
+        reason: 'x'.repeat(500),
+      },
+    });
+
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      isPlaying: true,
+      introStatus: 'degraded',
+    });
+    expect(engine.getPlaybackState('radio-1')?.introFailureReason).toHaveLength(
+      200,
+    );
+    expect(flightService.handleSongEnded).not.toHaveBeenCalled();
   });
 
   it('does not command playback before a Palazzo snapshot is reconciled', async () => {

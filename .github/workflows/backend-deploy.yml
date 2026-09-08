@@ -5,13 +5,42 @@ on:
     branches:
       - main
     paths:
-      - 'backend/**'
-      - 'deploy/**'
-      - 'infra/**'
-      - '.github/workflows/backend-deploy.yml'
+      - "backend/**"
+      - "deploy/**"
+      - "infra/**"
+      - ".github/workflows/backend-deploy.yml"
+
+env:
+  ALCANTARA_CONFIG_SECRET_ID: broadcast/production/config
 
 jobs:
+  production-config-preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout production contract
+        uses: actions/checkout@v4
+
+      - name: Configure read-only production preflight credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::792025092931:role/alcantara-github-deploy
+
+      - name: Validate production runtime secret without revealing values
+        run: |
+          set -euo pipefail
+          aws secretsmanager get-secret-value \
+            --secret-id "$ALCANTARA_CONFIG_SECRET_ID" \
+            --query SecretString \
+            --output text \
+            | node backend/src/config/runtime-secret-contract.js
+
   build:
+    needs: production-config-preflight
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -127,7 +156,7 @@ jobs:
             docker run --rm \
             -e NODE_ENV=production \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
-            -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
+            -e ALCANTARA_CONFIG_SECRET_ID="${{ env.ALCANTARA_CONFIG_SECRET_ID }}" \
             -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
             -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             --volumes-from "$PALAZZO_CONTAINER_ID:ro" \
@@ -186,7 +215,7 @@ jobs:
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             -e ALLOWED_ORIGINS="${{ vars.FQDN }}" \
             -e AWS_REGION="${{ vars.AWS_REGION }}" \
-            -e ALCANTARA_CONFIG_SECRET_ID="${{ vars.ALCANTARA_CONFIG_SECRET_ID }}" \
+            -e ALCANTARA_CONFIG_SECRET_ID="${{ env.ALCANTARA_CONFIG_SECRET_ID }}" \
             -e PALAZZO_CONTROL_TOKEN_FILE=/run/secrets/palazzo-control-token \
             -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             -e POMPEII_TEAM_ID=1 \
@@ -250,7 +279,7 @@ jobs:
           fi
           CUMULUS_INSTANCE_ID="$(jq -r '.[0]' <<<"$INSTANCE_IDS")"
 
-          BROADCAST_SECRET_ID='broadcast/production/config'
+          BROADCAST_SECRET_ID="$ALCANTARA_CONFIG_SECRET_ID"
           DATABASE_SECRET_ID='${{ vars.ARAUCO_SECRET_ARN }}'
           MEDIA_BUCKET='${{ vars.MEDIA_S3_BUCKET }}'
           for value in "$DATABASE_SECRET_ID" "$MEDIA_BUCKET"; do

@@ -3,8 +3,9 @@
 This CDK app owns Alcántara-specific AWS integration. Macondo owns only the
 shared Cumulus host, network, and Arauco database. This stack owns:
 
-- `alcantara-github-deploy`, restricted to `gaulatti/alcantara` `main` and SSM
-  commands to the EC2 instance tagged `Name=macondo-services`;
+- `alcantara-github-deploy`, restricted to `gaulatti/alcantara` `main`, read-only
+  access to `broadcast/production/config` for the pre-build secret contract
+  gate, and SSM commands to the EC2 instance tagged `Name=macondo-services`;
 - the host grants for Alcántara media storage; and
 - `api.alcantara.gaulatti.com` pointing to the Cumulus Elastic IP.
 
@@ -27,6 +28,9 @@ identifier and resolve credentials through that instance profile. The existing
 Route 53 record must be adopted into this stack during the first deployment
 rather than duplicated. After deployment, set the GitHub repository variables
 `ARAUCO_SECRET_ARN` and `MEDIA_S3_BUCKET` to the corresponding identifiers.
+The Alcantara runtime secret identifier is code-owned; its value is not a
+GitHub secret or variable. Deploy this stack's least-privilege role update
+before enabling the pre-build deployment gate.
 
 Application logging is intentionally absent from this stack. Production
 containers retain bounded host-local logs, so the Cumulus role needs no

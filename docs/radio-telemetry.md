@@ -38,6 +38,11 @@ routes.
 - `track.ended` with a matching request ID advances the sequence exactly
   once. Duplicate, stale, cross-program, or mismatched-request events are
   no-ops.
+- Assigned catalog intros use a deterministic child playback ID and the song
+  request ID as `parentPlaybackId`. Matching `intro.started`, `intro.ended`,
+  and `intro.failed` events update operator state only; they never advance,
+  stop, or replace the parent song. Cross-program and mismatched-parent intro
+  events are ignored.
 - Autoplay advances the in-memory playlist cursor to the next item after that
   authoritative end. Looped playlists wrap; explicitly non-looped playlists
   publish stopped at their end. A missing song-sequence mode means autoplay,
@@ -153,6 +158,8 @@ The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,
 snapshot reconciliation results, ignored-event reasons, stale-telemetry and
 degraded program gauges, track transition results,
+`alcantara_radio_intro_transitions_total{result}` for submitted, accepted,
+started, ended, failed, and mismatched intro lifecycle events,
 `alcantara_palazzo_machine_requests_total{operation,result}`, and
 `alcantara_palazzo_machine_retries_total{operation}`. The operation/result
 sets are closed enums covering success, deduplication, authentication,

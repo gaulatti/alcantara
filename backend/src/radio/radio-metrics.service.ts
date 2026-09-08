@@ -36,10 +36,16 @@ export type TrackTransitionResult =
   | 'adopted'
   | 'published-stopped';
 
-export type SnapshotReconciliationResult =
+export type IntroTransitionResult =
+  | 'submitted'
   | 'accepted'
-  | 'instance-mismatch'
-  | 'instance-conflict';
+  | 'started'
+  | 'ended'
+  | 'failed'
+  | 'ignored-mismatch';
+
+export type SnapshotReconciliationResult =
+  'accepted' | 'instance-mismatch' | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -49,6 +55,7 @@ export interface RadioMetricsSnapshot {
   eventsIgnored: Record<string, number>;
   degradedPrograms: number;
   trackTransitions: Record<string, number>;
+  introTransitions: Record<string, number>;
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
   machineRetries: Record<string, number>;
@@ -109,6 +116,15 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'published-stopped',
 ];
 
+const INTRO_TRANSITION_RESULTS: IntroTransitionResult[] = [
+  'submitted',
+  'accepted',
+  'started',
+  'ended',
+  'failed',
+  'ignored-mismatch',
+];
+
 /**
  * Bounded-cardinality Prometheus registry for the Alcantara radio engine.
  *
@@ -126,6 +142,7 @@ export class RadioMetricsService {
   private degradedPrograms = 0;
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
+  private readonly introTransitions = new Map<string, number>();
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
 
@@ -177,6 +194,14 @@ export class RadioMetricsService {
     );
   }
 
+  recordIntroTransition(result: IntroTransitionResult): void {
+    if (!INTRO_TRANSITION_RESULTS.includes(result)) return;
+    this.introTransitions.set(
+      result,
+      (this.introTransitions.get(result) ?? 0) + 1,
+    );
+  }
+
   recordMachineRequest(
     operation: PalazzoMachineOperation,
     result: PalazzoMachineResult,
@@ -207,6 +232,7 @@ export class RadioMetricsService {
       eventsIgnored: Object.fromEntries(this.eventsIgnored),
       degradedPrograms: this.degradedPrograms,
       trackTransitions: Object.fromEntries(this.trackTransitions),
+      introTransitions: Object.fromEntries(this.introTransitions),
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
       machineRetries: Object.fromEntries(this.machineRetries),
@@ -260,6 +286,15 @@ export class RadioMetricsService {
     for (const result of TRANSITION_RESULTS) {
       lines.push(
         `alcantara_radio_track_transitions_total{result="${result}"} ${this.trackTransitions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_intro_transitions_total Atomic song-intro lifecycle transitions by bounded result.',
+      '# TYPE alcantara_radio_intro_transitions_total counter',
+    );
+    for (const result of INTRO_TRANSITION_RESULTS) {
+      lines.push(
+        `alcantara_radio_intro_transitions_total{result="${result}"} ${this.introTransitions.get(result) ?? 0}`,
       );
     }
     lines.push(

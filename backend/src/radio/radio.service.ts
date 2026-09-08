@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma.service';
 import {
   PalazzoMachineClient,
   PalazzoMachineError,
+  type PalazzoIntroCommand,
 } from './palazzo-machine.client';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 
@@ -142,7 +143,12 @@ export class RadioService {
     artist?: string,
     playbackRequestId?: string,
     coverUrl?: string,
-  ): Promise<{ ok: boolean; playbackRequestId?: string }> {
+    intro?: PalazzoIntroCommand,
+  ): Promise<{
+    ok: boolean;
+    playbackRequestId?: string;
+    introPlaybackId?: string | null;
+  }> {
     const settings = await this.getRadioSettings(programId);
     if (!settings) return { ok: false };
     const requestId = playbackRequestId?.trim() || randomUUID();
@@ -156,11 +162,13 @@ export class RadioService {
           title,
           artist,
           coverUrl,
+          intro,
         },
       );
       return {
         ok: true,
         playbackRequestId: result.playbackRequestId,
+        introPlaybackId: result.introPlaybackId,
       };
     } catch (error) {
       this.logMachineFailure('playSong', programId, error);

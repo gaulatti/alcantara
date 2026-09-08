@@ -9,6 +9,11 @@
         "include": "proto/*.proto",
         "outDir": "dist/src",
         "watchAssets": true
+      },
+      {
+        "include": "config/runtime-secret-contract.js",
+        "outDir": "dist/src",
+        "watchAssets": true
       }
     ]
   }

@@ -54,23 +54,54 @@ after a reload or reconnect.
 
 ## Private service configuration
 
-`ALANA_CONTROL_URL` must be a private HTTP(S) origin without credentials, path,
-query, or fragment. `ALANA_CONTROL_TOKEN` is backend-only. Production loads the
-allowlisted `alanaControlUrl` and `alanaControlToken` scalars from the same
-application-scoped Secrets Manager payload as the Palazzo values before Nest
-constructs the adapter. Missing, malformed, or unavailable configuration fails
-the preflight without replacing the running backend.
+Production uses the code-owned Secrets Manager identifier
+`broadcast/production/config`. The payload must contain all four exact private
+service keys below. The loader ignores every other key rather than injecting it
+into the process environment.
+
+| Secret key            | Contract                                                                          | Owner                                                                         |
+| --------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `palazzoControlToken` | Existing opaque Palazzo bearer credential                                         | Palazzo operator                                                              |
+| `palazzoAllowedUrls`  | Existing comma-separated origin allowlist                                         | Alcantara operator                                                            |
+| `alanaControlToken`   | Exactly 64 lowercase hexadecimal characters (32 random bytes), with no whitespace | Alana operator generates; Alcantara secret owner installs the identical value |
+| `alanaControlUrl`     | One private HTTP(S) origin                                                        | Alana operator supplies; Alcantara secret owner installs                      |
+
+`alanaControlUrl` cannot contain credentials, a path, query, or fragment. Its
+host must be a single-label service name, `localhost`, a `.localhost`, `.local`,
+or `.internal` name, or a loopback/link-local/private IPv4 or IPv6 address.
+Public IP addresses and public DNS names fail closed. The intended shared
+Docker-network value is `http://alana:8080`; the production deployment ticket
+must still prove private routing rather than treating syntax validation as a
+network check.
+
+The backend receives the token only as `ALANA_CONTROL_TOKEN`, after the startup
+loader has selected and validated the secret. It is never a frontend variable,
+Docker build argument, command-line value, metric label, or log field. Contract
+and runtime preflight output names only the invalid field or a bounded failure;
+it never echoes the secret document, URL, token, provider response, or
+credential-bearing exception.
+
+The deploy workflow streams the selected secret directly from Secrets Manager
+into the zero-dependency contract validator before registry login, image build,
+or push. The workflow role can read only this named secret. The validator does
+not write a file or contact Alana. The target-host runtime preflight remains in
+place before database migration or backend replacement so retrieval and image
+startup fail closed at both boundaries.
 
 During a bounded migration, production can instead supply both
 `PALAZZO_CONTROL_TOKEN_FILE` and `ALANA_CONTROL_TOKEN_FILE`, plus their approved
-service URLs. No token or Alana address is exposed to the frontend.
+service URLs. The Alana file must contain the same 64-character token, with an
+optional final newline. No token or Alana address is exposed to the frontend.
 
 Local Compose starts a committed, private `alana-recording-fixture` service for
 the fictional `modoitaliano` recording program and `main` broadcast program.
-It implements the landed recording and destination-control contracts so both
-complete browser-to-backend paths are testable without AWS, production media,
-an Alana checkout, or a real recorder or executor. It never produces media or
-publishes a stream and is not a deployment substitute.
+It implements the landed recording status, Start/Stop, finalization,
+authorization, idempotency, and destination-control contracts so both complete
+browser-to-backend paths are testable without AWS, production media, an Alana
+checkout, or a real recorder or executor. Its injected clock and scheduler make
+requested, active, finalizing, complete, duplicate, conflict, unauthorized,
+and not-active recording results deterministic in tests. It never produces
+media or publishes a stream and is not a deployment substitute.
 
 ## Audit and metrics
 
@@ -94,9 +125,56 @@ metrics.
 
 ## Rollout and recovery
 
-Before deployment, add the two Alana fields to the Alcantara production secret
-and verify that the selected Alana runtime is on the shared private network and
-has recording enabled. Exercise a bounded Start, observe `requested -> active`,
+Issue #61 does not create or rotate a credential. For an authorized installation
+or rotation, use only protected files and placeholder variables; never place a
+token in shell history, command arguments, GitHub evidence, or a repository:
+
+```bash
+SECRET_ID='<alcantara-runtime-secret-id>'
+NEW_SECRET_DOCUMENT='<protected-path-to-complete-new-secret-json>'
+NEW_ALANA_TOKEN_FILE='<protected-path-to-new-alana-token>'
+ALANA_TOKEN_DESTINATION='<alana-host-token-path>'
+
+node backend/src/config/runtime-secret-contract.js < "$NEW_SECRET_DOCUMENT"
+aws secretsmanager put-secret-value \
+  --secret-id "$SECRET_ID" \
+  --secret-string "file://$NEW_SECRET_DOCUMENT"
+install -m 0600 "$NEW_ALANA_TOKEN_FILE" "$ALANA_TOKEN_DESTINATION"
+```
+
+Alana accepts one token at a time, so first installation or rotation needs an
+explicit bounded maintenance window for recording control. The Alana operator
+owns token generation, the protected token file, and the Alana restart. The
+Alcantara secret owner owns the matching `alanaControlToken` and
+`alanaControlUrl` values. Record only the new and previous secret version IDs,
+the image SHA, and timestamps. Restart Alana and then deploy/restart Alcantara;
+do not enable recording until authenticated Status succeeds.
+
+Keep the previous protected token file and secret version until the lifecycle
+smoke passes. Placeholder-only rollback is:
+
+```bash
+SECRET_ID='<alcantara-runtime-secret-id>'
+PREVIOUS_SECRET_VERSION_ID='<previous-version-id>'
+FAILED_SECRET_VERSION_ID='<failed-version-id>'
+PREVIOUS_ALANA_TOKEN_FILE='<protected-path-to-previous-alana-token>'
+ALANA_TOKEN_DESTINATION='<alana-host-token-path>'
+
+aws secretsmanager update-secret-version-stage \
+  --secret-id "$SECRET_ID" \
+  --version-stage AWSCURRENT \
+  --move-to-version-id "$PREVIOUS_SECRET_VERSION_ID" \
+  --remove-from-version-id "$FAILED_SECRET_VERSION_ID"
+install -m 0600 "$PREVIOUS_ALANA_TOKEN_FILE" "$ALANA_TOKEN_DESTINATION"
+```
+
+Restart Alana and restore the previously recorded Alcantara image, then confirm
+authenticated Status before reopening Start/Stop. Delete neither protected
+token file nor secret version until rollback verification is complete.
+
+Before deployment, install the two Alana fields in the production secret and
+verify that the selected Alana runtime is on the shared private network and has
+recording enabled. Exercise a bounded Start, observe `requested -> active`,
 confirm Stop, observe `finalizing -> complete`, and verify the artifact directly
 through Alana's documented operator boundary.
 
