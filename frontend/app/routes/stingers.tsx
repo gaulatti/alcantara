@@ -14,10 +14,10 @@ import {
 } from '@gaulatti/bleecker';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import type { Route } from './+types/stingers';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { uploadFileToMediaBucket } from '../services/uploads';
+import { AppPage } from '../components/AppPage';
 
 interface StingerItem {
   id: number;
@@ -51,11 +51,10 @@ async function extractErrorMessage(res: Response): Promise<string> {
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Stingers - TV Broadcast' }, { name: 'description', content: 'Manage .webm stinger transition videos' }];
+  return [{ title: 'Transitions - Alcantara' }, { name: 'description', content: 'Manage transition videos and cut points' }];
 }
 
 export default function StingersAdmin() {
-  const navigate = useNavigate();
   const [stingers, setStingers] = useState<StingerItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -181,7 +180,7 @@ export default function StingersAdmin() {
 
       await fetchStingers();
       closeModal();
-      showAlert(isEditing ? 'Stinger updated.' : 'Stinger created.', 'success');
+      showAlert(isEditing ? 'Transition updated.' : 'Transition created.', 'success');
     } catch (err) {
       console.error('Failed to save stinger:', err);
       const message = err instanceof Error ? err.message : 'Failed to save stinger.';
@@ -207,26 +206,23 @@ export default function StingersAdmin() {
       }
 
       await fetchStingers();
-      showAlert('Stinger deleted.', 'success');
+      showAlert('Transition deleted.', 'success');
     } catch (err) {
       console.error('Failed to delete stinger:', err);
-      showAlert('Failed to delete stinger.', 'error');
+      showAlert('Failed to delete transition.', 'error');
     }
   };
 
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <AppPage width='wide'>
       <AlertContainer />
       <div className='mx-auto max-w-6xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader title='Stingers' description='Upload and manage .webm stinger transition videos with alpha channel support.' />
+          <SectionHeader title='Transitions' description='Manage transition videos and their exact scene cut points.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/')}>
-              Back to Control
-            </Button>
             <Button onClick={openCreateModal}>
               <Plus size={16} />
-              Create Stinger
+              Create transition
             </Button>
           </div>
         </div>
@@ -235,13 +231,13 @@ export default function StingersAdmin() {
           {isLoading ? (
             <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
               <LoadingSpinner />
-              <p>Loading stingers...</p>
+              <p>Loading transitions...</p>
             </div>
           ) : sortedStingers.length === 0 ? (
             <Empty
-              title='No stingers yet'
-              description='Upload your first .webm stinger transition video.'
-              action={<Button onClick={openCreateModal}>Create Stinger</Button>}
+              title='No transitions yet'
+              description='Upload your first .webm transition video.'
+              action={<Button onClick={openCreateModal}>Create transition</Button>}
             />
           ) : (
             <div className='space-y-3'>
@@ -288,7 +284,7 @@ export default function StingersAdmin() {
           )}
         </Card>
 
-        <Modal isOpen={showModal} onClose={closeModal} title={editingStinger ? 'Edit Stinger' : 'Create Stinger'}>
+        <Modal isOpen={showModal} onClose={closeModal} title={editingStinger ? 'Edit transition' : 'Create transition'}>
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Name</label>
@@ -354,12 +350,12 @@ export default function StingersAdmin() {
                 Cancel
               </Button>
               <Button onClick={saveStinger} disabled={isSaving || isUploadingVideo}>
-                {isUploadingVideo ? 'Uploading...' : isSaving ? 'Saving...' : editingStinger ? 'Update Stinger' : 'Create Stinger'}
+                {isUploadingVideo ? 'Uploading...' : isSaving ? 'Saving...' : editingStinger ? 'Update transition' : 'Create transition'}
               </Button>
             </div>
           </div>
         </Modal>
       </div>
-    </div>
+    </AppPage>
   );
 }

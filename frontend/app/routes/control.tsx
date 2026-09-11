@@ -1,4 +1,10 @@
-import { Button, Input, Panel, PanelLayout } from "@gaulatti/bleecker";
+import {
+  Button,
+  Input,
+  LoadingSpinner,
+  Panel,
+  PanelLayout,
+} from "@gaulatti/bleecker";
 import {
   useCallback,
   useEffect,
@@ -38,6 +44,7 @@ import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
 import { useConsolePreferences } from "../contexts/ConsolePreferencesContext";
 import { RadioPanel } from "../components/RadioPanel";
 import { RecordingPanel } from "../components/RecordingPanel";
+import { SimulcastStatusRail } from "../components/SimulcastStatusRail";
 import {
   InstantsPanel,
   PlaylistPanel,
@@ -372,6 +379,8 @@ export function meta({}: Route.MetaArgs) {
 export default function Control() {
   const consolePreferences = useConsolePreferences();
   const [activeProgramId] = useGlobalProgramId();
+  const activeProgramIdRef = useRef(activeProgramId);
+  activeProgramIdRef.current = activeProgramId;
   const [programState, setProgramState] = useState<ProgramState | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [instants, setInstants] = useState<InstantItem[]>([]);
@@ -659,6 +668,8 @@ export default function Control() {
   }, []);
 
   useEffect(() => {
+    setProgramState(null);
+    setSelectedScene(null);
     latestControlVersionByTopicRef.current = {
       state: -1,
       audioBus: -1,
@@ -697,6 +708,11 @@ export default function Control() {
       updatedAt: new Date(0).toISOString(),
     });
     void fetchMediaGroups(activeProgramId);
+    void fetchProgramState(activeProgramId);
+    void fetchProgramAudioBusSettings(activeProgramId);
+    void fetchProgramAudioMeter(activeProgramId);
+    void fetchProgramSongPlayback(activeProgramId);
+    void fetchSceneInstantPlayback(activeProgramId);
   }, [activeProgramId]);
 
   useEffect(() => {
@@ -838,6 +854,10 @@ export default function Control() {
       });
 
       socket.addEventListener("message", (event) => {
+        if (disposed || activeProgramIdRef.current !== activeProgramId) {
+          return;
+        }
+
         let payload: any;
         try {
           payload = JSON.parse(event.data);
@@ -1191,8 +1211,14 @@ export default function Control() {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = (await res.json()) as MediaGroup[];
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       setMediaGroups(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch media groups:", err);
       setMediaGroups([]);
     } finally {
@@ -1568,11 +1594,17 @@ export default function Control() {
       }
 
       const payload = await res.json();
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       if (!shouldApplyControlUpdatePayload(payload, "audioMeter")) {
         return;
       }
       setProgramAudioMeterLevels(normalizeProgramAudioMeter(payload));
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch program audio meter levels:", err);
       setProgramAudioMeterLevels({
         song: createEmptyMeterChannel(),
@@ -1594,11 +1626,17 @@ export default function Control() {
       }
 
       const payload = await res.json();
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       if (!shouldApplyControlUpdatePayload(payload, "songPlayback")) {
         return;
       }
       setProgramSongPlaybackState(normalizeProgramSongPlayback(payload));
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch program song playback:", err);
       setProgramSongPlaybackState({
         token: "",
@@ -1621,11 +1659,17 @@ export default function Control() {
         throw new Error(`HTTP ${res.status}`);
       }
       const payload = await res.json();
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       if (!shouldApplyControlUpdatePayload(payload, "sceneInstant")) {
         return;
       }
       setSceneInstantPlayback(normalizeSceneInstantPlayback(payload));
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch scene instant playback:", err);
       setSceneInstantPlayback({
         sceneId: null,
@@ -1647,6 +1691,9 @@ export default function Control() {
       }
 
       const data = (await res.json()) as unknown;
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       if (!shouldApplyControlUpdatePayload(data, "state")) {
         return;
       }
@@ -1654,6 +1701,9 @@ export default function Control() {
 
       syncProgramStateAndStagedScene(normalizedProgramState);
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch program state:", err);
     }
   };
@@ -1670,6 +1720,9 @@ export default function Control() {
 
       const payload =
         (await res.json()) as Partial<ProgramAudioBusSettings> | null;
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       if (!shouldApplyControlUpdatePayload(payload, "audioBus")) {
         return;
       }
@@ -1686,6 +1739,9 @@ export default function Control() {
       );
       setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
     } catch (err) {
+      if (targetProgramId !== activeProgramIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch program audio bus settings:", err);
       const fallbackMixerLevels = normalizeBroadcastSettingsPayload(null);
       mixerLevelsRef.current = fallbackMixerLevels;
@@ -2947,7 +3003,7 @@ export default function Control() {
 
       const eventProgramId =
         typeof data.programId === "string" ? data.programId : "";
-      if (eventProgramId && eventProgramId !== activeProgramId) {
+      if (eventProgramId && eventProgramId !== activeProgramIdRef.current) {
         return;
       }
 
@@ -3238,7 +3294,18 @@ export default function Control() {
       : "Idle";
   const controlDeckGrowProps = { grow: true } as any;
 
-  if (programState?.type === "radio") {
+  if (!programState) {
+    return (
+      <div className="flex h-full min-h-64 items-center justify-center bg-dark-sand text-text-secondary">
+        <div className="flex items-center gap-3" role="status">
+          <LoadingSpinner size="sm" />
+          Loading {activeProgramId} control surface…
+        </div>
+      </div>
+    );
+  }
+
+  if (programState.type === "radio") {
     return (
       <RadioPanel
         programId={activeProgramId}
@@ -3305,6 +3372,9 @@ export default function Control() {
           }
         `}
       </style>
+      {programState?.type === "both" ? (
+        <SimulcastStatusRail programId={activeProgramId} />
+      ) : null}
       <BroadcastSwitcherDeck
         programId={activeProgramId}
         activeScene={programState?.activeScene ?? null}
@@ -3330,7 +3400,9 @@ export default function Control() {
         className={`flex-1 min-h-[420px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
         data-workspace-content={consoleWorkspace}
       >
-        <div className={`grid w-full h-full min-h-0 grid-cols-1 ${consoleWorkspace === "audio" ? "md:grid-cols-2" : ""}`}>
+        <div
+          className={`grid w-full h-full min-h-0 grid-cols-1 ${consoleWorkspace === "audio" ? "md:grid-cols-2" : ""}`}
+        >
           <PanelColumn className="min-w-0 flex-1">
             {consoleWorkspace === "audio" ? (
               <Panel
@@ -3799,91 +3871,95 @@ export default function Control() {
             ) : null}
           </PanelColumn>
 
-          {consoleWorkspace === "audio" && <PanelColumn className="min-w-0 flex-1">
-            <Panel
-              title="Playlist"
-              accent="#8b5cf6"
-              variant="monitor"
-              className="min-h-0"
-              grow
-              toolbar={
-                <div className="flex w-full items-center justify-start">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      setIsPlaylistSheetOpen(true);
-                    }}
-                  >
-                    Add to Playlist
-                  </Button>
-                </div>
-              }
-            >
-              <PlaylistPanel
-                sequence={programAudioBusSongSequence}
-                songCatalog={songCatalog}
-                programSongPlayback={programSongPlaybackState}
-                onChange={(nextSequence) => {
-                  void saveProgramAudioBusSongSequence(nextSequence);
-                }}
-                onTakeSelection={async (nextSequence) => {
-                  await takeProgramSongSelection(nextSequence);
-                }}
-              />
-            </Panel>
-            <Panel
-              title="Instants"
-              accent="#f59e0b"
-              variant="monitor"
-              className="min-h-0"
-              grow
-              toolbar={
-                <div className="flex w-full items-center gap-2">
-                  <Input
-                    type="text"
-                    placeholder="Search instants…"
-                    value={instantSearch}
-                    onChange={(e) => setInstantSearch(e.target.value)}
-                    className="min-w-0 flex-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent-blue/60 focus:outline-none dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:placeholder:text-text-secondary dark:focus:border-accent-blue/40"
-                  />
-                </div>
-              }
-            >
-              <InstantsPanel
-                isLoading={isLoadingInstants}
-                instants={instants}
-                search={instantSearch}
-                playback={instantPlayback}
-                onSearchChange={setInstantSearch}
-                onTrigger={(id) => void triggerInstant(id)}
-              />
-            </Panel>
-          </PanelColumn>}
+          {consoleWorkspace === "audio" && (
+            <PanelColumn className="min-w-0 flex-1">
+              <Panel
+                title="Playlist"
+                accent="#8b5cf6"
+                variant="monitor"
+                className="min-h-0"
+                grow
+                toolbar={
+                  <div className="flex w-full items-center justify-start">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setIsPlaylistSheetOpen(true);
+                      }}
+                    >
+                      Add to Playlist
+                    </Button>
+                  </div>
+                }
+              >
+                <PlaylistPanel
+                  sequence={programAudioBusSongSequence}
+                  songCatalog={songCatalog}
+                  programSongPlayback={programSongPlaybackState}
+                  onChange={(nextSequence) => {
+                    void saveProgramAudioBusSongSequence(nextSequence);
+                  }}
+                  onTakeSelection={async (nextSequence) => {
+                    await takeProgramSongSelection(nextSequence);
+                  }}
+                />
+              </Panel>
+              <Panel
+                title="Instants"
+                accent="#f59e0b"
+                variant="monitor"
+                className="min-h-0"
+                grow
+                toolbar={
+                  <div className="flex w-full items-center gap-2">
+                    <Input
+                      type="text"
+                      placeholder="Search instants…"
+                      value={instantSearch}
+                      onChange={(e) => setInstantSearch(e.target.value)}
+                      className="min-w-0 flex-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent-blue/60 focus:outline-none dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:placeholder:text-text-secondary dark:focus:border-accent-blue/40"
+                    />
+                  </div>
+                }
+              >
+                <InstantsPanel
+                  isLoading={isLoadingInstants}
+                  instants={instants}
+                  search={instantSearch}
+                  playback={instantPlayback}
+                  onSearchChange={setInstantSearch}
+                  onTrigger={(id) => void triggerInstant(id)}
+                />
+              </Panel>
+            </PanelColumn>
+          )}
         </div>
       </div>
-      {consoleWorkspace === "audio" && <div className="relative z-20 shrink-0">
-        <PlaybackBar
-          sequence={programAudioBusSongSequence}
-          programSongPlayback={programSongPlaybackState}
-          sceneQuickActions={[]}
-          onChange={(nextSequence) => {
-            void saveProgramAudioBusSongSequence(nextSequence);
-          }}
-          onTakeSelection={async (nextSequence) => {
-            await takeProgramSongSelection(nextSequence);
-          }}
-          onTakeOffAir={async () => {
-            await takeProgramSongOffAir();
-          }}
-          onStopAllInstants={() => {
-            void stopAllInstants();
-          }}
-          onStageScene={(sceneId) => {
-            void stageSceneForProgram(sceneId);
-          }}
-        />
-      </div>}
+      {consoleWorkspace === "audio" && (
+        <div className="relative z-20 shrink-0">
+          <PlaybackBar
+            sequence={programAudioBusSongSequence}
+            programSongPlayback={programSongPlaybackState}
+            sceneQuickActions={[]}
+            onChange={(nextSequence) => {
+              void saveProgramAudioBusSongSequence(nextSequence);
+            }}
+            onTakeSelection={async (nextSequence) => {
+              await takeProgramSongSelection(nextSequence);
+            }}
+            onTakeOffAir={async () => {
+              await takeProgramSongOffAir();
+            }}
+            onStopAllInstants={() => {
+              void stopAllInstants();
+            }}
+            onStageScene={(sceneId) => {
+              void stageSceneForProgram(sceneId);
+            }}
+          />
+        </div>
+      )}
       <PlaylistSheetPanel
         isOpen={isPlaylistSheetOpen}
         onClose={() => setIsPlaylistSheetOpen(false)}

@@ -1,18 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Panel, PanelColumn, PanelLayout } from "@gaulatti/bleecker";
+import { Button, Panel } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
-import {
-  Music2,
-  Wifi,
-  WifiOff,
-  Settings,
-  Save,
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Radio,
-  Trash2,
-} from "lucide-react";
+import { Music2, Wifi, WifiOff, Radio } from "lucide-react";
 import type {
   ProgramSongPlaybackState,
   SongCatalogItem,
@@ -83,30 +72,6 @@ interface PalazzoStatus {
   detail: string | null;
 }
 
-interface RadioSettings {
-  palazzoUrl: string;
-  bumperEnabled: boolean;
-  bumperInterval: number | null;
-  bumperInstantIds: number[];
-  bumperMode: string | null;
-  enabled: boolean;
-}
-
-interface NowPlayingConsumer {
-  id?: number;
-  name: string;
-  url: string;
-  method: string;
-  headers: NowPlayingHeader[];
-  enabled: boolean;
-}
-
-interface NowPlayingHeader {
-  id: string;
-  name: string;
-  value: string;
-}
-
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   programId,
   songSequence,
@@ -129,22 +94,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 }) => {
   const [stream, setStream] = useState<StreamStatus | null>(null);
   const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(null);
-  const [radioSettings, setRadioSettings] = useState<RadioSettings | null>(
-    null,
-  );
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [settingsSaveError, setSettingsSaveError] = useState<string | null>(
-    null,
-  );
-  const [nowPlayingConsumers, setNowPlayingConsumers] = useState<
-    NowPlayingConsumer[]
-  >([]);
-  const [savingNowPlayingConsumers, setSavingNowPlayingConsumers] =
-    useState(false);
-  const [nowPlayingConsumerError, setNowPlayingConsumerError] = useState<
-    string | null
-  >(null);
   const [playlistSheetOpen, setPlaylistSheetOpen] = useState(false);
 
   const fetchStreamStatus = useCallback(async () => {
@@ -172,47 +121,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   }, [programId]);
 
-  const fetchSettings = useCallback(async () => {
-    try {
-      const res = await fetch(
-        apiUrl(`/radio/${encodeURIComponent(programId)}/settings`),
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setRadioSettings(
-          data || {
-            palazzoUrl: "http://palazzo:3100",
-            bumperEnabled: false,
-            bumperInterval: null,
-            bumperInstantIds: [],
-            bumperMode: "sequential",
-            enabled: false,
-          },
-        );
-      }
-    } catch {}
-  }, [programId]);
-
-  const fetchNowPlayingConsumers = useCallback(async () => {
-    try {
-      const res = await fetch(
-        apiUrl(`/radio/${encodeURIComponent(programId)}/now-playing-consumers`),
-      );
-      if (!res.ok) return;
-      const data = await res.json();
-      setNowPlayingConsumers(
-        Array.isArray(data) ? data.map(normalizeNowPlayingConsumer) : [],
-      );
-      setNowPlayingConsumerError(null);
-    } catch {
-      setNowPlayingConsumerError("Failed to load consumers");
-    }
-  }, [programId]);
-
   useEffect(() => {
     fetchStreamStatus();
-    fetchSettings();
-    fetchNowPlayingConsumers();
     fetchPalazzoStatus();
     const interval = setInterval(fetchStreamStatus, 8000);
     const palazzoInterval = setInterval(fetchPalazzoStatus, 8000);
@@ -220,167 +130,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       clearInterval(interval);
       clearInterval(palazzoInterval);
     };
-  }, [
-    fetchStreamStatus,
-    fetchSettings,
-    fetchNowPlayingConsumers,
-    fetchPalazzoStatus,
-  ]);
-
-  const saveSettings = useCallback(async () => {
-    if (!radioSettings) return;
-    setSavingSettings(true);
-    setSettingsSaveError(null);
-    try {
-      const res = await fetch(
-        apiUrl(`/radio/${encodeURIComponent(programId)}/settings`),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(radioSettings),
-        },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setRadioSettings(await res.json());
-    } catch {
-      setSettingsSaveError("Radio settings were not saved.");
-    } finally {
-      setSavingSettings(false);
-    }
-  }, [programId, radioSettings]);
-
-  const updateNowPlayingConsumer = useCallback(
-    (index: number, patch: Partial<NowPlayingConsumer>) => {
-      setNowPlayingConsumers((current) =>
-        current.map((consumer, idx) =>
-          idx === index ? { ...consumer, ...patch } : consumer,
-        ),
-      );
-    },
-    [],
-  );
-
-  const addNowPlayingConsumer = useCallback(() => {
-    setNowPlayingConsumers((current) => [
-      ...current,
-      {
-        name: `consumer-${current.length + 1}`,
-        url: "",
-        method: "POST",
-        headers: [],
-        enabled: true,
-      },
-    ]);
-  }, []);
-
-  const removeNowPlayingConsumer = useCallback((index: number) => {
-    setNowPlayingConsumers((current) =>
-      current.filter((_, idx) => idx !== index),
-    );
-  }, []);
-
-  const addNowPlayingHeader = useCallback((consumerIndex: number) => {
-    setNowPlayingConsumers((current) =>
-      current.map((consumer, idx) =>
-        idx === consumerIndex
-          ? {
-              ...consumer,
-              headers: [...consumer.headers, createNowPlayingHeader()],
-            }
-          : consumer,
-      ),
-    );
-  }, []);
-
-  const updateNowPlayingHeader = useCallback(
-    (
-      consumerIndex: number,
-      headerId: string,
-      patch: Partial<NowPlayingHeader>,
-    ) => {
-      setNowPlayingConsumers((current) =>
-        current.map((consumer, idx) =>
-          idx === consumerIndex
-            ? {
-                ...consumer,
-                headers: consumer.headers.map((header) =>
-                  header.id === headerId ? { ...header, ...patch } : header,
-                ),
-              }
-            : consumer,
-        ),
-      );
-    },
-    [],
-  );
-
-  const removeNowPlayingHeader = useCallback(
-    (consumerIndex: number, headerId: string) => {
-      setNowPlayingConsumers((current) =>
-        current.map((consumer, idx) =>
-          idx === consumerIndex
-            ? {
-                ...consumer,
-                headers: consumer.headers.filter(
-                  (header) => header.id !== headerId,
-                ),
-              }
-            : consumer,
-        ),
-      );
-    },
-    [],
-  );
-
-  const saveNowPlayingConsumers = useCallback(async () => {
-    setSavingNowPlayingConsumers(true);
-    setNowPlayingConsumerError(null);
-    try {
-      const consumers = nowPlayingConsumers.map((consumer, index) => {
-        const headers = Object.fromEntries(
-          consumer.headers
-            .filter((header) => header.name.trim() && header.value.trim())
-            .map((header) => [header.name.trim(), header.value.trim()]),
-        );
-        if (
-          consumer.headers.some(
-            (header) => !header.name.trim() && header.value.trim(),
-          )
-        ) {
-          throw new Error(`Consumer ${index + 1}: header name is required`);
-        }
-        return {
-          name: consumer.name,
-          url: consumer.url,
-          method: consumer.method,
-          headers,
-          enabled: consumer.enabled,
-        };
-      });
-
-      const res = await fetch(
-        apiUrl(`/radio/${encodeURIComponent(programId)}/now-playing-consumers`),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ consumers }),
-        },
-      );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setNowPlayingConsumers(
-        Array.isArray(data) ? data.map(normalizeNowPlayingConsumer) : [],
-      );
-    } catch (err) {
-      setNowPlayingConsumerError(
-        err instanceof Error ? err.message : String(err),
-      );
-    } finally {
-      setSavingNowPlayingConsumers(false);
-    }
-  }, [nowPlayingConsumers, programId]);
+  }, [fetchStreamStatus, fetchPalazzoStatus]);
 
   const handleTakeSelection = useCallback(
     async (seq: any) => {
@@ -414,9 +164,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     : 0;
 
   return (
-    <div className="flex h-full w-full flex-1 min-h-0 flex-col overflow-hidden bg-dark-sand text-text-primary">
-      <PanelLayout className="w-full h-full min-h-0" padding="p-0">
-        <PanelColumn className="min-w-0" grow>
+    <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-dark-sand text-text-primary">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_24rem] lg:overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-col">
           <Panel title="Radio Mixer" accent="#38bdf8" variant="monitor">
             <div className="grid gap-3 md:grid-cols-3">
               <RadioMixerChannel
@@ -482,7 +232,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 </div>
                 {palazzo && (
                   <div
-                    className="flex items-center gap-2"
+                    className="flex flex-wrap items-center justify-end gap-2"
                     title={palazzo.detail ?? undefined}
                   >
                     {palazzo.connection === "connected" ||
@@ -576,350 +326,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   </div>
                 )}
               </div>
-
-              <div className="rounded-xl border border-sand/30 bg-dark-sand/70 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setSettingsOpen(!settingsOpen)}
-                  className="flex items-center justify-between w-full p-3 text-left hover:bg-dark-sand/80 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <Settings className="h-4 w-4 text-text-secondary" />
-                    <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-                      Settings
-                    </span>
-                    {radioSettings?.enabled && (
-                      <span className="text-[10px] font-mono text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded">
-                        ENABLED
-                      </span>
-                    )}
-                    {!radioSettings?.enabled && radioSettings && (
-                      <span className="text-[10px] font-mono text-text-secondary bg-sand/20 px-1.5 py-0.5 rounded">
-                        DISABLED
-                      </span>
-                    )}
-                  </div>
-                  {settingsOpen ? (
-                    <ChevronDown className="h-4 w-4 text-text-secondary" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-text-secondary" />
-                  )}
-                </button>
-                {settingsOpen && radioSettings && (
-                  <div className="border-t border-sand/30 p-3 space-y-3">
-                    <SettingsField
-                      label="Palazzo URL"
-                      value={radioSettings.palazzoUrl}
-                      onChange={(v) =>
-                        setRadioSettings({ ...radioSettings, palazzoUrl: v })
-                      }
-                    />
-                    <div className="pt-2 space-y-2 border-t border-sand/30">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={radioSettings.bumperEnabled}
-                          onChange={(e) =>
-                            setRadioSettings({
-                              ...radioSettings,
-                              bumperEnabled: e.target.checked,
-                            })
-                          }
-                          className="rounded accent-violet-500"
-                        />
-                        <span className="text-[10px] font-bold text-text-secondary uppercase">
-                          Bumper/ID
-                        </span>
-                        {radioSettings.bumperEnabled && (
-                          <select
-                            value={radioSettings.bumperMode || "sequential"}
-                            onChange={(e) =>
-                              setRadioSettings({
-                                ...radioSettings,
-                                bumperMode: e.target.value,
-                              })
-                            }
-                            className="rounded bg-dark-sand/60 border border-sand/30 px-2 py-0.5 text-[10px] text-text-primary font-mono focus:outline-none focus:border-violet-500"
-                          >
-                            <option value="sequential">Sequential</option>
-                            <option value="random">Random</option>
-                          </select>
-                        )}
-                      </div>
-                      {radioSettings.bumperEnabled && (
-                        <>
-                          <SettingsField
-                            label="Every N songs"
-                            value={
-                              radioSettings.bumperInterval != null
-                                ? String(radioSettings.bumperInterval)
-                                : "4"
-                            }
-                            onChange={(v) =>
-                              setRadioSettings({
-                                ...radioSettings,
-                                bumperInterval: v ? Number(v) : null,
-                              })
-                            }
-                          />
-                          <label className="space-y-1">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase">
-                              Instants
-                            </span>
-                            <div className="flex flex-wrap gap-1">
-                              {instants.map((inst) => {
-                                const selected =
-                                  radioSettings.bumperInstantIds.includes(
-                                    inst.id,
-                                  );
-                                return (
-                                  <button
-                                    key={inst.id}
-                                    type="button"
-                                    onClick={() => {
-                                      const next = selected
-                                        ? radioSettings.bumperInstantIds.filter(
-                                            (id) => id !== inst.id,
-                                          )
-                                        : [
-                                            ...radioSettings.bumperInstantIds,
-                                            inst.id,
-                                          ];
-                                      setRadioSettings({
-                                        ...radioSettings,
-                                        bumperInstantIds: next,
-                                      });
-                                    }}
-                                    className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${selected ? "bg-violet-600 text-white" : "bg-dark-sand/60 border border-sand/30 text-text-secondary hover:text-text-primary"}`}
-                                  >
-                                    {inst.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </label>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-sand/30">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={radioSettings.enabled}
-                          onChange={(e) =>
-                            setRadioSettings({
-                              ...radioSettings,
-                              enabled: e.target.checked,
-                            })
-                          }
-                          className="rounded accent-violet-500"
-                        />
-                        <span className="text-xs font-bold text-text-secondary">
-                          Enabled
-                        </span>
-                      </label>
-                      <Button
-                        type="button"
-                        onClick={saveSettings}
-                        disabled={savingSettings}
-                        className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500 transition-colors disabled:opacity-50"
-                      >
-                        <Save className="h-3 w-3" />
-                        {savingSettings ? "SAVING..." : "SAVE"}
-                      </Button>
-                    </div>
-                    {settingsSaveError ? (
-                      <p className="text-[11px] text-red-400">
-                        {settingsSaveError}
-                      </p>
-                    ) : null}
-                    <div className="pt-3 space-y-3 border-t border-sand/30">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-bold text-text-secondary uppercase">
-                          Now Playing Consumers
-                        </span>
-                        <Button
-                          type="button"
-                          onClick={addNowPlayingConsumer}
-                          className="flex items-center gap-1 rounded bg-dark-sand/60 border border-sand/30 px-2 py-1 text-[10px] font-bold text-text-primary hover:border-violet-500 transition-colors"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add
-                        </Button>
-                      </div>
-                      {nowPlayingConsumers.length === 0 ? (
-                        <div className="rounded border border-dashed border-sand/30 p-3 text-center text-xs text-text-secondary">
-                          No consumers configured.
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {nowPlayingConsumers.map((consumer, index) => (
-                            <div
-                              key={consumer.id ?? index}
-                              className="rounded-lg border border-sand/30 bg-dark-sand/50 p-3 space-y-2"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={consumer.enabled}
-                                    onChange={(e) =>
-                                      updateNowPlayingConsumer(index, {
-                                        enabled: e.target.checked,
-                                      })
-                                    }
-                                    className="rounded accent-violet-500"
-                                  />
-                                  <span className="text-[10px] font-bold text-text-secondary uppercase">
-                                    Enabled
-                                  </span>
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeNowPlayingConsumer(index)
-                                  }
-                                  className="rounded p-1 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                                  title="Remove consumer"
-                                  aria-label="Remove consumer"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                              <div className="grid grid-cols-[1fr_88px] gap-2">
-                                <SettingsField
-                                  label="Name"
-                                  value={consumer.name}
-                                  onChange={(v) =>
-                                    updateNowPlayingConsumer(index, { name: v })
-                                  }
-                                />
-                                <label className="space-y-1">
-                                  <span className="text-[10px] font-bold text-text-secondary uppercase">
-                                    Method
-                                  </span>
-                                  <select
-                                    value={consumer.method}
-                                    onChange={(e) =>
-                                      updateNowPlayingConsumer(index, {
-                                        method: e.target.value,
-                                      })
-                                    }
-                                    className="w-full rounded bg-dark-sand/60 border border-sand/30 px-2 py-1 text-xs text-text-primary font-mono focus:outline-none focus:border-violet-500"
-                                  >
-                                    <option value="POST">POST</option>
-                                    <option value="PUT">PUT</option>
-                                    <option value="PATCH">PATCH</option>
-                                  </select>
-                                </label>
-                              </div>
-                              <SettingsField
-                                label="URL"
-                                value={consumer.url}
-                                onChange={(v) =>
-                                  updateNowPlayingConsumer(index, { url: v })
-                                }
-                              />
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-text-secondary uppercase">
-                                    Headers
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => addNowPlayingHeader(index)}
-                                    className="flex items-center gap-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-[10px] font-bold text-text-primary hover:border-violet-500"
-                                    title="Add header"
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                    Header
-                                  </button>
-                                </div>
-                                {consumer.headers.length === 0 ? (
-                                  <div className="rounded border border-dashed border-sand/30 px-2 py-2 text-[11px] text-text-secondary">
-                                    No headers.
-                                  </div>
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {consumer.headers.map((header) => (
-                                      <div
-                                        key={header.id}
-                                        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_28px] gap-1.5"
-                                      >
-                                        <input
-                                          value={header.name}
-                                          onChange={(e) =>
-                                            updateNowPlayingHeader(
-                                              index,
-                                              header.id,
-                                              { name: e.target.value },
-                                            )
-                                          }
-                                          className="min-w-0 rounded bg-dark-sand/60 border border-sand/30 px-2 py-1 text-xs text-text-primary font-mono focus:outline-none focus:border-violet-500"
-                                          aria-label="Header name"
-                                        />
-                                        <input
-                                          value={header.value}
-                                          onChange={(e) =>
-                                            updateNowPlayingHeader(
-                                              index,
-                                              header.id,
-                                              { value: e.target.value },
-                                            )
-                                          }
-                                          className="min-w-0 rounded bg-dark-sand/60 border border-sand/30 px-2 py-1 text-xs text-text-primary font-mono focus:outline-none focus:border-violet-500"
-                                          aria-label="Header value"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            removeNowPlayingHeader(
-                                              index,
-                                              header.id,
-                                            )
-                                          }
-                                          className="flex h-7 w-7 items-center justify-center rounded text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                                          title="Remove header"
-                                          aria-label="Remove header"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {nowPlayingConsumerError && (
-                        <p className="text-[11px] text-red-400">
-                          {nowPlayingConsumerError}
-                        </p>
-                      )}
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          onClick={saveNowPlayingConsumers}
-                          disabled={savingNowPlayingConsumers}
-                          className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500 transition-colors disabled:opacity-50"
-                        >
-                          <Save className="h-3 w-3" />
-                          {savingNowPlayingConsumers
-                            ? "SAVING..."
-                            : "SAVE CONSUMERS"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </Panel>
-        </PanelColumn>
+        </div>
 
-        <PanelColumn className="shrink-0 w-[380px]">
+        <div className="flex min-h-0 min-w-0 flex-col border-t border-border-subtle lg:border-l lg:border-t-0">
           <Panel
             title="Playlist"
             accent="#22c55e"
@@ -929,8 +340,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             toolbar={
               <Button
                 type="button"
+                size="xs"
+                variant="primary"
                 onClick={() => setPlaylistSheetOpen(true)}
-                className="flex items-center gap-1 rounded bg-violet-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-violet-500"
               >
                 <Music2 className="h-3 w-3" />
                 Add Songs
@@ -956,8 +368,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             toolbar={
               <Button
                 type="button"
+                size="xs"
+                variant="destructive"
                 onClick={onStopAllInstants}
-                className="text-[10px] font-bold text-red-400 hover:text-red-300 px-1"
               >
                 Stop All
               </Button>
@@ -972,8 +385,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               onTrigger={(id) => onTriggerInstant(id)}
             />
           </Panel>
-        </PanelColumn>
-      </PanelLayout>
+        </div>
+      </div>
 
       <PlaybackBar
         sequence={songSequence}
@@ -1037,9 +450,10 @@ function RadioMixerChannel({
           {onToggleMuted ? (
             <Button
               type="button"
+              size="xs"
+              variant={channel.muted ? "destructive" : "secondary"}
               onClick={onToggleMuted}
               aria-pressed={channel.muted === true}
-              className={`rounded px-2 py-1 text-[10px] font-bold ${channel.muted ? "bg-red-600 text-white" : "border border-sand/30 bg-dark-sand text-text-secondary"}`}
             >
               {channel.muted ? "MUTED" : "MUTE"}
             </Button>
@@ -1066,64 +480,6 @@ function RadioMixerChannel({
         />
       </div>
     </section>
-  );
-}
-
-function normalizeNowPlayingConsumer(value: any): NowPlayingConsumer {
-  const headers =
-    value?.headers &&
-    typeof value.headers === "object" &&
-    !Array.isArray(value.headers)
-      ? (value.headers as Record<string, string>)
-      : {};
-  return {
-    id: typeof value?.id === "number" ? value.id : undefined,
-    name: typeof value?.name === "string" ? value.name : "",
-    url: typeof value?.url === "string" ? value.url : "",
-    method: typeof value?.method === "string" ? value.method : "POST",
-    headers: Object.entries(headers).map(([name, headerValue], index) => ({
-      id: `${Date.now().toString(36)}-${index}`,
-      name,
-      value: String(headerValue),
-    })),
-    enabled: value?.enabled !== false,
-  };
-}
-
-function createNowPlayingHeader(): NowPlayingHeader {
-  return {
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-    name: "",
-    value: "",
-  };
-}
-
-function SettingsField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  password,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  password?: boolean;
-}) {
-  return (
-    <label className="space-y-1">
-      <span className="text-[10px] font-bold text-text-secondary uppercase">
-        {label}
-      </span>
-      <input
-        type={password ? "password" : "text"}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded bg-dark-sand/60 border border-sand/30 px-2 py-1 text-xs text-text-primary font-mono focus:outline-none focus:border-violet-500"
-      />
-    </label>
   );
 }
 

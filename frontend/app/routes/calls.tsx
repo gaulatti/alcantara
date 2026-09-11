@@ -7,6 +7,7 @@ import { useFeatures } from '../hooks/useFeatures';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/calls';
+import { AppPage } from '../components/AppPage';
 
 type Command = {
   id: string;
@@ -47,7 +48,6 @@ type Participant = {
 export function meta({}: Route.MetaArgs) {
   return [{ title: 'Guest Calls - Alcántara' }];
 }
-
 async function readError(response: Response) {
   const text = await response.text();
   try {
@@ -227,8 +227,8 @@ export default function CallsRoute() {
   const activeInvitations = invitations.filter((item) => item.status !== 'revoked' && item.status !== 'expired');
   if (livekitEnabled === false) {
     return (
-      <main className='consumer-page'>
-        <div className='consumer-page__content'>
+      <AppPage width='wide'>
+        <div>
           <PageHeader
             title='Guest calls'
             description='Remote contribution is installed but not enabled on this Alcantara deployment.'
@@ -238,12 +238,12 @@ export default function CallsRoute() {
             description='Configure the backend LiveKit connection and production media service before creating guest invitations.'
           />
         </div>
-      </main>
+      </AppPage>
     );
   }
   return (
-    <main className='consumer-page'>
-      <div className='consumer-page__content'>
+    <AppPage width='wide'>
+      <div>
         <PageHeader
           title='Guest calls'
           description={`Six reusable remote-contributor slots for ${programId}. Guests never enter Preview or Program automatically.`}
@@ -486,6 +486,6 @@ export default function CallsRoute() {
           </div>
         </div>
       </div>
-    </main>
+    </AppPage>
   );
 }

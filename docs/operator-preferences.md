@@ -13,13 +13,17 @@ profile for the current subject.
 
 ## Device classification and override
 
-Director and Graphics reserve the lower workspace for staged-scene properties;
+Director reserves the lower workspace for staged-scene properties;
 the full mixer, playlist, instants and playback bar live in Audio. Audio keeps a
 small Program confidence monitor, without the scene grid or video switcher.
 Confidence monitors have bounded height and the scene strip scrolls independently.
 The properties workspace retains at least 420 px of height; smaller windows can
 scroll the console instead of clipping the editor. Switching workspaces does not
 change the staged scene or take anything on air.
+
+Remote is the compact switcher workspace used by phone and tablet defaults. The
+legacy `graphics` value is still accepted when reading an older profile and is
+rendered as Director; new UI and seed data no longer create it.
 
 Classification is deterministic at browser startup:
 
@@ -62,10 +66,10 @@ that preference cache.
 “Reset class” deletes the caller's canonical row and any still-unmigrated current
 subject row, plus local cache. “Reset all” does the same for all three classes and
 clears both forms of local cache. A subject row already owned by another
-principal is never a reset target. Neither operation affects shared layouts or
+principal is never a reset target. Neither operation affects console presets or
 another operator.
 
-## Shared program and team layouts
+## Shared program and team console presets
 
 Publication is an explicit action in the preferences panel. A layout stores a
 name, optional description, owner subject, nullable canonical owner, `program`
@@ -80,14 +84,14 @@ weaken them. Loading is always deliberate and copies the shared profile into
 the authenticated operator's current class-specific row. A source-class
 mismatch returns HTTP 409; there is no implicit cross-class conversion.
 
-Shared layouts contain only the profile fields above. They never include
+Console presets contain only the profile fields above. They never include
 secrets, media, live scene state, playback state, or anyone else's private
 profile.
 
 ## Local verification and observability
 
 Compose seeds `operator-a` for desktop, tablet, and phone; `operator-b` and
-`viewer` desktop profiles; and a fictional program layout named “Local
+`viewer` desktop profiles; and a fictional program preset named “Local
 rehearsal.” Re-running the seed resets those fixtures deterministically.
 
 The backend publishes the bounded Prometheus family

@@ -1,5 +1,6 @@
 /** Runtime compatibility entry that keeps Bleecker subpath imports centralized. */
 export * from '@gaulatti/bleecker/components/alert';
+export * from '@gaulatti/bleecker/components/brand-lockup';
 export * from '@gaulatti/bleecker/components/button';
 export * from '@gaulatti/bleecker/components/card';
 export * from '@gaulatti/bleecker/components/checkbox';
@@ -20,6 +21,7 @@ export * from '@gaulatti/bleecker/components/panel';
 export * from '@gaulatti/bleecker/components/search-input';
 export * from '@gaulatti/bleecker/components/section-header';
 export * from '@gaulatti/bleecker/components/select';
+export * from '@gaulatti/bleecker/components/sidebar';
 export * from '@gaulatti/bleecker/components/sheet';
 export * from '@gaulatti/bleecker/components/stat-card';
 export * from '@gaulatti/bleecker/components/status-badge';
@@ -32,3 +34,4 @@ export * from '@gaulatti/bleecker/layout/auth-shell';
 export * from '@gaulatti/bleecker/layout/footer';
 export * from '@gaulatti/bleecker/layout/header';
 export * from '@gaulatti/bleecker/layout/panel-layout';
+export * from '@gaulatti/bleecker/layout/page-frame';

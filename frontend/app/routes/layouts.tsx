@@ -21,10 +21,10 @@ import {
 import type { SortState } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import type { Route } from './+types/layouts';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { OVERLAY_COMPONENTS } from '../models/components';
+import { AppPage } from '../components/AppPage';
 
 interface Layout {
   id: number;
@@ -40,11 +40,10 @@ interface ComponentType {
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Layouts - TV Broadcast' }, { name: 'description', content: 'Manage broadcast layouts' }];
+  return [{ title: 'Scene templates - Alcantara' }, { name: 'description', content: 'Manage reusable scene templates' }];
 }
 
 export default function LayoutsAdmin() {
-  const navigate = useNavigate();
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +70,7 @@ export default function LayoutsAdmin() {
         await fetchLayouts();
       } catch (err) {
         console.error(err);
-        showAlert('Failed to load layouts. Please refresh and try again.', 'error');
+        showAlert('Failed to load scene templates. Please refresh and try again.', 'error');
       } finally {
         setIsLoading(false);
       }
@@ -111,7 +110,7 @@ export default function LayoutsAdmin() {
     const nextErrors = { name: '', components: '', request: '' };
 
     if (!layoutName.trim()) {
-      nextErrors.name = 'Please enter a layout name';
+      nextErrors.name = 'Please enter a template name';
     }
     if (selectedComponents.length === 0) {
       nextErrors.components = 'Please select at least one component';
@@ -146,18 +145,18 @@ export default function LayoutsAdmin() {
 
       await fetchLayouts();
       closeModal();
-      showAlert(editingLayout ? 'Layout updated.' : 'Layout created.', 'success');
+      showAlert(editingLayout ? 'Scene template updated.' : 'Scene template created.', 'success');
     } catch (err) {
       console.error('Failed to save layout:', err);
-      setErrors((prev) => ({ ...prev, request: 'Failed to save layout. Please try again.' }));
-      showAlert('Failed to save layout.', 'error');
+      setErrors((prev) => ({ ...prev, request: 'Failed to save scene template. Please try again.' }));
+      showAlert('Failed to save scene template.', 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
   const deleteLayout = async (layoutId: number) => {
-    if (!confirm('Are you sure you want to delete this layout?')) return;
+    if (!confirm('Are you sure you want to delete this scene template?')) return;
 
     try {
       const res = await fetch(apiUrl(`/layouts/${layoutId}`), {
@@ -167,10 +166,10 @@ export default function LayoutsAdmin() {
         throw new Error(`HTTP error ${res.status}`);
       }
       await fetchLayouts();
-      showAlert('Layout deleted.', 'success');
+      showAlert('Scene template deleted.', 'success');
     } catch (err) {
       console.error('Failed to delete layout:', err);
-      showAlert('Cannot delete layout - it may be in use by scenes.', 'error');
+      showAlert('Cannot delete this scene template because it may be in use by scenes.', 'error');
     }
   };
 
@@ -190,18 +189,15 @@ export default function LayoutsAdmin() {
   }, [layouts, sort]);
 
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <AppPage width='wide'>
       <AlertContainer />
       <div className='mx-auto max-w-6xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader title='Layouts' description='Create and manage reusable scene layouts.' />
+          <SectionHeader title='Scene templates' description='Create and manage reusable scene structures.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/')}>
-              Back to Control
-            </Button>
             <Button onClick={openCreateModal}>
               <Plus size={16} />
-              Create Layout
+              Create template
             </Button>
           </div>
         </div>
@@ -210,16 +206,16 @@ export default function LayoutsAdmin() {
           {isLoading ? (
             <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
               <LoadingSpinner />
-              <p>Loading layouts...</p>
+              <p>Loading scene templates...</p>
             </div>
           ) : layouts.length === 0 ? (
             <Empty
-              title='No layouts yet'
-              description='Create a reusable layout to speed up scene creation.'
+              title='No scene templates yet'
+              description='Create a reusable template to speed up scene creation.'
               action={
                 <Button onClick={openCreateModal}>
                   <Plus size={16} />
-                  Create your first layout
+                  Create your first template
                 </Button>
               }
             />
@@ -286,10 +282,10 @@ export default function LayoutsAdmin() {
           )}
         </Card>
 
-        <Modal isOpen={showModal} onClose={closeModal} title={editingLayout ? 'Edit Layout' : 'Create Layout'} className='max-w-3xl'>
+        <Modal isOpen={showModal} onClose={closeModal} title={editingLayout ? 'Edit scene template' : 'Create template'} className='max-w-3xl'>
           <div className='space-y-6'>
             <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Layout Name</label>
+              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template name</label>
               <Input
                 value={layoutName}
                 onChange={(e) => {
@@ -298,7 +294,7 @@ export default function LayoutsAdmin() {
                     setErrors((prev) => ({ ...prev, name: '' }));
                   }
                 }}
-                placeholder='Enter layout name'
+                placeholder='Enter template name'
                 error={!!errors.name}
                 autoFocus
               />
@@ -357,12 +353,12 @@ export default function LayoutsAdmin() {
                 Cancel
               </Button>
               <Button onClick={saveLayout} disabled={isSaving}>
-                {isSaving ? 'Saving...' : editingLayout ? 'Update Layout' : 'Create Layout'}
+                {isSaving ? 'Saving...' : editingLayout ? 'Update template' : 'Create template'}
               </Button>
             </div>
           </div>
         </Modal>
       </div>
-    </div>
+    </AppPage>
   );
 }

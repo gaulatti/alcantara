@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProgramsAdmin from "./programs";
 import type { ProgramTemplateManifest } from "../utils/programTemplate";
+import { getApiBaseUrl } from "../utils/apiBaseUrl";
 
 const { setSelectedProgramId } = vi.hoisted(() => ({
   setSelectedProgramId: vi.fn(),
@@ -89,7 +90,7 @@ describe("Programs template registration", () => {
     });
     expect(outputLink).toHaveAttribute(
       "href",
-      "https://cdn.fifthbell.com/html/program-releases/0.1.65/index.html?programId=fifthbell&apiBaseUrl=http%3A%2F%2Flocalhost%3A3000",
+      `https://cdn.fifthbell.com/html/program-releases/0.1.65/index.html?programId=fifthbell&apiBaseUrl=${encodeURIComponent(getApiBaseUrl())}`,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit fifthbell" }));

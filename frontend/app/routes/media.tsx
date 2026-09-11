@@ -25,10 +25,10 @@ import {
 import type { SortState } from '@gaulatti/bleecker';
 import { Pencil, Plus, Trash2, ArrowUp, ArrowDown, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import type { Route } from './+types/media';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { AppPage } from '../components/AppPage';
 
 interface MediaItem {
   id: number;
@@ -94,11 +94,16 @@ async function extractErrorMessage(res: Response): Promise<string> {
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Media - TV Broadcast' }, { name: 'description', content: 'Manage image media and media groups for slideshow scenes.' }];
+  return [
+    { title: 'Media - TV Broadcast' },
+    {
+      name: 'description',
+      content: 'Manage image media and media groups for slideshow scenes.'
+    }
+  ];
 }
 
 export default function MediaRoute() {
-  const navigate = useNavigate();
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<MediaGroup | null>(null);
@@ -293,11 +298,11 @@ export default function MediaRoute() {
         }
 
         if (!normalizedName) {
-          setError('Name is .');
+          setError('Name is required.');
           return;
         }
         if (!nextUrl) {
-          setError('Image URL is .');
+          setError('Image URL is required.');
           return;
         }
 
@@ -306,8 +311,8 @@ export default function MediaRoute() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: normalizedName,
-            imageUrl: nextUrl,
-          }),
+            imageUrl: nextUrl
+          })
         });
 
         if (!res.ok) {
@@ -331,7 +336,7 @@ export default function MediaRoute() {
         const createRes = await fetch(apiUrl('/media'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(payload)
         });
         if (!createRes.ok) {
           throw new Error(await extractErrorMessage(createRes));
@@ -347,26 +352,21 @@ export default function MediaRoute() {
           const file = selectedFiles[index];
           const upload = await uploadFileToMediaBucket('artwork', file);
           const derivedName = stripFileExtension(file.name) || `Media ${index + 1}`;
-          const mediaName =
-            normalizedName && selectedFiles.length === 1
-              ? normalizedName
-              : normalizedName && selectedFiles.length > 1
-                ? `${normalizedName} ${index + 1}`
-                : derivedName;
+          const mediaName = normalizedName && selectedFiles.length === 1 ? normalizedName : normalizedName && selectedFiles.length > 1 ? `${normalizedName} ${index + 1}` : derivedName;
 
           await createMediaRecord({
             name: mediaName,
-            imageUrl: upload.url,
+            imageUrl: upload.url
           });
         }
       } else {
         if (!normalizedName) {
-          setError('Name is  when using direct URL.');
+          setError('Name is required when using a direct URL.');
           return;
         }
         await createMediaRecord({
           name: normalizedName,
-          imageUrl: normalizedUrl,
+          imageUrl: normalizedUrl
         });
       }
 
@@ -390,7 +390,7 @@ export default function MediaRoute() {
         const updateRes = await fetch(apiUrl(`/media-groups/${parsedGroupId}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaIds: nextIds }),
+          body: JSON.stringify({ mediaIds: nextIds })
         });
         if (!updateRes.ok) {
           throw new Error(await extractErrorMessage(updateRes));
@@ -400,7 +400,7 @@ export default function MediaRoute() {
       } else if (groupAssignMode === 'new') {
         const groupName = groupAssignNewName.trim();
         if (!groupName) {
-          setError('New group name is .');
+          setError('New group name is required.');
           return;
         }
 
@@ -410,8 +410,8 @@ export default function MediaRoute() {
           body: JSON.stringify({
             name: groupName,
             description: groupAssignNewDescription.trim() || null,
-            mediaIds: createdMediaIds,
-          }),
+            mediaIds: createdMediaIds
+          })
         });
         if (!createGroupRes.ok) {
           throw new Error(await extractErrorMessage(createGroupRes));
@@ -444,7 +444,9 @@ export default function MediaRoute() {
     if (!confirm(`Delete media "${item.name}"?`)) return;
 
     try {
-      const res = await fetch(apiUrl(`/media/${item.id}`), { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/media/${item.id}`), {
+        method: 'DELETE'
+      });
       if (!res.ok) {
         throw new Error(await extractErrorMessage(res));
       }
@@ -460,7 +462,7 @@ export default function MediaRoute() {
   const saveGroup = async () => {
     const normalizedName = groupNameInput.trim();
     if (!normalizedName) {
-      setError('Group name is .');
+      setError('Group name is required.');
       return;
     }
 
@@ -476,8 +478,8 @@ export default function MediaRoute() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: normalizedName,
-          description: groupDescriptionInput.trim() || null,
-        }),
+          description: groupDescriptionInput.trim() || null
+        })
       });
 
       if (!res.ok) {
@@ -512,7 +514,9 @@ export default function MediaRoute() {
     if (!confirm(`Delete group "${group.name}"?`)) return;
 
     try {
-      const res = await fetch(apiUrl(`/media-groups/${group.id}`), { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/media-groups/${group.id}`), {
+        method: 'DELETE'
+      });
       if (!res.ok) {
         throw new Error(await extractErrorMessage(res));
       }
@@ -529,7 +533,7 @@ export default function MediaRoute() {
     const res = await fetch(apiUrl(`/media-groups/${groupId}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mediaIds }),
+      body: JSON.stringify({ mediaIds })
     });
 
     if (!res.ok) {
@@ -605,7 +609,10 @@ export default function MediaRoute() {
     }
   };
 
-  const [groupSort, setGroupSort] = useState<SortState>({ field: 'name', order: 'asc' });
+  const [groupSort, setGroupSort] = useState<SortState>({
+    field: 'name',
+    order: 'asc'
+  });
 
   const handleGroupSort = (field: string, order: 'asc' | 'desc') => {
     setGroupSort({ field, order });
@@ -621,14 +628,11 @@ export default function MediaRoute() {
   }, [mediaGroups, groupSort]);
 
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <AppPage width='full'>
       <AlertContainer />
       <div className='mx-auto max-w-7xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Media & Media Groups' description='Create image assets once, then reuse them across slideshow scenes via groups.' />
-          <Button variant='secondary' onClick={() => navigate('/')}>
-            Back to Control
-          </Button>
         </div>
 
         {isLoading ? (
@@ -645,8 +649,11 @@ export default function MediaRoute() {
                 activeTab={activeTab}
                 onChange={setActiveTab}
                 tabs={[
-                  { id: 'library', label: `Media Library (${sortedMedia.length})` },
-                  { id: 'groups', label: `Media Groups (${groupTotalCount})` },
+                  {
+                    id: 'library',
+                    label: `Media Library (${sortedMedia.length})`
+                  },
+                  { id: 'groups', label: `Media Groups (${groupTotalCount})` }
                 ]}
               />
             </div>
@@ -692,15 +699,11 @@ export default function MediaRoute() {
                             key={item.id}
                             className='group relative overflow-hidden rounded-2xl border border-sand/20 bg-white/80 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
                           >
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className='aspect-[4/3] w-full object-cover'
-                            />
+                            <img src={item.imageUrl} alt={item.name} className='aspect-[4/3] w-full object-cover' />
                             <div className='absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.8)_20%,rgba(0,0,0,0.7)_40%,rgba(0,0,0,0.3)_60%,transparent_80%)] p-3 pt-14'>
                               <h3 className='truncate text-sm font-semibold text-white drop-shadow-sm'>{item.name}</h3>
                             </div>
-                            <div className='absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                            <div className='absolute right-2 top-2 flex gap-1'>
                               {selectedGroup && !selectedGroup.items.some((groupItem) => groupItem.mediaId === item.id) ? (
                                 <IconButton
                                   onClick={() => {
@@ -736,19 +739,13 @@ export default function MediaRoute() {
                         ))}
                       </div>
 
-                      <Pagination
-                        currentPage={mediaPage}
-                        totalPages={mediaTotalPages}
-                        hasNextPage={mediaPage < mediaTotalPages}
-                        hasPrevPage={mediaPage > 1}
-                        onPageChange={setMediaPage}
-                      />
+                      <Pagination currentPage={mediaPage} totalPages={mediaTotalPages} hasNextPage={mediaPage < mediaTotalPages} hasPrevPage={mediaPage > 1} onPageChange={setMediaPage} />
                     </>
                   )}
                 </div>
               ) : (
-                <div className='flex gap-6'>
-                  <div className='w-1/2 space-y-4'>
+                <div className='flex flex-col gap-6 xl:flex-row'>
+                  <div className='w-full space-y-4 xl:w-1/2'>
                     <div className='flex items-center justify-between'>
                       <h2 className='text-xl font-semibold text-text-primary dark:text-text-primary'>Media Groups</h2>
                       <div className='flex items-center gap-3'>
@@ -794,34 +791,18 @@ export default function MediaRoute() {
                             </TableHeader>
                             <TableBody>
                               {sortedMediaGroups.map((group) => (
-                                <TableRow
-                                  key={group.id}
-                                  className='cursor-pointer'
-                                  onClick={() => setSelectedGroup(group)}
-                                >
+                                <TableRow key={group.id} className='cursor-pointer' onClick={() => setSelectedGroup(group)}>
                                   <TableCell className='font-medium text-text-primary dark:text-text-primary'>{group.name}</TableCell>
                                   <TableCell className='text-text-secondary dark:text-text-secondary'>{group.items.length}</TableCell>
                                   <TableCell>
-                                    <span className='truncate text-xs text-text-secondary dark:text-text-secondary'>
-                                      {group.description || '—'}
-                                    </span>
+                                    <span className='truncate text-xs text-text-secondary dark:text-text-secondary'>{group.description || '—'}</span>
                                   </TableCell>
                                   <TableCell>
                                     <div className='flex items-center justify-end gap-1' onClick={(e) => e.stopPropagation()}>
-                                      <IconButton
-                                        onClick={() => setSelectedGroup(group)}
-                                        className='text-sea '
-                                        title={`View ${group.name}`}
-                                        aria-label={`View ${group.name}`}
-                                      >
+                                      <IconButton onClick={() => setSelectedGroup(group)} className='text-sea ' title={`View ${group.name}`} aria-label={`View ${group.name}`}>
                                         <Search size={14} />
                                       </IconButton>
-                                      <IconButton
-                                        onClick={() => openEditGroupModal(group)}
-                                        className='text-sea '
-                                        title={`Edit ${group.name}`}
-                                        aria-label={`Edit ${group.name}`}
-                                      >
+                                      <IconButton onClick={() => openEditGroupModal(group)} className='text-sea ' title={`Edit ${group.name}`} aria-label={`Edit ${group.name}`}>
                                         <Pencil size={14} />
                                       </IconButton>
                                       <IconButton
@@ -841,18 +822,12 @@ export default function MediaRoute() {
                             </TableBody>
                           </Table>
                         </div>
-                        <Pagination
-                          currentPage={groupPage}
-                          totalPages={groupTotalPages}
-                          hasNextPage={groupPage < groupTotalPages}
-                          hasPrevPage={groupPage > 1}
-                          onPageChange={setGroupPage}
-                        />
+                        <Pagination currentPage={groupPage} totalPages={groupTotalPages} hasNextPage={groupPage < groupTotalPages} hasPrevPage={groupPage > 1} onPageChange={setGroupPage} />
                       </>
                     )}
                   </div>
 
-                  <div className='w-1/2 space-y-4'>
+                  <div className='w-full space-y-4 xl:w-1/2'>
                     {selectedGroup ? (
                       <>
                         <div className='flex items-center justify-between'>
@@ -885,15 +860,11 @@ export default function MediaRoute() {
                                 key={item.id}
                                 className='group relative overflow-hidden rounded-2xl border border-sand/20 bg-white/80 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60'
                               >
-                                <img
-                                  src={item.media.imageUrl}
-                                  alt={item.media.name}
-                                  className='aspect-[4/3] w-full object-cover'
-                                />
+                                <img src={item.media.imageUrl} alt={item.media.name} className='aspect-[4/3] w-full object-cover' />
                                 <div className='absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.8)_20%,rgba(0,0,0,0.7)_40%,rgba(0,0,0,0.3)_60%,transparent_80%)] p-3 pt-14'>
                                   <h3 className='truncate text-sm font-semibold text-white drop-shadow-sm'>{item.media.name}</h3>
                                 </div>
-                                <div className='absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                                <div className='absolute right-2 top-2 flex gap-1'>
                                   <IconButton
                                     onClick={() => {
                                       void moveMediaInSelectedGroup(item.mediaId, -1);
@@ -947,9 +918,7 @@ export default function MediaRoute() {
         <Modal isOpen={showMediaModal} onClose={closeMediaModal} title={editingMedia ? 'Edit Media' : 'Create Media'}>
           <div className='space-y-5'>
             <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>
-                {editingMedia ? 'Name' : 'Name (optional for multi-upload)'}
-              </label>
+              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>{editingMedia ? 'Name' : 'Name (optional for multi-upload)'}</label>
               <Input
                 value={mediaNameInput}
                 onChange={(e) => {
@@ -960,11 +929,7 @@ export default function MediaRoute() {
                 autoFocus
                 error={!!error && Boolean(editingMedia) && !mediaNameInput.trim()}
               />
-              {!editingMedia ? (
-                <p className='mt-2 text-xs text-text-secondary dark:text-text-secondary'>
-                  For one file, name is used directly. For multiple files, we append numbers.
-                </p>
-              ) : null}
+              {!editingMedia ? <p className='mt-2 text-xs text-text-secondary dark:text-text-secondary'>For one file, name is used directly. For multiple files, we append numbers.</p> : null}
             </div>
 
             {editingMedia ? (
@@ -1079,17 +1044,8 @@ export default function MediaRoute() {
 
                   {groupAssignMode === 'new' ? (
                     <div className='space-y-2'>
-                      <Input
-                        value={groupAssignNewName}
-                        onChange={(event) => setGroupAssignNewName(event.target.value)}
-                        placeholder='New group name'
-                      />
-                      <Textarea
-                        value={groupAssignNewDescription}
-                        onChange={(event) => setGroupAssignNewDescription(event.target.value)}
-                        rows={2}
-                        placeholder='Optional group description'
-                      />
+                      <Input value={groupAssignNewName} onChange={(event) => setGroupAssignNewName(event.target.value)} placeholder='New group name' />
+                      <Textarea value={groupAssignNewDescription} onChange={(event) => setGroupAssignNewDescription(event.target.value)} rows={2} placeholder='Optional group description' />
                     </div>
                   ) : null}
                 </div>
@@ -1151,6 +1107,6 @@ export default function MediaRoute() {
           </div>
         </Modal>
       </div>
-    </div>
+    </AppPage>
   );
 }

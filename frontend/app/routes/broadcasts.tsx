@@ -24,6 +24,7 @@ import { api, handleApiError } from "../services/api";
 import { useFeatures } from "../hooks/useFeatures";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import type { Route } from "./+types/broadcasts";
+import { AppPage } from "../components/AppPage";
 
 const VIEW_PERMISSION = "broadcast.view";
 const OPERATE_PERMISSION = "broadcast.operate";
@@ -294,25 +295,25 @@ export default function Broadcasts() {
 
   if (permissionsLoading || loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
+      <AppPage className="flex min-h-[50vh] items-center justify-center">
         <LoadingSpinner />
-      </div>
+      </AppPage>
     );
   }
   if (!canView) {
     return (
-      <div className="mx-auto max-w-3xl p-8">
+      <AppPage>
         <Card>
           <p className="text-sm text-text-secondary">
             You do not have broadcast.view permission.
           </p>
         </Card>
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+    <AppPage width="wide" className="space-y-6">
       <AlertContainer />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <SectionHeader
@@ -641,7 +642,7 @@ export default function Broadcasts() {
           </div>
         </div>
       </Modal>
-    </div>
+    </AppPage>
   );
 }
 

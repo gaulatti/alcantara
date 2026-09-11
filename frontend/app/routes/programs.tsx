@@ -6,6 +6,7 @@ import type { Route } from './+types/programs';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { hasProgramCapability, resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/programTemplate';
+import { AppPage } from '../components/AppPage';
 
 interface SceneSummary {
   id: number;
@@ -60,7 +61,7 @@ interface ProgramState {
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Programs - TV Broadcast' }, { name: 'description', content: 'Create, edit, and delete programs' }];
+  return [{ title: 'Shows - Alcantara' }, { name: 'description', content: 'Manage television, radio, and simulcast shows' }];
 }
 
 export default function ProgramsAdmin() {
@@ -489,11 +490,11 @@ export default function ProgramsAdmin() {
 
       await fetchPrograms();
       closeModal();
-      showAlert(isEditing ? 'Program updated.' : 'Program created.', 'success');
+      showAlert(isEditing ? 'Show updated.' : 'Show created.', 'success');
     } catch (err) {
       console.error('Failed to save program:', err);
-      setError('Failed to save program. Ensure the ID is unique.');
-      showAlert('Failed to save program.', 'error');
+      setError('Failed to save show. Ensure the ID is unique.');
+      showAlert('Failed to save show.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -521,29 +522,26 @@ export default function ProgramsAdmin() {
         const fallbackProgramId = nextPrograms[0]?.programId || 'main';
         setSelectedProgramId(fallbackProgramId);
       }
-      showAlert('Program deleted.', 'success');
+      showAlert('Show deleted.', 'success');
     } catch (err) {
       console.error('Failed to delete program:', err);
-      showAlert('Failed to delete program.', 'error');
+      showAlert('Failed to delete show.', 'error');
     }
   };
 
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <AppPage width='wide'>
       <AlertContainer />
       <div className='mx-auto max-w-5xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader
-            title='Programs'
-            description='Create, rename, and delete broadcast programs. Assign scenes and media groups per program in edit mode.'
+            title='Shows'
+            description='Create and organize TV, radio, or simulcast shows and their production assets.'
           />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/')}>
-              Back to Control
-            </Button>
             <Button onClick={openCreateModal}>
               <Plus size={16} />
-              Create Program
+              Create show
             </Button>
           </div>
         </div>
@@ -555,7 +553,7 @@ export default function ProgramsAdmin() {
               <p>Loading programs...</p>
             </div>
           ) : sortedPrograms.length === 0 ? (
-            <Empty title='No programs yet' description='Create your first program.' action={<Button onClick={openCreateModal}>Create Program</Button>} />
+            <Empty title='No shows yet' description='Create your first show.' action={<Button onClick={openCreateModal}>Create show</Button>} />
           ) : (
             <div className='space-y-3'>
               {sortedPrograms.map((program) => {
@@ -633,7 +631,7 @@ export default function ProgramsAdmin() {
           )}
         </Card>
 
-        <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit Program' : 'Create Program'}>
+        <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'}>
           <div className='space-y-5'>
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program ID</label>
@@ -814,12 +812,12 @@ export default function ProgramsAdmin() {
                 Cancel
               </Button>
               <Button onClick={saveProgram} disabled={isSaving}>
-                {isSaving ? 'Saving...' : editingProgramId ? 'Update Program' : 'Create Program'}
+                {isSaving ? 'Saving...' : editingProgramId ? 'Update show' : 'Create show'}
               </Button>
             </div>
           </div>
         </Modal>
       </div>
-    </div>
+    </AppPage>
   );
 }

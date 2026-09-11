@@ -142,9 +142,12 @@ operator choice of Manual remains authoritative. In autoplay, Alcantara advances
 to the next playlist item only after Palazzo reports that the active track ended;
 looped playlists wrap to the first item and non-looped playlists stop at the end.
 
-The radio control surface includes live Song, Instants / bumpers, and Main
-mixer controls. Mixer mutations are applied to Palazzo as well as persisted;
-bumper configuration fields are validated and saved by the radio settings API.
+The Radio desk includes live Song, Audio clips / bumpers, and Main mixer
+controls. Radio distribution at `/radio-settings` owns Palazzo automation,
+bumper policy, and now-playing consumers so live playout is not mixed with
+configuration. Simulcast uses the TV switcher with an explicit radio-leg status
+rail. Mixer mutations are applied to Palazzo as well as persisted; bumper
+configuration fields are validated and saved by the radio settings API.
 All Palazzo traffic is backend-only, bearer-authenticated, and explicitly
 program-scoped. The shared machine client preserves playback/idempotency IDs
 across retries and is also used by telemetry reconnect and startup recovery.
@@ -164,11 +167,16 @@ security, state/SSE projection, metrics, and removal gates.
 
 ### Control Page (`/control`)
 
-- Program/Preview switcher deck with CUT, TAKE, fade-to-black, and workspace modes
-- Scene selection and activation
+- Mode-aware Bleecker sidebar shell with desktop rail and mobile drawer
+- Program/Preview switcher deck with CUT, TAKE, two-step fade-to-black, and
+  Director, Audio, and Remote workspaces
+- Scene staging separated from Program activation
 - Real-time chyron text updates
-- Create new scenes and layouts
+- Type-aware TV, Radio, and Simulcast operating surfaces
 - Manage program state
+
+The complete navigation, surface, safety, responsive, and fixture contract is in
+[Operator interface](docs/operator-interface.md).
 
 ### Database Schema
 
@@ -242,8 +250,8 @@ Choose an identity before starting or recreating the frontend:
 TEST_AUTH_IDENTITY=viewer docker compose up --build
 ```
 
-Re-running the backend seed restores the deterministic profiles and shared
-layout without creating duplicates:
+Re-running the backend seed restores deterministic profiles, console presets,
+and TV, Radio, and Simulcast workflow fixtures without creating duplicates:
 
 ```bash
 docker compose exec backend pnpm seed

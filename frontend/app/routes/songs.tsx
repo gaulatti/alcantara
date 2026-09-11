@@ -1,8 +1,8 @@
 import { AlertContainer, Button, Card, Checkbox, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, Pagination, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router';
 import type { Route } from './+types/songs';
+import { AppPage } from '../components/AppPage';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { fetchSongsPage } from '../services/songs';
@@ -101,11 +101,16 @@ async function readAudioDurationFromFile(file: File): Promise<number | null> {
 }
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Songs - TV Broadcast' }, { name: 'description', content: 'Manage global songs catalog for ModoItaliano sequences' }];
+  return [
+    { title: 'Songs - TV Broadcast' },
+    {
+      name: 'description',
+      content: 'Manage global songs catalog for ModoItaliano sequences'
+    }
+  ];
 }
 
 export default function SongsCatalog() {
-  const navigate = useNavigate();
   const [activeProgramId] = useGlobalProgramId();
   const [songs, setSongs] = useState<SongCatalogItem[]>([]);
   const [instants, setInstants] = useState<InstantItem[]>([]);
@@ -141,7 +146,13 @@ export default function SongsCatalog() {
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
-  const [batchItems, setBatchItems] = useState<Array<{ name: string; status: 'pending' | 'uploading' | 'done' | 'error'; error?: string }>>([]);
+  const [batchItems, setBatchItems] = useState<
+    Array<{
+      name: string;
+      status: 'pending' | 'uploading' | 'done' | 'error';
+      error?: string;
+    }>
+  >([]);
 
   const fetchSongs = useCallback(async () => {
     setIsLoading(true);
@@ -152,7 +163,7 @@ export default function SongsCatalog() {
         sortBy,
         sortOrder,
         page,
-        programId: activeProgramId,
+        programId: activeProgramId
       });
       setSongs(result.data);
       setTotalPages(result.meta.totalPages);
@@ -191,7 +202,7 @@ export default function SongsCatalog() {
   useEffect(() => {
     void loadInstants().catch((err) => {
       console.error('Failed to load song intro assets:', err);
-      showAlert('Failed to load Instant assets for song intros.', 'error');
+      showAlert('Failed to load audio clips for song intros.', 'error');
     });
   }, [loadInstants]);
 
@@ -213,11 +224,7 @@ export default function SongsCatalog() {
         className='inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:text-text-secondary hover:text-sea dark:hover:text-sea transition-colors'
       >
         {children}
-        {isActive ? (
-          sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-        ) : (
-          <ArrowUpDown size={12} className='opacity-30' />
-        )}
+        {isActive ? sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} /> : <ArrowUpDown size={12} className='opacity-30' />}
       </button>
     );
   };
@@ -264,7 +271,14 @@ export default function SongsCatalog() {
         const res = await fetch(apiUrl('/songs'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ artist, title, audioUrl: upload.url, coverUrl: coverUrl || null, durationMs: durationMs ?? null, enabled: true })
+          body: JSON.stringify({
+            artist,
+            title,
+            audioUrl: upload.url,
+            coverUrl: coverUrl || null,
+            durationMs: durationMs ?? null,
+            enabled: true
+          })
         });
         if (!res.ok) throw new Error(await extractErrorMessage(res));
         setBatchItems((prev) => prev.map((item, idx) => (idx === i ? { ...item, status: 'done' } : item)));
@@ -331,9 +345,7 @@ export default function SongsCatalog() {
         setCoverUrlInput(upload.metadata.coverUrl.trim());
       }
       const durationMs =
-        typeof upload.metadata?.durationMs === 'number' && Number.isFinite(upload.metadata.durationMs) && upload.metadata.durationMs > 0
-          ? Math.round(upload.metadata.durationMs)
-          : fallbackDurationMs;
+        typeof upload.metadata?.durationMs === 'number' && Number.isFinite(upload.metadata.durationMs) && upload.metadata.durationMs > 0 ? Math.round(upload.metadata.durationMs) : fallbackDurationMs;
       if (typeof durationMs === 'number' && durationMs > 0) {
         setDurationMsInput(String(durationMs));
       }
@@ -454,18 +466,15 @@ export default function SongsCatalog() {
   };
 
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <AppPage width='wide'>
       <AlertContainer />
       <div className='mx-auto max-w-6xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader title='Songs Catalog' description='Global library used by ModoItaliano song sequences.' />
+          <SectionHeader title='Song catalog' description='Global library used by ModoItaliano song sequences.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/')}>
-              Back to Control
-            </Button>
             <Button onClick={openCreateModal}>
               <Plus size={16} />
-              Add Song
+              Add song
             </Button>
           </div>
         </div>
@@ -512,11 +521,7 @@ export default function SongsCatalog() {
               <p>Loading songs...</p>
             </div>
           ) : catalogTotal === 0 ? (
-            <Empty
-              title='No songs yet'
-              description='Upload your first song into the global catalog.'
-              action={<Button onClick={openCreateModal}>Add Song</Button>}
-            />
+            <Empty title='No songs yet' description='Upload your first song into the global catalog.' action={<Button onClick={openCreateModal}>Add song</Button>} />
           ) : totalCount === 0 ? (
             <Empty
               title='No songs match this search'
@@ -535,7 +540,45 @@ export default function SongsCatalog() {
             />
           ) : (
             <>
-              <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
+              <div className='space-y-3 md:hidden'>
+                {songs.map((song, index) => (
+                  <article
+                    key={song.id}
+                    className={`rounded-[var(--radius-card)] border border-sand/25 bg-white/80 p-4 dark:border-white/10 dark:bg-dark-sand/60 ${!song.enabled ? 'opacity-60' : ''}`}
+                  >
+                    <div className='flex gap-3'>
+                      <div className='h-12 w-12 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
+                        {song.coverUrl ? (
+                          <img src={song.coverUrl} alt='' className='h-full w-full object-cover' />
+                        ) : (
+                          <div className='flex h-full w-full items-center justify-center'>
+                            <Music2 size={16} className='text-text-secondary/40' />
+                          </div>
+                        )}
+                      </div>
+                      <div className='min-w-0 flex-1'>
+                        <p className='truncate font-medium text-text-primary'>{song.title || 'Untitled'}</p>
+                        <p className='truncate text-sm text-text-secondary'>{song.artist || 'Unknown artist'}</p>
+                        <p className='mt-1 text-xs text-text-secondary'>
+                          #{(page - 1) * 50 + index + 1} · {formatSongDuration(song.durationMs)} · {song.intro ? 'Intro assigned' : 'No intro'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className='mt-3 grid grid-cols-3 gap-2'>
+                      <Button size='sm' variant='secondary' onClick={() => void playSongPreview(song)}>
+                        <Play size={14} /> Preview
+                      </Button>
+                      <Button size='sm' variant='secondary' onClick={() => openEditModal(song)}>
+                        <Pencil size={14} /> Edit
+                      </Button>
+                      <Button size='sm' variant='destructive' onClick={() => void deleteSong(song)}>
+                        <Trash2 size={14} /> Delete
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className='hidden overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40 md:block'>
                 {/* Header row */}
                 <div className='grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 dark:border-sand/35 dark:bg-dark-sand/40'>
                   <span />
@@ -570,9 +613,7 @@ export default function SongsCatalog() {
                       {/* Title only */}
                       <div className='min-w-0'>
                         <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{song.title || 'Untitled'}</div>
-                        <div className='truncate text-[11px] text-text-secondary dark:text-text-secondary'>
-                          {song.intro ? `Song intro: ${song.intro.instant.name}` : 'No song intro'}
-                        </div>
+                        <div className='truncate text-[11px] text-text-secondary dark:text-text-secondary'>{song.intro ? `Song intro: ${song.intro.instant.name}` : 'No song intro'}</div>
                       </div>
 
                       {/* Artist */}
@@ -598,25 +639,20 @@ export default function SongsCatalog() {
                           onClick={() => {
                             void playSongPreview(song);
                           }}
-                          className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
+                          className='text-sea'
                           title={`Preview ${formatSongTitle(song)}`}
                           aria-label={`Preview ${formatSongTitle(song)}`}
                         >
                           <Play size={14} />
                         </IconButton>
-                        <IconButton
-                          onClick={() => openEditModal(song)}
-                          className='text-sea opacity-0 transition-opacity group-hover:opacity-100 '
-                          title={`Edit ${formatSongTitle(song)}`}
-                          aria-label={`Edit ${formatSongTitle(song)}`}
-                        >
+                        <IconButton onClick={() => openEditModal(song)} className='text-sea' title={`Edit ${formatSongTitle(song)}`} aria-label={`Edit ${formatSongTitle(song)}`}>
                           <Pencil size={14} />
                         </IconButton>
                         <IconButton
                           onClick={() => {
                             void deleteSong(song);
                           }}
-                          className='text-terracotta opacity-0 transition-opacity group-hover:opacity-100'
+                          className='text-terracotta'
                           title={`Delete ${formatSongTitle(song)}`}
                           aria-label={`Delete ${formatSongTitle(song)}`}
                         >
@@ -628,19 +664,13 @@ export default function SongsCatalog() {
                 </div>
               </div>
 
-              <Pagination
-                currentPage={page}
-                totalPages={totalPages}
-                hasNextPage={page < totalPages}
-                hasPrevPage={page > 1}
-                onPageChange={setPage}
-              />
+              <Pagination currentPage={page} totalPages={totalPages} hasNextPage={page < totalPages} hasPrevPage={page > 1} onPageChange={setPage} />
             </>
           )}
         </Card>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingSong ? 'Edit Song' : 'Add Song'}>
+      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingSong ? 'Edit song' : 'Add song'}>
         <div className='space-y-4'>
           {!editingSong ? (
             <>
@@ -662,20 +692,9 @@ export default function SongsCatalog() {
               {batchItems.length > 0 && (
                 <ul className='space-y-1.5'>
                   {batchItems.map((item, idx) => (
-                    <li
-                      key={idx}
-                      className='flex items-center gap-2 rounded-lg border border-sand/30 bg-white/60 px-3 py-2 text-sm dark:border-sand/40 dark:bg-dark-sand/50'
-                    >
+                    <li key={idx} className='flex items-center gap-2 rounded-lg border border-sand/30 bg-white/60 px-3 py-2 text-sm dark:border-sand/40 dark:bg-dark-sand/50'>
                       <span
-                        className={`shrink-0 text-base ${
-                          item.status === 'done'
-                            ? ''
-                            : item.status === 'error'
-                              ? 'text-terracotta'
-                              : item.status === 'uploading'
-                                ? 'text-sea '
-                                : 'text-text-secondary'
-                        }`}
+                        className={`shrink-0 text-base ${item.status === 'done' ? '' : item.status === 'error' ? 'text-terracotta' : item.status === 'uploading' ? 'text-sea ' : 'text-text-secondary'}`}
                       >
                         {item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : item.status === 'uploading' ? '⟳' : '·'}
                       </span>
@@ -707,9 +726,7 @@ export default function SongsCatalog() {
                     }
                   }}
                 />
-                <p className='text-xs text-text-secondary dark:text-text-secondary'>
-                  {isUploadingSong ? 'Uploading…' : songFile ? `Replace: ${songFile.name}` : 'Replace song file'}
-                </p>
+                <p className='text-xs text-text-secondary dark:text-text-secondary'>{isUploadingSong ? 'Uploading…' : songFile ? `Replace: ${songFile.name}` : 'Replace song file'}</p>
               </div>
 
               <div className='grid gap-3 sm:grid-cols-2'>
@@ -725,12 +742,7 @@ export default function SongsCatalog() {
 
               <div>
                 <label className='mb-1 block text-xs '>Audio URL</label>
-                <Input
-                  type='text'
-                  value={audioUrlInput}
-                  onChange={(event) => setAudioUrlInput(event.target.value)}
-                  placeholder='Uploaded automatically after song upload'
-                />
+                <Input type='text' value={audioUrlInput} onChange={(event) => setAudioUrlInput(event.target.value)} placeholder='Uploaded automatically after song upload' />
               </div>
 
               <div className='grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end'>
@@ -808,6 +820,6 @@ export default function SongsCatalog() {
           )}
         </div>
       </Modal>
-    </div>
+    </AppPage>
   );
 }

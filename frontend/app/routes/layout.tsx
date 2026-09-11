@@ -1,37 +1,33 @@
-import {
-  AppShell,
-  IconButton,
-  CommandSpotlight,
-  Footer as BleeckerFooter,
-  Header as BleeckerHeader,
-  HeaderSelect,
-  Input,
-  Button,
-  Modal,
-  type CommandSpotlightAction,
-  type NavItem,
-  type RenderLinkProps
-} from '@gaulatti/bleecker';
+import { BrandLockup, IconButton, CommandSpotlight, HeaderSelect, Input, Button, Modal, Sidebar, type CommandSpotlightAction, type SidebarItem } from '@gaulatti/bleecker';
 import {
   Blend,
+  BookOpen,
+  Boxes,
+  Cable,
   CircleOff,
   Clock3,
   Clapperboard,
+  Code2,
   Eye,
   ExternalLink,
   Images,
   LayoutTemplate,
   List,
   LogOut,
+  Menu,
   Music,
   PhoneCall,
   Radio,
+  RadioTower,
   RefreshCw,
+  Search,
+  Settings,
   SlidersHorizontal,
   Tv,
-  Volume2
+  Volume2,
+  X
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { apiUrl, getApiBaseUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
@@ -40,8 +36,8 @@ import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
 import { useFeatures } from '../hooks/useFeatures';
-
-const GITHUB_REPO_URL = 'https://github.com/gaulatti/alcantara';
+import { isTestAuth } from '../services/session';
+import { getAppNavigationSections, isNavigationItemActive, type ProgramType } from '../utils/appNavigation';
 
 interface ProgramSummary {
   programId: string;
@@ -74,7 +70,31 @@ interface BroadcastSettings {
   updatedAt: string;
 }
 
-function renderAppLink({ children, className, item, onClick }: RenderLinkProps<NavItem>) {
+const NAVIGATION_ICONS: Record<string, ReactNode> = {
+  control: <SlidersHorizontal size={17} />,
+  rundown: <List size={17} />,
+  calls: <PhoneCall size={17} />,
+  destinations: <RadioTower size={17} />,
+  scenes: <Clapperboard size={17} />,
+  'scene-templates': <LayoutTemplate size={17} />,
+  media: <Images size={17} />,
+  transitions: <Blend size={17} />,
+  songs: <Music size={17} />,
+  'audio-clips': <Volume2 size={17} />,
+  shows: <Boxes size={17} />,
+  'radio-distribution': <Cable size={17} />,
+  'component-catalog': <BookOpen size={17} />,
+  'console-fixture': <Code2 size={17} />
+};
+
+interface ShellLinkProps {
+  children: ReactNode;
+  className?: string;
+  item: { href: string; external?: boolean; active?: boolean };
+  onClick?: () => void;
+}
+
+function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   if (item.external) {
     return (
       <a href={item.href} className={className} onClick={onClick} target='_blank' rel='noopener noreferrer'>
@@ -84,7 +104,7 @@ function renderAppLink({ children, className, item, onClick }: RenderLinkProps<N
   }
 
   return (
-    <Link to={item.href} className={className} onClick={onClick}>
+    <Link to={item.href} className={className} onClick={onClick} aria-current={item.active ? 'page' : undefined}>
       {children}
     </Link>
   );
@@ -106,7 +126,13 @@ export default function Layout() {
   const [broadcastTimeError, setBroadcastTimeError] = useState('');
   const [isSavingBroadcastTime, setIsSavingBroadcastTime] = useState(false);
   const [isTriggeringProgramReload, setIsTriggeringProgramReload] = useState(false);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const selectedTransition = getSceneTransitionPreset(selectedTransitionId);
+
+  useEffect(() => {
+    setMobileNavigationOpen(false);
+  }, [location.pathname]);
 
   const loadBroadcastSettings = useCallback(async () => {
     try {
@@ -292,48 +318,35 @@ export default function Layout() {
     });
   }, [knownPrograms, selectedProgramId]);
 
-  const navigation: NavItem[] = [
-    { href: '/', label: 'Control' },
-    { href: '/flight', label: 'Flight' },
-    { href: '/instants', label: 'Instants' },
-    { href: '/songs', label: 'Songs' },
-    { href: '/media', label: 'Media' },
-    { href: '/calls', label: 'Guest Calls' },
-    { href: '/scenes', label: 'Scenes' },
-    { href: '/programs', label: 'Programs' },
-    ...(hasPermission('broadcast.view') ? [{ href: '/broadcasts', label: 'Broadcasts' }] : []),
-    { href: '/preview', label: 'Preview' },
-    { href: '/layouts', label: 'Layouts' }
-  ];
-
-  const footerSections: Array<{ title: string; items: NavItem[] }> = [
-    {
-      title: 'Navigation',
-      items: [
-        { href: '/', label: 'Control' },
-        { href: '/flight', label: 'Flight' },
-        { href: '/instants', label: 'Instants' },
-        { href: '/songs', label: 'Songs' },
-        { href: '/media', label: 'Media' },
-        { href: '/calls', label: 'Guest Calls' },
-        { href: '/scenes', label: 'Scenes' },
-        { href: '/programs', label: 'Programs' },
-        ...(hasPermission('broadcast.view') ? [{ href: '/broadcasts', label: 'Broadcasts' }] : [])
-      ]
-    },
-    {
-      title: 'Resources',
-      items: [{ href: GITHUB_REPO_URL, label: 'GitHub', external: true }]
-    },
-    {
-      title: 'Legal',
-      items: [
-        { href: '/privacy', label: 'Privacy Policy' },
-        { href: '/terms', label: 'Terms of Service' }
-      ]
-    }
-  ];
-  const hideFooter = location.pathname === '/' || location.pathname === '/control';
+  const selectedProgram = knownPrograms.find((program) => program.programId === selectedProgramId) ?? { programId: selectedProgramId };
+  const selectedProgramType = (selectedProgram.type ?? 'tv') as ProgramType;
+  const navigationSections = useMemo(
+    () =>
+      getAppNavigationSections({
+        programType: selectedProgramType,
+        canViewBroadcasts: hasPermission('broadcast.view'),
+        includeDeveloperTools: import.meta.env.DEV
+      }),
+    [hasPermission, selectedProgramType]
+  );
+  const groupedSidebarItems: SidebarItem[] = useMemo(
+    () =>
+      navigationSections.map((section) => ({
+        id: section.id,
+        label: section.label,
+        icon: section.id === 'live' ? <RadioTower size={17} /> : section.id === 'library' ? <BookOpen size={17} /> : section.id === 'setup' ? <Settings size={17} /> : <Code2 size={17} />,
+        active: section.items.some((item) => isNavigationItemActive(location.pathname, item.href)),
+        items: section.items.map((item) => ({
+          id: item.id,
+          href: item.href,
+          label: item.label,
+          icon: NAVIGATION_ICONS[item.id],
+          active: isNavigationItemActive(location.pathname, item.href)
+        }))
+      })),
+    [location.pathname, navigationSections]
+  );
+  const flatSidebarItems: SidebarItem[] = useMemo(() => groupedSidebarItems.flatMap((section) => section.items ?? []), [groupedSidebarItems]);
   const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control';
 
   const renderHeaderProgramSelector = () => (
@@ -350,7 +363,6 @@ export default function Layout() {
     />
   );
 
-  const selectedProgram = knownPrograms.find((program) => program.programId === selectedProgramId) ?? { programId: selectedProgramId };
   const openProgramUrl = resolveProgramOutputUrl(selectedProgram, getApiBaseUrl());
   const triggerProgramReload = useCallback(async () => {
     if (!selectedProgramId.trim()) {
@@ -375,12 +387,13 @@ export default function Layout() {
   const renderOpenProgramButton = () => (
     <IconButton
       type='button'
+      size='sm'
+      variant='subtle'
       title='Open Program Output'
       aria-label='Open Program Output'
       onClick={() => {
         window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
       }}
-      className='border-sand/20 bg-white text-text-primary hover:bg-sand/10 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
     >
       <ExternalLink size={16} strokeWidth={1.8} />
     </IconButton>
@@ -389,20 +402,21 @@ export default function Layout() {
   const renderRefreshProgramButton = () => (
     <IconButton
       type='button'
+      size='sm'
+      variant='subtle'
       title='Refresh Program'
       aria-label='Refresh Program'
       onClick={() => {
         void triggerProgramReload();
       }}
       disabled={isTriggeringProgramReload}
-      className='border-sand/20 bg-white text-text-primary hover:bg-sand/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sand/50 dark:bg-dark-sand dark:text-text-primary dark:hover:bg-sand/10'
     >
       <RefreshCw size={16} strokeWidth={1.8} className={isTriggeringProgramReload ? 'animate-spin' : ''} />
     </IconButton>
   );
 
   const renderLogoutButton = () => (
-    <Button variant='destructive' size='sm' onClick={logout}>
+    <Button variant='ghost' size='sm' onClick={logout}>
       <LogOut size={15} strokeWidth={1.5} />
       <span>Logout</span>
     </Button>
@@ -423,16 +437,16 @@ export default function Layout() {
       },
       {
         id: 'nav-flight',
-        title: 'Go to Flight',
-        description: 'Open the flight mode cue list for the selected program',
+        title: 'Go to Rundown',
+        description: 'Open the cue list for the selected show',
         group: 'Navigation',
         icon: <List size={16} />,
         onSelect: () => navigate('/flight')
       },
       {
         id: 'nav-instants',
-        title: 'Go to Instants',
-        description: 'Manage instant audio triggers for selected program',
+        title: 'Go to Audio Clips',
+        description: 'Manage reusable sounders, bumpers, and audio clips',
         group: 'Navigation',
         icon: <Volume2 size={16} />,
         onSelect: () => navigate('/instants')
@@ -475,8 +489,8 @@ export default function Layout() {
         : []),
       {
         id: 'nav-programs',
-        title: 'Go to Programs',
-        description: 'Manage create/edit/delete for programs',
+        title: 'Go to Shows',
+        description: 'Manage TV, Radio, and Simulcast shows',
         group: 'Navigation',
         icon: <Tv size={16} />,
         onSelect: () => navigate('/programs')
@@ -491,11 +505,19 @@ export default function Layout() {
       },
       {
         id: 'nav-layouts',
-        title: 'Go to Layouts',
-        description: 'Manage reusable layouts',
+        title: 'Go to Scene Templates',
+        description: 'Manage reusable scene structures',
         group: 'Navigation',
         icon: <LayoutTemplate size={16} />,
         onSelect: () => navigate('/layouts')
+      },
+      {
+        id: 'nav-radio-settings',
+        title: 'Go to Radio Distribution',
+        description: 'Configure Palazzo automation, bumpers, and now-playing delivery',
+        group: 'Navigation',
+        icon: <Cable size={16} />,
+        onSelect: () => navigate('/radio-settings')
       },
       {
         id: 'nav-preview',
@@ -596,10 +618,10 @@ export default function Layout() {
       onSelect: () => setSelectedProgramId(option.value)
     }));
 
-    const sceneTakeActions: CommandSpotlightAction[] = knownScenes.map((scene) => ({
-      id: `scene-take-${scene.id}`,
-      title: `Take Scene: ${scene.name}`,
-      description: `${scene.layout?.name || 'No layout'} · ${selectedProgramId} · ${selectedTransition.name}`,
+    const sceneStageActions: CommandSpotlightAction[] = knownScenes.map((scene) => ({
+      id: `scene-stage-${scene.id}`,
+      title: `Stage Scene: ${scene.name}`,
+      description: `${scene.layout?.name || 'No layout'} · ${selectedProgramId} · verify in Preview before TAKE`,
       group: 'Scenes',
       icon: <Clapperboard size={16} />,
       keywords: [scene.layout?.name || '', selectedProgramId, selectedTransition.name],
@@ -613,16 +635,13 @@ export default function Layout() {
           throw new Error(`Failed to assign scene (${assignRes.status})`);
         }
 
-        const activateRes = await fetch(apiUrl(`/program/${encodeURIComponent(selectedProgramId)}/activate`), {
+        const stageRes = await fetch(apiUrl(`/program/${encodeURIComponent(selectedProgramId)}/stage`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sceneId: scene.id,
-            transitionId: selectedTransition.id
-          })
+          body: JSON.stringify({ sceneId: scene.id })
         });
-        if (!activateRes.ok) {
-          throw new Error(`Failed to activate scene (${activateRes.status})`);
+        if (!stageRes.ok) {
+          throw new Error(`Failed to stage scene (${stageRes.status})`);
         }
       }
     }));
@@ -655,7 +674,20 @@ export default function Layout() {
         }
       }));
 
-    return [...baseActions, ...selectProgramActions, ...sceneTakeActions, ...transitionActions, ...instantActions];
+    const televisionOnlyActions = new Set(['nav-media', 'nav-calls', 'nav-broadcasts', 'nav-scenes', 'nav-layouts', 'nav-preview', 'open-transition-settings']);
+    const visibleBaseActions = baseActions.filter((action) => {
+      if (selectedProgramType === 'radio' && televisionOnlyActions.has(action.id)) return false;
+      if (selectedProgramType === 'tv' && action.id === 'nav-radio-settings') return false;
+      return true;
+    });
+
+    return [
+      ...visibleBaseActions,
+      ...selectProgramActions,
+      ...(selectedProgramType === 'radio' ? [] : sceneStageActions),
+      ...(selectedProgramType === 'radio' ? [] : transitionActions),
+      ...instantActions
+    ];
   }, [
     knownInstants,
     knownScenes,
@@ -666,84 +698,155 @@ export default function Layout() {
     openProgramUrl,
     programOptions,
     selectedProgramId,
+    selectedProgramType,
     selectedTransition,
     setSelectedProgramId,
     setSelectedTransitionId
   ]);
+
+  const programModeLabel = selectedProgramType === 'radio' ? 'Radio' : selectedProgramType === 'both' ? 'Simulcast' : 'Television';
+  const programModeIcon =
+    selectedProgramType === 'radio' ? (
+      <Radio size={14} />
+    ) : selectedProgramType === 'both' ? (
+      <>
+        <Tv size={14} />
+        <Radio size={14} />
+      </>
+    ) : (
+      <Tv size={14} />
+    );
+  const testAuthEnabled = isTestAuth();
+  const testAuthBadge = (compact = false) =>
+    testAuthEnabled ? (
+      <span
+        className={`inline-flex shrink-0 items-center justify-center rounded bg-amber-300 py-1 font-black text-black ${compact ? 'px-1 text-[8px] tracking-wide' : 'px-2 text-[9px] tracking-widest'}`}
+        title='Local test authentication is active'
+      >
+        TEST AUTH
+      </span>
+    ) : null;
+  const sidebarHeader = isViewportConstrainedRoute ? (
+    <div className='flex flex-col items-center gap-3'>
+      <Link to='/' aria-label='Alcántara live control' className='flex justify-center'>
+        <img src='/logo.svg' alt='' className='h-7 w-7 object-contain' />
+      </Link>
+      {testAuthBadge(true)}
+    </div>
+  ) : (
+    <div className='px-1'>
+      <BrandLockup href='/' name='alcántara' logoAlt='alcántara' logoSrc='/logo.svg' renderLink={renderAppLink} />
+      <div className='mt-2 flex items-center justify-between gap-2'>
+        <p className='text-[11px] leading-5 text-text-secondary'>Broadcast control center</p>
+        {testAuthBadge()}
+      </div>
+    </div>
+  );
+  const sidebarFooter = isViewportConstrainedRoute ? undefined : (
+    <div className='space-y-3 px-1'>
+      <div>
+        <p className='mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary'>Active show</p>
+        {renderHeaderProgramSelector()}
+      </div>
+      <div className='flex items-center justify-between gap-2'>
+        <Button size='sm' variant='ghost' onClick={() => setCommandOpen(true)}>
+          <Search size={14} /> Commands
+        </Button>
+        {renderLogoutButton()}
+      </div>
+    </div>
+  );
 
   return (
     <>
       <CommandSpotlight
         actions={commandActions}
         showTrigger={false}
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
         placeholder='Search pages, programs, scenes, transitions, and broadcast...'
         emptyMessage='No commands found.'
       />
-      <AppShell
-        className={`antialiased ${isViewportConstrainedRoute ? 'h-screen overflow-hidden' : ''}`}
-        contentClassName={isViewportConstrainedRoute ? 'h-full overflow-hidden' : undefined}
-        header={
-          <BleeckerHeader
-            brand={{
-              href: '/',
-              logoAlt: 'alcantara',
-              logoSrc: '/logo.svg',
-              name: 'alcantara'
-            }}
-            navigation={navigation}
-            actions={
-              <>
-                {renderHeaderProgramSelector()}
-                {renderOpenProgramButton()}
-                {renderRefreshProgramButton()}
-                {renderLogoutButton()}
-              </>
-            }
-            mobileActions={
-              <>
-                {renderHeaderProgramSelector()}
-                {renderOpenProgramButton()}
-                {renderRefreshProgramButton()}
-                {renderLogoutButton()}
-              </>
-            }
-            renderLink={renderAppLink}
-          />
-        }
-        footer={
-          hideFooter ? undefined : (
-            <BleeckerFooter
-              brand={{
-                href: '/',
-                logoAlt: 'alcantara',
-                logoSrc: '/logo.svg',
-                name: 'alcantara',
-                description: 'Advanced broadcast control.'
-              }}
-              sections={footerSections}
-              bottomLeft={
-                <>
-                  © {new Date().getFullYear()}{' '}
-                  <a href='https://gaulatti.com' target='_blank' rel='noopener noreferrer' className='font-semibold hover:underline underline-offset-4'>
-                    gaulatti
-                  </a>
-                  . All rights reserved.
-                </>
-              }
-              bottomRight={
-                <a href={GITHUB_REPO_URL} target='_blank' rel='noopener noreferrer' className='hover:underline underline-offset-4'>
-                  View source on GitHub
-                </a>
-              }
-              renderLink={renderAppLink}
-            />
-          )
-        }
-      >
-        <div className={isViewportConstrainedRoute ? 'flex h-full min-h-0 flex-col overflow-hidden' : ''}>
-          <Outlet />
+      <div className='flex h-screen min-h-0 bg-background text-foreground antialiased'>
+        <Sidebar
+          className='hidden shrink-0 xl:flex'
+          collapsed={isViewportConstrainedRoute}
+          header={sidebarHeader}
+          items={isViewportConstrainedRoute ? flatSidebarItems : groupedSidebarItems}
+          footer={sidebarFooter}
+          renderLink={renderAppLink}
+        />
+
+        <div className='flex min-w-0 flex-1 flex-col'>
+          <header className='fixed inset-x-0 top-0 z-[1200] flex h-16 items-center justify-between border-b border-white/10 bg-deep-sea/95 px-4 backdrop-blur xl:hidden'>
+            <BrandLockup href='/' name='alcántara' logoAlt='alcántara' logoSrc='/logo.svg' renderLink={renderAppLink} />
+            <div className='flex items-center gap-2'>
+              {testAuthBadge()}
+              <span className='hidden items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-xs font-semibold text-text-secondary sm:inline-flex'>
+                {programModeIcon} {programModeLabel}
+              </span>
+              <IconButton variant='ghost' aria-label={mobileNavigationOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setMobileNavigationOpen((open) => !open)}>
+                {mobileNavigationOpen ? <X size={20} /> : <Menu size={20} />}
+              </IconButton>
+            </div>
+          </header>
+
+          {mobileNavigationOpen ? (
+            <div className='fixed inset-0 z-[1190] xl:hidden' role='dialog' aria-modal='true' aria-label='Application navigation'>
+              <button type='button' aria-label='Close navigation' className='absolute inset-0 bg-black/65' onClick={() => setMobileNavigationOpen(false)} />
+              <Sidebar
+                className='absolute bottom-0 right-0 top-16 w-[min(90vw,22rem)] shadow-2xl'
+                header={
+                  <div className='space-y-3 px-1'>
+                    <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary'>Active show</p>
+                    {renderHeaderProgramSelector()}
+                    <span className='inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-xs font-semibold text-text-secondary'>
+                      {programModeIcon} {programModeLabel}
+                    </span>
+                  </div>
+                }
+                items={groupedSidebarItems}
+                footer={
+                  <div className='flex flex-wrap items-center gap-2 px-1'>
+                    <Button size='sm' variant='secondary' onClick={() => setCommandOpen(true)}>
+                      <Search size={14} /> Commands
+                    </Button>
+                    {renderOpenProgramButton()}
+                    {renderRefreshProgramButton()}
+                    {renderLogoutButton()}
+                  </div>
+                }
+                onItemClick={() => setMobileNavigationOpen(false)}
+                renderLink={renderAppLink}
+              />
+            </div>
+          ) : null}
+
+          <div className='flex min-h-0 flex-1 flex-col pt-16 xl:pt-0'>
+            <div className='flex min-h-13 shrink-0 items-center gap-2 border-b border-white/[0.08] bg-deep-sea px-3 py-2 sm:px-4'>
+              <div className='min-w-0 flex-1 sm:max-w-[260px]'>{renderHeaderProgramSelector()}</div>
+              <span className='hidden shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-text-secondary sm:inline-flex'>
+                {programModeIcon} {programModeLabel}
+              </span>
+              <span className='hidden min-w-0 flex-1 truncate text-xs text-text-secondary lg:block'>
+                {selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
+              </span>
+              <Button size='xs' variant='ghost' onClick={() => setCommandOpen(true)} aria-label='Open command menu'>
+                <Search size={14} />
+                <span className='hidden lg:inline'>Commands</span>
+              </Button>
+              {renderOpenProgramButton()}
+              {renderRefreshProgramButton()}
+            </div>
+
+            <main className={`min-h-0 flex-1 ${isViewportConstrainedRoute ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+              <div className={isViewportConstrainedRoute ? 'flex h-full min-h-0 flex-col overflow-hidden' : ''}>
+                <Outlet />
+              </div>
+            </main>
+          </div>
         </div>
-      </AppShell>
+      </div>
       <Modal
         isOpen={showBroadcastTimeModal}
         onClose={() => {

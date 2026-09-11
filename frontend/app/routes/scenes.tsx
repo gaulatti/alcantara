@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/scenes';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { AppPage } from '../components/AppPage';
 
 interface LayoutSummary {
   id: number;
@@ -129,7 +130,7 @@ export default function ScenesAdmin() {
   const saveScene = async () => {
     const normalizedName = nameInput.trim();
     if (!normalizedName) {
-      setError('Scene name is .');
+      setError('Scene name is required.');
       return;
     }
     if (!layoutIdInput) {
@@ -190,15 +191,12 @@ export default function ScenesAdmin() {
   };
 
   return (
-    <div className='min-h-screen bg-light-sand p-6 dark:bg-deep-sea md:p-8'>
+    <AppPage width='wide'>
       <AlertContainer />
       <div className='mx-auto max-w-6xl space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Scenes' description='Create and manage scenes.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => navigate('/')}>
-              Back to Control
-            </Button>
             <Button onClick={openCreateModal} disabled={layouts.length === 0}>
               <Plus size={16} />
               Create Scene
@@ -211,7 +209,7 @@ export default function ScenesAdmin() {
             <Empty
               title='Create a layout first'
               description='Scenes require a layout. Create at least one layout before creating scenes.'
-              action={<Button onClick={() => navigate('/layouts')}>Go to Layouts</Button>}
+              action={<Button onClick={() => navigate('/layouts')}>Go to scene templates</Button>}
             />
           </Card>
         ) : (
@@ -229,7 +227,7 @@ export default function ScenesAdmin() {
                   <TableHeader>
                     <TableRow>
                       <SortableTableHeader field='name' label='Name' currentSort={sort} onSort={handleSort} />
-                      <TableHead>Layout</TableHead>
+                      <TableHead>Scene template</TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -294,7 +292,7 @@ export default function ScenesAdmin() {
                   setLayoutIdInput(Number.isFinite(numeric) && numeric > 0 ? numeric : null);
                   if (error) setError('');
                 }}
-                placeholder='Select layout'
+                placeholder='Select template'
                 options={layouts.map((l) => ({ value: String(l.id), label: l.name }))}
               />
             </div>
@@ -312,6 +310,6 @@ export default function ScenesAdmin() {
           </div>
         </Modal>
       </div>
-    </div>
+    </AppPage>
   );
 }

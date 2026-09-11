@@ -86,13 +86,18 @@ identity, telemetry freshness, and degraded flag per program. The radio panel
 surfaces this live, and `radio_leg_status` / `palazzo_audio_levels` events are
 forwarded to the realtime control console.
 
-The radio panel exposes the live Song, Instants / bumpers, and Main mixer
+The Radio desk exposes the live Song, Audio clips / bumpers, and Main mixer
 channels. Changes persist in the program audio bus and are synchronously sent
 to Palazzo's Liquidsoap mixer. The shared instant bus controls both manually
 triggered instants and scheduled bumpers; each instant's own volume is then
 multiplied by that bus and the main output gain. Bumper settings persist
 `bumperEnabled`, `bumperInterval`, `bumperInstantIds`, and `bumperMode`; invalid
 intervals, IDs, or modes fail visibly instead of being dropped.
+
+Automation settings, Palazzo URL, bumper eligibility, and now-playing consumers
+live at `/radio-settings`; they are deliberately separate from live playout.
+For a `both` program, the TV control adds a radio-leg status rail. Scene actions
+remain TV-only while Songs and Audio clips flow through the shared program mix.
 
 The playback bar's Shuffle action persists a newly randomized playlist order,
 anchors the authoritative current track at the front, and continues in autoplay
@@ -148,16 +153,16 @@ from `METRICS_TOKEN_FILE` (default
 `503`; absent or incorrect bearer values return `401`. Never publish or pass the
 credential as a build argument or ordinary environment value.
 
-| Metric family | Bounded labels | Operational meaning |
-| --- | --- | --- |
-| `alcantara_service_info` | `service`, `runtime`, `version` | Service/build identity |
-| `alcantara_process_*`, `alcantara_nodejs_*` | prom-client runtime labels only | Node.js and process health |
-| `alcantara_http_requests_total` | `method`, `route`, `status_class` | Normalized HTTP outcomes |
-| `alcantara_http_request_duration_seconds` | `method`, `route` | Normalized HTTP latency |
-| `alcantara_dependency_operations_total` | `dependency`, `operation`, `result` | Pompeii, publishing, and chart-source outcomes |
-| `alcantara_dependency_duration_seconds` | `dependency`, `operation` | Dependency latency |
-| `alcantara_jobs_total` | `job`, `result` | Background chart refresh outcomes |
-| `alcantara_job_last_success_timestamp_seconds` | `job` | Last successful chart refresh |
+| Metric family                                  | Bounded labels                      | Operational meaning                            |
+| ---------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
+| `alcantara_service_info`                       | `service`, `runtime`, `version`     | Service/build identity                         |
+| `alcantara_process_*`, `alcantara_nodejs_*`    | prom-client runtime labels only     | Node.js and process health                     |
+| `alcantara_http_requests_total`                | `method`, `route`, `status_class`   | Normalized HTTP outcomes                       |
+| `alcantara_http_request_duration_seconds`      | `method`, `route`                   | Normalized HTTP latency                        |
+| `alcantara_dependency_operations_total`        | `dependency`, `operation`, `result` | Pompeii, publishing, and chart-source outcomes |
+| `alcantara_dependency_duration_seconds`        | `dependency`, `operation`           | Dependency latency                             |
+| `alcantara_jobs_total`                         | `job`, `result`                     | Background chart refresh outcomes              |
+| `alcantara_job_last_success_timestamp_seconds` | `job`                               | Last successful chart refresh                  |
 
 The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,

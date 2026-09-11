@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Button, IconButton } from "@gaulatti/bleecker";
 import {
   Expand,
   Keyboard,
@@ -16,14 +17,14 @@ import {
 } from "../contexts/ConsolePreferencesContext";
 import { getApiBaseUrl } from "../utils/apiBaseUrl";
 import { useFeatures } from "../hooks/useFeatures";
+import { BroadcastAction } from "./BroadcastAction";
 
 export type { ConsoleWorkspace } from "../contexts/ConsolePreferencesContext";
 
 const WORKSPACES: Array<{ id: ConsoleWorkspace; label: string }> = [
   { id: "director", label: "Director" },
   { id: "audio", label: "Audio" },
-  { id: "graphics", label: "Graphics" },
-  { id: "compact", label: "Compact / touch" },
+  { id: "compact", label: "Remote" },
 ];
 
 function blocksBroadcastShortcut(target: EventTarget | null): boolean {
@@ -63,7 +64,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
       `${getApiBaseUrl()}/operator-preferences/shared?scope=${scope}&scopeId=${encodeURIComponent(scopeId)}`,
     );
     if (!response.ok)
-      throw new Error(`Shared layouts failed (${response.status})`);
+      throw new Error(`Console presets failed (${response.status})`);
     setLayouts((await response.json()) as SharedLayout[]);
   };
 
@@ -71,7 +72,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
     if (!open) return;
     void refresh().catch((error: unknown) =>
       setMessage(
-        error instanceof Error ? error.message : "Shared layouts unavailable",
+        error instanceof Error ? error.message : "Console presets unavailable",
       ),
     );
   }, [open, scope, scopeId]);
@@ -96,12 +97,12 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
     if (!response.ok) {
       setMessage(
         response.status === 403
-          ? "You do not have permission to publish layouts."
+          ? "You do not have permission to publish console presets."
           : `Publish failed (${response.status})`,
       );
       return;
     }
-    setMessage("Layout published.");
+    setMessage("Console preset published.");
     setLayoutName("");
     await refresh();
   };
@@ -121,7 +122,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
     if (!response.ok) {
       setMessage(
         response.status === 409
-          ? "This layout targets another device class or your profile changed. Refresh and try again."
+          ? "This preset targets another device class or your profile changed. Refresh and try again."
           : `Load failed (${response.status})`,
       );
       return;
@@ -137,6 +138,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
   };
 
   const retire = async (layout: SharedLayout) => {
+    if (!window.confirm(`Retire the “${layout.name}” console preset?`)) return;
     const response = await fetch(
       `${getApiBaseUrl()}/operator-preferences/shared/${layout.id}`,
       { method: "DELETE" },
@@ -144,7 +146,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
     if (!response.ok) {
       setMessage(
         response.status === 403
-          ? "You do not have permission to retire layouts."
+          ? "You do not have permission to retire console presets."
           : `Retire failed (${response.status})`,
       );
       return;
@@ -160,15 +162,17 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
       >
         {preferences.syncState}
       </span>
-      <button
+      <Button
         type="button"
+        size="xs"
+        variant="secondary"
         onClick={() => setOpen((value) => !value)}
-        className="rounded bg-zinc-800 px-2 py-1 text-xs"
+        aria-expanded={open}
       >
-        {preferences.deviceClass} prefs
-      </button>
+        {preferences.deviceClass} preferences
+      </Button>
       {open ? (
-        <div className="absolute right-0 top-9 z-50 w-80 space-y-3 rounded border border-zinc-700 bg-zinc-950 p-3 shadow-2xl">
+        <div className="absolute right-0 top-10 z-50 max-h-[min(38rem,calc(100vh-5rem))] w-[min(24rem,calc(100vw-1rem))] space-y-4 overflow-y-auto rounded-[var(--radius-card)] border border-border-subtle bg-surface-elevated p-4 shadow-[var(--shadow-overlay)]">
           <label className="block text-xs text-zinc-400">
             Device class override
             <select
@@ -185,54 +189,59 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
               <option value="phone">Phone</option>
             </select>
           </label>
-          <button
+          <Button
             type="button"
+            size="xs"
+            variant="link"
             onClick={() => preferences.setDeviceClassOverride(null)}
-            className="text-xs text-sky-300"
           >
             Use detected {preferences.detectedDeviceClass}
-          </button>
+          </Button>
           {preferences.conflict ? (
             <div className="rounded border border-red-800 p-2 text-xs">
               A newer profile exists.
               <div className="mt-2 flex gap-2">
-                <button
+                <Button
                   type="button"
+                  size="xs"
+                  variant="secondary"
                   onClick={preferences.useAuthoritative}
-                  className="rounded bg-zinc-700 px-2 py-1"
                 >
                   Use server
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="xs"
+                  variant="destructive"
                   onClick={preferences.retryLocal}
-                  className="rounded bg-red-800 px-2 py-1"
                 >
                   Retry mine
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}
           <div className="flex gap-2 text-xs">
-            <button
+            <Button
               type="button"
+              size="xs"
+              variant="secondary"
               onClick={() => void preferences.resetCurrent()}
-              className="rounded bg-zinc-800 px-2 py-1"
             >
               Reset class
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="xs"
+              variant="secondary"
               onClick={() => void preferences.resetAll()}
-              className="rounded bg-zinc-800 px-2 py-1"
             >
               Reset all
-            </button>
+            </Button>
           </div>
           <div className="border-t border-zinc-800 pt-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase text-zinc-400">
-                Shared layouts
+                Console presets
               </span>
             </div>
             <label className="mt-2 block text-xs text-zinc-400">
@@ -251,20 +260,21 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
             </label>
             <div className="mt-2 flex gap-2">
               <input
-                aria-label={`New ${scope} layout name`}
+                aria-label={`New ${scope} console preset name`}
                 value={layoutName}
                 onChange={(event) => setLayoutName(event.target.value)}
-                placeholder="Layout name"
+                placeholder="Preset name"
                 className="min-w-0 flex-1 rounded bg-zinc-900 p-2 text-xs"
               />
-              <button
+              <Button
                 type="button"
+                size="xs"
+                variant="primary"
                 disabled={!layoutName.trim() || !scopeId}
                 onClick={() => void publish()}
-                className="rounded bg-sky-800 px-2 py-1 text-xs disabled:opacity-40"
               >
                 Publish
-              </button>
+              </Button>
             </div>
             <div className="mt-2 space-y-1">
               {layouts.map((layout) => (
@@ -276,24 +286,26 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
                     {layout.name} · v{layout.version} ·{" "}
                     {layout.sourceDeviceClass}
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    size="xs"
+                    variant="link"
                     onClick={() => void load(layout)}
-                    className="text-sky-300"
                   >
                     Load
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    size="xs"
+                    variant="destructive"
                     onClick={() => void retire(layout)}
-                    className="text-red-300"
                   >
                     Retire
-                  </button>
+                  </Button>
                 </div>
               ))}
               {!layouts.length ? (
-                <p className="text-xs text-zinc-500">No published layouts.</p>
+                <p className="text-xs text-zinc-500">No published presets.</p>
               ) : null}
             </div>
           </div>
@@ -337,16 +349,18 @@ function ConfidenceMonitor({
       className={`min-w-0 overflow-hidden border bg-black ${preview ? "border-amber-400/80" : "border-red-500/90"}`}
     >
       <header
-        className={`flex h-8 items-center justify-between px-3 ${preview ? "bg-amber-400 text-zinc-950" : "bg-red-600 text-white"}`}
+        className={`flex h-8 items-center gap-2 px-2 sm:px-3 ${preview ? "bg-amber-400 text-zinc-950" : "bg-red-600 text-white"}`}
       >
-        <span className="text-xs font-black tracking-[0.18em]">{label}</span>
-        <span className="max-w-[70%] truncate text-xs font-semibold">
+        <span className="shrink-0 text-xs font-black tracking-[0.12em] sm:tracking-[0.18em]">
+          {label}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-right text-xs font-semibold">
           {scene?.name || (preview ? "Preview is clear" : "Program is clear")}
         </span>
       </header>
       <div
         ref={monitorRef}
-        className="relative h-[clamp(110px,20vh,210px)] overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
+        className="relative h-[clamp(84px,16vh,210px)] overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
       >
         {scene ? (
           <iframe
@@ -400,6 +414,16 @@ export function BroadcastSwitcherDeck(props: Props) {
   const { touchMode, shortcutsEnabled } = preferences.profile;
   const dockWidth = preferences.profile.dockWidth ?? 300;
   const pendingStageRef = useRef<Promise<void>>(Promise.resolve());
+  const [ftbArmed, setFtbArmed] = useState(false);
+  const ftbArmTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (ftbArmTimerRef.current !== null) {
+        window.clearTimeout(ftbArmTimerRef.current);
+      }
+    };
+  }, []);
 
   const stageScene = (sceneId: number | null) => {
     const pending = Promise.resolve(props.onStageScene(sceneId));
@@ -420,6 +444,23 @@ export function BroadcastSwitcherDeck(props: Props) {
     );
     latestPropsRef.current.onCut();
   };
+  const requestFadeToBlack = () => {
+    if (props.fadeToBlack || ftbArmed) {
+      if (ftbArmTimerRef.current !== null) {
+        window.clearTimeout(ftbArmTimerRef.current);
+        ftbArmTimerRef.current = null;
+      }
+      setFtbArmed(false);
+      latestPropsRef.current.onFadeToBlack();
+      return;
+    }
+
+    setFtbArmed(true);
+    ftbArmTimerRef.current = window.setTimeout(() => {
+      setFtbArmed(false);
+      ftbArmTimerRef.current = null;
+    }, 3_000);
+  };
 
   useEffect(() => {
     if (!shortcutsEnabled) return;
@@ -427,7 +468,7 @@ export function BroadcastSwitcherDeck(props: Props) {
       if (blocksBroadcastShortcut(event.target)) return;
       if (event.altKey && event.key.toLowerCase() === "b") {
         event.preventDefault();
-        props.onFadeToBlack();
+        requestFadeToBlack();
       } else if (
         !event.altKey &&
         !event.ctrlKey &&
@@ -458,6 +499,8 @@ export function BroadcastSwitcherDeck(props: Props) {
     props.onFadeToBlack,
     props.onStageScene,
     props.onTake,
+    ftbArmed,
+    props.fadeToBlack,
     shortcutsEnabled,
   ]);
 
@@ -474,10 +517,49 @@ export function BroadcastSwitcherDeck(props: Props) {
     preferences.updateProfile({ shortcutsEnabled: next });
   };
 
+  const workspace =
+    props.workspace === "graphics" ? "director" : props.workspace;
+
+  const sourceBank = (
+    <div
+      className="order-3 col-span-2 max-h-32 overflow-y-auto rounded-[var(--radius-ui)] border border-zinc-800 bg-zinc-950 p-2 md:order-4 md:col-span-3 md:max-h-36"
+      aria-label="Assigned scenes"
+    >
+      <div
+        className={`grid gap-2 ${touchMode ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : "grid-cols-3 sm:grid-cols-5 lg:grid-cols-8"}`}
+      >
+        {props.scenes.map((scene) => {
+          const isPreview = scene.id === props.stagedScene?.id;
+          const isProgram = scene.id === props.activeScene?.id;
+          return (
+            <button
+              key={scene.id}
+              type="button"
+              onClick={() => void stageScene(scene.id)}
+              className={`min-h-12 rounded-[var(--radius-button)] border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${isProgram ? "border-red-500 bg-red-950/70" : isPreview ? "border-amber-400 bg-amber-950/60" : "border-zinc-700 bg-zinc-900 hover:border-zinc-500"}`}
+            >
+              <span className="block truncate font-semibold">{scene.name}</span>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider ${isProgram ? "text-red-400" : isPreview ? "text-amber-300" : "text-zinc-500"}`}
+              >
+                {isProgram ? "PGM" : isPreview ? "PVW" : "Stage"}
+              </span>
+            </button>
+          );
+        })}
+        {props.scenes.length === 0 ? (
+          <p className="col-span-full px-2 py-3 text-xs text-zinc-500">
+            No scenes are assigned to this show.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+
   return (
     <section
       className={`shrink-0 border-b border-zinc-700 bg-zinc-950 text-zinc-100 ${touchMode ? "text-base" : "text-sm"}`}
-      data-console-workspace={props.workspace}
+      data-console-workspace={workspace}
       data-touch-mode={touchMode}
     >
       <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-2">
@@ -489,154 +571,167 @@ export function BroadcastSwitcherDeck(props: Props) {
           )}
           <span>{props.programId}</span>
         </div>
-        {WORKSPACES.map((workspace) => (
-          <button
-            key={workspace.id}
+        {WORKSPACES.map((option) => (
+          <Button
+            key={option.id}
             type="button"
-            onClick={() => selectWorkspace(workspace.id)}
-            className={`rounded px-3 py-2 font-semibold ${props.workspace === workspace.id ? "bg-sky-500 text-zinc-950" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
+            size="sm"
+            variant={option.id === workspace ? "primary" : "ghost"}
+            onClick={() => selectWorkspace(option.id)}
+            aria-pressed={workspace === option.id}
           >
-            {workspace.label}
-          </button>
+            {option.label}
+          </Button>
         ))}
         <div className="ml-auto flex items-center gap-2">
           <ConsolePreferenceControls programId={props.programId} />
-          <button
+          <IconButton
             type="button"
+            size="sm"
+            variant={shortcutsEnabled ? "subtle" : "ghost"}
             aria-label="Toggle keyboard shortcuts"
             aria-pressed={shortcutsEnabled}
             onClick={toggleShortcuts}
-            title="Keyboard shortcuts: Space TAKE, C CUT, Escape clear Preview, Alt+B FTB"
-            className={`rounded p-2 ${shortcutsEnabled ? "bg-sky-900 text-sky-200" : "bg-zinc-800 text-zinc-500"}`}
+            title="Shortcuts: Space TAKE, C CUT, Escape clears Preview, press Alt+B twice for FTB"
           >
             <Keyboard size={17} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             type="button"
+            size="sm"
+            variant={touchMode ? "subtle" : "ghost"}
             aria-label="Toggle touch mode"
             aria-pressed={touchMode}
             onClick={toggleTouch}
-            className={`rounded p-2 ${touchMode ? "bg-sky-900 text-sky-200" : "bg-zinc-800 text-zinc-400"}`}
           >
             <Smartphone size={17} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             type="button"
+            size="sm"
+            variant="ghost"
             aria-label="Enter fullscreen"
             onClick={() => void document.documentElement.requestFullscreen?.()}
-            className="rounded bg-zinc-800 p-2 text-zinc-400"
           >
             <Expand size={17} />
-          </button>
+          </IconButton>
         </div>
       </div>
 
       <div
-        className={props.workspace === "audio" ? "grid max-w-sm gap-3 p-3" : "grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_var(--dock-width)]"}
+        className={
+          workspace === "audio"
+            ? "grid gap-2 p-2 md:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]"
+            : "grid grid-cols-2 gap-2 p-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_var(--dock-width)]"
+        }
         style={{ "--dock-width": `${dockWidth}px` } as CSSProperties}
       >
-        {props.workspace !== "audio" && <ConfidenceMonitor
-          label="PREVIEW"
-          tone="preview"
-          scene={props.stagedScene}
-          src={`/program/${encodeURIComponent(props.programId)}?confidence=preview`}
-        />}
+        {workspace !== "audio" && (
+          <ConfidenceMonitor
+            label="PREVIEW"
+            tone="preview"
+            scene={props.stagedScene}
+            src={`/program/${encodeURIComponent(props.programId)}?confidence=preview`}
+          />
+        )}
         <ConfidenceMonitor
           label="PROGRAM"
           tone="program"
           scene={props.activeScene}
           src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
         />
-        {props.workspace !== "audio" && <aside className="min-w-0 border border-zinc-700 bg-zinc-900 p-3">
-          <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400">
-            <PanelRight size={15} />
-            Switcher
+        {workspace === "audio" ? (
+          <div className="hidden min-w-0 items-center rounded-[var(--radius-ui)] border border-zinc-800 bg-zinc-900 px-5 text-sm text-zinc-400 md:flex">
+            Program confidence remains visible while the full mixer, playlist,
+            and soundboard use the workspace below.
           </div>
-          <label className="block text-xs text-zinc-400">
-            Transition
-            <select
-              value={props.transitionId}
-              onChange={(event) => props.onTransitionChange(event.target.value)}
-              className="mt-1 w-full rounded border border-zinc-600 bg-zinc-950 px-2 py-2 text-zinc-100"
-            >
-              {SCENE_TRANSITIONS.map((transition) => (
-                <option key={transition.id} value={transition.id}>
-                  {transition.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={!props.stagedScene}
-              onClick={() => void cutStagedScene()}
-              className="rounded bg-zinc-100 px-3 py-3 font-black text-zinc-950 disabled:opacity-40"
-            >
-              CUT <span className="text-xs font-normal">(C)</span>
-            </button>
-            <button
-              type="button"
-              disabled={!props.stagedScene}
-              onClick={() => void takeStagedScene()}
-              className="rounded bg-sky-500 px-3 py-3 font-black text-zinc-950 disabled:opacity-40"
-            >
-              TAKE <span className="text-xs font-normal">(Space)</span>
-            </button>
-          </div>
-          <button
-            type="button"
-            aria-pressed={props.fadeToBlack}
-            onClick={props.onFadeToBlack}
-            className={`mt-3 w-full rounded border px-3 py-3 font-black ${props.fadeToBlack ? "border-red-400 bg-red-600 text-white" : "border-zinc-600 bg-black text-zinc-200"}`}
-          >
-            {props.fadeToBlack ? "FTB ACTIVE" : "FADE TO BLACK"}{" "}
-            <span className="text-xs font-normal">(Alt+B)</span>
-          </button>
-          <label className="mt-4 block text-xs text-zinc-500">
-            Dock width
-            <input
-              type="range"
-              min={260}
-              max={520}
-              value={dockWidth}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                preferences.updateProfile({ dockWidth: next });
-              }}
-              className="mt-1 w-full"
-            />
-          </label>
-        </aside>}
-      </div>
-
-      {props.workspace !== "audio" && <div className="max-h-36 overflow-y-auto border-t border-zinc-800 px-3 py-3" aria-label="Assigned scenes">
-        <div
-          className={`grid gap-2 ${touchMode ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : "grid-cols-3 sm:grid-cols-5 lg:grid-cols-8"}`}
-        >
-          {props.scenes.map((scene) => {
-            const isPreview = scene.id === props.stagedScene?.id;
-            const isProgram = scene.id === props.activeScene?.id;
-            return (
-              <button
-                key={scene.id}
-                type="button"
-                onClick={() => void stageScene(scene.id)}
-                className={`min-h-14 rounded border px-3 py-2 text-left ${isProgram ? "border-red-500 bg-red-950/70" : isPreview ? "border-amber-400 bg-amber-950/60" : "border-zinc-700 bg-zinc-900 hover:border-zinc-500"}`}
+        ) : (
+          sourceBank
+        )}
+        {workspace !== "audio" && (
+          <aside className="order-4 col-span-2 min-w-0 rounded-[var(--radius-ui)] border border-zinc-700 bg-zinc-900 p-2.5 md:order-3 md:col-span-1 md:p-3">
+            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400">
+              <PanelRight size={15} />
+              Switcher
+            </div>
+            <label className="block text-xs text-zinc-400">
+              Transition
+              <select
+                value={props.transitionId}
+                onChange={(event) =>
+                  props.onTransitionChange(event.target.value)
+                }
+                className="mt-1 w-full rounded border border-zinc-600 bg-zinc-950 px-2 py-2 text-zinc-100"
               >
-                <span className="block truncate font-semibold">
-                  {scene.name}
+                {SCENE_TRANSITIONS.map((transition) => (
+                  <option key={transition.id} value={transition.id}>
+                    {transition.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <BroadcastAction
+                kind="cut"
+                disabled={!props.stagedScene}
+                onClick={() => void cutStagedScene()}
+              >
+                CUT{" "}
+                <span className="hidden text-xs font-normal sm:inline">
+                  (C)
                 </span>
-                <span
-                  className={`text-[10px] font-bold uppercase tracking-wider ${isProgram ? "text-red-400" : isPreview ? "text-amber-300" : "text-zinc-500"}`}
-                >
-                  {isProgram ? "PGM" : isPreview ? "PVW" : "Source"}
+              </BroadcastAction>
+              <BroadcastAction
+                kind="take"
+                disabled={!props.stagedScene}
+                onClick={() => void takeStagedScene()}
+              >
+                TAKE{" "}
+                <span className="hidden text-xs font-normal sm:inline">
+                  (Space)
                 </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>}
+              </BroadcastAction>
+            </div>
+            <BroadcastAction
+              kind={props.fadeToBlack ? "restore" : "danger"}
+              fullWidth
+              aria-pressed={props.fadeToBlack}
+              title={
+                props.fadeToBlack
+                  ? "Restore Program"
+                  : "Press twice within three seconds to fade Program to black"
+              }
+              onClick={requestFadeToBlack}
+              className="mt-2"
+            >
+              {props.fadeToBlack
+                ? "RESTORE PROGRAM"
+                : ftbArmed
+                  ? "CONFIRM FADE TO BLACK"
+                  : "ARM FADE TO BLACK"}{" "}
+              {!props.fadeToBlack ? (
+                <span className="hidden text-xs font-normal sm:inline">
+                  (Alt+B twice)
+                </span>
+              ) : null}
+            </BroadcastAction>
+            <label className="mt-4 hidden text-xs text-zinc-500 md:block">
+              Dock width
+              <input
+                type="range"
+                min={260}
+                max={520}
+                value={dockWidth}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  preferences.updateProfile({ dockWidth: next });
+                }}
+                className="mt-1 w-full"
+              />
+            </label>
+          </aside>
+        )}
+      </div>
     </section>
   );
 }

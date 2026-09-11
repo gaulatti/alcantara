@@ -19,14 +19,16 @@ function callback(name: string, bindings: Record<string, unknown>) {
 
 function harness(connected = false) {
   const latestControlVersionByTopicRef = { current: { state: -1 } };
+  const activeProgramIdRef = { current: 'test-tv' };
   const accept = callback('shouldApplyControlUpdatePayload', { latestControlVersionByTopicRef, readControlUpdateVersion, resolveControlUpdateTopicFromType });
   const sync = vi.fn();
   const handle = callback('handleProgramEvent', {
     isProgramRealtimeConnected: connected, activeProgramId: 'test-tv',
+    activeProgramIdRef,
     shouldApplyControlUpdatePayload: accept, normalizeProgramState,
     syncProgramStateAndStagedScene: sync,
   });
-  return { accept, handle, sync };
+  return { accept, activeProgramIdRef, handle, sync };
 }
 
 const scene = { id: 65, name: 'Test active scene' };
@@ -49,6 +51,12 @@ describe('Control initial SSE snapshot', () => {
     expect(sync).not.toHaveBeenCalled();
     handle(snapshot);
     expect(sync).toHaveBeenCalledTimes(1);
+  });
+  it('ignores a late event from the previously selected program', () => {
+    const { activeProgramIdRef, handle, sync } = harness();
+    activeProgramIdRef.current = 'radio-demo';
+    handle(snapshot);
+    expect(sync).not.toHaveBeenCalled();
   });
   it('leaves SSE inactive while WebSocket is connected', () => {
     const { handle, sync } = harness(true);

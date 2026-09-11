@@ -16,7 +16,6 @@ import "./services/auth";
 import { installAuthenticatedFetch } from "./services/authenticatedFetch";
 import AuthListener from "./components/common/AuthListener";
 import { getStore } from "./state";
-import { isTestAuth } from "./services/session";
 import { ConsolePreferencesProvider } from "./contexts/ConsolePreferencesContext";
 
 installAuthenticatedFetch();
@@ -60,11 +59,6 @@ export default function App() {
     <Provider store={store}>
       <ConsolePreferencesProvider>
         <AuthListener />
-        {isTestAuth() ? (
-          <div className="fixed bottom-3 right-3 z-[1000] rounded bg-amber-300 px-3 py-1 text-xs font-black tracking-widest text-black shadow-lg">
-            TEST AUTH
-          </div>
-        ) : null}
         <Outlet />
       </ConsolePreferencesProvider>
     </Provider>

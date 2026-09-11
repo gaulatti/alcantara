@@ -77,9 +77,8 @@ function extractErrorMessage(err: unknown): string {
   }
   return String(err);
 }
-
 export function meta({}: Route.MetaArgs) {
-  return [{ title: 'Flight Mode - TV Broadcast' }, { name: 'description', content: 'Broadcast flight mode cue list' }];
+  return [{ title: 'Rundown - Alcantara' }, { name: 'description', content: 'Cue and operate a broadcast rundown' }];
 }
 
 export default function FlightMode() {
@@ -386,7 +385,7 @@ export default function FlightMode() {
       <div className='mx-auto max-w-7xl p-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader
-            title='Flight Mode'
+            title='Rundown'
             description={`Program: ${activeProgramId}`}
           />
           <Button
@@ -405,7 +404,7 @@ export default function FlightMode() {
           </div>
         ) : sequences.length === 0 ? (
           <Empty
-            title='No flight sequences'
+            title='No rundowns yet'
             description='Create a sequence to start building your broadcast rundown.'
             action={
               <Button
@@ -527,10 +526,10 @@ export default function FlightMode() {
                 activeSequence={activeSequence}
                 runtime={runtime}
                 instants={instants}
-                onStart={() => void startFlight(activeProgramId).then(() => showAlert('Flight started.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
-                onStop={() => void stopFlight(activeProgramId).then(() => showAlert('Flight stopped.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
+                onStart={() => void startFlight(activeProgramId).then(() => showAlert('Rundown started.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
+                onStop={() => void stopFlight(activeProgramId).then(() => showAlert('Rundown stopped.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
                 onGo={() => void goFlight(activeProgramId).then(() => showAlert('Advanced.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
-                onReset={() => void resetFlight(activeProgramId).then(() => showAlert('Flight reset.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
+                onReset={() => void resetFlight(activeProgramId).then(() => showAlert('Rundown reset.', 'success')).catch((err) => showAlert(extractErrorMessage(err), 'error'))}
               />
             </div>
           </div>
@@ -540,7 +539,7 @@ export default function FlightMode() {
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title='Create flight sequence'
+        title='Create rundown'
       >
         <div className='space-y-4'>
           <label className='block text-sm font-medium text-zinc-300'>
