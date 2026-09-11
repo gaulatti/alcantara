@@ -92,7 +92,8 @@ that Secrets Manager payload. Missing, malformed, or unavailable configuration
 fails startup; tokens and encryption keys are never frontend variables or
 Docker build arguments. The GitHub deployment workflow performs the same
 value-redacting payload check before registry login, image build, or push. See
-[`../docs/radio-telemetry.md`](../docs/radio-telemetry.md) and
+[`../docs/radio-telemetry.md`](../docs/radio-telemetry.md),
+[`../docs/broadcast-destinations.md`](../docs/broadcast-destinations.md),
 [`../docs/program-recording.md`](../docs/program-recording.md), and
 [`../docs/external-source-registry.md`](../docs/external-source-registry.md).
 

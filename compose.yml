@@ -41,6 +41,7 @@ services:
     environment:
       PORT: "8080"
       PROGRAM_ID: modoitaliano
+      DESTINATION_PROGRAM_ID: main
       ALANA_CONTROL_TOKEN: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     healthcheck:
       test:

@@ -95,13 +95,14 @@ service URLs. The Alana file must contain the same 64-character token, with an
 optional final newline. No token or Alana address is exposed to the frontend.
 
 Local Compose starts a committed, private `alana-recording-fixture` service for
-the fictional `modoitaliano` program. It implements the landed status,
-Start/Stop, finalization, authorization, and idempotency shapes so the complete
-browser-to-backend path is testable without AWS, production media, an Alana
-checkout, or a real recorder. Its injected clock and scheduler make requested,
-active, finalizing, complete, duplicate, conflict, unauthorized, and not-active
-results deterministic in tests. It never produces media and is not a deployment
-substitute.
+the fictional `modoitaliano` recording program and `main` broadcast program.
+It implements the landed recording status, Start/Stop, finalization,
+authorization, idempotency, and destination-control contracts so both complete
+browser-to-backend paths are testable without AWS, production media, an Alana
+checkout, or a real recorder or executor. Its injected clock and scheduler make
+requested, active, finalizing, complete, duplicate, conflict, unauthorized,
+and not-active recording results deterministic in tests. It never produces
+media or publishes a stream and is not a deployment substitute.
 
 ## Audit and metrics
 

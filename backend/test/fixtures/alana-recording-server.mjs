@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { pathToFileURL, URL } from 'node:url';
 
@@ -5,6 +6,7 @@ const defaultStart = '2026-09-07T00:00:00.000Z';
 
 export function createAlanaRecordingFixture({
   programId = 'modoitaliano',
+  destinationProgramId = 'main',
   token,
   schedule = (callback) => setTimeout(callback, 250),
   startTimestamp = defaultStart,
@@ -41,6 +43,73 @@ export function createAlanaRecordingFixture({
     error: null,
     disk,
   };
+
+  const lifecycleBasePath = `/v1/programs/${encodeURIComponent(destinationProgramId)}/lifecycle`;
+  let lastSequence = 0;
+  let requestedBroadcastState = 'stopped';
+  let actualBroadcastState = 'stopped';
+  let pendingDestinations = null;
+  let activeDestinations = null;
+  let lastBroadcastCommand = null;
+  let nextStartMode = 'normal';
+
+  function canonicalJson(value) {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+      return `{${Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+        .join(',')}}`;
+    }
+    return JSON.stringify(value);
+  }
+
+  function destinationMetadata(selection) {
+    return {
+      version: selection.version,
+      selectionHash: createHash('sha256')
+        .update(canonicalJson(selection))
+        .digest('hex'),
+      count: selection.destinations.length,
+      destinationIds: selection.destinations.map(
+        (destination) => destination.id,
+      ),
+    };
+  }
+
+  function broadcastView() {
+    return {
+      programId: destinationProgramId,
+      requestedState: requestedBroadcastState,
+      actualState: actualBroadcastState,
+      transition: null,
+      readiness: actualBroadcastState === 'running',
+      lastSequence,
+      pendingDestinations,
+      activeDestinations,
+      lastCommand: lastBroadcastCommand,
+      croccanteAcknowledgement: activeDestinations
+        ? {
+            accepted: true,
+            destinations: activeDestinations.destinationIds.map((id) => ({
+              id,
+              mode: 'relaying',
+              supervisorHealthy: true,
+              publisherProcessHealthy: true,
+            })),
+          }
+        : null,
+    };
+  }
+
+  async function requestBody(request) {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    if (chunks.reduce((total, chunk) => total + chunk.length, 0) > 65_536) {
+      throw new Error('oversized');
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  }
 
   function send(response, status, payload) {
     response.writeHead(status, {
@@ -153,7 +222,7 @@ export function createAlanaRecordingFixture({
     });
   }
 
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://fixture').pathname;
     if (request.method === 'GET' && path === '/health') {
       send(response, 200, { status: 'ok' });
@@ -179,6 +248,120 @@ export function createAlanaRecordingFixture({
       command(response, path.endsWith('/start') ? 'start' : 'stop', key);
       return;
     }
+    if (request.method === 'POST' && path === '/__fixture/next-start') {
+      try {
+        const payload = await requestBody(request);
+        nextStartMode = payload.mode === 'partial' ? 'partial' : 'normal';
+        send(response, 200, { nextStartMode });
+      } catch {
+        send(response, 400, { error: 'invalid-request' });
+      }
+      return;
+    }
+    if (request.method === 'GET' && path === lifecycleBasePath) {
+      send(response, 200, broadcastView());
+      return;
+    }
+    try {
+      if (
+        request.method === 'PUT' &&
+        path.startsWith(
+          `/v1/programs/${encodeURIComponent(destinationProgramId)}/destinations/`,
+        )
+      ) {
+        if (
+          actualBroadcastState !== 'stopped' ||
+          requestedBroadcastState !== 'stopped'
+        ) {
+          send(response, 409, {
+            ...broadcastView(),
+            error: 'destination reconfiguration requires a stopped broadcast',
+          });
+          return;
+        }
+        const payload = await requestBody(request);
+        pendingDestinations = destinationMetadata({
+          version: payload.version,
+          destinations: payload.destinations,
+        });
+        send(response, 200, {
+          ...pendingDestinations,
+          result: 'validated',
+          status: 200,
+        });
+        return;
+      }
+      if (
+        request.method === 'POST' &&
+        (path === `${lifecycleBasePath}/start` ||
+          path === `${lifecycleBasePath}/stop`)
+      ) {
+        const sequence = Number(request.headers['x-command-sequence']);
+        if (!Number.isInteger(sequence) || sequence <= lastSequence) {
+          send(response, 409, {
+            ...broadcastView(),
+            error: 'command sequence is not newer',
+          });
+          return;
+        }
+        if (path.endsWith('/stop')) {
+          requestedBroadcastState = 'stopped';
+          actualBroadcastState = 'stopped';
+          lastSequence = sequence;
+          pendingDestinations = activeDestinations;
+          activeDestinations = null;
+          lastBroadcastCommand = {
+            action: 'stop',
+            result: 'stopped',
+            status: 200,
+            sequence,
+          };
+          send(response, 200, {
+            ...broadcastView(),
+            commandResult: lastBroadcastCommand,
+          });
+          return;
+        }
+        const selection = await requestBody(request);
+        const next = destinationMetadata(selection);
+        if (
+          pendingDestinations &&
+          pendingDestinations.selectionHash !== next.selectionHash
+        ) {
+          send(response, 409, {
+            ...broadcastView(),
+            error: 'pending destinations conflict',
+          });
+          return;
+        }
+        requestedBroadcastState = 'running';
+        actualBroadcastState = 'running';
+        lastSequence = sequence;
+        activeDestinations = next;
+        pendingDestinations = null;
+        lastBroadcastCommand = {
+          action: 'start',
+          result: 'running',
+          status: 200,
+          sequence,
+          destinationVersion: next.version,
+          destinationSelectionHash: next.selectionHash,
+          destinationCount: next.count,
+        };
+        if (nextStartMode === 'partial') {
+          nextStartMode = 'normal';
+          activeDestinations = { ...next, selectionHash: '0'.repeat(64) };
+        }
+        send(response, 200, {
+          ...broadcastView(),
+          commandResult: lastBroadcastCommand,
+        });
+        return;
+      }
+    } catch {
+      send(response, 400, { error: 'invalid-request' });
+      return;
+    }
     send(response, 404, { error: 'not-found' });
   });
 
@@ -192,9 +375,10 @@ if (
   const port = Number(process.env.PORT ?? '8080');
   const server = createAlanaRecordingFixture({
     programId: process.env.PROGRAM_ID ?? 'modoitaliano',
+    destinationProgramId: process.env.DESTINATION_PROGRAM_ID ?? 'main',
     token: process.env.ALANA_CONTROL_TOKEN ?? '',
   });
   server.listen(port, '0.0.0.0', () => {
-    process.stdout.write('Alana recording fixture ready\n');
+    process.stdout.write('Alana recording and destination fixture ready\n');
   });
 }

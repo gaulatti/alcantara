@@ -85,6 +85,10 @@ describe('loadRuntimeSecrets', () => {
       '/run/secrets/palazzo-control-token',
       'utf8',
     );
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/run/secrets/alana-control-token',
+      'utf8',
+    );
     expect(environment).toMatchObject({
       PALAZZO_CONTROL_TOKEN: 'existing-palazzo-control-token',
       ALANA_CONTROL_TOKEN: ALANA_TOKEN,
@@ -108,10 +112,27 @@ describe('loadRuntimeSecrets', () => {
         NODE_ENV: 'development',
         PALAZZO_CONTROL_TOKEN: 'palazzo-local-control-token',
         PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
+        ALANA_CONTROL_URL: 'http://alana:8080',
+        ALANA_CONTROL_TOKEN: 'alana-local-control-token',
       },
       { send },
     );
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed Alana machine-control configuration', () => {
+    expect(() =>
+      validateAlanaRuntimeConfiguration({
+        ALANA_CONTROL_URL: 'http://user:password@alana:8080',
+        ALANA_CONTROL_TOKEN: ALANA_TOKEN,
+      }),
+    ).toThrow('ALANA_CONTROL_URL contains an invalid URL');
+    expect(() =>
+      validateAlanaRuntimeConfiguration({
+        ALANA_CONTROL_URL: 'http://alana:8080',
+        ALANA_CONTROL_TOKEN: 'short',
+      }),
+    ).toThrow('ALANA_CONTROL_TOKEN is missing or invalid');
   });
 
   it('rejects malformed runtime tokens and approved URL lists', () => {
