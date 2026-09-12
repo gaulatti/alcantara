@@ -489,6 +489,103 @@ describe('SongExecutionEngine authoritative playback', () => {
     );
   });
 
+  it('plays a persisted shuffle order once without repeats when loop is off', async () => {
+    const { engine, radioService, nowPlayingPublisher } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+
+    engine.handleSequenceUpdated('radio-1', {
+      ...TWO_SONG_SEQUENCE,
+      mode: 'shuffle',
+      loop: false,
+    });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const firstRequestId = radioService.playSong.mock.calls[0][4];
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: firstRequestId },
+    });
+    await flush();
+    const secondRequestId = radioService.playSong.mock.calls[1][4];
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: secondRequestId },
+    });
+    await flush();
+
+    expect(radioService.playSong.mock.calls.map((call) => call[1])).toEqual([
+      'https://example.test/song-1.mp3',
+      'https://example.test/song-2.mp3',
+    ]);
+    expect(nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a fresh idle shuffle clock instead of skipping the selected first item', async () => {
+    const { engine, radioService } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    const now = new Date('2026-09-11T12:00:00.000Z').getTime();
+    jest.setSystemTime(now);
+
+    engine.handleSequenceUpdated('radio-1', {
+      ...TWO_SONG_SEQUENCE,
+      mode: 'manual',
+      loop: false,
+      activeItemId: 'song-1',
+      startedAt: now - 2_500,
+    });
+    engine.handleSequenceUpdated('radio-1', {
+      ...TWO_SONG_SEQUENCE,
+      mode: 'shuffle',
+      loop: false,
+      activeItemId: 'song-1',
+      startedAt: now,
+    });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    expect(radioService.playSong.mock.calls[0][1]).toBe(
+      'https://example.test/song-1.mp3',
+    );
+  });
+
+  it('clears optimistic radio playback when Palazzo rejects the command', async () => {
+    const { engine, radioService, nowPlayingPublisher, metrics } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    const events: Array<{ type: string }> = [];
+    engine.setBroadcastHandler((event) => events.push(event));
+    radioService.playSong.mockResolvedValue({ ok: false });
+
+    engine.handleSequenceUpdated('radio-1', SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    expect(engine.getPlaybackState('radio-1')).toBeNull();
+    expect(events.at(-1)).toMatchObject({
+      type: 'song_off_air',
+      programId: 'radio-1',
+    });
+    expect(nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(1);
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'command-failed',
+    );
+  });
+
   it('wraps a looped playlist and stops an explicitly non-looped playlist', async () => {
     const looped = createEngine({ reconciled: true, radio: true });
     looped.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);

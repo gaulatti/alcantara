@@ -108,6 +108,7 @@ import {
   parseSceneMetadata,
   readControlUpdateVersion,
   reconcileProgramAudioMeter,
+  reconcileProgramSongOffAir,
   reconcileProgramSongPlayback,
   resolveControlUpdateTopicFromType,
   withIndependentProgramClockMetadata,
@@ -751,6 +752,9 @@ export default function Control() {
       }
 
       void fetchProgramState(activeProgramId);
+      void fetchProgramAudioBusSettings(activeProgramId, false);
+      void fetchProgramAudioMeter(activeProgramId);
+      void fetchProgramSongPlayback(activeProgramId);
       void fetchSceneInstantPlayback(activeProgramId);
     }, 5000);
 
@@ -1042,6 +1046,22 @@ export default function Control() {
             reconcileProgramSongPlayback(
               previous,
               normalizeProgramSongPlayback(payload.playback),
+            ),
+          );
+          return;
+        }
+
+        if (payload.type === "song_off_air") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
+          if (eventProgramId !== activeProgramId) {
+            return;
+          }
+          setProgramSongPlaybackState((previous) =>
+            reconcileProgramSongOffAir(
+              previous,
+              payload.playback,
+              payload.triggeredAt,
             ),
           );
           return;
@@ -1708,9 +1728,14 @@ export default function Control() {
     }
   };
 
-  const fetchProgramAudioBusSettings = async (targetProgramId: string) => {
+  const fetchProgramAudioBusSettings = async (
+    targetProgramId: string,
+    showLoading = true,
+  ) => {
     try {
-      setIsLoadingMixerLevels(true);
+      if (showLoading) {
+        setIsLoadingMixerLevels(true);
+      }
       const res = await fetch(
         apiUrl(`/program/${encodeURIComponent(targetProgramId)}/audio-bus`),
       );
@@ -1753,7 +1778,9 @@ export default function Control() {
         },
       });
     } finally {
-      setIsLoadingMixerLevels(false);
+      if (showLoading) {
+        setIsLoadingMixerLevels(false);
+      }
     }
   };
 
@@ -1814,11 +1841,21 @@ export default function Control() {
   const takeProgramSongSelection = async (
     nextSequence: ProgramSongSequence,
   ) => {
+    const wasPlaying = programSongPlaybackState.isPlaying;
     await saveProgramAudioBusSongSequence(nextSequence);
     const item = nextSequence.items.find(
       (candidate) => candidate.id === nextSequence.activeItemId,
     );
     if (!item || item.kind !== "preset" || !item.audioUrl) return;
+    if (
+      !wasPlaying &&
+      (nextSequence.mode === "autoplay" || nextSequence.mode === "shuffle")
+    ) {
+      // Persisting an idle automatic sequence is itself the authoritative
+      // start command. Posting the same song as a manual take would enqueue a
+      // second Palazzo request.
+      return;
+    }
     const res = await fetch(
       apiUrl(`/radio/${encodeURIComponent(activeProgramId)}/song`),
       {
@@ -3107,6 +3144,13 @@ export default function Control() {
             previous,
             normalizeProgramSongPlayback(data.playback),
           ),
+        );
+        return;
+      }
+
+      if (data.type === "song_off_air") {
+        setProgramSongPlaybackState((previous) =>
+          reconcileProgramSongOffAir(previous, data.playback, data.triggeredAt),
         );
         return;
       }

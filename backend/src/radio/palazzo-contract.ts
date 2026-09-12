@@ -70,6 +70,14 @@ export type PalazzoPlaybackEventType =
   | 'intro.started'
   | 'intro.ended'
   | 'intro.failed'
+  | 'playout.queued'
+  | 'preflight.ready'
+  | 'preflight.failed'
+  | 'playout.started'
+  | 'playout.transitioned'
+  | 'playout.stopped'
+  | 'playout.skipped'
+  | 'playout.fallback'
   | 'playback.position'
   | 'audio.levels'
   | 'heartbeat';
@@ -110,7 +118,7 @@ export interface PalazzoTrackStartedData {
   title: string | null;
   artist: string | null;
   coverUrl: string | null;
-  url: string;
+  url?: string;
   liquidsoapSequence: number;
 }
 
@@ -119,7 +127,7 @@ export interface PalazzoTrackEndedData {
   title: string | null;
   artist: string | null;
   coverUrl: string | null;
-  url: string;
+  url?: string;
   liquidsoapSequence: number;
 }
 
@@ -270,6 +278,14 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
     'intro.started',
     'intro.ended',
     'intro.failed',
+    'playout.queued',
+    'preflight.ready',
+    'preflight.failed',
+    'playout.started',
+    'playout.transitioned',
+    'playout.stopped',
+    'playout.skipped',
+    'playout.fallback',
     'playback.position',
     'audio.levels',
     'heartbeat',
@@ -293,8 +309,7 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
   const data = record.data as Record<string, unknown>;
   if (
     (type === 'track.started' || type === 'track.ended') &&
-    (!boundedString(data.playbackRequestId, 200) ||
-      typeof data.url !== 'string')
+    !boundedString(data.playbackRequestId, 200)
   )
     return null;
   if (

@@ -134,9 +134,16 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
 
   const handleTakeSelection = useCallback(
     async (seq: any) => {
+      const wasPlaying = programSongPlayback?.isPlaying === true;
       await onSaveSongSequence(seq);
       const item = seq?.items?.find((i: any) => i.id === seq?.activeItemId);
       if (!item?.audioUrl) return;
+      if (
+        !wasPlaying &&
+        (seq?.mode === "autoplay" || seq?.mode === "shuffle")
+      ) {
+        return;
+      }
       await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/song`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,7 +157,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         }),
       });
     },
-    [onSaveSongSequence, programId],
+    [onSaveSongSequence, programId, programSongPlayback?.isPlaying],
   );
 
   const isLive = stream?.running === true;

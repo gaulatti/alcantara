@@ -219,10 +219,15 @@ export function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybac
   return {
     token: typeof r.token === 'string' ? r.token : '',
     audioUrl: typeof r.audioUrl === 'string' ? r.audioUrl : '',
+    title: typeof r.title === 'string' ? r.title : undefined,
+    artist: typeof r.artist === 'string' ? r.artist : undefined,
+    coverUrl: typeof r.coverUrl === 'string' ? r.coverUrl : undefined,
     progress: normalizeAudioMeterLevel(r.progress),
     currentTimeMs, durationMs,
     isPlaying: Boolean(r.isPlaying),
+    startedAt: typeof r.startedAt === 'string' ? r.startedAt : undefined,
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString(),
+    telemetryStale: typeof r.telemetryStale === 'boolean' ? r.telemetryStale : undefined,
     introStatus: r.introStatus === 'pending' || r.introStatus === 'playing' || r.introStatus === 'completed' || r.introStatus === 'degraded' ? r.introStatus : 'none',
     introFailureReason: typeof r.introFailureReason === 'string' ? r.introFailureReason.trim().slice(0, 200) || null : null
   };
@@ -284,6 +289,21 @@ export function reconcileProgramSongPlayback(prev: ProgramSongPlaybackState, nex
     if (prev.currentTimeMs - next.currentTimeMs > SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS) return prev;
   }
   return next;
+}
+
+export function reconcileProgramSongOffAir(
+  prev: ProgramSongPlaybackState,
+  playback: unknown,
+  triggeredAt: unknown,
+): ProgramSongPlaybackState {
+  if (playback && typeof playback === 'object' && !Array.isArray(playback)) {
+    return normalizeProgramSongPlayback(playback);
+  }
+  return {
+    ...prev,
+    isPlaying: false,
+    updatedAt: typeof triggeredAt === 'string' ? triggeredAt : new Date().toISOString()
+  };
 }
 
 export function reconcileProgramAudioMeter(prev: ProgramAudioMeterLevels, next: ProgramAudioMeterLevels): ProgramAudioMeterLevels {

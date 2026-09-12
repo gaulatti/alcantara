@@ -67,6 +67,11 @@ The development-only `/console-fixture` supports `state=normal`,
 `state=audio`, and `state=remote`. Add `mode=both` to exercise the Simulcast
 status rail. Production builds do not expose the fixture route.
 
+Playback control states are available at `state=playback-live` and
+`state=playback-stale`. These fixtures show the mutually exclusive Manual,
+Autoplay, and Shuffle modes, the independent Loop state, and the live/stale
+authoritative feedback indicator without commanding Palazzo.
+
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not
 change Program, CUT/TAKE are in the same working viewport, fade-to-black is

@@ -21,9 +21,7 @@ import {
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
   resolveProgramSongLeaf,
-  type ProgramResolvedSongLeaf,
   type ProgramSongSequence,
-  type ProgramSongSequenceLeafItem,
 } from './song-sequence.utils';
 
 export interface SongPlaybackData {
@@ -226,7 +224,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   handleSequenceUpdated(programId: string, rawSequence: unknown): void {
     const seq = normalizeProgramSongSequence(rawSequence);
     const state = this.ensureState(programId);
-    if (state.sequence?.startedAt && seq)
+    if (state.activeSong && state.sequence?.startedAt && seq)
       seq.startedAt = state.sequence.startedAt;
     state.sequence = seq;
     if (
@@ -645,9 +643,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.songCount++;
     state.busyWithForeignTrack = false;
     const hasSuccessor =
-      state.sequence?.mode === 'autoplay'
+      state.sequence?.mode === 'autoplay' || state.sequence?.mode === 'shuffle'
         ? advanceProgramSongSequence(state.sequence, endedSong.itemId)
-        : state.sequence?.mode === 'shuffle';
+        : false;
     this.logger.log(
       `Authoritative end on ${programId}: mode=${state.sequence?.mode ?? 'none'} loop=${state.sequence?.loop ?? false} cursor=${state.sequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
     );
@@ -700,12 +698,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const state = this.states.get(programId);
     if (!state?.sequence) return false;
 
-    let resolved: ProgramResolvedSongLeaf | null;
-    if (state.sequence.mode === 'shuffle') {
-      resolved = this.resolveShuffle(programId);
-    } else {
-      resolved = resolveProgramSongLeaf(state.sequence, Date.now());
-    }
+    const resolved = resolveProgramSongLeaf(state.sequence, Date.now());
     if (!resolved?.audioUrl) return false;
 
     const dur =
@@ -752,27 +745,6 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.setTimer(programId, dur);
     }
     return true;
-  }
-
-  private resolveShuffle(programId: string): ProgramResolvedSongLeaf | null {
-    const state = this.states.get(programId);
-    if (!state?.sequence) return null;
-    const presets = state.sequence.items.filter(
-      (item): item is ProgramSongSequenceLeafItem => item.kind === 'preset',
-    );
-    if (!presets.length) return null;
-    const idx = Math.floor(Math.random() * presets.length);
-    const p = presets[idx];
-    return {
-      id: p.id,
-      audioUrl: p.audioUrl,
-      title: p.title,
-      artist: p.artist,
-      coverUrl: p.coverUrl,
-      durationMs: p.durationMs,
-      songId: p.songId,
-      activePathLabels: [],
-    };
   }
 
   private async pushCommand(
@@ -847,15 +819,24 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       return;
     }
-    const result = await this.radioService.playSong(
-      programId,
-      audioUrl,
-      title,
-      artist,
-      playbackRequestId,
-      coverUrl,
-      intro,
-    );
+    let result: Awaited<ReturnType<RadioService['playSong']>>;
+    try {
+      result = await this.radioService.playSong(
+        programId,
+        audioUrl,
+        title,
+        artist,
+        playbackRequestId,
+        coverUrl,
+        intro,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Palazzo command errored on ${programId} (${playbackRequestId}): ${String(error)}`,
+      );
+      this.handleCommandFailure(programId, playbackRequestId);
+      return;
+    }
     const state = this.states.get(programId);
     if (!state) return;
     if (result.ok && result.playbackRequestId) {
@@ -885,8 +866,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Palazzo command failed on ${programId} (${playbackRequestId}); clearing pending command`,
       );
-      state.pendingRequestIds.delete(playbackRequestId);
+      this.handleCommandFailure(programId, playbackRequestId);
     }
+  }
+
+  private handleCommandFailure(
+    programId: string,
+    playbackRequestId: string,
+  ): void {
+    const state = this.states.get(programId);
+    if (!state) return;
+    state.pendingRequestIds.delete(playbackRequestId);
+    if (
+      !this.isRadioCapable(programId) ||
+      state.activeSong?.playbackRequestId !== playbackRequestId
+    ) {
+      return;
+    }
+    state.activeSong = null;
+    this.stopProgress(programId);
+    this.metrics.recordTrackTransition('command-failed');
+    void this.nowPlayingPublisherService.publishStopped(programId);
+    this.emit({
+      type: 'song_off_air',
+      programId,
+      triggeredAt: new Date().toISOString(),
+    });
   }
 
   /**
@@ -907,9 +912,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       s.pendingRequestIds.clear();
       s.songCount++;
       const hasSuccessor =
-        s.sequence?.mode === 'autoplay'
+        s.sequence?.mode === 'autoplay' || s.sequence?.mode === 'shuffle'
           ? advanceProgramSongSequence(s.sequence, endedSong?.itemId)
-          : s.sequence?.mode === 'shuffle';
+          : false;
       void this.maybeBumper(programId).then(() => {
         const st = this.states.get(programId);
         if (!st || st.activeSong) return;

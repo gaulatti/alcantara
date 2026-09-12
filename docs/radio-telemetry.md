@@ -62,6 +62,19 @@ routes.
 Each program's client opens one SSE connection to the Palazzo
 `/v1/programs/{programId}/playback/events` endpoint. Every connection begins with a complete
 `snapshot` event; reconnections replay missed events via `Last-Event-ID`.
+Palazzo deliberately removes URL-shaped fields from SSE. Alcantara accepts
+URL-free lifecycle events by request ID and hydrates a redacted playing
+snapshot from the authenticated `/playback/state` endpoint before it reaches
+the execution engine. This keeps media URLs out of the event stream without
+mistaking a healthy stream for malformed telemetry.
+Current Palazzo preflight and playout-observation events advance the replay
+cursor but are not forwarded into the song engine; only track, intro,
+position, and level events may change Alcantara playback state. This prevents
+an additive Palazzo event from being rejected or misclassified as a track end.
+If Palazzo rejects or cannot accept a song command, Alcantara clears its
+optimistic Radio playback, publishes stopped state, and increments the bounded
+`alcantara_radio_track_transitions_total{result="command-failed"}` outcome; it
+does not leave the console falsely on air or silently advance the queue.
 
 - If SSE fails but `/v1/programs/{programId}/playback/state` responds, the client polls that endpoint
   (connection state `polling`) and reconciles snapshots while SSE reconnects
@@ -83,8 +96,19 @@ distinguishable from appliance unavailability.
 
 `GET /radio/:programId/palazzo-status` returns the connection state, instance
 identity, telemetry freshness, and degraded flag per program. The radio panel
-surfaces this live, and `radio_leg_status` / `palazzo_audio_levels` events are
-forwarded to the realtime control console.
+surfaces this live. `radio_leg_status` and raw `palazzo_audio_levels` remain
+available to realtime consumers; the same Palazzo levels are also normalized
+into the existing `audio_meter_update` contract so the Radio desk's Song,
+Audio clips, and Main meters show the appliance's actual output. Playback
+updates retain the `telemetryStale` flag, and natural or manual off-air events
+replace the stored playback state with `isPlaying: false` before fan-out.
+
+The control console consumes WebSocket feedback first and SSE when WebSocket
+is unavailable. It reconciles audio-bus, meter, playback, and scene-instant
+snapshots every five seconds while visible, so a lost realtime message repairs
+itself. The playback bar never estimates an on-air state from playlist timing:
+it shows progress only from backend playback feedback and labels that feedback
+as live or stale.
 
 The Radio desk exposes the live Song, Audio clips / bumpers, and Main mixer
 channels. Changes persist in the program audio bus and are synchronously sent
@@ -100,9 +124,19 @@ For a `both` program, the TV control adds a radio-leg status rail. Scene actions
 remain TV-only while Songs and Audio clips flow through the shared program mix.
 
 The playback bar's Shuffle action persists a newly randomized playlist order,
-anchors the authoritative current track at the front, and continues in autoplay
-through every remaining item once before loop behavior applies. Shuffle does
-not reset the current track's start time or change the loop setting.
+anchors the authoritative current track at the front, and remains in the
+visible `shuffle` mode while advancing through every remaining item once before
+loop behavior applies. It does not reset the current track's start time or
+change the loop setting while feedback says that track is playing. Activating
+Shuffle from idle selects the first shuffled item and starts a fresh playback
+clock, including after a non-looped playlist has ended. Manual, Autoplay, and Shuffle expose mutually
+exclusive pressed states; Loop exposes an independent on/off pressed state.
+
+Previous, Play/Advance, Stop, and Next each take one authoritative action.
+Play starts the selected item rather than skipping it, Advance and Next do not
+wrap when Loop is off, and Stop uses the program off-air endpoint without a
+duplicate sequence write. An idle automatic selection starts through the
+persisted sequence update alone, avoiding a second manual Palazzo command.
 
 ## Machine credential and configuration
 

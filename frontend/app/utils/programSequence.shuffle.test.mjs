@@ -14,13 +14,13 @@ function sequence(ids, overrides = {}) {
   };
 }
 
-test('anchors the active song and persists a no-repeat autoplay order', () => {
+test('anchors the active song and persists a no-repeat shuffle order', () => {
   const input = sequence(['a', 'b', 'c', 'd']);
   const output = shuffleProgramSongSequence(input, 'b', () => 0);
 
   assert.deepEqual(output.items.map((item) => item.id), ['b', 'c', 'd', 'a']);
   assert.equal(output.activeItemId, 'b');
-  assert.equal(output.mode, 'autoplay');
+  assert.equal(output.mode, 'shuffle');
   assert.equal(output.loop, false);
   assert.equal(output.startedAt, 1234);
   assert.deepEqual(new Set(output.items.map((item) => item.id)), new Set(['a', 'b', 'c', 'd']));
@@ -36,4 +36,12 @@ test('guarantees a visible order change when random values retain the original o
 test('does not mutate or replace a playlist that cannot be shuffled', () => {
   const input = sequence(['a'], { activeItemId: 'a', mode: 'manual' });
   assert.equal(shuffleProgramSongSequence(input, 'a'), input);
+});
+
+test('selects the first shuffled item when an exhausted playlist has no cursor', () => {
+  const input = sequence(['a', 'b', 'c'], { activeItemId: null });
+  const output = shuffleProgramSongSequence(input, null, () => 0);
+
+  assert.equal(output.mode, 'shuffle');
+  assert.equal(output.activeItemId, output.items[0].id);
 });

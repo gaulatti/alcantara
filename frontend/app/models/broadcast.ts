@@ -216,6 +216,7 @@ export interface ProgramSongPlaybackState {
   isPlaying: boolean;
   startedAt?: string;
   updatedAt: string;
+  telemetryStale?: boolean;
   introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
   introFailureReason?: string | null;
 }

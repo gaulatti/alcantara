@@ -75,6 +75,7 @@ export function PlaybackBar({
   const [stickyPlaybackItemId, setStickyPlaybackItemId] = useState<string | null>(null);
   const sequenceRef = useRef(sequence);
   const effectiveActiveItemId = getProgramSongSequenceSelectedItemId(sequence, nowMs);
+  const automaticPlayback = sequence.mode === 'autoplay' || sequence.mode === 'shuffle';
 
   const showSceneQuickBar = sceneQuickActions.length > 0;
 
@@ -118,10 +119,10 @@ export function PlaybackBar({
 
   const runtimeActiveItemId = useMemo(() => {
     if (programSongPlayback?.isPlaying) {
-      return stickyPlaybackItemId ?? playbackActiveItemId ?? sequence.activeItemId ?? (sequence.mode === 'autoplay' ? effectiveActiveItemId : null) ?? null;
+      return stickyPlaybackItemId ?? playbackActiveItemId ?? sequence.activeItemId ?? (automaticPlayback ? effectiveActiveItemId : null) ?? null;
     }
-    return sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId ?? null) : (sequence.activeItemId ?? null);
-  }, [effectiveActiveItemId, playbackActiveItemId, programSongPlayback?.isPlaying, sequence.activeItemId, sequence.mode, stickyPlaybackItemId]);
+    return sequence.activeItemId ?? (automaticPlayback ? effectiveActiveItemId : null) ?? null;
+  }, [automaticPlayback, effectiveActiveItemId, playbackActiveItemId, programSongPlayback?.isPlaying, sequence.activeItemId, stickyPlaybackItemId]);
 
   const runtimeActiveItemIndex = runtimeActiveItemId ? sequence.items.findIndex((i) => i.id === runtimeActiveItemId) : -1;
 
@@ -130,23 +131,26 @@ export function PlaybackBar({
   }, [sequence]);
 
   useEffect(() => {
-    if (!sequence.activeItemId && !programSongPlayback?.isPlaying) return;
+    if (!programSongPlayback?.isPlaying) return;
     const timer = setInterval(() => setNowMs(Date.now()), 250);
     return () => clearInterval(timer);
-  }, [programSongPlayback?.isPlaying, sequence.activeItemId, sequence.startedAt]);
+  }, [programSongPlayback?.isPlaying]);
 
   const clearActiveItem = useCallback(async () => {
     const next = { ...sequence, mode: 'manual' as const, activeItemId: null };
-    applySequence(next);
+    if (onTakeOffAir) {
+      await onTakeOffAir();
+      return;
+    }
     if (onTakeSelection) await onTakeSelection(next);
-    if (onTakeOffAir) await onTakeOffAir();
+    else applySequence(next);
   }, [applySequence, onTakeOffAir, onTakeSelection, sequence]);
 
   const activateItem = useCallback(
     async (itemId: string) => {
       const next = { ...sequence, activeItemId: itemId, startedAt: Date.now() };
-      applySequence(next);
       if (onTakeSelection) await onTakeSelection(next);
+      else applySequence(next);
     },
     [applySequence, onTakeSelection, sequence]
   );
@@ -172,8 +176,8 @@ export function PlaybackBar({
           </div>
         </div>
       ) : null}
-      <div className='flex items-center justify-between border-t border-sand/30 bg-dark-sand/85 px-4 py-3'>
-        <div className='flex items-center gap-2'>
+      <div className='flex flex-wrap items-center justify-between gap-2 border-t border-sand/30 bg-dark-sand/85 px-3 py-2 sm:px-4 sm:py-3 md:flex-nowrap'>
+        <div className='order-2 flex items-center gap-2 md:order-none'>
           <IconButton
             type='button'
             title='Previous'
@@ -188,17 +192,25 @@ export function PlaybackBar({
           </IconButton>
           <IconButton
             type='button'
-            title={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
+            title={programSongPlayback?.isPlaying ? 'Advance' : 'Play selection'}
+            disabled={
+              sequence.items.length === 0 ||
+              (programSongPlayback?.isPlaying === true &&
+                runtimeActiveItemIndex === sequence.items.length - 1 &&
+                sequence.loop === false)
+            }
             onClick={() => {
-              if (!runtimeActiveItemId && sequence.items.length > 0) void activateItem(sequence.items[0].id);
-              else if (runtimeActiveItemId) {
+              if (!programSongPlayback?.isPlaying) {
+                const selection = runtimeActiveItemId ?? sequence.items[0]?.id ?? null;
+                if (selection) void activateItem(selection);
+              } else if (runtimeActiveItemId) {
                 const idx = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
                 if (idx < sequence.items.length - 1) void activateItem(sequence.items[idx + 1].id);
-                else void activateItem(sequence.items[0].id);
+                else if (sequence.loop !== false) void activateItem(sequence.items[0].id);
               }
             }}
             className='flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95'
-            aria-label={runtimeActiveItemId ? 'Next / Advance' : 'Play'}
+            aria-label={programSongPlayback?.isPlaying ? 'Advance' : 'Play selection'}
           >
             <Play size={18} fill='currentColor' className='ml-0.5' />
           </IconButton>
@@ -223,61 +235,25 @@ export function PlaybackBar({
           >
             <SkipForward size={16} fill='currentColor' />
           </IconButton>
+          {programSongPlayback?.isPlaying && typeof programSongPlayback.telemetryStale === 'boolean' ? (
+            <div
+              className={`flex items-center gap-1 whitespace-nowrap text-[9px] font-semibold uppercase tracking-wider ${programSongPlayback.telemetryStale ? 'text-amber-300' : 'text-emerald-300'}`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${programSongPlayback.telemetryStale ? 'bg-amber-300' : 'bg-emerald-300'}`}
+                aria-hidden='true'
+              />
+              Feedback {programSongPlayback.telemetryStale ? 'stale' : 'live'}
+            </div>
+          ) : null}
         </div>
 
         <div className='hidden min-w-0 flex-1 px-4 md:block'>
-          {runtimeActiveItemId ? (
+          {programSongPlayback?.isPlaying && runtimeActiveItemId ? (
             (() => {
               const displayItem = sequence.items.find((i) => i.id === runtimeActiveItemId);
               if (!displayItem || displayItem.kind !== 'preset') return null;
-              const displayUrl = displayItem.audioUrl?.trim() || '';
-              const pbUrl = programSongPlayback?.audioUrl?.trim() || '';
-              const pbToken = programSongPlayback?.token || '';
-              const matchesPlayback =
-                !!programSongPlayback &&
-                ((displayUrl && pbUrl && displayUrl === pbUrl) ||
-                  (displayItem.id && pbToken.startsWith(`${displayItem.id}:`)) ||
-                  (runtimeActiveItemId === displayItem.id && programSongPlayback.isPlaying));
-              let songElapsedMs = 0;
-              let songStartedAt = typeof sequence.startedAt === 'number' ? sequence.startedAt : nowMs;
-              if (matchesPlayback && programSongPlayback) {
-                songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
-                songStartedAt = Math.max(0, nowMs - songElapsedMs);
-              } else if (programSongPlayback?.isPlaying) {
-                songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
-                songStartedAt = Math.max(0, nowMs - songElapsedMs);
-              } else if (sequence.mode === 'autoplay' && typeof sequence.startedAt === 'number') {
-                const totalElapsed = Math.max(0, nowMs - sequence.startedAt);
-                const baseIdx = sequence.items.findIndex((i) => i.id === runtimeActiveItemId);
-                const startIdx = baseIdx >= 0 ? baseIdx : 0;
-                const itemDurations = sequence.items.map((i) =>
-                  i.kind === 'preset' && typeof i.durationMs === 'number' && i.durationMs > 0 ? i.durationMs : null
-                );
-                const allKnown = itemDurations.every((d) => d !== null);
-                let remaining = totalElapsed;
-                let cycleOffset = 0;
-                if (allKnown && sequence.loop !== false) {
-                  const cycle = itemDurations.reduce((s, d) => s + (d ?? 0), 0);
-                  if (cycle > 0) {
-                    remaining = totalElapsed % cycle;
-                    cycleOffset = totalElapsed - remaining;
-                  }
-                }
-                let cumulative = 0;
-                for (let step = 0; step < sequence.items.length; step++) {
-                  const idx = (startIdx + step) % sequence.items.length;
-                  const dur = itemDurations[idx];
-                  if (dur === null || remaining < dur) {
-                    songStartedAt = sequence.startedAt + cycleOffset + cumulative;
-                    songElapsedMs = remaining;
-                    break;
-                  }
-                  remaining -= dur;
-                  cumulative += dur;
-                }
-              } else {
-                songElapsedMs = Math.max(0, nowMs - songStartedAt);
-              }
+              const songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
               const totalMs =
                 programSongPlayback?.isPlaying && typeof programSongPlayback.durationMs === 'number'
                   ? programSongPlayback.durationMs
@@ -335,19 +311,23 @@ export function PlaybackBar({
           )}
         </div>
 
-        <div className='flex items-center gap-3'>
-          <div className='flex items-center gap-0.5 rounded-lg border border-sand/30 bg-dark-sand/80 p-0.5'>
+        <div className='order-1 flex w-full items-center justify-between gap-1 md:order-none md:w-auto md:justify-start md:gap-3'>
+          <div
+            className='flex min-w-0 flex-1 items-center gap-0.5 rounded-lg border border-sand/30 bg-dark-sand/80 p-0.5 md:flex-initial'
+            role='group'
+            aria-label='Playback mode'
+          >
             <Button
               onClick={() =>
                 applySequence({
                   ...sequence,
                   mode: 'manual',
-                  activeItemId:
-                    sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                  activeItemId: runtimeActiveItemId ?? sequence.activeItemId,
                   startedAt: Date.now()
                 })
               }
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${sequence.mode === 'manual' ? 'bg-sea/20 text-sea shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}
+              aria-pressed={sequence.mode === 'manual'}
+              className={`min-w-0 flex-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors sm:px-2.5 md:flex-initial ${sequence.mode === 'manual' ? 'bg-sea text-white ring-1 ring-sea shadow-sm hover:bg-sea' : 'bg-transparent text-text-secondary shadow-none hover:text-text-primary'}`}
               size='sm'
               variant='secondary'
             >
@@ -358,42 +338,46 @@ export function PlaybackBar({
                 applySequence({
                   ...sequence,
                   mode: 'autoplay',
-                  activeItemId:
-                    sequence.mode === 'autoplay' ? (runtimeActiveItemId ?? sequence.activeItemId) : (runtimeActiveItemId ?? sequence.activeItemId),
+                  activeItemId: runtimeActiveItemId ?? sequence.activeItemId,
                   startedAt: Date.now()
                 })
               }
-              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${sequence.mode === 'autoplay' ? 'bg-sea/20 text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+              aria-pressed={sequence.mode === 'autoplay'}
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors sm:px-2.5 md:flex-initial ${sequence.mode === 'autoplay' ? 'bg-sea text-white ring-1 ring-sea shadow-sm hover:bg-sea' : 'bg-transparent text-text-secondary shadow-none hover:text-text-primary'}`}
               size='sm'
               variant='secondary'
             >
               <Play size={9} fill='currentColor' /> Autoplay
             </Button>
             <Button
-              onClick={() =>
-                applySequence(
-                  shuffleProgramSongSequence(sequence, runtimeActiveItemId ?? sequence.activeItemId ?? null)
-                )
-              }
+              onClick={() => {
+                const shuffled = shuffleProgramSongSequence(sequence, runtimeActiveItemId ?? sequence.activeItemId ?? null);
+                applySequence(programSongPlayback?.isPlaying ? shuffled : { ...shuffled, startedAt: Date.now() });
+              }}
               disabled={sequence.items.length < 2}
-              title='Shuffle playlist'
+              title={sequence.mode === 'shuffle' ? 'Shuffle is active; reshuffle playlist' : 'Activate shuffle'}
               aria-label='Shuffle playlist'
-              className='flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40'
+              aria-pressed={sequence.mode === 'shuffle'}
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors sm:px-2.5 md:flex-initial ${sequence.mode === 'shuffle' ? 'bg-sea text-white ring-1 ring-sea shadow-sm hover:bg-sea' : 'bg-transparent text-text-secondary shadow-none hover:text-text-primary'} disabled:cursor-not-allowed disabled:opacity-40`}
               size='sm'
               variant='secondary'
             >
               <Shuffle size={9} /> Shuffle
             </Button>
           </div>
-          <IconButton
+          <Button
             type='button'
-            title='Loop'
+            title={sequence.loop !== false ? 'Loop is on' : 'Loop is off'}
             onClick={() => applySequence({ ...sequence, loop: sequence.loop === false ? true : false })}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${sequence.loop !== false ? 'text-sea bg-sea/10' : 'text-text-secondary hover:text-text-primary'}`}
-            aria-label='Loop'
+            className={`flex h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-colors ${sequence.loop !== false ? 'bg-sea text-white ring-1 ring-sea shadow-sm hover:bg-sea' : 'bg-transparent text-text-secondary shadow-none ring-1 ring-sand/30 hover:text-text-primary'}`}
+            aria-label={`Loop playlist: ${sequence.loop !== false ? 'on' : 'off'}`}
+            aria-pressed={sequence.loop !== false}
+            size='sm'
+            variant='secondary'
           >
-            <Repeat2 size={16} />
-          </IconButton>
+            <Repeat2 size={14} />
+            Loop {sequence.loop !== false ? 'on' : 'off'}
+          </Button>
           {onStopAllInstants && (
             <IconButton
               type='button'

@@ -100,9 +100,9 @@ export function shuffleProgramSongSequence(
 
   return {
     ...sequence,
-    mode: 'autoplay',
+    mode: 'shuffle',
     items: anchoredItem ? [anchoredItem, ...shuffledItems] : shuffledItems,
-    activeItemId: anchoredItem?.id ?? sequence.activeItemId ?? null
+    activeItemId: anchoredItem?.id ?? sequence.activeItemId ?? nextItems[0]?.id ?? null
   };
 }
 

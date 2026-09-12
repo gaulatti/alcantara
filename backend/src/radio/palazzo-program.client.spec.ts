@@ -77,6 +77,27 @@ function idleState(
   };
 }
 
+function playingState(
+  instanceId: string,
+  bootId: string,
+  sequence: number,
+): PalazzoPlaybackState {
+  return {
+    ...idleState(instanceId, bootId, sequence),
+    status: 'playing',
+    track: {
+      playbackRequestId: 'req-1',
+      title: 'Song one',
+      artist: 'Artist one',
+      coverUrl: 'https://example.test/cover.jpg',
+      url: 'https://example.test/song.mp3',
+      startedAt: new Date().toISOString(),
+    },
+    positionSeconds: 12,
+    remainingSeconds: 88,
+  };
+}
+
 function sseResponse(frames: string[], status = 200): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -164,6 +185,109 @@ describe('PalazzoProgramClient', () => {
 
     expect(callbacks.onSnapshot).toHaveBeenCalledWith('radio-1', snapshot);
     expect(callbacks.onEvent).toHaveBeenCalledWith('radio-1', started);
+  });
+
+  it('hydrates Palazzo redacted SSE snapshots from authenticated state and accepts URL-free lifecycle events', async () => {
+    const state = playingState('palazzo-a', 'boot-1', 2);
+    const redactedSnapshot = snapshotEvent(
+      'palazzo-a',
+      'boot-1',
+      1,
+      structuredClone(state),
+    );
+    const redactedState = redactedSnapshot.data.state as Record<
+      string,
+      unknown
+    >;
+    const redactedTrack = redactedState.track as Record<string, unknown>;
+    delete redactedTrack.url;
+    delete redactedTrack.coverUrl;
+    const ended = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      3,
+      'track.ended',
+      'req-1',
+    );
+    delete ended.data.url;
+
+    const fetchImpl = jest.fn((url: string) =>
+      url.includes('/playback/events')
+        ? Promise.resolve(sseResponse([frame(redactedSnapshot), frame(ended)]))
+        : Promise.resolve(Response.json(state)),
+    );
+    const { client, callbacks } = createClient(fetchImpl);
+
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    client.stop();
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining('/playback/state'),
+      expect.any(Object),
+    );
+    expect(callbacks.onSnapshot).toHaveBeenCalledWith('radio-1', state);
+    expect(callbacks.onEvent).toHaveBeenCalledWith('radio-1', ended);
+  });
+
+  it('accepts CRLF-delimited Palazzo SSE frames', async () => {
+    const snapshot = idleState('palazzo-a', 'boot-1', 1);
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 1, snapshot)).replace(
+            /\n/g,
+            '\r\n',
+          ),
+        ]),
+      );
+    const { client, callbacks } = createClient(fetchImpl);
+
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    client.stop();
+
+    expect(callbacks.onSnapshot).toHaveBeenCalledWith('radio-1', snapshot);
+  });
+
+  it('advances across Palazzo preflight events without forwarding them as track ends', async () => {
+    const snapshot = idleState('palazzo-a', 'boot-1', 1);
+    const preflight: PalazzoPlaybackEvent = {
+      schemaVersion: 1,
+      id: 'boot-1:2',
+      instanceId: 'palazzo-a',
+      bootId: 'boot-1',
+      sequence: 2,
+      type: 'preflight.ready',
+      occurredAt: new Date().toISOString(),
+      data: { playbackId: 'req-1', kind: 'song' },
+    };
+    const ended = lifecycleEvent(
+      'palazzo-a',
+      'boot-1',
+      3,
+      'track.ended',
+      'req-1',
+    );
+    delete ended.data.url;
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        sseResponse([
+          frame(snapshotEvent('palazzo-a', 'boot-1', 1, snapshot)),
+          frame(preflight),
+          frame(ended),
+        ]),
+      );
+    const { client, callbacks } = createClient(fetchImpl);
+
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    client.stop();
+
+    expect(callbacks.onEvent).toHaveBeenCalledTimes(1);
+    expect(callbacks.onEvent).toHaveBeenCalledWith('radio-1', ended);
   });
 
   it('ignores duplicate and stale sequences within the same boot', async () => {

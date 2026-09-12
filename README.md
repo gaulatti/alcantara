@@ -141,6 +141,10 @@ Radio song sequences default to autoplay when their mode is absent. An explicit
 operator choice of Manual remains authoritative. In autoplay, Alcantara advances
 to the next playlist item only after Palazzo reports that the active track ended;
 looped playlists wrap to the first item and non-looped playlists stop at the end.
+Shuffle persists and displays a randomized no-repeat order, advances through it
+on the same authoritative Palazzo end events, and wraps only when Loop is on.
+The playback bar exposes pressed states for Manual, Autoplay, Shuffle, and Loop
+and labels backend playback feedback as live or stale.
 
 The Radio desk includes live Song, Audio clips / bumpers, and Main mixer
 controls. Radio distribution at `/radio-settings` owns Palazzo automation,

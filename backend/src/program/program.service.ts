@@ -128,6 +128,9 @@ export class ProgramService implements OnModuleInit {
       isPlaying: boolean;
       startedAt?: string;
       updatedAt: string;
+      telemetryStale?: boolean;
+      introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+      introFailureReason?: string | null;
     }
   >();
   private eventListeners:
@@ -3142,6 +3145,7 @@ export class ProgramService implements OnModuleInit {
           isPlaying: event.playback.isPlaying,
           startedAt: event.playback.startedAt,
           updatedAt: event.playback.updatedAt,
+          telemetryStale: event.playback.telemetryStale,
           introStatus: event.playback.introStatus,
           introFailureReason: event.playback.introFailureReason,
         };
@@ -3167,6 +3171,7 @@ export class ProgramService implements OnModuleInit {
           isPlaying: event.playback.isPlaying,
           startedAt: event.playback.startedAt,
           updatedAt: event.playback.updatedAt,
+          telemetryStale: event.playback.telemetryStale,
           introStatus: event.playback.introStatus,
           introFailureReason: event.playback.introFailureReason,
         };
@@ -3181,10 +3186,30 @@ export class ProgramService implements OnModuleInit {
       }
       case 'song_off_air': {
         const normalizedProgramId = this.normalizeProgramId(programId);
+        const previous =
+          this.programSongPlaybackByProgramId.get(normalizedProgramId);
+        const playback = {
+          token: previous?.token ?? '',
+          audioUrl: previous?.audioUrl ?? '',
+          title: previous?.title,
+          artist: previous?.artist,
+          coverUrl: previous?.coverUrl,
+          progress: previous?.progress ?? 0,
+          currentTimeMs: previous?.currentTimeMs ?? 0,
+          durationMs: previous?.durationMs ?? null,
+          isPlaying: false,
+          startedAt: previous?.startedAt,
+          updatedAt: event.triggeredAt,
+          telemetryStale: false,
+          introStatus: previous?.introStatus ?? 'none',
+          introFailureReason: previous?.introFailureReason ?? null,
+        };
+        this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
         this.broadcastUpdate(normalizedProgramId, {
           type: 'song_off_air',
           programId: normalizedProgramId,
           triggeredAt: event.triggeredAt,
+          playback,
         });
         break;
       }
@@ -3199,11 +3224,40 @@ export class ProgramService implements OnModuleInit {
       }
       case 'audio_levels': {
         const normalizedProgramId = this.normalizeProgramId(programId);
+        const songVu = Math.max(
+          event.levels.song.rms,
+          event.levels.intro?.rms ?? 0,
+        );
+        const songPeak = Math.max(
+          event.levels.song.peak,
+          event.levels.intro?.peak ?? 0,
+        );
+        const levels: ProgramAudioMeterLevels = {
+          song: { vu: songVu, peak: songPeak, peakHold: songPeak },
+          instants: {
+            vu: event.levels.instant.rms,
+            peak: event.levels.instant.peak,
+            peakHold: event.levels.instant.peak,
+          },
+          sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
+          main: {
+            vu: event.levels.output.rms,
+            peak: event.levels.output.peak,
+            peakHold: event.levels.output.peak,
+          },
+          updatedAt: event.sampledAt,
+        };
+        this.programAudioMeterByProgramId.set(normalizedProgramId, levels);
         this.broadcastUpdate(normalizedProgramId, {
           type: 'palazzo_audio_levels',
           programId: normalizedProgramId,
           levels: event.levels,
           sampledAt: event.sampledAt,
+        });
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'audio_meter_update',
+          programId: normalizedProgramId,
+          levels,
         });
         break;
       }

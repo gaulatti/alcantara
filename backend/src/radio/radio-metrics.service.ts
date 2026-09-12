@@ -34,6 +34,7 @@ export type TrackTransitionResult =
   | 'ignored-duplicate'
   | 'ignored-frozen'
   | 'adopted'
+  | 'command-failed'
   | 'published-stopped';
 
 export type IntroTransitionResult =
@@ -113,6 +114,7 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'ignored-duplicate',
   'ignored-frozen',
   'adopted',
+  'command-failed',
   'published-stopped',
 ];
 

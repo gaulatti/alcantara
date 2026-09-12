@@ -68,15 +68,14 @@ export function ProgramSongSequenceEditor({
   const showQueue = view !== 'catalog';
   const showCatalog = view !== 'queue';
   const showQueueHeading = view === 'full';
+  const isAutomatic = sequence.mode === 'autoplay' || sequence.mode === 'shuffle';
 
   const editorActiveItemId = useMemo(() => {
     if (programSongPlayback?.isPlaying) {
-      return sequence.activeItemId ?? (sequence.mode === 'autoplay' ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
+      return sequence.activeItemId ?? (isAutomatic ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
     }
-    return sequence.mode === 'autoplay'
-      ? (getProgramSongSequenceSelectedItemId(sequence, Date.now()) ?? sequence.activeItemId ?? null)
-      : (sequence.activeItemId ?? null);
-  }, [programSongPlayback?.isPlaying, sequence]);
+    return sequence.activeItemId ?? (isAutomatic ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
+  }, [isAutomatic, programSongPlayback?.isPlaying, sequence]);
 
   const availableSongCatalog = useMemo(
     () =>
@@ -166,10 +165,9 @@ export function ProgramSongSequenceEditor({
   const addItem = useCallback(() => {
     const nextItem = createProgramSongSequenceItem('preset');
     if (nextItem.kind !== 'preset') return;
-    const isAutoplay = sequence.mode === 'autoplay';
-    const anchor = isAutoplay ? (editorActiveItemId ?? sequence.activeItemId ?? nextItem.id) : (editorActiveItemId ?? nextItem.id);
-    applySequence({ ...sequence, items: [...sequence.items, nextItem], activeItemId: anchor, startedAt: isAutoplay ? resolveAutoplayStartedAt() : Date.now() });
-  }, [applySequence, editorActiveItemId, resolveAutoplayStartedAt, sequence]);
+    const anchor = isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? nextItem.id) : (editorActiveItemId ?? nextItem.id);
+    applySequence({ ...sequence, items: [...sequence.items, nextItem], activeItemId: anchor, startedAt: isAutomatic ? resolveAutoplayStartedAt() : Date.now() });
+  }, [applySequence, editorActiveItemId, isAutomatic, resolveAutoplayStartedAt, sequence]);
 
   const addItemFromCatalog = useCallback(
     (songId: number) => {
@@ -195,10 +193,10 @@ export function ProgramSongSequenceEditor({
       applySequence({
         ...sequence,
         items: [...sequence.items, filled],
-        activeItemId: sequence.mode === 'autoplay' ? (editorActiveItemId ?? sequence.activeItemId ?? filled.id) : editorActiveItemId
+        activeItemId: isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? filled.id) : editorActiveItemId
       });
     },
-    [applySequence, availableSongCatalog, editorActiveItemId, sequence]
+    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence]
   );
 
   const removeItem = useCallback(
@@ -206,8 +204,7 @@ export function ProgramSongSequenceEditor({
       const removed = sequence.items[index];
       if (!removed) return;
       const nextItems = sequence.items.filter((_, i) => i !== index);
-      const isAutoplay = sequence.mode === 'autoplay';
-      const current = isAutoplay ? (editorActiveItemId ?? sequence.activeItemId) : (editorActiveItemId ?? sequence.activeItemId);
+      const current = editorActiveItemId ?? sequence.activeItemId;
       const removedCurrent = current !== null && current === removed.id;
       let nextActive: string | null;
       if (nextItems.length === 0) nextActive = null;
@@ -217,10 +214,10 @@ export function ProgramSongSequenceEditor({
         ...sequence,
         items: nextItems,
         activeItemId: nextActive,
-        startedAt: isAutoplay && !removedCurrent ? resolveAutoplayStartedAt() : Date.now()
+        startedAt: isAutomatic && !removedCurrent ? resolveAutoplayStartedAt() : Date.now()
       });
     },
-    [applySequence, editorActiveItemId, resolveAutoplayStartedAt, sequence]
+    [applySequence, editorActiveItemId, isAutomatic, resolveAutoplayStartedAt, sequence]
   );
 
   const updateItem = useCallback(
@@ -349,8 +346,8 @@ export function ProgramSongSequenceEditor({
                               type='button'
                               onClick={() => {
                                 const next = { ...sequence, activeItemId: displayItem.id, startedAt: Date.now() };
-                                applySequence(next);
                                 if (onTakeSelection) void onTakeSelection(next);
+                                else applySequence(next);
                               }}
                               className='relative flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent'
                               title='Take on air'

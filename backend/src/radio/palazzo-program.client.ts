@@ -195,15 +195,16 @@ export class PalazzoProgramClient {
         const { done, value } = await reader.read();
         if (done) return;
         buffer += decoder.decode(value, { stream: true });
-        let separatorIndex: number;
-        while ((separatorIndex = buffer.indexOf('\n\n')) >= 0) {
-          const rawFrame = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + 2);
+        let separator = /\r?\n\r?\n/.exec(buffer);
+        while (separator?.index !== undefined) {
+          const rawFrame = buffer.slice(0, separator.index);
+          buffer = buffer.slice(separator.index + separator[0].length);
           await this.handleFrame(rawFrame);
           if (this.stopped) {
             await reader.cancel();
             return;
           }
+          separator = /\r?\n\r?\n/.exec(buffer);
         }
       }
     } finally {
@@ -240,7 +241,14 @@ export class PalazzoProgramClient {
       return;
     }
     if (event.type === 'snapshot') {
-      const state = parsePalazzoState(event.data?.state);
+      let state = parsePalazzoState(event.data?.state);
+      if (!state) {
+        // Palazzo's SSE security boundary intentionally strips URL-shaped
+        // fields, including track and intro URLs, from snapshots. Hydrate the
+        // redacted event through the authenticated state endpoint instead of
+        // rejecting a healthy stream as malformed.
+        state = await this.fetchState();
+      }
       if (!state) {
         this.options.metrics.recordEventIgnored('malformed');
         throw new Error('malformed Palazzo snapshot');
@@ -300,7 +308,9 @@ export class PalazzoProgramClient {
 
     this.lastSequence = event.sequence;
     this.touch(event);
-    this.options.callbacks.onEvent(this.options.programId, event);
+    if (isEnginePlaybackEvent(event.type)) {
+      this.options.callbacks.onEvent(this.options.programId, event);
+    }
   }
 
   private async reconcileGap(): Promise<void> {
@@ -518,7 +528,7 @@ function parseSseFrame(rawFrame: string): SseFrame | null {
   let id: string | null = null;
   let event: string | null = null;
   const dataLines: string[] = [];
-  for (const line of rawFrame.split('\n')) {
+  for (const line of rawFrame.split(/\r?\n/)) {
     if (!line || line.startsWith(':')) continue;
     const colonIndex = line.indexOf(':');
     const field = colonIndex >= 0 ? line.slice(0, colonIndex) : line;
@@ -543,5 +553,17 @@ function isLifecycleEvent(type: PalazzoPlaybackEvent['type']): boolean {
     type === 'intro.started' ||
     type === 'intro.ended' ||
     type === 'intro.failed'
+  );
+}
+
+function isEnginePlaybackEvent(type: PalazzoPlaybackEvent['type']): boolean {
+  return (
+    type === 'track.started' ||
+    type === 'track.ended' ||
+    type === 'intro.started' ||
+    type === 'intro.ended' ||
+    type === 'intro.failed' ||
+    type === 'playback.position' ||
+    type === 'audio.levels'
   );
 }

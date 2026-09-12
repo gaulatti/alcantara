@@ -15,6 +15,7 @@ describe('RadioMetricsService', () => {
     metrics.recordStaleTelemetryPrograms(1);
     metrics.recordTrackTransition('advanced');
     metrics.recordTrackTransition('ignored-frozen');
+    metrics.recordTrackTransition('command-failed');
     metrics.recordIntroTransition('failed');
     metrics.recordMachineRequest('song-play', 'success');
     metrics.recordMachineRequest('song-play', 'deduplicated');
@@ -41,6 +42,9 @@ describe('RadioMetricsService', () => {
     );
     expect(rendered).toContain(
       'alcantara_radio_track_transitions_total{result="ignored-frozen"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_track_transitions_total{result="command-failed"} 1',
     );
     expect(rendered).toContain(
       'alcantara_radio_intro_transitions_total{result="failed"} 1',

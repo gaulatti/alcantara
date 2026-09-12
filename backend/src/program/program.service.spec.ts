@@ -113,6 +113,89 @@ describe('ProgramService switcher state', () => {
     });
   });
 
+  it('stores and fans out authoritative Palazzo playback, stop, and meter feedback', async () => {
+    const { service } = buildService({
+      id: 1,
+      programId: 'radio-1',
+      type: 'radio',
+      activeSceneId: null,
+      stagedSceneId: null,
+      fadeToBlack: false,
+      scenes: [],
+    });
+    const events: Array<Record<string, unknown>> = [];
+    service.addEventListener((event) => events.push(event.data));
+    const internal = service as unknown as {
+      handleEngineEvent: (event: Record<string, unknown>) => void;
+    };
+
+    internal.handleEngineEvent({
+      type: 'playback_update',
+      programId: 'radio-1',
+      playback: {
+        token: 'song-1:https://example.test/song.mp3',
+        audioUrl: 'https://example.test/song.mp3',
+        title: 'Song one',
+        artist: 'Artist one',
+        coverUrl: 'https://example.test/cover.jpg',
+        durationMs: 60_000,
+        isPlaying: true,
+        positionMs: 12_000,
+        progress: 0.2,
+        startedAt: '2026-09-11T12:00:00.000Z',
+        updatedAt: '2026-09-11T12:00:12.000Z',
+        telemetryStale: true,
+        introStatus: 'none',
+        introFailureReason: null,
+      },
+    });
+    internal.handleEngineEvent({
+      type: 'audio_levels',
+      programId: 'radio-1',
+      levels: {
+        song: { rms: 0.2, peak: 0.4 },
+        intro: { rms: 0.3, peak: 0.5 },
+        instant: { rms: 0.1, peak: 0.25 },
+        output: { rms: 0.35, peak: 0.6 },
+      },
+      sampledAt: '2026-09-11T12:00:13.000Z',
+    });
+
+    expect(await service.getProgramSongPlayback('radio-1')).toMatchObject({
+      title: 'Song one',
+      currentTimeMs: 12_000,
+      isPlaying: true,
+      telemetryStale: true,
+    });
+    expect(await service.getProgramAudioMeter('radio-1')).toMatchObject({
+      song: { vu: 0.3, peak: 0.5, peakHold: 0.5 },
+      instants: { vu: 0.1, peak: 0.25, peakHold: 0.25 },
+      main: { vu: 0.35, peak: 0.6, peakHold: 0.6 },
+    });
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'song_playback_update' }),
+        expect.objectContaining({ type: 'palazzo_audio_levels' }),
+        expect.objectContaining({ type: 'audio_meter_update' }),
+      ]),
+    );
+
+    internal.handleEngineEvent({
+      type: 'song_off_air',
+      programId: 'radio-1',
+      triggeredAt: '2026-09-11T12:01:00.000Z',
+    });
+
+    expect(await service.getProgramSongPlayback('radio-1')).toMatchObject({
+      isPlaying: false,
+      updatedAt: '2026-09-11T12:01:00.000Z',
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: 'song_off_air',
+      playback: { isPlaying: false },
+    });
+  });
+
   it('applies persisted radio mixer changes to Palazzo', async () => {
     let currentState = {
       programId: 'palazzo',
