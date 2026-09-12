@@ -755,9 +755,9 @@ export default function ProgramsAdmin() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : selectedType !== 'radio' ? (
               <p className='rounded-xl border border-sand/20 bg-white/60 p-3 text-sm text-text-secondary dark:bg-dark-sand/50'>Scene assignment is unavailable because this template does not declare scene configuration.</p>
-            )}
+            ) : null}
 
             {supportsMediaGroups ? (
               <div>

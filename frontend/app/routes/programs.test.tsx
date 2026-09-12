@@ -132,6 +132,9 @@ describe("Programs template registration", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Template URL")).not.toBeInTheDocument();
     expect(screen.queryByText("Program Scenes")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Scene assignment is unavailable/i),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Program Media Groups")).not.toBeInTheDocument();
     expect(screen.queryByText("Program Stingers")).not.toBeInTheDocument();
   });
