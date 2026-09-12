@@ -196,6 +196,67 @@ describe('ProgramService switcher state', () => {
     });
   });
 
+  it('removes visual configuration when a show becomes radio-only', async () => {
+    const { service, prisma } = buildService({
+      id: 1,
+      programId: 'show-1',
+      type: 'tv',
+      templateUrl: 'https://example.test/template.json',
+      activeSceneId: scene.id,
+      stagedSceneId: scene.id,
+      fadeToBlack: true,
+      scenes: [{ sceneId: scene.id, scene }],
+      mediaGroups: [{ mediaGroupId: 3 }],
+      stingers: [{ stingerId: 4 }],
+    });
+
+    await service.renameProgram('show-1', 'show-1', 'radio', null);
+
+    expect(prisma.programState.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: expect.objectContaining({
+        type: 'radio',
+        templateUrl: null,
+        templateManifest: null,
+        templateVerifiedAt: null,
+        activeSceneId: null,
+        stagedSceneId: null,
+        fadeToBlack: false,
+        scenes: { deleteMany: {} },
+        mediaGroups: { deleteMany: {} },
+        stingers: { deleteMany: {} },
+      }),
+    });
+  });
+
+  it('rejects visual assignments for radio-only shows', async () => {
+    const { service } = buildService({
+      id: 1,
+      programId: 'radio-1',
+      type: 'radio',
+      scenes: [],
+    });
+
+    await expect(service.addSceneToProgram(scene.id, 'radio-1')).rejects.toThrow(
+      'Radio programs do not support scenes',
+    );
+    await expect(
+      service.addMediaGroupToProgram(3, 'radio-1'),
+    ).rejects.toThrow('Radio programs do not support media groups');
+    await expect(
+      service.addStingerToProgram(4, 'radio-1'),
+    ).rejects.toThrow('Radio programs do not support stingers');
+    await expect(service.stageScene(null, 'radio-1')).rejects.toThrow(
+      'Radio programs do not support scenes',
+    );
+    await expect(service.activateScene(scene.id, 'radio-1')).rejects.toThrow(
+      'Radio programs do not support scenes',
+    );
+    await expect(service.setFadeToBlack(true, 'radio-1')).rejects.toThrow(
+      'Radio programs do not support fade to black',
+    );
+  });
+
   it('applies persisted radio mixer changes to Palazzo', async () => {
     let currentState = {
       programId: 'palazzo',

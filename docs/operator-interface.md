@@ -22,6 +22,12 @@ gets the Radio desk. A TV show gets the TV control. Simulcast keeps the TV
 switcher and adds an explicit radio-leg rail: scene actions affect TV, while
 songs and audio clips use the shared program mix.
 
+Radio is an audio-only show type. Its setup form exposes no renderer template,
+Scenes, Media groups, or Transitions, and the backend rejects those visual
+assignments even when called outside the browser. Changing an existing show to
+Radio removes any obsolete visual assignments atomically. Simulcast remains the
+explicit type for a shared TV and radio program.
+
 ## Control grammar
 
 Ordinary actions use Bleecker buttons and controls. Surface hierarchy uses the

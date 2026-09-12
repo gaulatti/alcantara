@@ -1072,18 +1072,41 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  private radioVisualResetData(): Record<string, unknown> {
+    return {
+      ...this.programTemplateUpdateData(null),
+      activeSceneId: null,
+      stagedSceneId: null,
+      fadeToBlack: false,
+      scenes: { deleteMany: {} },
+      mediaGroups: { deleteMany: {} },
+      stingers: { deleteMany: {} },
+    };
+  }
+
+  private assertProgramSupportsVisualConfiguration(
+    state: { type?: string },
+    resource: string,
+  ): void {
+    if (state.type === 'radio') {
+      throw new BadRequestException(
+        `Radio programs do not support ${resource}`,
+      );
+    }
+  }
+
   private async getProgramStateRecord(programId: string) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     let state = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { id: true, programId: true },
+      select: { id: true, programId: true, type: true },
     });
 
     if (!state && normalizedProgramId === ProgramService.DEFAULT_PROGRAM_ID) {
       await this.ensureDefaultProgramState();
       state = await this.prisma.programState.findUnique({
         where: { programId: normalizedProgramId },
-        select: { id: true, programId: true },
+        select: { id: true, programId: true, type: true },
       });
     }
 
@@ -1234,6 +1257,11 @@ export class ProgramService implements OnModuleInit {
     const normalized = this.normalizeProgramId(programId);
     const programType =
       type === 'radio' || type === 'both' || type === 'tv' ? type : 'tv';
+    if (programType === 'radio' && template) {
+      throw new BadRequestException(
+        'Radio programs do not support visual templates',
+      );
+    }
 
     const existing = await this.prisma.programState.findUnique({
       where: { programId: normalized },
@@ -1274,42 +1302,41 @@ export class ProgramService implements OnModuleInit {
         ? type
         : undefined;
 
-    if (current === next) {
-      if (programType || template !== undefined) {
-        await this.prisma.programState.update({
-          where: { programId: current },
-          data: {
-            ...(programType ? { type: programType } : {}),
-            ...(template !== undefined
-              ? this.programTemplateUpdateData(template)
-              : {}),
-          },
-        });
-      }
-      return this.getProgramStateWithScenes(current);
-    }
-
-    const existingTarget = await this.prisma.programState.findUnique({
-      where: { programId: next },
-      select: { id: true },
-    });
-    if (existingTarget) {
-      throw new Error('Target program id already exists');
-    }
-
     const existingSource = await this.prisma.programState.findUnique({
       where: { programId: current },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!existingSource) {
       throw new Error('Program not found');
     }
 
-    const updateData: Record<string, unknown> = { programId: next };
+    if (current !== next) {
+      const existingTarget = await this.prisma.programState.findUnique({
+        where: { programId: next },
+        select: { id: true },
+      });
+      if (existingTarget) {
+        throw new Error('Target program id already exists');
+      }
+    }
+
+    const effectiveType = programType ?? existingSource.type;
+    if (effectiveType === 'radio' && template) {
+      throw new BadRequestException(
+        'Radio programs do not support visual templates',
+      );
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (current !== next) {
+      updateData.programId = next;
+    }
     if (programType) {
       updateData.type = programType;
     }
-    if (template !== undefined) {
+    if (effectiveType === 'radio') {
+      Object.assign(updateData, this.radioVisualResetData());
+    } else if (template !== undefined) {
       Object.assign(updateData, this.programTemplateUpdateData(template));
     }
 
@@ -1317,6 +1344,10 @@ export class ProgramService implements OnModuleInit {
       where: { id: existingSource.id },
       data: updateData,
     });
+
+    if (current === next) {
+      return this.getProgramStateWithScenes(current);
+    }
 
     const currentSubject = this.eventSubjects.get(current);
     if (currentSubject) {
@@ -2115,14 +2146,15 @@ export class ProgramService implements OnModuleInit {
     sceneId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
+    const state = await this.getProgramStateRecord(programId);
+    this.assertProgramSupportsVisualConfiguration(state, 'scenes');
+
     const scene = await this.prisma.scene.findUnique({
       where: { id: sceneId },
     });
     if (!scene) {
       throw new Error('Scene not found');
     }
-
-    const state = await this.getProgramStateRecord(programId);
 
     const existing = await this.prisma.programScene.findUnique({
       where: {
@@ -2275,6 +2307,9 @@ export class ProgramService implements OnModuleInit {
     mediaGroupId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
+    const state = await this.getProgramStateRecord(programId);
+    this.assertProgramSupportsVisualConfiguration(state, 'media groups');
+
     const mediaGroup = await this.prisma.mediaGroup.findUnique({
       where: { id: mediaGroupId },
       select: { id: true },
@@ -2283,7 +2318,6 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Media group not found');
     }
 
-    const state = await this.getProgramStateRecord(programId);
     const existing = await this.prisma.programMediaGroup.findUnique({
       where: {
         programStateId_mediaGroupId: {
@@ -2396,6 +2430,9 @@ export class ProgramService implements OnModuleInit {
     stingerId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
   ) {
+    const state = await this.getProgramStateRecord(programId);
+    this.assertProgramSupportsVisualConfiguration(state, 'stingers');
+
     const stinger = await this.prisma.stinger.findUnique({
       where: { id: stingerId },
       select: { id: true },
@@ -2404,7 +2441,6 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Stinger not found');
     }
 
-    const state = await this.getProgramStateRecord(programId);
     const existing = await this.prisma.programStinger.findUnique({
       where: {
         programStateId_stingerId: {
@@ -2502,6 +2538,7 @@ export class ProgramService implements OnModuleInit {
     if (!state) {
       throw new Error('Program not found');
     }
+    this.assertProgramSupportsVisualConfiguration(state, 'scenes');
 
     let nextStagedSceneId: number | null = null;
     let stagedScene: unknown = null;
@@ -2555,6 +2592,7 @@ export class ProgramService implements OnModuleInit {
     if (!state) {
       throw new Error('Program not found');
     }
+    this.assertProgramSupportsVisualConfiguration(state, 'scenes');
 
     const isAssigned = state.scenes.some(
       (programScene) => programScene.sceneId === sceneId,
@@ -2633,11 +2671,12 @@ export class ProgramService implements OnModuleInit {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const existing = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { id: true, fadeToBlack: true },
+      select: { id: true, type: true, fadeToBlack: true },
     });
     if (!existing) {
       throw new Error('Program not found');
     }
+    this.assertProgramSupportsVisualConfiguration(existing, 'fade to black');
 
     if (existing.fadeToBlack !== active) {
       await this.prisma.programState.update({
@@ -3388,4 +3427,5 @@ export class ProgramService implements OnModuleInit {
       };
     });
   }
+
 }

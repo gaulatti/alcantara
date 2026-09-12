@@ -425,7 +425,8 @@ export default function ProgramsAdmin() {
       const isEditing = !!editingProgramId;
       const editingProgram = isEditing ? programs.find((program) => program.programId === editingProgramId) || null : null;
       let savedProgram: ProgramState;
-      const templateUrl = templateUrlInput.trim() || null;
+      const isVisualProgram = selectedType !== 'radio';
+      const templateUrl = isVisualProgram ? templateUrlInput.trim() || null : null;
 
       if (isEditing) {
         const res = await fetch(apiUrl(`/program/${encodeURIComponent(editingProgramId)}`), {
@@ -446,14 +447,16 @@ export default function ProgramsAdmin() {
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
         const currentMediaGroupIds = editingProgram?.mediaGroups.map((entry) => entry.mediaGroupId) || [];
         const currentStingerIds = editingProgram?.stingers.map((entry) => entry.stingerId) || [];
-        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
-          await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
-        }
-        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups')) {
-          await syncProgramMediaGroups(nextProgramId, currentMediaGroupIds, selectedMediaGroupIds);
-        }
-        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions')) {
-          await syncProgramStingers(nextProgramId, currentStingerIds, selectedStingerIds);
+        if (isVisualProgram) {
+          if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
+            await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
+          }
+          if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups')) {
+            await syncProgramMediaGroups(nextProgramId, currentMediaGroupIds, selectedMediaGroupIds);
+          }
+          if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions')) {
+            await syncProgramStingers(nextProgramId, currentStingerIds, selectedStingerIds);
+          }
         }
       } else {
         const createRes = await fetch(apiUrl('/program'), {
@@ -471,13 +474,13 @@ export default function ProgramsAdmin() {
         }
         savedProgram = (await createRes.json()) as ProgramState;
 
-        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
+        if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration'))) {
           await syncProgramScenes(nextProgramId, [], selectedSceneIds);
         }
-        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups')) {
+        if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups'))) {
           await syncProgramMediaGroups(nextProgramId, [], selectedMediaGroupIds);
         }
-        if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions')) {
+        if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions'))) {
           await syncProgramStingers(nextProgramId, [], selectedStingerIds);
         }
       }
@@ -500,9 +503,9 @@ export default function ProgramsAdmin() {
     }
   };
 
-  const supportsSceneConfiguration = !templatePreview || hasProgramCapability(templatePreview, 'scene.configuration');
-  const supportsMediaGroups = !templatePreview || hasProgramCapability(templatePreview, 'media.groups');
-  const supportsStingers = !templatePreview || hasProgramCapability(templatePreview, 'stinger.transitions');
+  const supportsSceneConfiguration = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'scene.configuration'));
+  const supportsMediaGroups = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'media.groups'));
+  const supportsStingers = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'stinger.transitions'));
 
   const deleteProgram = async (programId: string) => {
     if (!confirm(`Delete program "${programId}"? This removes its scene assignments and active scene state.`)) return;
@@ -581,11 +584,15 @@ export default function ProgramsAdmin() {
                             </span>
                           ) : null}
                         </div>
-                        <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>
-                          Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
-                          {program.activeSceneId ?? 'none'}
-                        </p>
-                        {program.templateManifest ? (
+                        {program.type === 'radio' ? (
+                          <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Audio-only show · Songs, audio clips, mixer, and Radio distribution</p>
+                        ) : (
+                          <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>
+                            Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
+                            {program.activeSceneId ?? 'none'}
+                          </p>
+                        )}
+                        {program.type !== 'radio' && program.templateManifest ? (
                           <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
                             <Link2 size={13} />
                             <span>
@@ -595,9 +602,9 @@ export default function ProgramsAdmin() {
                               Open renderer <ExternalLink size={12} />
                             </a>
                           </div>
-                        ) : (
+                        ) : program.type !== 'radio' ? (
                           <p className='mt-3 text-xs text-terracotta'>Transitional Alcantara renderer · no external template registered</p>
-                        )}
+                        ) : null}
 
                       </div>
                       <div className='flex items-start gap-2'>
@@ -650,6 +657,33 @@ export default function ProgramsAdmin() {
             </div>
 
             <div>
+              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
+              <div className='flex gap-2'>
+                {(['tv', 'radio', 'both'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type='button'
+                    onClick={() => setSelectedType(type)}
+                    aria-pressed={selectedType === type}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                      selectedType === type
+                        ? 'border-sea bg-sea/10 text-sea'
+                        : 'border-sand/20 bg-white/70 text-text-secondary hover:border-sea/30 dark:border-sand/40 dark:bg-dark-sand/50'
+                    }`}
+                  >
+                    {type === 'radio' ? <Radio size={14} /> : type === 'both' ? <><Tv size={14} /><Radio size={14} /></> : <Tv size={14} />}
+                    {type === 'tv' ? 'TV' : type === 'radio' ? 'Radio' : 'Simulcast'}
+                  </button>
+                ))}
+              </div>
+              {selectedType === 'radio' ? (
+                <p className='mt-2 rounded-xl border border-sea/20 bg-sea/5 p-3 text-sm text-text-secondary'>
+                  Radio is audio-only. Configure songs, audio clips, the mixer, and distribution from the Radio desk.
+                </p>
+              ) : null}
+            </div>
+
+            {selectedType !== 'radio' ? <div>
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Template URL</label>
               <div className='flex items-start gap-2'>
                 <Input
@@ -690,28 +724,7 @@ export default function ProgramsAdmin() {
                   </div>
                 </div>
               ) : null}
-            </div>
-
-            <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
-              <div className='flex gap-2'>
-                {(['tv', 'radio', 'both'] as const).map((type) => (
-                  <button
-                    key={type}
-                    type='button'
-                    onClick={() => setSelectedType(type)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                      selectedType === type
-                        ? 'border-sea bg-sea/10 text-sea'
-                        : 'border-sand/20 bg-white/70 text-text-secondary hover:border-sea/30 dark:border-sand/40 dark:bg-dark-sand/50'
-                    }`}
-                  >
-                    {type === 'radio' ? <Radio size={14} /> : type === 'both' ? <><Tv size={14} /><Radio size={14} /></> : <Tv size={14} />}
-                    {type === 'tv' ? 'TV' : type === 'radio' ? 'Radio' : 'Simulcast'}
-                  </button>
-                ))}
-              </div>
-            </div>
+            </div> : null}
 
             {supportsSceneConfiguration ? (
               <div>

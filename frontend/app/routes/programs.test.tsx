@@ -63,6 +63,18 @@ describe("Programs template registration", () => {
               templateManifest: manifest,
               templateVerifiedAt: "2026-09-08T18:00:00.000Z",
             },
+            {
+              id: 2,
+              programId: "modoitaliano.fm",
+              type: "radio",
+              activeSceneId: null,
+              scenes: [],
+              mediaGroups: [],
+              stingers: [],
+              templateUrl: null,
+              templateManifest: null,
+              templateVerifiedAt: null,
+            },
           ]);
         }
         if (url.includes("/media-groups")) {
@@ -96,6 +108,30 @@ describe("Programs template registration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit fifthbell" }));
     expect(screen.getByDisplayValue(templateUrl)).toBeInTheDocument();
     expect(screen.getByText("Program Scenes")).toBeInTheDocument();
+    expect(screen.queryByText("Program Media Groups")).not.toBeInTheDocument();
+    expect(screen.queryByText("Program Stingers")).not.toBeInTheDocument();
+  });
+
+  it("shows a radio-only editor without visual configuration", async () => {
+    render(
+      <MemoryRouter>
+        <ProgramsAdmin />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit modoitaliano.fm" }),
+    );
+
+    expect(screen.getByRole("button", { name: "Radio" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      screen.getByText(/Radio is audio-only/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Template URL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Program Scenes")).not.toBeInTheDocument();
     expect(screen.queryByText("Program Media Groups")).not.toBeInTheDocument();
     expect(screen.queryByText("Program Stingers")).not.toBeInTheDocument();
   });

@@ -56,6 +56,7 @@ export class ProgramController {
       templateUrl?: string | null;
     },
   ) {
+    this.rejectRadioTemplate(data.type, data.templateUrl);
     const template = await this.resolveTemplateRegistration(data.templateUrl);
     return this.programService.createProgram(
       data.programId,
@@ -75,6 +76,7 @@ export class ProgramController {
       templateUrl?: string | null;
     },
   ) {
+    this.rejectRadioTemplate(data.type, data.templateUrl);
     const template = await this.resolveTemplateRegistration(data.templateUrl);
     return this.programService.renameProgram(
       programId,
@@ -512,5 +514,16 @@ export class ProgramController {
     if (templateUrl === undefined) return undefined;
     if (templateUrl === null || !templateUrl.trim()) return null;
     return this.programTemplateService.inspect(templateUrl);
+  }
+
+  private rejectRadioTemplate(
+    type: string | undefined,
+    templateUrl: string | null | undefined,
+  ): void {
+    if (type === 'radio' && templateUrl?.trim()) {
+      throw new BadRequestException(
+        'Radio programs do not support visual templates',
+      );
+    }
   }
 }
