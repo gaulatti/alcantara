@@ -5,7 +5,6 @@ import {
 import { readFile } from 'node:fs/promises';
 import {
   isValidAlanaControlToken,
-  isValidPrivateControlToken,
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
   parseRuntimeSecretPayload,
@@ -21,8 +20,6 @@ interface RuntimeEnvironment {
   AWS_REGION?: string;
   AWS_DEFAULT_REGION?: string;
   ALCANTARA_CONFIG_SECRET_ID?: string;
-  PALAZZO_CONTROL_TOKEN?: string;
-  PALAZZO_CONTROL_TOKEN_FILE?: string;
   PALAZZO_ALLOWED_URLS?: string;
   ALANA_CONTROL_TOKEN?: string;
   ALANA_CONTROL_TOKEN_FILE?: string;
@@ -32,9 +29,7 @@ interface RuntimeEnvironment {
   [key: string]: string | undefined;
 }
 
-export { isValidPrivateControlToken, normalizePrivateServiceUrl };
-
-export const isValidPalazzoControlToken = isValidPrivateControlToken;
+export { normalizePrivateServiceUrl };
 
 export function normalizePalazzoBaseUrl(value: string): string {
   return normalizePrivateServiceUrl(value, 'PALAZZO_ALLOWED_URLS');
@@ -44,10 +39,6 @@ export function normalizePalazzoBaseUrl(value: string): string {
 export function validatePalazzoRuntimeConfiguration(
   environment: RuntimeEnvironment = process.env,
 ): void {
-  const token = environment.PALAZZO_CONTROL_TOKEN?.trim() ?? '';
-  if (!isValidPalazzoControlToken(token)) {
-    throw new Error('PALAZZO_CONTROL_TOKEN is missing or invalid');
-  }
   const allowedUrls = (environment.PALAZZO_ALLOWED_URLS ?? '')
     .split(',')
     .map((value) => value.trim())
@@ -76,7 +67,7 @@ export function validateRuntimeConfiguration(
   validateExternalSourceEncryption(environment);
 }
 
-/** Load the production Palazzo credential before Nest constructs any client. */
+/** Load production private-service configuration before constructing clients. */
 export async function loadRuntimeSecrets(
   environment: RuntimeEnvironment = process.env,
   client?: SecretClient,
@@ -84,19 +75,14 @@ export async function loadRuntimeSecrets(
   if (environment.NODE_ENV !== 'production') return;
   const secretId = environment.ALCANTARA_CONFIG_SECRET_ID?.trim();
   if (!secretId) {
-    const tokenFile = environment.PALAZZO_CONTROL_TOKEN_FILE?.trim();
     const alanaTokenFile = environment.ALANA_CONTROL_TOKEN_FILE?.trim();
-    if (!tokenFile || !alanaTokenFile) {
+    if (!alanaTokenFile) {
       throw new Error(
-        'ALCANTARA_CONFIG_SECRET_ID or both private control token files are required',
+        'ALCANTARA_CONFIG_SECRET_ID or ALANA_CONTROL_TOKEN_FILE is required',
       );
     }
     try {
-      const [palazzoToken, alanaToken] = await Promise.all([
-        readFile(tokenFile, 'utf8'),
-        readFile(alanaTokenFile, 'utf8'),
-      ]);
-      environment.PALAZZO_CONTROL_TOKEN = palazzoToken.trim();
+      const alanaToken = await readFile(alanaTokenFile, 'utf8');
       environment.ALANA_CONTROL_TOKEN = alanaToken.replace(/\r?\n$/, '');
     } catch {
       throw new Error('Alcantara runtime configuration is unavailable');
@@ -118,7 +104,6 @@ export async function loadRuntimeSecrets(
     throw new Error('Alcantara runtime configuration is unavailable');
   }
   const selected = parseRuntimeSecretPayload(response.SecretString);
-  environment.PALAZZO_CONTROL_TOKEN = selected.palazzoControlToken;
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
   environment.ALANA_CONTROL_TOKEN = selected.alanaControlToken;
   environment.ALANA_CONTROL_URL = selected.alanaControlUrl;

@@ -134,7 +134,6 @@ function createClient(
     get: (key: string) =>
       ({
         NODE_ENV: 'test',
-        PALAZZO_CONTROL_TOKEN: 'palazzo-test-control-token',
         PALAZZO_ALLOWED_URLS: 'http://palazzo:3100',
       })[key],
   } as any;

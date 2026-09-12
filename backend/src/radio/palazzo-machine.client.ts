@@ -11,10 +11,7 @@ import {
   type PalazzoMachineOperation,
   type PalazzoMachineResult,
 } from './radio-metrics.service';
-import {
-  isValidPalazzoControlToken,
-  normalizePalazzoBaseUrl,
-} from '../config/runtime-secrets';
+import { normalizePalazzoBaseUrl } from '../config/runtime-secrets';
 
 export class PalazzoMachineError extends Error {
   constructor(
@@ -63,12 +60,11 @@ const MAX_ATTEMPTS = 3;
 export const PALAZZO_FETCH = 'PALAZZO_FETCH';
 
 /**
- * Sole transport boundary for Palazzo's authenticated, program-scoped API.
- * Browser code never receives this client or its bearer credential.
+ * Sole transport boundary for Palazzo's private, program-scoped API.
+ * Browser code never receives direct access to this client.
  */
 @Injectable()
 export class PalazzoMachineClient {
-  private readonly token: string;
   private readonly allowedUrls: ReadonlySet<string>;
   private readonly fetchImpl: typeof fetch;
 
@@ -78,15 +74,9 @@ export class PalazzoMachineClient {
     @Optional() @Inject(PALAZZO_FETCH) fetchImpl?: typeof fetch,
   ) {
     const nodeEnvironment = config.get<string>('NODE_ENV') ?? 'development';
-    const token =
-      config.get<string>('PALAZZO_CONTROL_TOKEN')?.trim() ||
-      (nodeEnvironment === 'test' ? 'palazzo-test-control-token' : '');
     const configuredUrls =
       config.get<string>('PALAZZO_ALLOWED_URLS')?.trim() ||
       (nodeEnvironment === 'test' ? 'http://palazzo:3100' : '');
-    if (!isValidPalazzoControlToken(token)) {
-      throw new Error('PALAZZO_CONTROL_TOKEN is missing or invalid');
-    }
     const allowedUrls = configuredUrls
       .split(',')
       .map((value) => value.trim())
@@ -95,7 +85,6 @@ export class PalazzoMachineClient {
     if (!allowedUrls.length) {
       throw new Error('PALAZZO_ALLOWED_URLS must contain an approved URL');
     }
-    this.token = token;
     this.allowedUrls = new Set(allowedUrls);
     this.fetchImpl = fetchImpl ?? globalThis.fetch;
   }
@@ -358,7 +347,6 @@ export class PalazzoMachineClient {
     }
     const url = `${baseUrl}/v1/programs/${encodeURIComponent(boundedProgramId)}${route}`;
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.token}`,
       Accept:
         options.operation === 'event-connect'
           ? 'text/event-stream'

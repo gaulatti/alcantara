@@ -55,17 +55,16 @@ after a reload or reconnect.
 ## Private service configuration
 
 Production uses the code-owned Secrets Manager identifier
-`broadcast/production/config`. The payload must contain the four exact private
+`broadcast/production/config`. The payload must contain the three exact private
 service keys below and the external-source encryption fields documented in
 [External source registry](external-source-registry.md). The loader ignores
 every other key rather than injecting it into the process environment.
 
-| Secret key            | Contract                                                                          | Owner                                                                         |
-| --------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `palazzoControlToken` | Existing opaque Palazzo bearer credential                                         | Palazzo operator                                                              |
-| `palazzoAllowedUrls`  | Existing comma-separated origin allowlist                                         | Alcantara operator                                                            |
-| `alanaControlToken`   | Exactly 64 lowercase hexadecimal characters (32 random bytes), with no whitespace | Alana operator generates; Alcantara secret owner installs the identical value |
-| `alanaControlUrl`     | One private HTTP(S) origin                                                        | Alana operator supplies; Alcantara secret owner installs                      |
+| Secret key           | Contract                                                                          | Owner                                                                         |
+| -------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `palazzoAllowedUrls` | Existing comma-separated private origin allowlist                                 | Alcantara operator                                                            |
+| `alanaControlToken`  | Exactly 64 lowercase hexadecimal characters (32 random bytes), with no whitespace | Alana operator generates; Alcantara secret owner installs the identical value |
+| `alanaControlUrl`    | One private HTTP(S) origin                                                        | Alana operator supplies; Alcantara secret owner installs                      |
 
 `alanaControlUrl` cannot contain credentials, a path, query, or fragment. Its
 host must be a single-label service name, `localhost`, a `.localhost`, `.local`,
@@ -89,9 +88,9 @@ not write a file or contact Alana. The target-host runtime preflight remains in
 place before database migration or backend replacement so retrieval and image
 startup fail closed at both boundaries.
 
-During a bounded migration, production can instead supply both
-`PALAZZO_CONTROL_TOKEN_FILE` and `ALANA_CONTROL_TOKEN_FILE`, plus their approved
-service URLs. The Alana file must contain the same 64-character token, with an
+During a bounded migration, production can instead supply
+`ALANA_CONTROL_TOKEN_FILE` plus the approved service URLs and external-source
+keyring. The Alana file must contain the same 64-character token, with an
 optional final newline. No token or Alana address is exposed to the frontend.
 
 Local Compose starts a committed, private `alana-recording-fixture` service for

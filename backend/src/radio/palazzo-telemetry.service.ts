@@ -159,7 +159,7 @@ export class PalazzoRadioTelemetryService
     });
     this.clients.set(programId, client);
     this.logger.log(
-      `Consuming authenticated Palazzo telemetry for ${programId} (${programType})`,
+      `Consuming private Palazzo telemetry for ${programId} (${programType})`,
     );
     client.start();
   }

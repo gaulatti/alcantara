@@ -23,7 +23,6 @@ rm -rf "$docker_config_dir"
 
 docker network inspect broadcast-control >/dev/null
 docker inspect palazzo >/dev/null
-test -s /etc/palazzo/control-token
 if docker inspect alcantara-backend-previous >/dev/null 2>&1; then
   echo 'An Alcantara rollback container requires operator review'
   exit 1
@@ -78,7 +77,6 @@ if ! docker run -d --name alcantara-backend \
   -e POMPEII_TEAM_ID=1 \
   -e MEDIA_S3_BUCKET="$media_bucket" \
   -e CONTAINERIZED=true \
-  --volume /etc/palazzo/control-token:/run/secrets/palazzo-control-token:ro \
   --restart=always \
   --log-driver=local \
   --log-opt max-size=10m \

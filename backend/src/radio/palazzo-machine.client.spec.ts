@@ -8,14 +8,12 @@ import { RadioMetricsService } from './radio-metrics.service';
 
 const PROGRAM_ID = 'radio-1';
 const BASE_URL = 'http://palazzo:3100';
-const TOKEN = 'palazzo-fictional-control-token';
 
 function config(values: Record<string, string> = {}) {
   return {
     get: (key: string) =>
       ({
         NODE_ENV: 'test',
-        PALAZZO_CONTROL_TOKEN: TOKEN,
         PALAZZO_ALLOWED_URLS: BASE_URL,
         ...values,
       })[key],
@@ -80,14 +78,7 @@ describe('PalazzoMachineClient', () => {
     );
   });
 
-  it('fails construction without production credentials or an allowlisted target', () => {
-    expect(
-      () =>
-        new PalazzoMachineClient(
-          config({ NODE_ENV: 'production', PALAZZO_CONTROL_TOKEN: '' }),
-          new RadioMetricsService(),
-        ),
-    ).toThrow('PALAZZO_CONTROL_TOKEN is missing or invalid');
+  it('fails construction without an allowlisted target', () => {
     expect(
       () =>
         new PalazzoMachineClient(
@@ -97,7 +88,7 @@ describe('PalazzoMachineClient', () => {
     ).toThrow('PALAZZO_ALLOWED_URLS must contain an approved URL');
   });
 
-  it('retries an idempotent song command with the same scoped IDs and credential', async () => {
+  it('retries an idempotent song command with the same scoped IDs', async () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(new Response('{}', { status: 503 }))
@@ -121,7 +112,7 @@ describe('PalazzoMachineClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     for (const [url, init] of fetchImpl.mock.calls) {
       expect(url).toBe('http://palazzo:3100/v1/programs/radio-1/playback/song');
-      expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+      expect(init.headers.Authorization).toBeUndefined();
       expect(init.headers['Idempotency-Key']).toBe('song-1');
       expect(JSON.parse(init.body)).toEqual({
         song: {
@@ -182,7 +173,7 @@ describe('PalazzoMachineClient', () => {
     });
   });
 
-  it('uses authenticated program routes for instant, mixer, state, stop, and SSE', async () => {
+  it('uses private program routes for instant, mixer, state, stop, and SSE', async () => {
     const fetchImpl = jest.fn(async (url: string, init: RequestInit) => {
       if (url.endsWith('/playback/instant')) {
         return Response.json({ ok: true, playbackRequestId: 'instant-1' });
@@ -239,7 +230,7 @@ describe('PalazzoMachineClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(7);
     for (const [url, init] of fetchImpl.mock.calls) {
       expect(url).toContain('/v1/programs/radio-1/');
-      expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+      expect(init.headers.Authorization).toBeUndefined();
     }
     const eventCall = fetchImpl.mock.calls.at(-1);
     expect(eventCall?.[1].headers['Last-Event-ID']).toBe('boot-a:6');

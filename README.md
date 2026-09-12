@@ -152,9 +152,10 @@ bumper policy, and now-playing consumers so live playout is not mixed with
 configuration. Simulcast uses the TV switcher with an explicit radio-leg status
 rail. Mixer mutations are applied to Palazzo as well as persisted; bumper
 configuration fields are validated and saved by the radio settings API.
-All Palazzo traffic is backend-only, bearer-authenticated, and explicitly
-program-scoped. The shared machine client preserves playback/idempotency IDs
-across retries and is also used by telemetry reconnect and startup recovery.
+All Palazzo traffic is backend-only, restricted to the private broadcast
+network and approved origin, and explicitly program-scoped. The shared machine
+client preserves playback/idempotency IDs across retries and is also used by
+telemetry reconnect and startup recovery.
 See [`docs/radio-telemetry.md`](docs/radio-telemetry.md) for the contract,
 Secrets Manager bootstrap, allowlisted URLs, failure behavior, and metrics.
 
@@ -386,10 +387,11 @@ Production places the backend on the external `broadcast-control` Docker
 network shared with Palazzo and Alana. Before stopping the live backend,
 deployment runs
 a side-effect-free runtime preflight in the new image to resolve and validate
-the Palazzo credential and approved URL list. The previous container is retained
-until the replacement passes its startup check and is automatically restored if
-the replacement fails. This keeps the existing radio controller alive when a
-configuration or startup defect reaches deployment.
+the approved Palazzo URL and the remaining private-service configuration. The
+previous container is retained until the replacement passes its startup check
+and is automatically restored if the replacement fails. This keeps the existing
+radio controller alive when a configuration or startup defect reaches
+deployment.
 
 Production backend stdout and stderr remain available through `docker logs`,
 using Docker's host-local `local` driver with a 10 MiB maximum per file and
@@ -404,10 +406,10 @@ uses the code-owned `broadcast/production/config` Secrets Manager payload,
 including Alana's private recording control URL and token and the external-source
 encryption keyring. The deployment workflow validates that payload without
 printing it before image build or push. During migration, deployment also
-discovers and inherits the running Palazzo container's existing read-only
-control-token mount as a backwards-compatible credential source. Preflight fails without
-replacing the live backend when that mount is absent or ambiguous, neither
-source is available, or configuration is invalid.
+requires the running Palazzo container on the private `broadcast-control`
+network. Palazzo does not require an application credential on this single-host,
+single-program boundary. Preflight fails without replacing the live backend
+when required configuration is unavailable or invalid.
 
 ### Data Flow
 

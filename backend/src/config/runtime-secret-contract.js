@@ -1,7 +1,6 @@
 const { isIP } = require('node:net');
 
 const RUNTIME_SECRET_KEYS = Object.freeze([
-  'palazzoControlToken',
   'palazzoAllowedUrls',
   'alanaControlToken',
   'alanaControlUrl',
@@ -10,18 +9,6 @@ const RUNTIME_SECRET_KEYS = Object.freeze([
 ]);
 const allowedSecretFields = new Set(RUNTIME_SECRET_KEYS);
 const alanaTokenPattern = /^[a-f0-9]{64}$/;
-
-function isValidPrivateControlToken(value) {
-  return (
-    typeof value === 'string' &&
-    value.length >= 16 &&
-    value.length <= 4096 &&
-    ![...value].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x20 || code === 0x7f;
-    })
-  );
-}
 
 function isValidAlanaControlToken(value) {
   return typeof value === 'string' && alanaTokenPattern.test(value);
@@ -161,9 +148,6 @@ function parseRuntimeSecretPayload(secretString) {
       `Alcantara runtime configuration is incomplete; missing keys: ${missingKeys.join(', ')}`,
     );
   }
-  if (!isValidPrivateControlToken(selected.palazzoControlToken)) {
-    throw new Error('PALAZZO_CONTROL_TOKEN is missing or invalid');
-  }
   const palazzoUrls = selected.palazzoAllowedUrls
     .split(',')
     .map((value) => value.trim())
@@ -215,7 +199,6 @@ module.exports = {
   RUNTIME_SECRET_KEYS,
   isPrivateServiceHostname,
   isValidAlanaControlToken,
-  isValidPrivateControlToken,
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
   parseRuntimeSecretPayload,

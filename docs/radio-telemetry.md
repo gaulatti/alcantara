@@ -138,12 +138,12 @@ wrap when Loop is off, and Stop uses the program off-air endpoint without a
 duplicate sequence write. An idle automatic selection starts through the
 persisted sequence update alone, avoiding a second manual Palazzo command.
 
-## Machine credential and configuration
+## Private machine configuration
 
-The browser calls Alcantara only and never receives or transmits the Palazzo
-credential. Local Compose supplies the fictional `PALAZZO_CONTROL_TOKEN` and
-`PALAZZO_ALLOWED_URLS=http://palazzo:3100`; Palazzo must be reachable on the
-local/private Docker network for radio integration tests.
+The browser calls Alcantara only and never receives direct Palazzo access.
+Local Compose supplies `PALAZZO_ALLOWED_URLS=http://palazzo:3100`; Palazzo must
+be reachable on the local/private Docker network for radio integration tests.
+The single-host, single-program Palazzo API has no bearer credential.
 
 Production sets only the bootstrap `ALCANTARA_CONFIG_SECRET_ID` and AWS region.
 Before Nest constructs `AppModule` or any Palazzo client, Alcantara reads that
@@ -151,7 +151,6 @@ Secrets Manager JSON and selects only these scalar fields:
 
 ```json
 {
-  "palazzoControlToken": "replace-in-secrets-manager",
   "palazzoAllowedUrls": "http://palazzo:3100",
   "alanaControlToken": "replace-in-secrets-manager",
   "alanaControlUrl": "http://alana:8080",
@@ -161,21 +160,19 @@ Secrets Manager JSON and selects only these scalar fields:
 ```
 
 Retrieval failure, malformed values, or any missing field fails startup. There
-is no plaintext production token or encryption-key environment fallback when
-the Secrets Manager bootstrap is configured. The runtime IAM identity needs
-only `secretsmanager:GetSecretValue` for this one Alcantara configuration
+is no plaintext production Alana token or encryption-key environment fallback
+when the Secrets Manager bootstrap is configured. The runtime IAM identity
+needs only `secretsmanager:GetSecretValue` for this one Alcantara configuration
 secret (plus `kms:Decrypt` only when a customer-managed key requires it).
 
-For backwards-compatible migration of the existing Palazzo installation,
-deployment may instead discover and inherit the running Palazzo container's
-established read-only control-token mount and set
-`PALAZZO_CONTROL_TOKEN_FILE` plus the fixed private
-`PALAZZO_ALLOWED_URLS=http://palazzo:3100`. The file is read before Nest starts
-and is never exposed to the browser or command output. Secrets Manager remains
-the preferred long-term bootstrap; if neither source validates, deployment
-leaves the current backend untouched.
-`palazzoAllowedUrls` is enforced before attaching the bearer token, preventing
-an operator-editable `palazzoUrl` from redirecting the credential elsewhere.
+Deployment requires Palazzo to be running on the private `broadcast-control`
+network and supplies the fixed private
+`PALAZZO_ALLOWED_URLS=http://palazzo:3100`. Secrets Manager remains the
+preferred bootstrap for the allowlist and all remaining private configuration;
+if configuration does not validate, deployment leaves the current backend
+untouched. `palazzoAllowedUrls` is enforced before every machine call so an
+operator-editable `palazzoUrl` cannot redirect radio control outside the
+approved private origin.
 
 ## Metrics
 

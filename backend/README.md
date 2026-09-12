@@ -85,8 +85,8 @@ both non-interactive execution and repeatability.
 
 The application process uses the code-owned `broadcast/production/config`
 secret identifier and requires `AWS_REGION` in production. Before constructing
-Nest providers it loads the allowlisted `palazzoControlToken`,
-`palazzoAllowedUrls`, `alanaControlToken`, `alanaControlUrl`,
+Nest providers it loads the allowlisted `palazzoAllowedUrls`,
+`alanaControlToken`, `alanaControlUrl`,
 `externalSourceConfigCurrentVersion`, and `externalSourceConfigKeys` fields from
 that Secrets Manager payload. Missing, malformed, or unavailable configuration
 fails startup; tokens and encryption keys are never frontend variables or
