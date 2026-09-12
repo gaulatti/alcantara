@@ -19,9 +19,11 @@ interpolates UI progress between authoritative updates.
 `PalazzoMachineClient` is the sole outbound transport. Song automation, manual
 song controls, Flight and scene instants, scheduled bumpers, mixer reads and
 writes, status hydration, SSE, polling, and startup recovery all use
-`/v1/programs/{programId}` with the same backend-only bearer credential. A
-repository-wide production caller must not use Palazzo's legacy root playback
-routes.
+`/v1/programs/{programId}` over the private broadcast network. The
+single-program Palazzo appliance does not require a bearer token; network
+isolation, Alcantara's URL allowlist, and exact program scoping are the trust
+boundary. A repository-wide production caller must not use Palazzo's legacy
+root playback routes.
 
 ## Correlation
 
@@ -43,10 +45,12 @@ routes.
   and `intro.failed` events update operator state only; they never advance,
   stop, or replace the parent song. Cross-program and mismatched-parent intro
   events are ignored.
-- Autoplay advances the in-memory playlist cursor to the next item after that
-  authoritative end. Looped playlists wrap; explicitly non-looped playlists
-  publish stopped at their end. A missing song-sequence mode means autoplay,
-  while an explicit `manual` mode remains an operator stop boundary.
+- Autoplay and Shuffle advance the in-memory playlist cursor to the next item
+  after that authoritative end. Shuffle operates on its persisted randomized
+  order, so it does not repeat an item before the current pass is exhausted.
+  Looped playlists wrap; explicitly non-looped playlists publish stopped at
+  their end. A missing song-sequence mode means autoplay, while an explicit
+  `manual` mode remains an operator stop boundary.
 - When Alcantara restarts during playback, it adopts the inherited Palazzo
   track only when the authoritative audio URL identifies exactly one leaf in
   the configured sequence. Adoption preserves Palazzo's request ID, start time,
@@ -64,7 +68,7 @@ Each program's client opens one SSE connection to the Palazzo
 `snapshot` event; reconnections replay missed events via `Last-Event-ID`.
 Palazzo deliberately removes URL-shaped fields from SSE. Alcantara accepts
 URL-free lifecycle events by request ID and hydrates a redacted playing
-snapshot from the authenticated `/playback/state` endpoint before it reaches
+snapshot from the private `/playback/state` endpoint before it reaches
 the execution engine. This keeps media URLs out of the event stream without
 mistaking a healthy stream for malformed telemetry.
 Current Palazzo preflight and playout-observation events advance the replay
@@ -103,12 +107,15 @@ Audio clips, and Main meters show the appliance's actual output. Playback
 updates retain the `telemetryStale` flag, and natural or manual off-air events
 replace the stored playback state with `isPlaying: false` before fan-out.
 
-The control console consumes WebSocket feedback first and SSE when WebSocket
-is unavailable. It reconciles audio-bus, meter, playback, and scene-instant
-snapshots every five seconds while visible, so a lost realtime message repairs
-itself. The playback bar never estimates an on-air state from playlist timing:
-it shows progress only from backend playback feedback and labels that feedback
-as live or stale.
+The control console keeps `GET /program/:programId/events` SSE connected as its
+authoritative feedback channel. Palazzo samples levels at 10 Hz by default and
+Alcantara forwards each accepted sample immediately through that stream. The
+control WebSocket connects only while SSE is unavailable; five-second HTTP
+reconciliation runs only while both realtime channels are unavailable. A
+connected but stalled fallback therefore cannot reduce the peak meter to
+snapshot speed. The playback bar never estimates an on-air state from playlist
+timing: it shows progress only from backend playback feedback and labels that
+feedback as live or stale.
 
 The Radio desk exposes the live Song, Audio clips / bumpers, and Main mixer
 channels. Changes persist in the program audio bus and are synchronously sent

@@ -550,6 +550,7 @@ export default function Control() {
       updatedAt: new Date(0).toISOString(),
     });
   const programRealtimeSocketRef = useRef<WebSocket | null>(null);
+  const [isProgramSseConnected, setIsProgramSseConnected] = useState(false);
   const [isProgramRealtimeConnected, setIsProgramRealtimeConnected] =
     useState(false);
   const latestControlVersionByTopicRef = useRef<
@@ -717,7 +718,7 @@ export default function Control() {
   }, [activeProgramId]);
 
   useEffect(() => {
-    if (isProgramRealtimeConnected) {
+    if (isProgramSseConnected || isProgramRealtimeConnected) {
       return;
     }
 
@@ -725,6 +726,7 @@ export default function Control() {
     const fallbackTimer = window.setTimeout(() => {
       if (
         cancelled ||
+        isProgramSseConnected ||
         programRealtimeSocketRef.current?.readyState === WebSocket.OPEN
       ) {
         return;
@@ -740,9 +742,12 @@ export default function Control() {
       cancelled = true;
       window.clearTimeout(fallbackTimer);
     };
-  }, [activeProgramId, isProgramRealtimeConnected]);
+  }, [activeProgramId, isProgramRealtimeConnected, isProgramSseConnected]);
 
   useEffect(() => {
+    if (isProgramSseConnected || isProgramRealtimeConnected) {
+      return;
+    }
     const resyncInterval = window.setInterval(() => {
       if (
         typeof document !== "undefined" &&
@@ -761,7 +766,7 @@ export default function Control() {
     return () => {
       window.clearInterval(resyncInterval);
     };
-  }, [activeProgramId]);
+  }, [activeProgramId, isProgramRealtimeConnected, isProgramSseConnected]);
 
   useEffect(() => {
     mixerLevelsRef.current = mixerLevels;
@@ -799,6 +804,12 @@ export default function Control() {
 
   useEffect(() => {
     if (typeof window === "undefined") {
+      return;
+    }
+    if (isProgramSseConnected) {
+      programRealtimeSocketRef.current?.close();
+      programRealtimeSocketRef.current = null;
+      setIsProgramRealtimeConnected(false);
       return;
     }
 
@@ -1160,6 +1171,7 @@ export default function Control() {
   }, [
     activeProgramId,
     applySceneUpdateLocally,
+    isProgramSseConnected,
     shouldApplyControlUpdatePayload,
     syncProgramStateAndStagedScene,
   ]);
@@ -3034,10 +3046,6 @@ export default function Control() {
         return;
       }
 
-      if (isProgramRealtimeConnected) {
-        return;
-      }
-
       const eventProgramId =
         typeof data.programId === "string" ? data.programId : "";
       if (eventProgramId && eventProgramId !== activeProgramIdRef.current) {
@@ -3189,7 +3197,6 @@ export default function Control() {
     [
       activeProgramId,
       applySceneUpdateLocally,
-      isProgramRealtimeConnected,
       shouldApplyControlUpdatePayload,
       syncProgramStateAndStagedScene,
     ],
@@ -3198,7 +3205,7 @@ export default function Control() {
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
     onMessage: handleProgramEvent,
-    enabled: !isProgramRealtimeConnected,
+    onConnectionChange: setIsProgramSseConnected,
   });
 
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(

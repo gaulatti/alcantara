@@ -17,13 +17,13 @@ function callback(name: string, bindings: Record<string, unknown>) {
   return new Function(...Object.keys(bindings), `return ${js}`)(...Object.values(bindings));
 }
 
-function harness(connected = false) {
+function harness() {
   const latestControlVersionByTopicRef = { current: { state: -1 } };
   const activeProgramIdRef = { current: 'test-tv' };
   const accept = callback('shouldApplyControlUpdatePayload', { latestControlVersionByTopicRef, readControlUpdateVersion, resolveControlUpdateTopicFromType });
   const sync = vi.fn();
   const handle = callback('handleProgramEvent', {
-    isProgramRealtimeConnected: connected, activeProgramId: 'test-tv',
+    activeProgramId: 'test-tv',
     activeProgramIdRef,
     shouldApplyControlUpdatePayload: accept, normalizeProgramState,
     syncProgramStateAndStagedScene: sync,
@@ -58,9 +58,9 @@ describe('Control initial SSE snapshot', () => {
     handle(snapshot);
     expect(sync).not.toHaveBeenCalled();
   });
-  it('leaves SSE inactive while WebSocket is connected', () => {
-    const { handle, sync } = harness(true);
+  it('keeps SSE authoritative independently of the WebSocket fallback', () => {
+    const { handle, sync } = harness();
     handle(snapshot);
-    expect(sync).not.toHaveBeenCalled();
+    expect(sync).toHaveBeenCalledTimes(1);
   });
 });

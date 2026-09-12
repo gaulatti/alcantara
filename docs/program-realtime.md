@@ -13,11 +13,19 @@ document untouched; authorization remains required for Control and all Program
 mutations. This keeps unattended broadcast renderers independent of an operator
 login session without weakening protected API boundaries.
 
-Control consumes the initial `program_state_snapshot` on both WebSocket and
-SSE. The SSE snapshot must hydrate the scene strip and active/staged monitors,
-not merely advance the shared state-version watermark. Otherwise an SSE-first
-startup discards the equal-version WebSocket snapshot and HTTP reconciliation,
-leaving the console empty while its connection indicator says SYNCED.
+Control treats SSE as the authoritative channel and keeps it connected whenever
+the console is open. The authenticated control WebSocket connects only while
+SSE is unavailable, and the five-second HTTP snapshot loop runs only while both
+realtime channels are unavailable. Control may consume an initial
+`program_state_snapshot` from either realtime transport during a handoff. The
+SSE snapshot must hydrate the scene strip and active/staged monitors, not merely
+advance the shared state-version watermark; otherwise an SSE-first startup can
+discard an equal-version fallback snapshot and leave the console empty.
+
+Meter, playback, scene, and audio-bus events share that SSE stream. Palazzo's
+default 10 Hz level samples therefore reach the console continuously instead of
+waiting for the HTTP fallback interval. Topic-specific version watermarks make
+the brief SSE/WebSocket handoff idempotent.
 
 The SSE response sets `X-Accel-Buffering: no` so nginx forwards events without
 buffering. Program renderers also reconcile the public state, audio-bus,
