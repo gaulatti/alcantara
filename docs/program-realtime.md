@@ -14,8 +14,9 @@ mutations. This keeps unattended broadcast renderers independent of an operator
 login session without weakening protected API boundaries.
 
 Control treats SSE as the authoritative channel and keeps it connected whenever
-the console is open. The authenticated control WebSocket connects only while
-SSE is unavailable, and the five-second HTTP snapshot loop runs only while both
+the console is open. The console does not attempt WebSocket during the initial
+SSE handshake. The authenticated control WebSocket connects only after SSE
+reports a failure, and the five-second HTTP snapshot loop runs only while both
 realtime channels are unavailable. Control may consume an initial
 `program_state_snapshot` from either realtime transport during a handoff. The
 SSE snapshot must hydrate the scene strip and active/staged monitors, not merely

@@ -4,15 +4,19 @@ interface UseSSEOptions {
   url: string;
   onMessage?: (data: any) => void;
   onConnectionChange?: (isConnected: boolean) => void;
+  onConnectionStateChange?: (state: SSEConnectionState) => void;
   reconnectInterval?: number;
   enabled?: boolean;
 }
 
-export function useSSE({ url, onMessage, onConnectionChange, reconnectInterval = 3000, enabled = true }: UseSSEOptions) {
+export type SSEConnectionState = 'connecting' | 'connected' | 'disconnected';
+
+export function useSSE({ url, onMessage, onConnectionChange, onConnectionStateChange, reconnectInterval = 3000, enabled = true }: UseSSEOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const onMessageRef = useRef(onMessage);
   const onConnectionChangeRef = useRef(onConnectionChange);
+  const onConnectionStateChangeRef = useRef(onConnectionStateChange);
 
   useEffect(() => {
     onMessageRef.current = onMessage;
@@ -23,10 +27,15 @@ export function useSSE({ url, onMessage, onConnectionChange, reconnectInterval =
   }, [onConnectionChange]);
 
   useEffect(() => {
+    onConnectionStateChangeRef.current = onConnectionStateChange;
+  }, [onConnectionStateChange]);
+
+  useEffect(() => {
     if (!enabled) {
       setIsConnected(false);
       setError(null);
       onConnectionChangeRef.current?.(false);
+      onConnectionStateChangeRef.current?.('disconnected');
       return;
     }
 
@@ -35,6 +44,7 @@ export function useSSE({ url, onMessage, onConnectionChange, reconnectInterval =
     let reconnectTimer: number | null = null;
     setIsConnected(false);
     onConnectionChangeRef.current?.(false);
+    onConnectionStateChangeRef.current?.('connecting');
 
     const connect = () => {
       if (disposed) {
@@ -50,6 +60,7 @@ export function useSSE({ url, onMessage, onConnectionChange, reconnectInterval =
           }
           setIsConnected(true);
           onConnectionChangeRef.current?.(true);
+          onConnectionStateChangeRef.current?.('connected');
           setError(null);
         };
 
@@ -68,6 +79,7 @@ export function useSSE({ url, onMessage, onConnectionChange, reconnectInterval =
           }
           setIsConnected(false);
           onConnectionChangeRef.current?.(false);
+          onConnectionStateChangeRef.current?.('disconnected');
           setError(new Error('SSE connection error'));
           eventSource?.close();
           eventSource = null;
@@ -79,6 +91,7 @@ export function useSSE({ url, onMessage, onConnectionChange, reconnectInterval =
       } catch (err) {
         setIsConnected(false);
         onConnectionChangeRef.current?.(false);
+        onConnectionStateChangeRef.current?.('disconnected');
         setError(err as Error);
         if (!disposed) {
           reconnectTimer = window.setTimeout(connect, reconnectInterval);

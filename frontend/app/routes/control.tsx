@@ -13,7 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSSE } from "../hooks/useSSE";
+import { useSSE, type SSEConnectionState } from "../hooks/useSSE";
 import {
   OVERLAY_COMPONENTS,
   getDefaultPropsForComponent as getStaticDefaultProps,
@@ -550,7 +550,10 @@ export default function Control() {
       updatedAt: new Date(0).toISOString(),
     });
   const programRealtimeSocketRef = useRef<WebSocket | null>(null);
-  const [isProgramSseConnected, setIsProgramSseConnected] = useState(false);
+  const [programSseConnectionState, setProgramSseConnectionState] =
+    useState<SSEConnectionState>("connecting");
+  const canUseProgramRealtimeFallback =
+    programSseConnectionState === "disconnected";
   const [isProgramRealtimeConnected, setIsProgramRealtimeConnected] =
     useState(false);
   const latestControlVersionByTopicRef = useRef<
@@ -718,7 +721,7 @@ export default function Control() {
   }, [activeProgramId]);
 
   useEffect(() => {
-    if (isProgramSseConnected || isProgramRealtimeConnected) {
+    if (!canUseProgramRealtimeFallback || isProgramRealtimeConnected) {
       return;
     }
 
@@ -726,7 +729,7 @@ export default function Control() {
     const fallbackTimer = window.setTimeout(() => {
       if (
         cancelled ||
-        isProgramSseConnected ||
+        !canUseProgramRealtimeFallback ||
         programRealtimeSocketRef.current?.readyState === WebSocket.OPEN
       ) {
         return;
@@ -742,10 +745,14 @@ export default function Control() {
       cancelled = true;
       window.clearTimeout(fallbackTimer);
     };
-  }, [activeProgramId, isProgramRealtimeConnected, isProgramSseConnected]);
+  }, [
+    activeProgramId,
+    canUseProgramRealtimeFallback,
+    isProgramRealtimeConnected,
+  ]);
 
   useEffect(() => {
-    if (isProgramSseConnected || isProgramRealtimeConnected) {
+    if (!canUseProgramRealtimeFallback || isProgramRealtimeConnected) {
       return;
     }
     const resyncInterval = window.setInterval(() => {
@@ -766,7 +773,11 @@ export default function Control() {
     return () => {
       window.clearInterval(resyncInterval);
     };
-  }, [activeProgramId, isProgramRealtimeConnected, isProgramSseConnected]);
+  }, [
+    activeProgramId,
+    canUseProgramRealtimeFallback,
+    isProgramRealtimeConnected,
+  ]);
 
   useEffect(() => {
     mixerLevelsRef.current = mixerLevels;
@@ -806,7 +817,7 @@ export default function Control() {
     if (typeof window === "undefined") {
       return;
     }
-    if (isProgramSseConnected) {
+    if (!canUseProgramRealtimeFallback) {
       programRealtimeSocketRef.current?.close();
       programRealtimeSocketRef.current = null;
       setIsProgramRealtimeConnected(false);
@@ -1171,7 +1182,7 @@ export default function Control() {
   }, [
     activeProgramId,
     applySceneUpdateLocally,
-    isProgramSseConnected,
+    canUseProgramRealtimeFallback,
     shouldApplyControlUpdatePayload,
     syncProgramStateAndStagedScene,
   ]);
@@ -3205,7 +3216,7 @@ export default function Control() {
   useSSE({
     url: apiUrl(`/program/${encodeURIComponent(activeProgramId)}/events`),
     onMessage: handleProgramEvent,
-    onConnectionChange: setIsProgramSseConnected,
+    onConnectionStateChange: setProgramSseConnectionState,
   });
 
   const editableSceneComponentEntries = Object.entries(sceneEditorProps).filter(
