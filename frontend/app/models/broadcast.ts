@@ -83,6 +83,7 @@ export interface RecordingStatus {
 
 export interface InstantItem {
   id: number;
+  assetId?: string;
   name: string;
   audioUrl: string;
   volume: number;
@@ -107,6 +108,7 @@ export interface InstantPlaybackState {
 
 export interface SongCatalogItem {
   id: number;
+  assetId?: string;
   artist: string;
   title: string;
   audioUrl: string;
@@ -139,6 +141,7 @@ export interface PaginatedResponse<T> {
 
 export interface MediaItem {
   id: number;
+  assetId?: string;
   name: string;
   imageUrl: string;
 }

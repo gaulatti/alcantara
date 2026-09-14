@@ -22,6 +22,7 @@ import { BroadcastDestinationsModule } from './broadcast-destinations/broadcast-
 import { ExternalSourcesModule } from './external-sources/external-sources.module';
 import { RecordingModule } from './recording/recording.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
+import { MediaAssetsModule } from './media-assets/media-assets.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { DatabaseBackupModule } from './database-backup/database-backup.module';
     ExternalSourcesModule,
     RecordingModule,
     DatabaseBackupModule,
+    MediaAssetsModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],

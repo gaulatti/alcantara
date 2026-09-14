@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { MediaAssetKind } from '@prisma/client';
 import { SongsService } from './songs.service';
 
 function buildService() {
@@ -6,7 +7,11 @@ function buildService() {
     song: {
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
-      update: jest.fn(),
+      update: jest
+        .fn()
+        .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ ...song, ...data }),
+        ),
       create: jest.fn(),
     },
     programState: { findUnique: jest.fn() },
@@ -16,6 +21,7 @@ function buildService() {
       upsert: jest.fn(),
       delete: jest.fn(),
     },
+    mediaAsset: { upsert: jest.fn(), deleteMany: jest.fn() },
   };
   const prisma = {
     ...tx,
@@ -77,6 +83,22 @@ describe('SongsService song intros', () => {
       where: { songId: song.id },
       create: { songId: song.id, instantId: 12, programId: 'radio' },
       update: { instantId: 12 },
+    });
+    expect(tx.mediaAsset.upsert).toHaveBeenCalledWith({
+      where: { id: 'song:7' },
+      create: {
+        id: 'song:7',
+        kind: MediaAssetKind.SONG,
+        name: 'Song',
+        sourceUrl: 'https://media.test/song.mp3',
+        enabled: true,
+      },
+      update: {
+        kind: MediaAssetKind.SONG,
+        name: 'Song',
+        sourceUrl: 'https://media.test/song.mp3',
+        enabled: true,
+      },
     });
     expect(result.intro?.instant).toMatchObject({
       audioUrl: 'https://media.test/intro.mp3',

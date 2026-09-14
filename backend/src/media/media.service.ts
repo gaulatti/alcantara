@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { MediaAssetKind, Prisma } from '@prisma/client';
+import {
+  deleteMediaAsset,
+  syncImageAsset,
+} from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
 
 interface MediaInput {
@@ -80,11 +84,10 @@ export class MediaService {
     const name = this.toRequiredTrimmedString(data.name, 'name');
     const imageUrl = this.toRequiredTrimmedString(data.imageUrl, 'imageUrl');
 
-    return this.prisma.media.create({
-      data: {
-        name,
-        imageUrl,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const media = await tx.media.create({ data: { name, imageUrl } });
+      await syncImageAsset(tx, media);
+      return tx.media.findUniqueOrThrow({ where: { id: media.id } });
     });
   }
 
@@ -108,9 +111,10 @@ export class MediaService {
       return this.findOne(id);
     }
 
-    return this.prisma.media.update({
-      where: { id },
-      data: updateData,
+    return this.prisma.$transaction(async (tx) => {
+      const media = await tx.media.update({ where: { id }, data: updateData });
+      await syncImageAsset(tx, media);
+      return tx.media.findUniqueOrThrow({ where: { id } });
     });
   }
 
@@ -127,6 +131,7 @@ export class MediaService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.media.delete({ where: { id } });
+      await deleteMediaAsset(tx, MediaAssetKind.IMAGE, id);
 
       for (const mediaGroupId of impactedGroupIds) {
         await this.rebalanceGroupItems(tx, mediaGroupId);

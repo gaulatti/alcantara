@@ -1,6 +1,12 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { createPostgresAdapter } from '../src/prisma-adapter';
+import {
+  syncAudioClipAsset,
+  syncImageAsset,
+  syncSongAsset,
+  syncTransitionAsset,
+} from '../src/media-assets/media-asset-sync';
 
 const prisma = new PrismaClient({
   adapter: createPostgresAdapter(process.env.DATABASE_URL),
@@ -125,7 +131,7 @@ async function main() {
       position: 9001,
     },
   });
-  await prisma.instant.upsert({
+  const availableIntro = await prisma.instant.upsert({
     where: { id: 9002 },
     update: {
       name: 'Local available voice recording',
@@ -160,7 +166,7 @@ async function main() {
       enabled: true,
     },
   });
-  await prisma.song.upsert({
+  const availableSong = await prisma.song.upsert({
     where: { id: 9002 },
     update: {
       artist: 'Seed Artist',
@@ -554,6 +560,15 @@ async function main() {
         transitions: { main: 'crescendo-prism' },
       },
     },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await syncAudioClipAsset(tx, assignedIntro);
+    await syncAudioClipAsset(tx, availableIntro);
+    await syncSongAsset(tx, assignedSong);
+    await syncSongAsset(tx, availableSong);
+    await syncImageAsset(tx, localMedia);
+    await syncTransitionAsset(tx, localTransition);
   });
 
   console.log('Seeding complete!');

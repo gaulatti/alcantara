@@ -30,6 +30,7 @@ import { AppPage } from '../components/AppPage';
 
 interface InstantItem {
   id: number;
+  assetId?: string;
   name: string;
   audioUrl: string;
   volume: number;

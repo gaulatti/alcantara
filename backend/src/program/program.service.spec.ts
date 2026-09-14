@@ -1,3 +1,4 @@
+import { MediaAssetKind } from '@prisma/client';
 import { ProgramService } from './program.service';
 
 describe('ProgramService switcher state', () => {
@@ -343,6 +344,64 @@ describe('ProgramService switcher state', () => {
       'remove the assignment before deleting it',
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('creates an audio clip and its common asset identity atomically', async () => {
+    const audioClip = {
+      id: 12,
+      assetId: 'audio-clip:12',
+      name: 'Station ID',
+      audioUrl: 'https://media.test/station-id.mp3',
+      volume: 0.8,
+      enabled: true,
+      position: 3,
+    };
+    const tx = {
+      instant: {
+        create: jest.fn().mockResolvedValue({ ...audioClip, assetId: null }),
+        update: jest.fn().mockResolvedValue(audioClip),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(audioClip),
+      },
+      mediaAsset: { upsert: jest.fn() },
+    };
+    const prisma = {
+      instant: {
+        aggregate: jest.fn().mockResolvedValue({ _max: { position: 2 } }),
+      },
+      $transaction: jest.fn((operation: (client: typeof tx) => unknown) =>
+        operation(tx),
+      ),
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.createInstant({
+        name: ' Station ID ',
+        audioUrl: ' https://media.test/station-id.mp3 ',
+        volume: 0.8,
+      }),
+    ).resolves.toEqual(audioClip);
+
+    expect(tx.mediaAsset.upsert).toHaveBeenCalledWith({
+      where: { id: 'audio-clip:12' },
+      create: {
+        id: 'audio-clip:12',
+        kind: MediaAssetKind.AUDIO_CLIP,
+        name: 'Station ID',
+        sourceUrl: 'https://media.test/station-id.mp3',
+        enabled: true,
+      },
+      update: {
+        kind: MediaAssetKind.AUDIO_CLIP,
+        name: 'Station ID',
+        sourceUrl: 'https://media.test/station-id.mp3',
+        enabled: true,
+      },
+    });
   });
 
   it('hydrates every SSE subscriber before delivering queued live updates', async () => {

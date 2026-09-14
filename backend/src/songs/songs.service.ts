@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { MediaAssetKind, Prisma } from '@prisma/client';
+import {
+  deleteMediaAsset,
+  syncSongAsset,
+} from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
 
 interface SongInput {
@@ -148,6 +152,7 @@ export class SongsService {
             enabled: data.enabled === undefined ? true : Boolean(data.enabled),
           },
         });
+        await syncSongAsset(tx, song);
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, song.id, data.programId, data.introInstantId);
         }
@@ -218,7 +223,8 @@ export class SongsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await tx.song.update({ where: { id }, data: updateData });
+        const song = await tx.song.update({ where: { id }, data: updateData });
+        await syncSongAsset(tx, song);
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, id, data.programId, data.introInstantId);
         }
@@ -238,7 +244,10 @@ export class SongsService {
     if (!existing) {
       throw new NotFoundException('Song not found');
     }
-    await this.prisma.song.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.song.delete({ where: { id } });
+      await deleteMediaAsset(tx, MediaAssetKind.SONG, id);
+    });
     return { deletedSongId: id };
   }
 

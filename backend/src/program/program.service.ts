@@ -8,8 +8,13 @@ import {
   OnModuleInit,
   NotFoundException,
 } from '@nestjs/common';
+import { MediaAssetKind } from '@prisma/client';
 import { Subject, Observable } from 'rxjs';
 import { PrismaService } from '../prisma.service';
+import {
+  deleteMediaAsset,
+  syncAudioClipAsset,
+} from '../media-assets/media-asset-sync';
 import { RadioService } from '../radio/radio.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { toRadioMixerPayload } from '../radio/radio-mixer.utils';
@@ -2933,17 +2938,21 @@ export class ProgramService implements OnModuleInit {
     });
     const nextPosition = (maxPosition._max.position ?? -1) + 1;
 
-    return this.prisma.instant.create({
-      data: {
-        name,
-        audioUrl,
-        volume:
-          typeof data.volume === 'number' && Number.isFinite(data.volume)
-            ? Math.min(1, Math.max(0, data.volume))
-            : 1,
-        enabled: data.enabled !== undefined ? Boolean(data.enabled) : true,
-        position: nextPosition,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const instant = await tx.instant.create({
+        data: {
+          name,
+          audioUrl,
+          volume:
+            typeof data.volume === 'number' && Number.isFinite(data.volume)
+              ? Math.min(1, Math.max(0, data.volume))
+              : 1,
+          enabled: data.enabled !== undefined ? Boolean(data.enabled) : true,
+          position: nextPosition,
+        },
+      });
+      await syncAudioClipAsset(tx, instant);
+      return tx.instant.findUniqueOrThrow({ where: { id: instant.id } });
     });
   }
 
@@ -2994,9 +3003,13 @@ export class ProgramService implements OnModuleInit {
       updateData.enabled = Boolean(data.enabled);
     }
 
-    return this.prisma.instant.update({
-      where: { id: instant.id },
-      data: updateData,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.instant.update({
+        where: { id: instant.id },
+        data: updateData,
+      });
+      await syncAudioClipAsset(tx, updated);
+      return tx.instant.findUniqueOrThrow({ where: { id: instant.id } });
     });
   }
 
@@ -3025,6 +3038,7 @@ export class ProgramService implements OnModuleInit {
       await tx.instant.delete({
         where: { id: instant.id },
       });
+      await deleteMediaAsset(tx, MediaAssetKind.AUDIO_CLIP, instant.id);
 
       // Move trailing rows far away first, then shift them down to close the gap.
       // This avoids transient uniqueness collisions on Instant.position.
