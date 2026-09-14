@@ -72,7 +72,7 @@ const DEPENDENCY_RESULTS = new Set([
   'failure',
   'unknown',
 ]);
-const JOBS = new Set(['charts-refresh', 'unknown']);
+const JOBS = new Set(['charts-refresh', 'database-backup', 'unknown']);
 const JOB_RESULTS = new Set(['success', 'failure', 'skipped', 'unknown']);
 const PREFERENCE_ACTIONS = new Set([
   'read',

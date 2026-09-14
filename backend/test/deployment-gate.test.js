@@ -12,6 +12,7 @@ const restoreCheck = readFileSync(
   'utf8',
 );
 const nginx = readFileSync('../deploy/cumulus.nginx.conf', 'utf8');
+const dockerfile = readFileSync('./Dockerfile', 'utf8');
 
 test('validates the production secret contract before build, push, or host mutation', () => {
   const preflight = workflow.indexOf('  production-config-preflight:');
@@ -75,6 +76,11 @@ test('hydrates database credentials inside containers through the instance profi
   assert.match(deployScript, /-e AWS_REGION=us-east-1/);
   assert.doesNotMatch(deployScript, /-e DATABASE_URL=/);
   assert.doesNotMatch(deployScript, /secretsmanager get-secret-value/);
+});
+
+test('ships the PostgreSQL 17 dump client required by hourly backups', () => {
+  assert.match(dockerfile, /apk add --no-cache postgresql17-client/);
+  assert.match(dockerfile, /pg_dump --version \| grep -Eq ' 17\\\.'/);
 });
 
 test('keeps the backend private to nginx and preserves realtime proxy behavior', () => {

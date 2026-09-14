@@ -117,6 +117,13 @@ CloudWatch Logs group or writer grant. See
 [`../docs/production-backend-logging.md`](../docs/production-backend-logging.md)
 for cutover validation and rollback.
 
+The production backend image includes PostgreSQL 17 client tools and writes an
+encrypted logical database backup to the existing media bucket at the top of
+every UTC hour. Uploads are content-checked and verified through S3 metadata
+before success is recorded. See
+[`../docs/production-database-backups.md`](../docs/production-database-backups.md)
+for paths, metrics, recovery checks, and the separate retention-policy boundary.
+
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks
 for the restored `ProgramState` table and at least one program row before it
