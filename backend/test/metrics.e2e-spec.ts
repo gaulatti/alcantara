@@ -49,6 +49,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       0.02,
     );
     metrics.recordJob('charts-refresh', 'failure');
+    metrics.recordJob('database-backup', 'success');
     metrics.recordPreference('write', 'conflict');
     metrics.recordBroadcastDestination('start', 'failed');
     metrics.recordExternalSource('create', 'success');
@@ -102,6 +103,12 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain('alcantara_http_requests_total');
     expect(body).toContain('alcantara_dependency_operations_total');
     expect(body).toContain('alcantara_jobs_total');
+    expect(body).toContain(
+      'alcantara_jobs_total{job="database-backup",result="success"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_job_last_success_timestamp_seconds{job="database-backup"}',
+    );
     expect(body).toContain(
       'alcantara_external_source_operations_total{action="create",result="success"} 1',
     );

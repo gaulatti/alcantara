@@ -9,6 +9,11 @@ shared Cumulus host, network, and Arauco database. This stack owns:
 - the host grants for Alcántara media storage; and
 - `api.alcantara.gaulatti.com` pointing to the Cumulus Elastic IP.
 
+The media-storage grant also supports the production backend's hourly logical
+database backups under `postgres-backups/alcantara/`. This stack does not own
+Arauco's native RDS recovery settings or the shared bucket's lifecycle policy;
+those remain separate infrastructure boundaries.
+
 Copy `.env.example` to `.env`, populate it with the non-secret identifiers from
 the deployed Macondo stack, export those values, then validate:
 

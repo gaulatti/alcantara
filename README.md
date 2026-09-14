@@ -111,6 +111,11 @@ configuration, metrics, and recovery boundary.
 
 #### Local and production operations
 
+The production backend also writes a verified, encrypted logical PostgreSQL
+backup to the media bucket at the top of every UTC hour. See
+[`docs/production-database-backups.md`](docs/production-database-backups.md) for
+the recovery boundary, storage path, telemetry, and post-deployment checks.
+
 `docker compose up --build` includes LiveKit 1.13.4 with fixed local-only
 credentials and TCP/UDP media ports. Alcantara continues to use its existing
 database and Pompeii authorization configuration; this stack does not start a

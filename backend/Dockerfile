@@ -4,6 +4,9 @@ ARG ALCANTARA_BUILD_VERSION=dev
 
 WORKDIR /app
 
+RUN apk add --no-cache postgresql17-client \
+    && pg_dump --version | grep -Eq ' 17\.'
+
 # Install pnpm (v9 avoids interactive approve-builds flow in CI)
 RUN npm install -g pnpm@9
 
