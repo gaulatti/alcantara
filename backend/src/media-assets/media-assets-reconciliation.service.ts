@@ -23,6 +23,11 @@ export interface MediaAssetReconciliationResult {
   removedOrphans: number;
 }
 
+const RECONCILIATION_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 60_000,
+} as const;
+
 function parseBackgroundInstantId(metadata: string | null): number | null {
   if (!metadata?.trim()) return null;
   try {
@@ -124,7 +129,7 @@ export class MediaAssetsReconciliationService implements OnApplicationBootstrap 
         labels: mediaGroups.length,
         removedOrphans,
       };
-    });
+    }, RECONCILIATION_TRANSACTION_OPTIONS);
   }
 
   private async removeOrphans(tx: Prisma.TransactionClient): Promise<number> {

@@ -68,7 +68,9 @@ All specialized create and update paths synchronize the canonical row in the
 same transaction. Startup reconciliation closes the deployment overlap window,
 adds background capability to instant audio referenced by scenes, mirrors
 legacy groups into labels, and removes only provably orphaned compatibility
-rows. Startup fails if reconciliation fails.
+rows. Reconciliation uses a 60-second transaction budget so production-sized
+catalogs can complete atomically without inheriting Prisma's five-second
+interactive-transaction default. Startup fails if reconciliation fails.
 
 Scene background selection now stores `sceneInstant.assetId` and resolves the
 typed background capability directly. Existing scene metadata containing only
