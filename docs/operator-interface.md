@@ -13,9 +13,10 @@ Navigation is grouped by operator intent rather than database model:
 - **Live** contains the mode-specific desk, Rundown, Guest calls, and TV
   destinations where applicable.
 - **Library** contains Scenes and Scene templates for visual shows plus one
-  Media destination for every show type. Media is organized by Images, Audio,
-  Video, and Labels; audio capabilities distinguish songs, instant audio, and
-  scene backgrounds without splitting them into separate libraries.
+  Media destination for every show type. TV and Simulcast Media is organized by
+  Images, Audio, Video, and Labels; Radio exposes only Audio and Labels. Audio
+  capabilities distinguish songs, instant audio, and scene backgrounds without
+  splitting them into separate libraries.
 - **Show setup** contains Shows and, for Radio or Simulcast, Radio distribution.
 
 The selected Show is the shell's operating context. Its `tv`, `radio`, or `both`
@@ -29,6 +30,9 @@ identity described in [Media library architecture](media-library-architecture.md
 Labels classify any media and optionally order its use. The separate Songs,
 Audio clips, Transitions, and media-group routes remain compatibility editors,
 but navigation and normal discovery begin in the unified Media library.
+Label selectors create and select a new label inline, including image upload,
+background-audio upload, and bulk labeling, so classification does not require
+a round trip through the Labels tab.
 
 Radio is an audio-only show type. Its setup form exposes no renderer template,
 Scenes, Media groups, or Transitions, and the backend rejects those visual
@@ -76,8 +80,9 @@ a disabled transition example, radio settings, a disabled now-playing consumer,
 and a type-appropriate Rundown for each show. This data is intentionally local
 and non-sensitive.
 
-The development-only `/media-fixture` demonstrates the unified audio cards,
-capability badges, and labels. `/console-fixture` supports `state=normal`,
+The development-only `/media-fixture` demonstrates the Radio-scoped Audio and
+Labels tabs, unified audio cards, capability badges, and inline label creation.
+`/console-fixture` supports `state=normal`,
 `state=empty-preview`, `state=on-air`, `state=disconnected`, `state=ftb`,
 `state=audio`, and `state=remote`. Add `mode=both` to exercise the Simulcast
 status rail. Production builds do not expose the fixture route.

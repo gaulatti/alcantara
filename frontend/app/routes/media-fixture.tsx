@@ -1,4 +1,5 @@
 import { Card } from "@gaulatti/bleecker";
+import { InlineLabelCreator } from "../components/media/InlineLabelCreator";
 import { MediaLibraryPage } from "../components/media/MediaLibraryPage";
 
 const examples = [
@@ -13,12 +14,17 @@ const examples = [
 
 export default function MediaFixture() {
   return (
-    <MediaLibraryPage activeSection="audio" width="full">
+    <MediaLibraryPage
+      activeSection="audio"
+      visibleSections={["audio", "labels"]}
+      width="full"
+    >
       <Card className="space-y-4">
         <p className="text-sm text-text-secondary">
-          Fixture: one physical audio library with additive capability and label
-          treatments.
+          Fixture: the Radio media surface exposes Audio and Labels only. Audio
+          uses additive capabilities and reusable labels.
         </p>
+        <InlineLabelCreator onCreate={async () => undefined} />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {examples.map((asset) => (
             <article

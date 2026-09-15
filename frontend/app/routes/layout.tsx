@@ -318,7 +318,8 @@ export default function Layout() {
     });
   }, [knownPrograms, selectedProgramId]);
 
-  const selectedProgram = knownPrograms.find((program) => program.programId === selectedProgramId) ?? { programId: selectedProgramId };
+  const resolvedSelectedProgram = knownPrograms.find((program) => program.programId === selectedProgramId);
+  const selectedProgram = resolvedSelectedProgram ?? { programId: selectedProgramId };
   const selectedProgramType = (selectedProgram.type ?? 'tv') as ProgramType;
   const navigationSections = useMemo(
     () =>
@@ -841,7 +842,7 @@ export default function Layout() {
 
             <main className={`min-h-0 flex-1 ${isViewportConstrainedRoute ? 'overflow-hidden' : 'overflow-y-auto'}`}>
               <div className={isViewportConstrainedRoute ? 'flex h-full min-h-0 flex-col overflow-hidden' : ''}>
-                <Outlet />
+                <Outlet context={{ programType: resolvedSelectedProgram ? selectedProgramType : null }} />
               </div>
             </main>
           </div>

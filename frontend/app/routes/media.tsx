@@ -24,16 +24,25 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import {
+  useNavigate,
+  useOutletContext,
+  useSearchParams,
+} from "react-router";
+import { AppPage } from "../components/AppPage";
+import { InlineLabelCreator } from "../components/media/InlineLabelCreator";
 import {
   MediaLibraryPage,
-  type MediaLibrarySection,
 } from "../components/media/MediaLibraryPage";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { authFetch } from "../services/api";
+import type { ProgramType } from "../utils/appNavigation";
+import {
+  getMediaLibraryView,
+  type MediaType,
+} from "../utils/mediaLibrary";
 import type { Route } from "./+types/media";
 
-type MediaType = "IMAGE" | "AUDIO" | "VIDEO";
 type MediaCapability =
   | "INSTANT"
   | "BACKGROUND"
@@ -179,20 +188,17 @@ function LabelBadges({ labels }: { labels: AssetLabel[] }) {
 
 export default function MediaRoute() {
   const navigate = useNavigate();
+  const { programType } = useOutletContext<{
+    programType: ProgramType | null;
+  }>();
   const [searchParams] = useSearchParams();
-  const isLabelsView = searchParams.get("view") === "labels";
-  const requestedType = searchParams.get("type");
-  const mediaType: MediaType =
-    requestedType === "AUDIO" || requestedType === "VIDEO"
-      ? requestedType
-      : "IMAGE";
-  const activeSection: MediaLibrarySection = isLabelsView
-    ? "labels"
-    : mediaType === "AUDIO"
-      ? "audio"
-      : mediaType === "VIDEO"
-        ? "video"
-        : "images";
+  const {
+    activeSection,
+    canonicalHref,
+    isLabelsView,
+    mediaType,
+    visibleSections,
+  } = getMediaLibraryView(programType ?? "tv", searchParams);
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [labels, setLabels] = useState<MediaLabel[]>([]);
@@ -245,6 +251,10 @@ export default function MediaRoute() {
   }, [search]);
 
   useEffect(() => {
+    if (canonicalHref) navigate(canonicalHref, { replace: true });
+  }, [canonicalHref, navigate]);
+
+  useEffect(() => {
     setPage(1);
     setSelectedAssetIds(new Set());
     if (mediaType !== "AUDIO") setCapability("");
@@ -275,6 +285,7 @@ export default function MediaRoute() {
   }, [capability, debouncedSearch, isLabelsView, mediaType, page]);
 
   const refresh = useCallback(async () => {
+    if (programType === null) return;
     setIsLoading(true);
     try {
       await Promise.all([fetchAssets(), fetchLabels()]);
@@ -284,7 +295,7 @@ export default function MediaRoute() {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchAssets, fetchLabels]);
+  }, [fetchAssets, fetchLabels, programType]);
 
   useEffect(() => {
     void refresh();
@@ -543,6 +554,24 @@ export default function MediaRoute() {
     }
   };
 
+  const createInlineLabel = async (
+    name: string,
+    selectLabel: (labelId: string) => void,
+  ) => {
+    const saved = await requestJson<MediaLabel>("/media-labels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description: null }),
+    });
+    setLabels((current) =>
+      [...current.filter((label) => label.id !== saved.id), saved].sort(
+        (left, right) => left.name.localeCompare(right.name),
+      ),
+    );
+    selectLabel(saved.id);
+    showAlert(`Created and selected “${saved.name}”.`, "success");
+  };
+
   const deleteLabel = async (label: MediaLabel) => {
     if (
       !window.confirm(
@@ -679,6 +708,16 @@ export default function MediaRoute() {
       )
     : [];
 
+  if (programType === null) {
+    return (
+      <AppPage width="full">
+        <div className="flex justify-center py-16">
+          <LoadingSpinner />
+        </div>
+      </AppPage>
+    );
+  }
+
   const actions =
     !isLabelsView && mediaType === "IMAGE" ? (
       <Button onClick={openCreateImage}>
@@ -709,6 +748,7 @@ export default function MediaRoute() {
     <MediaLibraryPage
       activeSection={activeSection}
       actions={actions}
+      visibleSections={visibleSections}
       width="full"
     >
       {!isLabelsView ? (
@@ -752,27 +792,34 @@ export default function MediaRoute() {
                 />
               ) : null}
               {selectedAssetIds.size > 0 ? (
-                <>
-                  <Select
-                    value={bulkLabelId}
-                    onChange={setBulkLabelId}
-                    options={[
-                      { value: "", label: "Choose label…" },
-                      ...labels.map((label) => ({
-                        value: label.id,
-                        label: label.name,
-                      })),
-                    ]}
+                <div className="flex min-w-[18rem] flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={bulkLabelId}
+                      onChange={setBulkLabelId}
+                      options={[
+                        { value: "", label: "Choose label…" },
+                        ...labels.map((label) => ({
+                          value: label.id,
+                          label: label.name,
+                        })),
+                      ]}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => void applyBulkLabel()}
+                      disabled={!bulkLabelId}
+                    >
+                      <Tag size={14} />
+                      Label {selectedAssetIds.size}
+                    </Button>
+                  </div>
+                  <InlineLabelCreator
+                    onCreate={(name) =>
+                      createInlineLabel(name, setBulkLabelId)
+                    }
                   />
-                  <Button
-                    size="sm"
-                    onClick={() => void applyBulkLabel()}
-                    disabled={!bulkLabelId}
-                  >
-                    <Tag size={14} />
-                    Label {selectedAssetIds.size}
-                  </Button>
-                </>
+                </div>
               ) : null}
             </div>
           </div>
@@ -1092,7 +1139,7 @@ export default function MediaRoute() {
             </legend>
             {labels.length === 0 ? (
               <p className="text-xs text-text-secondary">
-                No labels yet. You can upload now and label the images later.
+                No labels yet. Create one here and it will be selected.
               </p>
             ) : (
               labels.map((label) => (
@@ -1111,6 +1158,15 @@ export default function MediaRoute() {
                 />
               ))
             )}
+            <InlineLabelCreator
+              onCreate={(name) =>
+                createInlineLabel(name, (labelId) =>
+                  setImageLabelIds((current) =>
+                    new Set(current).add(labelId),
+                  ),
+                )
+              }
+            />
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button
@@ -1246,6 +1302,15 @@ export default function MediaRoute() {
                 }
               />
             ))}
+            <InlineLabelCreator
+              onCreate={(name) =>
+                createInlineLabel(name, (labelId) =>
+                  setBackgroundLabelIds((current) =>
+                    new Set(current).add(labelId),
+                  ),
+                )
+              }
+            />
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button
