@@ -31,12 +31,21 @@ const sequence: ProgramSongSequence = {
       coverUrl: "",
       audioUrl: "https://example.test/second.mp3",
     },
+    {
+      id: "song-3",
+      kind: "preset",
+      title: "Third song",
+      artist: "Third artist",
+      coverUrl: "",
+      audioUrl: "https://example.test/third.mp3",
+    },
   ],
 };
 
 const queue = [
   { id: "queue-1", itemId: "song-1", enqueuedAt: 1 },
   { id: "queue-2", itemId: "song-2", enqueuedAt: 2 },
+  { id: "queue-3", itemId: "song-3", enqueuedAt: 3 },
 ];
 
 afterEach(cleanup);
@@ -59,7 +68,11 @@ describe("PlayNextQueue", () => {
 
     fireEvent.click(screen.getByLabelText("Move Second song earlier"));
     await waitFor(() =>
-      expect(onReorder).toHaveBeenCalledWith(["queue-2", "queue-1"]),
+      expect(onReorder).toHaveBeenCalledWith([
+        "queue-2",
+        "queue-1",
+        "queue-3",
+      ]),
     );
 
     fireEvent.click(screen.getByLabelText("Remove First song from Play Next"));
@@ -67,18 +80,26 @@ describe("PlayNextQueue", () => {
   });
 
   it("marks the active queued song and keeps it fixed until it ends", () => {
+    const onReorder = vi.fn();
     render(
       <PlayNextQueue
         queue={queue}
         sequence={sequence}
         activeQueueEntryId="queue-1"
         onRemove={vi.fn()}
-        onReorder={vi.fn()}
+        onReorder={onReorder}
       />,
     );
 
     expect(screen.getByText("Playing")).toBeInTheDocument();
     expect(screen.getByLabelText("Move Second song earlier")).toBeDisabled();
+    expect(screen.getByLabelText("Move Third song earlier")).toBeEnabled();
+    fireEvent.click(screen.getByLabelText("Move Third song earlier"));
+    expect(onReorder).toHaveBeenCalledWith([
+      "queue-1",
+      "queue-3",
+      "queue-2",
+    ]);
     expect(
       screen.getByLabelText("Remove First song from Play Next"),
     ).toBeDisabled();

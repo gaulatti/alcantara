@@ -44,6 +44,9 @@ export function PlayNextQueue({
     collectSongLeaves(sequence.items, result);
     return result;
   }, [sequence.items]);
+  const activeIndex = activeQueueEntryId
+    ? queue.findIndex((entry) => entry.id === activeQueueEntryId)
+    : -1;
 
   const run = async (entryId: string, action: () => Promise<void> | void) => {
     setPendingEntryId(entryId);
@@ -120,7 +123,10 @@ export function PlayNextQueue({
                   <Button
                     type="button"
                     disabled={
-                      disabled || Boolean(activeQueueEntryId) || index === 0
+                      disabled ||
+                      isPlaying ||
+                      index === 0 ||
+                      index === activeIndex + 1
                     }
                     onClick={() => move(index, -1)}
                     className="flex h-6 w-6 items-center justify-center border-0 bg-transparent p-0 text-text-secondary shadow-none hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30"
@@ -133,7 +139,8 @@ export function PlayNextQueue({
                     type="button"
                     disabled={
                       disabled ||
-                      Boolean(activeQueueEntryId) ||
+                      isPlaying ||
+                      index === activeIndex - 1 ||
                       index === queue.length - 1
                     }
                     onClick={() => move(index, 1)}
