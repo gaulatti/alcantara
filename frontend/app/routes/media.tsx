@@ -32,6 +32,7 @@ import { AppPage } from '../components/AppPage';
 
 interface MediaItem {
   id: number;
+  assetId?: string;
   name: string;
   imageUrl: string;
   createdAt: string;

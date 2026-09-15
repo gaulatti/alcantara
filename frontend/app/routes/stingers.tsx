@@ -21,6 +21,7 @@ import { AppPage } from '../components/AppPage';
 
 interface StingerItem {
   id: number;
+  assetId?: string;
   name: string;
   videoUrl: string;
   cutPointMs: number;

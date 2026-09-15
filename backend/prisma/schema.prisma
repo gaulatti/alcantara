@@ -232,8 +232,33 @@ model BroadcastSettings {
   updatedAt             DateTime  @updatedAt
 }
 
+enum MediaAssetKind {
+  IMAGE
+  AUDIO_CLIP
+  SONG
+  TRANSITION
+}
+
+model MediaAsset {
+  id         String         @id
+  kind       MediaAssetKind
+  name       String
+  sourceUrl  String
+  enabled    Boolean        @default(true)
+  image      Media?         @relation("ImageMediaAsset")
+  audioClip  Instant?       @relation("AudioClipMediaAsset")
+  song       Song?          @relation("SongMediaAsset")
+  transition Stinger?       @relation("TransitionMediaAsset")
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([kind, updatedAt])
+}
+
 model Instant {
   id        Int      @id @default(autoincrement())
+  assetId   String?  @unique
+  asset     MediaAsset? @relation("AudioClipMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name      String
   audioUrl  String
   volume    Float    @default(1)
@@ -246,6 +271,8 @@ model Instant {
 
 model Song {
   id           Int      @id @default(autoincrement())
+  assetId      String?  @unique
+  asset        MediaAsset? @relation("SongMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   artist       String
   title        String
   audioUrl     String
@@ -276,6 +303,8 @@ model SongIntro {
 
 model Media {
   id         Int              @id @default(autoincrement())
+  assetId    String?          @unique
+  asset      MediaAsset?      @relation("ImageMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name       String
   imageUrl   String
   groupItems MediaGroupItem[]
@@ -319,6 +348,8 @@ model ProgramMediaGroup {
 
 model Stinger {
   id              Int              @id @default(autoincrement())
+  assetId         String?          @unique
+  asset           MediaAsset?      @relation("TransitionMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name            String
   videoUrl        String
   cutPointMs      Int              @default(1000)

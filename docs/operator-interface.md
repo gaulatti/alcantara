@@ -22,6 +22,12 @@ gets the Radio desk. A TV show gets the TV control. Simulcast keeps the TV
 switcher and adds an explicit radio-leg rail: scene actions affect TV, while
 songs and audio clips use the shared program mix.
 
+Images, audio clips, songs, and transition videos share the canonical asset
+identity described in [Media library architecture](media-library-architecture.md).
+The current separate Library destinations remain available during the staged
+migration. Media groups are ordered image collections rather than media assets;
+their interface will be renamed only when the unified Media Library is adopted.
+
 Radio is an audio-only show type. Its setup form exposes no renderer template,
 Scenes, Media groups, or Transitions, and the backend rejects those visual
 assignments even when called outside the browser. Changing an existing show to

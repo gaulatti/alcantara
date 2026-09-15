@@ -45,6 +45,9 @@ alcantara/
 
 ## Features
 
+- Images, audio clips, songs, and transition videos now share a canonical media
+  identity while their existing APIs remain compatible during the staged
+  migration. See [Media library architecture](docs/media-library-architecture.md).
 - Per-song recorded intro assignment, validation, and stable sequence identity
   are documented in [Song intro editorial model](docs/song-intros.md).
 - External renderer registration and the versioned manifest boundary are
