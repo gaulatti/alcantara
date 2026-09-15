@@ -45,8 +45,21 @@ export type IntroTransitionResult =
   | 'failed'
   | 'ignored-mismatch';
 
+export type SongQueueActionResult =
+  | 'enqueued'
+  | 'claimed'
+  | 'released'
+  | 'removed'
+  | 'reordered'
+  | 'consumed'
+  | 'cursor-persisted'
+  | 'rejected'
+  | 'persistence-failed';
+
 export type SnapshotReconciliationResult =
-  'accepted' | 'instance-mismatch' | 'instance-conflict';
+  | 'accepted'
+  | 'instance-mismatch'
+  | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -57,6 +70,8 @@ export interface RadioMetricsSnapshot {
   degradedPrograms: number;
   trackTransitions: Record<string, number>;
   introTransitions: Record<string, number>;
+  songQueueActions: Record<string, number>;
+  songQueueDepth: number;
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
   machineRetries: Record<string, number>;
@@ -127,6 +142,18 @@ const INTRO_TRANSITION_RESULTS: IntroTransitionResult[] = [
   'ignored-mismatch',
 ];
 
+const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
+  'enqueued',
+  'claimed',
+  'released',
+  'removed',
+  'reordered',
+  'consumed',
+  'cursor-persisted',
+  'rejected',
+  'persistence-failed',
+];
+
 /**
  * Bounded-cardinality Prometheus registry for the Alcantara radio engine.
  *
@@ -145,6 +172,8 @@ export class RadioMetricsService {
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
   private readonly introTransitions = new Map<string, number>();
+  private readonly songQueueActions = new Map<string, number>();
+  private songQueueDepth = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
 
@@ -204,6 +233,18 @@ export class RadioMetricsService {
     );
   }
 
+  recordSongQueueAction(result: SongQueueActionResult): void {
+    if (!SONG_QUEUE_ACTION_RESULTS.includes(result)) return;
+    this.songQueueActions.set(
+      result,
+      (this.songQueueActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordSongQueueDepth(count: number): void {
+    this.songQueueDepth = Math.max(0, Math.floor(count));
+  }
+
   recordMachineRequest(
     operation: PalazzoMachineOperation,
     result: PalazzoMachineResult,
@@ -235,6 +276,8 @@ export class RadioMetricsService {
       degradedPrograms: this.degradedPrograms,
       trackTransitions: Object.fromEntries(this.trackTransitions),
       introTransitions: Object.fromEntries(this.introTransitions),
+      songQueueActions: Object.fromEntries(this.songQueueActions),
+      songQueueDepth: this.songQueueDepth,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
       machineRetries: Object.fromEntries(this.machineRetries),
@@ -299,6 +342,20 @@ export class RadioMetricsService {
         `alcantara_radio_intro_transitions_total{result="${result}"} ${this.introTransitions.get(result) ?? 0}`,
       );
     }
+    lines.push(
+      '# HELP alcantara_radio_song_queue_actions_total Persisted Play Next queue actions by bounded result.',
+      '# TYPE alcantara_radio_song_queue_actions_total counter',
+    );
+    for (const result of SONG_QUEUE_ACTION_RESULTS) {
+      lines.push(
+        `alcantara_radio_song_queue_actions_total{result="${result}"} ${this.songQueueActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_song_queue_depth Total queued song entries across radio-capable programs.',
+      '# TYPE alcantara_radio_song_queue_depth gauge',
+      `alcantara_radio_song_queue_depth ${this.songQueueDepth}`,
+    );
     lines.push(
       '# HELP alcantara_palazzo_machine_requests_total Program-scoped Palazzo machine requests by bounded operation and result.',
       '# TYPE alcantara_palazzo_machine_requests_total counter',

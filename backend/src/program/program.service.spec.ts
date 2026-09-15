@@ -323,6 +323,103 @@ describe('ProgramService switcher state', () => {
     );
   });
 
+  it('removes Play Next references when their playlist item is removed', async () => {
+    let currentState = {
+      programId: 'radio-1',
+      type: 'radio',
+      songSequence: {
+        mode: 'shuffle',
+        items: [
+          {
+            id: 'song-1',
+            kind: 'preset',
+            title: 'One',
+            artist: 'Artist',
+            coverUrl: '',
+            audioUrl: 'https://example.test/one.mp3',
+          },
+          {
+            id: 'song-2',
+            kind: 'preset',
+            title: 'Two',
+            artist: 'Artist',
+            coverUrl: '',
+            audioUrl: 'https://example.test/two.mp3',
+          },
+        ],
+      },
+      songQueue: [
+        { id: 'queue-1', itemId: 'song-1', enqueuedAt: 1 },
+        { id: 'queue-2', itemId: 'song-2', enqueuedAt: 2 },
+      ],
+      audioMixer: null,
+    };
+    const prisma = {
+      programState: {
+        findUnique: jest.fn().mockImplementation(() => currentState),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            currentState = { ...currentState, ...data } as typeof currentState;
+            return currentState;
+          }),
+      },
+    };
+    const songExecutionEngine = {
+      handleSequenceUpdated: jest.fn(),
+      handleQueueUpdated: jest.fn(),
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      songExecutionEngine as never,
+    );
+
+    const result = await service.updateProgramAudioBus(
+      {
+        songSequence: {
+          mode: 'shuffle',
+          items: [currentState.songSequence.items[0]],
+        },
+      },
+      'radio-1',
+    );
+
+    expect(result.songQueue).toEqual([
+      { id: 'queue-1', itemId: 'song-1', enqueuedAt: 1 },
+    ]);
+    expect(songExecutionEngine.handleQueueUpdated).toHaveBeenCalledWith(
+      'radio-1',
+      [{ id: 'queue-1', itemId: 'song-1', enqueuedAt: 1 }],
+    );
+  });
+
+  it('delegates Play Next mutations to the radio engine', async () => {
+    const songQueue = [{ id: 'queue-1', itemId: 'song-1', enqueuedAt: 1 }];
+    const songExecutionEngine = {
+      enqueueSong: jest.fn().mockResolvedValue(songQueue),
+      removeQueuedSong: jest.fn().mockResolvedValue([]),
+      reorderSongQueue: jest.fn().mockResolvedValue(songQueue),
+    };
+    const service = new ProgramService(
+      {} as never,
+      {} as never,
+      songExecutionEngine as never,
+    );
+
+    await expect(
+      service.enqueueProgramSong('radio-1', 'song-1'),
+    ).resolves.toMatchObject({
+      songQueue,
+    });
+    await expect(
+      service.removeQueuedProgramSong('radio-1', 'queue-1'),
+    ).resolves.toMatchObject({ songQueue: [] });
+    await expect(
+      service.reorderProgramSongQueue('radio-1', ['queue-1']),
+    ).resolves.toMatchObject({ songQueue });
+  });
+
   it('prevents deletion of an Instant assigned as a song intro', async () => {
     const prisma = {
       instant: {

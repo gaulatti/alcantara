@@ -51,6 +51,15 @@ root playback routes.
   Looped playlists wrap; explicitly non-looped playlists publish stopped at
   their end. A missing song-sequence mode means autoplay, while an explicit
   `manual` mode remains an operator stop boundary.
+- Play Next is a persisted FIFO queue of references to playable playlist item
+  IDs. Duplicate song references are allowed as distinct queue entries. A
+  normal track end advances and persists the underlying playlist cursor before
+  the first queued command; queued track ends consume exactly their matching
+  entry without advancing that cursor. When the queue drains, Autoplay and
+  Shuffle resume from the saved successor while Manual publishes stopped.
+  Alcantara persists a non-sensitive active marker and playback request ID
+  before issuing a queued command, so restart adoption remains unambiguous even
+  when the queued item is the same playlist item that was previously on air.
 - When Alcantara restarts during playback, it adopts the inherited Palazzo
   track only when the authoritative audio URL identifies exactly one leaf in
   the configured sequence. Adoption preserves Palazzo's request ID, start time,
@@ -78,7 +87,12 @@ an additive Palazzo event from being rejected or misclassified as a track end.
 If Palazzo rejects or cannot accept a song command, Alcantara clears its
 optimistic Radio playback, publishes stopped state, and increments the bounded
 `alcantara_radio_track_transitions_total{result="command-failed"}` outcome; it
-does not leave the console falsely on air or silently advance the queue.
+does not leave the console falsely on air or consume the queued entry. If the
+failed command or an operator stop belonged to Play Next, Alcantara releases
+the persisted playback claim while leaving that queue entry in place. If the
+queue or the playlist cursor cannot be persisted at a queue transition,
+Alcantara fails closed and publishes stopped instead of replaying a queue head
+or falling through to a different playlist song.
 
 - If SSE fails but `/v1/programs/{programId}/playback/state` responds, the client polls that endpoint
   (connection state `polling`) and reconciles snapshots while SSE reconnects
@@ -124,6 +138,14 @@ triggered instants and scheduled bumpers; each instant's own volume is then
 multiplied by that bus and the main output gain. Bumper settings persist
 `bumperEnabled`, `bumperInterval`, `bumperInstantIds`, and `bumperMode`; invalid
 intervals, IDs, or modes fail visibly instead of being dropped.
+
+The same desk exposes Play Next above the normal playlist. Operators add a
+playlist row without interrupting the current song, inspect FIFO order, remove
+entries, and reorder entries that have not started. Queue mutations use the
+protected `POST`, `PUT`, and `DELETE /program/:programId/song-queue` routes.
+Public audio-bus snapshots include `songQueue`; `song_queue_update` carries
+live queue changes and shares the audio-bus version watermark. Queue entries
+are removed only after a matching authoritative `track.ended` event.
 
 Automation settings, Palazzo URL, bumper eligibility, and now-playing consumers
 live at `/radio-settings`; they are deliberately separate from live playout.
@@ -208,6 +230,9 @@ snapshot reconciliation results, ignored-event reasons, stale-telemetry and
 degraded program gauges, track transition results,
 `alcantara_radio_intro_transitions_total{result}` for submitted, accepted,
 started, ended, failed, and mismatched intro lifecycle events,
+`alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
+reorder, consume, cursor persistence, rejection, and persistence failure,
+`alcantara_radio_song_queue_depth` for the total number of queued entries,
 `alcantara_palazzo_machine_requests_total{operation,result}`, and
 `alcantara_palazzo_machine_retries_total{operation}`. The operation/result
 sets are closed enums covering success, deduplication, authentication,
@@ -236,4 +261,6 @@ configured path.
 
 `ProgramState.engineState` was removed (migration
 `20260823220000_drop_program_engine_state`); live playback state is volatile
-and must not be persisted in Alcantara.
+and must not be persisted in Alcantara. The operational Play Next order is
+persisted separately in `ProgramState.songQueue` so a backend restart can adopt
+an already-playing queue head and resume without losing or duplicating it.

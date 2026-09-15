@@ -210,6 +210,39 @@ export class ProgramController {
     return this.programService.getProgramSongPlayback(programId);
   }
 
+  @Post(':programId/song-queue')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
+  async enqueueProgramSongById(
+    @Param('programId') programId: string,
+    @Body() data: { itemId?: string },
+  ) {
+    return this.programService.enqueueProgramSong(
+      programId,
+      typeof data?.itemId === 'string' ? data.itemId : '',
+    );
+  }
+
+  @Put(':programId/song-queue')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
+  async reorderProgramSongQueueById(
+    @Param('programId') programId: string,
+    @Body() data: { entryIds?: string[] },
+  ) {
+    return this.programService.reorderProgramSongQueue(
+      programId,
+      Array.isArray(data?.entryIds) ? data.entryIds : [],
+    );
+  }
+
+  @Delete(':programId/song-queue/:entryId')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
+  async removeQueuedProgramSongById(
+    @Param('programId') programId: string,
+    @Param('entryId') entryId: string,
+  ) {
+    return this.programService.removeQueuedProgramSong(programId, entryId);
+  }
+
   @Post(':programId/song-playback')
   @Public()
   async updateProgramSongPlaybackById(

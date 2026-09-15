@@ -510,6 +510,47 @@ function collectSongLeavesByAudioUrl(
   }
 }
 
+function collectSongLeavesById(
+  sequence: ProgramSongSequence,
+  itemId: string,
+  labels: string[],
+  matches: ProgramResolvedSongLeaf[],
+  depth: number,
+): void {
+  if (depth > MAX_DEPTH || matches.length > 1) return;
+
+  for (const item of sequence.items) {
+    if (item.kind === 'sequence') {
+      collectSongLeavesById(
+        item.sequence,
+        itemId,
+        [...labels, item.label],
+        matches,
+        depth + 1,
+      );
+      continue;
+    }
+    if (item.id !== itemId) continue;
+    const songLabel = [item.artist, item.title].filter(Boolean).join(' - ');
+    matches.push({
+      ...item,
+      activePathLabels: [...labels, songLabel || 'Song Preset'],
+    });
+  }
+}
+
+/** Returns a leaf only when its playlist item ID is unique. */
+export function findUniqueProgramSongLeafById(
+  sequence: ProgramSongSequence | null,
+  itemId: string,
+): ProgramResolvedSongLeaf | null {
+  const normalizedItemId = itemId.trim();
+  if (!sequence || !normalizedItemId) return null;
+  const matches: ProgramResolvedSongLeaf[] = [];
+  collectSongLeavesById(sequence, normalizedItemId, [], matches, 0);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 /** Returns a leaf only when an authoritative URL identifies exactly one song. */
 export function findUniqueProgramSongLeafByAudioUrl(
   sequence: ProgramSongSequence | null,

@@ -229,7 +229,8 @@ export function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybac
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString(),
     telemetryStale: typeof r.telemetryStale === 'boolean' ? r.telemetryStale : undefined,
     introStatus: r.introStatus === 'pending' || r.introStatus === 'playing' || r.introStatus === 'completed' || r.introStatus === 'degraded' ? r.introStatus : 'none',
-    introFailureReason: typeof r.introFailureReason === 'string' ? r.introFailureReason.trim().slice(0, 200) || null : null
+    introFailureReason: typeof r.introFailureReason === 'string' ? r.introFailureReason.trim().slice(0, 200) || null : null,
+    queueEntryId: typeof r.queueEntryId === 'string' && r.queueEntryId.trim() ? r.queueEntryId.trim() : null
   };
 }
 
@@ -263,7 +264,7 @@ export function resolveControlUpdateTopicFromType(type: unknown): ProgramUpdateT
   if (typeof type !== 'string') return null;
   switch (type) {
     case 'program_state_snapshot': case 'scene_change': case 'scene_staged': case 'fade_to_black': case 'scene_update': case 'scene_cleared': case 'program_scenes_changed': case 'program_media_groups_changed': return 'state';
-    case 'audio_bus_snapshot': case 'audio_bus_update': return 'audioBus';
+    case 'audio_bus_snapshot': case 'audio_bus_update': case 'song_queue_update': return 'audioBus';
     case 'audio_meter_update': return 'audioMeter';
     case 'song_playback_update': case 'song_off_air': return 'songPlayback';
     case 'scene_instant_state': case 'scene_instant_take': case 'scene_instant_stop': return 'sceneInstant';

@@ -48,6 +48,7 @@ model ProgramState {
   stagedSceneId          Int?
   fadeToBlack            Boolean              @default(false)
   songSequence           Json?
+  songQueue              Json?
   shuffleOrder           Json?
   audioMixer             Json?
   activeFlightSequenceId Int?

@@ -23,7 +23,10 @@ SSE snapshot must hydrate the scene strip and active/staged monitors, not merely
 advance the shared state-version watermark; otherwise an SSE-first startup can
 discard an equal-version fallback snapshot and leave the console empty.
 
-Meter, playback, scene, and audio-bus events share that SSE stream. Palazzo's
+Meter, playback, scene, audio-bus, and persisted `song_queue_update` events
+share that SSE stream. Play Next queue updates use the audio-bus version
+watermark, so an HTTP mutation response and its matching realtime event are
+idempotent. Palazzo's
 default 10 Hz level samples therefore reach the console continuously instead of
 waiting for the HTTP fallback interval. Topic-specific version watermarks make
 the brief SSE/WebSocket handoff idempotent.

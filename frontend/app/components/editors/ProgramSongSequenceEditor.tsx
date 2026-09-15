@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
-import { Clock, GripVertical, Headphones, Music2, Plus } from 'lucide-react';
+import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus } from 'lucide-react';
 import {
   createProgramSongSequence,
   createProgramSongSequenceItem,
@@ -43,6 +43,7 @@ export function ProgramSongSequenceEditor({
   programSongPlayback = null,
   onChange,
   onTakeSelection,
+  onQueueItem,
   depth = 0,
   view = 'full'
 }: {
@@ -51,6 +52,7 @@ export function ProgramSongSequenceEditor({
   programSongPlayback?: ProgramSongPlaybackState | null;
   onChange: (nextSequence: ProgramSongSequence) => void;
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
+  onQueueItem?: (itemId: string) => Promise<void> | void;
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
 }) {
@@ -280,13 +282,13 @@ export function ProgramSongSequenceEditor({
             {sequence.items.length === 0 ? (
               <div className='flex flex-1 flex-col items-center justify-center px-4 py-16 text-center'>
                 <Music2 size={32} className='mb-3 text-text-secondary' />
-                <p className='text-sm font-medium text-text-primary'>Queue is empty</p>
+                <p className='text-sm font-medium text-text-primary'>Playlist is empty</p>
                 <p className='mt-1 text-xs text-text-secondary'>Search and add songs from the catalog panel.</p>
               </div>
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
                 <div className='min-w-100'>
-                  <div className='grid grid-cols-[28px_28px_28px_1fr_52px_56px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
+                  <div className='grid grid-cols-[28px_28px_28px_1fr_52px_84px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
                     <span />
                     <span className='text-center'>#</span>
                     <span />
@@ -330,7 +332,7 @@ export function ProgramSongSequenceEditor({
                           }}
                         >
                           <div
-                            className={`group grid grid-cols-[28px_28px_28px_1fr_52px_56px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
+                            className={`group grid grid-cols-[28px_28px_28px_1fr_52px_84px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
                           >
                             <span
                               draggable
@@ -406,6 +408,17 @@ export function ProgramSongSequenceEditor({
                             </div>
                             <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
                             <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                              {displayItem.kind === 'preset' && onQueueItem ? (
+                                <Button
+                                  type='button'
+                                  onClick={() => void onQueueItem(displayItem.id)}
+                                  className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-sea'
+                                  title='Play next'
+                                  aria-label={`Play ${titleText || 'song'} next`}
+                                >
+                                  <ListPlus size={13} />
+                                </Button>
+                              ) : null}
                               {displayItem.kind === 'preset' ? (
                                 <Button
                                   type='button'
@@ -492,6 +505,7 @@ export function ProgramSongSequenceEditor({
                                   applySequence(next);
                                   if (onTakeSelection) await onTakeSelection(next);
                                 }}
+                                onQueueItem={onQueueItem}
                               />
                             </div>
                           ) : null}

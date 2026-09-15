@@ -1,4 +1,5 @@
 import {
+  findUniqueProgramSongLeafById,
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
   resolveProgramSongLeaf,
@@ -85,6 +86,30 @@ describe('program song sequence catalog identity', () => {
       id: 'live-song',
       activePathLabels: ['Hour one', 'Live artist - Live song'],
     });
+  });
+
+  it('finds a uniquely identified playlist leaf for Play Next', () => {
+    const sequence = normalizeProgramSongSequence({
+      mode: 'autoplay',
+      items: [
+        {
+          id: 'queued-song',
+          kind: 'preset',
+          artist: 'Queue artist',
+          title: 'Queue song',
+          coverUrl: '',
+          audioUrl: 'https://media.test/queue.mp3',
+        },
+      ],
+    });
+
+    expect(
+      findUniqueProgramSongLeafById(sequence, 'queued-song'),
+    ).toMatchObject({
+      id: 'queued-song',
+      title: 'Queue song',
+    });
+    expect(findUniqueProgramSongLeafById(sequence, 'missing')).toBeNull();
   });
 
   it('refuses to guess when the same audio URL appears more than once', () => {

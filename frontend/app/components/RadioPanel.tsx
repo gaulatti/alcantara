@@ -4,12 +4,14 @@ import { apiUrl } from "../utils/apiBaseUrl";
 import { Music2, Wifi, WifiOff, Radio } from "lucide-react";
 import type {
   ProgramSongPlaybackState,
+  ProgramSongQueueEntry,
   SongCatalogItem,
   InstantItem,
 } from "../models/broadcast";
 import { PlaybackBar } from "./PlaybackBar";
 import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
+import { PlayNextQueue } from "./PlayNextQueue";
 
 interface RadioMixerChannelState {
   volume: number;
@@ -28,9 +30,13 @@ export interface RadioMixerState {
 interface RadioPanelProps {
   programId: string;
   songSequence: any;
+  songQueue: ProgramSongQueueEntry[];
   songCatalog: SongCatalogItem[];
   programSongPlayback: ProgramSongPlaybackState | null;
   onSaveSongSequence: (seq: any) => Promise<void> | void;
+  onQueueSong: (itemId: string) => Promise<void> | void;
+  onRemoveQueuedSong: (entryId: string) => Promise<void> | void;
+  onReorderSongQueue: (entryIds: string[]) => Promise<void> | void;
   onTakeOffAir: () => Promise<void>;
   instants: InstantItem[];
   instantSearch: string;
@@ -75,9 +81,13 @@ interface PalazzoStatus {
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   programId,
   songSequence,
+  songQueue,
   songCatalog,
   programSongPlayback,
   onSaveSongSequence,
+  onQueueSong,
+  onRemoveQueuedSong,
+  onReorderSongQueue,
   onTakeOffAir,
   instants,
   instantSearch,
@@ -95,6 +105,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [stream, setStream] = useState<StreamStatus | null>(null);
   const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(null);
   const [playlistSheetOpen, setPlaylistSheetOpen] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
 
   const fetchStreamStatus = useCallback(async () => {
     try {
@@ -158,6 +169,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       });
     },
     [onSaveSongSequence, programId, programSongPlayback?.isPlaying],
+  );
+
+  const handleQueueSong = useCallback(
+    async (itemId: string) => {
+      setQueueError(null);
+      try {
+        await onQueueSong(itemId);
+      } catch {
+        setQueueError("The song was not added to Play Next. Try again.");
+      }
+    },
+    [onQueueSong],
   );
 
   const isLive = stream?.running === true;
@@ -356,15 +379,35 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               </Button>
             }
           >
-            <PlaylistPanel
-              sequence={songSequence}
-              songCatalog={songCatalog}
-              programSongPlayback={programSongPlayback}
-              onChange={(seq) => {
-                void onSaveSongSequence(seq);
-              }}
-              onTakeSelection={handleTakeSelection}
-            />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <PlayNextQueue
+                queue={songQueue}
+                sequence={songSequence}
+                activeQueueEntryId={programSongPlayback?.queueEntryId}
+                onRemove={onRemoveQueuedSong}
+                onReorder={onReorderSongQueue}
+              />
+              {queueError ? (
+                <p
+                  role="alert"
+                  className="border-b border-red-400/20 px-3 py-2 text-[11px] text-red-300"
+                >
+                  {queueError}
+                </p>
+              ) : null}
+              <div className="min-h-0 flex-1">
+                <PlaylistPanel
+                  sequence={songSequence}
+                  songCatalog={songCatalog}
+                  programSongPlayback={programSongPlayback}
+                  onChange={(seq) => {
+                    void onSaveSongSequence(seq);
+                  }}
+                  onTakeSelection={handleTakeSelection}
+                  onQueueItem={handleQueueSong}
+                />
+              </div>
+            </div>
           </Panel>
           <Panel
             title="Sounders"

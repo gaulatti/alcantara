@@ -8,7 +8,7 @@ import {
   OnModuleInit,
   NotFoundException,
 } from '@nestjs/common';
-import { MediaAssetKind } from '@prisma/client';
+import { MediaAssetKind, type Prisma } from '@prisma/client';
 import { Subject, Observable } from 'rxjs';
 import { PrismaService } from '../prisma.service';
 import {
@@ -22,6 +22,11 @@ import {
   SongExecutionEngine,
   type SongEngineEvent,
 } from '../radio/song-execution.engine';
+import {
+  filterProgramSongQueueForSequence,
+  normalizeProgramSongQueue,
+} from '../radio/song-queue.utils';
+import { normalizeProgramSongSequence } from '../radio/song-sequence.utils';
 import {
   projectProgramTemplateSignal,
   projectProgramTemplateState,
@@ -138,6 +143,7 @@ export class ProgramService implements OnModuleInit {
       telemetryStale?: boolean;
       introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
       introFailureReason?: string | null;
+      queueEntryId?: string | null;
     }
   >();
   private eventListeners:
@@ -983,6 +989,7 @@ export class ProgramService implements OnModuleInit {
       case 'program_stingers_changed':
         return 'state';
       case 'audio_bus_update':
+      case 'song_queue_update':
         return 'audioBus';
       case 'audio_meter_update':
         return 'audioMeter';
@@ -1488,7 +1495,7 @@ export class ProgramService implements OnModuleInit {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { songSequence: true, audioMixer: true },
+      select: { songSequence: true, songQueue: true, audioMixer: true },
     });
     if (!state) {
       throw new Error('Program not found');
@@ -1500,6 +1507,7 @@ export class ProgramService implements OnModuleInit {
 
     return {
       songSequence: state.songSequence ?? null,
+      songQueue: normalizeProgramSongQueue(state.songQueue),
       mixerSettings,
       version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
     };
@@ -1523,7 +1531,12 @@ export class ProgramService implements OnModuleInit {
 
     const currentState = await this.prisma.programState.findUnique({
       where: { programId: normalizedProgramId },
-      select: { songSequence: true, audioMixer: true, type: true },
+      select: {
+        songSequence: true,
+        songQueue: true,
+        audioMixer: true,
+        type: true,
+      },
     });
     if (!currentState) {
       throw new Error('Program not found');
@@ -1542,6 +1555,7 @@ export class ProgramService implements OnModuleInit {
     if (!hasSongSequenceUpdate && !hasMixerSettingsUpdate) {
       return {
         songSequence: currentState.songSequence ?? null,
+        songQueue: normalizeProgramSongQueue(currentState.songQueue),
         mixerSettings: currentMixerSettings,
         version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
       };
@@ -1550,6 +1564,13 @@ export class ProgramService implements OnModuleInit {
     const nextSongSequence = hasSongSequenceUpdate
       ? ((data as { songSequence?: unknown }).songSequence ?? null)
       : (currentState.songSequence ?? null);
+    const currentSongQueue = normalizeProgramSongQueue(currentState.songQueue);
+    const nextSongQueue = hasSongSequenceUpdate
+      ? filterProgramSongQueueForSequence(
+          currentSongQueue,
+          normalizeProgramSongSequence(nextSongSequence),
+        )
+      : currentSongQueue;
     const nextMixerSettings = hasMixerSettingsUpdate
       ? this.withResolvedProgramAudioMixerSettings(
           (data as { mixerSettings?: unknown }).mixerSettings,
@@ -1561,13 +1582,19 @@ export class ProgramService implements OnModuleInit {
       where: { programId: normalizedProgramId },
       data: {
         songSequence: nextSongSequence as any,
+        ...(hasSongSequenceUpdate
+          ? {
+              songQueue: nextSongQueue as unknown as Prisma.InputJsonValue,
+            }
+          : {}),
         audioMixer: nextMixerSettings as any,
       },
-      select: { songSequence: true, audioMixer: true },
+      select: { songSequence: true, songQueue: true, audioMixer: true },
     });
 
     const nextSettings = {
       songSequence: updatedState.songSequence ?? null,
+      songQueue: normalizeProgramSongQueue(updatedState.songQueue),
       mixerSettings: this.withResolvedProgramAudioMixerSettings(
         updatedState.audioMixer,
         nextMixerSettings,
@@ -1594,6 +1621,10 @@ export class ProgramService implements OnModuleInit {
         normalizedProgramId,
         nextSongSequence,
       );
+      this.songExecutionEngine.handleQueueUpdated(
+        normalizedProgramId,
+        nextSongQueue,
+      );
     }
 
     return {
@@ -1602,6 +1633,42 @@ export class ProgramService implements OnModuleInit {
         broadcastPayload && typeof broadcastPayload.version === 'number'
           ? broadcastPayload.version
           : this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
+  async enqueueProgramSong(programId: string, itemId: string) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const songQueue = await this.songExecutionEngine.enqueueSong(
+      normalizedProgramId,
+      itemId,
+    );
+    return {
+      songQueue,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
+  async removeQueuedProgramSong(programId: string, entryId: string) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const songQueue = await this.songExecutionEngine.removeQueuedSong(
+      normalizedProgramId,
+      entryId,
+    );
+    return {
+      songQueue,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
+  async reorderProgramSongQueue(programId: string, entryIds: string[]) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const songQueue = await this.songExecutionEngine.reorderSongQueue(
+      normalizedProgramId,
+      entryIds,
+    );
+    return {
+      songQueue,
+      version: this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
     };
   }
 
@@ -3258,6 +3325,7 @@ export class ProgramService implements OnModuleInit {
           telemetryStale: event.playback.telemetryStale,
           introStatus: event.playback.introStatus,
           introFailureReason: event.playback.introFailureReason,
+          queueEntryId: event.playback.queueEntryId,
         };
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
@@ -3284,6 +3352,7 @@ export class ProgramService implements OnModuleInit {
           telemetryStale: event.playback.telemetryStale,
           introStatus: event.playback.introStatus,
           introFailureReason: event.playback.introFailureReason,
+          queueEntryId: event.playback.queueEntryId,
         };
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
@@ -3313,6 +3382,7 @@ export class ProgramService implements OnModuleInit {
           telemetryStale: false,
           introStatus: previous?.introStatus ?? 'none',
           introFailureReason: previous?.introFailureReason ?? null,
+          queueEntryId: previous?.queueEntryId ?? null,
         };
         this.programSongPlaybackByProgramId.set(normalizedProgramId, playback);
         this.broadcastUpdate(normalizedProgramId, {
@@ -3320,6 +3390,18 @@ export class ProgramService implements OnModuleInit {
           programId: normalizedProgramId,
           triggeredAt: event.triggeredAt,
           playback,
+        });
+        break;
+      }
+      case 'song_queue_update': {
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          type: 'song_queue_update',
+          programId: normalizedProgramId,
+          songQueue: event.songQueue,
+          ...(event.songSequence !== undefined
+            ? { songSequence: event.songSequence }
+            : {}),
         });
         break;
       }
