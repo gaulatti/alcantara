@@ -122,3 +122,20 @@ test('retains the previous container until the local-logging replacement is heal
     assert.match(deployment, /docker start alcantara-backend/);
   }
 });
+
+test('reclaims only unused images before pulling and after retiring the rollback image', () => {
+  const firstPrune = deployScript.indexOf('docker image prune --all --force');
+  const pull = deployScript.indexOf('pull "$image"');
+  const removePrevious = deployScript.lastIndexOf(
+    'docker rm alcantara-backend-previous',
+  );
+  const finalPrune = deployScript.lastIndexOf(
+    'docker image prune --all --force',
+  );
+
+  assert.ok(firstPrune >= 0);
+  assert.ok(pull > firstPrune);
+  assert.ok(finalPrune > removePrevious);
+  assert.doesNotMatch(deployScript, /docker system prune/);
+  assert.match(deployScript, /trap 'rm -rf "\$docker_config_dir"' EXIT/);
+});

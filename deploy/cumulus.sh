@@ -17,9 +17,8 @@ done
 
 rm -rf "$docker_config_dir"
 install -d -m 0700 "$docker_config_dir"
+trap 'rm -rf "$docker_config_dir"' EXIT
 printf '%s' "$ghcr_token_base64" | base64 -d | docker --config "$docker_config_dir" login ghcr.io --username "$ghcr_user" --password-stdin
-docker --config "$docker_config_dir" pull "$image"
-rm -rf "$docker_config_dir"
 
 docker network inspect broadcast-control >/dev/null
 docker inspect palazzo >/dev/null
@@ -27,6 +26,12 @@ if docker inspect alcantara-backend-previous >/dev/null 2>&1; then
   echo 'An Alcantara rollback container requires operator review'
   exit 1
 fi
+
+# Preserve images referenced by running or stopped containers while reclaiming
+# stale release images and incomplete layers before downloading the candidate.
+docker image prune --all --force
+docker --config "$docker_config_dir" pull "$image"
+rm -rf "$docker_config_dir"
 
 docker run --rm \
   -e AWS_REGION=us-east-1 \
@@ -119,4 +124,5 @@ fi
 if [ "$had_previous" = true ]; then
   docker rm alcantara-backend-previous
 fi
+docker image prune --all --force
 echo ALCANTARA_HEALTHY
