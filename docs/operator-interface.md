@@ -62,7 +62,9 @@ the scene; it never activates Program directly.
 - **Director** shows Preview and Program, the source bank, transition, CUT, TAKE,
   and the lower scene-property workspace.
 - **Audio** shows Program confidence plus the mixer, playlist, sounders, and
-  playback controls.
+  playback controls. Radio adds a bounded Play Next queue above the playlist;
+  playlist-row actions enqueue without interrupting the current song, and the
+  queue returns to normal playlist order after it drains.
 - **Remote** is the bounded switcher used on compact devices. It removes the
   lower editor without removing staging or live actions.
 
@@ -91,6 +93,8 @@ Playback control states are available at `state=playback-live` and
 `state=playback-stale`. These fixtures show the mutually exclusive Manual,
 Autoplay, and Shuffle modes, the independent Loop state, and the live/stale
 authoritative feedback indicator without commanding Palazzo.
+The `state=play-next` fixture renders the ordered queue, active queued entry,
+and safe queue controls without commanding Palazzo.
 
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not

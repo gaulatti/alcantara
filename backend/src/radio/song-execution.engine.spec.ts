@@ -100,9 +100,26 @@ function createEngine(opts: {
   radio?: boolean;
   tv?: boolean;
 }) {
+  let currentProgramState = {
+    programId: opts.tv ? 'tv-1' : 'radio-1',
+    type: opts.tv ? 'tv' : 'radio',
+    songSequence: TWO_SONG_SEQUENCE as unknown,
+    songQueue: [] as unknown[],
+  };
   const prisma = {
     songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
     instant: { findUnique: jest.fn().mockResolvedValue(null) },
+    programState: {
+      findUnique: jest
+        .fn()
+        .mockImplementation(() => Promise.resolve(currentProgramState)),
+      update: jest
+        .fn()
+        .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+          currentProgramState = { ...currentProgramState, ...data };
+          return Promise.resolve(currentProgramState);
+        }),
+    },
   };
   const nowPlayingPublisher = {
     publishPlayback: jest.fn().mockResolvedValue(undefined),
@@ -126,6 +143,8 @@ function createEngine(opts: {
     recordConnectionState: jest.fn(),
     recordReconnectAttempt: jest.fn(),
     recordReconnectFailure: jest.fn(),
+    recordSongQueueAction: jest.fn(),
+    recordSongQueueDepth: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -145,6 +164,10 @@ function createEngine(opts: {
     nowPlayingPublisher,
     metrics,
     prisma,
+    setPersistedProgramState: (next: Partial<typeof currentProgramState>) => {
+      currentProgramState = { ...currentProgramState, ...next };
+    },
+    getPersistedProgramState: () => currentProgramState,
   };
 }
 
@@ -560,10 +583,12 @@ describe('SongExecutionEngine authoritative playback', () => {
   });
 
   it('clears optimistic radio playback when Palazzo rejects the command', async () => {
-    const { engine, radioService, nowPlayingPublisher, metrics } = createEngine({
-      reconciled: true,
-      radio: true,
-    });
+    const { engine, radioService, nowPlayingPublisher, metrics } = createEngine(
+      {
+        reconciled: true,
+        radio: true,
+      },
+    );
     const events: Array<{ type: string }> = [];
     engine.setBroadcastHandler((event) => events.push(event));
     radioService.playSong.mockResolvedValue({ ok: false });
@@ -871,5 +896,294 @@ describe('SongExecutionEngine authoritative playback', () => {
     engine.handleStopSong('radio-1');
 
     expect(nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('plays the persisted FIFO queue before resuming the advanced playlist cursor', async () => {
+    const {
+      engine,
+      radioService,
+      prisma,
+      setPersistedProgramState,
+      getPersistedProgramState,
+    } = createEngine({ reconciled: true, radio: true });
+    const queue = [{ id: 'queue-1', itemId: 'song-1', enqueuedAt: 1 }];
+    setPersistedProgramState({
+      songSequence: TWO_SONG_SEQUENCE,
+      songQueue: queue,
+    });
+
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    engine.handleQueueUpdated('radio-1', queue);
+    const playlistRequestId = radioService.playSong.mock.calls[0][4];
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: playlistRequestId },
+    });
+    await flush(20);
+
+    expect(radioService.playSong.mock.calls.map((call) => call[1])).toEqual([
+      'https://example.test/song-1.mp3',
+      'https://example.test/song-1.mp3',
+    ]);
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      queueEntryId: 'queue-1',
+    });
+    expect(prisma.programState.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          songSequence: expect.objectContaining({ activeItemId: 'song-2' }),
+        },
+      }),
+    );
+
+    const queuedRequestId = radioService.playSong.mock.calls[1][4];
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: queuedRequestId },
+    });
+    await flush(20);
+
+    expect(radioService.playSong.mock.calls.map((call) => call[1])).toEqual([
+      'https://example.test/song-1.mp3',
+      'https://example.test/song-1.mp3',
+      'https://example.test/song-2.mp3',
+    ]);
+    expect(getPersistedProgramState().songQueue).toEqual([]);
+  });
+
+  it('adopts a persisted queue head after restart and consumes it on authoritative end', async () => {
+    const { engine, radioService, setPersistedProgramState } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    const queue = [
+      {
+        id: 'queue-2',
+        itemId: 'song-2',
+        enqueuedAt: 2,
+        active: true,
+        playbackRequestId: 'inherited-queue-request',
+      },
+    ];
+    setPersistedProgramState({
+      songSequence: TWO_SONG_SEQUENCE,
+      songQueue: queue,
+    });
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handleQueueUpdated('radio-1', queue);
+
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingSnapshot(
+        'palazzo-a',
+        'boot-1',
+        1,
+        'inherited-queue-request',
+        'https://example.test/song-2.mp3',
+      ),
+    );
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      queueEntryId: 'queue-2',
+    });
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'inherited-queue-request' },
+    });
+    await flush(20);
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(radioService.playSong.mock.calls[0][1]).toBe(
+      'https://example.test/song-1.mp3',
+    );
+  });
+
+  it('does not mistake the prior playlist request for an identical claimed queue item after restart', async () => {
+    const { engine, radioService, setPersistedProgramState } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    const queue = [
+      {
+        id: 'queue-2',
+        itemId: 'song-2',
+        enqueuedAt: 2,
+        active: true,
+        playbackRequestId: 'queued-request',
+      },
+    ];
+    setPersistedProgramState({
+      songSequence: TWO_SONG_SEQUENCE,
+      songQueue: queue,
+    });
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handleQueueUpdated('radio-1', queue);
+
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingSnapshot(
+        'palazzo-a',
+        'boot-1',
+        1,
+        'prior-playlist-request',
+        'https://example.test/song-2.mp3',
+      ),
+    );
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      queueEntryId: null,
+    });
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'prior-playlist-request' },
+    });
+    await flush(20);
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(radioService.playSong.mock.calls[0][4]).toBe('queued-request');
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      queueEntryId: 'queue-2',
+    });
+  });
+
+  it('releases a queue claim without consuming it when Palazzo rejects the command', async () => {
+    const {
+      engine,
+      radioService,
+      nowPlayingPublisher,
+      metrics,
+      setPersistedProgramState,
+      getPersistedProgramState,
+    } = createEngine({ reconciled: true, radio: true });
+    const queue = [
+      {
+        id: 'queue-2',
+        itemId: 'song-2',
+        enqueuedAt: 2,
+        active: true,
+        playbackRequestId: 'queue-request',
+      },
+    ];
+    setPersistedProgramState({
+      songSequence: TWO_SONG_SEQUENCE,
+      songQueue: queue,
+    });
+    radioService.playSong.mockResolvedValue({ ok: false });
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handleQueueUpdated('radio-1', queue);
+
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush(20);
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(getPersistedProgramState().songQueue).toEqual([
+      { id: 'queue-2', itemId: 'song-2', enqueuedAt: 2 },
+    ]);
+    expect(nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(1);
+    expect(metrics.recordSongQueueAction).toHaveBeenCalledWith('released');
+    expect(metrics.recordSongQueueAction).not.toHaveBeenCalledWith('consumed');
+  });
+
+  it('releases the active queue claim when an operator stops playback', async () => {
+    const {
+      engine,
+      setPersistedProgramState,
+      getPersistedProgramState,
+      metrics,
+    } = createEngine({ reconciled: true, radio: true });
+    const queue = [
+      {
+        id: 'queue-2',
+        itemId: 'song-2',
+        enqueuedAt: 2,
+        active: true,
+        playbackRequestId: 'queued-request',
+      },
+    ];
+    setPersistedProgramState({
+      songSequence: TWO_SONG_SEQUENCE,
+      songQueue: queue,
+    });
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handleQueueUpdated('radio-1', queue);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingSnapshot(
+        'palazzo-a',
+        'boot-1',
+        1,
+        'queued-request',
+        'https://example.test/song-2.mp3',
+      ),
+    );
+
+    engine.handleStopSong('radio-1');
+    await flush(20);
+
+    expect(getPersistedProgramState().songQueue).toEqual([
+      { id: 'queue-2', itemId: 'song-2', enqueuedAt: 2 },
+    ]);
+    expect(metrics.recordSongQueueAction).toHaveBeenCalledWith('released');
+  });
+
+  it('stops safely without commanding the queue when cursor persistence fails', async () => {
+    const {
+      engine,
+      radioService,
+      nowPlayingPublisher,
+      metrics,
+      prisma,
+      setPersistedProgramState,
+    } = createEngine({ reconciled: true, radio: true });
+    const queue = [{ id: 'queue-1', itemId: 'song-2', enqueuedAt: 1 }];
+    setPersistedProgramState({
+      songSequence: TWO_SONG_SEQUENCE,
+      songQueue: queue,
+    });
+    engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    engine.handleQueueUpdated('radio-1', queue);
+    prisma.programState.update.mockRejectedValueOnce(new Error('db down'));
+    const requestId = radioService.playSong.mock.calls[0][4];
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush(20);
+
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(nowPlayingPublisher.publishStopped).toHaveBeenCalledTimes(1);
+    expect(metrics.recordSongQueueAction).toHaveBeenCalledWith(
+      'persistence-failed',
+    );
+  });
+
+  it('persists duplicate enqueue requests as distinct FIFO entries', async () => {
+    const { engine, getPersistedProgramState } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+
+    const first = await engine.enqueueSong('radio-1', 'song-2');
+    const second = await engine.enqueueSong('radio-1', 'song-2');
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(2);
+    expect(second[0].id).not.toBe(second[1].id);
+    expect(getPersistedProgramState().songQueue).toEqual(second);
   });
 });

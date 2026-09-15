@@ -1,28 +1,40 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   Inject,
   forwardRef,
+  NotFoundException,
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { RadioService } from './radio.service';
 import { FlightService } from '../program/flight.service';
 import { PrismaService } from '../prisma.service';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
-import { RadioMetricsService } from './radio-metrics.service';
+import {
+  RadioMetricsService,
+  type SongQueueActionResult,
+} from './radio-metrics.service';
 import type {
   PalazzoPlaybackState,
   PalazzoProgramStatus,
 } from './palazzo-contract';
 import {
   advanceProgramSongSequence,
+  findUniqueProgramSongLeafById,
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
   resolveProgramSongLeaf,
   type ProgramSongSequence,
 } from './song-sequence.utils';
+import {
+  MAX_PROGRAM_SONG_QUEUE_LENGTH,
+  normalizeProgramSongQueue,
+  type ProgramSongQueueEntry,
+} from './song-queue.utils';
 
 export interface SongPlaybackData {
   token: string;
@@ -39,6 +51,7 @@ export interface SongPlaybackData {
   telemetryStale: boolean;
   introStatus: IntroPlaybackStatus;
   introFailureReason: string | null;
+  queueEntryId: string | null;
 }
 
 export type IntroPlaybackStatus =
@@ -56,6 +69,12 @@ export type SongEngineEvent =
       playback: SongPlaybackData;
     }
   | { type: 'song_off_air'; programId: string; triggeredAt: string }
+  | {
+      type: 'song_queue_update';
+      programId: string;
+      songQueue: ProgramSongQueueEntry[];
+      songSequence?: ProgramSongSequence | null;
+    }
   | {
       type: 'radio_leg_status';
       programId: string;
@@ -92,10 +111,12 @@ interface ActiveSong {
   authoritativeStartedAt: number | null;
   authoritativePositionMs: number | null;
   authoritativeUpdatedAt: number | null;
+  queueEntryId: string | null;
 }
 
 interface SongEngineState {
   sequence: ProgramSongSequence | null;
+  queue: ProgramSongQueueEntry[];
   activeSong: ActiveSong | null;
   pendingRequestIds: Set<string>;
   endedRequestIds: string[];
@@ -108,6 +129,8 @@ interface SongEngineState {
   reconciled: boolean;
   busyWithForeignTrack: boolean;
   lastIdleSequence: number | null;
+  transitioning: boolean;
+  queueBlocked: boolean;
 }
 
 const MAX_ENDED_REQUEST_IDS = 128;
@@ -128,6 +151,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private broadcast: SongEngineBroadcastFn | null = null;
   private telemetry: PalazzoTelemetrySource | null = null;
   private readonly radioProgramIds = new Set<string>();
+  private readonly queueMutationLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly radioService: RadioService,
@@ -149,26 +173,28 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             programId: true,
             type: true,
             songSequence: true,
+            songQueue: true,
           },
         },
       },
     });
     for (const s of settings) {
       const pid = s.programState.programId;
-      if (!s.programState.songSequence || !s.palazzoUrl) continue;
+      if (!s.palazzoUrl) continue;
       if (!RADIO_PROGRAM_TYPES.has(s.programState.type)) continue;
       const seq = normalizeProgramSongSequence(s.programState.songSequence);
+      this.radioProgramIds.add(pid);
+      const state = this.ensureState(pid);
+      state.sequence = seq;
+      state.queue = normalizeProgramSongQueue(s.programState.songQueue);
+      this.updateQueueDepthMetric();
       if (
         !seq ||
         (seq.mode !== 'autoplay' && seq.mode !== 'shuffle') ||
         !seq.items.length
       )
         continue;
-
-      this.radioProgramIds.add(pid);
-      const state = this.ensureState(pid);
-      state.sequence = seq;
-      state.sequence.startedAt = Date.now();
+      seq.startedAt = Date.now();
       this.logger.log(
         `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
       );
@@ -196,6 +222,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (!s) {
       s = {
         sequence: null,
+        queue: [],
         activeSong: null,
         pendingRequestIds: new Set<string>(),
         endedRequestIds: [],
@@ -207,6 +234,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         reconciled: false,
         busyWithForeignTrack: false,
         lastIdleSequence: null,
+        transitioning: false,
+        queueBlocked: false,
       };
       this.states.set(programId, s);
     }
@@ -236,6 +265,310 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       this.maybeStartSequence(programId);
     }
+  }
+
+  handleQueueUpdated(programId: string, rawQueue: unknown): void {
+    const state = this.ensureState(programId);
+    state.queue = normalizeProgramSongQueue(rawQueue);
+    state.queueBlocked = false;
+    this.updateQueueDepthMetric();
+    if (
+      state.queue.length &&
+      state.sequence &&
+      (state.sequence.mode === 'autoplay' || state.sequence.mode === 'shuffle')
+    ) {
+      this.maybeStartSequence(programId);
+    }
+  }
+
+  async enqueueSong(
+    programId: string,
+    itemId: string,
+  ): Promise<ProgramSongQueueEntry[]> {
+    return this.withQueueMutationLock(programId, async () => {
+      try {
+        const normalizedItemId = itemId.trim();
+        if (!normalizedItemId) {
+          throw new BadRequestException('itemId is required');
+        }
+        const persisted = await this.readQueueState(programId);
+        const sequence = normalizeProgramSongSequence(persisted.songSequence);
+        const song = findUniqueProgramSongLeafById(sequence, normalizedItemId);
+        if (!song?.audioUrl) {
+          throw new BadRequestException(
+            'Queued song must reference one playable playlist item',
+          );
+        }
+        const queue = normalizeProgramSongQueue(persisted.songQueue);
+        if (queue.length >= MAX_PROGRAM_SONG_QUEUE_LENGTH) {
+          throw new BadRequestException(
+            `Play Next queue is limited to ${MAX_PROGRAM_SONG_QUEUE_LENGTH} entries`,
+          );
+        }
+        const nextQueue = [
+          ...queue,
+          {
+            id: randomUUID(),
+            itemId: normalizedItemId,
+            enqueuedAt: Date.now(),
+          },
+        ];
+        await this.persistQueue(programId, nextQueue);
+        this.applyPersistedQueue(programId, nextQueue, 'enqueued');
+        return nextQueue;
+      } catch (error) {
+        this.recordQueueMutationFailure(error);
+        throw error;
+      }
+    });
+  }
+
+  async removeQueuedSong(
+    programId: string,
+    entryId: string,
+  ): Promise<ProgramSongQueueEntry[]> {
+    return this.withQueueMutationLock(programId, async () => {
+      try {
+        const normalizedEntryId = entryId.trim();
+        if (!normalizedEntryId) {
+          throw new BadRequestException('queue entry ID is required');
+        }
+        const persisted = await this.readQueueState(programId);
+        const queue = normalizeProgramSongQueue(persisted.songQueue);
+        if (queue.find((entry) => entry.id === normalizedEntryId)?.active) {
+          throw new BadRequestException(
+            'The playing queue entry cannot be removed before it ends',
+          );
+        }
+        const nextQueue = queue.filter(
+          (entry) => entry.id !== normalizedEntryId,
+        );
+        if (nextQueue.length === queue.length) {
+          throw new NotFoundException('Queued song not found');
+        }
+        await this.persistQueue(programId, nextQueue);
+        this.applyPersistedQueue(programId, nextQueue, 'removed');
+        return nextQueue;
+      } catch (error) {
+        this.recordQueueMutationFailure(error);
+        throw error;
+      }
+    });
+  }
+
+  async reorderSongQueue(
+    programId: string,
+    entryIds: string[],
+  ): Promise<ProgramSongQueueEntry[]> {
+    return this.withQueueMutationLock(programId, async () => {
+      try {
+        if (
+          !Array.isArray(entryIds) ||
+          entryIds.some((id) => typeof id !== 'string')
+        ) {
+          throw new BadRequestException(
+            'entryIds must be an array of queue entry IDs',
+          );
+        }
+        const persisted = await this.readQueueState(programId);
+        const queue = normalizeProgramSongQueue(persisted.songQueue);
+        const normalizedIds = entryIds.map((id) => id.trim());
+        const requested = new Set(normalizedIds);
+        const activeQueueEntryId =
+          queue.find((entry) => entry.active)?.id ??
+          this.states.get(programId)?.activeSong?.queueEntryId ??
+          null;
+        if (
+          normalizedIds.some((id) => !id) ||
+          requested.size !== normalizedIds.length ||
+          normalizedIds.length !== queue.length ||
+          queue.some((entry) => !requested.has(entry.id))
+        ) {
+          throw new BadRequestException(
+            'entryIds must contain every queued entry exactly once',
+          );
+        }
+        if (activeQueueEntryId && normalizedIds[0] !== activeQueueEntryId) {
+          throw new BadRequestException(
+            'The playing queue entry must remain first until it ends',
+          );
+        }
+        const byId = new Map(queue.map((entry) => [entry.id, entry]));
+        const nextQueue = normalizedIds.map((id) => byId.get(id)!);
+        await this.persistQueue(programId, nextQueue);
+        this.applyPersistedQueue(programId, nextQueue, 'reordered');
+        return nextQueue;
+      } catch (error) {
+        this.recordQueueMutationFailure(error);
+        throw error;
+      }
+    });
+  }
+
+  private async withQueueMutationLock<T>(
+    programId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const previous =
+      this.queueMutationLocks.get(programId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => gate);
+    this.queueMutationLocks.set(programId, tail);
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.queueMutationLocks.get(programId) === tail) {
+        this.queueMutationLocks.delete(programId);
+      }
+    }
+  }
+
+  private async readQueueState(programId: string): Promise<{
+    type: string;
+    songSequence: unknown;
+    songQueue: unknown;
+  }> {
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      select: { type: true, songSequence: true, songQueue: true },
+    });
+    if (!state) throw new NotFoundException('Program not found');
+    if (!RADIO_PROGRAM_TYPES.has(state.type)) {
+      throw new BadRequestException(
+        'Play Next is available only for Radio and Simulcast programs',
+      );
+    }
+    return state;
+  }
+
+  private async persistQueue(
+    programId: string,
+    queue: ProgramSongQueueEntry[],
+  ): Promise<void> {
+    await this.prisma.programState.update({
+      where: { programId },
+      data: { songQueue: queue as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  private applyPersistedQueue(
+    programId: string,
+    queue: ProgramSongQueueEntry[],
+    result: SongQueueActionResult,
+    songSequence?: ProgramSongSequence | null,
+  ): void {
+    const state = this.ensureState(programId);
+    state.queue = queue;
+    state.queueBlocked = false;
+    this.metrics.recordSongQueueAction(result);
+    this.updateQueueDepthMetric();
+    this.emit({
+      type: 'song_queue_update',
+      programId,
+      songQueue: queue,
+      ...(songSequence !== undefined ? { songSequence } : {}),
+    });
+    if (
+      queue.length &&
+      state.sequence &&
+      (state.sequence.mode === 'autoplay' || state.sequence.mode === 'shuffle')
+    ) {
+      this.maybeStartSequence(programId);
+    }
+  }
+
+  private async claimQueueHead(
+    programId: string,
+    entryId: string,
+    playbackRequestId: string,
+  ): Promise<boolean> {
+    return this.withQueueMutationLock(programId, async () => {
+      const persisted = await this.readQueueState(programId);
+      const queue = normalizeProgramSongQueue(persisted.songQueue);
+      const head = queue[0] ?? null;
+      if (!head || head.id !== entryId) {
+        this.handleQueueUpdated(programId, queue);
+        return false;
+      }
+      if (head.active) {
+        this.handleQueueUpdated(programId, queue);
+        return head.playbackRequestId === playbackRequestId;
+      }
+      const nextQueue = [
+        { ...head, active: true, playbackRequestId },
+        ...queue.slice(1),
+      ];
+      await this.persistQueue(programId, nextQueue);
+      this.applyPersistedQueue(programId, nextQueue, 'claimed');
+      return true;
+    });
+  }
+
+  private async releaseQueueClaim(
+    programId: string,
+    entryId: string,
+  ): Promise<void> {
+    await this.withQueueMutationLock(programId, async () => {
+      const persisted = await this.readQueueState(programId);
+      const queue = normalizeProgramSongQueue(persisted.songQueue);
+      const claimedEntry = queue.find((entry) => entry.id === entryId);
+      if (!claimedEntry?.active) {
+        this.handleQueueUpdated(programId, queue);
+        return;
+      }
+      const nextQueue = queue.map((entry) =>
+        entry.id === entryId
+          ? {
+              id: entry.id,
+              itemId: entry.itemId,
+              enqueuedAt: entry.enqueuedAt,
+            }
+          : entry,
+      );
+      await this.persistQueue(programId, nextQueue);
+      this.applyPersistedQueue(programId, nextQueue, 'released');
+    });
+  }
+
+  private releaseQueueClaimAfterPlaybackStops(
+    programId: string,
+    entryId: string,
+    blockQueueAfterRelease = false,
+  ): void {
+    const state = this.states.get(programId);
+    if (state) state.transitioning = true;
+    void this.releaseQueueClaim(programId, entryId)
+      .then(() => {
+        const nextState = this.states.get(programId);
+        if (nextState) {
+          nextState.transitioning = false;
+          nextState.queueBlocked = blockQueueAfterRelease;
+        }
+      })
+      .catch((error) => {
+        this.blockQueueAfterPersistenceFailure(programId, error, false);
+      });
+  }
+
+  private updateQueueDepthMetric(): void {
+    let depth = 0;
+    for (const programId of this.radioProgramIds) {
+      depth += this.states.get(programId)?.queue.length ?? 0;
+    }
+    this.metrics.recordSongQueueDepth(depth);
+  }
+
+  private recordQueueMutationFailure(error: unknown): void {
+    this.metrics.recordSongQueueAction(
+      error instanceof BadRequestException || error instanceof NotFoundException
+        ? 'rejected'
+        : 'persistence-failed',
+    );
   }
 
   handleManualSong(
@@ -270,6 +603,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       authoritativeStartedAt: null,
       authoritativePositionMs: null,
       authoritativeUpdatedAt: null,
+      queueEntryId: null,
     };
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
@@ -300,17 +634,22 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       void this.nowPlayingPublisherService.publishStopped(programId);
       return;
     }
+    const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     this.clearTimer(programId);
     this.stopProgress(programId);
     state.activeSong = null;
     state.pendingRequestIds.clear();
     state.busyWithForeignTrack = false;
+    state.transitioning = false;
     this.emit({
       type: 'song_off_air',
       programId,
       triggeredAt: new Date().toISOString(),
     });
     void this.nowPlayingPublisherService.publishStopped(programId);
+    if (stoppedQueueEntryId) {
+      this.releaseQueueClaimAfterPlaybackStops(programId, stoppedQueueEntryId);
+    }
   }
 
   getPlaybackState(programId: string): SongPlaybackData | null {
@@ -515,6 +854,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       snapshot.track?.url ?? '',
     );
     if (requestId && inheritedSong?.audioUrl) {
+      const inheritedQueueEntry =
+        state.queue[0]?.active === true &&
+        state.queue[0].playbackRequestId === requestId &&
+        state.queue[0].itemId === inheritedSong.id
+          ? state.queue[0]
+          : null;
       const positionMs = Math.max(
         0,
         Math.round(snapshot.positionSeconds * 1000),
@@ -547,6 +892,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         authoritativeStartedAt,
         authoritativePositionMs: positionMs,
         authoritativeUpdatedAt: Date.now(),
+        queueEntryId: inheritedQueueEntry?.id ?? null,
       };
       state.busyWithForeignTrack = false;
       this.logger.log(
@@ -642,40 +988,149 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.pendingRequestIds.clear();
     state.songCount++;
     state.busyWithForeignTrack = false;
-    const hasSuccessor =
-      state.sequence?.mode === 'autoplay' || state.sequence?.mode === 'shuffle'
-        ? advanceProgramSongSequence(state.sequence, endedSong.itemId)
-        : false;
-    this.logger.log(
-      `Authoritative end on ${programId}: mode=${state.sequence?.mode ?? 'none'} loop=${state.sequence?.loop ?? false} cursor=${state.sequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
-    );
-
-    void this.maybeBumper(programId).then(() => {
-      const st = this.states.get(programId);
-      if (!st || st.activeSong || st.frozen) return;
-
-      if (
-        st.sequence &&
-        hasSuccessor &&
-        (st.sequence.mode === 'autoplay' || st.sequence.mode === 'shuffle')
-      ) {
-        // This callback originates from an authoritative Palazzo end event;
-        // the general reconciliation/pending guards have already been
-        // satisfied above. Dispatch the resolved successor directly.
-        if (this.playNext(programId)) return;
-        this.logger.error(
-          `Successor could not be resolved on ${programId}: cursor=${st.sequence.activeItemId ?? 'none'}`,
+    const nextSequence = state.sequence
+      ? normalizeProgramSongSequence(state.sequence)
+      : null;
+    const isAutomatic =
+      nextSequence?.mode === 'autoplay' || nextSequence?.mode === 'shuffle';
+    const hasSuccessor = endedSong.queueEntryId
+      ? Boolean(isAutomatic && resolveProgramSongLeaf(nextSequence))
+      : Boolean(
+          isAutomatic &&
+          nextSequence &&
+          advanceProgramSongSequence(nextSequence, endedSong.itemId),
         );
-      }
+    state.transitioning = true;
+    this.logger.log(
+      `Authoritative end on ${programId}: source=${endedSong.queueEntryId ? 'queue' : 'playlist'} mode=${nextSequence?.mode ?? 'none'} loop=${nextSequence?.loop ?? false} cursor=${nextSequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
+    );
+    void this.continueAfterAuthoritativeEnd(
+      programId,
+      endedSong.queueEntryId,
+      nextSequence,
+      hasSuccessor,
+    );
+  }
 
-      this.metrics.recordTrackTransition('published-stopped');
-      void this.nowPlayingPublisherService.publishStopped(programId);
-      this.stopProgress(programId);
-      this.emit({
-        type: 'song_off_air',
-        programId,
-        triggeredAt: new Date().toISOString(),
+  private async continueAfterAuthoritativeEnd(
+    programId: string,
+    endedQueueEntryId: string | null,
+    nextSequence: ProgramSongSequence | null,
+    hasSequenceSuccessor: boolean,
+  ): Promise<void> {
+    let cursorPersisted = false;
+    try {
+      if (endedQueueEntryId) {
+        await this.withQueueMutationLock(programId, async () => {
+          const persisted = await this.readQueueState(programId);
+          const queue = normalizeProgramSongQueue(persisted.songQueue);
+          const nextQueue = queue.filter(
+            (entry) => entry.id !== endedQueueEntryId,
+          );
+          await this.persistQueue(programId, nextQueue);
+          this.applyPersistedQueue(programId, nextQueue, 'consumed');
+        });
+      } else {
+        const state = this.states.get(programId);
+        if (state) state.sequence = nextSequence;
+        if (state?.queue.length && nextSequence) {
+          await this.persistPlaylistCursorForQueue(programId, nextSequence);
+          cursorPersisted = true;
+        }
+      }
+    } catch (error) {
+      this.blockQueueAfterPersistenceFailure(programId, error);
+      return;
+    }
+
+    await this.maybeBumper(programId);
+    const state = this.states.get(programId);
+    if (!state || state.activeSong || state.frozen) return;
+
+    if (state.queue.length) {
+      try {
+        if (!endedQueueEntryId && !cursorPersisted && nextSequence) {
+          await this.persistPlaylistCursorForQueue(programId, nextSequence);
+        }
+      } catch (error) {
+        this.blockQueueAfterPersistenceFailure(programId, error);
+        return;
+      }
+      state.transitioning = false;
+      if (this.playNext(programId)) return;
+      state.queueBlocked = true;
+      this.logger.error(
+        `Queued playlist item could not be resolved on ${programId}; stopping without falling through`,
+      );
+      this.publishStopped(programId);
+      return;
+    }
+
+    state.transitioning = false;
+    if (
+      state.sequence &&
+      hasSequenceSuccessor &&
+      (state.sequence.mode === 'autoplay' || state.sequence.mode === 'shuffle')
+    ) {
+      // This callback originates from an authoritative Palazzo end event;
+      // the general reconciliation/pending guards have already been
+      // satisfied above. Dispatch the resolved successor directly.
+      if (this.playNext(programId)) return;
+      this.logger.error(
+        `Successor could not be resolved on ${programId}: cursor=${state.sequence.activeItemId ?? 'none'}`,
+      );
+    }
+
+    this.publishStopped(programId);
+  }
+
+  private async persistPlaylistCursorForQueue(
+    programId: string,
+    sequence: ProgramSongSequence,
+  ): Promise<void> {
+    await this.withQueueMutationLock(programId, async () => {
+      await this.prisma.programState.update({
+        where: { programId },
+        data: {
+          songSequence: sequence as unknown as Prisma.InputJsonValue,
+        },
       });
+      const state = this.ensureState(programId);
+      state.sequence = sequence;
+      this.applyPersistedQueue(
+        programId,
+        state.queue,
+        'cursor-persisted',
+        sequence,
+      );
+    });
+  }
+
+  private blockQueueAfterPersistenceFailure(
+    programId: string,
+    error: unknown,
+    publishStopped = true,
+  ): void {
+    const state = this.states.get(programId);
+    if (state) {
+      state.transitioning = false;
+      state.queueBlocked = true;
+    }
+    this.metrics.recordSongQueueAction('persistence-failed');
+    this.logger.error(
+      `Play Next persistence failed on ${programId}; stopping safely: ${String(error)}`,
+    );
+    if (publishStopped) this.publishStopped(programId);
+  }
+
+  private publishStopped(programId: string): void {
+    this.metrics.recordTrackTransition('published-stopped');
+    void this.nowPlayingPublisherService.publishStopped(programId);
+    this.stopProgress(programId);
+    this.emit({
+      type: 'song_off_air',
+      programId,
+      triggeredAt: new Date().toISOString(),
     });
   }
 
@@ -686,6 +1141,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return false;
     if (state.activeSong || state.pendingRequestIds.size) return false;
     if (state.frozen) return false;
+    if (state.transitioning || state.queueBlocked) return false;
     if (this.isRadioCapable(programId)) {
       if (!state.reconciled) return false;
       if (!this.telemetry?.isReconciled(programId)) return false;
@@ -698,14 +1154,47 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const state = this.states.get(programId);
     if (!state?.sequence) return false;
 
-    const resolved = resolveProgramSongLeaf(state.sequence, Date.now());
+    if (state.queueBlocked) return false;
+    const queueEntry = state.queue[0] ?? null;
+    if (queueEntry && !queueEntry.active) {
+      const queuePlaybackRequestId = randomUUID();
+      state.transitioning = true;
+      void this.claimQueueHead(programId, queueEntry.id, queuePlaybackRequestId)
+        .then((claimed) => {
+          const nextState = this.states.get(programId);
+          if (!nextState) return;
+          nextState.transitioning = false;
+          if (claimed) {
+            if (!this.playNext(programId)) {
+              this.logger.error(
+                `Claimed Play Next item could not be resolved on ${programId}; stopping without falling through`,
+              );
+              this.publishStopped(programId);
+              this.releaseQueueClaimAfterPlaybackStops(
+                programId,
+                queueEntry.id,
+                true,
+              );
+            }
+            return;
+          }
+          this.maybeStartSequence(programId);
+        })
+        .catch((error) => {
+          this.blockQueueAfterPersistenceFailure(programId, error);
+        });
+      return true;
+    }
+    const resolved = queueEntry
+      ? findUniqueProgramSongLeafById(state.sequence, queueEntry.itemId)
+      : resolveProgramSongLeaf(state.sequence, Date.now());
     if (!resolved?.audioUrl) return false;
 
     const dur =
       typeof resolved.durationMs === 'number' && resolved.durationMs > 0
         ? resolved.durationMs
         : 300000;
-    const playbackRequestId = randomUUID();
+    const playbackRequestId = queueEntry?.playbackRequestId ?? randomUUID();
     state.pendingRequestIds.add(playbackRequestId);
     state.activeSong = {
       token: `${resolved.id}:${resolved.audioUrl}`,
@@ -724,6 +1213,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       authoritativeStartedAt: null,
       authoritativePositionMs: null,
       authoritativeUpdatedAt: null,
+      queueEntryId: queueEntry?.id ?? null,
     };
 
     this.logger.log(
@@ -883,6 +1373,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       return;
     }
+    const failedQueueEntryId = state.activeSong.queueEntryId;
     state.activeSong = null;
     this.stopProgress(programId);
     this.metrics.recordTrackTransition('command-failed');
@@ -892,6 +1383,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       programId,
       triggeredAt: new Date().toISOString(),
     });
+    if (failedQueueEntryId) {
+      this.releaseQueueClaimAfterPlaybackStops(programId, failedQueueEntryId);
+    }
   }
 
   /**
@@ -1068,6 +1562,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           now - s.authoritativeUpdatedAt > 15_000),
       introStatus: s.introStatus,
       introFailureReason: s.introFailureReason,
+      queueEntryId: s.queueEntryId,
     };
   }
 

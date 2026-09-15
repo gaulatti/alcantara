@@ -7,7 +7,9 @@ import {
 import type { Scene } from "../models/broadcast";
 import { SimulcastStatusRail } from "../components/SimulcastStatusRail";
 import { PlaybackBar } from "../components/PlaybackBar";
+import { PlayNextQueue } from "../components/PlayNextQueue";
 import type { ProgramSongSequence } from "../utils/programSequence";
+import type { ProgramSongQueueEntry } from "../models/broadcast";
 
 const layout = {
   id: 1,
@@ -80,13 +82,43 @@ export default function ConsoleFixture() {
   const [ftb, setFtb] = useState(fixture === "ftb");
   const [songs, setSongs] = useState(playbackSequence);
   const [playbackOnAir, setPlaybackOnAir] = useState(true);
+  const [songQueue, setSongQueue] = useState<ProgramSongQueueEntry[]>([
+    { id: "fixture-queue-1", itemId: "fixture-song-2", enqueuedAt: 1 },
+    { id: "fixture-queue-2", itemId: "fixture-song-1", enqueuedAt: 2 },
+  ]);
   const isPlaybackFixture =
     fixture === "playback-live" || fixture === "playback-stale";
 
   return (
     <main className="min-h-screen bg-zinc-950" data-visual-fixture={fixture}>
       {mode === "both" ? <SimulcastStatusRail programId="fixture" /> : null}
-      {isPlaybackFixture ? (
+      {fixture === "play-next" ? (
+        <section className="flex min-h-screen items-center justify-center bg-dark-sand px-6 text-text-primary">
+          <div className="w-full max-w-md overflow-hidden rounded-xl border border-sand/30">
+            <PlayNextQueue
+              queue={songQueue}
+              sequence={songs}
+              activeQueueEntryId="fixture-queue-1"
+              onRemove={(entryId) =>
+                setSongQueue((current) =>
+                  current.filter((entry) => entry.id !== entryId),
+                )
+              }
+              onReorder={(entryIds) =>
+                setSongQueue((current) => {
+                  const byId = new Map(
+                    current.map((entry) => [entry.id, entry]),
+                  );
+                  return entryIds.flatMap((id) => {
+                    const entry = byId.get(id);
+                    return entry ? [entry] : [];
+                  });
+                })
+              }
+            />
+          </div>
+        </section>
+      ) : isPlaybackFixture ? (
         <section className="flex min-h-screen items-center justify-center px-6 pb-24 text-center text-text-primary">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-sea">

@@ -151,11 +151,17 @@ to the next playlist item only after Palazzo reports that the active track ended
 looped playlists wrap to the first item and non-looped playlists stop at the end.
 Shuffle persists and displays a randomized no-repeat order, advances through it
 on the same authoritative Palazzo end events, and wraps only when Loop is on.
+Play Next is a separate persisted FIFO queue of playlist references. It never
+interrupts the current track. At the next authoritative track end it takes
+priority, then Autoplay or Shuffle resumes from the playlist successor that
+would have played; Manual remains stopped after the queue drains.
 The playback bar exposes pressed states for Manual, Autoplay, Shuffle, and Loop
 and labels backend playback feedback as live or stale.
 
 The Radio desk includes live Song, Audio clips / bumpers, and Main mixer
-controls. Radio distribution at `/radio-settings` owns Palazzo automation,
+controls. Playlist rows can be added to Play Next without changing playlist
+order, and the queue supports removal and ordering before playback. Radio
+distribution at `/radio-settings` owns Palazzo automation,
 bumper policy, and now-playing consumers so live playout is not mixed with
 configuration. Simulcast uses the TV switcher with an explicit radio-leg status
 rail. Mixer mutations are applied to Palazzo as well as persisted; bumper

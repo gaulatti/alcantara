@@ -190,7 +190,14 @@ export interface BackgroundAudioAsset {
 
 export interface ProgramAudioBusSettings {
   songSequence: unknown | null;
+  songQueue?: ProgramSongQueueEntry[];
   mixerSettings?: unknown | null;
+}
+
+export interface ProgramSongQueueEntry {
+  id: string;
+  itemId: string;
+  enqueuedAt: number;
 }
 
 export interface BroadcastSettings {
@@ -250,6 +257,7 @@ export interface ProgramSongPlaybackState {
   telemetryStale?: boolean;
   introStatus?: 'none' | 'pending' | 'playing' | 'completed' | 'degraded';
   introFailureReason?: string | null;
+  queueEntryId?: string | null;
 }
 
 export type ComponentPropsMap = Record<string, any>;

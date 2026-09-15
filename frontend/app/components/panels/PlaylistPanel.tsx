@@ -8,6 +8,7 @@ interface PlaylistPanelProps {
   programSongPlayback: ProgramSongPlaybackState | null;
   onChange: (sequence: ProgramSongSequence) => void;
   onTakeSelection?: (sequence: ProgramSongSequence) => Promise<void> | void;
+  onQueueItem?: (itemId: string) => Promise<void> | void;
 }
 
 export function PlaylistPanel({
@@ -16,6 +17,7 @@ export function PlaylistPanel({
   programSongPlayback,
   onChange,
   onTakeSelection,
+  onQueueItem,
 }: PlaylistPanelProps) {
   return (
     <ProgramSongSequenceEditor
@@ -25,6 +27,7 @@ export function PlaylistPanel({
       view='queue'
       onChange={(nextSequence) => onChange(nextSequence)}
       onTakeSelection={onTakeSelection ? async (nextSequence) => await onTakeSelection(nextSequence) : undefined}
+      onQueueItem={onQueueItem}
     />
   );
 }

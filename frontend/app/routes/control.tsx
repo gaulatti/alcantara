@@ -21,6 +21,7 @@ import {
 } from "../models/components";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { authFetch } from "../services/api";
+import { normalizeProgramSongQueue } from "../utils/songQueue";
 import { dbToFader, faderToGain } from "../utils/audioTaper";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import { useGlobalTransitionId } from "../utils/globalTransition";
@@ -453,6 +454,7 @@ export default function Control() {
   const [programAudioBusSettings, setProgramAudioBusSettings] =
     useState<ProgramAudioBusSettings>({
       songSequence: createProgramSongSequence("manual"),
+      songQueue: [],
     });
   const [isSavingProgramAudioBus, setIsSavingProgramAudioBus] = useState(false);
   const [isPlaylistSheetOpen, setIsPlaylistSheetOpen] = useState(false);
@@ -942,7 +944,11 @@ export default function Control() {
               activeItemId: null,
             },
           );
-          setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+          setProgramAudioBusSettings((previous) => ({
+            ...previous,
+            songSequence: normalizedSongSequence,
+            songQueue: normalizeProgramSongQueue(payload?.settings?.songQueue),
+          }));
           return;
         }
 
@@ -1049,7 +1055,34 @@ export default function Control() {
               activeItemId: null,
             },
           );
-          setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+          setProgramAudioBusSettings((previous) => ({
+            ...previous,
+            songSequence: normalizedSongSequence,
+            songQueue:
+              payload?.settings?.songQueue === undefined
+                ? previous.songQueue
+                : normalizeProgramSongQueue(payload.settings.songQueue),
+          }));
+          return;
+        }
+
+        if (payload.type === "song_queue_update") {
+          const eventProgramId =
+            typeof payload.programId === "string" ? payload.programId : "";
+          if (eventProgramId !== activeProgramId) return;
+          setProgramAudioBusSettings((previous) => ({
+            ...previous,
+            songQueue: normalizeProgramSongQueue(payload.songQueue),
+            songSequence:
+              payload.songSequence === undefined
+                ? previous.songSequence
+                : normalizeProgramSongPlaylist(
+                    normalizeProgramSongSequence(payload.songSequence) ?? {
+                      ...createProgramSongSequence("manual"),
+                      activeItemId: null,
+                    },
+                  ),
+          }));
           return;
         }
 
@@ -1830,7 +1863,10 @@ export default function Control() {
           activeItemId: null,
         },
       );
-      setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+      setProgramAudioBusSettings({
+        songSequence: normalizedSongSequence,
+        songQueue: normalizeProgramSongQueue(payload?.songQueue),
+      });
     } catch (err) {
       if (targetProgramId !== activeProgramIdRef.current) {
         return;
@@ -1844,6 +1880,7 @@ export default function Control() {
           ...createProgramSongSequence("manual"),
           activeItemId: null,
         },
+        songQueue: [],
       });
     } finally {
       if (showLoading) {
@@ -1861,7 +1898,10 @@ export default function Control() {
         activeItemId: null,
       },
     );
-    setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+    setProgramAudioBusSettings((previous) => ({
+      ...previous,
+      songSequence: normalizedSongSequence,
+    }));
     setIsSavingProgramAudioBus(true);
 
     try {
@@ -1898,12 +1938,71 @@ export default function Control() {
         normalizeProgramSongSequence(payload?.songSequence) ??
           normalizedSongSequence,
       );
-      setProgramAudioBusSettings({ songSequence: persistedSongSequence });
+      setProgramAudioBusSettings((previous) => ({
+        ...previous,
+        songSequence: persistedSongSequence,
+        songQueue:
+          payload?.songQueue === undefined
+            ? previous.songQueue
+            : normalizeProgramSongQueue(payload.songQueue),
+      }));
     } catch (err) {
       console.error("Failed to save program audio bus settings:", err);
     } finally {
       setIsSavingProgramAudioBus(false);
     }
+  };
+
+  const applySongQueueMutationResponse = (
+    payload: unknown,
+    targetProgramId: string,
+  ) => {
+    if (targetProgramId !== activeProgramIdRef.current) return;
+    if (!payload || typeof payload !== "object") return;
+    if (!shouldApplyControlUpdatePayload(payload, "audioBus")) return;
+    const response = payload as { songQueue?: unknown };
+    setProgramAudioBusSettings((previous) => ({
+      ...previous,
+      songQueue: normalizeProgramSongQueue(response.songQueue),
+    }));
+  };
+
+  const enqueueProgramSong = async (itemId: string) => {
+    const targetProgramId = activeProgramId;
+    const res = await authFetch(
+      `/program/${encodeURIComponent(targetProgramId)}/song-queue`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    applySongQueueMutationResponse(await res.json(), targetProgramId);
+  };
+
+  const removeQueuedProgramSong = async (entryId: string) => {
+    const targetProgramId = activeProgramId;
+    const res = await authFetch(
+      `/program/${encodeURIComponent(targetProgramId)}/song-queue/${encodeURIComponent(entryId)}`,
+      { method: "DELETE" },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    applySongQueueMutationResponse(await res.json(), targetProgramId);
+  };
+
+  const reorderProgramSongQueue = async (entryIds: string[]) => {
+    const targetProgramId = activeProgramId;
+    const res = await authFetch(
+      `/program/${encodeURIComponent(targetProgramId)}/song-queue`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryIds }),
+      },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
   const takeProgramSongSelection = async (
@@ -3198,7 +3297,31 @@ export default function Control() {
             activeItemId: null,
           },
         );
-        setProgramAudioBusSettings({ songSequence: normalizedSongSequence });
+        setProgramAudioBusSettings((previous) => ({
+          ...previous,
+          songSequence: normalizedSongSequence,
+          songQueue:
+            data?.settings?.songQueue === undefined
+              ? previous.songQueue
+              : normalizeProgramSongQueue(data.settings.songQueue),
+        }));
+        return;
+      }
+
+      if (data.type === "song_queue_update") {
+        setProgramAudioBusSettings((previous) => ({
+          ...previous,
+          songQueue: normalizeProgramSongQueue(data.songQueue),
+          songSequence:
+            data.songSequence === undefined
+              ? previous.songSequence
+              : normalizeProgramSongPlaylist(
+                  normalizeProgramSongSequence(data.songSequence) ?? {
+                    ...createProgramSongSequence("manual"),
+                    activeItemId: null,
+                  },
+                ),
+        }));
         return;
       }
 
@@ -3437,11 +3560,15 @@ export default function Control() {
       <RadioPanel
         programId={activeProgramId}
         songSequence={programAudioBusSongSequence}
+        songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
         programSongPlayback={programSongPlaybackState}
         onSaveSongSequence={async (seq) => {
           await saveProgramAudioBusSongSequence(seq);
         }}
+        onQueueSong={enqueueProgramSong}
+        onRemoveQueuedSong={removeQueuedProgramSong}
+        onReorderSongQueue={reorderProgramSongQueue}
         onTakeOffAir={async () => {
           await takeProgramSongOffAir(activeProgramId);
         }}
