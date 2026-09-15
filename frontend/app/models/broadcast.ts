@@ -161,6 +161,33 @@ export interface MediaGroup {
   items: MediaGroupItem[];
 }
 
+export interface MediaLabelAsset {
+  position: number;
+  asset: {
+    id: string;
+    mediaType: 'IMAGE' | 'AUDIO' | 'VIDEO';
+    name: string;
+    sourceUrl: string;
+  };
+}
+
+export interface MediaLabel {
+  id: string;
+  name: string;
+  description: string | null;
+  assetCount: number;
+  assets: MediaLabelAsset[];
+}
+
+export interface BackgroundAudioAsset {
+  id: string;
+  name: string;
+  sourceUrl: string;
+  enabled: boolean;
+  background: { defaultVolume: number };
+  instant: { id: number; volume: number } | null;
+}
+
 export interface ProgramAudioBusSettings {
   songSequence: unknown | null;
   mixerSettings?: unknown | null;
@@ -202,6 +229,7 @@ export interface ProgramAudioMeterLevels {
 export interface SceneInstantPlaybackState {
   sceneId: number | null;
   instantId: number | null;
+  mediaAssetId: string | null;
   instantName: string;
   isPlaying: boolean;
   updatedAt: string;

@@ -1,4 +1,4 @@
-import { MediaAssetKind } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { ProgramService } from './program.service';
 
 describe('ProgramService switcher state', () => {
@@ -238,15 +238,15 @@ describe('ProgramService switcher state', () => {
       scenes: [],
     });
 
-    await expect(service.addSceneToProgram(scene.id, 'radio-1')).rejects.toThrow(
-      'Radio programs do not support scenes',
+    await expect(
+      service.addSceneToProgram(scene.id, 'radio-1'),
+    ).rejects.toThrow('Radio programs do not support scenes');
+    await expect(service.addMediaGroupToProgram(3, 'radio-1')).rejects.toThrow(
+      'Radio programs do not support media groups',
     );
-    await expect(
-      service.addMediaGroupToProgram(3, 'radio-1'),
-    ).rejects.toThrow('Radio programs do not support media groups');
-    await expect(
-      service.addStingerToProgram(4, 'radio-1'),
-    ).rejects.toThrow('Radio programs do not support stingers');
+    await expect(service.addStingerToProgram(4, 'radio-1')).rejects.toThrow(
+      'Radio programs do not support stingers',
+    );
     await expect(service.stageScene(null, 'radio-1')).rejects.toThrow(
       'Radio programs do not support scenes',
     );
@@ -391,16 +391,123 @@ describe('ProgramService switcher state', () => {
       create: {
         id: 'audio-clip:12',
         kind: MediaAssetKind.AUDIO_CLIP,
+        mediaType: MediaAssetType.AUDIO,
         name: 'Station ID',
         sourceUrl: 'https://media.test/station-id.mp3',
         enabled: true,
       },
       update: {
         kind: MediaAssetKind.AUDIO_CLIP,
+        mediaType: MediaAssetType.AUDIO,
         name: 'Station ID',
         sourceUrl: 'https://media.test/station-id.mp3',
         enabled: true,
       },
+    });
+  });
+
+  it('plays a background-only audio asset from canonical scene metadata', async () => {
+    const backgroundAsset = {
+      id: 'media:background-1',
+      name: 'Weather bed',
+      sourceUrl: 'https://media.test/weather-bed.mp3',
+      enabled: true,
+      audioClip: null,
+      backgroundAudio: { defaultVolume: 0.65 },
+    };
+    const prisma = {
+      programState: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 1,
+          programId: 'tv-1',
+          activeSceneId: 7,
+          scenes: [
+            {
+              sceneId: 7,
+              scene: {
+                ...scene,
+                metadata: JSON.stringify({
+                  sceneInstant: { assetId: backgroundAsset.id },
+                }),
+              },
+            },
+          ],
+        }),
+      },
+      mediaAsset: { findFirst: jest.fn().mockResolvedValue(backgroundAsset) },
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.takeProgramSceneInstant(7, 'tv-1'),
+    ).resolves.toMatchObject({
+      sceneId: 7,
+      instantId: null,
+      mediaAssetId: backgroundAsset.id,
+      isPlaying: true,
+      instant: {
+        id: null,
+        assetId: backgroundAsset.id,
+        name: 'Weather bed',
+        audioUrl: 'https://media.test/weather-bed.mp3',
+        volume: 0.65,
+      },
+    });
+    expect(prisma.mediaAsset.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: backgroundAsset.id,
+        enabled: true,
+        backgroundAudio: { isNot: null },
+      },
+      include: { backgroundAudio: true, audioClip: true },
+    });
+  });
+
+  it('keeps legacy instant-backed scene backgrounds playable', async () => {
+    const prisma = {
+      programState: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 1,
+          programId: 'tv-1',
+          activeSceneId: 7,
+          scenes: [
+            {
+              sceneId: 7,
+              scene: {
+                ...scene,
+                metadata: JSON.stringify({ sceneInstant: { instantId: 12 } }),
+              },
+            },
+          ],
+        }),
+      },
+      instant: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 12,
+          assetId: 'audio-clip:12',
+          name: 'Legacy bed',
+          audioUrl: 'https://media.test/legacy-bed.mp3',
+          volume: 0.75,
+          enabled: true,
+        }),
+      },
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.takeProgramSceneInstant(7, 'tv-1'),
+    ).resolves.toMatchObject({
+      instantId: 12,
+      mediaAssetId: 'audio-clip:12',
+      instant: { id: 12, assetId: 'audio-clip:12', name: 'Legacy bed' },
     });
   });
 

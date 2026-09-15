@@ -67,6 +67,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     hasConfigurableSceneAttributes: true,
     defaultProps: {
       mediaGroupId: null,
+      labelId: null,
       images: [],
       intervalMs: 5000,
       transitionMs: 900,

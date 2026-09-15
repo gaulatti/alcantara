@@ -57,17 +57,10 @@ export function getAppNavigationSections({ programType, canViewBroadcasts, inclu
                 id: 'scene-templates',
                 href: '/layouts',
                 label: 'Scene templates'
-              },
-              { id: 'media', href: '/media', label: 'Media' },
-              {
-                id: 'transitions',
-                href: '/stingers',
-                label: 'Transitions'
               }
             ]
           : []),
-        { id: 'songs', href: '/songs', label: 'Songs' },
-        { id: 'audio-clips', href: '/instants', label: 'Audio clips' }
+        { id: 'media', href: '/media', label: 'Media' }
       ]
     },
     {
@@ -102,6 +95,11 @@ export function getAppNavigationSections({ programType, canViewBroadcasts, inclu
           id: 'console-fixture',
           href: '/console-fixture',
           label: 'Console fixture'
+        },
+        {
+          id: 'media-fixture',
+          href: '/media-fixture',
+          label: 'Media fixture'
         }
       ]
     });

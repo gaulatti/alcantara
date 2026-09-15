@@ -292,9 +292,10 @@ Alcantara's configured API origin; requests to external media and data sources
 remain unchanged. A backend `401` triggers one forced Cognito session refresh;
 if the refreshed request is still unauthorized, Alcantara clears the persisted
 browser identity and returns the operator to login.
-To populate a slideshow, select its media group on the Media Groups tab, switch
-to Media Library, and use each image's add-to-group action. The selected group
-and its ordered membership remain active across the tab switch.
+To populate a slideshow, upload images in the Media library and apply a label to
+the required images. Order the label's assets on the Labels tab, then select the
+label in the slideshow editor. Existing scenes that still reference a legacy
+media group continue to render during migration.
 
 Console preference ownership, device classification, offline behavior,
 concurrency, sharing, reset, privacy, and API behavior are documented in

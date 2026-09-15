@@ -9,7 +9,7 @@ import { parseBuffer } from 'music-metadata';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 
-type UploadKind = 'instant' | 'artwork' | 'song' | 'stinger';
+type UploadKind = 'instant' | 'background' | 'artwork' | 'song' | 'stinger';
 
 interface UploadPayload {
   kind: UploadKind;
@@ -166,7 +166,10 @@ export class UploadsService {
     const extension = this.normalizeExtension(
       extname(payload.originalFilename),
     );
-    const isAudioUpload = payload.kind === 'instant' || payload.kind === 'song';
+    const isAudioUpload =
+      payload.kind === 'instant' ||
+      payload.kind === 'background' ||
+      payload.kind === 'song';
     const isStingerUpload = payload.kind === 'stinger';
     const { maxBytes, allowedMimeTypes, allowedExtensions, fileTypeLabel } =
       isStingerUpload

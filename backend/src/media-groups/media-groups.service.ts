@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import {
+  deleteLegacyMediaGroupLabel,
+  syncLegacyMediaGroupLabel,
+} from '../media-assets/media-label-sync';
 
 interface MediaGroupInput {
   name?: string;
@@ -133,7 +137,7 @@ export class MediaGroupsService {
           });
         }
 
-        return tx.mediaGroup.findUnique({
+        const hydrated = await tx.mediaGroup.findUnique({
           where: { id: created.id },
           include: {
             mediaItems: {
@@ -142,6 +146,11 @@ export class MediaGroupsService {
             },
           },
         });
+        if (!hydrated) {
+          throw new NotFoundException('Media group not found after create');
+        }
+        await syncLegacyMediaGroupLabel(tx, hydrated);
+        return hydrated;
       });
     } catch (error) {
       if (
@@ -203,7 +212,7 @@ export class MediaGroupsService {
           }
         }
 
-        return tx.mediaGroup.findUnique({
+        const hydrated = await tx.mediaGroup.findUnique({
           where: { id },
           include: {
             mediaItems: {
@@ -212,6 +221,11 @@ export class MediaGroupsService {
             },
           },
         });
+        if (!hydrated) {
+          throw new NotFoundException('Media group not found after update');
+        }
+        await syncLegacyMediaGroupLabel(tx, hydrated);
+        return hydrated;
       });
     } catch (error) {
       if (
@@ -232,7 +246,10 @@ export class MediaGroupsService {
 
   async remove(id: number) {
     await this.ensureMediaGroupExists(id);
-    await this.prisma.mediaGroup.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.mediaGroup.delete({ where: { id } });
+      await deleteLegacyMediaGroupLabel(tx, id);
+    });
     return { deletedMediaGroupId: id };
   }
 

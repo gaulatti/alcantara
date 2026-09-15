@@ -1,67 +1,108 @@
 # Media library architecture
 
-Alcántara treats images, audio clips, songs, and transition videos as media
-assets. A media group is an ordered collection of image assets, not a fifth
-asset type. Scenes and scene templates are consumers of media; they are not
-media assets.
+Alcántara has one media library. Every playable or displayable file has one
+canonical `MediaAsset`; its physical type, capabilities, and labels answer
+different questions and must not be collapsed into one enum.
 
-## Canonical identity
+## Physical type, capability, and label
 
-`MediaAsset` is the common registry for every asset. It owns the fields shared
-by all asset kinds:
+`MediaAsset.mediaType` describes the bytes: `IMAGE`, `AUDIO`, or `VIDEO`. It is
+stable even when the asset gains another use.
 
-- a stable string ID;
-- one bounded kind: `IMAGE`, `AUDIO_CLIP`, `SONG`, or `TRANSITION`;
-- a display name;
-- the producer-supplied source URL;
-- enabled state; and
-- creation and update timestamps.
+Typed capability records describe what an asset can do. The current capability
+set is instant audio, scene-background audio, song playback, and video
+transition. Capabilities are additive: one audio asset may be both an instant
+and a background without duplicating its file or identity. Capability-specific
+data remains typed, such as instant volume, song artist and duration,
+background default volume, or transition cut point.
 
-Canonical IDs are deterministic while the legacy tables remain in service:
-`image:<id>`, `audio-clip:<id>`, `song:<id>`, and `transition:<id>`. The existing
-integer IDs remain authoritative for current program, rundown, radio-settings,
-song-intro, scene, and collection references during the migration. Current
-media, instant, song, and stinger API responses expose `assetId` as an additive
-field; all prior fields and endpoints remain supported.
+A song's audio and cover art are two assets: the audio asset carries the song
+capability, while the cover is an image asset with a derived cover capability
+and a typed reference from the Song record.
+The legacy `coverUrl` remains populated for radio and now-playing compatibility.
 
-Type-specific data stays with its existing record during the expand phase.
-Examples include an audio clip's volume and position, a song's artist and
-artwork, and a transition's cut point. This prevents the common registry from
-becoming a nullable catch-all table.
+`MediaLabel` describes how operators classify media. Examples include `80s`,
+`90s`, `Headlines`, `Sponsor`, and `Christmas`. A label is not a media asset or
+a capability: it has no URL, codec, playback lifecycle, or enabled state. Every
+asset may have zero or more labels, and `MediaAssetLabel.position` supplies a
+stable order where a consumer such as a slideshow needs one.
+
+There is deliberately no new collection table. The operator workflow is to
+upload media, then apply one or more labels inline or in bulk. A slideshow
+selects an image label and resolves its enabled image assets in label order.
+
+## Canonical identity and compatibility
+
+`MediaAsset` owns the stable string ID, physical type, display name,
+producer-supplied source URL, enabled state, and timestamps. Deterministic IDs
+remain `image:<id>`, `audio-clip:<id>`, `song:<id>`, and `transition:<id>` while
+the specialized tables remain in service.
+
+Existing `Media`, `Instant`, `Song`, and `Stinger` records continue to own their
+specialized contracts. Existing song IDs, playlist JSON, cursor semantics,
+Palazzo request IDs, radio endpoints, and playback code are unchanged by this
+migration. The common catalog reads those typed relations; it is not inserted
+into the live radio execution path.
+
+Legacy `MediaGroup` rows are imported as labels with deterministic IDs of the
+form `legacy-media-group:<id>`. Writes to an imported label mirror its name,
+description, ordered image membership, and deletion to the legacy tables in the
+same transaction. Existing scene metadata using `mediaGroupId` therefore keeps
+working while new scene edits store `labelId`. The renderer reads `labelId`
+first and retains the old media-group path for scenes not yet edited.
 
 ## Migration and consistency contract
 
-The initial migration is additive. It creates and backfills the registry, then
-links every existing `Media`, `Instant`, `Song`, and `Stinger` row. It does not
-drop, rename, or reinterpret an existing column.
+The production migration is additive: it adds the nullable physical type column and new
+capability/label tables, backfills types, song-cover image assets, and legacy
+group labels, and makes the old conflated `kind` nullable. It drops no table,
+column, enum value, song row, playlist state, or relationship.
 
-All application create, update, and delete paths write the legacy record and
-registry row in one database transaction. The deterministic local seed performs
-its registry synchronization in one transaction after its legacy fixtures are
-upserted. Application startup then reconciles every legacy row
-into the registry and removes orphaned registry rows. The reconciliation covers
-the deployment interval in which the migration can finish before the previous
-application container stops accepting writes. Startup fails when reconciliation
-fails; Alcántara must not serve an incomplete catalog silently.
+The physical type column remains nullable only during this compatibility phase
+because the deployment migrates before stopping the previous backend. A media
+upload during that overlap can still be accepted, and startup reconciliation
+fills its type before the replacement backend becomes ready. A later contraction
+migration can enforce the non-null constraint after old writers are retired.
 
-The bounded `media-asset-reconciliation` background-job metric records success
-and failure, and its successful run updates the standard last-success timestamp.
-The metric contains no asset IDs, names, or URLs.
+All specialized create and update paths synchronize the canonical row in the
+same transaction. Startup reconciliation closes the deployment overlap window,
+adds background capability to instant audio referenced by scenes, mirrors
+legacy groups into labels, and removes only provably orphaned compatibility
+rows. Startup fails if reconciliation fails.
 
-## Delivery phases
+Scene background selection now stores `sceneInstant.assetId` and resolves the
+typed background capability directly. Existing scene metadata containing only
+`sceneInstant.instantId` remains readable and playable; the control UI maps that
+legacy instant to its canonical asset until the scene is edited. New
+background-only uploads do not create or appear as Instant records.
 
-1. **Expand:** add and backfill `MediaAsset`, keep current endpoints and
-   references, and transactionally synchronize every mutation.
-2. **Adopt:** introduce one Media Library UI and kind-scoped API views while
-   preserving the existing permission for each kind. Rename media groups to
-   collections in the interface without changing collection semantics.
-3. **Move references:** migrate program, rundown, song-intro, radio-settings,
-   scene, and collection references to canonical asset IDs one boundary at a
-   time. Reads remain compatible until each writer and consumer has moved.
-4. **Contract:** remove legacy duplicate identity and shared fields only after
-   production verification shows every writer and consumer uses canonical IDs.
+The bounded `media-asset-reconciliation` job metric records success and failure
+and updates the standard last-success timestamp. HTTP metrics use bounded
+`media-assets` and `media-labels` route labels. Metrics never contain asset IDs,
+label names, URLs, or other content.
 
-Rollback during the expand phase is code-compatible: the previous application
-ignores the additive registry table and nullable link columns. A logical
-database backup must still be available before applying the migration so the
-entire pre-migration state can be restored if database rollback is required.
+## Authorization and public rendering
+
+The unified catalog filters each result through the existing per-capability
+read permission. Managing labels on an asset requires management permission for
+that asset's capability; one audio permission does not grant mutation rights to
+all audio. Label creation and metadata changes require at least one existing
+media-management permission.
+
+Program output can resolve only a label's ordered, enabled image URLs through a
+read-only public rendering endpoint, matching the prior public slideshow-group
+contract. Administrative label and asset APIs remain authenticated.
+
+## Deployment and rollback
+
+Deployment may briefly restart Alcántara while migrations run. After restart,
+the persisted radio playlist and playback behavior must be identical: no queue
+reset, cursor loss, ordering change, skipped track, or altered Manual, Autoplay,
+Shuffle, Loop, intro, or Palazzo behavior is acceptable.
+
+Rollback is code-compatible during this phase because the previous application
+ignores the additive tables and column. The pre-change logical database backup
+is the database rollback boundary; no whole-instance snapshot is required.
+Legacy tables can be contracted only in a later migration after production
+telemetry and user-visible verification show all consumers use canonical IDs
+and labels.

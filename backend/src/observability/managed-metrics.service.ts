@@ -30,6 +30,8 @@ const HTTP_ROUTES = new Set([
   'instants',
   'media',
   'media-groups',
+  'media-assets',
+  'media-labels',
   'stingers',
   'webrtc',
   'broadcast',

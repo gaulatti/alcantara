@@ -11,7 +11,7 @@ function labels(type: 'tv' | 'radio' | 'both') {
 
 describe('program-aware application navigation', () => {
   it('keeps television-only preparation out of the radio workflow', () => {
-    expect(labels('radio')).toEqual(['Radio desk', 'Rundown', 'Songs', 'Audio clips', 'Shows', 'Radio distribution']);
+    expect(labels('radio')).toEqual(['Radio desk', 'Rundown', 'Media', 'Shows', 'Radio distribution']);
   });
 
   it('gives simulcast explicit access to both legs', () => {
@@ -28,7 +28,7 @@ describe('program-aware application navigation', () => {
 
   it('treats the legacy control route as the live destination', () => {
     expect(isNavigationItemActive('/control', '/')).toBe(true);
-    expect(isNavigationItemActive('/songs/12', '/songs')).toBe(true);
-    expect(isNavigationItemActive('/media', '/songs')).toBe(false);
+    expect(isNavigationItemActive('/media', '/media')).toBe(true);
+    expect(isNavigationItemActive('/songs/12', '/media')).toBe(false);
   });
 });

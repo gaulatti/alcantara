@@ -1,4 +1,4 @@
-import { MediaAssetKind } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { MediaService } from './media.service';
 
 function buildService() {
@@ -45,12 +45,14 @@ describe('MediaService canonical asset writes', () => {
       create: {
         id: 'image:8',
         kind: MediaAssetKind.IMAGE,
+        mediaType: MediaAssetType.IMAGE,
         name: 'Weather still',
         sourceUrl: 'https://media.test/weather.jpg',
         enabled: true,
       },
       update: {
         kind: MediaAssetKind.IMAGE,
+        mediaType: MediaAssetType.IMAGE,
         name: 'Weather still',
         sourceUrl: 'https://media.test/weather.jpg',
         enabled: true,

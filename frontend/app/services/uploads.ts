@@ -1,6 +1,6 @@
-import { apiUrl } from '../utils/apiBaseUrl';
+import { authFetch } from './api';
 
-export type UploadKind = 'instant' | 'artwork' | 'song' | 'stinger';
+export type UploadKind = 'instant' | 'background' | 'artwork' | 'song' | 'stinger';
 
 interface UploadResponse {
   key: string;
@@ -23,7 +23,7 @@ export async function uploadFileToMediaBucket(
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(apiUrl(`/uploads/${kind}`), {
+  const res = await authFetch(`/uploads/${kind}`, {
     method: 'POST',
     body: formData,
   });

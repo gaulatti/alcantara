@@ -22,6 +22,15 @@ export class UploadsController {
     });
   }
 
+  @Post('background')
+  async uploadBackground(@Req() req: any) {
+    const file = await this.readSingleFile(req);
+    return this.uploadsService.upload({
+      kind: 'background',
+      ...file,
+    });
+  }
+
   @Post('artwork')
   async uploadArtwork(@Req() req: any) {
     const file = await this.readSingleFile(req);
