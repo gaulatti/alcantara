@@ -1137,27 +1137,6 @@ export default function MediaRoute() {
             <legend className="text-sm font-medium text-text-primary">
               Labels
             </legend>
-            {labels.length === 0 ? (
-              <p className="text-xs text-text-secondary">
-                No labels yet. Create one here and it will be selected.
-              </p>
-            ) : (
-              labels.map((label) => (
-                <Checkbox
-                  key={label.id}
-                  label={label.name}
-                  checked={imageLabelIds.has(label.id)}
-                  onChange={(event) =>
-                    setImageLabelIds((current) => {
-                      const next = new Set(current);
-                      if (event.target.checked) next.add(label.id);
-                      else next.delete(label.id);
-                      return next;
-                    })
-                  }
-                />
-              ))
-            )}
             <InlineLabelCreator
               onCreate={(name) =>
                 createInlineLabel(name, (labelId) =>
@@ -1167,6 +1146,29 @@ export default function MediaRoute() {
                 )
               }
             />
+            <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+              {labels.length === 0 ? (
+                <p className="text-xs text-text-secondary">
+                  No labels yet. Create one above and it will be selected.
+                </p>
+              ) : (
+                labels.map((label) => (
+                  <Checkbox
+                    key={label.id}
+                    label={label.name}
+                    checked={imageLabelIds.has(label.id)}
+                    onChange={(event) =>
+                      setImageLabelIds((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) next.add(label.id);
+                        else next.delete(label.id);
+                        return next;
+                      })
+                    }
+                  />
+                ))
+              )}
+            </div>
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button
@@ -1287,21 +1289,6 @@ export default function MediaRoute() {
             <legend className="text-sm font-medium text-text-primary">
               Labels
             </legend>
-            {labels.map((label) => (
-              <Checkbox
-                key={label.id}
-                label={label.name}
-                checked={backgroundLabelIds.has(label.id)}
-                onChange={(event) =>
-                  setBackgroundLabelIds((current) => {
-                    const next = new Set(current);
-                    if (event.target.checked) next.add(label.id);
-                    else next.delete(label.id);
-                    return next;
-                  })
-                }
-              />
-            ))}
             <InlineLabelCreator
               onCreate={(name) =>
                 createInlineLabel(name, (labelId) =>
@@ -1311,6 +1298,29 @@ export default function MediaRoute() {
                 )
               }
             />
+            <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+              {labels.length === 0 ? (
+                <p className="text-xs text-text-secondary">
+                  No labels yet. Create one above and it will be selected.
+                </p>
+              ) : (
+                labels.map((label) => (
+                  <Checkbox
+                    key={label.id}
+                    label={label.name}
+                    checked={backgroundLabelIds.has(label.id)}
+                    onChange={(event) =>
+                      setBackgroundLabelIds((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) next.add(label.id);
+                        else next.delete(label.id);
+                        return next;
+                      })
+                    }
+                  />
+                ))
+              )}
+            </div>
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button
