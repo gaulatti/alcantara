@@ -400,7 +400,10 @@ the approved Palazzo URL and the remaining private-service configuration. The
 previous container is retained until the replacement passes its startup check
 and is automatically restored if the replacement fails. This keeps the existing
 radio controller alive when a configuration or startup defect reaches
-deployment.
+deployment. On the Cumulus host, deployment removes only Docker images not
+referenced by any running or stopped container before pulling a release and
+again after retiring the healthy predecessor. This bounds disk use without
+removing the live or rollback image.
 
 Production backend stdout and stderr remain available through `docker logs`,
 using Docker's host-local `local` driver with a 10 MiB maximum per file and
