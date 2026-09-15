@@ -28,8 +28,18 @@ asset may have zero or more labels, and `MediaAssetLabel.position` supplies a
 stable order where a consumer such as a slideshow needs one.
 
 There is deliberately no new collection table. The operator workflow is to
-upload media, then apply one or more labels inline or in bulk. A slideshow
-selects an image label and resolves its enabled image assets in label order.
+upload media, then apply one or more labels inline or in bulk. Every media label
+selector can create a label in place; the new label is selected immediately so
+the operator can finish the upload or bulk action without leaving the workflow.
+A slideshow selects an image label and resolves its enabled image assets in
+label order.
+
+The Media library follows the selected show's physical output. Radio shows
+expose only Audio and Labels and canonicalize visual Media URLs back to Audio.
+TV and Simulcast shows retain Images, Audio, Video, and Labels. Radio song cover
+images remain canonical image assets and continue to appear in song and
+now-playing interfaces; hiding visual library tabs does not remove or rewrite
+those assets.
 
 ## Canonical identity and compatibility
 

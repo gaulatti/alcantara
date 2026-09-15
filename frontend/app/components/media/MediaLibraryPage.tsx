@@ -20,6 +20,7 @@ interface MediaLibraryPageProps {
   activeSection: MediaLibrarySection;
   actions?: ReactNode;
   children: ReactNode;
+  visibleSections?: MediaLibrarySection[];
   width?: "content" | "wide" | "full";
 }
 
@@ -27,9 +28,15 @@ export function MediaLibraryPage({
   activeSection,
   actions,
   children,
+  visibleSections,
   width = "wide",
 }: MediaLibraryPageProps) {
   const navigate = useNavigate();
+  const sections = visibleSections
+    ? MEDIA_LIBRARY_SECTIONS.filter((section) =>
+        visibleSections.includes(section.id),
+      )
+    : MEDIA_LIBRARY_SECTIONS;
 
   return (
     <AppPage width={width}>
@@ -49,12 +56,12 @@ export function MediaLibraryPage({
           <Tabs
             activeTab={activeSection}
             onChange={(sectionId) => {
-              const section = MEDIA_LIBRARY_SECTIONS.find(
+              const section = sections.find(
                 (candidate) => candidate.id === sectionId,
               );
               if (section) navigate(section.href);
             }}
-            tabs={MEDIA_LIBRARY_SECTIONS.map(({ id, label }) => ({
+            tabs={sections.map(({ id, label }) => ({
               id,
               label,
             }))}
