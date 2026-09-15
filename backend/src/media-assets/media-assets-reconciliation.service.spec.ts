@@ -108,7 +108,7 @@ function buildService() {
 
 describe('MediaAssetsReconciliationService', () => {
   it('repairs every kind and removes only kind-matched orphan rows', async () => {
-    const { service, tx } = buildService();
+    const { service, tx, prisma } = buildService();
 
     await expect(service.reconcile()).resolves.toEqual({
       images: 1,
@@ -118,6 +118,11 @@ describe('MediaAssetsReconciliationService', () => {
       backgroundAudio: 1,
       labels: 1,
       removedOrphans: 1,
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 10_000,
+      timeout: 60_000,
     });
 
     expect(tx.mediaAsset.upsert).toHaveBeenCalledTimes(4);
