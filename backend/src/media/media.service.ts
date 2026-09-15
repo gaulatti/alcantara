@@ -8,6 +8,7 @@ import {
   deleteMediaAsset,
   syncImageAsset,
 } from '../media-assets/media-asset-sync';
+import { syncLegacyMediaGroupLabel } from '../media-assets/media-label-sync';
 import { PrismaService } from '../prisma.service';
 
 interface MediaInput {
@@ -135,6 +136,16 @@ export class MediaService {
 
       for (const mediaGroupId of impactedGroupIds) {
         await this.rebalanceGroupItems(tx, mediaGroupId);
+        const group = await tx.mediaGroup.findUniqueOrThrow({
+          where: { id: mediaGroupId },
+          include: {
+            mediaItems: {
+              include: { media: true },
+              orderBy: { position: 'asc' },
+            },
+          },
+        });
+        await syncLegacyMediaGroupLabel(tx, group);
       }
     });
 

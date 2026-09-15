@@ -1,7 +1,7 @@
 import {
-  AlertContainer,
   Button,
   Card,
+  Checkbox,
   Empty,
   FileInput,
   IconButton,
@@ -10,1104 +10,1260 @@ import {
   Modal,
   Pagination,
   Select,
-  SectionHeader,
-  SortableTableHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tabs,
   Textarea,
-  showAlert
-} from '@gaulatti/bleecker';
-import type { SortState } from '@gaulatti/bleecker';
-import { Pencil, Plus, Trash2, ArrowUp, ArrowDown, Search, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Route } from './+types/media';
-import { uploadFileToMediaBucket } from '../services/uploads';
-import { apiUrl } from '../utils/apiBaseUrl';
-import { AppPage } from '../components/AppPage';
+  showAlert,
+} from "@gaulatti/bleecker";
+import {
+  ArrowDown,
+  ArrowUp,
+  Pencil,
+  Plus,
+  Search,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
+import {
+  MediaLibraryPage,
+  type MediaLibrarySection,
+} from "../components/media/MediaLibraryPage";
+import { uploadFileToMediaBucket } from "../services/uploads";
+import { authFetch } from "../services/api";
+import type { Route } from "./+types/media";
 
-interface MediaItem {
-  id: number;
-  assetId?: string;
-  name: string;
-  imageUrl: string;
-  createdAt: string;
-  updatedAt: string;
-}
+type MediaType = "IMAGE" | "AUDIO" | "VIDEO";
+type MediaCapability =
+  | "INSTANT"
+  | "BACKGROUND"
+  | "SONG"
+  | "COVER"
+  | "TRANSITION";
 
-interface MediaGroupItem {
-  id: number;
-  mediaGroupId: number;
-  mediaId: number;
-  position: number;
-  media: MediaItem;
-}
-
-interface MediaGroup {
-  id: number;
+interface AssetLabel {
+  id: string;
   name: string;
   description: string | null;
-  items: MediaGroupItem[];
+  position: number;
+}
+
+interface MediaAsset {
+  id: string;
+  mediaType: MediaType;
+  name: string;
+  sourceUrl: string;
+  enabled: boolean;
+  capabilities: MediaCapability[];
+  labels: AssetLabel[];
+  image: { id: number } | null;
+  instant: { id: number; volume: number } | null;
+  background: { defaultVolume: number } | null;
+  song: {
+    id: number;
+    artist: string;
+    title: string;
+    coverUrl: string | null;
+    durationMs: number | null;
+  } | null;
+  coverForSongIds: number[];
+  transition: { id: number; cutPointMs: number } | null;
+  updatedAt: string;
+}
+
+interface LabelAsset {
+  position: number;
+  asset: MediaAsset;
+}
+
+interface MediaLabel {
+  id: string;
+  name: string;
+  description: string | null;
+  assetCount: number;
+  assets: LabelAsset[];
   createdAt: string;
   updatedAt: string;
 }
 
-type MediaGroupAssignMode = 'none' | 'existing' | 'new';
+interface ImageRecord {
+  id: number;
+  assetId: string;
+  name: string;
+  imageUrl: string;
+}
 
 function stripFileExtension(filename: string): string {
   const trimmed = filename.trim();
-  if (!trimmed) {
-    return '';
-  }
-  const dotIndex = trimmed.lastIndexOf('.');
-  if (dotIndex <= 0) {
-    return trimmed;
-  }
-  return trimmed.slice(0, dotIndex).trim();
+  const dotIndex = trimmed.lastIndexOf(".");
+  return dotIndex > 0 ? trimmed.slice(0, dotIndex).trim() : trimmed;
 }
 
-async function extractErrorMessage(res: Response): Promise<string> {
-  const text = await res.text();
-  if (!text) {
-    return `HTTP ${res.status}`;
-  }
-
+async function errorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) return `HTTP ${response.status}`;
   try {
     const parsed = JSON.parse(text) as { message?: string | string[] };
-    if (typeof parsed.message === 'string' && parsed.message.trim()) {
-      return parsed.message;
-    }
-    if (Array.isArray(parsed.message)) {
-      const joined = parsed.message.filter((value) => typeof value === 'string' && value.trim()).join(', ');
-      if (joined) {
-        return joined;
-      }
-    }
+    if (typeof parsed.message === "string") return parsed.message;
+    if (Array.isArray(parsed.message)) return parsed.message.join(", ");
   } catch {
-    // fall back to raw text
+    // The server did not return JSON.
   }
-
   return text;
+}
+
+async function requestJson<T = unknown>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await authFetch(path, init);
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return response.json() as Promise<T>;
 }
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: 'Media - TV Broadcast' },
+    { title: "Media - Alcantara" },
     {
-      name: 'description',
-      content: 'Manage image media and media groups for slideshow scenes.'
-    }
+      name: "description",
+      content: "Manage images, audio, video, capabilities, and labels.",
+    },
   ];
 }
 
+const capabilityLabels: Record<MediaCapability, string> = {
+  INSTANT: "Instant",
+  BACKGROUND: "Background",
+  SONG: "Song",
+  COVER: "Song cover",
+  TRANSITION: "Transition",
+};
+
+function CapabilityBadges({
+  capabilities,
+}: {
+  capabilities: MediaCapability[];
+}) {
+  if (capabilities.length === 0)
+    return <span className="text-xs text-text-secondary">No capability</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {capabilities.map((item) => (
+        <span
+          key={item}
+          className="rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea"
+        >
+          {capabilityLabels[item]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LabelBadges({ labels }: { labels: AssetLabel[] }) {
+  if (labels.length === 0)
+    return <span className="text-xs text-text-secondary">Unlabeled</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {labels.map((label) => (
+        <span
+          key={label.id}
+          className="rounded-full border border-sand/40 bg-dark-sand/70 px-2 py-0.5 text-xs text-text-primary"
+        >
+          {label.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function MediaRoute() {
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<MediaGroup | null>(null);
-  const [activeTab, setActiveTab] = useState('library');
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isLabelsView = searchParams.get("view") === "labels";
+  const requestedType = searchParams.get("type");
+  const mediaType: MediaType =
+    requestedType === "AUDIO" || requestedType === "VIDEO"
+      ? requestedType
+      : "IMAGE";
+  const activeSection: MediaLibrarySection = isLabelsView
+    ? "labels"
+    : mediaType === "AUDIO"
+      ? "audio"
+      : mediaType === "VIDEO"
+        ? "video"
+        : "images";
+
+  const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [labels, setLabels] = useState<MediaLabel[]>([]);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [capability, setCapability] = useState<MediaCapability | "">("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
-  const [mediaSearch, setMediaSearch] = useState('');
-  const [debouncedMediaSearch, setDebouncedMediaSearch] = useState('');
-  const [mediaPage, setMediaPage] = useState(1);
-  const [mediaTotalPages, setMediaTotalPages] = useState(1);
-  const [mediaTotalCount, setMediaTotalCount] = useState(0);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
+  const [imageName, setImageName] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageLabelIds, setImageLabelIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [isSavingImage, setIsSavingImage] = useState(false);
 
-  const [groupSearch, setGroupSearch] = useState('');
-  const [debouncedGroupSearch, setDebouncedGroupSearch] = useState('');
-  const [groupPage, setGroupPage] = useState(1);
-  const [groupTotalPages, setGroupTotalPages] = useState(1);
-  const [groupTotalCount, setGroupTotalCount] = useState(0);
+  const [showBackgroundModal, setShowBackgroundModal] = useState(false);
+  const [backgroundName, setBackgroundName] = useState("");
+  const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
+  const [backgroundVolume, setBackgroundVolume] = useState("1");
+  const [backgroundLabelIds, setBackgroundLabelIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [isSavingBackground, setIsSavingBackground] = useState(false);
 
-  const [showMediaModal, setShowMediaModal] = useState(false);
-  const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
-  const [mediaNameInput, setMediaNameInput] = useState('');
-  const [mediaUrlInput, setMediaUrlInput] = useState('');
-  const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([]);
-  const [groupAssignMode, setGroupAssignMode] = useState<MediaGroupAssignMode>('none');
-  const [groupAssignExistingId, setGroupAssignExistingId] = useState('');
-  const [groupAssignNewName, setGroupAssignNewName] = useState('');
-  const [groupAssignNewDescription, setGroupAssignNewDescription] = useState('');
-  const [isSavingMedia, setIsSavingMedia] = useState(false);
-  const [isUploadingMediaImage, setIsUploadingMediaImage] = useState(false);
-
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<MediaGroup | null>(null);
-  const [groupNameInput, setGroupNameInput] = useState('');
-  const [groupDescriptionInput, setGroupDescriptionInput] = useState('');
-  const [isSavingGroup, setIsSavingGroup] = useState(false);
-
-  const [error, setError] = useState('');
-
-  const fetchMedia = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (debouncedMediaSearch) params.set('search', debouncedMediaSearch);
-    params.set('page', String(mediaPage));
-    params.set('limit', '50');
-    const qs = params.toString();
-    const res = await fetch(apiUrl(`/media${qs ? `?${qs}` : ''}`));
-    if (!res.ok) {
-      throw new Error(await extractErrorMessage(res));
-    }
-    const payload = await res.json();
-    setMedia(Array.isArray(payload.data) ? payload.data : []);
-    setMediaTotalPages(payload.meta?.totalPages ?? 1);
-    setMediaTotalCount(payload.meta?.total ?? 0);
-  }, [debouncedMediaSearch, mediaPage]);
-
-  const fetchMediaGroups = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (debouncedGroupSearch) params.set('search', debouncedGroupSearch);
-    params.set('page', String(groupPage));
-    params.set('limit', '20');
-    const qs = params.toString();
-    const res = await fetch(apiUrl(`/media-groups${qs ? `?${qs}` : ''}`));
-    if (!res.ok) {
-      throw new Error(await extractErrorMessage(res));
-    }
-    const payload = await res.json();
-    setMediaGroups(Array.isArray(payload.data) ? payload.data : []);
-    setGroupTotalPages(payload.meta?.totalPages ?? 1);
-    setGroupTotalCount(payload.meta?.total ?? 0);
-  }, [debouncedGroupSearch, groupPage]);
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<MediaLabel | null>(null);
+  const [labelName, setLabelName] = useState("");
+  const [labelDescription, setLabelDescription] = useState("");
+  const [isSavingLabel, setIsSavingLabel] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState<MediaLabel | null>(null);
+  const [assetToAdd, setAssetToAdd] = useState("");
+  const [bulkLabelId, setBulkLabelId] = useState("");
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedMediaSearch(mediaSearch), 300);
-    return () => clearTimeout(timer);
-  }, [mediaSearch]);
+    const timer = window.setTimeout(
+      () => setDebouncedSearch(search.trim()),
+      250,
+    );
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedGroupSearch(groupSearch), 300);
-    return () => clearTimeout(timer);
-  }, [groupSearch]);
+    setPage(1);
+    setSelectedAssetIds(new Set());
+    if (mediaType !== "AUDIO") setCapability("");
+  }, [debouncedSearch, mediaType, isLabelsView]);
 
-  useEffect(() => {
-    setMediaPage(1);
-  }, [debouncedMediaSearch]);
+  const fetchLabels = useCallback(async () => {
+    const payload = await requestJson<{ data: MediaLabel[] }>(
+      "/media-labels?limit=200",
+    );
+    setLabels(Array.isArray(payload.data) ? payload.data : []);
+  }, []);
 
-  useEffect(() => {
-    setGroupPage(1);
-  }, [debouncedGroupSearch]);
+  const fetchAssets = useCallback(async () => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: isLabelsView ? "200" : "50",
+    });
+    if (!isLabelsView) params.set("mediaType", mediaType);
+    if (!isLabelsView && debouncedSearch) params.set("search", debouncedSearch);
+    if (!isLabelsView && capability) params.set("capability", capability);
+    const payload = await requestJson<{
+      data: MediaAsset[];
+      meta?: { total?: number; totalPages?: number };
+    }>(`/media-assets?${params}`);
+    setAssets(Array.isArray(payload.data) ? payload.data : []);
+    setTotalCount(payload.meta?.total ?? 0);
+    setTotalPages(payload.meta?.totalPages ?? 1);
+  }, [capability, debouncedSearch, isLabelsView, mediaType, page]);
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        await Promise.all([fetchMedia(), fetchMediaGroups()]);
-      } catch (err) {
-        console.error('Failed to load media admin data:', err);
-        showAlert('Failed to load media and groups.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void load();
-  }, [fetchMedia, fetchMediaGroups]);
-
-  const sortedMedia = useMemo(() => {
-    return [...media].sort((a, b) => b.id - a.id);
-  }, [media]);
-
-  const openCreateMediaModal = () => {
-    setEditingMedia(null);
-    setMediaNameInput('');
-    setMediaUrlInput('');
-    setSelectedImageFiles([]);
-    if (selectedGroup !== null) {
-      setGroupAssignMode('existing');
-      setGroupAssignExistingId(String(selectedGroup.id));
-    } else {
-      setGroupAssignMode('none');
-      setGroupAssignExistingId('');
-    }
-    setGroupAssignNewName('');
-    setGroupAssignNewDescription('');
-    setError('');
-    setShowMediaModal(true);
-  };
-
-  const openEditMediaModal = (item: MediaItem) => {
-    setEditingMedia(item);
-    setMediaNameInput(item.name);
-    setMediaUrlInput(item.imageUrl);
-    setSelectedImageFiles([]);
-    setGroupAssignMode('none');
-    setGroupAssignExistingId('');
-    setGroupAssignNewName('');
-    setGroupAssignNewDescription('');
-    setError('');
-    setShowMediaModal(true);
-  };
-
-  const closeMediaModal = () => {
-    setShowMediaModal(false);
-    setEditingMedia(null);
-    setMediaNameInput('');
-    setMediaUrlInput('');
-    setSelectedImageFiles([]);
-    setGroupAssignMode('none');
-    setGroupAssignExistingId('');
-    setGroupAssignNewName('');
-    setGroupAssignNewDescription('');
-    setError('');
-  };
-
-  const openCreateGroupModal = () => {
-    setEditingGroup(null);
-    setGroupNameInput('');
-    setGroupDescriptionInput('');
-    setError('');
-    setShowGroupModal(true);
-  };
-
-  const openEditGroupModal = (group: MediaGroup) => {
-    setEditingGroup(group);
-    setGroupNameInput(group.name);
-    setGroupDescriptionInput(group.description ?? '');
-    setError('');
-    setShowGroupModal(true);
-  };
-
-  const closeGroupModal = () => {
-    setShowGroupModal(false);
-    setEditingGroup(null);
-    setGroupNameInput('');
-    setGroupDescriptionInput('');
-    setError('');
-  };
-
-  const saveMedia = async () => {
-    const normalizedName = mediaNameInput.trim();
-    const normalizedUrl = mediaUrlInput.trim();
-    const selectedFiles = selectedImageFiles;
-
-    setIsSavingMedia(true);
-    setError('');
-
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
     try {
-      if (editingMedia) {
-        let nextUrl = normalizedUrl;
-        if (selectedFiles.length > 0) {
-          setIsUploadingMediaImage(true);
-          const upload = await uploadFileToMediaBucket('artwork', selectedFiles[0]);
-          nextUrl = upload.url;
-        }
+      await Promise.all([fetchAssets(), fetchLabels()]);
+    } catch (error) {
+      console.error("Failed to load media library:", error);
+      showAlert("Failed to load the media library.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchAssets, fetchLabels]);
 
-        if (!normalizedName) {
-          setError('Name is required.');
-          return;
-        }
-        if (!nextUrl) {
-          setError('Image URL is required.');
-          return;
-        }
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-        const res = await fetch(apiUrl(`/media/${editingMedia.id}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: normalizedName,
-            imageUrl: nextUrl
-          })
+  useEffect(() => {
+    if (!selectedLabel) return;
+    setSelectedLabel(
+      labels.find((label) => label.id === selectedLabel.id) ?? null,
+    );
+  }, [labels, selectedLabel?.id]);
+
+  const openCreateImage = () => {
+    setEditingAsset(null);
+    setImageName("");
+    setImageUrl("");
+    setImageFiles([]);
+    setImageLabelIds(new Set());
+    setShowImageModal(true);
+  };
+
+  const openEditImage = (asset: MediaAsset) => {
+    setEditingAsset(asset);
+    setImageName(asset.name);
+    setImageUrl(asset.sourceUrl);
+    setImageFiles([]);
+    setImageLabelIds(new Set(asset.labels.map((label) => label.id)));
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    if (isSavingImage) return;
+    setShowImageModal(false);
+    setEditingAsset(null);
+  };
+
+  const saveImage = async () => {
+    setIsSavingImage(true);
+    try {
+      if (editingAsset?.image) {
+        let nextUrl = imageUrl.trim();
+        if (imageFiles[0])
+          nextUrl = (await uploadFileToMediaBucket("artwork", imageFiles[0]))
+            .url;
+        if (!imageName.trim() || !nextUrl)
+          throw new Error("Name and image are required.");
+        await requestJson<ImageRecord>(`/media/${editingAsset.image.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: imageName.trim(), imageUrl: nextUrl }),
         });
-
-        if (!res.ok) {
-          throw new Error(await extractErrorMessage(res));
-        }
-
-        await Promise.all([fetchMedia(), fetchMediaGroups()]);
-        closeMediaModal();
-        showAlert('Media updated.', 'success');
-        return;
-      }
-
-      if (selectedFiles.length === 0 && !normalizedUrl) {
-        setError('Select one or more files, or provide an image URL.');
-        return;
-      }
-
-      const createdMediaIds: number[] = [];
-
-      const createMediaRecord = async (payload: { name: string; imageUrl: string }) => {
-        const createRes = await fetch(apiUrl('/media'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!createRes.ok) {
-          throw new Error(await extractErrorMessage(createRes));
-        }
-        const created = (await createRes.json()) as MediaItem;
-        createdMediaIds.push(created.id);
-      };
-
-      if (selectedFiles.length > 0) {
-        setIsUploadingMediaImage(true);
-
-        for (let index = 0; index < selectedFiles.length; index += 1) {
-          const file = selectedFiles[index];
-          const upload = await uploadFileToMediaBucket('artwork', file);
-          const derivedName = stripFileExtension(file.name) || `Media ${index + 1}`;
-          const mediaName = normalizedName && selectedFiles.length === 1 ? normalizedName : normalizedName && selectedFiles.length > 1 ? `${normalizedName} ${index + 1}` : derivedName;
-
-          await createMediaRecord({
-            name: mediaName,
-            imageUrl: upload.url
-          });
-        }
+        await requestJson(
+          `/media-assets/${encodeURIComponent(editingAsset.id)}/labels`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ labelIds: [...imageLabelIds] }),
+          },
+        );
+        showAlert("Image updated.", "success");
       } else {
-        if (!normalizedName) {
-          setError('Name is required when using a direct URL.');
-          return;
+        if (imageFiles.length === 0 && !imageUrl.trim())
+          throw new Error("Select at least one image or provide an image URL.");
+        const created: ImageRecord[] = [];
+        if (imageFiles.length > 0) {
+          for (let index = 0; index < imageFiles.length; index += 1) {
+            const file = imageFiles[index];
+            const upload = await uploadFileToMediaBucket("artwork", file);
+            const baseName = imageName.trim();
+            const name = baseName
+              ? imageFiles.length > 1
+                ? `${baseName} ${index + 1}`
+                : baseName
+              : stripFileExtension(file.name) || `Image ${index + 1}`;
+            created.push(
+              await requestJson<ImageRecord>("/media", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, imageUrl: upload.url }),
+              }),
+            );
+          }
+        } else {
+          if (!imageName.trim())
+            throw new Error("Name is required for a direct URL.");
+          created.push(
+            await requestJson<ImageRecord>("/media", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: imageName.trim(),
+                imageUrl: imageUrl.trim(),
+              }),
+            }),
+          );
         }
-        await createMediaRecord({
-          name: normalizedName,
-          imageUrl: normalizedUrl
-        });
+        if (imageLabelIds.size > 0) {
+          await Promise.all(
+            created.map((record) =>
+              requestJson(
+                `/media-assets/${encodeURIComponent(record.assetId)}/labels`,
+                {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ labelIds: [...imageLabelIds] }),
+                },
+              ),
+            ),
+          );
+        }
+        showAlert(
+          `Added ${created.length} image${created.length === 1 ? "" : "s"}.`,
+          "success",
+        );
       }
+      setShowImageModal(false);
+      await refresh();
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to save image.",
+        "error",
+      );
+    } finally {
+      setIsSavingImage(false);
+    }
+  };
 
-      let assignedGroupId: number | null = null;
+  const deleteImage = async (asset: MediaAsset) => {
+    if (!asset.image || !window.confirm(`Delete “${asset.name}”?`)) return;
+    try {
+      await requestJson(`/media/${asset.image.id}`, { method: "DELETE" });
+      await refresh();
+      showAlert("Image deleted.", "success");
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to delete image.",
+        "error",
+      );
+    }
+  };
 
-      if (groupAssignMode === 'existing') {
-        const parsedGroupId = Number(groupAssignExistingId);
-        if (!Number.isFinite(parsedGroupId) || parsedGroupId <= 0) {
-          setError('Select a valid existing group.');
-          return;
-        }
+  const openCreateBackground = () => {
+    setBackgroundName("");
+    setBackgroundUrl("");
+    setBackgroundFile(null);
+    setBackgroundVolume("1");
+    setBackgroundLabelIds(new Set());
+    setShowBackgroundModal(true);
+  };
 
-        const groupRes = await fetch(apiUrl(`/media-groups/${parsedGroupId}`));
-        if (!groupRes.ok) {
-          throw new Error(await extractErrorMessage(groupRes));
-        }
-        const currentGroup = (await groupRes.json()) as MediaGroup;
-        const currentIds = currentGroup.items.map((item) => item.mediaId);
-        const nextIds = [...new Set([...currentIds, ...createdMediaIds])];
-
-        const updateRes = await fetch(apiUrl(`/media-groups/${parsedGroupId}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaIds: nextIds })
-        });
-        if (!updateRes.ok) {
-          throw new Error(await extractErrorMessage(updateRes));
-        }
-
-        assignedGroupId = parsedGroupId;
-      } else if (groupAssignMode === 'new') {
-        const groupName = groupAssignNewName.trim();
-        if (!groupName) {
-          setError('New group name is required.');
-          return;
-        }
-
-        const createGroupRes = await fetch(apiUrl('/media-groups'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+  const saveBackground = async () => {
+    setIsSavingBackground(true);
+    try {
+      let sourceUrl = backgroundUrl.trim();
+      if (backgroundFile)
+        sourceUrl = (
+          await uploadFileToMediaBucket("background", backgroundFile)
+        ).url;
+      if (!backgroundName.trim() || !sourceUrl)
+        throw new Error("Name and audio file are required.");
+      const created = await requestJson<MediaAsset>(
+        "/media-assets/background-audio",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: groupName,
-            description: groupAssignNewDescription.trim() || null,
-            mediaIds: createdMediaIds
-          })
-        });
-        if (!createGroupRes.ok) {
-          throw new Error(await extractErrorMessage(createGroupRes));
-        }
-        const createdGroup = (await createGroupRes.json()) as MediaGroup;
-        assignedGroupId = createdGroup.id;
+            name: backgroundName.trim(),
+            sourceUrl,
+            defaultVolume: Number(backgroundVolume),
+          }),
+        },
+      );
+      if (backgroundLabelIds.size > 0) {
+        await requestJson(
+          `/media-assets/${encodeURIComponent(created.id)}/labels`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ labelIds: [...backgroundLabelIds] }),
+          },
+        );
       }
-
-      await Promise.all([fetchMedia(), fetchMediaGroups()]);
-      if (assignedGroupId !== null) {
-        const groupRes = await fetch(apiUrl(`/media-groups/${assignedGroupId}`));
-        if (groupRes.ok) {
-          setSelectedGroup(await groupRes.json());
-        }
-      }
-      closeMediaModal();
-      showAlert(`Created ${createdMediaIds.length} media item${createdMediaIds.length === 1 ? '' : 's'}.`, 'success');
-    } catch (err) {
-      console.error('Failed to save media:', err);
-      const message = err instanceof Error ? err.message : 'Failed to save media.';
-      setError(message);
-      showAlert(message, 'error');
+      setShowBackgroundModal(false);
+      await refresh();
+      showAlert("Background audio added.", "success");
+    } catch (error) {
+      showAlert(
+        error instanceof Error
+          ? error.message
+          : "Failed to add background audio.",
+        "error",
+      );
     } finally {
-      setIsUploadingMediaImage(false);
-      setIsSavingMedia(false);
+      setIsSavingBackground(false);
     }
   };
 
-  const deleteMedia = async (item: MediaItem) => {
-    if (!confirm(`Delete media "${item.name}"?`)) return;
-
+  const deleteStandaloneAsset = async (asset: MediaAsset) => {
+    if (!window.confirm(`Delete “${asset.name}”?`)) return;
     try {
-      const res = await fetch(apiUrl(`/media/${item.id}`), {
-        method: 'DELETE'
+      await requestJson(`/media-assets/${encodeURIComponent(asset.id)}`, {
+        method: "DELETE",
       });
-      if (!res.ok) {
-        throw new Error(await extractErrorMessage(res));
-      }
-
-      await Promise.all([fetchMedia(), fetchMediaGroups()]);
-      showAlert('Media deleted.', 'success');
-    } catch (err) {
-      console.error('Failed to delete media:', err);
-      showAlert('Failed to delete media.', 'error');
+      await refresh();
+      showAlert("Media deleted.", "success");
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to delete media.",
+        "error",
+      );
     }
   };
 
-  const saveGroup = async () => {
-    const normalizedName = groupNameInput.trim();
-    if (!normalizedName) {
-      setError('Group name is required.');
-      return;
-    }
+  const openCreateLabel = () => {
+    setEditingLabel(null);
+    setLabelName("");
+    setLabelDescription("");
+    setShowLabelModal(true);
+  };
 
-    setIsSavingGroup(true);
-    setError('');
+  const openEditLabel = (label: MediaLabel) => {
+    setEditingLabel(label);
+    setLabelName(label.name);
+    setLabelDescription(label.description ?? "");
+    setShowLabelModal(true);
+  };
 
+  const saveLabel = async () => {
+    if (!labelName.trim()) return showAlert("Label name is required.", "error");
+    setIsSavingLabel(true);
     try {
-      const endpoint = editingGroup ? apiUrl(`/media-groups/${editingGroup.id}`) : apiUrl('/media-groups');
-      const method = editingGroup ? 'PUT' : 'POST';
-
-      const res = await fetch(endpoint, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: normalizedName,
-          description: groupDescriptionInput.trim() || null
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error(await extractErrorMessage(res));
-      }
-
-      const saved = (await res.json()) as MediaGroup;
-      setMediaGroups((prev) => {
-        const existingIndex = prev.findIndex((group) => group.id === saved.id);
-        if (existingIndex === -1) {
-          return [...prev, saved];
-        }
-
-        const next = [...prev];
-        next[existingIndex] = saved;
-        return next;
-      });
-      setSelectedGroup(saved);
-      closeGroupModal();
-      showAlert(editingGroup ? 'Media group updated.' : 'Media group created.', 'success');
-    } catch (err) {
-      console.error('Failed to save media group:', err);
-      const message = err instanceof Error ? err.message : 'Failed to save media group.';
-      setError(message);
-      showAlert(message, 'error');
+      const saved = await requestJson<MediaLabel>(
+        editingLabel
+          ? `/media-labels/${encodeURIComponent(editingLabel.id)}`
+          : "/media-labels",
+        {
+          method: editingLabel ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: labelName.trim(),
+            description: labelDescription.trim() || null,
+          }),
+        },
+      );
+      setShowLabelModal(false);
+      await refresh();
+      setSelectedLabel(saved);
+      showAlert(editingLabel ? "Label updated." : "Label created.", "success");
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to save label.",
+        "error",
+      );
     } finally {
-      setIsSavingGroup(false);
+      setIsSavingLabel(false);
     }
   };
 
-  const deleteGroup = async (group: MediaGroup) => {
-    if (!confirm(`Delete group "${group.name}"?`)) return;
-
+  const deleteLabel = async (label: MediaLabel) => {
+    if (
+      !window.confirm(
+        `Delete label “${label.name}”? Files will remain in the library.`,
+      )
+    )
+      return;
     try {
-      const res = await fetch(apiUrl(`/media-groups/${group.id}`), {
-        method: 'DELETE'
+      await requestJson(`/media-labels/${encodeURIComponent(label.id)}`, {
+        method: "DELETE",
       });
-      if (!res.ok) {
-        throw new Error(await extractErrorMessage(res));
-      }
-
-      setMediaGroups((prev) => prev.filter((item) => item.id !== group.id));
-      showAlert('Media group deleted.', 'success');
-    } catch (err) {
-      console.error('Failed to delete media group:', err);
-      showAlert('Failed to delete media group.', 'error');
+      if (selectedLabel?.id === label.id) setSelectedLabel(null);
+      await refresh();
+      showAlert("Label deleted. Its media files were kept.", "success");
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to delete label.",
+        "error",
+      );
     }
   };
 
-  const persistSelectedGroupMediaIds = async (groupId: number, mediaIds: number[]) => {
-    const res = await fetch(apiUrl(`/media-groups/${groupId}`), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mediaIds })
-    });
-
-    if (!res.ok) {
-      throw new Error(await extractErrorMessage(res));
-    }
-
-    const updated = (await res.json()) as MediaGroup;
-    setMediaGroups((prev) => prev.map((group) => (group.id === updated.id ? updated : group)));
-    setSelectedGroup(updated);
+  const persistLabelOrder = async (label: MediaLabel, assetIds: string[]) => {
+    const updated = await requestJson<MediaLabel>(
+      `/media-labels/${encodeURIComponent(label.id)}/assets`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds }),
+      },
+    );
+    setSelectedLabel(updated);
+    await refresh();
   };
 
-  const addMediaToSelectedGroup = async (mediaId: number) => {
-    if (!selectedGroup) {
-      return;
-    }
-
-    const nextMediaIds = selectedGroup.items.map((item) => item.mediaId);
-    if (nextMediaIds.includes(mediaId)) {
-      return;
-    }
-    nextMediaIds.push(mediaId);
-
+  const moveLabelAsset = async (index: number, direction: -1 | 1) => {
+    if (!selectedLabel) return;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= selectedLabel.assets.length) return;
+    const next = selectedLabel.assets.map((entry) => entry.asset.id);
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
     try {
-      await persistSelectedGroupMediaIds(selectedGroup.id, nextMediaIds);
-      showAlert('Media added to group.', 'success');
-    } catch (err) {
-      console.error('Failed to add media to group:', err);
-      showAlert('Failed to add media to group.', 'error');
+      await persistLabelOrder(selectedLabel, next);
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to reorder label.",
+        "error",
+      );
     }
   };
 
-  const removeMediaFromSelectedGroup = async (mediaId: number) => {
-    if (!selectedGroup) {
-      return;
-    }
-
-    const nextMediaIds = selectedGroup.items.map((item) => item.mediaId).filter((id) => id !== mediaId);
-
+  const removeLabelAsset = async (assetId: string) => {
+    if (!selectedLabel) return;
     try {
-      await persistSelectedGroupMediaIds(selectedGroup.id, nextMediaIds);
-      showAlert('Media removed from group.', 'success');
-    } catch (err) {
-      console.error('Failed to remove media from group:', err);
-      showAlert('Failed to remove media from group.', 'error');
+      await persistLabelOrder(
+        selectedLabel,
+        selectedLabel.assets
+          .map((entry) => entry.asset.id)
+          .filter((id) => id !== assetId),
+      );
+    } catch (error) {
+      showAlert(
+        error instanceof Error ? error.message : "Failed to remove label.",
+        "error",
+      );
     }
   };
 
-  const moveMediaInSelectedGroup = async (mediaId: number, direction: -1 | 1) => {
-    if (!selectedGroup) {
-      return;
-    }
-
-    const current = selectedGroup.items.map((item) => item.mediaId);
-    const currentIndex = current.findIndex((id) => id === mediaId);
-    if (currentIndex === -1) {
-      return;
-    }
-
-    const nextIndex = currentIndex + direction;
-    if (nextIndex < 0 || nextIndex >= current.length) {
-      return;
-    }
-
-    const next = [...current];
-    const [moved] = next.splice(currentIndex, 1);
-    next.splice(nextIndex, 0, moved);
-
+  const addAssetToLabel = async () => {
+    if (!selectedLabel || !assetToAdd) return;
     try {
-      await persistSelectedGroupMediaIds(selectedGroup.id, next);
-    } catch (err) {
-      console.error('Failed to reorder group media:', err);
-      showAlert('Failed to reorder group media.', 'error');
+      await persistLabelOrder(selectedLabel, [
+        ...selectedLabel.assets.map((entry) => entry.asset.id),
+        assetToAdd,
+      ]);
+      setAssetToAdd("");
+    } catch (error) {
+      showAlert(
+        error instanceof Error
+          ? error.message
+          : "Failed to add media to label.",
+        "error",
+      );
     }
   };
 
-  const [groupSort, setGroupSort] = useState<SortState>({
-    field: 'name',
-    order: 'asc'
-  });
-
-  const handleGroupSort = (field: string, order: 'asc' | 'desc') => {
-    setGroupSort({ field, order });
+  const applyBulkLabel = async () => {
+    if (!bulkLabelId || selectedAssetIds.size === 0) return;
+    try {
+      await Promise.all(
+        assets
+          .filter((asset) => selectedAssetIds.has(asset.id))
+          .map((asset) =>
+            requestJson(
+              `/media-assets/${encodeURIComponent(asset.id)}/labels`,
+              {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  labelIds: [
+                    ...new Set([
+                      ...asset.labels.map((label) => label.id),
+                      bulkLabelId,
+                    ]),
+                  ],
+                }),
+              },
+            ),
+          ),
+      );
+      setSelectedAssetIds(new Set());
+      setBulkLabelId("");
+      await refresh();
+      showAlert("Label added to selected media.", "success");
+    } catch (error) {
+      showAlert(
+        error instanceof Error
+          ? error.message
+          : "Failed to label selected media.",
+        "error",
+      );
+    }
   };
 
-  const sortedMediaGroups = useMemo(() => {
-    return [...mediaGroups].sort((a, b) => {
-      if (groupSort.field === 'name') {
-        return groupSort.order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      }
-      return 0;
-    });
-  }, [mediaGroups, groupSort]);
+  const allAssetsForLabels = useMemo(
+    () =>
+      [...assets].sort((left, right) => left.name.localeCompare(right.name)),
+    [assets],
+  );
+  const availableForSelectedLabel = selectedLabel
+    ? allAssetsForLabels.filter(
+        (asset) =>
+          !selectedLabel.assets.some((entry) => entry.asset.id === asset.id),
+      )
+    : [];
+
+  const actions =
+    !isLabelsView && mediaType === "IMAGE" ? (
+      <Button onClick={openCreateImage}>
+        <Plus size={16} />
+        Add images
+      </Button>
+    ) : isLabelsView ? (
+      <Button onClick={openCreateLabel}>
+        <Plus size={16} />
+        Create label
+      </Button>
+    ) : mediaType === "AUDIO" ? (
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={openCreateBackground}>
+          <Plus size={16} />
+          Add background audio
+        </Button>
+        <Button variant="secondary" onClick={() => navigate("/instants")}>
+          Manage instant audio
+        </Button>
+        <Button onClick={() => navigate("/songs")}>Manage songs</Button>
+      </div>
+    ) : (
+      <Button onClick={() => navigate("/stingers")}>Manage transitions</Button>
+    );
 
   return (
-    <AppPage width='full'>
-      <AlertContainer />
-      <div className='mx-auto max-w-7xl space-y-6'>
-        <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-          <SectionHeader title='Media & Media Groups' description='Create image assets once, then reuse them across slideshow scenes via groups.' />
-        </div>
-
-        {isLoading ? (
-          <Card>
-            <div className='flex flex-col items-center justify-center gap-3 py-12 text-center text-text-secondary dark:text-text-secondary'>
-              <LoadingSpinner />
-              <p>Loading media library and groups...</p>
-            </div>
-          </Card>
-        ) : (
-          <Card className='overflow-hidden p-0'>
-            <div className='border-b border-sand/10 dark:border-sand/20'>
-              <Tabs
-                activeTab={activeTab}
-                onChange={setActiveTab}
-                tabs={[
-                  {
-                    id: 'library',
-                    label: `Media Library (${sortedMedia.length})`
-                  },
-                  { id: 'groups', label: `Media Groups (${groupTotalCount})` }
-                ]}
+    <MediaLibraryPage
+      activeSection={activeSection}
+      actions={actions}
+      width="full"
+    >
+      {!isLabelsView ? (
+        <Card className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full lg:max-w-md">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+                size={16}
               />
-            </div>
-            <div className='p-6'>
-              {activeTab === 'library' ? (
-                <div className='space-y-4'>
-                  <div className='flex items-center justify-between'>
-                    <h2 className='text-xl font-semibold text-text-primary dark:text-text-primary'>Media Library</h2>
-                    <div className='flex items-center gap-3'>
-                      <Input
-                        type='text'
-                        value={mediaSearch}
-                        onChange={(event) => setMediaSearch(event.target.value)}
-                        placeholder='Search by name...'
-                        startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
-                      />
-                      <Button size='sm' onClick={openCreateMediaModal}>
-                        <Plus size={14} />
-                        Add Media
-                      </Button>
-                    </div>
-                  </div>
-
-                  {mediaTotalCount === 0 ? (
-                    <Empty
-                      title={debouncedMediaSearch ? 'No media match your search' : 'No media yet'}
-                      description={debouncedMediaSearch ? 'Try a different search term.' : 'Upload your first image asset.'}
-                      action={
-                        debouncedMediaSearch ? (
-                          <Button variant='secondary' onClick={() => setMediaSearch('')}>
-                            Clear Search
-                          </Button>
-                        ) : (
-                          <Button onClick={openCreateMediaModal}>Add Media</Button>
-                        )
-                      }
-                    />
-                  ) : (
-                    <>
-                      <div className='grid gap-4 sm:grid-cols-2 md:grid-cols-3'>
-                        {sortedMedia.map((item) => (
-                          <article
-                            key={item.id}
-                            className='group relative overflow-hidden rounded-2xl border border-sand/20 bg-white/80 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60 '
-                          >
-                            <img src={item.imageUrl} alt={item.name} className='aspect-[4/3] w-full object-cover' />
-                            <div className='absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.8)_20%,rgba(0,0,0,0.7)_40%,rgba(0,0,0,0.3)_60%,transparent_80%)] p-3 pt-14'>
-                              <h3 className='truncate text-sm font-semibold text-white drop-shadow-sm'>{item.name}</h3>
-                            </div>
-                            <div className='absolute right-2 top-2 flex gap-1'>
-                              {selectedGroup && !selectedGroup.items.some((groupItem) => groupItem.mediaId === item.id) ? (
-                                <IconButton
-                                  onClick={() => {
-                                    void addMediaToSelectedGroup(item.id);
-                                  }}
-                                  className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
-                                  title={`Add ${item.name} to ${selectedGroup.name}`}
-                                  aria-label={`Add ${item.name} to ${selectedGroup.name}`}
-                                >
-                                  <Plus size={14} />
-                                </IconButton>
-                              ) : null}
-                              <IconButton
-                                onClick={() => openEditMediaModal(item)}
-                                className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
-                                title={`Edit ${item.name}`}
-                                aria-label={`Edit ${item.name}`}
-                              >
-                                <Pencil size={14} />
-                              </IconButton>
-                              <IconButton
-                                onClick={() => {
-                                  void deleteMedia(item);
-                                }}
-                                className='bg-white/80 text-terracotta backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
-                                title={`Delete ${item.name}`}
-                                aria-label={`Delete ${item.name}`}
-                              >
-                                <Trash2 size={14} />
-                              </IconButton>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-
-                      <Pagination currentPage={mediaPage} totalPages={mediaTotalPages} hasNextPage={mediaPage < mediaTotalPages} hasPrevPage={mediaPage > 1} onPageChange={setMediaPage} />
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className='flex flex-col gap-6 xl:flex-row'>
-                  <div className='w-full space-y-4 xl:w-1/2'>
-                    <div className='flex items-center justify-between'>
-                      <h2 className='text-xl font-semibold text-text-primary dark:text-text-primary'>Media Groups</h2>
-                      <div className='flex items-center gap-3'>
-                        <Input
-                          type='text'
-                          value={groupSearch}
-                          onChange={(event) => setGroupSearch(event.target.value)}
-                          placeholder='Search groups...'
-                          startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
-                        />
-                        <Button size='sm' onClick={openCreateGroupModal}>
-                          <Plus size={14} />
-                          Create Group
-                        </Button>
-                      </div>
-                    </div>
-
-                    {groupTotalCount === 0 ? (
-                      <Empty
-                        title={debouncedGroupSearch ? 'No groups match your search' : 'No groups yet'}
-                        description={debouncedGroupSearch ? 'Try a different search term.' : 'Create a media group, then assign images to it.'}
-                        action={
-                          debouncedGroupSearch ? (
-                            <Button variant='secondary' onClick={() => setGroupSearch('')}>
-                              Clear Search
-                            </Button>
-                          ) : (
-                            <Button onClick={openCreateGroupModal}>Create Group</Button>
-                          )
-                        }
-                      />
-                    ) : (
-                      <>
-                        <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <SortableTableHeader field='name' label='Name' currentSort={groupSort} onSort={handleGroupSort} />
-                                <TableHead>Images</TableHead>
-                                <TableHead>Description</TableHead>
-                                <TableHead />
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {sortedMediaGroups.map((group) => (
-                                <TableRow key={group.id} className='cursor-pointer' onClick={() => setSelectedGroup(group)}>
-                                  <TableCell className='font-medium text-text-primary dark:text-text-primary'>{group.name}</TableCell>
-                                  <TableCell className='text-text-secondary dark:text-text-secondary'>{group.items.length}</TableCell>
-                                  <TableCell>
-                                    <span className='truncate text-xs text-text-secondary dark:text-text-secondary'>{group.description || '—'}</span>
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className='flex items-center justify-end gap-1' onClick={(e) => e.stopPropagation()}>
-                                      <IconButton onClick={() => setSelectedGroup(group)} className='text-sea ' title={`View ${group.name}`} aria-label={`View ${group.name}`}>
-                                        <Search size={14} />
-                                      </IconButton>
-                                      <IconButton onClick={() => openEditGroupModal(group)} className='text-sea ' title={`Edit ${group.name}`} aria-label={`Edit ${group.name}`}>
-                                        <Pencil size={14} />
-                                      </IconButton>
-                                      <IconButton
-                                        onClick={() => {
-                                          void deleteGroup(group);
-                                        }}
-                                        className='text-terracotta'
-                                        title={`Delete ${group.name}`}
-                                        aria-label={`Delete ${group.name}`}
-                                      >
-                                        <Trash2 size={14} />
-                                      </IconButton>
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                        <Pagination currentPage={groupPage} totalPages={groupTotalPages} hasNextPage={groupPage < groupTotalPages} hasPrevPage={groupPage > 1} onPageChange={setGroupPage} />
-                      </>
-                    )}
-                  </div>
-
-                  <div className='w-full space-y-4 xl:w-1/2'>
-                    {selectedGroup ? (
-                      <>
-                        <div className='flex items-center justify-between'>
-                          <div>
-                            <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{selectedGroup.name}</h3>
-                            {selectedGroup.description ? (
-                              <p className='text-sm text-text-secondary dark:text-text-secondary'>{selectedGroup.description}</p>
-                            ) : (
-                              <p className='text-sm text-text-secondary dark:text-text-secondary'>{selectedGroup.items.length} media items</p>
-                            )}
-                          </div>
-                          <div className='flex items-center gap-2'>
-                            <Button size='sm' variant='secondary' onClick={() => openEditGroupModal(selectedGroup)}>
-                              Edit Group
-                            </Button>
-                            <Button size='sm' variant='secondary' onClick={() => void deleteGroup(selectedGroup)}>
-                              Delete Group
-                            </Button>
-                          </div>
-                        </div>
-
-                        {selectedGroup.items.length === 0 ? (
-                          <div className='flex flex-col items-center justify-center gap-3 py-12 text-center text-text-secondary dark:text-text-secondary'>
-                            <p>No media assigned yet.</p>
-                          </div>
-                        ) : (
-                          <div className='grid gap-4 grid-cols-2'>
-                            {selectedGroup.items.map((item, index) => (
-                              <article
-                                key={item.id}
-                                className='group relative overflow-hidden rounded-2xl border border-sand/20 bg-white/80 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60'
-                              >
-                                <img src={item.media.imageUrl} alt={item.media.name} className='aspect-[4/3] w-full object-cover' />
-                                <div className='absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.8)_20%,rgba(0,0,0,0.7)_40%,rgba(0,0,0,0.3)_60%,transparent_80%)] p-3 pt-14'>
-                                  <h3 className='truncate text-sm font-semibold text-white drop-shadow-sm'>{item.media.name}</h3>
-                                </div>
-                                <div className='absolute right-2 top-2 flex gap-1'>
-                                  <IconButton
-                                    onClick={() => {
-                                      void moveMediaInSelectedGroup(item.mediaId, -1);
-                                    }}
-                                    disabled={index === 0}
-                                    className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
-                                    title='Move up'
-                                    aria-label='Move up'
-                                  >
-                                    <ArrowUp size={14} />
-                                  </IconButton>
-                                  <IconButton
-                                    onClick={() => {
-                                      void moveMediaInSelectedGroup(item.mediaId, 1);
-                                    }}
-                                    disabled={index === selectedGroup.items.length - 1}
-                                    className='bg-white/80 text-sea backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
-                                    title='Move down'
-                                    aria-label='Move down'
-                                  >
-                                    <ArrowDown size={14} />
-                                  </IconButton>
-                                  <IconButton
-                                    onClick={() => {
-                                      void removeMediaFromSelectedGroup(item.mediaId);
-                                    }}
-                                    className='bg-white/80 text-terracotta backdrop-blur-sm hover:bg-white dark:bg-dark-sand/80 dark:hover:bg-dark-sand'
-                                    title='Remove from group'
-                                    aria-label='Remove from group'
-                                  >
-                                    <X size={14} />
-                                  </IconButton>
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className='flex flex-col items-center justify-center gap-3 py-16 text-center text-text-secondary dark:text-text-secondary'>
-                        <p>Select a group from the table to view its media.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
-
-        <Modal isOpen={showMediaModal} onClose={closeMediaModal} title={editingMedia ? 'Edit Media' : 'Create Media'}>
-          <div className='space-y-5'>
-            <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>{editingMedia ? 'Name' : 'Name (optional for multi-upload)'}</label>
               <Input
-                value={mediaNameInput}
-                onChange={(e) => {
-                  setMediaNameInput(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder={editingMedia ? 'Morning Headlines 01' : 'Optional base name'}
-                autoFocus
-                error={!!error && Boolean(editingMedia) && !mediaNameInput.trim()}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={`Search ${mediaType.toLowerCase()} media…`}
+                className="pl-9 pr-9"
               />
-              {!editingMedia ? <p className='mt-2 text-xs text-text-secondary dark:text-text-secondary'>For one file, name is used directly. For multiple files, we append numbers.</p> : null}
+              {search ? (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary"
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
             </div>
-
-            {editingMedia ? (
-              <>
-                <div>
-                  <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Replace Image (optional)</label>
-                  <FileInput
-                    accept='image/*'
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      event.target.value = '';
-                      setSelectedImageFiles(file ? [file] : []);
-                      if (error) setError('');
-                    }}
-                    disabled={isUploadingMediaImage}
-                  />
-                  <span className='mt-2 block text-xs text-text-secondary dark:text-text-secondary'>
-                    {selectedImageFiles.length > 0 ? `Selected: ${selectedImageFiles[0].name}` : 'No replacement file selected.'}
-                  </span>
-                </div>
-
-                <div>
-                  <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Image URL</label>
-                  <Input
-                    value={mediaUrlInput}
-                    onChange={(e) => {
-                      setMediaUrlInput(e.target.value);
-                      if (error) setError('');
-                    }}
-                    placeholder='https://...'
-                    error={!!error && !mediaUrlInput.trim() && selectedImageFiles.length === 0}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Upload Images</label>
-                  <FileInput
-                    accept='image/*'
-                    multiple
-                    disabled={isUploadingMediaImage}
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files ?? []);
-                      event.target.value = '';
-                      setSelectedImageFiles(files);
-                      if (error) setError('');
-                    }}
-                  />
-                  <span className='mt-2 block text-xs text-text-secondary dark:text-text-secondary'>
-                    {isUploadingMediaImage ? 'Uploading…' : 'Select one or more images. Multi-upload is supported.'}
-                  </span>
-                  {selectedImageFiles.length > 0 ? (
-                    <div className='mt-2 rounded-lg border border-sand/20 bg-white/70 p-2 text-xs text-text-secondary dark:border-sand/40 dark:bg-dark-sand/50 dark:text-text-secondary'>
-                      <p>{selectedImageFiles.length} file(s) selected</p>
-                      <ul className='mt-1 list-disc pl-5'>
-                        {selectedImageFiles.slice(0, 5).map((file) => (
-                          <li key={file.name}>{file.name}</li>
-                        ))}
-                      </ul>
-                      {selectedImageFiles.length > 5 ? <p className='mt-1'>+ {selectedImageFiles.length - 5} more</p> : null}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Or Single Image URL</label>
-                  <Input
-                    value={mediaUrlInput}
-                    onChange={(e) => {
-                      setMediaUrlInput(e.target.value);
-                      if (error) setError('');
-                    }}
-                    placeholder='https://...'
-                    error={!!error && !mediaUrlInput.trim() && selectedImageFiles.length === 0}
-                  />
-                </div>
-
-                <div className='space-y-3 rounded-xl border border-sand/20 bg-sand/5 p-3 dark:border-sand/40 dark:bg-dark-sand/40'>
-                  <h4 className='text-sm font-semibold text-text-primary dark:text-text-primary'>Assign To Group</h4>
+            <div className="flex flex-wrap items-center gap-2">
+              {mediaType === "AUDIO" ? (
+                <Select
+                  value={capability}
+                  onChange={(value) =>
+                    setCapability(value as MediaCapability | "")
+                  }
+                  options={[
+                    { value: "", label: "All audio" },
+                    { value: "INSTANT", label: "Instant" },
+                    { value: "BACKGROUND", label: "Background" },
+                    { value: "SONG", label: "Song" },
+                  ]}
+                />
+              ) : null}
+              {selectedAssetIds.size > 0 ? (
+                <>
                   <Select
-                    value={groupAssignMode}
-                    onChange={(value) => {
-                      const nextMode = value as MediaGroupAssignMode;
-                      setGroupAssignMode(nextMode);
-                      if (nextMode !== 'existing') {
-                        setGroupAssignExistingId('');
-                      }
-                      if (nextMode !== 'new') {
-                        setGroupAssignNewName('');
-                        setGroupAssignNewDescription('');
-                      }
-                    }}
+                    value={bulkLabelId}
+                    onChange={setBulkLabelId}
                     options={[
-                      { value: 'none', label: 'Do not assign' },
-                      { value: 'existing', label: 'Assign to existing group' },
-                      { value: 'new', label: 'Create a new group and assign' }
+                      { value: "", label: "Choose label…" },
+                      ...labels.map((label) => ({
+                        value: label.id,
+                        label: label.name,
+                      })),
                     ]}
                   />
+                  <Button
+                    size="sm"
+                    onClick={() => void applyBulkLabel()}
+                    disabled={!bulkLabelId}
+                  >
+                    <Tag size={14} />
+                    Label {selectedAssetIds.size}
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </div>
 
-                  {groupAssignMode === 'existing' ? (
-                    <Select
-                      value={groupAssignExistingId}
-                      onChange={(value) => setGroupAssignExistingId(value)}
-                      placeholder='Select a group'
-                      options={mediaGroups.map((group) => ({
-                        value: String(group.id),
-                        label: `${group.name} (${group.items.length} images)`
-                      }))}
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <LoadingSpinner />
+            </div>
+          ) : assets.length === 0 ? (
+            <Empty
+              title={`No ${mediaType.toLowerCase()} media found`}
+              description={
+                debouncedSearch || capability
+                  ? "Clear the filters and try again."
+                  : "This physical media type has no assets yet."
+              }
+            />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {assets.map((asset) => (
+                <article
+                  key={asset.id}
+                  className="rounded-[var(--radius-card)] border border-sand/25 bg-white/80 p-4 dark:border-white/10 dark:bg-dark-sand/60"
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={selectedAssetIds.has(asset.id)}
+                      onChange={(event) =>
+                        setSelectedAssetIds((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) next.add(asset.id);
+                          else next.delete(asset.id);
+                          return next;
+                        })
+                      }
+                    />
+                    {asset.mediaType === "IMAGE" ? (
+                      <img
+                        src={asset.sourceUrl}
+                        alt=""
+                        className="h-16 w-24 rounded-lg bg-sand/10 object-cover"
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-text-primary">
+                        {asset.name}
+                      </p>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-text-secondary">
+                        {asset.mediaType}
+                      </p>
+                    </div>
+                    {asset.image ? (
+                      <div className="flex gap-1">
+                        <IconButton
+                          aria-label={`Edit ${asset.name}`}
+                          onClick={() => openEditImage(asset)}
+                        >
+                          <Pencil size={15} />
+                        </IconButton>
+                        <IconButton
+                          aria-label={`Delete ${asset.name}`}
+                          onClick={() => void deleteImage(asset)}
+                        >
+                          <Trash2 size={15} />
+                        </IconButton>
+                      </div>
+                    ) : !asset.instant && !asset.song && asset.coverForSongIds.length === 0 && !asset.transition ? (
+                      <IconButton
+                        aria-label={`Delete ${asset.name}`}
+                        onClick={() => void deleteStandaloneAsset(asset)}
+                      >
+                        <Trash2 size={15} />
+                      </IconButton>
+                    ) : null}
+                  </div>
+                  {asset.mediaType === "AUDIO" ? (
+                    <audio
+                      className="mt-3 w-full"
+                      controls
+                      preload="none"
+                      src={asset.sourceUrl}
                     />
                   ) : null}
-
-                  {groupAssignMode === 'new' ? (
-                    <div className='space-y-2'>
-                      <Input value={groupAssignNewName} onChange={(event) => setGroupAssignNewName(event.target.value)} placeholder='New group name' />
-                      <Textarea value={groupAssignNewDescription} onChange={(event) => setGroupAssignNewDescription(event.target.value)} rows={2} placeholder='Optional group description' />
-                    </div>
+                  {asset.mediaType === "VIDEO" ? (
+                    <video
+                      className="mt-3 aspect-video w-full rounded-lg bg-black object-contain"
+                      controls
+                      preload="metadata"
+                      src={asset.sourceUrl}
+                    />
                   ) : null}
+                  <div className="mt-3 space-y-2">
+                    <CapabilityBadges capabilities={asset.capabilities} />
+                    <LabelBadges labels={asset.labels} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          {totalPages > 1 ? (
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              hasNextPage={page < totalPages}
+              hasPrevPage={page > 1}
+              onPageChange={setPage}
+            />
+          ) : null}
+          <p className="text-xs text-text-secondary">
+            {totalCount} asset{totalCount === 1 ? "" : "s"}
+          </p>
+        </Card>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.7fr)]">
+          <Card className="space-y-3">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+                size={16}
+              />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search labels…"
+                className="pl-9"
+              />
+            </div>
+            {labels
+              .filter(
+                (label) =>
+                  !debouncedSearch ||
+                  label.name
+                    .toLowerCase()
+                    .includes(debouncedSearch.toLowerCase()),
+              )
+              .map((label) => (
+                <button
+                  key={label.id}
+                  type="button"
+                  onClick={() => setSelectedLabel(label)}
+                  className={`w-full rounded-xl border p-3 text-left transition ${selectedLabel?.id === label.id ? "border-sea/60 bg-sea/10" : "border-sand/25 hover:border-sea/30"}`}
+                >
+                  <span className="block font-medium text-text-primary">
+                    {label.name}
+                  </span>
+                  <span className="mt-1 block text-xs text-text-secondary">
+                    {label.assetCount} asset{label.assetCount === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))}
+            {!isLoading && labels.length === 0 ? (
+              <Empty
+                title="No labels yet"
+                description="Create a label, then apply it to any media asset."
+              />
+            ) : null}
+          </Card>
+
+          <Card className="space-y-4">
+            {!selectedLabel ? (
+              <Empty
+                title="Select a label"
+                description="Labels can group and order any media without creating a separate collection."
+              />
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-text-primary">
+                      {selectedLabel.name}
+                    </h2>
+                    {selectedLabel.description ? (
+                      <p className="mt-1 text-sm text-text-secondary">
+                        {selectedLabel.description}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex gap-1">
+                    <IconButton
+                      aria-label={`Edit ${selectedLabel.name}`}
+                      onClick={() => openEditLabel(selectedLabel)}
+                    >
+                      <Pencil size={16} />
+                    </IconButton>
+                    <IconButton
+                      aria-label={`Delete ${selectedLabel.name}`}
+                      onClick={() => void deleteLabel(selectedLabel)}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </div>
                 </div>
+                <div className="flex gap-2">
+                  <Select
+                    value={assetToAdd}
+                    onChange={setAssetToAdd}
+                    options={[
+                      { value: "", label: "Choose media…" },
+                      ...availableForSelectedLabel.map((asset) => ({
+                        value: asset.id,
+                        label: `${asset.name} · ${asset.mediaType.toLowerCase()}`,
+                      })),
+                    ]}
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => void addAssetToLabel()}
+                    disabled={!assetToAdd}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {selectedLabel.assets.length === 0 ? (
+                  <Empty
+                    title="No media with this label"
+                    description="Add existing media here, or apply this label while uploading images."
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    {selectedLabel.assets.map(({ asset }, index) => (
+                      <div
+                        key={asset.id}
+                        className="flex items-center gap-3 rounded-xl border border-sand/25 p-3"
+                      >
+                        <span className="w-6 text-center text-xs text-text-secondary">
+                          {index + 1}
+                        </span>
+                        {asset.mediaType === "IMAGE" ? (
+                          <img
+                            src={asset.sourceUrl}
+                            alt=""
+                            className="h-10 w-14 rounded object-cover"
+                          />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-text-primary">
+                            {asset.name}
+                          </p>
+                          <p className="text-xs text-text-secondary">
+                            {asset.mediaType.toLowerCase()}
+                          </p>
+                        </div>
+                        <IconButton
+                          aria-label="Move up"
+                          disabled={index === 0}
+                          onClick={() => void moveLabelAsset(index, -1)}
+                        >
+                          <ArrowUp size={15} />
+                        </IconButton>
+                        <IconButton
+                          aria-label="Move down"
+                          disabled={index === selectedLabel.assets.length - 1}
+                          onClick={() => void moveLabelAsset(index, 1)}
+                        >
+                          <ArrowDown size={15} />
+                        </IconButton>
+                        <IconButton
+                          aria-label="Remove label from media"
+                          onClick={() => void removeLabelAsset(asset.id)}
+                        >
+                          <Trash2 size={15} />
+                        </IconButton>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
+          </Card>
+        </div>
+      )}
 
-            {error ? <p className='text-sm text-terracotta'>{error}</p> : null}
-
-            <div className='flex justify-end gap-3'>
-              <Button variant='secondary' onClick={closeMediaModal} disabled={isSavingMedia}>
-                Cancel
-              </Button>
-              <Button onClick={saveMedia} disabled={isSavingMedia || isUploadingMediaImage}>
-                {isUploadingMediaImage ? 'Uploading...' : isSavingMedia ? 'Saving...' : editingMedia ? 'Update Media' : 'Create Media'}
-              </Button>
-            </div>
+      <Modal
+        isOpen={showImageModal}
+        onClose={closeImageModal}
+        title={editingAsset ? "Edit image" : "Add images"}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Name
+            </label>
+            <Input
+              value={imageName}
+              onChange={(event) => setImageName(event.target.value)}
+              placeholder={
+                editingAsset ? "Image name" : "Optional for file uploads"
+              }
+            />
           </div>
-        </Modal>
-
-        <Modal isOpen={showGroupModal} onClose={closeGroupModal} title={editingGroup ? 'Edit Media Group' : 'Create Media Group'}>
-          <div className='space-y-5'>
-            <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Group Name</label>
-              <Input
-                value={groupNameInput}
-                onChange={(e) => {
-                  setGroupNameInput(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder='Morning Slideshow'
-                autoFocus
-                error={!!error && !groupNameInput.trim()}
-              />
-            </div>
-
-            <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Description (optional)</label>
-              <Textarea
-                value={groupDescriptionInput}
-                onChange={(event) => {
-                  setGroupDescriptionInput(event.target.value);
-                  if (error) setError('');
-                }}
-                rows={3}
-                placeholder='Used by Morning program scene 1'
-              />
-            </div>
-
-            {error ? <p className='text-sm text-terracotta'>{error}</p> : null}
-
-            <div className='flex justify-end gap-3'>
-              <Button variant='secondary' onClick={closeGroupModal} disabled={isSavingGroup}>
-                Cancel
-              </Button>
-              <Button onClick={saveGroup} disabled={isSavingGroup}>
-                {isSavingGroup ? 'Saving...' : editingGroup ? 'Update Group' : 'Create Group'}
-              </Button>
-            </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              {editingAsset ? "Replace image" : "Image files"}
+            </label>
+            <FileInput
+              accept="image/*"
+              multiple={!editingAsset}
+              onChange={(event) => {
+                setImageFiles(Array.from(event.target.files ?? []));
+                event.target.value = "";
+              }}
+            />
           </div>
-        </Modal>
-      </div>
-    </AppPage>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Direct URL
+            </label>
+            <Input
+              value={imageUrl}
+              onChange={(event) => setImageUrl(event.target.value)}
+              placeholder="https://…"
+            />
+          </div>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-text-primary">
+              Labels
+            </legend>
+            {labels.length === 0 ? (
+              <p className="text-xs text-text-secondary">
+                No labels yet. You can upload now and label the images later.
+              </p>
+            ) : (
+              labels.map((label) => (
+                <Checkbox
+                  key={label.id}
+                  label={label.name}
+                  checked={imageLabelIds.has(label.id)}
+                  onChange={(event) =>
+                    setImageLabelIds((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(label.id);
+                      else next.delete(label.id);
+                      return next;
+                    })
+                  }
+                />
+              ))
+            )}
+          </fieldset>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={closeImageModal}
+              disabled={isSavingImage}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void saveImage()} disabled={isSavingImage}>
+              {isSavingImage
+                ? "Saving…"
+                : editingAsset
+                  ? "Save image"
+                  : "Add images"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showLabelModal}
+        onClose={() => setShowLabelModal(false)}
+        title={editingLabel ? "Edit label" : "Create label"}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Name
+            </label>
+            <Input
+              value={labelName}
+              onChange={(event) => setLabelName(event.target.value)}
+              placeholder="80s, Headlines, Sponsor photos…"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Description
+            </label>
+            <Textarea
+              value={labelDescription}
+              onChange={(event) => setLabelDescription(event.target.value)}
+              rows={3}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setShowLabelModal(false)}
+              disabled={isSavingLabel}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void saveLabel()} disabled={isSavingLabel}>
+              {isSavingLabel
+                ? "Saving…"
+                : editingLabel
+                  ? "Save label"
+                  : "Create label"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showBackgroundModal}
+        onClose={() => setShowBackgroundModal(false)}
+        title="Add background audio"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Name
+            </label>
+            <Input
+              value={backgroundName}
+              onChange={(event) => setBackgroundName(event.target.value)}
+              placeholder="Weather bed"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Audio file
+            </label>
+            <FileInput
+              accept="audio/*"
+              onChange={(event) => {
+                setBackgroundFile(event.target.files?.[0] ?? null);
+                event.target.value = "";
+              }}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Direct URL
+            </label>
+            <Input
+              value={backgroundUrl}
+              onChange={(event) => setBackgroundUrl(event.target.value)}
+              placeholder="https://…"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-primary">
+              Default volume
+            </label>
+            <Input
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={backgroundVolume}
+              onChange={(event) => setBackgroundVolume(event.target.value)}
+            />
+          </div>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-text-primary">
+              Labels
+            </legend>
+            {labels.map((label) => (
+              <Checkbox
+                key={label.id}
+                label={label.name}
+                checked={backgroundLabelIds.has(label.id)}
+                onChange={(event) =>
+                  setBackgroundLabelIds((current) => {
+                    const next = new Set(current);
+                    if (event.target.checked) next.add(label.id);
+                    else next.delete(label.id);
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </fieldset>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setShowBackgroundModal(false)}
+              disabled={isSavingBackground}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void saveBackground()}
+              disabled={isSavingBackground}
+            >
+              {isSavingBackground ? "Saving…" : "Add background audio"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </MediaLibraryPage>
   );
 }

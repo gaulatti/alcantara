@@ -1,10 +1,17 @@
-import { MediaAssetKind, Prisma } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType, Prisma } from '@prisma/client';
 
 const ASSET_ID_PREFIX: Record<MediaAssetKind, string> = {
   [MediaAssetKind.IMAGE]: 'image',
   [MediaAssetKind.AUDIO_CLIP]: 'audio-clip',
   [MediaAssetKind.SONG]: 'song',
   [MediaAssetKind.TRANSITION]: 'transition',
+};
+
+const ASSET_MEDIA_TYPE: Record<MediaAssetKind, MediaAssetType> = {
+  [MediaAssetKind.IMAGE]: MediaAssetType.IMAGE,
+  [MediaAssetKind.AUDIO_CLIP]: MediaAssetType.AUDIO,
+  [MediaAssetKind.SONG]: MediaAssetType.AUDIO,
+  [MediaAssetKind.TRANSITION]: MediaAssetType.VIDEO,
 };
 
 export interface MediaAssetSource {
@@ -25,6 +32,10 @@ export function mediaAssetId(kind: MediaAssetKind, legacyId: number): string {
   return `${ASSET_ID_PREFIX[kind]}:${legacyId}`;
 }
 
+export function songCoverAssetId(songId: number): string {
+  return `song-cover:${songId}`;
+}
+
 async function upsertMediaAsset(
   tx: MediaAssetSyncClient,
   kind: MediaAssetKind,
@@ -33,6 +44,7 @@ async function upsertMediaAsset(
   const assetId = mediaAssetId(kind, source.id);
   const asset = {
     kind,
+    mediaType: ASSET_MEDIA_TYPE[kind],
     name: source.name,
     sourceUrl: source.sourceUrl,
     enabled: source.enabled,
@@ -122,9 +134,11 @@ export async function syncSongAsset(
   song: {
     id: number;
     assetId?: string | null;
+    coverAssetId?: string | null;
     artist: string;
     title: string;
     audioUrl: string;
+    coverUrl?: string | null;
     enabled: boolean;
     createdAt?: Date;
     updatedAt?: Date;
@@ -138,13 +152,43 @@ export async function syncSongAsset(
     createdAt: song.createdAt,
     updatedAt: song.updatedAt,
   });
-  if (song.assetId !== assetId) {
+  const normalizedCoverUrl = song.coverUrl?.trim() || null;
+  const coverAssetId = normalizedCoverUrl ? songCoverAssetId(song.id) : null;
+  if (normalizedCoverUrl && coverAssetId) {
+    await tx.mediaAsset.upsert({
+      where: { id: coverAssetId },
+      create: {
+        id: coverAssetId,
+        kind: null,
+        mediaType: MediaAssetType.IMAGE,
+        name: `${song.artist.trim()} ${song.title.trim()}`.trim() + ' cover',
+        sourceUrl: normalizedCoverUrl,
+        enabled: song.enabled,
+        ...(song.createdAt ? { createdAt: song.createdAt } : {}),
+        ...(song.updatedAt ? { updatedAt: song.updatedAt } : {}),
+      },
+      update: {
+        mediaType: MediaAssetType.IMAGE,
+        name: `${song.artist.trim()} ${song.title.trim()}`.trim() + ' cover',
+        sourceUrl: normalizedCoverUrl,
+        enabled: song.enabled,
+        ...(song.updatedAt ? { updatedAt: song.updatedAt } : {}),
+      },
+    });
+  }
+  if (song.assetId !== assetId || song.coverAssetId !== coverAssetId) {
     await tx.song.update({
       where: { id: song.id },
       data: {
         assetId,
+        coverAssetId,
         ...(song.updatedAt ? { updatedAt: song.updatedAt } : {}),
       },
+    });
+  }
+  if (!coverAssetId && song.coverAssetId) {
+    await tx.mediaAsset.deleteMany({
+      where: { id: songCoverAssetId(song.id) },
     });
   }
   return assetId;
@@ -190,4 +234,11 @@ export async function deleteMediaAsset(
   await tx.mediaAsset.deleteMany({
     where: { id: mediaAssetId(kind, legacyId) },
   });
+}
+
+export async function deleteSongCoverAsset(
+  tx: MediaAssetSyncClient,
+  songId: number,
+): Promise<void> {
+  await tx.mediaAsset.deleteMany({ where: { id: songCoverAssetId(songId) } });
 }

@@ -504,7 +504,9 @@ export default function ProgramsAdmin() {
   };
 
   const supportsSceneConfiguration = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'scene.configuration'));
-  const supportsMediaGroups = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'media.groups'));
+  // Labels are global media organization; legacy program media-group assignments
+  // remain persisted for compatibility but are no longer edited here.
+  const supportsMediaGroups = false;
   const supportsStingers = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'stinger.transitions'));
 
   const deleteProgram = async (programId: string) => {
@@ -588,7 +590,7 @@ export default function ProgramsAdmin() {
                           <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Audio-only show · Songs, audio clips, mixer, and Radio distribution</p>
                         ) : (
                           <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>
-                            Scenes assigned: {program.scenes.length} · Media groups assigned: {(program.mediaGroups || []).length} · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
+                            Scenes assigned: {program.scenes.length} · Media labels are available globally · Stingers assigned: {(program.stingers || []).length} · Active scene:{' '}
                             {program.activeSceneId ?? 'none'}
                           </p>
                         )}

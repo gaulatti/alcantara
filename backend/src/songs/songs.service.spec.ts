@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { MediaAssetKind } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { SongsService } from './songs.service';
 
 function buildService() {
@@ -89,12 +89,14 @@ describe('SongsService song intros', () => {
       create: {
         id: 'song:7',
         kind: MediaAssetKind.SONG,
+        mediaType: MediaAssetType.AUDIO,
         name: 'Song',
         sourceUrl: 'https://media.test/song.mp3',
         enabled: true,
       },
       update: {
         kind: MediaAssetKind.SONG,
+        mediaType: MediaAssetType.AUDIO,
         name: 'Song',
         sourceUrl: 'https://media.test/song.mp3',
         enabled: true,

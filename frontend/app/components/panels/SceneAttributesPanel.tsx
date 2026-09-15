@@ -1,7 +1,6 @@
 import { Button, Select, Tabs } from '@gaulatti/bleecker';
 import { useEffect, useMemo, useState } from 'react';
-import type { InstantItem, MediaGroup, Scene, SceneInstantPlaybackState, SongCatalogItem } from '../../models/broadcast';
-import { normalizeSceneInstantId } from '../../utils/broadcast';
+import type { BackgroundAudioAsset, MediaGroup, MediaLabel, Scene, SceneInstantPlaybackState, SongCatalogItem } from '../../models/broadcast';
 import { ComponentPropsFields, ZIndexField } from '../editors';
 
 interface SceneAttributesPanelProps {
@@ -14,20 +13,24 @@ interface SceneAttributesPanelProps {
   componentTypes: { type: string; name: string; description: string }[];
   sceneEditorProps: Record<string, any>;
   selectedSceneInstantId: number | null;
-  selectedSceneInstant: InstantItem | null | undefined;
+  selectedBackgroundAudioAssetId: string | null;
+  selectedBackgroundAudioAsset: BackgroundAudioAsset | null;
   sceneInstantPlayback: SceneInstantPlaybackState;
   activeProgramId: string;
-  instants: InstantItem[];
+  backgroundAudioAssets: BackgroundAudioAsset[];
+  isLoadingBackgroundAudio: boolean;
   songCatalog: SongCatalogItem[];
   mediaGroups: MediaGroup[];
   isLoadingMediaGroups: boolean;
+  mediaLabels: MediaLabel[];
+  isLoadingMediaLabels: boolean;
   onBlurCapture: (event: React.FocusEvent<HTMLDivElement>) => void;
   onSave: () => void;
   onCommitComponentProps: (componentType: string, props: any) => Promise<void>;
   onUpdateProp: (componentType: string, propName: string, value: any) => void;
   onReplaceProps: (componentType: string, newProps: any) => void;
   onSyncComponentProps: (componentType: string, newProps: any) => void;
-  onTakeSceneInstant: (sceneId: number | null, instantId: number | null) => Promise<void>;
+  onTakeSceneInstant: (sceneId: number | null, instantId: number | null, mediaAssetId: string | null) => Promise<void>;
   onStopSceneInstant: () => Promise<void>;
 }
 
@@ -41,13 +44,17 @@ export function SceneAttributesPanel({
   componentTypes,
   sceneEditorProps,
   selectedSceneInstantId,
-  selectedSceneInstant,
+  selectedBackgroundAudioAssetId,
+  selectedBackgroundAudioAsset,
   sceneInstantPlayback,
   activeProgramId,
-  instants,
+  backgroundAudioAssets,
+  isLoadingBackgroundAudio,
   songCatalog,
   mediaGroups,
   isLoadingMediaGroups,
+  mediaLabels,
+  isLoadingMediaLabels,
   onBlurCapture,
   onSave,
   onCommitComponentProps,
@@ -111,35 +118,37 @@ export function SceneAttributesPanel({
             <div className='space-y-3'>
               <div className='flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
                 <div className='flex-1'>
-                  <label className='mb-1 block text-xs text-text-secondary'>Scene Background Instant</label>
+                  <label className='mb-1 block text-xs text-text-secondary'>Scene background audio</label>
                   <Select
-                    value={selectedSceneInstantId ? String(selectedSceneInstantId) : ''}
+                    value={selectedBackgroundAudioAssetId ?? ''}
                     onChange={(value) => {
-                      const nextInstantId = normalizeSceneInstantId(value);
+                      const nextAssetId = value.trim() || null;
                       const currentSceneInstantProps =
                         sceneEditorProps?.sceneInstant && typeof sceneEditorProps.sceneInstant === 'object' ? sceneEditorProps.sceneInstant : {};
                       void onCommitComponentProps('sceneInstant', {
                         ...currentSceneInstantProps,
-                        instantId: nextInstantId
+                        assetId: nextAssetId,
+                        instantId: null
                       });
                     }}
                     className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
                     options={[
-                      { value: '', label: 'No background instant' },
-                      ...instants
-                        .filter((instant) => instant.enabled)
-                        .map((instant) => ({
-                          value: String(instant.id),
-                          label: instant.name
+                      { value: '', label: 'No background audio' },
+                      ...backgroundAudioAssets
+                        .filter((asset) => asset.enabled)
+                        .map((asset) => ({
+                          value: asset.id,
+                          label: asset.name
                         }))
                     ]}
                   />
+                  {isLoadingBackgroundAudio ? <p className='mt-1 text-xs text-text-secondary'>Loading background audio…</p> : null}
                 </div>
                 <div className='flex flex-wrap gap-2'>
                   <Button
                     size='sm'
-                    onClick={() => onTakeSceneInstant(selectedScene, selectedSceneInstantId)}
-                    disabled={!selectedScene || selectedSceneInstantId === null || !selectedSceneInstant}
+                    onClick={() => onTakeSceneInstant(selectedScene, selectedSceneInstantId, selectedBackgroundAudioAssetId)}
+                    disabled={!selectedScene || !selectedBackgroundAudioAsset}
                   >
                     TAKE BG
                   </Button>
@@ -151,9 +160,9 @@ export function SceneAttributesPanel({
               <p className='text-xs text-text-secondary dark:text-text-secondary'>
                 {sceneInstantPlayback.isPlaying
                   ? `Playing: ${sceneInstantPlayback.instantName || 'Scene instant'}`
-                  : selectedSceneInstant
-                    ? `Ready: ${selectedSceneInstant.name}`
-                    : 'Select an instant, then press SAVE (or TAKE BG).'}
+                  : selectedBackgroundAudioAsset
+                    ? `Ready: ${selectedBackgroundAudioAsset.name}`
+                    : 'Select background audio, then press SAVE (or TAKE BG).'}
               </p>
             </div>
           ) : activeComponentEntry ? (
@@ -171,6 +180,8 @@ export function SceneAttributesPanel({
                 songCatalog={songCatalog}
                 mediaGroups={mediaGroups}
                 isLoadingMediaGroups={isLoadingMediaGroups}
+                mediaLabels={mediaLabels}
+                isLoadingMediaLabels={isLoadingMediaLabels}
                 scenes={scenes}
                 programId={activeProgramId}
                 sceneId={selectedScene}

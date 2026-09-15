@@ -52,7 +52,7 @@ import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
-import { getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
+import { getProgramSlideshowLabelIds, getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
 import { sceneInstantBelongsToActiveScene } from '../utils/programSceneInstant';
 
 interface Layout {
@@ -135,7 +135,8 @@ interface SceneInstantTakeEvent {
   programId?: string;
   sceneId?: number | null;
   instant: {
-    id: number;
+    id: number | null;
+    assetId?: string | null;
     name: string;
     audioUrl: string;
     volume: number;
@@ -150,9 +151,11 @@ interface SceneInstantStateEvent {
   playback?: {
     sceneId?: number | null;
     instantId?: number | null;
+    mediaAssetId?: string | null;
     isPlaying?: boolean;
     instant?: {
-      id: number;
+      id: number | null;
+      assetId?: string | null;
       name: string;
       audioUrl: string;
       volume: number;
@@ -228,6 +231,17 @@ interface SlideshowMediaGroup {
   name: string;
   description: string | null;
   items: SlideshowMediaGroupItem[];
+}
+
+interface SlideshowMediaLabel {
+  id: string;
+  name: string;
+  images: Array<{
+    assetId: string;
+    name: string;
+    imageUrl: string;
+    position: number;
+  }>;
 }
 
 interface AudioBusUpdateEvent {
@@ -458,6 +472,10 @@ function normalizeSlideshowMediaGroupId(value: unknown): number | null {
   return numeric;
 }
 
+function normalizeSlideshowLabelId(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function normalizeProgramMixerChannels(value: unknown, fallback: ProgramMixerChannel[]): ProgramMixerChannel[] {
   if (!Array.isArray(value)) {
     return fallback;
@@ -666,8 +684,18 @@ function normalizeSceneInstantTimestamp(value: unknown): string {
   return value.trim();
 }
 
-function buildSceneInstantPlaybackToken(sceneId: number | null, instantId: number | null, audioUrl: string, timestamp: string): string {
-  return `${sceneId ?? 'none'}|${instantId ?? 'none'}|${audioUrl.trim()}|${timestamp || 'none'}`;
+function normalizeSceneInstantAssetId(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function buildSceneInstantPlaybackToken(
+  sceneId: number | null,
+  mediaAssetId: string | null,
+  instantId: number | null,
+  audioUrl: string,
+  timestamp: string
+): string {
+  return `${sceneId ?? 'none'}|${mediaAssetId ?? instantId ?? 'none'}|${audioUrl.trim()}|${timestamp || 'none'}`;
 }
 
 export default function Program() {
@@ -691,6 +719,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   const [audioBusSettings, setAudioBusSettings] = useState<ProgramAudioBusSettings | null>(null);
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettings | null>(null);
   const [slideshowMediaGroupsById, setSlideshowMediaGroupsById] = useState<Record<number, SlideshowMediaGroup>>({});
+  const [slideshowMediaLabelsById, setSlideshowMediaLabelsById] = useState<Record<string, SlideshowMediaLabel>>({});
   const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
   const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
@@ -829,6 +858,17 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       state?.stagedScene?.layout?.componentType
     ]
   );
+  const slideshowMediaLabelIds = useMemo(
+    () => getProgramSlideshowLabelIds(state?.activeScene, state?.stagedScene),
+    [
+      state?.activeScene?.id,
+      state?.activeScene?.metadata,
+      state?.activeScene?.layout?.componentType,
+      state?.stagedScene?.id,
+      state?.stagedScene?.metadata,
+      state?.stagedScene?.layout?.componentType
+    ]
+  );
   // A long-running program output must refresh even when two scenes reuse the
   // same group ID or the active scene's slideshow configuration is edited.
   const slideshowMediaGroupRequestKey = [
@@ -838,9 +878,27 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     state?.stagedScene?.id ?? '',
     state?.stagedScene?.metadata ?? ''
   ].join('|');
+  const slideshowMediaLabelRequestKey = [
+    slideshowMediaLabelIds.join(','),
+    state?.activeScene?.id ?? '',
+    state?.activeScene?.metadata ?? '',
+    state?.stagedScene?.id ?? '',
+    state?.stagedScene?.metadata ?? ''
+  ].join('|');
 
   const resolveSlideshowImages = useCallback(
     (slideshowProps: Record<string, unknown>): unknown => {
+      const labelId = normalizeSlideshowLabelId(slideshowProps.labelId);
+      if (labelId !== null) {
+        const label = slideshowMediaLabelsById[labelId];
+        return label
+          ? [...label.images]
+              .sort((a, b) => a.position - b.position)
+              .map((image) => image.imageUrl)
+              .filter((imageUrl): imageUrl is string => typeof imageUrl === 'string' && imageUrl.trim().length > 0)
+          : [];
+      }
+
       const mediaGroupId = normalizeSlideshowMediaGroupId(slideshowProps.mediaGroupId);
       if (mediaGroupId === null) {
         return slideshowProps.images;
@@ -856,7 +914,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
         .map((item) => item.media?.imageUrl)
         .filter((imageUrl): imageUrl is string => typeof imageUrl === 'string' && imageUrl.trim().length > 0);
     },
-    [slideshowMediaGroupsById]
+    [slideshowMediaGroupsById, slideshowMediaLabelsById]
   );
 
   const clearTransitionTimers = () => {
@@ -1152,9 +1210,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       const takeSequence = sceneInstantTakeSequenceRef.current;
       const sceneId = normalizeSceneInstantNumericId(event.sceneId);
       const instantId = normalizeSceneInstantNumericId(event.instant?.id);
+      const mediaAssetId = normalizeSceneInstantAssetId(event.instant?.assetId);
       const timestamp = normalizeSceneInstantTimestamp(event.triggeredAt);
       const audioUrl = typeof event.instant?.audioUrl === 'string' ? event.instant.audioUrl.trim() : '';
-      const playbackToken = buildSceneInstantPlaybackToken(sceneId, instantId, audioUrl, timestamp);
+      const playbackToken = buildSceneInstantPlaybackToken(sceneId, mediaAssetId, instantId, audioUrl, timestamp);
       const currentlyPlayingSceneInstant = activeSceneInstantAudioRef.current;
 
       if (
@@ -1516,8 +1575,9 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
         if (playback && playback.isPlaying && playback.instant && typeof playback.instant.audioUrl === 'string' && playback.instant.audioUrl.trim().length > 0) {
           const sceneId = normalizeSceneInstantNumericId(playback.sceneId);
           const instantId = normalizeSceneInstantNumericId(playback.instant.id);
+          const mediaAssetId = normalizeSceneInstantAssetId(playback.mediaAssetId ?? playback.instant.assetId);
           const timestamp = normalizeSceneInstantTimestamp(playback.startedAt) || normalizeSceneInstantTimestamp(playback.updatedAt);
-          const playbackToken = buildSceneInstantPlaybackToken(sceneId, instantId, playback.instant.audioUrl, timestamp);
+          const playbackToken = buildSceneInstantPlaybackToken(sceneId, mediaAssetId, instantId, playback.instant.audioUrl, timestamp);
           const currentlyPlayingSceneInstant = activeSceneInstantAudioRef.current;
           if (
             currentlyPlayingSceneInstant &&
@@ -1955,6 +2015,34 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       cancelled = true;
     };
   }, [slideshowMediaGroupRequestKey]);
+
+  useEffect(() => {
+    if (!slideshowMediaLabelIds.length) return;
+
+    let cancelled = false;
+    Promise.all(
+      slideshowMediaLabelIds.map(async (labelId) => {
+        const res = await fetch(apiUrl(`/media-labels/${encodeURIComponent(labelId)}/images`));
+        if (!res.ok) throw new Error(`Media label ${labelId}: HTTP ${res.status}`);
+        return (await res.json()) as SlideshowMediaLabel;
+      })
+    )
+      .then((payloads) => {
+        if (cancelled) return;
+        setSlideshowMediaLabelsById((prev) => {
+          const next = { ...prev };
+          payloads.forEach((payload) => {
+            next[payload.id] = payload;
+          });
+          return next;
+        });
+      })
+      .catch((err) => console.error('Failed to load slideshow media labels:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slideshowMediaLabelRequestKey]);
 
   useEffect(() => {
     if (confidenceMode || typeof window === 'undefined') {

@@ -9,7 +9,7 @@ import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFiel
 import { ModoItalianoPodcastPlayerEditorFields } from './ModoItalianoPodcastPlayerEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
 import { createProgramTextSequence } from '../../utils/programSequence';
-import type { Scene, SongCatalogItem, MediaGroup } from '../../models/broadcast';
+import type { Scene, SongCatalogItem, MediaGroup, MediaLabel } from '../../models/broadcast';
 import { getDefaultPropsForComponent } from '../../models/components';
 
 function toBoolean(value: unknown, fallback: boolean): boolean {
@@ -33,6 +33,8 @@ export function ComponentPropsFields({
   songCatalog,
   mediaGroups,
   isLoadingMediaGroups,
+  mediaLabels,
+  isLoadingMediaLabels,
   scenes,
   programId,
   sceneId
@@ -46,6 +48,8 @@ export function ComponentPropsFields({
   songCatalog: SongCatalogItem[];
   mediaGroups: MediaGroup[];
   isLoadingMediaGroups: boolean;
+  mediaLabels: MediaLabel[];
+  isLoadingMediaLabels: boolean;
   scenes?: Scene[];
   programId?: string;
   sceneId?: number;
@@ -128,7 +132,7 @@ export function ComponentPropsFields({
     case 'toni-logo':
       return <p className='text-xs text-text-secondary italic'>No configurable attributes.</p>;
     case 'slideshow':
-      return <SlideshowEditorFields componentType={componentType} props={props} updateProp={updateProp} mediaGroups={mediaGroups} isLoadingMediaGroups={isLoadingMediaGroups} />;
+      return <SlideshowEditorFields componentType={componentType} props={props} updateProp={updateProp} mediaLabels={mediaLabels} isLoadingMediaLabels={isLoadingMediaLabels} />;
     case 'video-stream':
       return (
         <div className='space-y-3'>

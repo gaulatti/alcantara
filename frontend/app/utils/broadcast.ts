@@ -235,13 +235,17 @@ export function normalizeProgramSongPlayback(value: unknown): ProgramSongPlaybac
 
 export function normalizeSceneInstantPlayback(value: unknown): SceneInstantPlaybackState {
   if (!value || typeof value !== 'object') {
-    return { sceneId: null, instantId: null, instantName: '', isPlaying: false, updatedAt: new Date(0).toISOString() };
+    return { sceneId: null, instantId: null, mediaAssetId: null, instantName: '', isPlaying: false, updatedAt: new Date(0).toISOString() };
   }
   const r = value as Record<string, unknown>;
   const instant = r.instant && typeof r.instant === 'object' && !Array.isArray(r.instant) ? (r.instant as Record<string, unknown>) : null;
   return {
     sceneId: normalizeSceneInstantId(r.sceneId),
     instantId: normalizeSceneInstantId(r.instantId ?? instant?.id),
+    mediaAssetId:
+      typeof (r.mediaAssetId ?? instant?.assetId) === 'string' && String(r.mediaAssetId ?? instant?.assetId).trim()
+        ? String(r.mediaAssetId ?? instant?.assetId).trim()
+        : null,
     instantName: typeof instant?.name === 'string' ? instant.name : '',
     isPlaying: Boolean(r.isPlaying),
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date().toISOString()
@@ -366,6 +370,10 @@ export function normalizeSlideshowImageList(value: unknown): string[] {
 export function normalizeSlideshowMediaGroupId(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) && numeric > 0 && Number.isInteger(numeric) ? numeric : null;
+}
+
+export function normalizeSlideshowLabelId(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 export function normalizeSceneInstantId(value: unknown): number | null {

@@ -1,4 +1,4 @@
-import { MediaAssetKind } from '@prisma/client';
+import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { StingersService } from './stingers.service';
 
 describe('StingersService canonical asset writes', () => {
@@ -39,12 +39,14 @@ describe('StingersService canonical asset writes', () => {
       create: {
         id: 'transition:4',
         kind: MediaAssetKind.TRANSITION,
+        mediaType: MediaAssetType.VIDEO,
         name: 'Wipe',
         sourceUrl: 'https://media.test/wipe.webm',
         enabled: true,
       },
       update: {
         kind: MediaAssetKind.TRANSITION,
+        mediaType: MediaAssetType.VIDEO,
         name: 'Wipe',
         sourceUrl: 'https://media.test/wipe.webm',
         enabled: true,

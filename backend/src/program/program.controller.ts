@@ -171,7 +171,12 @@ export class ProgramController {
   @RequirePermission(ALCANTARA_PERMISSIONS.program.operate)
   async takeProgramSceneInstantById(
     @Param('programId') programId: string,
-    @Body() data?: { sceneId?: number | null; instantId?: number | null },
+    @Body()
+    data?: {
+      sceneId?: number | null;
+      instantId?: number | null;
+      mediaAssetId?: string | null;
+    },
   ) {
     const sceneId =
       typeof data?.sceneId === 'number' && Number.isFinite(data.sceneId)
@@ -181,10 +186,15 @@ export class ProgramController {
       typeof data?.instantId === 'number' && Number.isFinite(data.instantId)
         ? data.instantId
         : null;
+    const mediaAssetId =
+      typeof data?.mediaAssetId === 'string' && data.mediaAssetId.trim()
+        ? data.mediaAssetId.trim()
+        : null;
     return this.programService.takeProgramSceneInstant(
       sceneId,
       programId,
       instantId,
+      mediaAssetId,
     );
   }
 

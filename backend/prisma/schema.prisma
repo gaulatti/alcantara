@@ -239,20 +239,61 @@ enum MediaAssetKind {
   TRANSITION
 }
 
+enum MediaAssetType {
+  IMAGE
+  AUDIO
+  VIDEO
+}
+
 model MediaAsset {
-  id         String         @id
-  kind       MediaAssetKind
-  name       String
-  sourceUrl  String
-  enabled    Boolean        @default(true)
-  image      Media?         @relation("ImageMediaAsset")
-  audioClip  Instant?       @relation("AudioClipMediaAsset")
-  song       Song?          @relation("SongMediaAsset")
-  transition Stinger?       @relation("TransitionMediaAsset")
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id              String                     @id
+  kind            MediaAssetKind?
+  mediaType       MediaAssetType?
+  name            String
+  sourceUrl       String
+  enabled         Boolean                    @default(true)
+  image           Media?                     @relation("ImageMediaAsset")
+  audioClip       Instant?                   @relation("AudioClipMediaAsset")
+  backgroundAudio BackgroundAudioCapability?
+  song            Song?                      @relation("SongMediaAsset")
+  songCovers      Song[]                     @relation("SongCoverMediaAsset")
+  transition      Stinger?                   @relation("TransitionMediaAsset")
+  labels          MediaAssetLabel[]
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
 
   @@index([kind, updatedAt])
+  @@index([mediaType, updatedAt])
+}
+
+model BackgroundAudioCapability {
+  assetId       String     @id
+  asset         MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  defaultVolume Float      @default(1)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model MediaLabel {
+  id          String            @id @default(uuid())
+  name        String            @unique
+  description String?
+  assets      MediaAssetLabel[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model MediaAssetLabel {
+  labelId   String
+  assetId   String
+  position  Int
+  label     MediaLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  asset     MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@id([labelId, assetId])
+  @@unique([labelId, position])
+  @@index([assetId])
 }
 
 model Instant {
@@ -273,6 +314,8 @@ model Song {
   id           Int      @id @default(autoincrement())
   assetId      String?  @unique
   asset        MediaAsset? @relation("SongMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
+  coverAssetId String?
+  coverAsset   MediaAsset? @relation("SongCoverMediaAsset", fields: [coverAssetId], references: [id], onDelete: SetNull)
   artist       String
   title        String
   audioUrl     String
@@ -285,6 +328,8 @@ model Song {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   intro        SongIntro?
+
+  @@index([coverAssetId])
 }
 
 model SongIntro {

@@ -52,12 +52,14 @@ import {
   SceneAttributesPanel,
 } from "../components/panels";
 import type {
+  BackgroundAudioAsset,
   BroadcastSettings,
   ComponentPropsMap,
   InstantItem,
   InstantPlaybackState,
   Layout,
   MediaGroup,
+  MediaLabel,
   MixerTakeApplyingMap,
   MixerTakeChannelKey,
   MixerTakePresetDbMap,
@@ -390,6 +392,10 @@ export default function Control() {
   const [songCatalog, setSongCatalog] = useState<SongCatalogItem[]>([]);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
   const [isLoadingMediaGroups, setIsLoadingMediaGroups] = useState(false);
+  const [mediaLabels, setMediaLabels] = useState<MediaLabel[]>([]);
+  const [isLoadingMediaLabels, setIsLoadingMediaLabels] = useState(false);
+  const [backgroundAudioAssets, setBackgroundAudioAssets] = useState<BackgroundAudioAsset[]>([]);
+  const [isLoadingBackgroundAudio, setIsLoadingBackgroundAudio] = useState(false);
   const [instantDurationsMs, setInstantDurationsMs] = useState<
     Record<number, number | null>
   >({});
@@ -545,6 +551,7 @@ export default function Control() {
     useState<SceneInstantPlaybackState>({
       sceneId: null,
       instantId: null,
+      mediaAssetId: null,
       instantName: "",
       isPlaying: false,
       updatedAt: new Date(0).toISOString(),
@@ -708,11 +715,14 @@ export default function Control() {
     setSceneInstantPlayback({
       sceneId: null,
       instantId: null,
+      mediaAssetId: null,
       instantName: "",
       isPlaying: false,
       updatedAt: new Date(0).toISOString(),
     });
     void fetchMediaGroups(activeProgramId);
+    void fetchMediaLabels();
+    void fetchBackgroundAudioAssets();
     void fetchProgramState(activeProgramId);
     void fetchProgramAudioBusSettings(activeProgramId);
     void fetchProgramAudioMeter(activeProgramId);
@@ -1110,6 +1120,10 @@ export default function Control() {
           setSceneInstantPlayback({
             sceneId: normalizeSceneInstantId(payload.sceneId),
             instantId: normalizeSceneInstantId(payload.instant?.id),
+            mediaAssetId:
+              typeof payload.instant?.assetId === "string" && payload.instant.assetId.trim()
+                ? payload.instant.assetId.trim()
+                : null,
             instantName:
               typeof payload.instant?.name === "string"
                 ? payload.instant.name
@@ -1266,6 +1280,36 @@ export default function Control() {
       setMediaGroups([]);
     } finally {
       setIsLoadingMediaGroups(false);
+    }
+  };
+
+  const fetchMediaLabels = async () => {
+    try {
+      setIsLoadingMediaLabels(true);
+      const res = await authFetch('/media-labels?limit=200');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as PaginatedResponse<MediaLabel>;
+      setMediaLabels(Array.isArray(body.data) ? body.data : []);
+    } catch (err) {
+      console.error('Failed to fetch media labels:', err);
+      setMediaLabels([]);
+    } finally {
+      setIsLoadingMediaLabels(false);
+    }
+  };
+
+  const fetchBackgroundAudioAssets = async () => {
+    try {
+      setIsLoadingBackgroundAudio(true);
+      const res = await authFetch('/media-assets?mediaType=AUDIO&capability=BACKGROUND&limit=200');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as PaginatedResponse<BackgroundAudioAsset>;
+      setBackgroundAudioAssets(Array.isArray(body.data) ? body.data : []);
+    } catch (err) {
+      console.error('Failed to fetch background audio:', err);
+      setBackgroundAudioAssets([]);
+    } finally {
+      setIsLoadingBackgroundAudio(false);
     }
   };
 
@@ -1717,6 +1761,7 @@ export default function Control() {
       setSceneInstantPlayback({
         sceneId: null,
         instantId: null,
+        mediaAssetId: null,
         instantName: "",
         isPlaying: false,
         updatedAt: new Date(0).toISOString(),
@@ -1968,6 +2013,10 @@ export default function Control() {
         : null;
     combined.sceneInstant = {
       instantId: normalizeSceneInstantId(sceneInstantConfig?.instantId) ?? null,
+      assetId:
+        typeof sceneInstantConfig?.assetId === 'string' && sceneInstantConfig.assetId.trim()
+          ? sceneInstantConfig.assetId.trim()
+          : null,
     };
 
     return combined;
@@ -2149,10 +2198,15 @@ export default function Control() {
   const takeSceneInstant = async (
     sceneId: number | null = selectedScene,
     instantIdOverride?: number | null,
+    mediaAssetIdOverride?: string | null,
   ) => {
     const normalizedSceneId =
       typeof sceneId === "number" && Number.isFinite(sceneId) ? sceneId : null;
     const normalizedInstantId = normalizeSceneInstantId(instantIdOverride);
+    const normalizedMediaAssetId =
+      typeof mediaAssetIdOverride === 'string' && mediaAssetIdOverride.trim()
+        ? mediaAssetIdOverride.trim()
+        : null;
     if (normalizedSceneId === null) {
       return;
     }
@@ -2169,6 +2223,7 @@ export default function Control() {
           body: JSON.stringify({
             sceneId: normalizedSceneId,
             instantId: normalizedInstantId,
+            mediaAssetId: normalizedMediaAssetId,
           }),
         },
       );
@@ -3183,6 +3238,10 @@ export default function Control() {
         setSceneInstantPlayback({
           sceneId: normalizeSceneInstantId(data.sceneId),
           instantId: normalizeSceneInstantId(data.instant?.id),
+          mediaAssetId:
+            typeof data.instant?.assetId === "string" && data.instant.assetId.trim()
+              ? data.instant.assetId.trim()
+              : null,
           instantName:
             typeof data.instant?.name === "string" ? data.instant.name : "",
           isPlaying: true,
@@ -3231,9 +3290,15 @@ export default function Control() {
   const selectedSceneInstantId = normalizeSceneInstantId(
     sceneEditorProps?.sceneInstant?.instantId,
   );
-  const selectedSceneInstant = selectedSceneInstantId
-    ? (instants.find((instant) => instant.id === selectedSceneInstantId) ??
-      null)
+  const selectedLegacyInstant = selectedSceneInstantId
+    ? (instants.find((instant) => instant.id === selectedSceneInstantId) ?? null)
+    : null;
+  const selectedBackgroundAudioAssetId =
+    typeof sceneEditorProps?.sceneInstant?.assetId === 'string' && sceneEditorProps.sceneInstant.assetId.trim()
+      ? sceneEditorProps.sceneInstant.assetId.trim()
+      : (selectedLegacyInstant?.assetId ?? null);
+  const selectedBackgroundAudioAsset = selectedBackgroundAudioAssetId
+    ? (backgroundAudioAssets.find((asset) => asset.id === selectedBackgroundAudioAssetId) ?? null)
     : null;
   const stagedIsOnAir =
     selectedScene !== null && selectedScene === activeSceneId;
@@ -3903,13 +3968,17 @@ export default function Control() {
                   componentTypes={componentTypes}
                   sceneEditorProps={sceneEditorProps}
                   selectedSceneInstantId={selectedSceneInstantId}
-                  selectedSceneInstant={selectedSceneInstant}
+                  selectedBackgroundAudioAssetId={selectedBackgroundAudioAssetId}
+                  selectedBackgroundAudioAsset={selectedBackgroundAudioAsset}
                   sceneInstantPlayback={sceneInstantPlayback}
                   activeProgramId={activeProgramId}
-                  instants={instants}
+                  backgroundAudioAssets={backgroundAudioAssets}
+                  isLoadingBackgroundAudio={isLoadingBackgroundAudio}
                   songCatalog={songCatalog}
                   mediaGroups={mediaGroups}
                   isLoadingMediaGroups={isLoadingMediaGroups}
+                  mediaLabels={mediaLabels}
+                  isLoadingMediaLabels={isLoadingMediaLabels}
                   onBlurCapture={(event) => {
                     if (selectedSceneRef.current !== null) {
                       void flushSceneAttributeAutosaveForScene(
@@ -3924,8 +3993,8 @@ export default function Control() {
                   onUpdateProp={updateSceneEditorProp}
                   onReplaceProps={replaceSceneEditorComponentProps}
                   onSyncComponentProps={syncSceneEditorComponentProps}
-                  onTakeSceneInstant={(sceneId, instantId) =>
-                    takeSceneInstant(sceneId, instantId)
+                  onTakeSceneInstant={(sceneId, instantId, mediaAssetId) =>
+                    takeSceneInstant(sceneId, instantId, mediaAssetId)
                   }
                   onStopSceneInstant={() => stopSceneInstant()}
                 />

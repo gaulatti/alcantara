@@ -17,6 +17,7 @@ function buildService() {
           id: 2,
           name: 'Bumper',
           audioUrl: 'https://media.test/bumper.mp3',
+          volume: 0.7,
           enabled: true,
         },
       ]),
@@ -44,6 +45,41 @@ function buildService() {
         },
       ]),
       update: jest.fn(),
+    },
+    scene: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { metadata: JSON.stringify({ sceneInstant: { instantId: 2 } }) },
+          { metadata: '{malformed' },
+        ]),
+    },
+    backgroundAudioCapability: { upsert: jest.fn() },
+    mediaGroup: {
+      findMany: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: 9,
+            name: 'Morning slideshow',
+            description: null,
+            mediaItems: [
+              {
+                position: 0,
+                media: { assetId: 'image:1' },
+              },
+            ],
+          },
+        ])
+        .mockResolvedValueOnce([{ id: 9 }]),
+    },
+    mediaLabel: {
+      upsert: jest.fn(),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    mediaAssetLabel: {
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
     },
     mediaAsset: {
       upsert: jest.fn(),
@@ -79,6 +115,8 @@ describe('MediaAssetsReconciliationService', () => {
       audioClips: 1,
       songs: 1,
       transitions: 1,
+      backgroundAudio: 1,
+      labels: 1,
       removedOrphans: 1,
     });
 
@@ -110,7 +148,49 @@ describe('MediaAssetsReconciliationService', () => {
           },
         },
       ],
+      [
+        {
+          where: {
+            id: { startsWith: 'song-cover:' },
+            songCovers: { none: {} },
+          },
+        },
+      ],
     ]);
+    expect(tx.backgroundAudioCapability.upsert).toHaveBeenCalledWith({
+      where: { assetId: 'audio-clip:2' },
+      create: { assetId: 'audio-clip:2', defaultVolume: 0.7 },
+      update: { defaultVolume: 0.7 },
+    });
+    expect(tx.mediaLabel.upsert).toHaveBeenCalledWith({
+      where: { id: 'legacy-media-group:9' },
+      create: {
+        id: 'legacy-media-group:9',
+        name: 'Morning slideshow',
+        description: null,
+      },
+      update: {
+        name: 'Morning slideshow',
+        description: null,
+      },
+    });
+    expect(tx.mediaAssetLabel.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          labelId: 'legacy-media-group:9',
+          assetId: 'image:1',
+          position: 0,
+        },
+      ],
+    });
+    expect(tx.mediaLabel.deleteMany).toHaveBeenLastCalledWith({
+      where: {
+        id: {
+          startsWith: 'legacy-media-group:',
+          notIn: ['legacy-media-group:9'],
+        },
+      },
+    });
   });
 
   it('records bounded startup success and failure without serving stale data', async () => {

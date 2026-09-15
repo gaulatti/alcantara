@@ -6,6 +6,7 @@ import {
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import {
   deleteMediaAsset,
+  deleteSongCoverAsset,
   syncSongAsset,
 } from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
@@ -247,6 +248,7 @@ export class SongsService {
     await this.prisma.$transaction(async (tx) => {
       await tx.song.delete({ where: { id } });
       await deleteMediaAsset(tx, MediaAssetKind.SONG, id);
+      await deleteSongCoverAsset(tx, id);
     });
     return { deletedSongId: id };
   }

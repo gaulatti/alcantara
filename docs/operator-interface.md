@@ -12,8 +12,10 @@ Navigation is grouped by operator intent rather than database model:
 
 - **Live** contains the mode-specific desk, Rundown, Guest calls, and TV
   destinations where applicable.
-- **Library** contains the assets the selected show type can use. TV adds Scenes,
-  Scene templates, Media, and Transitions. Every type has Songs and Audio clips.
+- **Library** contains Scenes and Scene templates for visual shows plus one
+  Media destination for every show type. Media is organized by Images, Audio,
+  Video, and Labels; audio capabilities distinguish songs, instant audio, and
+  scene backgrounds without splitting them into separate libraries.
 - **Show setup** contains Shows and, for Radio or Simulcast, Radio distribution.
 
 The selected Show is the shell's operating context. Its `tv`, `radio`, or `both`
@@ -24,9 +26,9 @@ songs and audio clips use the shared program mix.
 
 Images, audio clips, songs, and transition videos share the canonical asset
 identity described in [Media library architecture](media-library-architecture.md).
-The current separate Library destinations remain available during the staged
-migration. Media groups are ordered image collections rather than media assets;
-their interface will be renamed only when the unified Media Library is adopted.
+Labels classify any media and optionally order its use. The separate Songs,
+Audio clips, Transitions, and media-group routes remain compatibility editors,
+but navigation and normal discovery begin in the unified Media library.
 
 Radio is an audio-only show type. Its setup form exposes no renderer template,
 Scenes, Media groups, or Transitions, and the backend rejects those visual
@@ -74,7 +76,8 @@ a disabled transition example, radio settings, a disabled now-playing consumer,
 and a type-appropriate Rundown for each show. This data is intentionally local
 and non-sensitive.
 
-The development-only `/console-fixture` supports `state=normal`,
+The development-only `/media-fixture` demonstrates the unified audio cards,
+capability badges, and labels. `/console-fixture` supports `state=normal`,
 `state=empty-preview`, `state=on-air`, `state=disconnected`, `state=ftb`,
 `state=audio`, and `state=remote`. Add `mode=both` to exercise the Simulcast
 status rail. Production builds do not expose the fixture route.

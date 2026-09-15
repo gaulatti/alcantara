@@ -73,9 +73,11 @@ export interface ProgramSceneInstantPlayback {
   programId: string;
   sceneId: number | null;
   instantId: number | null;
+  mediaAssetId: string | null;
   isPlaying: boolean;
   instant: {
-    id: number;
+    id: number | null;
+    assetId: string | null;
     name: string;
     audioUrl: string;
     volume: number;
@@ -222,6 +224,7 @@ export class ProgramService implements OnModuleInit {
       programId,
       sceneId: null,
       instantId: null,
+      mediaAssetId: null,
       isPlaying: false,
       instant: null,
       startedAt: null,
@@ -1911,9 +1914,9 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
-  private parseSceneInstantIdFromSceneMetadata(
+  private parseSceneBackgroundFromSceneMetadata(
     sceneMetadata: unknown,
-  ): number | null {
+  ): { assetId: string | null; instantId: number | null } | null {
     if (sceneMetadata === null || sceneMetadata === undefined) {
       return null;
     }
@@ -1939,17 +1942,21 @@ export class ProgramService implements OnModuleInit {
       ) {
         return null;
       }
+      const assetIdRaw = (sceneInstant as Record<string, unknown>).assetId;
+      const assetId =
+        typeof assetIdRaw === 'string' && assetIdRaw.trim()
+          ? assetIdRaw.trim()
+          : null;
       const instantIdRaw = (sceneInstant as Record<string, unknown>).instantId;
       const instantIdNumeric =
         typeof instantIdRaw === 'number' ? instantIdRaw : Number(instantIdRaw);
-      if (
-        !Number.isFinite(instantIdNumeric) ||
-        instantIdNumeric <= 0 ||
-        !Number.isInteger(instantIdNumeric)
-      ) {
-        return null;
-      }
-      return instantIdNumeric;
+      const instantId =
+        Number.isFinite(instantIdNumeric) &&
+        instantIdNumeric > 0 &&
+        Number.isInteger(instantIdNumeric)
+          ? instantIdNumeric
+          : null;
+      return assetId || instantId !== null ? { assetId, instantId } : null;
     } catch {
       return null;
     }
@@ -1959,6 +1966,7 @@ export class ProgramService implements OnModuleInit {
     sceneId: number | null | undefined,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
     instantIdOverride: number | null | undefined = null,
+    mediaAssetIdOverride: string | null | undefined = null,
   ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.prisma.programState.findUnique({
@@ -2003,38 +2011,86 @@ export class ProgramService implements OnModuleInit {
       instantIdOverride > 0
         ? instantIdOverride
         : null;
+    const normalizedOverrideAssetId =
+      typeof mediaAssetIdOverride === 'string' && mediaAssetIdOverride.trim()
+        ? mediaAssetIdOverride.trim()
+        : null;
+    const configuredBackground = this.parseSceneBackgroundFromSceneMetadata(
+      assignedSceneEntry.scene.metadata,
+    );
+    const hasOverride =
+      normalizedOverrideAssetId !== null ||
+      normalizedOverrideInstantId !== null;
+    const mediaAssetId =
+      normalizedOverrideAssetId ??
+      (hasOverride ? null : (configuredBackground?.assetId ?? null));
     const sceneInstantId =
       normalizedOverrideInstantId ??
-      this.parseSceneInstantIdFromSceneMetadata(
-        assignedSceneEntry.scene.metadata,
-      );
-    if (sceneInstantId === null) {
-      throw new BadRequestException(
-        'Scene has no configured background instant',
-      );
+      (hasOverride ? null : (configuredBackground?.instantId ?? null));
+    if (mediaAssetId === null && sceneInstantId === null) {
+      throw new BadRequestException('Scene has no configured background audio');
     }
 
-    const instant = await this.prisma.instant.findUnique({
-      where: { id: sceneInstantId },
-    });
-    if (!instant) {
-      throw new NotFoundException('Configured scene instant not found');
-    }
-    if (!instant.enabled) {
-      throw new BadRequestException('Configured scene instant is disabled');
+    let resolved: {
+      instantId: number | null;
+      assetId: string | null;
+      name: string;
+      audioUrl: string;
+      volume: number;
+    };
+    if (mediaAssetId !== null) {
+      const asset = await this.prisma.mediaAsset.findFirst({
+        where: {
+          id: mediaAssetId,
+          enabled: true,
+          backgroundAudio: { isNot: null },
+        },
+        include: { backgroundAudio: true, audioClip: true },
+      });
+      if (!asset || !asset.backgroundAudio) {
+        throw new NotFoundException(
+          'Configured background audio asset not found',
+        );
+      }
+      resolved = {
+        instantId: asset.audioClip?.id ?? null,
+        assetId: asset.id,
+        name: asset.name,
+        audioUrl: asset.sourceUrl,
+        volume: asset.backgroundAudio.defaultVolume,
+      };
+    } else {
+      const instant = await this.prisma.instant.findUnique({
+        where: { id: sceneInstantId! },
+      });
+      if (!instant) {
+        throw new NotFoundException('Configured scene instant not found');
+      }
+      if (!instant.enabled) {
+        throw new BadRequestException('Configured scene instant is disabled');
+      }
+      resolved = {
+        instantId: instant.id,
+        assetId: instant.assetId,
+        name: instant.name,
+        audioUrl: instant.audioUrl,
+        volume: instant.volume,
+      };
     }
 
     const nowIso = new Date().toISOString();
     const playback: ProgramSceneInstantPlayback = {
       programId: normalizedProgramId,
       sceneId: targetSceneId,
-      instantId: instant.id,
+      instantId: resolved.instantId,
+      mediaAssetId: resolved.assetId,
       isPlaying: true,
       instant: {
-        id: instant.id,
-        name: instant.name,
-        audioUrl: instant.audioUrl,
-        volume: instant.volume,
+        id: resolved.instantId,
+        assetId: resolved.assetId,
+        name: resolved.name,
+        audioUrl: resolved.audioUrl,
+        volume: resolved.volume,
       },
       startedAt: nowIso,
       updatedAt: nowIso,
@@ -2087,6 +2143,7 @@ export class ProgramService implements OnModuleInit {
       type: 'scene_instant_stop',
       sceneId: previous.sceneId ?? null,
       instantId: previous.instantId ?? null,
+      mediaAssetId: previous.mediaAssetId ?? null,
       triggeredAt: nowIso,
       fadeMs,
     });
@@ -2617,8 +2674,8 @@ export class ProgramService implements OnModuleInit {
       typeof transitionId === 'string' && transitionId.trim()
         ? transitionId.trim()
         : null;
-    const sceneInstantId = updatedState.activeScene?.metadata
-      ? this.parseSceneInstantIdFromSceneMetadata(
+    const sceneBackground = updatedState.activeScene?.metadata
+      ? this.parseSceneBackgroundFromSceneMetadata(
           updatedState.activeScene.metadata,
         )
       : null;
@@ -2628,7 +2685,7 @@ export class ProgramService implements OnModuleInit {
       currentSceneInstantPlayback?.isPlaying &&
       currentSceneInstantPlayback.sceneId !== sceneId;
 
-    if (sceneInstantId !== null) {
+    if (sceneBackground !== null) {
       try {
         if (shouldFadeOutPreviousSceneInstant) {
           await this.stopProgramSceneInstant(normalizedProgramId, 1500);
@@ -3441,5 +3498,4 @@ export class ProgramService implements OnModuleInit {
       };
     });
   }
-
 }

@@ -1,22 +1,22 @@
 import { useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
 import { uploadFileToMediaBucket } from '../../services/uploads';
-import { normalizeSlideshowImageList, normalizeSlideshowMediaGroupId } from '../../utils/broadcast';
-import type { MediaGroup } from '../../models/broadcast';
+import { normalizeSlideshowImageList, normalizeSlideshowLabelId, normalizeSlideshowMediaGroupId } from '../../utils/broadcast';
+import type { MediaLabel } from '../../models/broadcast';
 import { SearchableSelect } from './SearchableSelect';
 
 export function SlideshowEditorFields({
   componentType,
   props,
   updateProp,
-  mediaGroups,
-  isLoadingMediaGroups
+  mediaLabels,
+  isLoadingMediaLabels
 }: {
   componentType: string;
   props: any;
   updateProp: (componentType: string, propName: string, value: any) => void;
-  mediaGroups: MediaGroup[];
-  isLoadingMediaGroups: boolean;
+  mediaLabels: MediaLabel[];
+  isLoadingMediaLabels: boolean;
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -32,10 +32,18 @@ export function SlideshowEditorFields({
     return fallback;
   };
   const setImages = (nextImages: string[]) => updateProp(componentType, 'images', nextImages);
-  const selectedMediaGroupId = normalizeSlideshowMediaGroupId(props.mediaGroupId);
-  const selectedMediaGroup = selectedMediaGroupId !== null ? (mediaGroups.find(g => g.id === selectedMediaGroupId) ?? null) : null;
-  const mediaGroupImages = selectedMediaGroup ? selectedMediaGroup.items.map(item => item.media.imageUrl).filter(Boolean) : [];
-  const usesMediaGroup = selectedMediaGroupId !== null;
+  const legacyMediaGroupId = normalizeSlideshowMediaGroupId(props.mediaGroupId);
+  const selectedLabelId = normalizeSlideshowLabelId(props.labelId) ?? (legacyMediaGroupId === null ? null : `legacy-media-group:${legacyMediaGroupId}`);
+  const selectedLabel = selectedLabelId !== null ? (mediaLabels.find(label => label.id === selectedLabelId) ?? null) : null;
+  const labeledImages = selectedLabel
+    ? selectedLabel.assets.filter(item => item.asset.mediaType === 'IMAGE').map(item => item.asset.sourceUrl).filter(Boolean)
+    : [];
+  const usesLabel = selectedLabelId !== null;
+
+  const selectLabel = (value: string) => {
+    updateProp(componentType, 'labelId', normalizeSlideshowLabelId(value));
+    updateProp(componentType, 'mediaGroupId', null);
+  };
 
   const uploadImages = async (files: File[]) => {
     if (!files.length) return;
@@ -92,21 +100,24 @@ export function SlideshowEditorFields({
       </div>
 
       <div className='space-y-2'>
-        <label className='block text-xs text-text-secondary'>Media Group Source</label>
-        <SearchableSelect value={selectedMediaGroupId !== null ? String(selectedMediaGroupId) : ''}
-          onChange={v => updateProp(componentType, 'mediaGroupId', normalizeSlideshowMediaGroupId(v))}
+        <label className='block text-xs text-text-secondary'>Image label</label>
+        <SearchableSelect value={selectedLabelId ?? ''}
+          onChange={selectLabel}
           className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
-          searchPlaceholder='Search media groups…'
+          searchPlaceholder='Search labels…'
           options={[
             { value: '', label: 'Manual images in scene metadata' },
-            ...mediaGroups.map(g => ({ value: String(g.id), label: `${g.name} (${g.items.length} images)` }))
+            ...mediaLabels.map(label => ({
+              value: label.id,
+              label: `${label.name} (${label.assets.filter(item => item.asset.mediaType === 'IMAGE').length} images)`
+            }))
           ]} />
         <p className='text-xs text-text-secondary'>
-          {isLoadingMediaGroups ? 'Loading media groups...' : usesMediaGroup ? 'This slideshow now follows the selected media group.' : 'Tip: select a media group to reuse image sets across scenes.'}
+          {isLoadingMediaLabels ? 'Loading labels...' : usesLabel ? 'This slideshow follows the selected label in its saved order.' : 'Select a label to reuse the same images across scenes.'}
         </p>
       </div>
 
-      {!usesMediaGroup ? (
+      {!usesLabel ? (
         <div className='space-y-2'>
           <label className='block text-xs text-text-secondary'>Upload images</label>
           <Input type='file' accept='image/*' multiple disabled={isUploading}
@@ -118,18 +129,18 @@ export function SlideshowEditorFields({
         </div>
       ) : null}
 
-      {usesMediaGroup ? (
+      {usesLabel ? (
         <div className='space-y-2'>
-          <p className='text-xs text-text-secondary'>{selectedMediaGroup ? `Using group "${selectedMediaGroup.name}"` : 'Selected group not found.'}</p>
-          {selectedMediaGroup && mediaGroupImages.length > 0 ? (
+          <p className='text-xs text-text-secondary'>{selectedLabel ? `Using label "${selectedLabel.name}"` : 'Selected label not found.'}</p>
+          {selectedLabel && labeledImages.length > 0 ? (
             <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>
-              {mediaGroupImages.map((url, i) => (
+              {labeledImages.map((url, i) => (
                 <div key={`${url}_${i}`} className='rounded border border-sand/30 bg-dark-sand/80 p-2'>
-                  <img src={url} alt={`Media group image ${i + 1}`} className='h-20 w-full rounded object-cover bg-sand/10' />
+                  <img src={url} alt={`Labeled image ${i + 1}`} className='h-20 w-full rounded object-cover bg-sand/10' />
                 </div>
               ))}
             </div>
-          ) : <p className='text-xs text-text-secondary'>No images in this group yet.</p>}
+          ) : <p className='text-xs text-text-secondary'>No images have this label yet.</p>}
         </div>
       ) : images.length > 0 ? (
         <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'>

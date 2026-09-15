@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   normalizeProgramSongPlayback,
+  normalizeSceneInstantPlayback,
   reconcileProgramSongOffAir,
 } from "./broadcast";
 
@@ -29,6 +30,42 @@ it("preserves authoritative playback identity, metadata, and freshness", () => {
     isPlaying: true,
     startedAt: "2026-09-11T12:00:00.000Z",
     telemetryStale: true,
+  });
+});
+
+it("preserves canonical background asset identity while accepting legacy instant IDs", () => {
+  expect(
+    normalizeSceneInstantPlayback({
+      sceneId: 7,
+      mediaAssetId: "media:weather-bed",
+      instantId: null,
+      instant: {
+        id: null,
+        assetId: "media:weather-bed",
+        name: "Weather bed",
+      },
+      isPlaying: true,
+      updatedAt: "2026-09-14T20:00:00.000Z",
+    }),
+  ).toMatchObject({
+    sceneId: 7,
+    instantId: null,
+    mediaAssetId: "media:weather-bed",
+    instantName: "Weather bed",
+    isPlaying: true,
+  });
+
+  expect(
+    normalizeSceneInstantPlayback({
+      sceneId: 7,
+      instantId: 12,
+      instant: { id: 12, name: "Legacy bed" },
+      isPlaying: true,
+    }),
+  ).toMatchObject({
+    instantId: 12,
+    mediaAssetId: null,
+    instantName: "Legacy bed",
   });
 });
 
