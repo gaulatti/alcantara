@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
-import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus } from 'lucide-react';
+import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
 import {
   createProgramSongSequence,
   createProgramSongSequenceItem,
@@ -71,13 +71,18 @@ export function ProgramSongSequenceEditor({
   const showCatalog = view !== 'queue';
   const showQueueHeading = view === 'full';
   const isAutomatic = sequence.mode === 'autoplay' || sequence.mode === 'shuffle';
+  const highRotationCount = useMemo(
+    () => sequence.items.filter((item) => item.kind === 'preset' && item.highRotation).length,
+    [sequence.items]
+  );
 
   const editorActiveItemId = useMemo(() => {
     if (programSongPlayback?.isPlaying) {
-      return sequence.activeItemId ?? (isAutomatic ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
+      const playbackItem = sequence.items.find((item) => programSongPlayback.token?.startsWith(`${item.id}:`));
+      if (playbackItem) return playbackItem.id;
     }
     return sequence.activeItemId ?? (isAutomatic ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
-  }, [isAutomatic, programSongPlayback?.isPlaying, sequence]);
+  }, [isAutomatic, programSongPlayback?.isPlaying, programSongPlayback?.token, sequence]);
 
   const availableSongCatalog = useMemo(
     () =>
@@ -230,6 +235,14 @@ export function ProgramSongSequenceEditor({
     [applySequence, sequence]
   );
 
+  const toggleHighRotation = useCallback(
+    (index: number, item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>) => {
+      if (!item.highRotation && highRotationCount >= 12) return;
+      updateItem(index, { ...item, highRotation: !item.highRotation });
+    },
+    [highRotationCount, updateItem]
+  );
+
   const reorderItems = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= sequence.items.length || toIndex >= sequence.items.length) return;
@@ -288,11 +301,14 @@ export function ProgramSongSequenceEditor({
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
                 <div className='min-w-100'>
-                  <div className='grid grid-cols-[28px_28px_28px_1fr_52px_84px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
+                  <div className='grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
                     <span />
                     <span className='text-center'>#</span>
                     <span />
-                    <span style={{ paddingLeft: '22px' }}>Title</span>
+                    <span className='text-center' title='High rotation favorites'>
+                      ★
+                    </span>
+                    <span style={{ paddingLeft: '22px' }}>Title · High rotation {highRotationCount}/12</span>
                     <span className='flex items-center justify-end pr-3'>
                       <Clock size={10} />
                     </span>
@@ -332,7 +348,7 @@ export function ProgramSongSequenceEditor({
                           }}
                         >
                           <div
-                            className={`group grid grid-cols-[28px_28px_28px_1fr_52px_84px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
+                            className={`group grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
                           >
                             <span
                               draggable
@@ -387,6 +403,26 @@ export function ProgramSongSequenceEditor({
                                 aria-label={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
                               >
                                 <Headphones size={13} />
+                              </Button>
+                            ) : (
+                              <span />
+                            )}
+                            {displayItem.kind === 'preset' ? (
+                              <Button
+                                type='button'
+                                onClick={() => toggleHighRotation(index, displayItem)}
+                                disabled={!displayItem.highRotation && highRotationCount >= 12}
+                                className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
+                                title={
+                                  displayItem.highRotation
+                                    ? 'Remove from high rotation'
+                                    : highRotationCount >= 12
+                                      ? 'High rotation is limited to 12 songs'
+                                      : 'Add to high rotation'
+                                }
+                                aria-label={`${displayItem.highRotation ? 'Remove' : 'Add'} ${titleText || 'song'} ${displayItem.highRotation ? 'from' : 'to'} high rotation`}
+                              >
+                                <Star size={13} fill={displayItem.highRotation ? 'currentColor' : 'none'} />
                               </Button>
                             ) : (
                               <span />

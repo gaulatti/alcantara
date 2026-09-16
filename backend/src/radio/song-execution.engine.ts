@@ -23,18 +23,29 @@ import type {
   PalazzoProgramStatus,
 } from './palazzo-contract';
 import {
+  activateProgramSongLeaf,
   advanceProgramSongSequence,
+  collectHighRotationProgramSongLeaves,
+  collectProgramSongLeaves,
   findUniqueProgramSongLeafById,
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
   resolveProgramSongLeaf,
   type ProgramSongSequence,
+  type ProgramResolvedSongLeaf,
 } from './song-sequence.utils';
 import {
   MAX_PROGRAM_SONG_QUEUE_LENGTH,
   normalizeProgramSongQueue,
   type ProgramSongQueueEntry,
 } from './song-queue.utils';
+import {
+  getHighRotationEligibility,
+  normalizeProgramSongRotation,
+  recordHighRotationPlay,
+  selectHighRotationCandidate,
+  type ProgramSongRotationState,
+} from './song-rotation.utils';
 
 export interface SongPlaybackData {
   token: string;
@@ -112,11 +123,14 @@ interface ActiveSong {
   authoritativePositionMs: number | null;
   authoritativeUpdatedAt: number | null;
   queueEntryId: string | null;
+  highRotation: boolean;
 }
 
 interface SongEngineState {
   sequence: ProgramSongSequence | null;
   queue: ProgramSongQueueEntry[];
+  rotation: ProgramSongRotationState;
+  rotationHistoryHealthy: boolean;
   activeSong: ActiveSong | null;
   pendingRequestIds: Set<string>;
   endedRequestIds: string[];
@@ -152,6 +166,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private telemetry: PalazzoTelemetrySource | null = null;
   private readonly radioProgramIds = new Set<string>();
   private readonly queueMutationLocks = new Map<string, Promise<void>>();
+  private readonly rotationMutationLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly radioService: RadioService,
@@ -174,6 +189,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             type: true,
             songSequence: true,
             songQueue: true,
+            songRotation: true,
           },
         },
       },
@@ -187,6 +203,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const state = this.ensureState(pid);
       state.sequence = seq;
       state.queue = normalizeProgramSongQueue(s.programState.songQueue);
+      state.rotation = normalizeProgramSongRotation(
+        s.programState.songRotation,
+      );
       this.updateQueueDepthMetric();
       if (
         !seq ||
@@ -199,6 +218,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         `Booting ${pid}, mode=${seq.mode}, awaiting Palazzo snapshot`,
       );
     }
+    this.updateHighRotationFavoriteMetric();
   }
 
   onModuleDestroy(): void {
@@ -211,6 +231,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   /** Registered by the telemetry supervisor for every radio-capable program. */
   registerRadioProgram(programId: string): void {
     this.radioProgramIds.add(programId);
+    this.updateHighRotationFavoriteMetric();
   }
 
   private isRadioCapable(programId: string): boolean {
@@ -223,6 +244,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       s = {
         sequence: null,
         queue: [],
+        rotation: normalizeProgramSongRotation(null),
+        rotationHistoryHealthy: true,
         activeSong: null,
         pendingRequestIds: new Set<string>(),
         endedRequestIds: [],
@@ -256,6 +279,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.activeSong && state.sequence?.startedAt && seq)
       seq.startedAt = state.sequence.startedAt;
     state.sequence = seq;
+    this.updateHighRotationFavoriteMetric();
     if (
       seq &&
       (seq.mode === 'autoplay' || seq.mode === 'shuffle') &&
@@ -563,6 +587,78 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.metrics.recordSongQueueDepth(depth);
   }
 
+  private updateHighRotationFavoriteMetric(): void {
+    let favorites = 0;
+    for (const programId of this.radioProgramIds) {
+      favorites += collectHighRotationProgramSongLeaves(
+        this.states.get(programId)?.sequence ?? null,
+      ).length;
+    }
+    this.metrics.recordHighRotationFavorites(favorites);
+  }
+
+  private async withRotationMutationLock<T>(
+    programId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const previous =
+      this.rotationMutationLocks.get(programId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => gate);
+    this.rotationMutationLocks.set(programId, tail);
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.rotationMutationLocks.get(programId) === tail) {
+        this.rotationMutationLocks.delete(programId);
+      }
+    }
+  }
+
+  private recordHighRotationStarted(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+    playedAt: number,
+  ): void {
+    if (!song.highRotation || !song.itemId) return;
+    const recorded = recordHighRotationPlay(
+      state.rotation,
+      { id: song.itemId, songId: song.songId ?? undefined },
+      song.playbackRequestId,
+      playedAt,
+    );
+    state.rotation = recorded.state;
+    if (!recorded.added) return;
+
+    void this.withRotationMutationLock(programId, async () => {
+      try {
+        const current = this.states.get(programId);
+        if (!current) return;
+        await this.prisma.programState.update({
+          where: { programId },
+          data: {
+            songRotation: current.rotation as unknown as Prisma.InputJsonValue,
+          },
+        });
+        current.rotationHistoryHealthy = true;
+        this.metrics.recordHighRotationAction('played');
+      } catch (error) {
+        const current = this.states.get(programId);
+        if (current) current.rotationHistoryHealthy = false;
+        this.metrics.recordHighRotationAction('history-persistence-failed');
+        this.logger.error(
+          `High rotation history persistence failed on ${programId}; automatic favorites are suspended: ${String(error)}`,
+        );
+      }
+    });
+  }
+
   private recordQueueMutationFailure(error: unknown): void {
     this.metrics.recordSongQueueAction(
       error instanceof BadRequestException || error instanceof NotFoundException
@@ -581,6 +677,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     songId?: number,
   ): void {
     const state = this.ensureState(programId);
+    const playlistSong = findUniqueProgramSongLeafByAudioUrl(
+      state.sequence,
+      audioUrl,
+    );
     const dur =
       typeof durationMs === 'number' && durationMs > 0 ? durationMs : 300000;
     const playbackRequestId = randomUUID();
@@ -594,7 +694,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       coverUrl: coverUrl || '',
       durationMs: dur,
       startedAt: Date.now(),
-      itemId: '',
+      itemId: playlistSong?.id ?? '',
       songId:
         Number.isInteger(songId) && (songId as number) > 0 ? songId! : null,
       introPlaybackId: null,
@@ -604,6 +704,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       authoritativePositionMs: null,
       authoritativeUpdatedAt: null,
       queueEntryId: null,
+      highRotation: playlistSong?.highRotation === true,
     };
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
@@ -793,6 +894,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         activeSong.authoritativePositionMs = 0;
         activeSong.authoritativeUpdatedAt = Date.now();
         this.metrics.recordTrackTransition('adopted');
+        this.recordHighRotationStarted(
+          programId,
+          state,
+          activeSong,
+          activeSong.authoritativeStartedAt,
+        );
         this.emitPlaybackUpdate(programId, activeSong);
       } else if (state.pendingRequestIds.has(requestId)) {
         // A command is confirmed before the engine optimistically activated it.
@@ -893,12 +1000,19 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         authoritativePositionMs: positionMs,
         authoritativeUpdatedAt: Date.now(),
         queueEntryId: inheritedQueueEntry?.id ?? null,
+        highRotation: inheritedSong.highRotation === true,
       };
       state.busyWithForeignTrack = false;
       this.logger.log(
         `Adopted inherited Palazzo playback ${requestId} on ${programId}`,
       );
       this.metrics.recordTrackTransition('adopted');
+      this.recordHighRotationStarted(
+        programId,
+        state,
+        state.activeSong,
+        authoritativeStartedAt,
+      );
       this.emitPlaybackActive(programId, state.activeSong);
       void this.publishNowPlaying(programId, state.activeSong);
       this.startProgress(programId);
@@ -1150,6 +1264,60 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return this.playNext(programId);
   }
 
+  private resolveNextPlaylistSong(
+    programId: string,
+    state: SongEngineState,
+    now = Date.now(),
+  ): ProgramResolvedSongLeaf | null {
+    const sequence = state.sequence;
+    if (!sequence) return null;
+
+    if (state.rotationHistoryHealthy) {
+      const highRotation = selectHighRotationCandidate(
+        sequence,
+        state.rotation,
+        now,
+      );
+      if (highRotation.song) {
+        activateProgramSongLeaf(sequence, highRotation.song.id);
+        this.metrics.recordHighRotationAction('selected');
+        return highRotation.song;
+      }
+      if (highRotation.status === 'quota-unmet') {
+        this.metrics.recordHighRotationAction('quota-unmet');
+      }
+    }
+
+    const maxAttempts = collectProgramSongLeaves(sequence).length;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const resolved = resolveProgramSongLeaf(sequence, now);
+      if (!resolved) return null;
+      if (!resolved.highRotation) return resolved;
+
+      if (state.rotationHistoryHealthy) {
+        const eligibility = getHighRotationEligibility(
+          resolved,
+          state.rotation,
+          now,
+        );
+        if (eligibility !== 'eligible') {
+          this.metrics.recordHighRotationAction(
+            eligibility === 'cooldown'
+              ? 'cooldown-skipped'
+              : 'daily-cap-skipped',
+          );
+        }
+      }
+
+      if (!advanceProgramSongSequence(sequence, resolved.id)) return null;
+    }
+
+    this.logger.error(
+      `No legally playable playlist song remains on ${programId}`,
+    );
+    return null;
+  }
+
   private playNext(programId: string): boolean {
     const state = this.states.get(programId);
     if (!state?.sequence) return false;
@@ -1187,7 +1355,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     const resolved = queueEntry
       ? findUniqueProgramSongLeafById(state.sequence, queueEntry.itemId)
-      : resolveProgramSongLeaf(state.sequence, Date.now());
+      : this.resolveNextPlaylistSong(programId, state);
     if (!resolved?.audioUrl) return false;
 
     const dur =
@@ -1214,6 +1382,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       authoritativePositionMs: null,
       authoritativeUpdatedAt: null,
       queueEntryId: queueEntry?.id ?? null,
+      highRotation: resolved.highRotation === true,
     };
 
     this.logger.log(

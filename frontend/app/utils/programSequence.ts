@@ -52,6 +52,7 @@ export interface ProgramResolvedTextLeaf {
 export interface ProgramSongSequenceLeafItem extends BaseSequenceItem {
   kind: 'preset';
   songId?: number;
+  highRotation?: boolean;
   artist: string;
   title: string;
   coverUrl: string;
@@ -109,6 +110,7 @@ export function shuffleProgramSongSequence(
 export interface ProgramResolvedSongLeaf {
   id: string;
   songId?: number;
+  highRotation: boolean;
   artist: string;
   title: string;
   coverUrl: string;
@@ -207,6 +209,7 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
       typeof record.songId === 'number' && Number.isInteger(record.songId) && record.songId > 0
         ? record.songId
         : undefined,
+    highRotation: record.highRotation === true,
     artist,
     title,
     coverUrl,
@@ -498,6 +501,7 @@ function resolveSongSequenceRecursive(
   return {
     id: selected.id,
     songId: selected.songId,
+    highRotation: selected.highRotation === true,
     artist: selected.artist,
     title: selected.title,
     coverUrl: selected.coverUrl,
@@ -589,6 +593,7 @@ export function createProgramSongSequenceItem(
   return {
     id: createId('song'),
     kind: 'preset',
+    highRotation: false,
     artist: '',
     title: '',
     coverUrl: '',

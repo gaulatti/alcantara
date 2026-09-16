@@ -64,7 +64,9 @@ the scene; it never activates Program directly.
 - **Audio** shows Program confidence plus the mixer, playlist, sounders, and
   playback controls. Radio adds a bounded Play Next queue above the playlist;
   playlist-row actions enqueue without interrupting the current song, and the
-  queue returns to normal playlist order after it drains.
+  queue returns to normal playlist order after it drains. A separate star
+  marks up to 12 playlist songs for High Rotation and shows the current count;
+  the thirteenth star is disabled and the backend enforces the same limit.
 - **Remote** is the bounded switcher used on compact devices. It removes the
   lower editor without removing staging or live actions.
 
@@ -94,7 +96,9 @@ Playback control states are available at `state=playback-live` and
 Autoplay, and Shuffle modes, the independent Loop state, and the live/stale
 authoritative feedback indicator without commanding Palazzo.
 The `state=play-next` fixture renders the ordered queue, active queued entry,
-and safe queue controls without commanding Palazzo.
+and safe queue controls without commanding Palazzo. The
+`state=high-rotation` fixture renders the favorite count, selected star, and
+limit-aware playlist controls without commanding Palazzo.
 
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not

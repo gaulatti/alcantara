@@ -49,6 +49,7 @@ model ProgramState {
   fadeToBlack            Boolean              @default(false)
   songSequence           Json?
   songQueue              Json?
+  songRotation           Json?
   shuffleOrder           Json?
   audioMixer             Json?
   activeFlightSequenceId Int?

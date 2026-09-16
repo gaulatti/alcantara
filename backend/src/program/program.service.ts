@@ -26,7 +26,11 @@ import {
   filterProgramSongQueueForSequence,
   normalizeProgramSongQueue,
 } from '../radio/song-queue.utils';
-import { normalizeProgramSongSequence } from '../radio/song-sequence.utils';
+import {
+  collectHighRotationProgramSongLeaves,
+  normalizeProgramSongSequence,
+} from '../radio/song-sequence.utils';
+import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
   projectProgramTemplateSignal,
   projectProgramTemplateState,
@@ -1564,11 +1568,21 @@ export class ProgramService implements OnModuleInit {
     const nextSongSequence = hasSongSequenceUpdate
       ? ((data as { songSequence?: unknown }).songSequence ?? null)
       : (currentState.songSequence ?? null);
+    const normalizedNextSongSequence =
+      normalizeProgramSongSequence(nextSongSequence);
+    const highRotationCount = collectHighRotationProgramSongLeaves(
+      normalizedNextSongSequence,
+    ).length;
+    if (highRotationCount > MAX_HIGH_ROTATION_SONGS) {
+      throw new BadRequestException(
+        `High rotation is limited to ${MAX_HIGH_ROTATION_SONGS} songs`,
+      );
+    }
     const currentSongQueue = normalizeProgramSongQueue(currentState.songQueue);
     const nextSongQueue = hasSongSequenceUpdate
       ? filterProgramSongQueueForSequence(
           currentSongQueue,
-          normalizeProgramSongSequence(nextSongSequence),
+          normalizedNextSongSequence,
         )
       : currentSongQueue;
     const nextMixerSettings = hasMixerSettingsUpdate

@@ -394,6 +394,52 @@ describe('ProgramService switcher state', () => {
     );
   });
 
+  it('rejects a thirteenth high rotation song without changing the playlist', async () => {
+    const currentState = {
+      programId: 'radio-1',
+      type: 'radio',
+      songSequence: { mode: 'shuffle', items: [] },
+      songQueue: [],
+      audioMixer: null,
+    };
+    const prisma = {
+      programState: {
+        findUnique: jest.fn().mockResolvedValue(currentState),
+        update: jest.fn(),
+      },
+    };
+    const songExecutionEngine = {
+      handleSequenceUpdated: jest.fn(),
+      handleQueueUpdated: jest.fn(),
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      songExecutionEngine as never,
+    );
+
+    await expect(
+      service.updateProgramAudioBus(
+        {
+          songSequence: {
+            mode: 'shuffle',
+            items: Array.from({ length: 13 }, (_, index) => ({
+              id: `song-${index}`,
+              kind: 'preset',
+              highRotation: true,
+              artist: 'Artist',
+              title: `Song ${index}`,
+              coverUrl: '',
+              audioUrl: `https://example.test/${index}.mp3`,
+            })),
+          },
+        },
+        'radio-1',
+      ),
+    ).rejects.toThrow('High rotation is limited to 12 songs');
+    expect(prisma.programState.update).not.toHaveBeenCalled();
+  });
+
   it('delegates Play Next mutations to the radio engine', async () => {
     const songQueue = [{ id: 'queue-1', itemId: 'song-1', enqueuedAt: 1 }];
     const songExecutionEngine = {

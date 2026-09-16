@@ -10,6 +10,7 @@ import { PlaybackBar } from "../components/PlaybackBar";
 import { PlayNextQueue } from "../components/PlayNextQueue";
 import type { ProgramSongSequence } from "../utils/programSequence";
 import type { ProgramSongQueueEntry } from "../models/broadcast";
+import { ProgramSongSequenceEditor } from "../components/editors";
 
 const layout = {
   id: 1,
@@ -47,6 +48,7 @@ const playbackSequence: ProgramSongSequence = {
       coverUrl: "",
       audioUrl: "https://example.test/fixture-song-1.mp3",
       durationMs: 180_000,
+      highRotation: true,
     },
     {
       id: "fixture-song-2",
@@ -92,7 +94,17 @@ export default function ConsoleFixture() {
   return (
     <main className="min-h-screen bg-zinc-950" data-visual-fixture={fixture}>
       {mode === "both" ? <SimulcastStatusRail programId="fixture" /> : null}
-      {fixture === "play-next" ? (
+      {fixture === "high-rotation" ? (
+        <section className="flex min-h-screen items-center justify-center bg-dark-sand px-6 py-12 text-text-primary">
+          <div className="h-[32rem] w-full max-w-3xl overflow-hidden rounded-xl border border-sand/30">
+            <ProgramSongSequenceEditor
+              sequence={songs}
+              view="queue"
+              onChange={setSongs}
+            />
+          </div>
+        </section>
+      ) : fixture === "play-next" ? (
         <section className="flex min-h-screen items-center justify-center bg-dark-sand px-6 text-text-primary">
           <div className="w-full max-w-md overflow-hidden rounded-xl border border-sand/30">
             <PlayNextQueue

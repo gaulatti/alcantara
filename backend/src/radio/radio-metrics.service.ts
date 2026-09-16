@@ -56,6 +56,14 @@ export type SongQueueActionResult =
   | 'rejected'
   | 'persistence-failed';
 
+export type HighRotationActionResult =
+  | 'selected'
+  | 'played'
+  | 'cooldown-skipped'
+  | 'daily-cap-skipped'
+  | 'quota-unmet'
+  | 'history-persistence-failed';
+
 export type SnapshotReconciliationResult =
   | 'accepted'
   | 'instance-mismatch'
@@ -72,6 +80,8 @@ export interface RadioMetricsSnapshot {
   introTransitions: Record<string, number>;
   songQueueActions: Record<string, number>;
   songQueueDepth: number;
+  highRotationActions: Record<string, number>;
+  highRotationFavorites: number;
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
   machineRetries: Record<string, number>;
@@ -154,6 +164,15 @@ const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
   'persistence-failed',
 ];
 
+const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
+  'selected',
+  'played',
+  'cooldown-skipped',
+  'daily-cap-skipped',
+  'quota-unmet',
+  'history-persistence-failed',
+];
+
 /**
  * Bounded-cardinality Prometheus registry for the Alcantara radio engine.
  *
@@ -174,6 +193,8 @@ export class RadioMetricsService {
   private readonly introTransitions = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
   private songQueueDepth = 0;
+  private readonly highRotationActions = new Map<string, number>();
+  private highRotationFavorites = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
 
@@ -245,6 +266,18 @@ export class RadioMetricsService {
     this.songQueueDepth = Math.max(0, Math.floor(count));
   }
 
+  recordHighRotationAction(result: HighRotationActionResult): void {
+    if (!HIGH_ROTATION_ACTION_RESULTS.includes(result)) return;
+    this.highRotationActions.set(
+      result,
+      (this.highRotationActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordHighRotationFavorites(count: number): void {
+    this.highRotationFavorites = Math.max(0, Math.floor(count));
+  }
+
   recordMachineRequest(
     operation: PalazzoMachineOperation,
     result: PalazzoMachineResult,
@@ -278,6 +311,8 @@ export class RadioMetricsService {
       introTransitions: Object.fromEntries(this.introTransitions),
       songQueueActions: Object.fromEntries(this.songQueueActions),
       songQueueDepth: this.songQueueDepth,
+      highRotationActions: Object.fromEntries(this.highRotationActions),
+      highRotationFavorites: this.highRotationFavorites,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
       machineRetries: Object.fromEntries(this.machineRetries),
@@ -355,6 +390,20 @@ export class RadioMetricsService {
       '# HELP alcantara_radio_song_queue_depth Total queued song entries across radio-capable programs.',
       '# TYPE alcantara_radio_song_queue_depth gauge',
       `alcantara_radio_song_queue_depth ${this.songQueueDepth}`,
+    );
+    lines.push(
+      '# HELP alcantara_radio_high_rotation_actions_total High rotation scheduler actions by bounded result.',
+      '# TYPE alcantara_radio_high_rotation_actions_total counter',
+    );
+    for (const result of HIGH_ROTATION_ACTION_RESULTS) {
+      lines.push(
+        `alcantara_radio_high_rotation_actions_total{result="${result}"} ${this.highRotationActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_high_rotation_favorites Configured high rotation playlist songs across radio-capable programs.',
+      '# TYPE alcantara_radio_high_rotation_favorites gauge',
+      `alcantara_radio_high_rotation_favorites ${this.highRotationFavorites}`,
     );
     lines.push(
       '# HELP alcantara_palazzo_machine_requests_total Program-scoped Palazzo machine requests by bounded operation and result.',

@@ -155,12 +155,22 @@ Play Next is a separate persisted FIFO queue of playlist references. It never
 interrupts the current track. At the next authoritative track end it takes
 priority, then Autoplay or Shuffle resumes from the playlist successor that
 would have played; Manual remains stopped after the queue drains.
+Up to 12 playlist songs can be starred for High Rotation. Automatic playback
+opens one High Rotation opportunity every 30 minutes, chooses the least
+recently played eligible favorite, and persists authoritative starts across
+restarts. A favorite is never selected automatically more than once in six
+hours or more than four times in a rolling 24 hours. Twelve favorites are
+therefore required to sustain the full two-per-hour target; smaller sets keep
+the hard repeat limits and continue normal playlist playback when none is
+eligible. Play Next remains the explicit operator override, and any queued
+favorite play counts toward its later cooldown.
 The playback bar exposes pressed states for Manual, Autoplay, Shuffle, and Loop
 and labels backend playback feedback as live or stale.
 
 The Radio desk includes live Song, Audio clips / bumpers, and Main mixer
-controls. Playlist rows can be added to Play Next without changing playlist
-order, and the queue supports removal and ordering before playback. Radio
+controls. Playlist rows can be starred for High Rotation or added to Play Next
+without changing playlist order, and the queue supports removal and ordering
+before playback. Radio
 distribution at `/radio-settings` owns Palazzo automation,
 bumper policy, and now-playing consumers so live playout is not mixed with
 configuration. Simulcast uses the TV switcher with an explicit radio-leg status

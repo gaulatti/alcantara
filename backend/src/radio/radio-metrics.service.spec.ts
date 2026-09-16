@@ -21,6 +21,9 @@ describe('RadioMetricsService', () => {
     metrics.recordSongQueueAction('released');
     metrics.recordSongQueueAction('persistence-failed');
     metrics.recordSongQueueDepth(3);
+    metrics.recordHighRotationAction('selected');
+    metrics.recordHighRotationAction('history-persistence-failed');
+    metrics.recordHighRotationFavorites(12);
     metrics.recordMachineRequest('song-play', 'success');
     metrics.recordMachineRequest('song-play', 'deduplicated');
     metrics.recordMachineRequest('event-connect', 'unauthorized');
@@ -63,6 +66,13 @@ describe('RadioMetricsService', () => {
       'alcantara_radio_song_queue_actions_total{result="persistence-failed"} 1',
     );
     expect(rendered).toContain('alcantara_radio_song_queue_depth 3');
+    expect(rendered).toContain(
+      'alcantara_radio_high_rotation_actions_total{result="selected"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_high_rotation_actions_total{result="history-persistence-failed"} 1',
+    );
+    expect(rendered).toContain('alcantara_radio_high_rotation_favorites 12');
     expect(rendered).toContain(
       'alcantara_palazzo_machine_requests_total{operation="song-play",result="success"} 1',
     );

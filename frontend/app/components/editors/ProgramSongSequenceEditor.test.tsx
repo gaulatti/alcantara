@@ -35,4 +35,78 @@ describe("ProgramSongSequenceEditor Play Next action", () => {
     expect(onQueueItem).toHaveBeenCalledWith("song-1");
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("marks a playlist song for high rotation", () => {
+    const onChange = vi.fn();
+    render(
+      <ProgramSongSequenceEditor
+        sequence={{
+          mode: "shuffle",
+          loop: true,
+          activeItemId: "song-1",
+          items: [
+            {
+              id: "song-1",
+              kind: "preset",
+              title: "Favorite song",
+              artist: "Favorite artist",
+              coverUrl: "",
+              audioUrl: "https://example.test/favorite.mp3",
+            },
+          ],
+        }}
+        view="queue"
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByLabelText("Add Favorite song to high rotation"),
+    );
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [expect.objectContaining({ id: "song-1", highRotation: true })],
+      }),
+    );
+  });
+
+  it("disables adding a thirteenth high rotation song", () => {
+    const onChange = vi.fn();
+    render(
+      <ProgramSongSequenceEditor
+        sequence={{
+          mode: "shuffle",
+          loop: true,
+          activeItemId: "song-1",
+          items: [
+            ...Array.from({ length: 12 }, (_, index) => ({
+              id: `favorite-${index}`,
+              kind: "preset" as const,
+              highRotation: true,
+              title: `Favorite ${index}`,
+              artist: "Artist",
+              coverUrl: "",
+              audioUrl: `https://example.test/favorite-${index}.mp3`,
+            })),
+            {
+              id: "normal",
+              kind: "preset",
+              title: "Normal song",
+              artist: "Artist",
+              coverUrl: "",
+              audioUrl: "https://example.test/normal.mp3",
+            },
+          ],
+        }}
+        view="queue"
+        onChange={onChange}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Add Normal song to high rotation"),
+    ).toBeDisabled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

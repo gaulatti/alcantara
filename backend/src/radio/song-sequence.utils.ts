@@ -19,6 +19,7 @@ interface BaseSequence<TItem extends BaseSequenceItem> {
 export interface ProgramSongSequenceLeafItem extends BaseSequenceItem {
   kind: 'preset';
   songId?: number;
+  highRotation?: boolean;
   artist: string;
   title: string;
   coverUrl: string;
@@ -44,6 +45,7 @@ export type ProgramSongSequence = BaseSequence<ProgramSongSequenceItem>;
 export interface ProgramResolvedSongLeaf {
   id: string;
   songId?: number;
+  highRotation: boolean;
   artist: string;
   title: string;
   coverUrl: string;
@@ -201,6 +203,7 @@ function normalizeSongLeafItem(
       record.songId > 0
         ? record.songId
         : undefined,
+    highRotation: record.highRotation === true,
     artist,
     title,
     coverUrl,
@@ -458,6 +461,7 @@ function resolveSongSequenceRecursive(
   return {
     id: selected.id,
     songId: selected.songId,
+    highRotation: selected.highRotation === true,
     artist: selected.artist,
     title: selected.title,
     coverUrl: selected.coverUrl,
@@ -468,6 +472,68 @@ function resolveSongSequenceRecursive(
     earoneSpins: selected.earoneSpins,
     activePathLabels: [...labels, songLabel || 'Song Preset'],
   };
+}
+
+function collectProgramSongLeavesRecursive(
+  sequence: ProgramSongSequence,
+  labels: string[],
+  leaves: ProgramResolvedSongLeaf[],
+  depth: number,
+): void {
+  if (depth > MAX_DEPTH) return;
+  for (const item of sequence.items) {
+    if (item.kind === 'sequence') {
+      collectProgramSongLeavesRecursive(
+        item.sequence,
+        [...labels, item.label],
+        leaves,
+        depth + 1,
+      );
+      continue;
+    }
+    const songLabel = [item.artist, item.title].filter(Boolean).join(' - ');
+    leaves.push({
+      ...item,
+      highRotation: item.highRotation === true,
+      activePathLabels: [...labels, songLabel || 'Song Preset'],
+    });
+  }
+}
+
+export function collectProgramSongLeaves(
+  sequence: ProgramSongSequence | null,
+): ProgramResolvedSongLeaf[] {
+  if (!sequence) return [];
+  const leaves: ProgramResolvedSongLeaf[] = [];
+  collectProgramSongLeavesRecursive(sequence, [], leaves, 0);
+  return leaves;
+}
+
+export function collectHighRotationProgramSongLeaves(
+  sequence: ProgramSongSequence | null,
+): ProgramResolvedSongLeaf[] {
+  return collectProgramSongLeaves(sequence).filter((song) => song.highRotation);
+}
+
+export function activateProgramSongLeaf(
+  sequence: ProgramSongSequence,
+  itemId: string,
+  depth = 0,
+): boolean {
+  if (depth > MAX_DEPTH) return false;
+  for (const item of sequence.items) {
+    if (item.kind === 'preset') {
+      if (item.id !== itemId) continue;
+      sequence.activeItemId = item.id;
+      sequence.startedAt = Date.now();
+      return true;
+    }
+    if (!activateProgramSongLeaf(item.sequence, itemId, depth + 1)) continue;
+    sequence.activeItemId = item.id;
+    sequence.startedAt = Date.now();
+    return true;
+  }
+  return false;
 }
 
 export function resolveProgramSongLeaf(
@@ -505,6 +571,7 @@ function collectSongLeavesByAudioUrl(
     const songLabel = [item.artist, item.title].filter(Boolean).join(' - ');
     matches.push({
       ...item,
+      highRotation: item.highRotation === true,
       activePathLabels: [...labels, songLabel || 'Song Preset'],
     });
   }
@@ -534,6 +601,7 @@ function collectSongLeavesById(
     const songLabel = [item.artist, item.title].filter(Boolean).join(' - ');
     matches.push({
       ...item,
+      highRotation: item.highRotation === true,
       activePathLabels: [...labels, songLabel || 'Song Preset'],
     });
   }

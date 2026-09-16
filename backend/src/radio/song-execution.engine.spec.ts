@@ -105,6 +105,7 @@ function createEngine(opts: {
     type: opts.tv ? 'tv' : 'radio',
     songSequence: TWO_SONG_SEQUENCE as unknown,
     songQueue: [] as unknown[],
+    songRotation: null as unknown,
   };
   const prisma = {
     songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -145,6 +146,8 @@ function createEngine(opts: {
     recordReconnectFailure: jest.fn(),
     recordSongQueueAction: jest.fn(),
     recordSongQueueDepth: jest.fn(),
+    recordHighRotationAction: jest.fn(),
+    recordHighRotationFavorites: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -279,6 +282,116 @@ describe('SongExecutionEngine authoritative playback', () => {
     expect(prisma.songIntro.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { songId: 101 } }),
     );
+  });
+
+  it('plays distinct high rotation songs on a 30-minute cadence and resumes the normal playlist between them', async () => {
+    jest.setSystemTime(new Date('2026-09-15T12:00:00.000Z'));
+    const { engine, radioService, prisma, metrics, getPersistedProgramState } =
+      createEngine({ reconciled: true, radio: true });
+    const highRotationSequence = {
+      mode: 'shuffle',
+      loop: true,
+      activeItemId: 'normal',
+      items: [
+        {
+          id: 'normal',
+          kind: 'preset',
+          title: 'Normal song',
+          artist: 'Artist',
+          coverUrl: '',
+          audioUrl: 'https://example.test/normal.mp3',
+          durationMs: 1000,
+        },
+        {
+          id: 'favorite-1',
+          kind: 'preset',
+          songId: 201,
+          highRotation: true,
+          title: 'Favorite one',
+          artist: 'Artist',
+          coverUrl: '',
+          audioUrl: 'https://example.test/favorite-1.mp3',
+          durationMs: 1000,
+        },
+        {
+          id: 'favorite-2',
+          kind: 'preset',
+          songId: 202,
+          highRotation: true,
+          title: 'Favorite two',
+          artist: 'Artist',
+          coverUrl: '',
+          audioUrl: 'https://example.test/favorite-2.mp3',
+          durationMs: 1000,
+        },
+      ],
+    };
+
+    engine.handleSequenceUpdated('radio-1', highRotationSequence);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+
+    const firstCall = radioService.playSong.mock.calls[0] as Parameters<
+      RadioService['playSong']
+    >;
+    expect(firstCall[1]).toBe('https://example.test/favorite-1.mp3');
+    const firstRequestId = firstCall[4];
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: firstRequestId },
+    });
+    await flush();
+    expect(getPersistedProgramState().songRotation).toMatchObject({
+      history: [expect.objectContaining({ songKey: 'song:201' })],
+    });
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: firstRequestId },
+    });
+    await flush(12);
+    const normalCall = radioService.playSong.mock.calls[1] as Parameters<
+      RadioService['playSong']
+    >;
+    expect(normalCall[1]).toBe('https://example.test/normal.mp3');
+    const normalRequestId = normalCall[4];
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: normalRequestId },
+    });
+    jest.advanceTimersByTime(31 * 60 * 1000);
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: normalRequestId },
+    });
+    await flush(12);
+
+    const secondCall = radioService.playSong.mock.calls[2] as Parameters<
+      RadioService['playSong']
+    >;
+    expect(secondCall[1]).toBe('https://example.test/favorite-2.mp3');
+    const secondRequestId = secondCall[4];
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: secondRequestId },
+    });
+    await flush();
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: secondRequestId },
+    });
+    await flush(12);
+
+    const resumedCall = radioService.playSong.mock.calls[3] as Parameters<
+      RadioService['playSong']
+    >;
+    expect(resumedCall[1]).toBe('https://example.test/normal.mp3');
+    expect(prisma.programState.update).toHaveBeenCalled();
+    expect(metrics.recordHighRotationAction).toHaveBeenCalledWith('selected');
+    expect(metrics.recordHighRotationAction).toHaveBeenCalledWith('played');
   });
 
   it('keeps the song active and exposes a bounded degraded state when an intro fails', async () => {

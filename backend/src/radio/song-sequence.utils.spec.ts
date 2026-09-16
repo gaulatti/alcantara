@@ -31,6 +31,30 @@ describe('program song sequence catalog identity', () => {
     });
   });
 
+  it('preserves the high rotation capability through normalization and resolution', () => {
+    const sequence = normalizeProgramSongSequence({
+      mode: 'shuffle',
+      items: [
+        {
+          id: 'favorite',
+          kind: 'preset',
+          songId: 9,
+          highRotation: true,
+          artist: 'Artist',
+          title: 'Favorite',
+          coverUrl: '',
+          audioUrl: 'https://media.test/favorite.mp3',
+        },
+      ],
+      activeItemId: 'favorite',
+    });
+
+    expect(sequence?.items[0]).toMatchObject({ highRotation: true });
+    expect(sequence && resolveProgramSongLeaf(sequence)).toMatchObject({
+      highRotation: true,
+    });
+  });
+
   it('keeps legacy metadata-only items playable without inventing a songId', () => {
     const sequence = normalizeProgramSongSequence({
       mode: 'manual',
