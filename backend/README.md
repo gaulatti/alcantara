@@ -129,8 +129,10 @@ empty Arauco database. Restore the production backup first. Deployment checks
 for the restored `ProgramState` table and at least one program row before it
 runs the committed Prisma migrations. The backend listens only on loopback and
 nginx terminates TLS for `api.alcantara.gaulatti.com` with buffering disabled
-for SSE and WebSocket traffic. LiveKit remains disabled on Cumulus until its
-separate public media-port and secret contract is provisioned.
+for SSE and WebSocket traffic. Cumulus nginx accepts request bodies up to 110 MB
+so multipart overhead does not prevent the backend from enforcing its 100 MB
+per-file upload limit. LiveKit remains disabled on Cumulus until its separate
+public media-port and secret contract is provisioned.
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

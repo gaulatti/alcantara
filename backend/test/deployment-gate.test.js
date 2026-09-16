@@ -13,6 +13,7 @@ const restoreCheck = readFileSync(
 );
 const nginx = readFileSync('../deploy/cumulus.nginx.conf', 'utf8');
 const dockerfile = readFileSync('./Dockerfile', 'utf8');
+const backendMain = readFileSync('./src/main.ts', 'utf8');
 
 test('validates the production secret contract before build, push, or host mutation', () => {
   const preflight = workflow.indexOf('  production-config-preflight:');
@@ -88,6 +89,11 @@ test('keeps the backend private to nginx and preserves realtime proxy behavior',
   assert.match(nginx, /proxy_buffering off/);
   assert.match(nginx, /proxy_set_header Upgrade \$http_upgrade/);
   assert.match(nginx, /proxy_read_timeout 24h/);
+});
+
+test('allows song upload bodies through nginx while retaining the application file limit', () => {
+  assert.match(nginx, /client_max_body_size 110m;/);
+  assert.match(backendMain, /fileSize: 100 \* 1024 \* 1024/);
 });
 
 test('uses bounded host-local logs without a CloudWatch dependency', () => {
