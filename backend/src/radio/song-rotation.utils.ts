@@ -8,8 +8,10 @@ export const MAX_HIGH_ROTATION_SONGS = 12;
 export const HIGH_ROTATION_TARGET_PER_HOUR = 2;
 export const HIGH_ROTATION_INTERVAL_MS =
   (60 * 60 * 1000) / HIGH_ROTATION_TARGET_PER_HOUR;
-export const HIGH_ROTATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-export const HIGH_ROTATION_DAILY_LIMIT = 4;
+export const HIGH_ROTATION_OPPORTUNITIES_PER_DAY =
+  24 * HIGH_ROTATION_TARGET_PER_HOUR;
+export const HIGH_ROTATION_MINIMUM_PLAYS_PER_DAY =
+  HIGH_ROTATION_OPPORTUNITIES_PER_DAY / MAX_HIGH_ROTATION_SONGS;
 export const HIGH_ROTATION_HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_ROTATION_HISTORY_ENTRIES = 256;
 
@@ -24,7 +26,7 @@ export interface ProgramSongRotationState {
   history: ProgramSongRotationHistoryEntry[];
 }
 
-export type HighRotationEligibility = 'eligible' | 'cooldown' | 'daily-cap';
+export type HighRotationEligibility = 'eligible' | 'cooldown';
 export type HighRotationSelectionStatus =
   | 'selected'
   | 'not-due'
@@ -92,21 +94,27 @@ export function normalizeProgramSongRotation(
 export function getHighRotationEligibility(
   song: ProgramResolvedSongLeaf,
   rotation: ProgramSongRotationState,
+  favoriteCount: number,
   now = Date.now(),
 ): HighRotationEligibility {
   const songKey = highRotationSongKey(song);
   const plays = rotation.history.filter((entry) => entry.songKey === songKey);
-  if (plays.some((entry) => now - entry.playedAt < HIGH_ROTATION_COOLDOWN_MS)) {
+  const repeatInterval = highRotationRepeatIntervalMs(favoriteCount);
+  if (plays.some((entry) => now - entry.playedAt < repeatInterval)) {
     return 'cooldown';
   }
-  if (
-    plays.filter(
-      (entry) => now - entry.playedAt < HIGH_ROTATION_HISTORY_RETENTION_MS,
-    ).length >= HIGH_ROTATION_DAILY_LIMIT
-  ) {
-    return 'daily-cap';
-  }
   return 'eligible';
+}
+
+export function highRotationRepeatIntervalMs(favoriteCount: number): number {
+  const normalizedFavoriteCount = Number.isFinite(favoriteCount)
+    ? Math.floor(favoriteCount)
+    : 1;
+  const boundedFavoriteCount = Math.max(
+    1,
+    Math.min(MAX_HIGH_ROTATION_SONGS, normalizedFavoriteCount),
+  );
+  return HIGH_ROTATION_INTERVAL_MS * boundedFavoriteCount;
 }
 
 export function selectHighRotationCandidate(
@@ -132,7 +140,9 @@ export function selectHighRotationCandidate(
   }
 
   const eligible = favorites.filter(
-    (song) => getHighRotationEligibility(song, rotation, now) === 'eligible',
+    (song) =>
+      getHighRotationEligibility(song, rotation, favorites.length, now) ===
+      'eligible',
   );
   if (!eligible.length) return { song: null, status: 'quota-unmet' };
 

@@ -158,12 +158,13 @@ would have played; Manual remains stopped after the queue drains.
 Up to 12 playlist songs can be starred for High Rotation. Automatic playback
 opens one High Rotation opportunity every 30 minutes, chooses the least
 recently played eligible favorite, and persists authoritative starts across
-restarts. A favorite is never selected automatically more than once in six
-hours or more than four times in a rolling 24 hours. Twelve favorites are
-therefore required to sustain the full two-per-hour target; smaller sets keep
-the hard repeat limits and continue normal playlist playback when none is
-eligible. Play Next remains the explicit operator override, and any queued
-favorite play counts toward its later cooldown.
+restarts. The 48 daily opportunities are distributed evenly across the current
+favorites, guaranteeing at least four plays per favorite per day: 12 favorites
+play four times each, while four favorites play 12 times each. The repeat gap
+scales with the pool (`favorite count / 2` hours), avoiding repeats until every
+other favorite has had its opportunity. Play Next remains the explicit
+operator override, and any queued favorite play counts when choosing the least
+recently played song.
 The playback bar exposes pressed states for Manual, Autoplay, Shuffle, and Loop
 and labels backend playback feedback as live or stale.
 

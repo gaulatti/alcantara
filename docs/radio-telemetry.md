@@ -152,13 +152,14 @@ accepts at most 12 such leaves. In Autoplay and Shuffle, Alcantara owns their
 cadence: one High Rotation opportunity opens every 30 minutes and selects the
 least recently played eligible favorite. Authoritative `track.started` events
 are recorded in the additive `ProgramState.songRotation` state so restarts do
-not reset the limits. The same song key is ineligible for six hours and after
-four starts in a rolling 24 hours. With 12 favorites this produces four evenly
-spaced plays per favorite per day and two High Rotation plays per hour. With a
-smaller pool the repeat limits remain hard, the unmet opportunity is counted,
-and ordinary playlist songs continue. Play Next and manual takes retain
-operator priority; a favorite played through either path still contributes to
-the persisted cooldown history.
+not reset the distribution. The 48 daily opportunities are shared evenly among
+the current favorites, so every configured favorite receives at least four
+plays per day. The repeat gap is `favorite count / 2` hours: 12 favorites play
+four times each with six-hour spacing, while four favorites play 12 times each
+with two-hour spacing. Least-recently-played selection avoids repeating a song
+before the rest of the pool. Play Next and manual takes retain operator
+priority; a favorite played through either path contributes to the persisted
+history and is moved behind less-recently-played favorites.
 
 Automation settings, Palazzo URL, bumper eligibility, and now-playing consumers
 live at `/radio-settings`; they are deliberately separate from live playout.
@@ -247,7 +248,7 @@ started, ended, failed, and mismatched intro lifecycle events,
 reorder, consume, cursor persistence, rejection, and persistence failure,
 `alcantara_radio_song_queue_depth` for the total number of queued entries,
 `alcantara_radio_high_rotation_actions_total{result}` for selection, confirmed
-play, cooldown/daily-cap skips, unmet opportunities, and persistence failures,
+play, repeat-gap skips, unmet opportunities, and persistence failures,
 `alcantara_radio_high_rotation_favorites` for the bounded configured favorite
 count across radio-capable programs,
 `alcantara_palazzo_machine_requests_total{operation,result}`, and

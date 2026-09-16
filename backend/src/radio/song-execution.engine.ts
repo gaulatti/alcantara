@@ -1271,6 +1271,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): ProgramResolvedSongLeaf | null {
     const sequence = state.sequence;
     if (!sequence) return null;
+    const favoriteCount = collectHighRotationProgramSongLeaves(sequence).length;
 
     if (state.rotationHistoryHealthy) {
       const highRotation = selectHighRotationCandidate(
@@ -1298,14 +1299,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         const eligibility = getHighRotationEligibility(
           resolved,
           state.rotation,
+          favoriteCount,
           now,
         );
         if (eligibility !== 'eligible') {
-          this.metrics.recordHighRotationAction(
-            eligibility === 'cooldown'
-              ? 'cooldown-skipped'
-              : 'daily-cap-skipped',
-          );
+          this.metrics.recordHighRotationAction('cooldown-skipped');
         }
       }
 

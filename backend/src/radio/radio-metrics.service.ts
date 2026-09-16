@@ -60,7 +60,6 @@ export type HighRotationActionResult =
   | 'selected'
   | 'played'
   | 'cooldown-skipped'
-  | 'daily-cap-skipped'
   | 'quota-unmet'
   | 'history-persistence-failed';
 
@@ -168,7 +167,6 @@ const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
   'selected',
   'played',
   'cooldown-skipped',
-  'daily-cap-skipped',
   'quota-unmet',
   'history-persistence-failed',
 ];

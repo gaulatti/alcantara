@@ -1,7 +1,10 @@
 import { normalizeProgramSongSequence } from './song-sequence.utils';
 import {
   getHighRotationEligibility,
-  HIGH_ROTATION_COOLDOWN_MS,
+  HIGH_ROTATION_INTERVAL_MS,
+  HIGH_ROTATION_MINIMUM_PLAYS_PER_DAY,
+  HIGH_ROTATION_OPPORTUNITIES_PER_DAY,
+  highRotationRepeatIntervalMs,
   normalizeProgramSongRotation,
   recordHighRotationPlay,
   selectHighRotationCandidate,
@@ -79,8 +82,11 @@ describe('radio high rotation scheduling', () => {
     expect(selected).toEqual({ song: null, status: 'not-due' });
   });
 
-  it('never selects the same favorite twice inside six hours', () => {
-    const selectedSequence = sequence(1);
+  it('scales the repeat gap to the number of favorites', () => {
+    expect(highRotationRepeatIntervalMs(4)).toBe(2 * HOUR);
+    expect(highRotationRepeatIntervalMs(12)).toBe(6 * HOUR);
+
+    const selectedSequence = sequence(4);
     const favorite = selectedSequence?.items[1];
     expect(favorite?.kind).toBe('preset');
     if (!selectedSequence || !favorite || favorite.kind !== 'preset') return;
@@ -91,48 +97,80 @@ describe('radio high rotation scheduling', () => {
         history([
           {
             songId: 1,
-            playedAt: NOW - HIGH_ROTATION_COOLDOWN_MS + 1,
+            playedAt: NOW - 2 * HOUR + 1,
           },
         ]),
+        4,
         NOW,
       ),
     ).toBe('cooldown');
     expect(
-      selectHighRotationCandidate(
-        selectedSequence,
-        history([{ songId: 1, playedAt: NOW - HOUR }]),
-        NOW,
-      ).status,
-    ).toBe('quota-unmet');
-  });
-
-  it('caps a favorite at four plays in a rolling 24 hours', () => {
-    const selectedSequence = sequence(1);
-    const favorite = selectedSequence?.items[1];
-    expect(favorite?.kind).toBe('preset');
-    if (!favorite || favorite.kind !== 'preset') return;
-
-    expect(
       getHighRotationEligibility(
         { ...favorite, activePathLabels: [] },
-        history(
-          [6, 12, 18, 23].map((hours) => ({
-            songId: 1,
-            playedAt: NOW - hours * HOUR,
-          })),
-        ),
+        history([{ songId: 1, playedAt: NOW - 2 * HOUR }]),
+        4,
         NOW,
       ),
-    ).toBe('daily-cap');
+    ).toBe('eligible');
   });
 
-  it('reports an unmet quota instead of illegally repeating a smaller favorite pool', () => {
-    const entries = Array.from({ length: 11 }, (_, index) => ({
+  it.each(
+    Array.from({ length: 12 }, (_, index) => ({
+      favoriteCount: index + 1,
+    })),
+  )(
+    'distributes daily slots fairly across $favoriteCount favorites',
+    ({ favoriteCount }) => {
+      const selectedSequence = sequence(favoriteCount);
+      expect(selectedSequence).not.toBeNull();
+      if (!selectedSequence) return;
+      let rotation = normalizeProgramSongRotation(null, NOW);
+      const plays = new Map<string, number>();
+
+      for (
+        let slot = 0;
+        slot < HIGH_ROTATION_OPPORTUNITIES_PER_DAY;
+        slot += 1
+      ) {
+        const playedAt = NOW + slot * HIGH_ROTATION_INTERVAL_MS;
+        const selected = selectHighRotationCandidate(
+          selectedSequence,
+          rotation,
+          playedAt,
+        );
+        expect(selected.status).toBe('selected');
+        expect(selected.song).not.toBeNull();
+        if (!selected.song) return;
+        plays.set(selected.song.id, (plays.get(selected.song.id) ?? 0) + 1);
+        rotation = recordHighRotationPlay(
+          rotation,
+          selected.song,
+          `request-${slot}`,
+          playedAt,
+        ).state;
+      }
+
+      const playCounts = [...plays.values()];
+      expect(playCounts).toHaveLength(favoriteCount);
+      expect(Math.min(...playCounts)).toBeGreaterThanOrEqual(
+        HIGH_ROTATION_MINIMUM_PLAYS_PER_DAY,
+      );
+      expect(Math.min(...playCounts)).toBe(
+        Math.floor(HIGH_ROTATION_OPPORTUNITIES_PER_DAY / favoriteCount),
+      );
+      expect(Math.max(...playCounts)).toBe(
+        Math.ceil(HIGH_ROTATION_OPPORTUNITIES_PER_DAY / favoriteCount),
+      );
+    },
+  );
+
+  it('reports an unmet slot when recent operator plays make every favorite temporarily ineligible', () => {
+    const entries = Array.from({ length: 4 }, (_, index) => ({
       songId: index + 1,
       playedAt: NOW - HOUR,
     }));
     expect(
-      selectHighRotationCandidate(sequence(11), history(entries), NOW),
+      selectHighRotationCandidate(sequence(4), history(entries), NOW),
     ).toEqual({ song: null, status: 'quota-unmet' });
   });
 
