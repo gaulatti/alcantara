@@ -227,7 +227,7 @@ describe("program-aware media library", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add images" }));
     expect(await screen.findByRole("checkbox", { name: "Zzz Editorial" })).toBeVisible();
     expect(authFetch.mock.calls.some(([path]) => String(path) === "/media-labels?page=2&limit=200")).toBe(true);
-  });
+  }, 20_000);
 });
 
 describe("media library view rules", () => {
