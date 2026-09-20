@@ -24,24 +24,15 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  useNavigate,
-  useOutletContext,
-  useSearchParams,
-} from "react-router";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router";
 import { AppPage } from "../components/AppPage";
 import { InlineLabelCreator } from "../components/media/InlineLabelCreator";
-import {
-  MediaLibraryPage,
-} from "../components/media/MediaLibraryPage";
+import { MediaLibraryPage } from "../components/media/MediaLibraryPage";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { authFetch } from "../services/api";
 import { fetchAllMediaLabels } from "../services/mediaLabels";
 import type { ProgramType } from "../utils/appNavigation";
-import {
-  getMediaLibraryView,
-  type MediaType,
-} from "../utils/mediaLibrary";
+import { getMediaLibraryView, type MediaType } from "../utils/mediaLibrary";
 import type { Route } from "./+types/media";
 
 type MediaCapability =
@@ -335,6 +326,7 @@ export default function MediaRoute() {
 
   const saveImage = async () => {
     setIsSavingImage(true);
+    let createdImageCount = 0;
     try {
       if (editingAsset?.image) {
         let nextUrl = imageUrl.trim();
@@ -378,6 +370,7 @@ export default function MediaRoute() {
                 body: JSON.stringify({ name, imageUrl: upload.url }),
               }),
             );
+            createdImageCount = created.length;
           }
         } else {
           if (!imageName.trim())
@@ -392,20 +385,19 @@ export default function MediaRoute() {
               }),
             }),
           );
+          createdImageCount = created.length;
         }
         if (imageLabelIds.size > 0) {
-          await Promise.all(
-            created.map((record) =>
-              requestJson(
-                `/media-assets/${encodeURIComponent(record.assetId)}/labels`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ labelIds: [...imageLabelIds] }),
-                },
-              ),
-            ),
-          );
+          for (const record of created) {
+            await requestJson(
+              `/media-assets/${encodeURIComponent(record.assetId)}/labels`,
+              {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ labelIds: [...imageLabelIds] }),
+              },
+            );
+          }
         }
         showAlert(
           `Added ${created.length} image${created.length === 1 ? "" : "s"}.`,
@@ -415,6 +407,15 @@ export default function MediaRoute() {
       setShowImageModal(false);
       await refresh();
     } catch (error) {
+      if (createdImageCount > 0) {
+        setShowImageModal(false);
+        await refresh();
+        showAlert(
+          `${createdImageCount} image${createdImageCount === 1 ? " was" : "s were"} added, but setup did not finish. Check the existing images and edit their labels before trying again.`,
+          "error",
+        );
+        return;
+      }
       showAlert(
         error instanceof Error ? error.message : "Failed to save image.",
         "error",
@@ -817,9 +818,7 @@ export default function MediaRoute() {
                     </Button>
                   </div>
                   <InlineLabelCreator
-                    onCreate={(name) =>
-                      createInlineLabel(name, setBulkLabelId)
-                    }
+                    onCreate={(name) => createInlineLabel(name, setBulkLabelId)}
                   />
                 </div>
               ) : null}
@@ -888,7 +887,10 @@ export default function MediaRoute() {
                           <Trash2 size={15} />
                         </IconButton>
                       </div>
-                    ) : !asset.instant && !asset.song && asset.coverForSongIds.length === 0 && !asset.transition ? (
+                    ) : !asset.instant &&
+                      !asset.song &&
+                      asset.coverForSongIds.length === 0 &&
+                      !asset.transition ? (
                       <IconButton
                         aria-label={`Delete ${asset.name}`}
                         onClick={() => void deleteStandaloneAsset(asset)}
@@ -1142,9 +1144,7 @@ export default function MediaRoute() {
             <InlineLabelCreator
               onCreate={(name) =>
                 createInlineLabel(name, (labelId) =>
-                  setImageLabelIds((current) =>
-                    new Set(current).add(labelId),
-                  ),
+                  setImageLabelIds((current) => new Set(current).add(labelId)),
                 )
               }
             />

@@ -13,6 +13,9 @@ describe('ManagedMetricsService program SSE metrics', () => {
     metrics.recordDependency('program-template', 'fetch', 'success', 0.25);
     metrics.recordJob('database-backup', 'success');
     metrics.recordJob('media-asset-reconciliation', 'failure');
+    metrics.recordMediaLabelAssignment('success');
+    metrics.recordMediaLabelAssignment('failure');
+    metrics.recordMediaLabelAssignment('private-label-name');
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingCommand('private-action', 'private-result');
     metrics.recordRecordingStatus('finalizing', 'success');
@@ -42,6 +45,16 @@ describe('ManagedMetricsService program SSE metrics', () => {
     expect(output).toContain(
       'alcantara_jobs_total{job="media-asset-reconciliation",result="failure"} 1',
     );
+    expect(output).toContain(
+      'alcantara_media_label_assignments_total{result="success"} 1',
+    );
+    expect(output).toContain(
+      'alcantara_media_label_assignments_total{result="failure"} 1',
+    );
+    expect(output).toContain(
+      'alcantara_media_label_assignments_total{result="unknown"} 1',
+    );
+    expect(output).not.toContain('private-label-name');
     expect(output).toContain(
       'alcantara_recording_commands_total{action="start",result="accepted"} 1',
     );

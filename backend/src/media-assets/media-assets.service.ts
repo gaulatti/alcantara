@@ -6,6 +6,7 @@ import {
 import { MediaAssetKind, MediaAssetType, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import {
   assertCanManageLabels,
   assertCanManageBackgroundAudio,
@@ -87,7 +88,10 @@ function resolveMediaType(asset: {
 
 @Injectable()
 export class MediaAssetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: ManagedMetricsService,
+  ) {}
 
   async findAll(
     input: FindAssetsInput,
@@ -234,39 +238,58 @@ export class MediaAssetsService {
       );
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      const current = await tx.mediaAssetLabel.findMany({
-        where: { assetId },
-        select: { labelId: true, position: true },
-      });
-      const currentPositions = new Map(
-        current.map((assignment) => [assignment.labelId, assignment.position]),
+    try {
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Allocate positions only after locking the label rows in a stable order.
+          // Concurrent uploads otherwise read the same maximum and collide on
+          // MediaAssetLabel(labelId, position).
+          for (const labelId of [...labelIds].sort()) {
+            await tx.$queryRaw`SELECT "id" FROM "MediaLabel" WHERE "id" = ${labelId} FOR UPDATE`;
+          }
+          const current = await tx.mediaAssetLabel.findMany({
+            where: { assetId },
+            select: { labelId: true, position: true },
+          });
+          const currentPositions = new Map(
+            current.map((assignment) => [
+              assignment.labelId,
+              assignment.position,
+            ]),
+          );
+          const affectedLabelIds = [
+            ...new Set([...current.map((row) => row.labelId), ...labelIds]),
+          ];
+          await tx.mediaAssetLabel.deleteMany({ where: { assetId } });
+          for (const labelId of labelIds) {
+            const currentPosition = currentPositions.get(labelId);
+            const maximum =
+              currentPosition === undefined
+                ? await tx.mediaAssetLabel.aggregate({
+                    where: { labelId },
+                    _max: { position: true },
+                  })
+                : null;
+            await tx.mediaAssetLabel.create({
+              data: {
+                assetId,
+                labelId,
+                position: currentPosition ?? (maximum?._max.position ?? -1) + 1,
+              },
+            });
+          }
+          await this.syncLegacyGroupsFromLabels(tx, affectedLabelIds);
+        },
+        { maxWait: 30_000, timeout: 30_000 },
       );
-      const affectedLabelIds = [
-        ...new Set([...current.map((row) => row.labelId), ...labelIds]),
-      ];
-      await tx.mediaAssetLabel.deleteMany({ where: { assetId } });
-      for (const labelId of labelIds) {
-        const currentPosition = currentPositions.get(labelId);
-        const maximum =
-          currentPosition === undefined
-            ? await tx.mediaAssetLabel.aggregate({
-                where: { labelId },
-                _max: { position: true },
-              })
-            : null;
-        await tx.mediaAssetLabel.create({
-          data: {
-            assetId,
-            labelId,
-            position: currentPosition ?? (maximum?._max.position ?? -1) + 1,
-          },
-        });
-      }
-      await this.syncLegacyGroupsFromLabels(tx, affectedLabelIds);
-    });
 
-    return this.findOne(assetId, authorization);
+      const updated = await this.findOne(assetId, authorization);
+      this.metrics.recordMediaLabelAssignment('success');
+      return updated;
+    } catch (error) {
+      this.metrics.recordMediaLabelAssignment('failure');
+      throw error;
+    }
   }
 
   async findLabels(
@@ -474,19 +497,23 @@ export class MediaAssetsService {
       );
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.mediaAssetLabel.deleteMany({ where: { labelId } });
-      if (assetIds.length > 0) {
-        await tx.mediaAssetLabel.createMany({
-          data: assetIds.map((assetId, position) => ({
-            labelId,
-            assetId,
-            position,
-          })),
-        });
-      }
-      await this.syncLegacyGroupsFromLabels(tx, [labelId]);
-    });
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "MediaLabel" WHERE "id" = ${labelId} FOR UPDATE`;
+        await tx.mediaAssetLabel.deleteMany({ where: { labelId } });
+        if (assetIds.length > 0) {
+          await tx.mediaAssetLabel.createMany({
+            data: assetIds.map((assetId, position) => ({
+              labelId,
+              assetId,
+              position,
+            })),
+          });
+        }
+        await this.syncLegacyGroupsFromLabels(tx, [labelId]);
+      },
+      { maxWait: 30_000, timeout: 30_000 },
+    );
     return this.findLabel(labelId, authorization);
   }
 
