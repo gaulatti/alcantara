@@ -23,7 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useNavigate,
   useOutletContext,
@@ -36,6 +36,7 @@ import {
 } from "../components/media/MediaLibraryPage";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { authFetch } from "../services/api";
+import { fetchAllMediaLabels } from "../services/mediaLabels";
 import type { ProgramType } from "../utils/appNavigation";
 import {
   getMediaLibraryView,
@@ -202,6 +203,7 @@ export default function MediaRoute() {
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [labels, setLabels] = useState<MediaLabel[]>([]);
+  const labelsRequestVersion = useRef(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [capability, setCapability] = useState<MediaCapability | "">("");
@@ -261,10 +263,9 @@ export default function MediaRoute() {
   }, [debouncedSearch, mediaType, isLabelsView]);
 
   const fetchLabels = useCallback(async () => {
-    const payload = await requestJson<{ data: MediaLabel[] }>(
-      "/media-labels?limit=200",
-    );
-    setLabels(Array.isArray(payload.data) ? payload.data : []);
+    const version = ++labelsRequestVersion.current;
+    const loaded = await fetchAllMediaLabels<MediaLabel>();
+    if (version === labelsRequestVersion.current) setLabels(loaded);
   }, []);
 
   const fetchAssets = useCallback(async () => {
@@ -563,6 +564,7 @@ export default function MediaRoute() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, description: null }),
     });
+    labelsRequestVersion.current += 1;
     setLabels((current) =>
       [...current.filter((label) => label.id !== saved.id), saved].sort(
         (left, right) => left.name.localeCompare(right.name),
