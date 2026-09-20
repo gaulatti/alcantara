@@ -21,6 +21,7 @@ import {
 } from "../models/components";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { authFetch } from "../services/api";
+import { fetchAllMediaLabels } from "../services/mediaLabels";
 import { normalizeProgramSongQueue } from "../utils/songQueue";
 import { dbToFader, faderToGain } from "../utils/audioTaper";
 import { useGlobalProgramId } from "../utils/globalProgram";
@@ -1319,10 +1320,7 @@ export default function Control() {
   const fetchMediaLabels = async () => {
     try {
       setIsLoadingMediaLabels(true);
-      const res = await authFetch('/media-labels?limit=200');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as PaginatedResponse<MediaLabel>;
-      setMediaLabels(Array.isArray(body.data) ? body.data : []);
+      setMediaLabels(await fetchAllMediaLabels<MediaLabel>());
     } catch (err) {
       console.error('Failed to fetch media labels:', err);
       setMediaLabels([]);

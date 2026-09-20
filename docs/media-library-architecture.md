@@ -31,6 +31,8 @@ There is deliberately no new collection table. The operator workflow is to
 upload media, then apply one or more labels inline or in bulk. Every media label
 selector can create a label in place; the new label is selected immediately so
 the operator can finish the upload or bulk action without leaving the workflow.
+The library and scene label selectors load every page of the label catalog, so
+labels beyond the first 200 remain available after a refresh.
 A slideshow selects an image label and resolves its enabled image assets in
 label order.
 
