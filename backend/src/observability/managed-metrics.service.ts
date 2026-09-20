@@ -81,6 +81,7 @@ const JOBS = new Set([
   'unknown',
 ]);
 const JOB_RESULTS = new Set(['success', 'failure', 'skipped', 'unknown']);
+const MEDIA_LABEL_ASSIGNMENT_RESULTS = new Set(['success', 'failure']);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -156,6 +157,7 @@ export class ManagedMetricsService {
   private readonly dependencyOperations: Counter<string>;
   private readonly dependencyDuration: Histogram<string>;
   private readonly jobs: Counter<string>;
+  private readonly mediaLabelAssignments: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -219,6 +221,12 @@ export class ManagedMetricsService {
       name: 'alcantara_jobs_total',
       help: 'Background job runs by bounded job and result.',
       labelNames: ['job', 'result'],
+      registers: [this.registry],
+    });
+    this.mediaLabelAssignments = new Counter({
+      name: 'alcantara_media_label_assignments_total',
+      help: 'Media asset label replacement transactions by result.',
+      labelNames: ['result'],
       registers: [this.registry],
     });
     this.jobLastSuccess = new Gauge({
@@ -323,6 +331,12 @@ export class ManagedMetricsService {
     if (normalizedResult === 'success') {
       this.jobLastSuccess.set({ job: normalizedJob }, Date.now() / 1000);
     }
+  }
+
+  recordMediaLabelAssignment(result: string): void {
+    this.mediaLabelAssignments.inc({
+      result: bounded(result, MEDIA_LABEL_ASSIGNMENT_RESULTS),
+    });
   }
 
   recordPreference(action: string, result: string): void {

@@ -1,23 +1,26 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
-  MemoryRouter,
-  Outlet,
-  Route,
-  Routes,
-  useLocation,
-} from "react-router";
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { MemoryRouter, Outlet, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProgramType } from "../utils/appNavigation";
 import { getMediaLibraryView } from "../utils/mediaLibrary";
 import MediaRoute from "./media";
 
-const { authFetch } = vi.hoisted(() => ({
+const { authFetch, uploadFileToMediaBucket } = vi.hoisted(() => ({
   authFetch: vi.fn(),
+  uploadFileToMediaBucket: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({ authFetch }));
 vi.mock("../services/uploads", () => ({
-  uploadFileToMediaBucket: vi.fn(),
+  uploadFileToMediaBucket,
 }));
 
 const createdLabel = {
@@ -117,9 +120,7 @@ describe("program-aware media library", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "New label name" }), {
       target: { value: "  Editorial  " },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create and select" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Create and select" }));
 
     expect(
       await screen.findByRole("checkbox", { name: "Editorial" }),
@@ -137,17 +138,19 @@ describe("program-aware media library", () => {
     const catalog = new Promise<Response>((resolve) => {
       finishCatalog = resolve;
     });
-    authFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === "/media-labels" && init?.method === "POST") {
-        return Response.json(createdLabel);
-      }
-      if (path === "/media-labels?page=1&limit=200") return catalog;
-      if (path.startsWith("/media-assets")) {
-        return Response.json({ data: [], meta: { total: 0, totalPages: 1 } });
-      }
-      return Response.json({}, { status: 404 });
-    });
+    authFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === "/media-labels" && init?.method === "POST") {
+          return Response.json(createdLabel);
+        }
+        if (path === "/media-labels?page=1&limit=200") return catalog;
+        if (path.startsWith("/media-assets")) {
+          return Response.json({ data: [], meta: { total: 0, totalPages: 1 } });
+        }
+        return Response.json({}, { status: 404 });
+      },
+    );
 
     renderMedia("tv");
     fireEvent.click(await screen.findByRole("button", { name: "Add images" }));
@@ -155,13 +158,156 @@ describe("program-aware media library", () => {
       target: { value: "Editorial" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create and select" }));
-    expect(await screen.findByRole("checkbox", { name: "Editorial" })).toBeChecked();
+    expect(
+      await screen.findByRole("checkbox", { name: "Editorial" }),
+    ).toBeChecked();
 
     await act(async () => {
       finishCatalog(Response.json({ data: [], meta: { totalPages: 0 } }));
       await catalog;
     });
     expect(screen.getByRole("checkbox", { name: "Editorial" })).toBeChecked();
+  });
+
+  it("applies a shared label to uploaded images in order", async () => {
+    let finishFirstAssignment!: (response: Response) => void;
+    const firstAssignment = new Promise<Response>((resolve) => {
+      finishFirstAssignment = resolve;
+    });
+    let nextImageId = 0;
+    uploadFileToMediaBucket.mockImplementation(
+      async (_type: string, file: File) => ({
+        url: `https://media.test/${file.name}`,
+      }),
+    );
+    authFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === "/media-labels?page=1&limit=200") {
+          return Response.json({
+            data: [createdLabel],
+            meta: { totalPages: 1 },
+          });
+        }
+        if (path === "/media" && init?.method === "POST") {
+          nextImageId += 1;
+          return Response.json({
+            id: nextImageId,
+            assetId: `image:${nextImageId}`,
+          });
+        }
+        if (
+          path === "/media-assets/image%3A1/labels" &&
+          init?.method === "PUT"
+        ) {
+          return firstAssignment;
+        }
+        if (
+          path === "/media-assets/image%3A2/labels" &&
+          init?.method === "PUT"
+        ) {
+          return Response.json({});
+        }
+        if (path.startsWith("/media-assets")) {
+          return Response.json({ data: [], meta: { total: 0, totalPages: 1 } });
+        }
+        return Response.json({}, { status: 404 });
+      },
+    );
+
+    renderMedia("tv");
+    fireEvent.click(await screen.findByRole("button", { name: "Add images" }));
+    const dialog = screen.getByRole("dialog", { name: "Add images" });
+    fireEvent.click(
+      await within(dialog).findByRole("checkbox", { name: "Editorial" }),
+    );
+    const fileInput =
+      dialog.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput!, {
+      target: {
+        files: [
+          new File(["one"], "one.jpg", { type: "image/jpeg" }),
+          new File(["two"], "two.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add images" }));
+
+    await waitFor(() =>
+      expect(authFetch).toHaveBeenCalledWith(
+        "/media-assets/image%3A1/labels",
+        expect.objectContaining({ method: "PUT" }),
+      ),
+    );
+    expect(
+      authFetch.mock.calls.some(
+        ([path]) => path === "/media-assets/image%3A2/labels",
+      ),
+    ).toBe(false);
+    await act(async () => {
+      finishFirstAssignment(Response.json({}));
+      await firstAssignment;
+    });
+    await waitFor(() =>
+      expect(authFetch).toHaveBeenCalledWith(
+        "/media-assets/image%3A2/labels",
+        expect.objectContaining({ method: "PUT" }),
+      ),
+    );
+  });
+
+  it("closes the upload form after a label failure so existing images are not uploaded twice", async () => {
+    uploadFileToMediaBucket.mockResolvedValue({
+      url: "https://media.test/one.jpg",
+    });
+    authFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === "/media-labels?page=1&limit=200") {
+          return Response.json({
+            data: [createdLabel],
+            meta: { totalPages: 1 },
+          });
+        }
+        if (path === "/media" && init?.method === "POST") {
+          return Response.json({ id: 1, assetId: "image:1" });
+        }
+        if (
+          path === "/media-assets/image%3A1/labels" &&
+          init?.method === "PUT"
+        ) {
+          return Response.json(
+            { message: "assignment failed" },
+            { status: 500 },
+          );
+        }
+        if (path.startsWith("/media-assets")) {
+          return Response.json({ data: [], meta: { total: 0, totalPages: 1 } });
+        }
+        return Response.json({}, { status: 404 });
+      },
+    );
+
+    renderMedia("tv");
+    fireEvent.click(await screen.findByRole("button", { name: "Add images" }));
+    const dialog = screen.getByRole("dialog", { name: "Add images" });
+    fireEvent.click(
+      await within(dialog).findByRole("checkbox", { name: "Editorial" }),
+    );
+    const fileInput =
+      dialog.querySelector<HTMLInputElement>('input[type="file"]');
+    fireEvent.change(fileInput!, {
+      target: { files: [new File(["one"], "one.jpg", { type: "image/jpeg" })] },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add images" }));
+
+    await waitFor(() => expect(dialog).not.toBeVisible());
+    expect(
+      authFetch.mock.calls.filter(
+        ([path, init]) => path === "/media" && init?.method === "POST",
+      ),
+    ).toHaveLength(1);
   });
 
   it("finds labels beyond the first page and associates a newly created label with an image", async () => {
@@ -171,46 +317,72 @@ describe("program-aware media library", () => {
       id: `label:${index + 1}`,
       name: `Label ${String(index + 1).padStart(3, "0")}`,
     }));
-    authFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === "/media-labels" && init?.method === "POST") {
-        labels.push(newLabel);
-        return Response.json(newLabel);
-      }
-      if (path.startsWith("/media-labels?page=")) {
-        const page = Number(new URLSearchParams(path.split("?")[1]).get("page"));
-        const sorted = [...labels].sort((a, b) => a.name.localeCompare(b.name));
-        return Response.json({
-          data: sorted.slice((page - 1) * 200, page * 200),
-          meta: { totalPages: Math.ceil(sorted.length / 200) },
-        });
-      }
-      if (path === "/media" && init?.method === "POST") {
-        return Response.json({ id: 8, assetId: "image:8", name: "Weather still", imageUrl: "https://media.test/weather.jpg" });
-      }
-      if (path === "/media-assets/image%3A8/labels" && init?.method === "PUT") {
-        return Response.json({});
-      }
-      if (path.startsWith("/media-assets")) {
-        return Response.json({ data: [], meta: { total: 0, totalPages: 1 } });
-      }
-      return Response.json({}, { status: 404 });
-    });
+    authFetch.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path === "/media-labels" && init?.method === "POST") {
+          labels.push(newLabel);
+          return Response.json(newLabel);
+        }
+        if (path.startsWith("/media-labels?page=")) {
+          const page = Number(
+            new URLSearchParams(path.split("?")[1]).get("page"),
+          );
+          const sorted = [...labels].sort((a, b) =>
+            a.name.localeCompare(b.name),
+          );
+          return Response.json({
+            data: sorted.slice((page - 1) * 200, page * 200),
+            meta: { totalPages: Math.ceil(sorted.length / 200) },
+          });
+        }
+        if (path === "/media" && init?.method === "POST") {
+          return Response.json({
+            id: 8,
+            assetId: "image:8",
+            name: "Weather still",
+            imageUrl: "https://media.test/weather.jpg",
+          });
+        }
+        if (
+          path === "/media-assets/image%3A8/labels" &&
+          init?.method === "PUT"
+        ) {
+          return Response.json({});
+        }
+        if (path.startsWith("/media-assets")) {
+          return Response.json({ data: [], meta: { total: 0, totalPages: 1 } });
+        }
+        return Response.json({}, { status: 404 });
+      },
+    );
 
     renderMedia("tv");
     fireEvent.click(await screen.findByRole("button", { name: "Add images" }));
     const dialog = screen.getByRole("dialog", { name: "Add images" });
-    expect(await within(dialog).findByRole("checkbox", { name: "Label 201" })).toBeVisible();
+    expect(
+      await within(dialog).findByRole("checkbox", { name: "Label 201" }),
+    ).toBeVisible();
 
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "New label name" }), {
-      target: { value: "Zzz Editorial" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create and select" }));
-    expect(await within(dialog).findByRole("checkbox", { name: "Zzz Editorial" })).toBeChecked();
+    fireEvent.change(
+      within(dialog).getByRole("textbox", { name: "New label name" }),
+      {
+        target: { value: "Zzz Editorial" },
+      },
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Create and select" }),
+    );
+    expect(
+      await within(dialog).findByRole("checkbox", { name: "Zzz Editorial" }),
+    ).toBeChecked();
 
-    fireEvent.change(within(dialog).getByPlaceholderText("Optional for file uploads"), {
-      target: { value: "Weather still" },
-    });
+    fireEvent.change(
+      within(dialog).getByPlaceholderText("Optional for file uploads"),
+      {
+        target: { value: "Weather still" },
+      },
+    );
     fireEvent.change(within(dialog).getByPlaceholderText("https://…"), {
       target: { value: "https://media.test/weather.jpg" },
     });
@@ -223,19 +395,24 @@ describe("program-aware media library", () => {
         body: JSON.stringify({ labelIds: [newLabel.id] }),
       });
     });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add images" })).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add images" })).toBeNull(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Add images" }));
-    expect(await screen.findByRole("checkbox", { name: "Zzz Editorial" })).toBeVisible();
-    expect(authFetch.mock.calls.some(([path]) => String(path) === "/media-labels?page=2&limit=200")).toBe(true);
+    expect(
+      await screen.findByRole("checkbox", { name: "Zzz Editorial" }),
+    ).toBeVisible();
+    expect(
+      authFetch.mock.calls.some(
+        ([path]) => String(path) === "/media-labels?page=2&limit=200",
+      ),
+    ).toBe(true);
   }, 20_000);
 });
 
 describe("media library view rules", () => {
   it("retains every physical media type for simulcast", () => {
-    const view = getMediaLibraryView(
-      "both",
-      new URLSearchParams("type=VIDEO"),
-    );
+    const view = getMediaLibraryView("both", new URLSearchParams("type=VIDEO"));
 
     expect(view.mediaType).toBe("VIDEO");
     expect(view.visibleSections).toEqual([

@@ -58,6 +58,7 @@ function songCoverAsset() {
 
 function buildService() {
   const tx = {
+    $queryRaw: jest.fn(),
     mediaAssetLabel: {
       findMany: jest.fn(),
       deleteMany: jest.fn(),
@@ -93,7 +94,13 @@ function buildService() {
       callback(tx),
     ),
   };
-  return { service: new MediaAssetsService(prisma as never), prisma, tx };
+  const metrics = { recordMediaLabelAssignment: jest.fn() };
+  return {
+    service: new MediaAssetsService(prisma as never, metrics as never),
+    prisma,
+    tx,
+    metrics,
+  };
 }
 
 describe('MediaAssetsService', () => {
@@ -141,6 +148,46 @@ describe('MediaAssetsService', () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('locks a label before allocating its next position and records the committed assignment', async () => {
+    const { service, prisma, tx, metrics } = buildService();
+    prisma.mediaAsset.findUnique.mockResolvedValue(imageAsset());
+    prisma.mediaAsset.findFirst.mockResolvedValue(imageAsset());
+    prisma.mediaLabel.findMany.mockResolvedValue([{ id: 'label:1' }]);
+    tx.mediaAssetLabel.findMany.mockResolvedValue([]);
+    tx.mediaAssetLabel.aggregate.mockResolvedValue({ _max: { position: 7 } });
+
+    await service.replaceAssetLabels('image:1', ['label:1'], {
+      permissions: [ALCANTARA_PERMISSIONS.media.manage],
+    });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.calls[0][1]).toBe('label:1');
+    expect(String(tx.$queryRaw.mock.calls[0][0])).toContain('FOR UPDATE');
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.mediaAssetLabel.aggregate.mock.invocationCallOrder[0],
+    );
+    expect(tx.mediaAssetLabel.create).toHaveBeenCalledWith({
+      data: { assetId: 'image:1', labelId: 'label:1', position: 8 },
+    });
+    expect(metrics.recordMediaLabelAssignment).toHaveBeenCalledWith('success');
+  });
+
+  it('rolls back a failed label assignment and records its failure', async () => {
+    const { service, prisma, tx, metrics } = buildService();
+    prisma.mediaAsset.findUnique.mockResolvedValue(imageAsset());
+    prisma.mediaLabel.findMany.mockResolvedValue([{ id: 'label:1' }]);
+    tx.mediaAssetLabel.findMany.mockResolvedValue([]);
+    tx.mediaAssetLabel.aggregate.mockResolvedValue({ _max: { position: 7 } });
+    tx.mediaAssetLabel.create.mockRejectedValue(new Error('write failed'));
+
+    await expect(
+      service.replaceAssetLabels('image:1', ['label:1'], {
+        permissions: [ALCANTARA_PERMISSIONS.media.manage],
+      }),
+    ).rejects.toThrow('write failed');
+    expect(metrics.recordMediaLabelAssignment).toHaveBeenCalledWith('failure');
   });
 
   it('creates standalone background audio without creating an Instant or Song', async () => {
@@ -232,6 +279,11 @@ describe('MediaAssetsService', () => {
       'legacy-media-group:4',
       ['image:2', 'image:1'],
       { permissions: [ALCANTARA_PERMISSIONS.media.manage] },
+    );
+
+    expect(tx.$queryRaw.mock.calls[0][1]).toBe('legacy-media-group:4');
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.mediaAssetLabel.deleteMany.mock.invocationCallOrder[0],
     );
 
     expect(tx.mediaAssetLabel.createMany).toHaveBeenCalledWith({

@@ -16,6 +16,20 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: alcantara_ci
+          POSTGRES_USER: alcantara
+          POSTGRES_PASSWORD: alcantara-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alcantara -d alcantara_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,10 +41,13 @@ jobs:
           corepack prepare pnpm@9 --activate
           pnpm install --frozen-lockfile
       - name: Test and build backend
+        env:
+          DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
         run: |
           pnpm --dir backend run prisma:generate
+          pnpm --dir backend run db:migrate:prisma
           pnpm --dir backend exec jest --runInBand
-          METRICS_SCRAPE_OUTPUT=/tmp/alcantara.prom pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns=metrics
+          METRICS_SCRAPE_OUTPUT=/tmp/alcantara.prom pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns='metrics|media-label-concurrency'
           pnpm --dir backend run test:deployment
           pnpm --dir backend run build
           pnpm --dir infra/aws exec jest --runInBand

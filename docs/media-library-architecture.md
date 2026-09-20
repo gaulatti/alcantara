@@ -33,6 +33,11 @@ selector can create a label in place; the new label is selected immediately so
 the operator can finish the upload or bulk action without leaving the workflow.
 The library and scene label selectors load every page of the label catalog, so
 labels beyond the first 200 remain available after a refresh.
+Bulk image uploads apply label assignments in order. Each backend replacement
+locks the affected label before allocating its next position, so concurrent
+operators cannot assign the same position to different assets. If image creation
+succeeded but a label request failed, the image remains in the library; edit the
+existing image and save its labels instead of uploading it again.
 A slideshow selects an image label and resolves its enabled image assets in
 label order.
 
@@ -94,6 +99,10 @@ The bounded `media-asset-reconciliation` job metric records success and failure
 and updates the standard last-success timestamp. HTTP metrics use bounded
 `media-assets` and `media-labels` route labels. Metrics never contain asset IDs,
 label names, URLs, or other content.
+`alcantara_media_label_assignments_total{result}` counts committed asset-label
+replacements (`success`) and failed replacement transactions (`failure`). The
+only other possible result is `unknown` for unrecognized instrumentation input;
+no asset or label identifier appears in this metric.
 
 ## Authorization and public rendering
 
