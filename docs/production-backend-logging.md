@@ -18,6 +18,11 @@ writer permissions, or a hosted replacement collector. Historical CloudWatch
 log data is outside this repository's retention contract and is not deleted by
 deployment or infrastructure changes.
 
+If the Cumulus SSM deployment fails, the GitHub Actions backend deploy job
+prints remote stdout and stderr as separate multiline logs and annotates the
+remote exit code. Missing workflow configuration is named without printing its
+value. A failed remote command does not count as a completed deployment.
+
 ## Cutover verification
 
 After the reviewed change reaches `main` and the normal backend deployment
