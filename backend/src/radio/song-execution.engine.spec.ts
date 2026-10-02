@@ -189,6 +189,49 @@ describe('SongExecutionEngine authoritative playback', () => {
     jest.useRealTimers();
   });
 
+  it('uses a cue-specific voice track and mix on its song command', async () => {
+    const { engine, radioService, prisma } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    prisma.instant.findUnique.mockResolvedValue({
+      audioUrl: 'https://example.test/voice.webm',
+      volume: 0.8,
+      enabled: true,
+    });
+    engine.handleManualSong(
+      'radio-1',
+      'https://example.test/song-1.mp3',
+      'Song one',
+      'Artist one',
+      120_000,
+      undefined,
+      101,
+      { instantId: 77, duckGain: 0.3, fadeInSeconds: 0.2, fadeOutSeconds: 0.4 },
+    );
+    await flush(12);
+    expect(prisma.instant.findUnique).toHaveBeenCalledWith({
+      where: { id: 77 },
+      select: { audioUrl: true, volume: true, enabled: true },
+    });
+    expect(radioService.playSong).toHaveBeenCalledWith(
+      'radio-1',
+      'https://example.test/song-1.mp3',
+      'Song one',
+      'Artist one',
+      expect.any(String),
+      undefined,
+      expect.objectContaining({
+        url: 'https://example.test/voice.webm',
+        gain: 0.8,
+        duckGain: 0.3,
+        fadeInSeconds: 0.2,
+        fadeOutSeconds: 0.4,
+      }),
+    );
+    expect(prisma.songIntro.findUnique).not.toHaveBeenCalled();
+  });
+
   it('submits an assigned intro atomically and reconciles its lifecycle without ending the song', async () => {
     const { engine, radioService, flightService, prisma, metrics } =
       createEngine({ reconciled: true, radio: true });

@@ -14,6 +14,7 @@ import {
   type NowPlayingConsumerPayload,
 } from './now-playing-publisher.service';
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
+import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import type { RadioSettingsPayload } from './radio.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -26,6 +27,7 @@ export class RadioController {
     private readonly songExecutionEngine: SongExecutionEngine,
     private readonly nowPlayingPublisherService: NowPlayingPublisherService,
     private readonly palazzoTelemetry: PalazzoRadioTelemetryService,
+    private readonly outputConfidence: RadioOutputConfidenceService,
   ) {}
 
   @Get(':programId/settings')
@@ -47,6 +49,41 @@ export class RadioController {
   @Get(':programId/palazzo-status')
   async getPalazzoStatus(@Param('programId') programId: string) {
     return this.palazzoTelemetry.getStatus(programId);
+  }
+
+  @Get(':programId/output-confidence')
+  async getOutputConfidence(@Param('programId') programId: string) {
+    await this.radioService.getRadioSettings(programId);
+    return this.outputConfidence.get(programId);
+  }
+
+  @Get(':programId/recovery')
+  async getRecovery(@Param('programId') programId: string) {
+    return this.radioService.getRecoveryStatus(programId);
+  }
+
+  @Post(':programId/recovery/prepare')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
+  async prepareRecovery(
+    @Param('programId') programId: string,
+    @Body() body: { songIds?: number[] },
+  ) {
+    return this.radioService.prepareRecoveryPlaylist(
+      programId,
+      body.songIds as number[],
+    );
+  }
+
+  @Post(':programId/recovery/start')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.operate)
+  async startRecovery(@Param('programId') programId: string) {
+    return this.radioService.setRecoveryAutomation(programId, 'start');
+  }
+
+  @Post(':programId/recovery/stop')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.operate)
+  async stopRecovery(@Param('programId') programId: string) {
+    return this.radioService.setRecoveryAutomation(programId, 'stop');
   }
 
   @Get(':programId/now-playing-consumers')

@@ -462,7 +462,13 @@ export class ProgramController {
   @RequirePermission(ALCANTARA_PERMISSIONS.flight.manage)
   async createFlightSequenceById(
     @Param('programId') programId: string,
-    @Body() data: { name: string; items?: unknown; loop?: boolean },
+    @Body()
+    data: {
+      name: string;
+      items?: unknown;
+      loop?: boolean;
+      scheduledAt?: string | null;
+    },
   ) {
     return this.flightService.createFlightSequence(programId, data);
   }
@@ -472,12 +478,45 @@ export class ProgramController {
   async updateFlightSequenceById(
     @Param('programId') programId: string,
     @Param('sequenceId') sequenceId: string,
-    @Body() data: { name?: string; items?: unknown; loop?: boolean },
+    @Body()
+    data: {
+      name?: string;
+      items?: unknown;
+      loop?: boolean;
+      scheduledAt?: string | null;
+      revision?: number;
+    },
   ) {
     return this.flightService.updateFlightSequence(
       programId,
       Number(sequenceId),
       data,
+    );
+  }
+
+  @Get(':programId/flight/:sequenceId/preflight')
+  @RequirePermission(ALCANTARA_PERMISSIONS.flight.read)
+  async preflightFlightSequenceById(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+  ) {
+    return this.flightService.preflightFlightSequence(
+      programId,
+      Number(sequenceId),
+    );
+  }
+
+  @Post(':programId/flight/:sequenceId/publish')
+  @RequirePermission(ALCANTARA_PERMISSIONS.flight.manage)
+  async publishFlightSequenceById(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+    @Body() data: { revision: number },
+  ) {
+    return this.flightService.publishFlightSequence(
+      programId,
+      Number(sequenceId),
+      data.revision,
     );
   }
 

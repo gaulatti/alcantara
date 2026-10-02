@@ -30,6 +30,7 @@ export function getAppNavigationSections({ programType, canViewBroadcasts, inclu
       items: [
         { id: 'control', href: '/', label: controlLabel },
         { id: 'rundown', href: '/flight', label: 'Rundown' },
+        ...(hasRadio ? [{ id: 'radio-log', href: '/radio-log', label: 'Clocked logs' }] : []),
         ...(hasTelevision
           ? [
               { id: 'calls', href: '/calls', label: 'Guest calls' },
@@ -95,6 +96,11 @@ export function getAppNavigationSections({ programType, canViewBroadcasts, inclu
           id: 'console-fixture',
           href: '/console-fixture',
           label: 'Console fixture'
+        },
+        {
+          id: 'radio-workflow-fixture',
+          href: '/console-fixture?state=radio-workflow',
+          label: 'Radio workflow fixture'
         },
         {
           id: 'media-fixture',

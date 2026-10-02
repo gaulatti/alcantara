@@ -16,7 +16,11 @@ export type PalazzoMachineOperation =
   | 'mixer-read'
   | 'mixer-update'
   | 'state-read'
-  | 'event-connect';
+  | 'event-connect'
+  | 'filler-prepare'
+  | 'automation-read'
+  | 'automation-start'
+  | 'automation-stop';
 
 export type PalazzoMachineResult =
   | 'success'
@@ -84,7 +88,27 @@ export interface RadioMetricsSnapshot {
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
   machineRetries: Record<string, number>;
+  outputConfidenceTransitions: Record<string, number>;
+  outputSilentPrograms: number;
 }
+
+const OUTPUT_CONFIDENCE_STATES = [
+  'unknown',
+  'unavailable',
+  'idle',
+  'checking',
+  'audible',
+  'silent',
+] as const;
+const RADIO_LOG_RESULTS = [
+  'published',
+  'started',
+  'start-failed',
+  'cue-failed',
+  'preflight-failed',
+  'poll-failed',
+] as const;
+const RECOVERY_PREPARATION_RESULTS = ['ready', 'failed'] as const;
 
 const CONNECTION_STATES = [
   'connecting',
@@ -119,6 +143,10 @@ const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
   'mixer-update',
   'state-read',
   'event-connect',
+  'filler-prepare',
+  'automation-read',
+  'automation-start',
+  'automation-stop',
 ];
 
 const MACHINE_RESULTS: PalazzoMachineResult[] = [
@@ -180,6 +208,10 @@ const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
  */
 @Injectable()
 export class RadioMetricsService {
+  private readonly outputConfidenceTransitions = new Map<string, number>();
+  private readonly radioLogResults = new Map<string, number>();
+  private readonly recoveryPreparations = new Map<string, number>();
+  private outputSilentPrograms = 0;
   private readonly connectionsByState = new Map<string, number>();
   private reconnectAttempts = 0;
   private reconnectFailures = 0;
@@ -297,6 +329,36 @@ export class RadioMetricsService {
     );
   }
 
+  recordOutputConfidenceTransition(state: string): void {
+    if (!(OUTPUT_CONFIDENCE_STATES as readonly string[]).includes(state))
+      return;
+    this.outputConfidenceTransitions.set(
+      state,
+      (this.outputConfidenceTransitions.get(state) ?? 0) + 1,
+    );
+  }
+
+  recordOutputSilentPrograms(count: number): void {
+    this.outputSilentPrograms = Math.max(0, Math.floor(count));
+  }
+
+  recordRadioLogResult(result: string): void {
+    if (!(RADIO_LOG_RESULTS as readonly string[]).includes(result)) return;
+    this.radioLogResults.set(
+      result,
+      (this.radioLogResults.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordRecoveryPreparation(result: string): void {
+    if (!(RECOVERY_PREPARATION_RESULTS as readonly string[]).includes(result))
+      return;
+    this.recoveryPreparations.set(
+      result,
+      (this.recoveryPreparations.get(result) ?? 0) + 1,
+    );
+  }
+
   snapshot(): RadioMetricsSnapshot {
     return {
       connectionsByState: Object.fromEntries(this.connectionsByState),
@@ -314,6 +376,10 @@ export class RadioMetricsService {
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
       machineRetries: Object.fromEntries(this.machineRetries),
+      outputConfidenceTransitions: Object.fromEntries(
+        this.outputConfidenceTransitions,
+      ),
+      outputSilentPrograms: this.outputSilentPrograms,
     };
   }
 
@@ -414,6 +480,36 @@ export class RadioMetricsService {
         );
       }
     }
+    lines.push(
+      '# HELP alcantara_radio_output_confidence_transitions_total Output confidence state transitions by bounded state.',
+      '# TYPE alcantara_radio_output_confidence_transitions_total counter',
+    );
+    for (const state of OUTPUT_CONFIDENCE_STATES) {
+      lines.push(
+        `alcantara_radio_output_confidence_transitions_total{state="${state}"} ${this.outputConfidenceTransitions.get(state) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_output_silent_programs Radio programs with expected playback and confirmed low output level.',
+      '# TYPE alcantara_radio_output_silent_programs gauge',
+      `alcantara_radio_output_silent_programs ${this.outputSilentPrograms}`,
+    );
+    lines.push(
+      '# HELP alcantara_radio_log_transitions_total Clocked radio log transitions by bounded result.',
+      '# TYPE alcantara_radio_log_transitions_total counter',
+    );
+    for (const result of RADIO_LOG_RESULTS)
+      lines.push(
+        `alcantara_radio_log_transitions_total{result="${result}"} ${this.radioLogResults.get(result) ?? 0}`,
+      );
+    lines.push(
+      '# HELP alcantara_radio_recovery_preparations_total Recovery playlist preparation by bounded result.',
+      '# TYPE alcantara_radio_recovery_preparations_total counter',
+    );
+    for (const result of RECOVERY_PREPARATION_RESULTS)
+      lines.push(
+        `alcantara_radio_recovery_preparations_total{result="${result}"} ${this.recoveryPreparations.get(result) ?? 0}`,
+      );
     lines.push(
       '# HELP alcantara_palazzo_machine_retries_total Retried idempotent Palazzo machine requests by bounded operation.',
       '# TYPE alcantara_palazzo_machine_retries_total counter',

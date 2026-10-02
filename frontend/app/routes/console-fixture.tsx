@@ -11,6 +11,7 @@ import { PlayNextQueue } from "../components/PlayNextQueue";
 import type { ProgramSongSequence } from "../utils/programSequence";
 import type { ProgramSongQueueEntry } from "../models/broadcast";
 import { ProgramSongSequenceEditor } from "../components/editors";
+import { RadioPanel } from "../components/RadioPanel";
 
 const layout = {
   id: 1,
@@ -104,6 +105,40 @@ export default function ConsoleFixture() {
             />
           </div>
         </section>
+      ) : fixture === "radio-workflow" ? (
+        <div className="flex h-[calc(100vh-4rem)] min-h-[45rem]">
+          <RadioPanel
+            programId="fixture"
+            fixtureData={{
+              stream: { running: true, uptime: 180_000 },
+              palazzo: { programId: 'fixture', programType: 'radio', palazzoUrl: 'http://palazzo:3100', instanceId: 'fixture', connection: 'connected', lastEventAt: new Date().toISOString(), lastSnapshotAt: new Date().toISOString(), degraded: false, detail: null },
+              output: { state: 'audible', expectedAudio: true, outputRms: 0.08, lastSampleAt: new Date().toISOString(), quietForMs: null },
+              recovery: { preparedVersion: 'fixture-filler', connection: 'connected', automation: { actualState: 'ready', filler: { activeVersion: 'fixture-filler', ready: true } } },
+              logs: [{ id: 1, name: 'Fixture hour', items: [{ id: 'fixture-cue-1', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 }, { id: 'fixture-cue-2', kind: 'playSong', songId: 2, clockOffsetSeconds: 600 }], loop: false, isRunning: true, activeItemId: 'fixture-cue-1', scheduledAt: new Date().toISOString(), publishedAt: new Date().toISOString(), lastStartedAt: new Date().toISOString(), revision: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+            }}
+            songSequence={songs}
+            songQueue={songQueue}
+            songCatalog={[{ id: 1, title: 'Authoritative Feedback', artist: 'The Test Signals', audioUrl: 'https://example.test/fixture-song-1.mp3', enabled: true }, { id: 2, title: 'No Repeat', artist: 'Control Room', audioUrl: 'https://example.test/fixture-song-2.mp3', enabled: true }] as any}
+            programSongPlayback={{ token: 'fixture', audioUrl: 'https://example.test/fixture-song-1.mp3', title: 'Authoritative Feedback', artist: 'The Test Signals', progress: 0.23, currentTimeMs: 42_000, durationMs: 180_000, isPlaying: true, updatedAt: new Date().toISOString(), telemetryStale: false }}
+            onSaveSongSequence={setSongs}
+            onQueueSong={async () => undefined}
+            onRemoveQueuedSong={async () => undefined}
+            onReorderSongQueue={async () => undefined}
+            onTakeOffAir={async () => undefined}
+            instants={[]}
+            instantSearch=""
+            onInstantSearchChange={() => undefined}
+            onTriggerInstant={() => undefined}
+            onStopAllInstants={() => undefined}
+            instantPlayback={{}}
+            mixer={{ song: { volume: 0.75, peak: 0.3 }, instants: { volume: 0.8, peak: 0 }, main: { volume: 0.9, peak: 0.4 }, saving: false, error: null }}
+            onSongVolumeChange={() => undefined}
+            onInstantVolumeChange={() => undefined}
+            onMainVolumeChange={() => undefined}
+            onToggleSongMuted={() => undefined}
+            onToggleInstantMuted={() => undefined}
+          />
+        </div>
       ) : fixture === "play-next" ? (
         <section className="flex min-h-screen items-center justify-center bg-dark-sand px-6 text-text-primary">
           <div className="w-full max-w-md overflow-hidden rounded-xl border border-sand/30">

@@ -1,29 +1,35 @@
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { FlightCue, FlightSequence } from '../models/broadcast';
 
+async function flightError(response: Response): Promise<Error> {
+  const body = await response.json().catch(() => null);
+  const detail = body && typeof body === 'object' && 'message' in body ? body.message : null;
+  return new Error(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.join('; ') : `Radio log request failed (${response.status})`);
+}
+
 export async function fetchFlightSequences(targetProgramId: string): Promise<FlightSequence[]> {
   const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/flight`));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await flightError(res);
   return res.json();
 }
 
 export async function createFlightSequence(
   targetProgramId: string,
-  data: { name: string; items?: FlightCue[]; loop?: boolean }
+  data: { name: string; items?: FlightCue[]; loop?: boolean; scheduledAt?: string | null }
 ): Promise<FlightSequence> {
   const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/flight`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await flightError(res);
   return res.json();
 }
 
 export async function updateFlightSequence(
   targetProgramId: string,
   sequenceId: number,
-  data: { name?: string; items?: FlightCue[]; loop?: boolean }
+  data: { name?: string; items?: FlightCue[]; loop?: boolean; scheduledAt?: string | null; revision?: number }
 ): Promise<FlightSequence> {
   const res = await fetch(
     apiUrl(`/program/${encodeURIComponent(targetProgramId)}/flight/${sequenceId}`),
@@ -33,7 +39,7 @@ export async function updateFlightSequence(
       body: JSON.stringify(data)
     }
   );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await flightError(res);
   return res.json();
 }
 
@@ -105,5 +111,19 @@ export async function resetFlight(targetProgramId: string): Promise<{ ok: boolea
     { method: 'POST' }
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function preflightFlightSequence(targetProgramId: string, sequenceId: number): Promise<{ ready: boolean; issues: string[] }> {
+  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/flight/${sequenceId}/preflight`));
+  if (!res.ok) throw await flightError(res);
+  return res.json();
+}
+
+export async function publishFlightSequence(targetProgramId: string, sequenceId: number, revision: number): Promise<FlightSequence> {
+  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/flight/${sequenceId}/publish`), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision })
+  });
+  if (!res.ok) throw await flightError(res);
   return res.json();
 }

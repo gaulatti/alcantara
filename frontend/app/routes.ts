@@ -16,6 +16,7 @@ export default [
       route('programs', 'routes/programs.tsx'),
       route('broadcasts', 'routes/broadcasts.tsx'),
       route('radio-settings', 'routes/radio-settings.tsx'),
+      route('radio-log', 'routes/radio-log.tsx'),
       route('layouts', 'routes/layouts.tsx'),
       route('preview', 'routes/preview.tsx'),
       route('layout-demo', 'routes/layout-demo.tsx'),

@@ -4,10 +4,14 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ConflictException,
+  OnModuleInit,
   OnModuleDestroy,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from './program.service';
+import { RadioMetricsService } from '../radio/radio-metrics.service';
 import type {
   FlightCue,
   FlightCueKind,
@@ -72,6 +76,26 @@ function normalizeFlightCue(value: unknown): FlightCue | null {
     kind: kind as FlightCueKind,
     label: normalizeOptionalString(value.label),
   };
+
+  const clockOffsetSeconds = normalizeOptionalNumber(value.clockOffsetSeconds);
+  if (clockOffsetSeconds !== undefined) {
+    cue.clockOffsetSeconds = clockOffsetSeconds;
+  }
+  const voiceTrackInstantId = normalizeOptionalNumber(
+    value.voiceTrackInstantId,
+  );
+  if (voiceTrackInstantId !== undefined) {
+    cue.voiceTrackInstantId = voiceTrackInstantId;
+  }
+  for (const field of [
+    'voiceDuckGain',
+    'voiceFadeInSeconds',
+    'voiceFadeOutSeconds',
+  ] as const) {
+    if (typeof value[field] === 'number' && Number.isFinite(value[field])) {
+      cue[field] = value[field] as number;
+    }
+  }
 
   const sceneId = normalizeOptionalNumber(value.sceneId);
   if (sceneId !== undefined) {
@@ -165,16 +189,27 @@ function deepPatch(
 }
 
 @Injectable()
-export class FlightService implements OnModuleDestroy {
+export class FlightService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(FlightService.name);
   private readonly runtimes = new Map<string, FlightRuntimeState>();
+  private scheduleTimer: ReturnType<typeof setInterval> | null = null;
+  private scheduleTickRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ProgramService))
     private readonly programService: ProgramService,
+    private readonly metrics: RadioMetricsService,
   ) {}
 
+  onModuleInit(): void {
+    this.scheduleTimer = setInterval(() => {
+      void this.startDuePublishedLogs();
+    }, 1000);
+  }
+
   onModuleDestroy(): void {
+    if (this.scheduleTimer) clearInterval(this.scheduleTimer);
     for (const runtime of this.runtimes.values()) {
       this.clearTimer(runtime);
     }
@@ -191,6 +226,309 @@ export class FlightService implements OnModuleDestroy {
     });
 
     return sequences.map((seq) => this.toFlightSequence(seq));
+  }
+
+  private parseScheduledAt(value: string | null | undefined): Date | null {
+    if (value == null) return null;
+    if (
+      typeof value !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(?:\.000)?Z$/.test(value)
+    ) {
+      throw new BadRequestException('scheduledAt must be an ISO time');
+    }
+    const parsed = new Date(value);
+    if (
+      !Number.isFinite(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 13) !== value.slice(0, 13)
+    ) {
+      throw new BadRequestException('scheduledAt is invalid');
+    }
+    return parsed;
+  }
+
+  private validateClockItems(items: FlightCue[]): void {
+    if (!items.length || items.length > 120) {
+      throw new BadRequestException('a clocked log needs 1-120 items');
+    }
+    let previousHardTime = -1;
+    const ids = new Set<string>();
+    for (const [index, cue] of items.entries()) {
+      if (ids.has(cue.id))
+        throw new BadRequestException('log item IDs must be unique');
+      ids.add(cue.id);
+      if (!['playSong', 'instant', 'stopSong'].includes(cue.kind)) {
+        throw new BadRequestException(
+          'clocked logs support songs, clips, and stop cues',
+        );
+      }
+      if (cue.clockOffsetSeconds !== undefined) {
+        if (
+          !Number.isInteger(cue.clockOffsetSeconds) ||
+          cue.clockOffsetSeconds < 0 ||
+          cue.clockOffsetSeconds >= 3600 ||
+          cue.clockOffsetSeconds < previousHardTime
+        ) {
+          throw new BadRequestException(
+            'clock times must be ordered within the hour',
+          );
+        }
+        previousHardTime = cue.clockOffsetSeconds;
+      }
+      if (index === 0 && cue.clockOffsetSeconds !== 0) {
+        throw new BadRequestException(
+          'the first log item must start at the hour',
+        );
+      }
+      if (
+        cue.kind === 'playSong' &&
+        (!Number.isInteger(cue.songId) || (cue.songId ?? 0) < 1)
+      ) {
+        throw new BadRequestException('each song cue needs a catalog song');
+      }
+      if (
+        cue.kind === 'instant' &&
+        (!Number.isInteger(cue.instantId) || (cue.instantId ?? 0) < 1)
+      ) {
+        throw new BadRequestException('each clip cue needs an audio clip');
+      }
+      if (
+        cue.voiceTrackInstantId !== undefined &&
+        (cue.kind !== 'playSong' ||
+          !Number.isInteger(cue.voiceTrackInstantId) ||
+          cue.voiceTrackInstantId < 1)
+      ) {
+        throw new BadRequestException(
+          'a voice track must belong to a song cue',
+        );
+      }
+      if (
+        (cue.voiceDuckGain !== undefined ||
+          cue.voiceFadeInSeconds !== undefined ||
+          cue.voiceFadeOutSeconds !== undefined) &&
+        !cue.voiceTrackInstantId
+      ) {
+        throw new BadRequestException(
+          'voice mix settings need a recorded voice track',
+        );
+      }
+      if (
+        cue.voiceDuckGain !== undefined &&
+        (cue.voiceDuckGain < 0 || cue.voiceDuckGain > 1)
+      ) {
+        throw new BadRequestException(
+          'voice duck gain must be between 0 and 1',
+        );
+      }
+      for (const fade of [cue.voiceFadeInSeconds, cue.voiceFadeOutSeconds]) {
+        if (fade !== undefined && (fade < 0 || fade > 5))
+          throw new BadRequestException(
+            'voice fades must be between 0 and 5 seconds',
+          );
+      }
+    }
+  }
+
+  private normalizeClockItems(value: unknown): FlightCue[] {
+    if (!Array.isArray(value))
+      throw new BadRequestException('items must be an array');
+    for (const raw of value) {
+      if (
+        !isRecord(raw) ||
+        typeof raw.id !== 'string' ||
+        !raw.id.trim() ||
+        !['playSong', 'instant', 'stopSong'].includes(String(raw.kind))
+      ) {
+        throw new BadRequestException(
+          'each log item needs an ID and supported cue kind',
+        );
+      }
+      for (const field of [
+        'clockOffsetSeconds',
+        'songId',
+        'instantId',
+        'voiceTrackInstantId',
+      ] as const) {
+        if (
+          raw[field] !== undefined &&
+          (!Number.isInteger(raw[field]) || Number(raw[field]) < 0)
+        ) {
+          throw new BadRequestException(
+            `${field} must be a nonnegative integer`,
+          );
+        }
+      }
+      for (const field of [
+        'voiceDuckGain',
+        'voiceFadeInSeconds',
+        'voiceFadeOutSeconds',
+      ] as const) {
+        if (
+          raw[field] !== undefined &&
+          (typeof raw[field] !== 'number' || !Number.isFinite(raw[field]))
+        ) {
+          throw new BadRequestException(`${field} must be a finite number`);
+        }
+      }
+    }
+    const items = normalizeFlightItems(value);
+    this.validateClockItems(items);
+    return items;
+  }
+
+  private async preflightClockItems(programId: string, items: FlightCue[]) {
+    this.validateClockItems(items);
+    const songIds = [
+      ...new Set(items.flatMap((cue) => (cue.songId ? [cue.songId] : []))),
+    ];
+    const instantIds = [
+      ...new Set(
+        items.flatMap((cue) =>
+          [cue.instantId, cue.voiceTrackInstantId].filter(
+            (id): id is number => typeof id === 'number',
+          ),
+        ),
+      ),
+    ];
+    const [songs, instants] = await Promise.all([
+      this.prisma.song.findMany({
+        where: { id: { in: songIds } },
+        select: { id: true, enabled: true, audioUrl: true, durationMs: true },
+      }),
+      this.prisma.instant.findMany({
+        where: { id: { in: instantIds } },
+        select: { id: true, enabled: true, audioUrl: true },
+      }),
+    ]);
+    const playableSongs = new Map(songs.map((song) => [song.id, song]));
+    const playableInstants = new Map(
+      instants.map((instant) => [instant.id, instant]),
+    );
+    const issues: string[] = [];
+    for (const [index, cue] of items.entries()) {
+      if (cue.songId) {
+        const song = playableSongs.get(cue.songId);
+        if (!song?.enabled || !song.audioUrl.trim())
+          issues.push(`Item ${index + 1}: song unavailable`);
+      }
+      for (const id of [cue.instantId, cue.voiceTrackInstantId]) {
+        if (!id) continue;
+        const instant = playableInstants.get(id);
+        if (!instant?.enabled || !instant.audioUrl.trim())
+          issues.push(`Item ${index + 1}: audio clip unavailable`);
+      }
+    }
+    return { programId, ready: issues.length === 0, issues };
+  }
+
+  async preflightFlightSequence(programId: string, sequenceId: number) {
+    const state = await this.getProgramStateRecord(programId);
+    const sequence = await this.prisma.flightSequence.findFirst({
+      where: { id: sequenceId, programStateId: state.id },
+    });
+    if (!sequence) throw new NotFoundException('flight sequence not found');
+    if (!sequence.scheduledAt)
+      throw new BadRequestException('not a clocked log');
+    return this.preflightClockItems(
+      programId,
+      normalizeFlightItems(sequence.items),
+    );
+  }
+
+  async publishFlightSequence(
+    programId: string,
+    sequenceId: number,
+    revision: number,
+  ) {
+    const state = await this.getProgramStateRecord(programId);
+    if (state.type !== 'radio' && state.type !== 'both')
+      throw new BadRequestException('program has no radio leg');
+    const sequence = await this.prisma.flightSequence.findFirst({
+      where: { id: sequenceId, programStateId: state.id },
+    });
+    if (!sequence) throw new NotFoundException('flight sequence not found');
+    if (!sequence.scheduledAt || sequence.scheduledAt.getTime() <= Date.now())
+      throw new BadRequestException('the scheduled hour must be in the future');
+    if (sequence.loop)
+      throw new BadRequestException('a clocked log cannot loop');
+    if (sequence.revision !== revision)
+      throw new ConflictException(
+        'log revision changed; reload before publishing',
+      );
+    const preflight = await this.preflightClockItems(
+      programId,
+      normalizeFlightItems(sequence.items),
+    );
+    if (!preflight.ready) {
+      this.metrics.recordRadioLogResult('preflight-failed');
+      throw new BadRequestException(preflight.issues.join('; '));
+    }
+    const result = await this.prisma.flightSequence.updateMany({
+      where: { id: sequenceId, revision },
+      data: { publishedAt: new Date(), revision: { increment: 1 } },
+    });
+    if (result.count !== 1)
+      throw new ConflictException(
+        'log revision changed; reload before publishing',
+      );
+    this.metrics.recordRadioLogResult('published');
+    return this.toFlightSequence(
+      await this.prisma.flightSequence.findUniqueOrThrow({
+        where: { id: sequenceId },
+      }),
+    );
+  }
+
+  private async startDuePublishedLogs(): Promise<void> {
+    if (this.scheduleTickRunning) return;
+    this.scheduleTickRunning = true;
+    try {
+      const now = new Date();
+      const due = await this.prisma.flightSequence.findMany({
+        where: {
+          publishedAt: { not: null },
+          lastStartedAt: null,
+          scheduledAt: { gte: new Date(now.getTime() - 5000), lte: now },
+        },
+        include: { programState: { select: { programId: true } } },
+        take: 20,
+      });
+      for (const sequence of due) {
+        const claimed = await this.prisma.flightSequence.updateMany({
+          where: {
+            id: sequence.id,
+            lastStartedAt: null,
+            publishedAt: { not: null },
+          },
+          data: { lastStartedAt: now },
+        });
+        if (claimed.count !== 1) continue;
+        try {
+          const preflight = await this.preflightClockItems(
+            sequence.programState.programId,
+            normalizeFlightItems(sequence.items),
+          );
+          if (!preflight.ready)
+            throw new BadRequestException(preflight.issues.join('; '));
+          await this.activateFlightSequence(
+            sequence.programState.programId,
+            sequence.id,
+          );
+          await this.start(sequence.programState.programId);
+        } catch (error) {
+          this.metrics.recordRadioLogResult('start-failed');
+          // A claimed hour never repeats automatically after an ambiguous failure.
+          this.programService.broadcastUpdate(sequence.programState.programId, {
+            type: 'radio_log_start_failed',
+            sequenceId: sequence.id,
+          });
+        }
+      }
+    } catch {
+      this.metrics.recordRadioLogResult('poll-failed');
+      this.logger.error('Scheduled radio log poll failed');
+    } finally {
+      this.scheduleTickRunning = false;
+    }
   }
 
   async getActiveFlightSequence(programId: string) {
@@ -222,6 +560,7 @@ export class FlightService implements OnModuleDestroy {
       name: string;
       items?: unknown;
       loop?: boolean;
+      scheduledAt?: string | null;
     },
   ): Promise<Omit<FlightSequence, 'programStateId'>> {
     const normalizedProgramId = this.normalizeProgramId(programId);
@@ -231,7 +570,15 @@ export class FlightService implements OnModuleDestroy {
     }
 
     const state = await this.getProgramStateRecord(normalizedProgramId);
-    const items = normalizeFlightItems(data.items);
+    const scheduledAt = this.parseScheduledAt(data.scheduledAt);
+    if (scheduledAt && state.type !== 'radio' && state.type !== 'both')
+      throw new BadRequestException('program has no radio leg');
+    const items =
+      scheduledAt && Array.isArray(data.items) && data.items.length
+        ? this.normalizeClockItems(data.items)
+        : normalizeFlightItems(data.items);
+    if (scheduledAt && data.loop === true)
+      throw new BadRequestException('a clocked log cannot loop');
 
     try {
       const sequence = await this.prisma.flightSequence.create({
@@ -240,6 +587,7 @@ export class FlightService implements OnModuleDestroy {
           name,
           items: items as any,
           loop: data.loop === true,
+          scheduledAt,
         },
       });
 
@@ -247,7 +595,9 @@ export class FlightService implements OnModuleDestroy {
     } catch (err: any) {
       if (err?.code === 'P2002') {
         throw new BadRequestException(
-          `flight sequence "${name}" already exists`,
+          scheduledAt
+            ? 'a radio log already exists for this scheduled hour or name'
+            : `flight sequence "${name}" already exists`,
         );
       }
       throw err;
@@ -261,6 +611,8 @@ export class FlightService implements OnModuleDestroy {
       name?: string;
       items?: unknown;
       loop?: boolean;
+      scheduledAt?: string | null;
+      revision?: number;
     },
   ): Promise<Omit<FlightSequence, 'programStateId'>> {
     const normalizedProgramId = this.normalizeProgramId(programId);
@@ -275,31 +627,85 @@ export class FlightService implements OnModuleDestroy {
 
     const runtime = this.runtimes.get(normalizedProgramId);
     const isActiveRuntime = runtime?.sequenceId === sequenceId;
-
-    if (isActiveRuntime && runtime?.isRunning) {
-      await this.stop(normalizedProgramId);
+    if (existing.scheduledAt && data.revision !== existing.revision) {
+      throw new ConflictException(
+        'log revision changed; reload before editing',
+      );
     }
 
     const updateData: any = {};
     if (typeof data.name === 'string' && data.name.trim().length > 0) {
       updateData.name = data.name.trim();
     }
-    if (Array.isArray(data.items) || data.items === undefined) {
-      updateData.items = normalizeFlightItems(data.items) as any;
+    if (data.items !== undefined) {
+      if (!Array.isArray(data.items)) {
+        throw new BadRequestException('items must be an array');
+      }
+      updateData.items = data.items as any;
     }
     if (typeof data.loop === 'boolean') {
       updateData.loop = data.loop;
     }
+    if (data.scheduledAt !== undefined) {
+      updateData.scheduledAt = this.parseScheduledAt(data.scheduledAt);
+    }
+    const nextScheduledAt =
+      updateData.scheduledAt === undefined
+        ? existing.scheduledAt
+        : updateData.scheduledAt;
+    if (nextScheduledAt && state.type !== 'radio' && state.type !== 'both')
+      throw new BadRequestException('program has no radio leg');
+    if (nextScheduledAt && (updateData.loop ?? existing.loop))
+      throw new BadRequestException('a clocked log cannot loop');
+    const nextItems =
+      updateData.items === undefined
+        ? normalizeFlightItems(existing.items)
+        : nextScheduledAt && (updateData.items as unknown[]).length
+          ? this.normalizeClockItems(updateData.items)
+          : normalizeFlightItems(updateData.items);
+    if (nextScheduledAt && nextItems.length) this.validateClockItems(nextItems);
+    if (updateData.items !== undefined) updateData.items = nextItems as any;
+    if (isActiveRuntime && runtime?.isRunning) {
+      if (data.scheduledAt !== undefined || data.loop !== undefined) {
+        throw new ConflictException(
+          'an on-air log cannot change its schedule or loop',
+        );
+      }
+      const current = normalizeFlightItems(existing.items);
+      const protectedCount = runtime.activeIndex + 1;
+      if (
+        nextItems.length < protectedCount ||
+        JSON.stringify(nextItems.slice(0, protectedCount)) !==
+          JSON.stringify(current.slice(0, protectedCount))
+      ) {
+        throw new ConflictException(
+          'on-air and played log items cannot be edited',
+        );
+      }
+    }
+    if (existing.publishedAt) {
+      const preflight = await this.preflightClockItems(
+        normalizedProgramId,
+        nextItems,
+      );
+      if (!preflight.ready)
+        throw new BadRequestException(preflight.issues.join('; '));
+    }
+    updateData.revision = { increment: 1 };
 
     try {
-      const sequence = await this.prisma.flightSequence.update({
-        where: { id: sequenceId },
+      const result = await this.prisma.flightSequence.updateMany({
+        where: { id: sequenceId, revision: existing.revision },
         data: updateData,
       });
-
-      if (isActiveRuntime) {
-        this.runtimes.delete(normalizedProgramId);
-      }
+      if (result.count !== 1)
+        throw new ConflictException(
+          'log revision changed; reload before editing',
+        );
+      const sequence = await this.prisma.flightSequence.findUniqueOrThrow({
+        where: { id: sequenceId },
+      });
+      if (isActiveRuntime && runtime?.isRunning) runtime.items = nextItems;
 
       return this.toFlightSequence(sequence);
     } catch (err: any) {
@@ -360,6 +766,19 @@ export class FlightService implements OnModuleDestroy {
       throw new NotFoundException('flight sequence not found');
     }
 
+    if (existing.scheduledAt) {
+      if (!existing.publishedAt)
+        throw new BadRequestException(
+          'publish the clocked log before activating',
+        );
+      const preflight = await this.preflightClockItems(
+        normalizedProgramId,
+        normalizeFlightItems(existing.items),
+      );
+      if (!preflight.ready)
+        throw new BadRequestException(preflight.issues.join('; '));
+    }
+
     await this.stop(normalizedProgramId);
     this.runtimes.delete(normalizedProgramId);
 
@@ -414,6 +833,18 @@ export class FlightService implements OnModuleDestroy {
     if (items.length === 0) {
       throw new BadRequestException('flight sequence has no cues');
     }
+    if (sequence.scheduledAt) {
+      if (!sequence.publishedAt)
+        throw new BadRequestException(
+          'publish the clocked log before starting',
+        );
+      const preflight = await this.preflightClockItems(
+        normalizedProgramId,
+        items,
+      );
+      if (!preflight.ready)
+        throw new BadRequestException(preflight.issues.join('; '));
+    }
 
     await this.stop(normalizedProgramId);
 
@@ -428,11 +859,19 @@ export class FlightService implements OnModuleDestroy {
       timer: null,
       waitingForSongEnd: false,
       startedAt: Date.now(),
+      scheduledAtMs: sequence.scheduledAt?.getTime() ?? null,
     };
 
     this.runtimes.set(normalizedProgramId, runtime);
+    if (sequence.scheduledAt && !sequence.lastStartedAt) {
+      await this.prisma.flightSequence.update({
+        where: { id: sequence.id },
+        data: { lastStartedAt: new Date() },
+      });
+    }
     await this.persistRuntimeState(runtime);
     await this.broadcastFlightUpdate(normalizedProgramId);
+    if (sequence.scheduledAt) this.metrics.recordRadioLogResult('started');
 
     void this.executeCueAtIndex(normalizedProgramId, 0, runtime.generation);
 
@@ -592,20 +1031,75 @@ export class FlightService implements OnModuleDestroy {
       return;
     }
 
+    const cue = runtime.items[index];
+
+    if (
+      runtime.scheduledAtMs !== null &&
+      cue.clockOffsetSeconds !== undefined
+    ) {
+      const dueAt = runtime.scheduledAtMs + cue.clockOffsetSeconds * 1000;
+      if (dueAt > Date.now()) {
+        runtime.timer = setTimeout(() => {
+          void this.executeCueAtIndex(programId, index, generation);
+        }, dueAt - Date.now());
+        return;
+      }
+    }
+
     runtime.activeIndex = index;
     runtime.waitingForSongEnd = false;
     await this.persistRuntimeState(runtime);
     await this.broadcastFlightUpdate(programId);
 
-    const cue = runtime.items[index];
-
     try {
       await this.executeCue(programId, cue);
     } catch (err) {
       console.error(`Flight cue execution failed (${cue.kind})`, err);
+      if (runtime.scheduledAtMs !== null) {
+        this.metrics.recordRadioLogResult('cue-failed');
+        await this.stop(programId);
+        this.programService.broadcastUpdate(programId, {
+          type: 'radio_log_cue_failed',
+          sequenceId: runtime.sequenceId,
+          cueId: cue.id,
+        });
+        return;
+      }
     }
 
     if (runtime.generation !== generation || !runtime.isRunning) {
+      return;
+    }
+
+    if (runtime.scheduledAtMs !== null && cue.kind === 'playSong') {
+      runtime.waitingForSongEnd = true;
+      const nextHardIndex = runtime.items.findIndex(
+        (item, itemIndex) =>
+          itemIndex > index && item.clockOffsetSeconds !== undefined,
+      );
+      const nextHard = nextHardIndex >= 0 ? runtime.items[nextHardIndex] : null;
+      if (nextHard?.clockOffsetSeconds !== undefined) {
+        const dueAt =
+          runtime.scheduledAtMs + nextHard.clockOffsetSeconds * 1000;
+        runtime.timer = setTimeout(
+          () => {
+            const current = this.runtimes.get(programId);
+            if (
+              current?.generation === generation &&
+              current.waitingForSongEnd
+            ) {
+              current.waitingForSongEnd = false;
+              current.generation += 1;
+              void this.executeCueAtIndex(
+                programId,
+                nextHardIndex,
+                current.generation,
+              );
+            }
+          },
+          Math.max(0, dueAt - Date.now()),
+        );
+      }
       return;
     }
 
@@ -718,7 +1212,7 @@ export class FlightService implements OnModuleDestroy {
       const song = await this.prisma.song.findUnique({
         where: { id: cue.songId },
       });
-      if (song) {
+      if (song?.enabled && song.audioUrl.trim()) {
         selectedSong = song;
         const itemId = createId('song');
         songSequence = {
@@ -743,13 +1237,25 @@ export class FlightService implements OnModuleDestroy {
       }
     }
 
+    if (!selectedSong) {
+      throw new BadRequestException('scheduled song is unavailable');
+    }
     await this.programService.updateProgramAudioBus(
       { songSequence },
       programId,
     );
-    if (selectedSong) {
-      this.programService.takeCatalogSongOnAir(programId, selectedSong);
-    }
+    this.programService.takeCatalogSongOnAir(
+      programId,
+      selectedSong,
+      cue.voiceTrackInstantId
+        ? {
+            instantId: cue.voiceTrackInstantId,
+            duckGain: cue.voiceDuckGain,
+            fadeInSeconds: cue.voiceFadeInSeconds,
+            fadeOutSeconds: cue.voiceFadeOutSeconds,
+          }
+        : undefined,
+    );
   }
 
   private async executeSceneUpdateCue(
@@ -928,6 +1434,10 @@ export class FlightService implements OnModuleDestroy {
       loop: seq.loop,
       isRunning: seq.isRunning,
       activeItemId: seq.activeItemId,
+      scheduledAt: seq.scheduledAt ?? null,
+      publishedAt: seq.publishedAt ?? null,
+      revision: seq.revision ?? 1,
+      lastStartedAt: seq.lastStartedAt ?? null,
       createdAt: seq.createdAt,
       updatedAt: seq.updatedAt,
     };

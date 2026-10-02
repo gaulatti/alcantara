@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Panel } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
-import { Music2, Wifi, WifiOff, Radio } from "lucide-react";
+import { AlertTriangle, List, Music2, Wifi, WifiOff, Radio } from "lucide-react";
+import { Link } from "react-router";
 import type {
   ProgramSongPlaybackState,
   ProgramSongQueueEntry,
@@ -12,6 +13,8 @@ import { PlaybackBar } from "./PlaybackBar";
 import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
 import { PlayNextQueue } from "./PlayNextQueue";
+import { fetchFlightSequences } from "../services/flight";
+import type { FlightSequence } from "../models/broadcast";
 
 interface RadioMixerChannelState {
   volume: number;
@@ -28,6 +31,7 @@ export interface RadioMixerState {
 }
 
 interface RadioPanelProps {
+  fixtureData?: { stream: StreamStatus; palazzo: PalazzoStatus; output: OutputConfidence; logs: FlightSequence[]; recovery: RecoveryStatus };
   programId: string;
   songSequence: any;
   songQueue: ProgramSongQueueEntry[];
@@ -78,7 +82,21 @@ interface PalazzoStatus {
   detail: string | null;
 }
 
+interface OutputConfidence {
+  state: 'unknown' | 'unavailable' | 'idle' | 'checking' | 'audible' | 'silent';
+  expectedAudio: boolean;
+  outputRms: number | null;
+  lastSampleAt: string | null;
+  quietForMs: number | null;
+}
+interface RecoveryStatus {
+  preparedVersion: string | null;
+  automation: { actualState: string; filler: { activeVersion: string | null; ready: boolean } } | null;
+  connection: 'connected' | 'unavailable';
+}
+
 export const RadioPanel: React.FC<RadioPanelProps> = ({
+  fixtureData,
   programId,
   songSequence,
   songQueue,
@@ -102,10 +120,16 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onToggleSongMuted,
   onToggleInstantMuted,
 }) => {
-  const [stream, setStream] = useState<StreamStatus | null>(null);
-  const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(null);
+  const [stream, setStream] = useState<StreamStatus | null>(fixtureData?.stream ?? null);
+  const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(fixtureData?.palazzo ?? null);
   const [playlistSheetOpen, setPlaylistSheetOpen] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const [output, setOutput] = useState<OutputConfidence | null>(fixtureData?.output ?? null);
+  const [logs, setLogs] = useState<FlightSequence[]>(fixtureData?.logs ?? []);
+  const [mixerOpen, setMixerOpen] = useState(false);
+  const [recovery, setRecovery] = useState<RecoveryStatus | null>(fixtureData?.recovery ?? null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   const fetchStreamStatus = useCallback(async () => {
     try {
@@ -132,16 +156,54 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     }
   }, [programId]);
 
+  const fetchAirPlan = useCallback(async () => {
+    try {
+      const [confidenceResponse, sequences] = await Promise.all([
+        fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/output-confidence`)),
+        fetchFlightSequences(programId),
+      ]);
+      setOutput(confidenceResponse.ok ? await confidenceResponse.json() : null);
+      setLogs(sequences.filter((sequence) => sequence.scheduledAt !== null));
+    } catch {
+      setOutput(null);
+      setLogs([]);
+    }
+  }, [programId]);
+
+  const fetchRecovery = useCallback(async () => {
+    try {
+      const response = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/recovery`));
+      setRecovery(response.ok ? await response.json() : null);
+    } catch { setRecovery(null); }
+  }, [programId]);
+
+  const commandRecovery = async (action: 'start' | 'stop') => {
+    setRecoveryBusy(true); setRecoveryError(null);
+    try {
+      const response = await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/recovery/${action}`), { method: 'POST' });
+      if (!response.ok) throw new Error(`Palazzo could not ${action} recovery (${response.status}).`);
+      setRecovery(await response.json());
+    } catch (cause) { setRecoveryError(cause instanceof Error ? cause.message : 'Recovery command failed.'); }
+    finally { setRecoveryBusy(false); }
+  };
+
   useEffect(() => {
+    if (fixtureData) return;
     fetchStreamStatus();
     fetchPalazzoStatus();
+    fetchAirPlan();
+    fetchRecovery();
     const interval = setInterval(fetchStreamStatus, 8000);
     const palazzoInterval = setInterval(fetchPalazzoStatus, 8000);
+    const airPlanInterval = setInterval(fetchAirPlan, 8000);
+    const recoveryInterval = setInterval(fetchRecovery, 8000);
     return () => {
       clearInterval(interval);
       clearInterval(palazzoInterval);
+      clearInterval(airPlanInterval);
+      clearInterval(recoveryInterval);
     };
-  }, [fetchStreamStatus, fetchPalazzoStatus]);
+  }, [fetchStreamStatus, fetchPalazzoStatus, fetchAirPlan, fetchRecovery, fixtureData]);
 
   const handleTakeSelection = useCallback(
     async (seq: any) => {
@@ -192,12 +254,34 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           100,
       )
     : 0;
+  const activeLog = logs.find((sequence) => sequence.isRunning) ?? null;
+  const nextLog = logs.filter((sequence) => sequence.publishedAt && !sequence.lastStartedAt && sequence.scheduledAt && Date.parse(sequence.scheduledAt) > Date.now()).sort((a, b) => Date.parse(a.scheduledAt!) - Date.parse(b.scheduledAt!))[0] ?? null;
+  const currentLogIndex = activeLog?.items.findIndex((item) => item.id === activeLog.activeItemId) ?? -1;
+  const outputTone = output?.state === 'silent' || output?.state === 'unavailable' ? 'border-red-400/50 bg-red-500/10 text-red-200' : output?.state === 'audible' ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/40 bg-amber-500/10 text-amber-200';
+  const outputLabel = output?.state === 'audible' ? 'Output audio detected' : output?.state === 'silent' ? 'Expected audio is silent' : output?.state === 'unavailable' ? 'Palazzo output unavailable' : output?.state === 'idle' ? 'No program audio expected' : output?.state === 'checking' ? 'Checking output audio' : 'Output audio unverified';
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-dark-sand text-text-primary">
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_24rem] lg:overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-col">
-          <Panel title="Radio Mixer" accent="#38bdf8" variant="monitor">
+          <div className="space-y-3 p-3 pb-0">
+            <div role="status" className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${outputTone}`}>
+              <div className="flex items-center gap-2 text-sm font-semibold">{output?.state === 'silent' || output?.state === 'unavailable' ? <AlertTriangle size={17} /> : <Radio size={17} />}{outputLabel}</div>
+              <span className="font-mono text-xs">{output?.lastSampleAt ? `Sample ${new Date(output.lastSampleAt).toLocaleTimeString()}` : 'No fresh level sample'}</span>
+            </div>
+            <section className="rounded-xl border border-border-subtle bg-sand/5 p-4" aria-label="On-air log">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-widest text-accent-blue">On-air log</p><h2 className="text-base font-semibold">{activeLog ? new Date(activeLog.scheduledAt!).toLocaleString(undefined, { hour: 'numeric', minute: '2-digit' }) : 'No clocked log running'}</h2></div><Link to="/radio-log" className="inline-flex items-center gap-1 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-semibold hover:bg-sand/10"><List size={14} /> Open logs</Link></div>
+              {activeLog ? <div className="mt-3 space-y-1">{activeLog.items.slice(Math.max(0, currentLogIndex), Math.max(0, currentLogIndex) + 4).map((cue, index) => <div key={cue.id} className={`flex justify-between gap-3 rounded-lg px-3 py-2 text-xs ${index === 0 ? 'bg-accent-blue/15 font-bold' : 'bg-dark-sand/50 text-text-secondary'}`}><span className="truncate">{index === 0 ? 'NOW' : 'NEXT'} · {cue.kind === 'playSong' ? songCatalog.find((song) => song.id === cue.songId)?.title ?? 'Unavailable song' : cue.kind === 'instant' ? instants.find((clip) => clip.id === cue.instantId)?.name ?? 'Unavailable clip' : 'Stop audio'}</span><span className="shrink-0 font-mono">{cue.clockOffsetSeconds === undefined ? 'follows' : `+${Math.floor(cue.clockOffsetSeconds / 60).toString().padStart(2, '0')}:${(cue.clockOffsetSeconds % 60).toString().padStart(2, '0')}`}</span></div>)}</div> : <p className="mt-2 text-xs text-text-secondary">{nextLog ? `Next published hour: ${new Date(nextLog.scheduledAt!).toLocaleString()}` : 'No published hour is queued.'}</p>}
+            </section>
+            <section className="rounded-xl border border-border-subtle bg-sand/5 p-4" aria-label="Recovery controls">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Recovery playlist</p><p className="mt-1 text-sm font-semibold">{recovery?.automation?.filler.ready ? 'Local fallback active' : recovery?.connection === 'unavailable' ? 'Palazzo unavailable' : recovery?.preparedVersion ? 'Prepared for next session' : 'No prepared fallback'}</p></div><Link to="/radio-settings" className="text-xs font-semibold text-accent-blue hover:underline">Configure</Link></div>
+              <p className="mt-1 text-xs text-text-secondary">Starting binds the prepared playlist to Palazzo. Stopping clears program audio and the binding.</p>
+              <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="xs" variant="secondary" onClick={() => void commandRecovery('start')} disabled={recoveryBusy || !recovery?.preparedVersion || recovery.connection !== 'connected' || recovery.automation?.filler.ready}>Start with fallback</Button><Button type="button" size="xs" variant="destructive" onClick={() => void commandRecovery('stop')} disabled={recoveryBusy || !recovery?.automation?.filler.ready}>Stop session</Button></div>
+              {recoveryError ? <p role="alert" className="mt-2 text-xs text-red-300">{recoveryError}</p> : null}
+            </section>
+            <button type="button" onClick={() => setMixerOpen((open) => !open)} aria-expanded={mixerOpen} className="w-full rounded-lg border border-border-subtle px-3 py-2 text-left text-xs font-semibold text-text-secondary hover:bg-sand/10">{mixerOpen ? 'Hide' : 'Show'} mixer controls</button>
+          </div>
+          {mixerOpen ? <Panel title="Radio Mixer" accent="#38bdf8" variant="monitor">
             <div className="grid gap-3 md:grid-cols-3">
               <RadioMixerChannel
                 label="Song"
@@ -224,7 +308,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 <span className="text-emerald-400">APPLYING TO PALAZZO...</span>
               ) : null}
             </div>
-          </Panel>
+          </Panel> : null}
           <Panel
             title="Radio"
             accent={isLive ? "#22c55e" : "#ef4444"}
@@ -243,7 +327,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                       </span>
                       <Wifi className="h-4 w-4" />
                       <span className="text-sm font-bold tracking-wide">
-                        ON AIR
+                        STREAM CONNECTED
                       </span>
                     </div>
                   ) : (

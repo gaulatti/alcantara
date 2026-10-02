@@ -19,6 +19,13 @@ export interface FlightCue {
   id: string;
   kind: FlightCueKind;
   label?: string;
+  // Scheduled radio log: elapsed seconds from the log's scheduled hour.
+  clockOffsetSeconds?: number;
+  // A recorded link for this log position, distinct from a catalog song intro.
+  voiceTrackInstantId?: number;
+  voiceDuckGain?: number;
+  voiceFadeInSeconds?: number;
+  voiceFadeOutSeconds?: number;
 
   // scene / sceneUpdate
   sceneId?: number;
@@ -50,6 +57,10 @@ export interface FlightSequence {
   loop: boolean;
   isRunning: boolean;
   activeItemId: string | null;
+  scheduledAt: Date | null;
+  publishedAt: Date | null;
+  revision: number;
+  lastStartedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -65,4 +76,5 @@ export interface FlightRuntimeState {
   timer: NodeJS.Timeout | null;
   waitingForSongEnd: boolean;
   startedAt: number;
+  scheduledAtMs: number | null;
 }

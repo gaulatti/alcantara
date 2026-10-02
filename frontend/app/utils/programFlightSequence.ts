@@ -58,6 +58,14 @@ export function normalizeFlightCue(value: unknown): FlightCue | null {
     label: normalizeOptionalString(value.label)
   };
 
+  const clockOffsetSeconds = normalizeOptionalNumber(value.clockOffsetSeconds);
+  if (clockOffsetSeconds !== undefined) cue.clockOffsetSeconds = clockOffsetSeconds;
+  const voiceTrackInstantId = normalizeOptionalNumber(value.voiceTrackInstantId);
+  if (voiceTrackInstantId !== undefined) cue.voiceTrackInstantId = voiceTrackInstantId;
+  for (const field of ['voiceDuckGain', 'voiceFadeInSeconds', 'voiceFadeOutSeconds'] as const) {
+    if (typeof value[field] === 'number' && Number.isFinite(value[field])) cue[field] = value[field] as number;
+  }
+
   const sceneId = normalizeOptionalNumber(value.sceneId);
   if (sceneId !== undefined) {
     cue.sceneId = sceneId;
@@ -126,6 +134,10 @@ export function normalizeFlightSequence(value: unknown): FlightSequence | null {
     loop: value.loop === true,
     isRunning: value.isRunning === true,
     activeItemId: value.activeItemId === null || typeof value.activeItemId === 'string' ? value.activeItemId : null,
+    scheduledAt: typeof value.scheduledAt === 'string' ? value.scheduledAt : null,
+    publishedAt: typeof value.publishedAt === 'string' ? value.publishedAt : null,
+    lastStartedAt: typeof value.lastStartedAt === 'string' ? value.lastStartedAt : null,
+    revision: typeof value.revision === 'number' && Number.isInteger(value.revision) ? value.revision : 1,
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString()
   };

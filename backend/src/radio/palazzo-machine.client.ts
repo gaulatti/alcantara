@@ -51,6 +51,8 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT';
   body?: unknown;
   idempotencyKey?: string;
+  commandSequence?: number;
+  fillerVersion?: string;
   lastEventId?: string;
   signal?: AbortSignal;
   retryable?: boolean;
@@ -309,6 +311,109 @@ export class PalazzoMachineClient {
     return response;
   }
 
+  async getAutomation(
+    palazzoUrl: string,
+    programId: string,
+  ): Promise<{
+    lastSequence: number;
+    requestedState: string;
+    actualState: string;
+    filler: { activeVersion: string | null; ready: boolean };
+  }> {
+    const response = await this.request(palazzoUrl, programId, '/automation', {
+      operation: 'automation-read',
+    });
+    const body = await responseJson(response, 'automation-read', this.metrics);
+    if (
+      !Number.isInteger(body.lastSequence) ||
+      typeof body.requestedState !== 'string' ||
+      typeof body.actualState !== 'string' ||
+      !body.filler ||
+      typeof body.filler !== 'object'
+    )
+      return this.failMalformed('automation-read');
+    const filler = body.filler as Record<string, unknown>;
+    if (
+      (filler.activeVersion !== null &&
+        typeof filler.activeVersion !== 'string') ||
+      typeof filler.ready !== 'boolean'
+    )
+      return this.failMalformed('automation-read');
+    this.metrics.recordMachineRequest('automation-read', 'success');
+    return {
+      lastSequence: body.lastSequence as number,
+      requestedState: body.requestedState,
+      actualState: body.actualState,
+      filler: {
+        activeVersion: filler.activeVersion as string | null,
+        ready: filler.ready,
+      },
+    };
+  }
+
+  async prepareFiller(
+    palazzoUrl: string,
+    programId: string,
+    version: string,
+    assets: Array<{ id: string; sha256: string; downloadUrl: string }>,
+  ): Promise<void> {
+    const response = await this.request(
+      palazzoUrl,
+      programId,
+      `/fillers/${encodeURIComponent(version)}`,
+      {
+        operation: 'filler-prepare',
+        method: 'PUT',
+        idempotencyKey: version,
+        retryable: true,
+        body: { commandId: version, mode: 'ordered', assets },
+      },
+    );
+    const body = await responseJson(response, 'filler-prepare', this.metrics);
+    if (
+      body.version !== version ||
+      body.ready !== true ||
+      body.status !== 'ready'
+    )
+      return this.failMalformed('filler-prepare');
+    this.metrics.recordMachineRequest('filler-prepare', 'success');
+  }
+
+  async commandAutomation(
+    palazzoUrl: string,
+    programId: string,
+    action: 'start' | 'stop',
+    sequence: number,
+    key: string,
+    fillerVersion?: string,
+  ): Promise<void> {
+    const operation =
+      action === 'start' ? 'automation-start' : 'automation-stop';
+    const response = await this.request(
+      palazzoUrl,
+      programId,
+      `/automation/${action}`,
+      {
+        operation,
+        method: 'POST',
+        idempotencyKey: key,
+        commandSequence: sequence,
+        fillerVersion,
+        retryable: true,
+      },
+    );
+    const body = await responseJson(response, operation, this.metrics);
+    if (
+      body.lastSequence !== sequence ||
+      (action === 'start' &&
+        (body.readiness !== true ||
+          (body.filler as Record<string, unknown> | undefined)
+            ?.activeVersion !== fillerVersion))
+    )
+      return this.failMalformed(operation);
+    this.metrics.recordMachineRequest(operation, 'success');
+  }
+
   private async okCommand(
     palazzoUrl: string,
     programId: string,
@@ -356,6 +461,10 @@ export class PalazzoMachineClient {
       headers['Content-Type'] = 'application/json';
     if (options.idempotencyKey)
       headers['Idempotency-Key'] = options.idempotencyKey;
+    if (options.commandSequence)
+      headers['X-Command-Sequence'] = String(options.commandSequence);
+    if (options.fillerVersion)
+      headers['X-Filler-Version'] = options.fillerVersion;
     if (options.lastEventId) headers['Last-Event-ID'] = options.lastEventId;
 
     const attempts = options.retryable ? MAX_ATTEMPTS : 1;

@@ -2,6 +2,7 @@ import { AlertContainer, Button, Card, Checkbox, Empty, Field, Input, LoadingSpi
 import { Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { AppPage } from '../components/AppPage';
+import { RecoveryPlaylistPanel } from '../components/RecoveryPlaylistPanel';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import type { Route } from './+types/radio-settings';
@@ -177,7 +178,7 @@ export default function RadioSettingsRoute() {
           }
         />
       ) : (
-        <div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
+        <><RecoveryPlaylistPanel programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div>
               <p className='text-xs font-semibold uppercase tracking-[0.12em] text-text-secondary'>Automation</p>
@@ -387,7 +388,7 @@ export default function RadioSettingsRoute() {
               </Button>
             </div>
           </Card>
-        </div>
+        </div></>
       )}
     </AppPage>
   );

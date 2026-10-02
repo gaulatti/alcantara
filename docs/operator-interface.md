@@ -10,7 +10,7 @@ monitor or transport control cannot cover navigation.
 
 Navigation is grouped by operator intent rather than database model:
 
-- **Live** contains the mode-specific desk, Rundown, Guest calls, and TV
+- **Live** contains the mode-specific desk, Rundown, Radio or Simulcast Clocked logs, Guest calls, and TV
   destinations where applicable.
 - **Library** contains Scenes and Scene templates for visual shows plus one
   Media destination for every show type. TV and Simulcast Media is organized by
@@ -99,6 +99,9 @@ The `state=play-next` fixture renders the ordered queue, active queued entry,
 and safe queue controls without commanding Palazzo. The
 `state=high-rotation` fixture renders the favorite count, selected star, and
 limit-aware playlist controls without commanding Palazzo.
+The `state=radio-workflow` fixture renders the Radio desk's current/next log,
+output confidence, recovery controls, and compact mixer without commanding
+Palazzo.
 
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not

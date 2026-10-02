@@ -5,6 +5,7 @@ import { SongExecutionEngine } from './song-execution.engine';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 import { RadioMetricsService } from './radio-metrics.service';
+import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import { PrismaService } from '../prisma.service';
 
@@ -17,6 +18,7 @@ import { PrismaService } from '../prisma.service';
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,
     RadioMetricsService,
+    RadioOutputConfidenceService,
     PalazzoMachineClient,
     PrismaService,
   ],
@@ -26,6 +28,7 @@ import { PrismaService } from '../prisma.service';
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,
     RadioMetricsService,
+    RadioOutputConfidenceService,
     PalazzoMachineClient,
   ],
 })

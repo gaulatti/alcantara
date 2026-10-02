@@ -675,6 +675,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     durationMs?: number,
     coverUrl?: string,
     songId?: number,
+    voiceTrack?: {
+      instantId: number;
+      duckGain?: number;
+      fadeInSeconds?: number;
+      fadeOutSeconds?: number;
+    },
   ): void {
     const state = this.ensureState(programId);
     const playlistSong = findUniqueProgramSongLeafByAudioUrl(
@@ -722,6 +728,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       artist,
       coverUrl,
       Number.isInteger(songId) && (songId as number) > 0 ? songId : undefined,
+      voiceTrack,
     );
   }
 
@@ -1412,11 +1419,49 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     artist?: string,
     coverUrl?: string,
     songId?: number,
+    voiceTrack?: {
+      instantId: number;
+      duckGain?: number;
+      fadeInSeconds?: number;
+      fadeOutSeconds?: number;
+    },
   ): Promise<void> {
     const stateBeforeCommand = this.states.get(programId);
     const activeSong = stateBeforeCommand?.activeSong;
-    let intro: { playbackId: string; url: string; gain?: number } | undefined;
-    if (
+    let intro:
+      | {
+          playbackId: string;
+          url: string;
+          gain?: number;
+          duckGain?: number;
+          fadeInSeconds?: number;
+          fadeOutSeconds?: number;
+        }
+      | undefined;
+    if (voiceTrack && activeSong?.playbackRequestId === playbackRequestId) {
+      try {
+        const clip = await this.prisma.instant.findUnique({
+          where: { id: voiceTrack.instantId },
+          select: { audioUrl: true, volume: true, enabled: true },
+        });
+        if (!clip?.enabled || !clip.audioUrl.trim())
+          throw new Error('voice track unavailable');
+        intro = {
+          playbackId: `${playbackRequestId}:intro`,
+          url: clip.audioUrl,
+          gain: clip.volume,
+          duckGain: voiceTrack.duckGain,
+          fadeInSeconds: voiceTrack.fadeInSeconds,
+          fadeOutSeconds: voiceTrack.fadeOutSeconds,
+        };
+        activeSong.introPlaybackId = intro.playbackId;
+        activeSong.introStatus = 'pending';
+        this.metrics.recordIntroTransition('submitted');
+        this.emitPlaybackUpdate(programId, activeSong);
+      } catch {
+        this.degradeIntro(programId, activeSong, 'Voice track is unavailable');
+      }
+    } else if (
       activeSong?.playbackRequestId === playbackRequestId &&
       Number.isInteger(songId) &&
       (songId as number) > 0

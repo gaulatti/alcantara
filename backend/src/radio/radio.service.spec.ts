@@ -1,5 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { RadioService } from './radio.service';
+import { createHash } from 'node:crypto';
+import { RadioMetricsService } from './radio-metrics.service';
 
 describe('RadioService settings', () => {
   it('persists every bumper field exposed by the radio console', async () => {
@@ -9,7 +11,12 @@ describe('RadioService settings', () => {
         upsert: jest.fn().mockImplementation(({ update }) => update),
       },
     } as any;
-    const service = new RadioService(prisma, {} as any);
+    const service = new RadioService(
+      prisma,
+      {} as any,
+      {} as any,
+      new RadioMetricsService(),
+    );
 
     const result = await service.updateRadioSettings('palazzo', {
       bumperEnabled: true,
@@ -47,7 +54,12 @@ describe('RadioService settings', () => {
         icecast: { connected: true },
       }),
     } as any;
-    const service = new RadioService(prisma, palazzo);
+    const service = new RadioService(
+      prisma,
+      palazzo,
+      {} as any,
+      new RadioMetricsService(),
+    );
 
     await expect(
       service.playSong(
@@ -99,9 +111,137 @@ describe('RadioService settings', () => {
       programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
       radioSettings: { upsert: jest.fn() },
     } as any;
-    const service = new RadioService(prisma, {} as any);
+    const service = new RadioService(
+      prisma,
+      {} as any,
+      {} as any,
+      new RadioMetricsService(),
+    );
     await expect(
       service.updateRadioSettings('palazzo', { bumperInterval: 0 }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('RadioService recovery playlist', () => {
+  it('verifies managed audio, prepares Palazzo, then persists the ready version', async () => {
+    const settings = {
+      id: 9,
+      palazzoUrl: 'http://palazzo:3100',
+      fillerSongIds: [] as number[],
+      fillerVersion: null as string | null,
+    };
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockImplementation(async () => ({ radioSettings: settings })),
+      },
+      song: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            {
+              id: 5,
+              enabled: true,
+              audioUrl: 'https://media-test.s3.amazonaws.com/song.mp3',
+            },
+          ]),
+      },
+      radioSettings: {
+        update: jest
+          .fn()
+          .mockImplementation(async ({ data }) =>
+            Object.assign(settings, data),
+          ),
+      },
+    } as any;
+    const palazzo = {
+      prepareFiller: jest.fn().mockResolvedValue(undefined),
+      getAutomation: jest
+        .fn()
+        .mockResolvedValue({
+          lastSequence: 1,
+          requestedState: 'stopped',
+          actualState: 'stopped',
+          filler: { activeVersion: null, ready: false },
+        }),
+    } as any;
+    const config = {
+      get: (key: string) =>
+        key === 'MEDIA_S3_BUCKET' ? 'media-test' : 'us-east-1',
+    } as any;
+    const request = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('fixture audio'));
+    try {
+      const metrics = new RadioMetricsService();
+      const result = await new RadioService(
+        prisma,
+        palazzo,
+        config,
+        metrics,
+      ).prepareRecoveryPlaylist('radio-1', [5]);
+      expect(result.selectedSongIds).toEqual([5]);
+      expect(palazzo.prepareFiller).toHaveBeenCalledWith(
+        'http://palazzo:3100',
+        'radio-1',
+        expect.stringMatching(/^filler-/),
+        [
+          {
+            id: 'song-5',
+            sha256: createHash('sha256').update('fixture audio').digest('hex'),
+            downloadUrl: 'https://media-test.s3.amazonaws.com/song.mp3',
+          },
+        ],
+      );
+      expect(
+        prisma.radioSettings.update.mock.invocationCallOrder[0],
+      ).toBeGreaterThan(palazzo.prepareFiller.mock.invocationCallOrder[0]);
+      expect(metrics.render()).toContain(
+        'alcantara_radio_recovery_preparations_total{result="ready"} 1',
+      );
+    } finally {
+      request.mockRestore();
+    }
+  });
+
+  it('rejects off-bucket URLs before downloading or preparing', async () => {
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({
+            radioSettings: { id: 9, palazzoUrl: 'http://palazzo:3100' },
+          }),
+      },
+      song: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 5, enabled: true, audioUrl: 'http://internal.test/audio' },
+          ]),
+      },
+    } as any;
+    const palazzo = { prepareFiller: jest.fn() } as any;
+    const request = jest.spyOn(globalThis, 'fetch');
+    try {
+      const metrics = new RadioMetricsService();
+      await expect(
+        new RadioService(
+          prisma,
+          palazzo,
+          { get: () => 'media-test' } as any,
+          metrics,
+        ).prepareRecoveryPlaylist('radio-1', [5]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(request).not.toHaveBeenCalled();
+      expect(palazzo.prepareFiller).not.toHaveBeenCalled();
+      expect(metrics.render()).toContain(
+        'alcantara_radio_recovery_preparations_total{result="failed"} 1',
+      );
+    } finally {
+      request.mockRestore();
+    }
   });
 });

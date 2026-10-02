@@ -73,6 +73,8 @@ interface BroadcastSettings {
 const NAVIGATION_ICONS: Record<string, ReactNode> = {
   control: <SlidersHorizontal size={17} />,
   rundown: <List size={17} />,
+  'radio-log': <List size={17} />,
+  'radio-workflow-fixture': <RadioTower size={17} />,
   calls: <PhoneCall size={17} />,
   destinations: <RadioTower size={17} />,
   scenes: <Clapperboard size={17} />,
@@ -445,6 +447,14 @@ export default function Layout() {
         onSelect: () => navigate('/flight')
       },
       {
+        id: 'nav-radio-log',
+        title: 'Go to Clocked Logs',
+        description: 'Plan, check, and publish the next radio hour',
+        group: 'Navigation',
+        icon: <List size={16} />,
+        onSelect: () => navigate('/radio-log')
+      },
+      {
         id: 'nav-instants',
         title: 'Go to Audio Clips',
         description: 'Manage reusable sounders, bumpers, and audio clips',
@@ -678,7 +688,7 @@ export default function Layout() {
     const televisionOnlyActions = new Set(['nav-media', 'nav-calls', 'nav-broadcasts', 'nav-scenes', 'nav-layouts', 'nav-preview', 'open-transition-settings']);
     const visibleBaseActions = baseActions.filter((action) => {
       if (selectedProgramType === 'radio' && televisionOnlyActions.has(action.id)) return false;
-      if (selectedProgramType === 'tv' && action.id === 'nav-radio-settings') return false;
+      if (selectedProgramType === 'tv' && (action.id === 'nav-radio-settings' || action.id === 'nav-radio-log')) return false;
       return true;
     });
 

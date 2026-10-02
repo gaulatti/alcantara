@@ -197,10 +197,15 @@ model FlightSequence {
   loop           Boolean      @default(false)
   isRunning      Boolean      @default(false)
   activeItemId   String?
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  revision       Int          @default(1)
+  lastStartedAt  DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@unique([programStateId, name])
+  @@unique([programStateId, scheduledAt])
 }
 
 model ProgramScene {
@@ -427,6 +432,8 @@ model RadioSettings {
   bumperInterval   Int?
   bumperInstantIds Int[]        @default([])
   bumperMode       String       @default("sequential")
+  fillerSongIds    Int[]        @default([])
+  fillerVersion    String?
   enabled          Boolean      @default(false)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt

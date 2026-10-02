@@ -11,7 +11,7 @@ function labels(type: 'tv' | 'radio' | 'both') {
 
 describe('program-aware application navigation', () => {
   it('keeps television-only preparation out of the radio workflow', () => {
-    expect(labels('radio')).toEqual(['Radio desk', 'Rundown', 'Media', 'Shows', 'Radio distribution']);
+    expect(labels('radio')).toEqual(['Radio desk', 'Rundown', 'Clocked logs', 'Media', 'Shows', 'Radio distribution']);
   });
 
   it('gives simulcast explicit access to both legs', () => {
@@ -19,6 +19,7 @@ describe('program-aware application navigation', () => {
     expect(simulcast).toContain('Simulcast control');
     expect(simulcast).toContain('TV destinations');
     expect(simulcast).toContain('Radio distribution');
+    expect(simulcast).toContain('Clocked logs');
     expect(simulcast).toContain('Scene templates');
   });
 

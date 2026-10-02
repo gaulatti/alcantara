@@ -281,6 +281,11 @@ export interface FlightMixerChange {
 export interface FlightCue {
   id: string;
   kind: FlightCueKind;
+  clockOffsetSeconds?: number;
+  voiceTrackInstantId?: number;
+  voiceDuckGain?: number;
+  voiceFadeInSeconds?: number;
+  voiceFadeOutSeconds?: number;
   label?: string;
   sceneId?: number;
   transitionId?: string;
@@ -298,6 +303,10 @@ export interface FlightSequence {
   loop: boolean;
   isRunning: boolean;
   activeItemId: string | null;
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  revision: number;
+  lastStartedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

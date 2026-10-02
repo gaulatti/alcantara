@@ -16,6 +16,7 @@ import {
   syncAudioClipAsset,
 } from '../media-assets/media-asset-sync';
 import { RadioService } from '../radio/radio.service';
+import { RadioOutputConfidenceService } from '../radio/radio-output-confidence.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { toRadioMixerPayload } from '../radio/radio-mixer.utils';
 import {
@@ -166,9 +167,14 @@ export class ProgramService implements OnModuleInit {
     @Inject(forwardRef(() => SongExecutionEngine))
     private readonly songExecutionEngine: SongExecutionEngine,
     @Optional() private readonly metrics?: ManagedMetricsService,
+    @Optional()
+    private readonly outputConfidence?: RadioOutputConfidenceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (!this.outputConfidence) {
+      throw new Error('Radio output confidence service is required');
+    }
     this.songExecutionEngine.setBroadcastHandler((event: SongEngineEvent) => {
       this.handleEngineEvent(event);
     });
@@ -1696,6 +1702,12 @@ export class ProgramService implements OnModuleInit {
       coverUrl: string | null;
       durationMs: number | null;
     },
+    voiceTrack?: {
+      instantId: number;
+      duckGain?: number;
+      fadeInSeconds?: number;
+      fadeOutSeconds?: number;
+    },
   ): void {
     this.songExecutionEngine.handleManualSong(
       this.normalizeProgramId(programId),
@@ -1705,6 +1717,7 @@ export class ProgramService implements OnModuleInit {
       song.durationMs ?? undefined,
       song.coverUrl ?? undefined,
       song.id,
+      voiceTrack,
     );
   }
 
@@ -3321,6 +3334,7 @@ export class ProgramService implements OnModuleInit {
   }
 
   private handleEngineEvent(event: SongEngineEvent): void {
+    this.outputConfidence?.observe(event);
     const programId = event.programId;
     switch (event.type) {
       case 'playback_update': {

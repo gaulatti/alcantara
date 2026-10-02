@@ -1,0 +1,25 @@
+# Radio station workflow
+
+## Clocked logs
+
+Radio and Simulcast shows have **Clocked logs** at `/radio-log`. An operator creates a future local hour, adds catalog songs, audio clips, or a stop cue, and optionally assigns a fixed start in seconds from the scheduled time. The first item starts at zero. Unfixed items follow the previous song's confirmed Palazzo end event. A fixed start cuts to that item at its clock position. Logs cannot loop.
+
+Save keeps the log a draft. **Check log** validates cue shape and referenced enabled audio. **Publish** repeats validation and marks the hour for automatic start. The backend claims a published hour once when its time arrives; a failed start is visible through the `radio_log_start_failed` event and is not retried automatically after an ambiguous failure. The planner and Radio desk show the current and next items. On-air and already played items are locked; future items can be changed with an optimistic revision check. A log cannot be published for a past hour. Scheduled logs require the backend process to be running when the hour begins. If the process is down beyond five seconds after the hour, the log is not started late.
+
+The existing `/program/:programId/flight` list, create, update, activate, and start APIs carry the additive `scheduledAt`, `publishedAt`, `lastStartedAt`, and `revision` fields. `GET .../flight/:sequenceId/preflight` returns `{ready,issues}`; `POST .../publish` accepts `{revision}`. Program `flight.read` and `flight.manage` permissions remain in force.
+
+## Voice tracks
+
+Use **Voice** on a song row to record a link with the browser microphone. Preview the take alone or over the chosen song, set duck and fade values, then **Use this take**. The recording uploads as a managed audio clip and is attached to that exact cue by `voiceTrackInstantId`; changing another play of the same song does not change this cue. Palazzo receives the voice clip with the song command and applies the saved duck/fades. Browser preview approximates the mix. A missing or disabled clip fails preflight; if it disappears between preflight and playout, the Radio desk shows intro degradation.
+
+## Output confidence and recovery
+
+The Radio desk separates **STREAM CONNECTED** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
+
+Radio distribution contains **Prepared local playlist**. Choose one to 100 enabled songs from the managed S3 media bucket and prepare them. Alcantara reads each exact catalog URL to calculate SHA-256, then calls Palazzo's private filler preparation API with the same URL and checksum. Palazzo downloads, verifies, normalizes, and stores the version locally. The version and selected song IDs are saved only after Palazzo reports ready. Preparing a new version does not replace the active one. The Radio desk's **Start with fallback** binds the prepared version to a new Palazzo automation session; **Stop session** clears program audio and the binding. Palazzo's local playlist plays when its live song queue runs dry. Start/stop use Palazzo's monotonic command sequence and idempotency key. If Palazzo is unreachable, controls show an error and do not claim recovery is active.
+
+Only exact HTTPS URLs on the configured `MEDIA_S3_BUCKET` S3 host are accepted for preparation. Redirects and files above 512 MiB are rejected. The backend uses the existing private Palazzo URL allowlist; the browser never calls Palazzo directly. Palazzo is an external dependency and is not included in Alcantara's local Compose stack, so local UI can show an unavailable recovery state until a Palazzo instance is attached to the documented private URL.
+
+## Operations and metrics
+
+The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `published`, `started`, `start-failed`, `cue-failed`, `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.

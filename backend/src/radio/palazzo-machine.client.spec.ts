@@ -236,6 +236,66 @@ describe('PalazzoMachineClient', () => {
     expect(eventCall?.[1].headers['Last-Event-ID']).toBe('boot-a:6');
   });
 
+  it('prepares an immutable filler and starts its exact version with ordered commands', async () => {
+    const fetchImpl = jest.fn(async (url: string) => {
+      if (url.endsWith('/fillers/filler-test'))
+        return Response.json({
+          version: 'filler-test',
+          status: 'ready',
+          ready: true,
+        });
+      if (url.endsWith('/automation/start'))
+        return Response.json({
+          lastSequence: 8,
+          readiness: true,
+          filler: { activeVersion: 'filler-test', ready: true },
+        });
+      return Response.json({
+        lastSequence: 7,
+        requestedState: 'stopped',
+        actualState: 'stopped',
+        filler: { activeVersion: null, ready: false },
+      });
+    });
+    const metrics = new RadioMetricsService();
+    const client = new PalazzoMachineClient(
+      config(),
+      metrics,
+      fetchImpl as unknown as typeof fetch,
+    );
+    await client.prepareFiller(BASE_URL, PROGRAM_ID, 'filler-test', [
+      {
+        id: 'song-5',
+        sha256: 'a'.repeat(64),
+        downloadUrl: 'https://media.example/song.mp3',
+      },
+    ]);
+    expect(
+      (await client.getAutomation(BASE_URL, PROGRAM_ID)).lastSequence,
+    ).toBe(7);
+    await client.commandAutomation(
+      BASE_URL,
+      PROGRAM_ID,
+      'start',
+      8,
+      'command-test',
+      'filler-test',
+    );
+    const [url, options] = fetchImpl.mock.calls[2] as unknown as [
+      string,
+      { headers: Record<string, string> },
+    ];
+    expect(url).toBe(
+      'http://palazzo:3100/v1/programs/radio-1/automation/start',
+    );
+    expect(options.headers['Idempotency-Key']).toBe('command-test');
+    expect(options.headers['X-Command-Sequence']).toBe('8');
+    expect(options.headers['X-Filler-Version']).toBe('filler-test');
+    expect(metrics.render()).toContain(
+      'alcantara_palazzo_machine_requests_total{operation="automation-start",result="success"} 1',
+    );
+  });
+
   it('fails closed for unauthorized, malformed, cross-program, and unapproved targets', async () => {
     const unauthorized = new PalazzoMachineClient(
       config(),
