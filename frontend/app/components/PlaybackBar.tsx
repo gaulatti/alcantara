@@ -156,7 +156,7 @@ export function PlaybackBar({
   );
 
   return (
-    <div className='bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90'>
+    <div className='playback-dock shrink-0 bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90'>
       {showSceneQuickBar ? (
         <div className='border-t border-sand/30 bg-dark-sand/90 px-4 py-2'>
           <div className='flex items-center gap-2 overflow-x-auto'>
@@ -176,7 +176,7 @@ export function PlaybackBar({
           </div>
         </div>
       ) : null}
-      <div className='flex flex-wrap items-center justify-between gap-2 border-t border-sand/30 bg-dark-sand/85 px-3 py-2 sm:px-4 sm:py-3 md:flex-nowrap'>
+      <div className='playback-bar flex flex-wrap items-center justify-between gap-2 border-t border-sand/30 bg-dark-sand/85 px-3 py-2 sm:px-4 sm:py-3 md:flex-nowrap'>
         <div className='order-2 flex items-center gap-2 md:order-none'>
           <IconButton
             type='button'
@@ -185,7 +185,7 @@ export function PlaybackBar({
             onClick={() => {
               if (runtimeActiveItemIndex > 0) void activateItem(sequence.items[runtimeActiveItemIndex - 1].id);
             }}
-            className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
+            className='transport-secondary flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
             aria-label='Previous'
           >
             <SkipBack size={16} fill='currentColor' />
@@ -209,7 +209,7 @@ export function PlaybackBar({
                 else if (sequence.loop !== false) void activateItem(sequence.items[0].id);
               }
             }}
-            className='flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95'
+            className='transport-primary flex h-10 w-10 items-center justify-center rounded-full border-0 bg-sea p-0 text-white shadow-lg transition-transform hover:translate-y-0 hover:scale-105 hover:bg-accent-blue active:scale-95'
             aria-label={programSongPlayback?.isPlaying ? 'Advance' : 'Play selection'}
           >
             <Play size={18} fill='currentColor' className='ml-0.5' />
@@ -218,7 +218,7 @@ export function PlaybackBar({
             type='button'
             title='Stop / Take Off Air'
             onClick={() => void clearActiveItem()}
-            className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
+            className='transport-secondary flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
             aria-label='Stop / Take Off Air'
           >
             <Square size={16} fill='currentColor' />
@@ -230,7 +230,7 @@ export function PlaybackBar({
             onClick={() => {
               if (runtimeActiveItemIndex < sequence.items.length - 1) void activateItem(sequence.items[runtimeActiveItemIndex + 1].id);
             }}
-            className='flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
+            className='transport-secondary flex h-8 w-8 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary disabled:opacity-30'
             aria-label='Next'
           >
             <SkipForward size={16} fill='currentColor' />

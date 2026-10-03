@@ -49,16 +49,16 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
   const radioHealthy = stream?.running === true && (palazzo?.connection === 'connected' || palazzo?.connection === 'polling') && palazzo?.degraded !== true;
 
   return (
-    <section aria-label='Simulcast output status' className='flex flex-wrap items-center gap-3 border-b border-border-subtle bg-surface-elevated px-3 py-2 text-xs'>
+    <section aria-label='Simulcast output status' className='flex flex-wrap items-center gap-3 border-b border-sand/20 bg-deep-sea px-3 py-2 text-xs'>
       <StatusBadge label='SIMULCAST' variant='info' />
       <span className='flex items-center gap-1.5 font-semibold text-text-primary'>
         <Tv className='h-3.5 w-3.5' aria-hidden='true' />
         TV scene controls
       </span>
-      <span className='text-text-tertiary' aria-hidden='true'>
+      <span className='text-text-secondary' aria-hidden='true'>
         +
       </span>
-      <span className={`flex items-center gap-1.5 font-semibold ${radioHealthy ? 'text-success' : 'text-warning'}`} title={palazzo?.detail ?? undefined}>
+      <span className={`flex items-center gap-1.5 font-semibold ${radioHealthy ? 'text-sea' : 'text-accent-yellow'}`} title={palazzo?.detail ?? undefined}>
         {radioHealthy ? <Radio className='h-3.5 w-3.5' aria-hidden='true' /> : <WifiOff className='h-3.5 w-3.5' aria-hidden='true' />}
         Radio {radioHealthy ? 'ready' : 'needs attention'}
       </span>

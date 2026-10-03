@@ -3587,7 +3587,7 @@ export default function Control() {
   }
 
   return (
-    <div className="flex h-full w-full flex-1 min-h-0 flex-col overflow-y-auto bg-dark-sand text-text-primary">
+    <div className="broadcast-console flex h-full w-full flex-1 min-h-0 flex-col overflow-y-auto bg-dark-sand text-text-primary">
       <style>
         {`
           @keyframes ${INSTANT_PLAYBACK_SWEEP_ANIMATION} {
@@ -3632,12 +3632,12 @@ export default function Control() {
           void setFadeToBlack(programState?.fadeToBlack !== true)
         }
       />
-      <details className="mx-3 my-2 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand" onToggle={(event) => setRecordingOpen(event.currentTarget.open)}>
+      <details className="console-recording" onToggle={(event) => setRecordingOpen(event.currentTarget.open)}>
         <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-text-secondary">Program recording</summary>
         {recordingOpen && <RecordingPanel programId={activeProgramId} />}
       </details>
       <div
-        className={`flex-1 min-h-[420px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
+        className={`console-scene-workspace flex-1 min-h-[320px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
         data-workspace-content={consoleWorkspace}
       >
         <div

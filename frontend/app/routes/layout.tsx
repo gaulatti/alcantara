@@ -350,7 +350,7 @@ export default function Layout() {
     [location.pathname, navigationSections]
   );
   const flatSidebarItems: SidebarItem[] = useMemo(() => groupedSidebarItems.flatMap((section) => section.items ?? []), [groupedSidebarItems]);
-  const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control';
+  const isViewportConstrainedRoute = location.pathname === '/' || location.pathname === '/control' || location.pathname === '/console-fixture';
 
   const renderHeaderProgramSelector = () => (
     <HeaderSelect

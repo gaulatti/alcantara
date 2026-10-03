@@ -300,8 +300,8 @@ export function ProgramSongSequenceEditor({
               </div>
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>
-                <div className='min-w-100'>
-                  <div className='grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
+                <div className='playlist-table min-w-100'>
+                  <div className='playlist-column-heading grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center border-b border-sand/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-widest text-text-secondary'>
                     <span />
                     <span className='text-center'>#</span>
                     <span />
@@ -348,7 +348,8 @@ export function ProgramSongSequenceEditor({
                           }}
                         >
                           <div
-                            className={`group grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
+                            data-active={isActive}
+                            className={`playlist-row group grid grid-cols-[28px_28px_28px_28px_1fr_52px_84px] items-center px-3 py-1.5 transition-colors ${isActive ? 'bg-sea/15' : 'hover:bg-dark-sand/70'}`}
                           >
                             <span
                               draggable
@@ -443,7 +444,7 @@ export function ProgramSongSequenceEditor({
                               </div>
                             </div>
                             <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
-                            <div className='flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
+                            <div className='playlist-row-actions flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
                               {displayItem.kind === 'preset' && onQueueItem ? (
                                 <Button
                                   type='button'

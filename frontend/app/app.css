@@ -1,4 +1,5 @@
 @import "@gaulatti/bleecker/styles.base.css";
+@import "./components/BroadcastConsole.css";
 @source "../node_modules/@gaulatti/bleecker/dist/**/*.js";
 @source "./**/*.{ts,tsx}";
 

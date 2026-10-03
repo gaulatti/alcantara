@@ -133,7 +133,7 @@ export function SceneAttributesPanel({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-hidden"
+      className="console-scene-editor flex h-full min-h-0 flex-col overflow-hidden"
       onBlurCapture={onBlurCapture}
     >
       {stagedIsOnAir && (
@@ -175,7 +175,7 @@ export function SceneAttributesPanel({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto py-3">
-        <div className="space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40">
+        <div className="console-props-body space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40">
           {activeProgramId === "fifthbell" && (
             <p className="text-xs text-text-secondary dark:text-text-secondary">
               FifthBell runtime settings are stored per component metadata

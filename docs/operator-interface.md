@@ -79,9 +79,34 @@ and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene
 staging and TAKE.
 
-The Radio desk puts output confidence, the current clocked log, and the on-air
-track before secondary recovery/session and mixer controls. Playlist and Play
-Next remain adjacent on desktop and follow the on-air view on small screens.
+The Radio desk is a working console: the on-air track and remaining time sit
+above a dominant Rundown, with the Cartwall and three-channel Mixer beside it.
+Transport and playback modes stay visible at the bottom of the viewport. The
+Rundown switches between Music playlist (including Play Next) and the full
+Clocked log; arrow keys, Home, and End move between those tabs. Clocked cues
+show their scheduled time, catalog metadata, and explicit NOW/NEXT markers.
+Playlist actions are visible without hover and wrap beneath tracks on phones.
+The Cartwall has search, numbered pads, existing shortcut labels, and a playing
+state. Disabled clips remain disabled. Recovery/session controls stay in a
+secondary disclosure; the Mixer is always present.
+
+The local wall clock is labeled separately from authoritative playback timing.
+Remaining time uses reported duration and position; stale telemetry is labeled
+as last reported time. Missing output/engine data stays visibly unverified or
+unavailable. The console does not generate a simulated waveform or audio meter.
+
+Console surfaces retain Encode Sans, Bleecker radii, and the existing palette,
+with centrally scoped dark surface and semantic live/preview/ready tokens in
+`BroadcastConsole.css`. This fixed dark working surface keeps monitor and status
+contrast consistent in both shell themes. Focus outlines remain visible and
+reduced-motion preferences disable console animations. Preview and Program use
+small colored headers and larger monitor surfaces; numbered Sources remain
+directly adjacent to CUT/TAKE.
+
+The layout is informed by the official PlayoutONE, mAirList, Zetta, Rivendell,
+and Myriad product imagery: dense logs, persistent transport, adjacent cartwalls,
+and strong current/next hierarchy. The inspected Myriad operational image was
+the older Remote v5 view; it is not presented as a Myriad 6 screen.
 
 Public Program renderers do not load authenticated operator preferences. Console
 preferences belong to the protected operator workspace. Startup and authentication
@@ -130,9 +155,13 @@ The `state=play-next` fixture renders the ordered queue, active queued entry,
 and safe queue controls without commanding Palazzo. The
 `state=high-rotation` fixture renders the favorite count, selected star, and
 limit-aware playlist controls without commanding Palazzo.
-The `state=radio-workflow` fixture renders the Radio desk's current/next log,
-output confidence, recovery controls, and compact mixer without commanding
-Palazzo.
+The `state=radio-workflow` fixture renders a populated twelve-track Radio desk,
+full clocked log, output confidence, Cartwall, and Mixer without commanding
+Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
+interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
+`state=radio-stale` cover the corresponding explicit states. These fixtures are
+visual verification only; normal authenticated Compose console checks exercise
+the actual backend staging, activation, queue, and mix paths separately.
 
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not
