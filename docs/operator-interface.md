@@ -57,6 +57,36 @@ The broadcast deck reserves a separate semantic action grammar:
 The command palette follows the same safety boundary. A scene command stages
 the scene; it never activates Program directly.
 
+## Live desk flow
+
+The Director desk reads left to right: **Sources → Preview → Program**.
+Sources has a searchable, vertically bounded scene list and explicit Preview and
+Program labels. Selecting a source stages it without changing Program. CUT and
+TAKE sit directly beneath both monitors, with the selected transition and the
+name of the prepared scene. A pending TAKE disables both actions; a failed save
+or activation shows an error beside them and does not claim the scene is live.
+TAKE waits for staging and scene autosave, then consumes the backend's
+acknowledged Program state.
+
+Scene preparation opens the component fields first; Background audio is a
+separate tab. A hidden component is identified above the editor with an explicit
+Show component action. Editing a scene already on Program displays a live-change
+warning. The autosave queue releases completed and failed requests so later edits
+can persist; failed requests preserve a newer queued edit.
+
+Workspace options contains presets, keyboard shortcuts, touch mode, fullscreen,
+and source-list width. Program recording is a secondary disclosure and contacts
+Alana only while open. Recording service availability is independent of scene
+staging and TAKE.
+
+The Radio desk puts output confidence, the current clocked log, and the on-air
+track before secondary recovery/session and mixer controls. Playlist and Play
+Next remain adjacent on desktop and follow the on-air view on small screens.
+
+Public Program renderers do not load authenticated operator preferences. Console
+preferences belong to the protected operator workspace. Startup and authentication
+checks share the branded, accessible loading view.
+
 ## Workspaces and ergonomics
 
 - **Director** shows Preview and Program, the source bank, transition, CUT, TAKE,
@@ -88,7 +118,8 @@ The development-only `/media-fixture` demonstrates the Radio-scoped Audio and
 Labels tabs, unified audio cards, capability badges, and inline label creation.
 `/console-fixture` supports `state=normal`,
 `state=empty-preview`, `state=on-air`, `state=disconnected`, `state=ftb`,
-`state=audio`, and `state=remote`. Add `mode=both` to exercise the Simulcast
+`state=audio`, `state=remote`, `state=taking`, `state=take-failed`, and
+`state=loading`, and `state=hidden-component`. Add `mode=both` to exercise the Simulcast
 status rail. Production builds do not expose the fixture route.
 
 Playback control states are available at `state=playback-live` and

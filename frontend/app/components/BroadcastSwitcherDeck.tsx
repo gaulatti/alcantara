@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Button, IconButton } from "@gaulatti/bleecker";
+import { Button, IconButton, Input } from "@gaulatti/bleecker";
 import {
   Expand,
   Keyboard,
   MonitorPlay,
-  PanelRight,
+  Settings2,
   Smartphone,
   Wifi,
   WifiOff,
@@ -172,7 +172,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
         {preferences.deviceClass} preferences
       </Button>
       {open ? (
-        <div className="absolute right-0 top-10 z-50 max-h-[min(38rem,calc(100vh-5rem))] w-[min(24rem,calc(100vw-1rem))] space-y-4 overflow-y-auto rounded-[var(--radius-card)] border border-border-subtle bg-surface-elevated p-4 shadow-[var(--shadow-overlay)]">
+        <div className="absolute right-0 top-10 z-50 max-h-[min(38rem,calc(100vh-5rem))] w-[min(24rem,calc(100vw-1rem))] space-y-4 overflow-y-auto rounded-[var(--radius-card)] border border-sand/30 bg-dark-sand p-4 shadow-[var(--shadow-overlay)]">
           <label className="block text-xs text-zinc-400">
             Device class override
             <select
@@ -346,7 +346,7 @@ function ConfidenceMonitor({
   const preview = tone === "preview";
   return (
     <section
-      className={`min-w-0 overflow-hidden border bg-black ${preview ? "border-amber-400/80" : "border-red-500/90"}`}
+      className={`min-w-0 overflow-hidden border bg-black md:order-2 ${preview ? "border-amber-400/80" : "border-red-500/90"}`}
     >
       <header
         className={`flex h-8 items-center gap-2 px-2 sm:px-3 ${preview ? "bg-amber-400 text-zinc-950" : "bg-red-600 text-white"}`}
@@ -360,7 +360,7 @@ function ConfidenceMonitor({
       </header>
       <div
         ref={monitorRef}
-        className="relative h-[clamp(84px,16vh,210px)] overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
+        className="relative h-[clamp(84px,13vh,210px)] sm:h-[clamp(84px,16vh,210px)] overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
       >
         {scene ? (
           <iframe
@@ -401,9 +401,13 @@ interface Props {
   workspace: ConsoleWorkspace;
   onWorkspaceChange: (workspace: ConsoleWorkspace) => void;
   onTransitionChange: (transitionId: string) => void;
-  onStageScene: (sceneId: number | null) => Promise<void> | void;
-  onTake: () => void;
-  onCut: () => void;
+  onStageScene: (
+    sceneId: number | null,
+  ) => Promise<void | boolean> | void | boolean;
+  onTake: () => Promise<void> | void;
+  onCut: () => Promise<void> | void;
+  takeBusy?: boolean;
+  takeError?: string | null;
   onFadeToBlack: () => void;
 }
 
@@ -415,7 +419,14 @@ export function BroadcastSwitcherDeck(props: Props) {
   const dockWidth = preferences.profile.dockWidth ?? 300;
   const pendingStageRef = useRef<Promise<void>>(Promise.resolve());
   const [ftbArmed, setFtbArmed] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState("");
+  const stageFailedRef = useRef(false);
+  const [stageError, setStageError] = useState<string | null>(null);
   const ftbArmTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    stageFailedRef.current = false;
+    setStageError(null);
+  }, [props.programId]);
 
   useEffect(() => {
     return () => {
@@ -426,7 +437,22 @@ export function BroadcastSwitcherDeck(props: Props) {
   }, []);
 
   const stageScene = (sceneId: number | null) => {
-    const pending = Promise.resolve(props.onStageScene(sceneId));
+    stageFailedRef.current = false;
+    setStageError(null);
+    const pending = Promise.resolve()
+      .then(() => props.onStageScene(sceneId))
+      .then((result) => {
+        if (result === false)
+          throw new Error(
+            "Could not prepare Preview. Program has not changed.",
+          );
+      })
+      .catch((error: unknown) => {
+        stageFailedRef.current = true;
+        setStageError(
+          error instanceof Error ? error.message : "Could not prepare Preview.",
+        );
+      });
     pendingStageRef.current = pending;
     return pending;
   };
@@ -435,14 +461,16 @@ export function BroadcastSwitcherDeck(props: Props) {
     await new Promise<void>((resolve) =>
       window.requestAnimationFrame(() => resolve()),
     );
-    latestPropsRef.current.onTake();
+    if (!stageFailedRef.current && !latestPropsRef.current.takeBusy)
+      await latestPropsRef.current.onTake();
   };
   const cutStagedScene = async () => {
     await pendingStageRef.current;
     await new Promise<void>((resolve) =>
       window.requestAnimationFrame(() => resolve()),
     );
-    latestPropsRef.current.onCut();
+    if (!stageFailedRef.current && !latestPropsRef.current.takeBusy)
+      await latestPropsRef.current.onCut();
   };
   const requestFadeToBlack = () => {
     if (props.fadeToBlack || ftbArmed) {
@@ -520,15 +548,30 @@ export function BroadcastSwitcherDeck(props: Props) {
   const workspace =
     props.workspace === "graphics" ? "director" : props.workspace;
 
+  const filteredScenes = props.scenes.filter((scene) =>
+    scene.name.toLocaleLowerCase().includes(sourceSearch.toLocaleLowerCase()),
+  );
   const sourceBank = (
-    <div
-      className="order-3 col-span-2 max-h-32 overflow-y-auto rounded-[var(--radius-ui)] border border-zinc-800 bg-zinc-950 p-2 md:order-4 md:col-span-3 md:max-h-36"
+    <aside
+      className="order-3 col-span-2 flex min-h-0 flex-col rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand p-3 md:order-1 md:col-span-1 md:row-span-2"
       aria-label="Assigned scenes"
     >
-      <div
-        className={`grid gap-2 ${touchMode ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : "grid-cols-3 sm:grid-cols-5 lg:grid-cols-8"}`}
-      >
-        {props.scenes.map((scene) => {
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+          Sources
+        </h2>
+        <span className="text-xs text-text-secondary">
+          {props.scenes.length}
+        </span>
+      </div>
+      <Input
+        aria-label="Search scenes"
+        placeholder="Find a scene…"
+        value={sourceSearch}
+        onChange={(event) => setSourceSearch(event.target.value)}
+      />
+      <div className="mt-2 grid max-h-24 gap-1.5 overflow-y-auto sm:grid-cols-2 md:max-h-[23rem] md:grid-cols-1">
+        {filteredScenes.map((scene) => {
           const isPreview = scene.id === props.stagedScene?.id;
           const isProgram = scene.id === props.activeScene?.id;
           return (
@@ -536,40 +579,61 @@ export function BroadcastSwitcherDeck(props: Props) {
               key={scene.id}
               type="button"
               onClick={() => void stageScene(scene.id)}
-              className={`min-h-12 rounded-[var(--radius-button)] border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${isProgram ? "border-red-500 bg-red-950/70" : isPreview ? "border-amber-400 bg-amber-950/60" : "border-zinc-700 bg-zinc-900 hover:border-zinc-500"}`}
+              aria-pressed={isPreview}
+              className={`flex min-h-12 items-center justify-between gap-2 rounded-[var(--radius-button)] border px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${isPreview ? "border-accent-yellow bg-accent-yellow/10" : isProgram ? "border-terracotta/50 bg-terracotta/10" : "border-sand/30 bg-dark-sand hover:bg-sand/10"}`}
             >
-              <span className="block truncate font-semibold">{scene.name}</span>
+              <span className="min-w-0 truncate text-sm font-semibold">
+                {scene.name}
+              </span>
               <span
-                className={`text-[10px] font-bold uppercase tracking-wider ${isProgram ? "text-red-400" : isPreview ? "text-amber-300" : "text-zinc-500"}`}
+                className={`shrink-0 text-[10px] font-bold uppercase ${isPreview ? "text-accent-yellow" : isProgram ? "text-terracotta" : "text-text-secondary"}`}
               >
-                {isProgram ? "PGM" : isPreview ? "PVW" : "Stage"}
+                {isPreview && isProgram
+                  ? "Preview · Program"
+                  : isPreview
+                    ? "Preview"
+                    : isProgram
+                      ? "Program"
+                      : "Stage"}
               </span>
             </button>
           );
         })}
-        {props.scenes.length === 0 ? (
-          <p className="col-span-full px-2 py-3 text-xs text-zinc-500">
-            No scenes are assigned to this show.
+        {!filteredScenes.length && (
+          <p className="col-span-full px-2 py-3 text-xs text-text-secondary">
+            {props.scenes.length
+              ? "No scenes match your search."
+              : "No scenes assigned. Add scenes from the Library."}
           </p>
-        ) : null}
+        )}
       </div>
-    </div>
+      <p className="mt-2 text-[11px] text-text-secondary">
+        Select a source to prepare it in Preview.
+      </p>
+    </aside>
   );
 
   return (
     <section
-      className={`shrink-0 border-b border-zinc-700 bg-zinc-950 text-zinc-100 ${touchMode ? "text-base" : "text-sm"}`}
+      className={`shrink-0 border-b border-sand/30 bg-dark-sand text-text-primary ${touchMode ? "text-base" : "text-sm"}`}
       data-console-workspace={workspace}
       data-touch-mode={touchMode}
     >
-      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-2">
-        <div className="mr-2 flex items-center gap-2 font-semibold">
+      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-sand/30 px-3 py-2">
+        <div
+          className="mr-2 flex items-center gap-2 font-semibold"
+          title={
+            props.realtimeConnected
+              ? "Live updates connected"
+              : "Live updates disconnected"
+          }
+        >
           {props.realtimeConnected ? (
-            <Wifi size={16} className="text-emerald-400" />
+            <Wifi size={16} className="text-sea" />
           ) : (
-            <WifiOff size={16} className="text-amber-400" />
+            <WifiOff size={16} className="text-accent-yellow" />
           )}
-          <span>{props.programId}</span>
+          <span>Live desk</span>
         </div>
         {WORKSPACES.map((option) => (
           <Button
@@ -583,49 +647,76 @@ export function BroadcastSwitcherDeck(props: Props) {
             {option.label}
           </Button>
         ))}
-        <div className="ml-auto flex items-center gap-2">
-          <ConsolePreferenceControls programId={props.programId} />
-          <IconButton
-            type="button"
-            size="sm"
-            variant={shortcutsEnabled ? "subtle" : "ghost"}
-            aria-label="Toggle keyboard shortcuts"
-            aria-pressed={shortcutsEnabled}
-            onClick={toggleShortcuts}
-            title="Shortcuts: Space TAKE, C CUT, Escape clears Preview, press Alt+B twice for FTB"
-          >
-            <Keyboard size={17} />
-          </IconButton>
-          <IconButton
-            type="button"
-            size="sm"
-            variant={touchMode ? "subtle" : "ghost"}
-            aria-label="Toggle touch mode"
-            aria-pressed={touchMode}
-            onClick={toggleTouch}
-          >
-            <Smartphone size={17} />
-          </IconButton>
-          <IconButton
-            type="button"
-            size="sm"
-            variant="ghost"
-            aria-label="Enter fullscreen"
-            onClick={() => void document.documentElement.requestFullscreen?.()}
-          >
-            <Expand size={17} />
-          </IconButton>
-        </div>
+        <details className="relative ml-auto">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-button)] px-2 py-1 text-xs text-text-secondary">
+            <Settings2 size={15} />
+            Workspace options
+          </summary>
+          <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand p-3 shadow-xl">
+            <div className="flex flex-wrap gap-2">
+              <ConsolePreferenceControls programId={props.programId} />
+              <IconButton
+                type="button"
+                size="sm"
+                variant={shortcutsEnabled ? "subtle" : "ghost"}
+                aria-label="Toggle keyboard shortcuts"
+                aria-pressed={shortcutsEnabled}
+                onClick={toggleShortcuts}
+                title="Space: TAKE · C: CUT · Escape: clear Preview"
+              >
+                <Keyboard size={17} />
+              </IconButton>
+              <IconButton
+                type="button"
+                size="sm"
+                variant={touchMode ? "subtle" : "ghost"}
+                aria-label="Toggle touch mode"
+                aria-pressed={touchMode}
+                onClick={toggleTouch}
+              >
+                <Smartphone size={17} />
+              </IconButton>
+              <IconButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label="Enter fullscreen"
+                onClick={() =>
+                  void document.documentElement.requestFullscreen?.()
+                }
+              >
+                <Expand size={17} />
+              </IconButton>
+            </div>
+            <label className="mt-3 block text-xs text-text-secondary">
+              Source panel width
+              <input
+                type="range"
+                min={260}
+                max={520}
+                value={dockWidth}
+                onChange={(event) =>
+                  preferences.updateProfile({
+                    dockWidth: Number(event.target.value),
+                  })
+                }
+                className="mt-1 w-full"
+              />
+            </label>
+          </div>
+        </details>
       </div>
-
       <div
         className={
           workspace === "audio"
-            ? "grid gap-2 p-2 md:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]"
-            : "grid grid-cols-2 gap-2 p-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_var(--dock-width)]"
+            ? "grid gap-3 p-3 md:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]"
+            : "grid grid-cols-2 gap-3 p-3 md:grid-cols-[var(--source-width)_minmax(0,1fr)_minmax(0,1fr)]"
         }
-        style={{ "--dock-width": `${dockWidth}px` } as CSSProperties}
+        style={
+          { "--source-width": `min(${dockWidth}px, 30vw)` } as CSSProperties
+        }
       >
+        {workspace !== "audio" && sourceBank}
         {workspace !== "audio" && (
           <ConfidenceMonitor
             label="PREVIEW"
@@ -641,95 +732,75 @@ export function BroadcastSwitcherDeck(props: Props) {
           src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
         />
         {workspace === "audio" ? (
-          <div className="hidden min-w-0 items-center rounded-[var(--radius-ui)] border border-zinc-800 bg-zinc-900 px-5 text-sm text-zinc-400 md:flex">
-            Program confidence remains visible while the full mixer, playlist,
-            and soundboard use the workspace below.
+          <div className="hidden items-center rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand px-5 text-sm text-text-secondary md:flex">
+            Program stays visible while you operate audio below.
           </div>
         ) : (
-          sourceBank
-        )}
-        {workspace !== "audio" && (
-          <aside className="order-4 col-span-2 min-w-0 rounded-[var(--radius-ui)] border border-zinc-700 bg-zinc-900 p-2.5 md:order-3 md:col-span-1 md:p-3">
-            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400">
-              <PanelRight size={15} />
-              Switcher
-            </div>
-            <label className="block text-xs text-zinc-400">
-              Transition
-              <select
-                value={props.transitionId}
-                onChange={(event) =>
-                  props.onTransitionChange(event.target.value)
-                }
-                className="mt-1 w-full rounded border border-zinc-600 bg-zinc-950 px-2 py-2 text-zinc-100"
-              >
-                {SCENE_TRANSITIONS.map((transition) => (
-                  <option key={transition.id} value={transition.id}>
-                    {transition.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="order-4 col-span-2 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand p-3 md:order-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="w-full min-w-0 text-xs text-text-secondary sm:w-auto sm:flex-1">
+                Transition
+                <select
+                  value={props.transitionId}
+                  onChange={(event) =>
+                    props.onTransitionChange(event.target.value)
+                  }
+                  className="mt-1 w-full rounded-[var(--radius-button)] border border-sand/30 bg-dark-sand px-2 py-2 text-text-primary"
+                >
+                  {SCENE_TRANSITIONS.map((transition) => (
+                    <option key={transition.id} value={transition.id}>
+                      {transition.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <BroadcastAction
                 kind="cut"
-                disabled={!props.stagedScene}
+                className="flex-1 sm:flex-none"
+                disabled={!props.stagedScene || props.takeBusy}
                 onClick={() => void cutStagedScene()}
               >
-                CUT{" "}
-                <span className="hidden text-xs font-normal sm:inline">
-                  (C)
-                </span>
+                CUT
               </BroadcastAction>
               <BroadcastAction
                 kind="take"
-                disabled={!props.stagedScene}
+                className="flex-1 sm:flex-none"
+                disabled={!props.stagedScene || props.takeBusy}
                 onClick={() => void takeStagedScene()}
               >
-                TAKE{" "}
-                <span className="hidden text-xs font-normal sm:inline">
-                  (Space)
-                </span>
+                {props.takeBusy ? "TAKING…" : "TAKE TO PROGRAM"}
               </BroadcastAction>
             </div>
-            <BroadcastAction
-              kind={props.fadeToBlack ? "restore" : "danger"}
-              fullWidth
-              aria-pressed={props.fadeToBlack}
-              title={
-                props.fadeToBlack
-                  ? "Restore Program"
-                  : "Press twice within three seconds to fade Program to black"
-              }
-              onClick={requestFadeToBlack}
-              className="mt-2"
-            >
-              {props.fadeToBlack
-                ? "RESTORE PROGRAM"
-                : ftbArmed
-                  ? "CONFIRM FADE TO BLACK"
-                  : "ARM FADE TO BLACK"}{" "}
-              {!props.fadeToBlack ? (
-                <span className="hidden text-xs font-normal sm:inline">
-                  (Alt+B twice)
-                </span>
-              ) : null}
-            </BroadcastAction>
-            <label className="mt-4 hidden text-xs text-zinc-500 md:block">
-              Dock width
-              <input
-                type="range"
-                min={260}
-                max={520}
-                value={dockWidth}
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  preferences.updateProfile({ dockWidth: next });
-                }}
-                className="mt-1 w-full"
-              />
-            </label>
-          </aside>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p role="status" className="text-xs text-text-secondary">
+                {props.takeBusy
+                  ? "Saving Preview and taking it to Program…"
+                  : props.stagedScene
+                    ? `Ready: ${props.stagedScene.name}`
+                    : "Choose a source to prepare the next scene."}
+              </p>
+              <button
+                type="button"
+                onClick={requestFadeToBlack}
+                aria-pressed={props.fadeToBlack}
+                className={`rounded-[var(--radius-button)] border px-3 py-2 text-xs font-semibold ${props.fadeToBlack || ftbArmed ? "border-terracotta text-terracotta" : "border-sand/30 text-text-secondary hover:text-text-primary"}`}
+              >
+                {props.fadeToBlack
+                  ? "RESTORE PROGRAM"
+                  : ftbArmed
+                    ? "CONFIRM FADE TO BLACK"
+                    : "ARM FADE TO BLACK"}
+              </button>
+            </div>
+            {(props.takeError || stageError) && (
+              <p
+                role="alert"
+                className="mt-2 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta"
+              >
+                {props.takeError || stageError}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </section>

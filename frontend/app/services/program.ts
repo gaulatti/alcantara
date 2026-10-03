@@ -108,13 +108,18 @@ export async function activateScene(
   targetProgramId: string,
   sceneId: number,
   transitionId?: string | null
-): Promise<void> {
+): Promise<ProgramState> {
   const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/activate`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sceneId, transitionId })
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const message = typeof payload?.message === 'string' ? payload.message : `The scene was not taken to Program (HTTP ${res.status}).`;
+    throw new Error(message);
+  }
+  return res.json();
 }
 
 export async function fetchMediaGroups(targetProgramId: string): Promise<unknown> {

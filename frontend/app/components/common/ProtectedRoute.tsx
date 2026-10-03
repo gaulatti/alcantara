@@ -1,4 +1,4 @@
-import { LoadingSpinner } from '@gaulatti/bleecker';
+import { AppLoading } from '../AppLoading';
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
 import { useAuthStatus } from '../../hooks/useAuth';
@@ -7,11 +7,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoaded } = useAuthStatus();
 
   if (!isLoaded) {
-    return (
-      <div className='min-h-screen flex items-center justify-center'>
-        <LoadingSpinner size='lg' />
-      </div>
-    );
+    return <AppLoading />;
   }
 
   if (!isAuthenticated) {

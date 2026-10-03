@@ -21,6 +21,8 @@ import {
 } from "../models/components";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { authFetch } from "../services/api";
+import { runSceneSaveDrain } from "../utils/sceneSaveDrain";
+import { activateScene as requestSceneTake } from "../services/program";
 import { fetchAllMediaLabels } from "../services/mediaLabels";
 import { normalizeProgramSongQueue } from "../utils/songQueue";
 import { dbToFader, faderToGain } from "../utils/audioTaper";
@@ -413,6 +415,11 @@ export default function Control() {
     description: c.description,
   }));
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
+  const [takeBusy, setTakeBusy] = useState(false);
+  const takeInFlightRef = useRef(false);
+  const [recordingOpen, setRecordingOpen] = useState(false);
+  const [takeError, setTakeError] = useState<string | null>(null);
+  useEffect(() => setTakeError(null), [activeProgramId]);
   const [sceneEditorProps, setSceneEditorProps] = useState<Record<string, any>>(
     {},
   );
@@ -2157,6 +2164,7 @@ export default function Control() {
   };
 
   const stageSceneForProgram = async (sceneId: number | null) => {
+    setTakeError(null);
     try {
       const response = await fetch(
         apiUrl(`/program/${encodeURIComponent(activeProgramId)}/stage`),
@@ -2195,51 +2203,32 @@ export default function Control() {
         await fetchProgramState(activeProgramId);
       }
     } catch (err) {
-      console.error("Failed to stage scene for program:", err);
-    }
-  };
-
-  const activateScene = async (
-    sceneId: number,
-    transitionIdOverride?: string,
-  ) => {
-    try {
-      if (!isSceneAssigned(sceneId)) {
-        await assignSceneToProgram(sceneId);
-      }
-      await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/activate`),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sceneId,
-            transitionId: transitionIdOverride ?? selectedTransitionId,
-          }),
-        },
-      );
-      setSelectedScene(sceneId);
-      if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
-      }
-    } catch (err) {
-      console.error("Failed to activate scene:", err);
+      setTakeError(err instanceof Error ? `Could not prepare Preview: ${err.message}` : "Could not prepare Preview.");
+      return false;
     }
   };
 
   const takeStagedSceneLive = async (transitionIdOverride?: string) => {
-    if (!selectedScene) {
-      return;
-    }
-
+    const sceneId = selectedSceneRef.current;
+    const programId = activeProgramIdRef.current;
+    if (!sceneId || takeInFlightRef.current) return;
+    takeInFlightRef.current = true;
+    setTakeBusy(true);
+    setTakeError(null);
     try {
-      await flushSceneAttributeAutosaveForScene(selectedScene);
-      await activateScene(selectedScene, transitionIdOverride);
-    } catch (err) {
-      console.error(
-        "Could not save staged scene attributes before taking live:",
-        err,
-      );
+      await flushSceneAttributeAutosaveForScene(sceneId);
+      if (!isSceneAssigned(sceneId)) await assignSceneToProgram(sceneId);
+      const result = await requestSceneTake(programId, sceneId, transitionIdOverride ?? selectedTransitionId);
+      if (programId === activeProgramIdRef.current && shouldApplyControlUpdatePayload(result, "state")) {
+        syncProgramStateAndStagedScene(normalizeProgramState(result));
+      }
+    } catch (error) {
+      if (programId === activeProgramIdRef.current) {
+        setTakeError(error instanceof Error ? error.message : "The scene was not taken to Program.");
+      }
+    } finally {
+      takeInFlightRef.current = false;
+      setTakeBusy(false);
     }
   };
 
@@ -2660,7 +2649,7 @@ export default function Control() {
       return Promise.resolve();
     }
 
-    const drainPromise = (async () => {
+    return runSceneSaveDrain(sceneAttributeSaveDrainPromiseRef, async () => {
       if (sceneAttributeRetryTimerRef.current !== null) {
         window.clearTimeout(sceneAttributeRetryTimerRef.current);
         sceneAttributeRetryTimerRef.current = null;
@@ -2684,7 +2673,7 @@ export default function Control() {
               }
             }
           } catch (err) {
-            pendingSceneAttributeSaveRef.current = payload;
+            pendingSceneAttributeSaveRef.current ??= payload;
             setSceneAttributeSaveError("Scene save failed. Retrying...");
             console.error("Failed to update scene attributes:", err);
             lastError = err;
@@ -2716,12 +2705,7 @@ export default function Control() {
       }
 
       setSceneAttributeSaveError(null);
-    })();
-
-    sceneAttributeSaveDrainPromiseRef.current = drainPromise.finally(() => {
-      if (sceneAttributeSaveDrainPromiseRef.current === drainPromise) {
-        sceneAttributeSaveDrainPromiseRef.current = null;
-      }
+    }, () => {
 
       // If a new payload was queued while the previous drain promise was
       // still resolving, guarantee we kick off another drain pass.
@@ -2736,7 +2720,6 @@ export default function Control() {
       }
     });
 
-    return sceneAttributeSaveDrainPromiseRef.current;
   }, [persistSceneAttributes]);
 
   const queueSceneAttributePersist = useCallback(
@@ -3641,13 +3624,18 @@ export default function Control() {
         }
         onTransitionChange={setSelectedTransitionId}
         onStageScene={stageSceneForProgram}
-        onTake={() => void takeStagedSceneLive()}
-        onCut={() => void takeStagedSceneLive("cut")}
+        takeBusy={takeBusy}
+        takeError={takeError}
+        onTake={() => takeStagedSceneLive()}
+        onCut={() => takeStagedSceneLive("cut")}
         onFadeToBlack={() =>
           void setFadeToBlack(programState?.fadeToBlack !== true)
         }
       />
-      <RecordingPanel programId={activeProgramId} />
+      <details className="mx-3 my-2 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand" onToggle={(event) => setRecordingOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-text-secondary">Program recording</summary>
+        {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+      </details>
       <div
         className={`flex-1 min-h-[420px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
         data-workspace-content={consoleWorkspace}
@@ -4077,7 +4065,7 @@ export default function Control() {
 
             {consoleWorkspace !== "audio" ? (
               <Panel
-                title="Stage Attributes"
+                title={stagedSceneData ? `Prepare · ${stagedSceneData.name}` : "Prepare the next scene"}
                 accent="#14b8a6"
                 variant="monitor"
                 className="min-h-0"

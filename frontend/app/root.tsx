@@ -16,7 +16,7 @@ import "./services/auth";
 import { installAuthenticatedFetch } from "./services/authenticatedFetch";
 import AuthListener from "./components/common/AuthListener";
 import { getStore } from "./state";
-import { ConsolePreferencesProvider } from "./contexts/ConsolePreferencesContext";
+import { AppLoading } from "./components/AppLoading";
 
 installAuthenticatedFetch();
 
@@ -57,12 +57,14 @@ export default function App() {
 
   return (
     <Provider store={store}>
-      <ConsolePreferencesProvider>
-        <AuthListener />
-        <Outlet />
-      </ConsolePreferencesProvider>
+      <AuthListener />
+      <Outlet />
     </Provider>
   );
+}
+
+export function HydrateFallback() {
+  return <AppLoading />;
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

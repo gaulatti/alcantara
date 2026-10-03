@@ -11,6 +11,8 @@ import { PlayNextQueue } from "../components/PlayNextQueue";
 import type { ProgramSongSequence } from "../utils/programSequence";
 import type { ProgramSongQueueEntry } from "../models/broadcast";
 import { ProgramSongSequenceEditor } from "../components/editors";
+import { ScenePreparationFixture } from "../components/ScenePreparationFixture";
+import { AppLoading } from "../components/AppLoading";
 import { RadioPanel } from "../components/RadioPanel";
 
 const layout = {
@@ -91,6 +93,9 @@ export default function ConsoleFixture() {
   ]);
   const isPlaybackFixture =
     fixture === "playback-live" || fixture === "playback-stale";
+
+  if (fixture === "loading") return <AppLoading />;
+  if (fixture === "hidden-component") return <ScenePreparationFixture />;
 
   return (
     <main className="min-h-screen bg-zinc-950" data-visual-fixture={fixture}>
@@ -182,6 +187,8 @@ export default function ConsoleFixture() {
           scenes={[previewScene, programScene]}
           transitionId={transition}
           realtimeConnected={fixture !== "disconnected"}
+          takeBusy={fixture === "taking"}
+          takeError={fixture === "take-failed" ? "Scene save failed. Program has not changed." : null}
           fadeToBlack={ftb}
           workspace={workspace}
           onWorkspaceChange={setWorkspace}
