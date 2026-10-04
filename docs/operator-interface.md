@@ -10,7 +10,7 @@ monitor or transport control cannot cover navigation.
 
 Navigation is grouped by operator intent rather than database model:
 
-- **Live** contains the mode-specific desk, Rundown, Radio or Simulcast Clocked logs, Guest calls, and TV
+- **Live** contains the mode-specific desk, Rundown, Radio or Simulcast Radio logs, Guest calls, and TV
   destinations where applicable.
 - **Library** contains Scenes and Scene templates for visual shows plus one
   Media destination for every show type. TV and Simulcast Media is organized by
@@ -79,18 +79,27 @@ and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene
 staging and TAKE.
 
-The Radio desk has one persistent player at the bottom of the viewport, keeping
-artwork, reported track metadata, progress, remaining time, transport, and playback
-modes together. It remains visible on phones and displays the actual on-air track
-even when it is absent from the playlist. A dominant Rundown fills the freed
-space, with Output confidence, Cartwall, and the three-channel Mixer beside it. The
-Rundown switches between Music playlist (including Play Next) and the full
-Clocked log; arrow keys, Home, and End move between those tabs. Clocked cues
-show their scheduled time, catalog metadata, and explicit NOW/NEXT markers.
-Playlist actions are visible without hover and wrap beneath tracks on phones.
-The Cartwall has search, numbered pads, existing shortcut labels, and a playing
-state. Disabled clips remain disabled. Recovery/session controls stay in a
-secondary disclosure; the Mixer is always present.
+The Radio desk has one persistent player at the bottom, keeping artwork,
+reported track metadata, progress, remaining time, and log transport together.
+It remains visible on phones and displays the actual on-air track. **Start log**,
+**Stop log**, and **Advance** use flight/log execution; there are no radio
+playlist modes or loop controls. Start is available for a published, unaired
+hour; it respects the scheduled start rather than playing early.
+
+The dominant **On-air log** shows the entire selected hour with event times,
+catalog metadata, duration, voice-track indicators, and NOW/NEXT/PLAYED markers.
+**Play next**, up/down, remove, and Library insertion persist changes to this
+same log at its expected revision. Played/on-air events stay locked, and moving
+an event cannot cross a fixed-time boundary. **Prepare hours** opens the log
+planner; **Build from tags** resolves Library labels into a reviewable draft.
+See `radio-station-workflow.md` for selection rules and publish behavior.
+
+Output confidence, Cartwall, and the three-channel Mixer remain beside the log.
+The Cartwall has search, numbered pads, existing shortcut labels, and playing
+state. Disabled clips stay disabled. Recovery/session controls remain in a
+secondary disclosure. The development `radio-workflow` fixture now shows a log
+with both following events and fixed-time boundaries; `radio-empty`,
+`radio-offline`, and `radio-external` retain explicit empty/degraded feedback.
 
 The local wall clock is labeled separately from authoritative playback timing.
 Remaining time uses reported duration and position; stale telemetry is labeled

@@ -66,11 +66,7 @@ export interface SongPlaybackData {
 }
 
 export type IntroPlaybackStatus =
-  | 'none'
-  | 'pending'
-  | 'playing'
-  | 'completed'
-  | 'degraded';
+  'none' | 'pending' | 'playing' | 'completed' | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -1101,7 +1097,6 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
 
     this.metrics.recordTrackTransition('advanced');
-    this.handleSongEnded(programId);
     const endedSong = state.activeSong;
     state.activeSong = null;
     // An authoritative end is a command-reconciliation boundary. Palazzo is
@@ -1139,6 +1134,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     nextSequence: ProgramSongSequence | null,
     hasSequenceSuccessor: boolean,
   ): Promise<void> {
+    if (this.flightService.isClockedLogRunning(programId)) {
+      try {
+        await this.flightService.handleSongEnded(programId);
+      } finally {
+        const state = this.states.get(programId);
+        if (state) state.transitioning = false;
+      }
+      return;
+    }
+    this.handleSongEnded(programId);
     let cursorPersisted = false;
     try {
       if (endedQueueEntryId) {
@@ -1256,6 +1261,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   }
 
   private maybeStartSequence(programId: string): boolean {
+    if (this.flightService.isClockedLogRunning(programId)) return false;
     const state = this.states.get(programId);
     if (!state?.sequence) return false;
     if (state.sequence.mode !== 'autoplay' && state.sequence.mode !== 'shuffle')
@@ -1324,6 +1330,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   }
 
   private playNext(programId: string): boolean {
+    // Log ownership also protects against queue claims begun before log start.
+    if (this.flightService.isClockedLogRunning(programId)) return true;
     const state = this.states.get(programId);
     if (!state?.sequence) return false;
 

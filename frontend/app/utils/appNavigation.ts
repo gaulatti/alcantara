@@ -1,4 +1,4 @@
-export type ProgramType = 'tv' | 'radio' | 'both';
+export type ProgramType = "tv" | "radio" | "both";
 
 export interface AppNavigationItem {
   id: string;
@@ -18,103 +18,119 @@ interface NavigationOptions {
   includeDeveloperTools: boolean;
 }
 
-export function getAppNavigationSections({ programType, canViewBroadcasts, includeDeveloperTools }: NavigationOptions): AppNavigationSection[] {
-  const hasTelevision = programType !== 'radio';
-  const hasRadio = programType !== 'tv';
-  const controlLabel = programType === 'radio' ? 'Radio desk' : programType === 'both' ? 'Simulcast control' : 'TV control';
+export function getAppNavigationSections({
+  programType,
+  canViewBroadcasts,
+  includeDeveloperTools,
+}: NavigationOptions): AppNavigationSection[] {
+  const hasTelevision = programType !== "radio";
+  const hasRadio = programType !== "tv";
+  const controlLabel =
+    programType === "radio"
+      ? "Radio desk"
+      : programType === "both"
+        ? "Simulcast control"
+        : "TV control";
 
   const sections: AppNavigationSection[] = [
     {
-      id: 'live',
-      label: 'Live',
+      id: "live",
+      label: "Live",
       items: [
-        { id: 'control', href: '/', label: controlLabel },
-        { id: 'rundown', href: '/flight', label: 'Rundown' },
-        ...(hasRadio ? [{ id: 'radio-log', href: '/radio-log', label: 'Clocked logs' }] : []),
+        { id: "control", href: "/", label: controlLabel },
+        ...(hasTelevision
+          ? [{ id: "rundown", href: "/flight", label: "Rundown" }]
+          : []),
+        ...(hasRadio
+          ? [{ id: "radio-log", href: "/radio-log", label: "Radio logs" }]
+          : []),
         ...(hasTelevision
           ? [
-              { id: 'calls', href: '/calls', label: 'Guest calls' },
+              { id: "calls", href: "/calls", label: "Guest calls" },
               ...(canViewBroadcasts
                 ? [
                     {
-                      id: 'destinations',
-                      href: '/broadcasts',
-                      label: 'TV destinations'
-                    }
+                      id: "destinations",
+                      href: "/broadcasts",
+                      label: "TV destinations",
+                    },
                   ]
-                : [])
+                : []),
             ]
-          : [])
-      ]
+          : []),
+      ],
     },
     {
-      id: 'library',
-      label: 'Library',
+      id: "library",
+      label: "Library",
       items: [
         ...(hasTelevision
           ? [
-              { id: 'scenes', href: '/scenes', label: 'Scenes' },
+              { id: "scenes", href: "/scenes", label: "Scenes" },
               {
-                id: 'scene-templates',
-                href: '/layouts',
-                label: 'Scene templates'
-              }
+                id: "scene-templates",
+                href: "/layouts",
+                label: "Scene templates",
+              },
             ]
           : []),
-        { id: 'media', href: '/media', label: 'Media' }
-      ]
+        { id: "media", href: "/media", label: "Media" },
+      ],
     },
     {
-      id: 'setup',
-      label: 'Show setup',
+      id: "setup",
+      label: "Show setup",
       items: [
-        { id: 'shows', href: '/programs', label: 'Shows' },
+        { id: "shows", href: "/programs", label: "Shows" },
         ...(hasRadio
           ? [
               {
-                id: 'radio-distribution',
-                href: '/radio-settings',
-                label: 'Radio distribution'
-              }
+                id: "radio-distribution",
+                href: "/radio-settings",
+                label: "Radio distribution",
+              },
             ]
-          : [])
-      ]
-    }
+          : []),
+      ],
+    },
   ];
 
   if (includeDeveloperTools) {
     sections.push({
-      id: 'developer',
-      label: 'Development',
+      id: "developer",
+      label: "Development",
       items: [
         {
-          id: 'component-catalog',
-          href: '/preview',
-          label: 'Component catalog'
+          id: "component-catalog",
+          href: "/preview",
+          label: "Component catalog",
         },
         {
-          id: 'console-fixture',
-          href: '/console-fixture',
-          label: 'Console fixture'
+          id: "console-fixture",
+          href: "/console-fixture",
+          label: "Console fixture",
         },
         {
-          id: 'radio-workflow-fixture',
-          href: '/console-fixture?state=radio-workflow',
-          label: 'Radio workflow fixture'
+          id: "radio-workflow-fixture",
+          href: "/console-fixture?state=radio-workflow",
+          label: "Radio workflow fixture",
         },
         {
-          id: 'media-fixture',
-          href: '/media-fixture',
-          label: 'Media fixture'
-        }
-      ]
+          id: "media-fixture",
+          href: "/media-fixture",
+          label: "Media fixture",
+        },
+      ],
     });
   }
 
   return sections;
 }
 
-export function isNavigationItemActive(pathname: string, href: string): boolean {
-  if (href === '/') return pathname === '/' || pathname === '/control';
+export function isNavigationItemActive(
+  pathname: string,
+  href: string,
+): boolean {
+  if (href === "/") return pathname === "/" || pathname === "/control";
   return pathname === href || pathname.startsWith(`${href}/`);
 }

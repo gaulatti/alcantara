@@ -10,8 +10,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import type { Prisma } from '@prisma/client';
 import { ProgramService } from './program.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
 import type {
   FlightCue,
   FlightCueKind,
@@ -194,6 +196,22 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   private readonly runtimes = new Map<string, FlightRuntimeState>();
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTickRunning = false;
+  private readonly cueOperations = new Map<string, Promise<unknown>>();
+
+  private async serializeCueOperation<T>(
+    programId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.cueOperations.get(programId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(action);
+    this.cueOperations.set(programId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.cueOperations.get(programId) === operation)
+        this.cueOperations.delete(programId);
+    }
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -226,6 +244,89 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     });
 
     return sequences.map((seq) => this.toFlightSequence(seq));
+  }
+
+  async generateTaggedLog(
+    programId: string,
+    sequenceId: number,
+    data: { revision?: number; rules?: unknown },
+  ): Promise<{ items: FlightCue[] }> {
+    try {
+      const state = await this.getProgramStateRecord(programId);
+      if (state.type !== 'radio' && state.type !== 'both')
+        throw new BadRequestException('Radio logs require a radio leg');
+      const sequence = await this.prisma.flightSequence.findFirst({
+        where: { id: sequenceId, programStateId: state.id },
+      });
+      if (!sequence) throw new NotFoundException('radio log not found');
+      if (
+        !sequence.scheduledAt ||
+        sequence.publishedAt ||
+        sequence.lastStartedAt ||
+        sequence.isRunning
+      )
+        throw new BadRequestException(
+          'Tag generation is available only for an unaired draft hour',
+        );
+      if (data?.revision !== sequence.revision)
+        throw new ConflictException(
+          'The log changed. Reload before generating.',
+        );
+      const rules = parseRadioLogRules(data.rules);
+      const labelIds = [...new Set(rules.slots.map((slot) => slot.labelId))];
+      const [labels, songs, previous] = await Promise.all([
+        this.prisma.mediaLabel.findMany({
+          where: { id: { in: labelIds } },
+          select: { id: true, name: true },
+        }),
+        this.prisma.song.findMany({
+          where: {
+            enabled: true,
+            audioUrl: { not: '' },
+            asset: { labels: { some: { labelId: { in: labelIds } } } },
+          },
+          select: {
+            id: true,
+            artist: true,
+            durationMs: true,
+            asset: {
+              select: {
+                labels: {
+                  where: { labelId: { in: labelIds } },
+                  select: { labelId: true, position: true },
+                },
+              },
+            },
+          },
+        }),
+        this.prisma.flightSequence.findMany({
+          where: {
+            programStateId: state.id,
+            publishedAt: { not: null },
+            scheduledAt: { lt: sequence.scheduledAt },
+          },
+          orderBy: { scheduledAt: 'desc' },
+          take: 24,
+          select: { items: true },
+        }),
+      ]);
+      const previousSongIds = previous
+        .reverse()
+        .flatMap((log) =>
+          normalizeFlightItems(log.items).flatMap((cue) =>
+            cue.kind === 'playSong' && cue.songId ? [cue.songId] : [],
+          ),
+        );
+      const items = generateRadioLog(rules, songs, labels, previousSongIds);
+      const preflight = await this.preflightClockItems(programId, items);
+      if (!preflight.ready)
+        throw new BadRequestException(preflight.issues.join('; '));
+      this.metrics.recordRadioLogResult('generated');
+      return { items };
+    } catch (cause) {
+      this.metrics.recordRadioLogResult('generation-failed');
+      throw cause;
+    }
   }
 
   private parseScheduledAt(value: string | null | undefined): Date | null {
@@ -615,6 +716,22 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       revision?: number;
     },
   ): Promise<Omit<FlightSequence, 'programStateId'>> {
+    return this.serializeCueOperation(this.normalizeProgramId(programId), () =>
+      this.updateFlightSequenceUnlocked(programId, sequenceId, data),
+    );
+  }
+
+  private async updateFlightSequenceUnlocked(
+    programId: string,
+    sequenceId: number,
+    data: {
+      name?: string;
+      items?: unknown;
+      loop?: boolean;
+      scheduledAt?: string | null;
+      revision?: number;
+    },
+  ): Promise<Omit<FlightSequence, 'programStateId'>> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.getProgramStateRecord(normalizedProgramId);
 
@@ -627,94 +744,129 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
     const runtime = this.runtimes.get(normalizedProgramId);
     const isActiveRuntime = runtime?.sequenceId === sequenceId;
-    if (existing.scheduledAt && data.revision !== existing.revision) {
-      throw new ConflictException(
-        'log revision changed; reload before editing',
-      );
-    }
-
-    const updateData: any = {};
-    if (typeof data.name === 'string' && data.name.trim().length > 0) {
-      updateData.name = data.name.trim();
-    }
-    if (data.items !== undefined) {
-      if (!Array.isArray(data.items)) {
-        throw new BadRequestException('items must be an array');
-      }
-      updateData.items = data.items as any;
-    }
-    if (typeof data.loop === 'boolean') {
-      updateData.loop = data.loop;
-    }
-    if (data.scheduledAt !== undefined) {
-      updateData.scheduledAt = this.parseScheduledAt(data.scheduledAt);
-    }
-    const nextScheduledAt =
-      updateData.scheduledAt === undefined
-        ? existing.scheduledAt
-        : updateData.scheduledAt;
-    if (nextScheduledAt && state.type !== 'radio' && state.type !== 'both')
-      throw new BadRequestException('program has no radio leg');
-    if (nextScheduledAt && (updateData.loop ?? existing.loop))
-      throw new BadRequestException('a clocked log cannot loop');
-    const nextItems =
-      updateData.items === undefined
-        ? normalizeFlightItems(existing.items)
-        : nextScheduledAt && (updateData.items as unknown[]).length
-          ? this.normalizeClockItems(updateData.items)
-          : normalizeFlightItems(updateData.items);
-    if (nextScheduledAt && nextItems.length) this.validateClockItems(nextItems);
-    if (updateData.items !== undefined) updateData.items = nextItems as any;
-    if (isActiveRuntime && runtime?.isRunning) {
-      if (data.scheduledAt !== undefined || data.loop !== undefined) {
-        throw new ConflictException(
-          'an on-air log cannot change its schedule or loop',
-        );
-      }
-      const current = normalizeFlightItems(existing.items);
-      const protectedCount = runtime.activeIndex + 1;
-      if (
-        nextItems.length < protectedCount ||
-        JSON.stringify(nextItems.slice(0, protectedCount)) !==
-          JSON.stringify(current.slice(0, protectedCount))
-      ) {
-        throw new ConflictException(
-          'on-air and played log items cannot be edited',
-        );
-      }
-    }
-    if (existing.publishedAt) {
-      const preflight = await this.preflightClockItems(
-        normalizedProgramId,
-        nextItems,
-      );
-      if (!preflight.ready)
-        throw new BadRequestException(preflight.issues.join('; '));
-    }
-    updateData.revision = { increment: 1 };
-
     try {
-      const result = await this.prisma.flightSequence.updateMany({
-        where: { id: sequenceId, revision: existing.revision },
-        data: updateData,
-      });
-      if (result.count !== 1)
+      if (existing.scheduledAt && data.revision !== existing.revision) {
         throw new ConflictException(
           'log revision changed; reload before editing',
         );
-      const sequence = await this.prisma.flightSequence.findUniqueOrThrow({
-        where: { id: sequenceId },
-      });
-      if (isActiveRuntime && runtime?.isRunning) runtime.items = nextItems;
+      }
 
-      return this.toFlightSequence(sequence);
-    } catch (err: any) {
-      if (err?.code === 'P2002') {
-        throw new BadRequestException(
-          `flight sequence "${updateData.name ?? existing.name}" already exists`,
+      if (
+        existing.scheduledAt &&
+        existing.lastStartedAt &&
+        !runtime?.isRunning &&
+        (data.items !== undefined ||
+          data.scheduledAt !== undefined ||
+          data.loop !== undefined)
+      ) {
+        throw new ConflictException(
+          'an aired or stopped log cannot be rewritten',
         );
       }
-      throw err;
+      if (existing.publishedAt && data.scheduledAt !== undefined) {
+        throw new ConflictException(
+          'a published log cannot change its scheduled hour',
+        );
+      }
+      const updateData: {
+        name?: string;
+        items?: Prisma.InputJsonValue;
+        loop?: boolean;
+        scheduledAt?: Date | null;
+        revision?: { increment: number };
+      } = {};
+      if (typeof data.name === 'string' && data.name.trim().length > 0) {
+        updateData.name = data.name.trim();
+      }
+      if (data.items !== undefined) {
+        if (!Array.isArray(data.items)) {
+          throw new BadRequestException('items must be an array');
+        }
+        updateData.items = data.items as Prisma.InputJsonValue;
+      }
+      if (typeof data.loop === 'boolean') {
+        updateData.loop = data.loop;
+      }
+      if (data.scheduledAt !== undefined) {
+        updateData.scheduledAt = this.parseScheduledAt(data.scheduledAt);
+      }
+      const nextScheduledAt =
+        updateData.scheduledAt === undefined
+          ? existing.scheduledAt
+          : updateData.scheduledAt;
+      if (nextScheduledAt && state.type !== 'radio' && state.type !== 'both')
+        throw new BadRequestException('program has no radio leg');
+      if (nextScheduledAt && (updateData.loop ?? existing.loop))
+        throw new BadRequestException('a clocked log cannot loop');
+      const nextItems =
+        updateData.items === undefined
+          ? normalizeFlightItems(existing.items)
+          : nextScheduledAt && (updateData.items as unknown[]).length
+            ? this.normalizeClockItems(updateData.items)
+            : normalizeFlightItems(updateData.items);
+      if (nextScheduledAt && nextItems.length)
+        this.validateClockItems(nextItems);
+      if (updateData.items !== undefined)
+        updateData.items = nextItems as unknown as Prisma.InputJsonValue;
+      if (isActiveRuntime && runtime?.isRunning) {
+        if (data.scheduledAt !== undefined || data.loop !== undefined) {
+          throw new ConflictException(
+            'an on-air log cannot change its schedule or loop',
+          );
+        }
+        const current = normalizeFlightItems(existing.items);
+        const protectedCount = runtime.activeIndex + 1;
+        if (
+          nextItems.length < protectedCount ||
+          JSON.stringify(nextItems.slice(0, protectedCount)) !==
+            JSON.stringify(current.slice(0, protectedCount))
+        ) {
+          throw new ConflictException(
+            'on-air and played log items cannot be edited',
+          );
+        }
+      }
+      if (existing.publishedAt) {
+        const preflight = await this.preflightClockItems(
+          normalizedProgramId,
+          nextItems,
+        );
+        if (!preflight.ready)
+          throw new BadRequestException(preflight.issues.join('; '));
+      }
+      updateData.revision = { increment: 1 };
+
+      try {
+        const result = await this.prisma.flightSequence.updateMany({
+          where: { id: sequenceId, revision: existing.revision },
+          data: updateData,
+        });
+        if (result.count !== 1)
+          throw new ConflictException(
+            'log revision changed; reload before editing',
+          );
+        const sequence = await this.prisma.flightSequence.findUniqueOrThrow({
+          where: { id: sequenceId },
+        });
+        if (isActiveRuntime && runtime?.isRunning) {
+          runtime.items = nextItems;
+          if (runtime.waitingForSongEnd) this.armNextHardCue(runtime);
+        }
+
+        if (existing.scheduledAt) this.metrics.recordRadioLogResult('edited');
+        return this.toFlightSequence(sequence);
+      } catch (err: unknown) {
+        if (isRecord(err) && err.code === 'P2002') {
+          throw new BadRequestException(
+            `flight sequence "${updateData.name ?? existing.name}" already exists`,
+          );
+        }
+        throw err;
+      }
+    } catch (cause) {
+      if (existing.scheduledAt)
+        this.metrics.recordRadioLogResult('edit-failed');
+      throw cause;
     }
   }
 
@@ -918,6 +1070,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       return this.start(normalizedProgramId);
     }
 
+    if (runtime.scheduledAtMs !== null && Date.now() < runtime.scheduledAtMs) {
+      throw new BadRequestException(
+        'the log cannot advance before its scheduled hour',
+      );
+    }
     this.clearTimer(runtime);
     runtime.waitingForSongEnd = false;
     runtime.generation += 1;
@@ -971,6 +1128,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return { ok: true };
   }
 
+  isClockedLogRunning(programId: string): boolean {
+    const runtime = this.runtimes.get(programId);
+    return !!runtime?.isRunning && runtime.scheduledAtMs !== null;
+  }
+
   async handleSongEnded(programId: string): Promise<{ ok: boolean }> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const runtime = this.runtimes.get(normalizedProgramId);
@@ -1018,6 +1180,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     index: number,
     generation: number,
   ): Promise<void> {
+    return this.serializeCueOperation(programId, () =>
+      this.executeCueAtIndexUnlocked(programId, index, generation),
+    );
+  }
+
+  private async executeCueAtIndexUnlocked(
+    programId: string,
+    index: number,
+    generation: number,
+  ): Promise<void> {
     const runtime = this.runtimes.get(programId);
     if (!runtime || runtime.generation !== generation || !runtime.isRunning) {
       return;
@@ -1025,7 +1197,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
     if (index < 0 || index >= runtime.items.length) {
       if (runtime.loop && runtime.items.length > 0) {
-        return this.executeCueAtIndex(programId, 0, generation);
+        return this.executeCueAtIndexUnlocked(programId, 0, generation);
       }
       await this.stop(programId);
       return;
@@ -1073,33 +1245,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
     if (runtime.scheduledAtMs !== null && cue.kind === 'playSong') {
       runtime.waitingForSongEnd = true;
-      const nextHardIndex = runtime.items.findIndex(
-        (item, itemIndex) =>
-          itemIndex > index && item.clockOffsetSeconds !== undefined,
-      );
-      const nextHard = nextHardIndex >= 0 ? runtime.items[nextHardIndex] : null;
-      if (nextHard?.clockOffsetSeconds !== undefined) {
-        const dueAt =
-          runtime.scheduledAtMs + nextHard.clockOffsetSeconds * 1000;
-        runtime.timer = setTimeout(
-          () => {
-            const current = this.runtimes.get(programId);
-            if (
-              current?.generation === generation &&
-              current.waitingForSongEnd
-            ) {
-              current.waitingForSongEnd = false;
-              current.generation += 1;
-              void this.executeCueAtIndex(
-                programId,
-                nextHardIndex,
-                current.generation,
-              );
-            }
-          },
-          Math.max(0, dueAt - Date.now()),
-        );
-      }
+      this.armNextHardCue(runtime);
       return;
     }
 
@@ -1129,6 +1275,38 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     }
 
     void this.advance(programId, generation);
+  }
+
+  private armNextHardCue(runtime: FlightRuntimeState): void {
+    this.clearTimer(runtime);
+    const nextHard = runtime.items.find(
+      (cue, index) =>
+        index > runtime.activeIndex && cue.clockOffsetSeconds !== undefined,
+    );
+    if (!nextHard || runtime.scheduledAtMs === null) return;
+    const generation = runtime.generation;
+    runtime.timer = setTimeout(
+      () => {
+        const current = this.runtimes.get(runtime.programId);
+        if (current?.generation !== generation || !current.waitingForSongEnd)
+          return;
+        const index = current.items.findIndex((cue) => cue.id === nextHard.id);
+        if (index <= current.activeIndex) return;
+        current.waitingForSongEnd = false;
+        current.generation += 1;
+        void this.executeCueAtIndex(
+          current.programId,
+          index,
+          current.generation,
+        );
+      },
+      Math.max(
+        0,
+        runtime.scheduledAtMs +
+          nextHard.clockOffsetSeconds! * 1000 -
+          Date.now(),
+      ),
+    );
   }
 
   private async advance(programId: string, generation: number): Promise<void> {

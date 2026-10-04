@@ -494,6 +494,20 @@ export class ProgramController {
     );
   }
 
+  @Post(':programId/flight/:sequenceId/generate')
+  @RequirePermission(ALCANTARA_PERMISSIONS.flight.manage)
+  async generateTaggedLog(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+    @Body() data: { revision?: number; rules?: unknown },
+  ) {
+    return this.flightService.generateTaggedLog(
+      programId,
+      Number(sequenceId),
+      data,
+    );
+  }
+
   @Get(':programId/flight/:sequenceId/preflight')
   @RequirePermission(ALCANTARA_PERMISSIONS.flight.read)
   async preflightFlightSequenceById(

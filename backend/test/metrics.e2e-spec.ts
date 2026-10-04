@@ -66,6 +66,11 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     radioMetrics.recordMachineRequest('song-play', 'deduplicated');
     radioMetrics.recordMachineRequest('event-connect', 'unauthorized');
     radioMetrics.recordMachineRetry('song-play');
+    radioMetrics.recordRadioLogResult('generated');
+    radioMetrics.recordRadioLogResult('edited');
+    radioMetrics.recordRadioLogResult('edit-failed');
+    radioMetrics.recordRadioLogResult('generation-failed');
+    radioMetrics.recordRadioLogResult('private-tag-id');
     radioMetrics.recordEventIgnored('sequence-gap');
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
@@ -137,6 +142,19 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       'alcantara_recording_reconciliations_total{state="active",result="success"} 1',
     );
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    expect(body).toContain(
+      'alcantara_radio_log_transitions_total{result="generated"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_radio_log_transitions_total{result="generation-failed"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_radio_log_transitions_total{result="edited"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_radio_log_transitions_total{result="edit-failed"} 1',
+    );
+    expect(body).not.toContain('private-tag-id');
     expect(body).toContain(
       'alcantara_operator_preference_operations_total{action="write",result="conflict"} 1',
     );

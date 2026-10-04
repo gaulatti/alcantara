@@ -230,7 +230,9 @@ export default function ConsoleFixture() {
                           id: `fixture-cue-${index + 1}`,
                           kind: "playSong" as const,
                           songId: index + 1,
-                          clockOffsetSeconds: index * 240,
+                          ...(index === 0 || index === 6
+                            ? { clockOffsetSeconds: index * 240 }
+                            : {}),
                         })),
                         loop: false,
                         isRunning: true,

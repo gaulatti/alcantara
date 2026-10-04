@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@gaulatti/bleecker";
+import { Button, Select } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
-import { AlertTriangle, List, Plus, Radio } from "lucide-react";
+import {
+  AlertTriangle,
+  List,
+  Plus,
+  Radio,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  ListPlus,
+} from "lucide-react";
 import { ConsoleClock, ConsolePanel } from "./ConsoleSurface";
 import { Link } from "react-router";
 import type {
@@ -11,10 +20,16 @@ import type {
   InstantItem,
 } from "../models/broadcast";
 import { PlaybackBar } from "./PlaybackBar";
-import { InstantsPanel, PlaylistPanel, PlaylistSheetPanel } from "./panels";
+import { InstantsPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
-import { PlayNextQueue } from "./PlayNextQueue";
-import { fetchFlightSequences } from "../services/flight";
+import {
+  fetchFlightSequences,
+  updateFlightSequence,
+  activateFlightSequence,
+  startFlight,
+  stopFlight,
+  goFlight,
+} from "../services/flight";
 import type { FlightSequence } from "../models/broadcast";
 
 interface RadioMixerChannelState {
@@ -108,15 +123,8 @@ interface RecoveryStatus {
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
-  songSequence,
-  songQueue,
   songCatalog,
   programSongPlayback,
-  onSaveSongSequence,
-  onQueueSong,
-  onRemoveQueuedSong,
-  onReorderSongQueue,
-  onTakeOffAir,
   instants,
   instantSearch,
   onInstantSearchChange,
@@ -136,13 +144,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(
     fixtureData?.palazzo ?? null,
   );
-  const [playlistSheetOpen, setPlaylistSheetOpen] = useState(false);
+  const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
+  const [addSongId, setAddSongId] = useState("");
+  const [logBusy, setLogBusy] = useState(false);
+  const [logLoadError, setLogLoadError] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [output, setOutput] = useState<OutputConfidence | null>(
     fixtureData?.output ?? null,
   );
   const [logs, setLogs] = useState<FlightSequence[]>(fixtureData?.logs ?? []);
-  const [rundownTab, setRundownTab] = useState<"playlist" | "log">("playlist");
   const [recovery, setRecovery] = useState<RecoveryStatus | null>(
     fixtureData?.recovery ?? null,
   );
@@ -181,12 +191,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       const [confidenceResponse, sequences] = await Promise.all([
         fetch(
           apiUrl(`/radio/${encodeURIComponent(programId)}/output-confidence`),
-        ),
+        ).catch(() => null),
         fetchFlightSequences(programId),
       ]);
-      setOutput(confidenceResponse.ok ? await confidenceResponse.json() : null);
+      setOutput(
+        confidenceResponse?.ok ? await confidenceResponse.json() : null,
+      );
+      setLogLoadError(null);
       setLogs(sequences.filter((sequence) => sequence.scheduledAt !== null));
-    } catch {
+    } catch (cause) {
+      setLogLoadError(
+        cause instanceof Error ? cause.message : "Radio logs unavailable",
+      );
       setOutput(null);
       setLogs([]);
     }
@@ -238,7 +254,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     fetchRecovery();
     const interval = setInterval(fetchStreamStatus, 8000);
     const palazzoInterval = setInterval(fetchPalazzoStatus, 8000);
-    const airPlanInterval = setInterval(fetchAirPlan, 8000);
+    const airPlanInterval = setInterval(fetchAirPlan, 2000);
     const recoveryInterval = setInterval(fetchRecovery, 8000);
     return () => {
       clearInterval(interval);
@@ -254,48 +270,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     fixtureData,
   ]);
 
-  const handleTakeSelection = useCallback(
-    async (seq: any) => {
-      const wasPlaying = programSongPlayback?.isPlaying === true;
-      await onSaveSongSequence(seq);
-      const item = seq?.items?.find((i: any) => i.id === seq?.activeItemId);
-      if (!item?.audioUrl) return;
-      if (
-        !wasPlaying &&
-        (seq?.mode === "autoplay" || seq?.mode === "shuffle")
-      ) {
-        return;
-      }
-      await fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/song`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          audioUrl: item.audioUrl,
-          title: item?.title,
-          artist: item?.artist,
-          coverUrl: item?.coverUrl,
-          durationMs: item?.durationMs,
-          songId: item?.songId,
-        }),
-      });
-    },
-    [onSaveSongSequence, programId, programSongPlayback?.isPlaying],
-  );
-
-  const handleQueueSong = useCallback(
-    async (itemId: string) => {
-      setQueueError(null);
-      try {
-        await onQueueSong(itemId);
-      } catch {
-        setQueueError("The song was not added to Play Next. Try again.");
-      }
-    },
-    [onQueueSong],
-  );
-
   const isLive = stream?.running === true;
-  const activeLog = logs.find((sequence) => sequence.isRunning) ?? null;
+  const runningLog = logs.find((sequence) => sequence.isRunning) ?? null;
   const nextLog =
     logs
       .filter(
@@ -308,9 +284,74 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       .sort(
         (a, b) => Date.parse(a.scheduledAt!) - Date.parse(b.scheduledAt!),
       )[0] ?? null;
-  const currentLogIndex =
-    activeLog?.items.findIndex((item) => item.id === activeLog.activeItemId) ??
-    -1;
+  const activeLog =
+    runningLog ??
+    logs.find((log) => log.id === selectedLogId) ??
+    nextLog ??
+    [...logs]
+      .filter((log) => log.lastStartedAt)
+      .sort(
+        (a, b) => Date.parse(b.scheduledAt!) - Date.parse(a.scheduledAt!),
+      )[0] ??
+    null;
+  const refreshLogs = async () => {
+    if (!fixtureData)
+      setLogs(
+        (await fetchFlightSequences(programId)).filter(
+          (log) => log.scheduledAt,
+        ),
+      );
+  };
+  const commandLog = async (action: "start" | "stop" | "advance") => {
+    setLogBusy(true);
+    setQueueError(null);
+    try {
+      if (action === "stop") await stopFlight(programId);
+      else if (action === "advance") await goFlight(programId);
+      else if (activeLog) {
+        await activateFlightSequence(programId, activeLog.id);
+        await startFlight(programId);
+      }
+      await refreshLogs();
+    } catch (cause) {
+      setQueueError(
+        cause instanceof Error ? cause.message : "Log command failed",
+      );
+    } finally {
+      setLogBusy(false);
+    }
+  };
+  const editLog = async (items: FlightSequence["items"]) => {
+    if (!activeLog) return;
+    setLogBusy(true);
+    setQueueError(null);
+    try {
+      const updated = await updateFlightSequence(programId, activeLog.id, {
+        items,
+        revision: activeLog.revision,
+      });
+      setLogs((current) =>
+        current.map((log) => (log.id === updated.id ? updated : log)),
+      );
+    } catch (cause) {
+      setQueueError(
+        cause instanceof Error ? cause.message : "The log was not changed",
+      );
+      await refreshLogs();
+    } finally {
+      setLogBusy(false);
+    }
+  };
+  const moveCue = (index: number, target: number) => {
+    if (!activeLog) return;
+    const items = [...activeLog.items];
+    const [cue] = items.splice(index, 1);
+    items.splice(target, 0, cue);
+    void editLog(items);
+  };
+  const currentLogIndex = activeLog?.isRunning
+    ? activeLog.items.findIndex((item) => item.id === activeLog.activeItemId)
+    : -1;
   const outputTone =
     output?.state === "silent" || output?.state === "unavailable"
       ? "live"
@@ -329,15 +370,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             : output?.state === "checking"
               ? "Checking output"
               : "Output unverified";
-  const playingQueueIndex = songQueue.findIndex(
-    (entry) => entry.id === programSongPlayback?.queueEntryId,
-  );
-  const nextQueueEntry = songQueue[playingQueueIndex + 1];
-  const nextQueuedSong = nextQueueEntry
-    ? songSequence?.items?.find(
-        (item: any) => item.id === nextQueueEntry.itemId,
-      )
-    : null;
   const engineReady =
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
@@ -374,206 +406,266 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
-            title="Rundown"
+            title="On-air log"
             eyebrow="Playout"
             className="radio-rundown"
             actions={
-              <Button
-                type="button"
-                size="xs"
-                variant="secondary"
-                onClick={() => setPlaylistSheetOpen(true)}
+              <Link
+                to="/radio-log"
+                className="inline-flex items-center gap-1 text-sm"
               >
-                <Plus size={13} /> Add songs
-              </Button>
+                <List size={14} /> Prepare hours
+              </Link>
             }
           >
-            <div className="flex items-center justify-between gap-2 border-b border-sand/15 px-4">
-              <div
-                className="console-tabs"
-                role="tablist"
-                aria-label="Rundown source"
-                onKeyDown={(event) => {
-                  if (
-                    !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                      event.key,
-                    )
-                  )
-                    return;
-                  event.preventDefault();
-                  const next =
-                    event.key === "Home"
-                      ? "playlist"
-                      : event.key === "End"
-                        ? "log"
-                        : rundownTab === "playlist"
-                          ? "log"
-                          : "playlist";
-                  setRundownTab(next);
-                  (
-                    event.currentTarget.querySelector(
-                      next === "playlist"
-                        ? "#music-rundown-tab"
-                        : "#clocked-rundown-tab",
-                    ) as HTMLButtonElement
-                  )?.focus();
-                }}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  id="music-rundown-tab"
-                  tabIndex={rundownTab === "playlist" ? 0 : -1}
-                  aria-selected={rundownTab === "playlist"}
-                  aria-controls="music-rundown"
-                  onClick={() => setRundownTab("playlist")}
-                >
-                  Music playlist
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  id="clocked-rundown-tab"
-                  tabIndex={rundownTab === "log" ? 0 : -1}
-                  aria-selected={rundownTab === "log"}
-                  aria-controls="clocked-rundown"
-                  onClick={() => setRundownTab("log")}
-                >
-                  Clocked log{activeLog ? " · running" : ""}
-                </button>
+            <div className="console-log-summary flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                {activeLog ? (
+                  <>
+                    <strong>{activeLog.name}</strong>
+                    <small className="block">
+                      {new Date(activeLog.scheduledAt!).toLocaleString()} ·{" "}
+                      {activeLog.isRunning
+                        ? Date.parse(activeLog.scheduledAt!) > Date.now()
+                          ? "ARMED"
+                          : "ON AIR"
+                        : activeLog.publishedAt
+                          ? activeLog.lastStartedAt
+                            ? "Aired / stopped"
+                            : "Published"
+                          : "Draft"}{" "}
+                      · Revision {activeLog.revision}
+                    </small>
+                  </>
+                ) : (
+                  "No radio log selected"
+                )}
               </div>
+              {!runningLog && (
+                <Select
+                  aria-label="Select radio log"
+                  value={activeLog ? String(activeLog.id) : ""}
+                  onChange={(value) => setSelectedLogId(Number(value))}
+                  options={[
+                    { value: "", label: "Choose an hour" },
+                    ...logs.map((log) => ({
+                      value: String(log.id),
+                      label: `${new Date(log.scheduledAt!).toLocaleString()} · ${log.publishedAt ? "Published" : "Draft"}`,
+                    })),
+                  ]}
+                />
+              )}
               <span className="console-count">
-                {rundownTab === "playlist"
-                  ? `${songSequence?.items?.length ?? 0} tracks`
-                  : `${activeLog?.items.length ?? 0} cues`}
+                {activeLog?.items.length ?? 0} events
               </span>
             </div>
-            {rundownTab === "playlist" ? (
-              <div
-                className="radio-rundown-body"
-                role="tabpanel"
-                id="music-rundown"
-                aria-labelledby="music-rundown-tab"
-              >
-                <PlayNextQueue
-                  queue={songQueue}
-                  sequence={songSequence}
-                  activeQueueEntryId={programSongPlayback?.queueEntryId}
-                  onRemove={onRemoveQueuedSong}
-                  onReorder={onReorderSongQueue}
-                />
-                {queueError && (
-                  <p role="alert" className="px-3 py-2 text-xs text-terracotta">
-                    {queueError}
-                  </p>
-                )}
-                <div className="console-playlist">
-                  <PlaylistPanel
-                    sequence={songSequence}
-                    songCatalog={songCatalog}
-                    programSongPlayback={programSongPlayback}
-                    onChange={(seq) => {
-                      void onSaveSongSequence(seq);
-                    }}
-                    onTakeSelection={handleTakeSelection}
-                    onQueueItem={handleQueueSong}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div
-                className="radio-rundown-body"
-                role="tabpanel"
-                id="clocked-rundown"
-                aria-labelledby="clocked-rundown-tab"
-              >
-                <div className="console-log-summary flex justify-between gap-2">
-                  <span>{activeLog?.name || "No clocked log running"}</span>
-                  <Link
-                    to="/radio-log"
-                    className="inline-flex items-center gap-1"
-                  >
-                    <List size={12} /> Open logs
-                  </Link>
-                </div>
-                {activeLog ? (
-                  <ol className="console-log" aria-label="On-air log">
-                    {activeLog.items.map((cue, index) => {
-                      const song =
-                        cue.kind === "playSong"
-                          ? songCatalog.find((item) => item.id === cue.songId)
-                          : null;
-                      const clip =
-                        cue.kind === "instant"
-                          ? instants.find((item) => item.id === cue.instantId)
-                          : null;
-                      const active = cue.id === activeLog.activeItemId;
-                      const next =
-                        currentLogIndex >= 0 && index === currentLogIndex + 1;
-                      return (
-                        <li
-                          key={cue.id}
-                          className="console-log-row"
-                          data-active={active}
-                        >
-                          <time>
-                            {cue.clockOffsetSeconds === undefined
-                              ? "Follows"
-                              : activeLog.scheduledAt
-                                ? new Date(
-                                    Date.parse(activeLog.scheduledAt) +
-                                      cue.clockOffsetSeconds * 1000,
-                                  ).toLocaleTimeString(undefined, {
-                                    hour12: false,
-                                  })
-                                : `+${formatTime(cue.clockOffsetSeconds * 1000)}`}
-                          </time>
-                          <div className="min-w-0">
-                            <span className="block truncate font-semibold">
-                              {cue.kind === "playSong"
-                                ? (song?.title ?? "Unavailable song")
-                                : cue.kind === "instant"
-                                  ? (clip?.name ?? "Unavailable clip")
-                                  : "Stop audio"}
-                            </span>
-                            <small>
-                              {cue.kind === "playSong"
-                                ? song?.artist
-                                : cue.kind === "instant"
-                                  ? "Audio clip"
-                                  : "Transport command"}
-                            </small>
-                          </div>
-                          <span className="console-eyebrow">
-                            {active
-                              ? "NOW"
-                              : next
-                                ? "NEXT"
-                                : String(index + 1).padStart(2, "0")}
+            {(queueError || logLoadError) && (
+              <p role="alert" className="px-4 py-3 text-sm text-terracotta">
+                {queueError || logLoadError}
+              </p>
+            )}
+            <div className="radio-rundown-body">
+              {activeLog ? (
+                <ol className="console-log" aria-label="On-air log">
+                  {activeLog.items.map((cue, index) => {
+                    const song =
+                      cue.kind === "playSong"
+                        ? songCatalog.find((item) => item.id === cue.songId)
+                        : null;
+                    const clip =
+                      cue.kind === "instant"
+                        ? instants.find((item) => item.id === cue.instantId)
+                        : null;
+                    const active =
+                      activeLog.isRunning &&
+                      Date.parse(activeLog.scheduledAt!) <= Date.now() &&
+                      cue.id === activeLog.activeItemId;
+                    const next = index === currentLogIndex + 1;
+                    const locked =
+                      index <= currentLogIndex ||
+                      (!!activeLog.lastStartedAt && !activeLog.isRunning);
+                    const previous = activeLog.items[index - 1];
+                    const successor = activeLog.items[index + 1];
+                    const movable =
+                      !locked && cue.clockOffsetSeconds === undefined;
+                    return (
+                      <li
+                        key={cue.id}
+                        className="console-log-row"
+                        data-active={active}
+                        data-played={index < currentLogIndex}
+                      >
+                        <time>
+                          {cue.clockOffsetSeconds === undefined
+                            ? "Follows"
+                            : new Date(
+                                Date.parse(activeLog.scheduledAt!) +
+                                  cue.clockOffsetSeconds * 1000,
+                              ).toLocaleTimeString(undefined, {
+                                hour12: false,
+                              })}
+                        </time>
+                        <div className="min-w-0">
+                          <span className="block truncate font-semibold">
+                            {song?.title ??
+                              clip?.name ??
+                              (cue.kind === "stopSong"
+                                ? "Stop audio"
+                                : "Unavailable audio")}
                           </span>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                ) : (
-                  <div className="console-empty">
-                    {nextLog
-                      ? `Next published hour: ${new Date(nextLog.scheduledAt!).toLocaleString()}`
-                      : "No published hour is queued."}
-                  </div>
-                )}
+                          <small>
+                            {song?.artist ??
+                              (clip ? "Audio clip" : "Transport command")}
+                            {cue.voiceTrackInstantId ? " · Voice track" : ""}
+                          </small>
+                        </div>
+                        <span className="tabular-nums text-xs text-text-secondary">
+                          {song?.durationMs ? formatTime(song.durationMs) : "—"}
+                        </span>
+                        <span className="console-eyebrow">
+                          {active
+                            ? "NOW"
+                            : next
+                              ? "NEXT"
+                              : index < currentLogIndex
+                                ? "PLAYED"
+                                : String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div className="console-log-actions">
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            title="Play next"
+                            aria-label={`Play event ${index + 1} next`}
+                            disabled={
+                              logBusy ||
+                              !movable ||
+                              index <= currentLogIndex + 1 ||
+                              activeLog.items
+                                .slice(currentLogIndex + 1, index)
+                                .some(
+                                  (item) =>
+                                    item.clockOffsetSeconds !== undefined,
+                                )
+                            }
+                            onClick={() => moveCue(index, currentLogIndex + 1)}
+                          >
+                            <ListPlus size={14} />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            aria-label={`Move event ${index + 1} up`}
+                            disabled={
+                              logBusy ||
+                              !movable ||
+                              index <= currentLogIndex + 1 ||
+                              previous?.clockOffsetSeconds !== undefined
+                            }
+                            onClick={() => moveCue(index, index - 1)}
+                          >
+                            <ArrowUp size={14} />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            aria-label={`Move event ${index + 1} down`}
+                            disabled={
+                              logBusy ||
+                              !movable ||
+                              !successor ||
+                              successor.clockOffsetSeconds !== undefined
+                            }
+                            onClick={() => moveCue(index, index + 1)}
+                          >
+                            <ArrowDown size={14} />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            aria-label={`Remove event ${index + 1}`}
+                            disabled={
+                              logBusy ||
+                              locked ||
+                              cue.clockOffsetSeconds !== undefined
+                            }
+                            onClick={() =>
+                              void editLog(
+                                activeLog.items.filter(
+                                  (item) => item.id !== cue.id,
+                                ),
+                              )
+                            }
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <div className="console-empty">
+                  <strong>No published hour is queued.</strong>
+                  <p>
+                    Prepare an hour from Library tags, review its events, then
+                    publish.
+                  </p>
+                  <Link to="/radio-log">Prepare a radio log</Link>
+                </div>
+              )}
+            </div>
+            {activeLog && (
+              <div className="console-log-summary flex flex-wrap items-center gap-2">
+                <Select
+                  aria-label="Song to add to log"
+                  value={addSongId}
+                  onChange={(value) => setAddSongId(value)}
+                  options={[
+                    { value: "", label: "Choose a Library song" },
+                    ...songCatalog
+                      .filter((song) => song.enabled)
+                      .map((song) => ({
+                        value: String(song.id),
+                        label: `${song.artist} — ${song.title}`,
+                      })),
+                  ]}
+                />
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  disabled={
+                    !addSongId ||
+                    logBusy ||
+                    (!!activeLog.lastStartedAt && !activeLog.isRunning)
+                  }
+                  onClick={() => {
+                    const items = [...activeLog.items];
+                    const insert = activeLog.isRunning
+                      ? currentLogIndex + 1
+                      : items.length;
+                    items.splice(insert, 0, {
+                      id: crypto.randomUUID(),
+                      kind: "playSong",
+                      songId: Number(addSongId),
+                      ...(items.length === 0 ? { clockOffsetSeconds: 0 } : {}),
+                    });
+                    void editLog(items);
+                  }}
+                >
+                  <Plus size={13} />{" "}
+                  {activeLog.isRunning ? "Add next" : "Add event"}
+                </Button>
+                <Link to="/media" className="ml-auto">
+                  Library & tags
+                </Link>
               </div>
             )}
-            <div className="console-log-summary flex items-center justify-between gap-3">
-              <span className="truncate">
-                {nextQueuedSong
-                  ? `Play next · ${nextQueuedSong.title}`
-                  : nextQueueEntry
-                    ? "Play next · Unavailable playlist item"
-                    : "Play Next is empty"}
-              </span>
-              <span className="shrink-0">{songQueue.length} queued</span>
-            </div>
           </ConsolePanel>
           <aside className="radio-tools" aria-label="Live audio tools">
             <section
@@ -717,30 +809,32 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         </div>
       </div>
       <PlaybackBar
-        sequence={songSequence}
+        sequence={null as any}
         programSongPlayback={programSongPlayback}
-        sceneQuickActions={[]}
-        onChange={(seq) => {
-          void onSaveSongSequence(seq);
-        }}
-        onTakeSelection={handleTakeSelection}
-        onTakeOffAir={onTakeOffAir}
+        onChange={() => {}}
         onStopAllInstants={onStopAllInstants}
-        onStageScene={() => {}}
-        onTakeScene={() => {}}
-      />
-
-      <PlaylistSheetPanel
-        isOpen={playlistSheetOpen}
-        onClose={() => setPlaylistSheetOpen(false)}
-        sequence={songSequence}
-        songCatalog={songCatalog}
-        programSongPlayback={programSongPlayback}
-        isSaving={false}
-        onChange={(seq) => {
-          void onSaveSongSequence(seq);
+        logTransport={{
+          isRunning: !!runningLog,
+          canStart:
+            !!activeLog?.publishedAt && !activeLog.lastStartedAt && !runningLog,
+          canAdvance:
+            !!runningLog &&
+            Date.parse(runningLog.scheduledAt!) <= Date.now() &&
+            currentLogIndex < runningLog.items.length - 1,
+          busy: logBusy,
+          label: runningLog
+            ? Date.parse(runningLog.scheduledAt!) > Date.now()
+              ? "Log armed for scheduled hour"
+              : "Log automation running"
+            : activeLog?.lastStartedAt
+              ? "Log stopped"
+              : activeLog?.publishedAt
+                ? "Waiting for scheduled hour"
+                : "Publish a log to start",
+          onStart: () => void commandLog("start"),
+          onStop: () => void commandLog("stop"),
+          onAdvance: () => void commandLog("advance"),
         }}
-        onTakeSelection={handleTakeSelection}
       />
     </div>
   );

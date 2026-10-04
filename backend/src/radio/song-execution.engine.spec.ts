@@ -132,6 +132,7 @@ function createEngine(opts: {
     getRadioSettings: jest.fn().mockResolvedValue(null),
   };
   const flightService = {
+    isClockedLogRunning: jest.fn().mockReturnValue(false),
     handleSongEnded: jest.fn().mockResolvedValue({ ok: true }),
   };
   const metrics = {
@@ -828,6 +829,36 @@ describe('SongExecutionEngine authoritative playback', () => {
     await flush();
 
     expect(radioService.playSong).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a running clocked log sole ownership over an authoritative end and idle reconciliation', async () => {
+    const { engine, radioService, flightService, nowPlayingPublisher } =
+      createEngine({ reconciled: true, radio: true });
+    engine.handleSequenceUpdated('radio-1', SEQUENCE);
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const calls = radioService.playSong.mock.calls as unknown as string[][];
+    const requestId = calls[0][4];
+    flightService.isClockedLogRunning.mockReturnValue(true);
+    engine.handleQueueUpdated('radio-1', [
+      { id: 'old-queue', itemId: 'song-1', enqueuedAt: 1 },
+    ]);
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush();
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 2),
+    );
+    await flush();
+    expect(flightService.handleSongEnded).toHaveBeenCalledTimes(1);
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(nowPlayingPublisher.publishStopped).not.toHaveBeenCalled();
   });
 
   it('ignores duplicate track.ended events for the same request', async () => {

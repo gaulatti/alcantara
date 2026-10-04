@@ -5,7 +5,7 @@ import {
   Modal,
   Select,
   showAlert,
-} from '@gaulatti/bleecker';
+} from "@gaulatti/bleecker";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,24 +15,26 @@ import {
   Radio,
   Save,
   Trash2,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { VoiceTrackRecorder } from '../components/VoiceTrackRecorder';
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import "../components/BroadcastConsole.css";
+import { RadioLogGenerator } from "../components/RadioLogGenerator";
+import { VoiceTrackRecorder } from "../components/VoiceTrackRecorder";
 import type {
   FlightCue,
   FlightSequence,
   InstantItem,
   SongCatalogItem,
-} from '../models/broadcast';
+} from "../models/broadcast";
 import {
   createFlightSequence,
   fetchFlightSequences,
   preflightFlightSequence,
   publishFlightSequence,
   updateFlightSequence,
-} from '../services/flight';
-import { apiUrl } from '../utils/apiBaseUrl';
-import { useGlobalProgramId } from '../utils/globalProgram';
+} from "../services/flight";
+import { apiUrl } from "../utils/apiBaseUrl";
+import { useGlobalProgramId } from "../utils/globalProgram";
 
 function nextLocalHour(): string {
   const date = new Date();
@@ -42,16 +44,16 @@ function nextLocalHour(): string {
 }
 
 function formatClock(seconds: number | undefined): string {
-  if (seconds === undefined) return 'After previous';
-  return `+${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  if (seconds === undefined) return "After previous";
+  return `+${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function message(error: unknown): string {
-  return error instanceof Error ? error.message : 'Request failed';
+  return error instanceof Error ? error.message : "Request failed";
 }
 
 export function meta() {
-  return [{ title: 'Radio log - Alcantara' }];
+  return [{ title: "Radio log - Alcantara" }];
 }
 
 export default function RadioLogPage() {
@@ -86,15 +88,24 @@ export default function RadioLogPage() {
   const load = useCallback(async () => {
     const [sequences, songResponse, clipResponse] = await Promise.all([
       fetchFlightSequences(programId),
-      fetch(apiUrl('/songs?page=1&limit=1000')),
-      fetch(apiUrl('/instants')),
+      fetch(apiUrl("/songs?page=1&limit=200")),
+      fetch(apiUrl("/instants")),
     ]);
     if (!songResponse.ok || !clipResponse.ok)
-      throw new Error('Radio library is unavailable');
+      throw new Error("Radio library is unavailable");
     const songPayload = await songResponse.json();
     const clipPayload = await clipResponse.json();
+    const allSongs: SongCatalogItem[] = Array.isArray(songPayload.data)
+      ? [...songPayload.data]
+      : [];
+    for (let page = 2; page <= (songPayload.meta?.totalPages ?? 1); page++) {
+      const response = await fetch(apiUrl(`/songs?page=${page}&limit=200`));
+      if (!response.ok) throw new Error("Radio library is unavailable");
+      const payload = await response.json();
+      allSongs.push(...payload.data);
+    }
     setLogs(sequences);
-    setSongs(Array.isArray(songPayload.data) ? songPayload.data : []);
+    setSongs(allSongs);
     setClips(Array.isArray(clipPayload) ? clipPayload : []);
     setSelectedId((current) =>
       current && sequences.some((log) => log.id === current)
@@ -118,7 +129,7 @@ export default function RadioLogPage() {
       !Number.isFinite(scheduledAt.getTime()) ||
       scheduledAt.getTime() <= Date.now()
     ) {
-      setError('Choose a future hour.');
+      setError("Choose a future hour.");
       return;
     }
     setBusy(true);
@@ -130,7 +141,7 @@ export default function RadioLogPage() {
       });
       await load();
       setSelectedId(created.id);
-      showAlert('Draft radio log created.', 'success');
+      showAlert("Draft radio log created.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -139,7 +150,7 @@ export default function RadioLogPage() {
   };
 
   const save = async (nextItems = items): Promise<FlightSequence> => {
-    if (!selected) throw new Error('Select a radio log');
+    if (!selected) throw new Error("Select a radio log");
     setBusy(true);
     setError(null);
     try {
@@ -152,7 +163,7 @@ export default function RadioLogPage() {
       );
       setItems(updated.items);
       setPreflight(null);
-      showAlert('Radio log saved.', 'success');
+      showAlert("Radio log saved.", "success");
       return updated;
     } catch (cause) {
       setError(message(cause));
@@ -171,7 +182,7 @@ export default function RadioLogPage() {
       const result = await preflightFlightSequence(programId, updated.id);
       setPreflight(result);
       if (result.ready)
-        showAlert('All scheduled audio is available.', 'success');
+        showAlert("All scheduled audio is available.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -194,7 +205,7 @@ export default function RadioLogPage() {
         current.map((log) => (log.id === published.id ? published : log)),
       );
       setPreflight({ ready: true, issues: [] });
-      showAlert('Log published for automatic start.', 'success');
+      showAlert("Log published for automatic start.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -208,29 +219,31 @@ export default function RadioLogPage() {
         row === index ? { ...item, ...patch } : item,
       ),
     );
-  const add = (kind: 'playSong' | 'instant' | 'stopSong') => {
+  const add = (kind: "playSong" | "instant" | "stopSong") => {
     const cue: FlightCue = {
       id: crypto.randomUUID(),
       kind,
       ...(items.length === 0 ? { clockOffsetSeconds: 0 } : {}),
     };
-    if (kind === 'playSong')
+    if (kind === "playSong")
       cue.songId = songs.find((song) => song.enabled)?.id;
-    if (kind === 'instant')
+    if (kind === "instant")
       cue.instantId = clips.find((clip) => clip.enabled)?.id;
     setItems((current) => [...current, cue]);
   };
 
   const activeIndex = selected?.isRunning
     ? selected.items.findIndex((item) => item.id === selected.activeItemId)
-    : -1;
+    : selected?.lastStartedAt
+      ? selected.items.length - 1
+      : -1;
   const recordCue = recordIndex === null ? null : items[recordIndex];
   const recordSong = recordCue?.songId
     ? songs.find((song) => song.id === recordCue.songId)
     : null;
 
   return (
-    <main className="min-h-full bg-dark-sand px-4 py-5 text-text-primary lg:px-7">
+    <main className="broadcast-console radio-log-planner min-h-full bg-dark-sand px-4 py-5 text-text-primary lg:px-7">
       <AlertContainer />
       <div className="mx-auto max-w-[92rem] space-y-5">
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border-subtle pb-5">
@@ -238,10 +251,9 @@ export default function RadioLogPage() {
             <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-accent-blue">
               <Radio size={15} /> Radio production
             </p>
-            <h1 className="text-3xl font-semibold">Clocked logs</h1>
+            <h1 className="text-3xl font-semibold">Radio logs</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              Build the next hour, check every audio item, then publish it for
-              air.
+              Library tags → clock blocks → one reviewed log for air.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -267,7 +279,7 @@ export default function RadioLogPage() {
             {error}
           </div>
         ) : null}
-        <div className="grid gap-5 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
+        <div className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] 2xl:grid-cols-[13rem_minmax(0,1fr)_20rem]">
           <aside className="rounded-xl border border-border-subtle bg-sand/5 p-3">
             <h2 className="px-2 pb-3 text-xs font-bold uppercase tracking-wider text-text-secondary">
               Scheduled hours
@@ -278,26 +290,32 @@ export default function RadioLogPage() {
                   <button
                     key={log.id}
                     type="button"
+                    disabled={busy || dirty}
+                    title={
+                      dirty
+                        ? "Save or discard the current draft first"
+                        : undefined
+                    }
                     onClick={() => setSelectedId(log.id)}
-                    className={`w-full rounded-lg border px-3 py-3 text-left ${selectedId === log.id ? 'border-accent-blue/60 bg-accent-blue/15' : 'border-transparent hover:bg-sand/10'}`}
+                    className={`w-full rounded-lg border px-3 py-3 text-left ${selectedId === log.id ? "border-accent-blue/60 bg-accent-blue/15" : "border-transparent hover:bg-sand/10"}`}
                   >
                     <span className="block text-sm font-semibold">
                       {new Date(log.scheduledAt!).toLocaleString(undefined, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
                       })}
                     </span>
                     <span className="mt-1 block text-xs text-text-secondary">
                       {log.isRunning
-                        ? 'ON AIR'
+                        ? "ON AIR"
                         : log.publishedAt
                           ? log.lastStartedAt
-                            ? 'Aired / interrupted'
-                            : 'Ready for air'
-                          : 'Draft'}{' '}
+                            ? "Aired / interrupted"
+                            : "Ready for air"
+                          : "Draft"}{" "}
                       · {log.items.length} items
                     </span>
                   </button>
@@ -319,26 +337,43 @@ export default function RadioLogPage() {
                       <h2 className="text-lg font-semibold">
                         {new Date(selected.scheduledAt!).toLocaleString(
                           undefined,
-                          { dateStyle: 'full', timeStyle: 'short' },
+                          { dateStyle: "full", timeStyle: "short" },
                         )}
                       </h2>
                     </div>
                     <p className="mt-1 text-xs text-text-secondary">
-                      Revision {selected.revision} ·{' '}
+                      Revision {selected.revision} ·{" "}
                       {selected.isRunning
-                        ? 'On air'
+                        ? "On air"
                         : selected.publishedAt
-                          ? 'Published'
-                          : 'Draft'}
-                      {dirty ? ' · Unsaved changes' : ''}
+                          ? "Published"
+                          : "Draft"}
+                      {dirty ? " · Unsaved changes" : ""}
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    {dirty && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          setItems(selected.items);
+                          setPreflight(null);
+                        }}
+                      >
+                        Discard changes
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="secondary"
                       onClick={() => void save()}
-                      disabled={!dirty || busy}
+                      disabled={
+                        !dirty ||
+                        busy ||
+                        (!!selected.lastStartedAt && !selected.isRunning)
+                      }
                     >
                       <Save size={15} /> Save
                     </Button>
@@ -347,7 +382,7 @@ export default function RadioLogPage() {
                       onClick={() => void publish()}
                       disabled={busy || selected.isRunning}
                     >
-                      {selected.publishedAt ? 'Recheck and publish' : 'Publish'}
+                      {selected.publishedAt ? "Recheck and publish" : "Publish"}
                     </Button>
                   </div>
                 </div>
@@ -360,48 +395,48 @@ export default function RadioLogPage() {
                     return (
                       <div
                         key={item.id}
-                        className={`grid gap-3 rounded-xl border p-3 md:grid-cols-[4rem_minmax(0,1fr)_8rem_auto] ${locked ? 'border-green-500/40 bg-green-500/5' : 'border-border-subtle bg-dark-sand/40'}`}
+                        className={`grid gap-3 rounded-xl border p-3 md:grid-cols-[4rem_minmax(0,1fr)_8rem_auto] ${locked ? "border-green-500/40 bg-green-500/5" : "border-border-subtle bg-dark-sand/40"}`}
                       >
                         <span className="self-center font-mono text-sm font-bold text-text-secondary">
-                          {String(index + 1).padStart(2, '0')}
+                          {String(index + 1).padStart(2, "0")}
                         </span>
                         <div className="min-w-0">
                           <span className="text-[10px] font-bold uppercase tracking-widest text-accent-blue">
-                            {item.kind === 'playSong'
-                              ? 'Song'
-                              : item.kind === 'instant'
-                                ? 'Audio clip'
-                                : 'Stop'}
+                            {item.kind === "playSong"
+                              ? "Song"
+                              : item.kind === "instant"
+                                ? "Audio clip"
+                                : "Stop"}
                           </span>
-                          {item.kind === 'playSong' ? (
+                          {item.kind === "playSong" ? (
                             <Select
-                              value={item.songId ? String(item.songId) : ''}
+                              value={item.songId ? String(item.songId) : ""}
                               onChange={(value) =>
                                 updateItem(index, { songId: Number(value) })
                               }
                               disabled={locked}
                               options={[
-                                { value: '', label: 'Choose song' },
+                                { value: "", label: "Choose song" },
                                 ...songs.map((candidate) => ({
                                   value: String(candidate.id),
-                                  label: `${candidate.artist} — ${candidate.title}${candidate.enabled ? '' : ' (disabled)'}`,
+                                  label: `${candidate.artist} — ${candidate.title}${candidate.enabled ? "" : " (disabled)"}`,
                                 })),
                               ]}
                             />
-                          ) : item.kind === 'instant' ? (
+                          ) : item.kind === "instant" ? (
                             <Select
                               value={
-                                item.instantId ? String(item.instantId) : ''
+                                item.instantId ? String(item.instantId) : ""
                               }
                               onChange={(value) =>
                                 updateItem(index, { instantId: Number(value) })
                               }
                               disabled={locked}
                               options={[
-                                { value: '', label: 'Choose clip' },
+                                { value: "", label: "Choose clip" },
                                 ...clips.map((candidate) => ({
                                   value: String(candidate.id),
-                                  label: `${candidate.name}${candidate.enabled ? '' : ' (disabled)'}`,
+                                  label: `${candidate.name}${candidate.enabled ? "" : " (disabled)"}`,
                                 })),
                               ]}
                             />
@@ -410,7 +445,7 @@ export default function RadioLogPage() {
                           )}
                           {item.voiceTrackInstantId ? (
                             <p className="mt-1 text-xs text-violet-300">
-                              Voice track #{item.voiceTrackInstantId} · song at{' '}
+                              Voice track #{item.voiceTrackInstantId} · song at{" "}
                               {Math.round((item.voiceDuckGain ?? 0.35) * 100)}%
                             </p>
                           ) : null}
@@ -421,11 +456,11 @@ export default function RadioLogPage() {
                             type="number"
                             min="0"
                             max="3599"
-                            value={item.clockOffsetSeconds ?? ''}
+                            value={item.clockOffsetSeconds ?? ""}
                             onChange={(event) =>
                               updateItem(index, {
                                 clockOffsetSeconds:
-                                  event.target.value === ''
+                                  event.target.value === ""
                                     ? undefined
                                     : Number(event.target.value),
                               })
@@ -438,7 +473,7 @@ export default function RadioLogPage() {
                           </span>
                         </label>
                         <div className="flex items-center gap-1">
-                          {item.kind === 'playSong' && song ? (
+                          {item.kind === "playSong" && song ? (
                             <Button
                               type="button"
                               size="xs"
@@ -478,24 +513,33 @@ export default function RadioLogPage() {
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => add('playSong')}
-                      disabled={busy}
+                      onClick={() => add("playSong")}
+                      disabled={
+                        busy ||
+                        (!!selected.lastStartedAt && !selected.isRunning)
+                      }
                     >
                       <Plus size={14} /> Song
                     </Button>
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => add('instant')}
-                      disabled={busy}
+                      onClick={() => add("instant")}
+                      disabled={
+                        busy ||
+                        (!!selected.lastStartedAt && !selected.isRunning)
+                      }
                     >
                       <Plus size={14} /> Clip
                     </Button>
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => add('stopSong')}
-                      disabled={busy}
+                      onClick={() => add("stopSong")}
+                      disabled={
+                        busy ||
+                        (!!selected.lastStartedAt && !selected.isRunning)
+                      }
                     >
                       <Plus size={14} /> Stop
                     </Button>
@@ -508,7 +552,15 @@ export default function RadioLogPage() {
               </div>
             )}
           </section>
-          <aside className="space-y-4">
+          <aside className="space-y-4 lg:col-span-2 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 2xl:col-span-1 2xl:block 2xl:space-y-4">
+            <RadioLogGenerator
+              programId={programId}
+              log={selected}
+              onGenerated={(generated) => {
+                setItems(generated);
+                setPreflight(null);
+              }}
+            />
             <div className="rounded-xl border border-border-subtle bg-sand/5 p-4">
               <h2 className="text-sm font-bold">Air readiness</h2>
               <p className="mt-1 text-xs text-text-secondary">
@@ -525,7 +577,7 @@ export default function RadioLogPage() {
               </Button>
               {preflight ? (
                 <div
-                  className={`mt-3 rounded-lg p-3 text-sm ${preflight.ready ? 'bg-green-500/10 text-green-300' : 'bg-amber-500/10 text-amber-300'}`}
+                  className={`mt-3 rounded-lg p-3 text-sm ${preflight.ready ? "bg-green-500/10 text-green-300" : "bg-amber-500/10 text-amber-300"}`}
                 >
                   {preflight.ready ? (
                     <span className="flex items-center gap-2">
@@ -559,14 +611,14 @@ export default function RadioLogPage() {
                     className="flex justify-between gap-2 border-b border-border-subtle pb-2 text-xs"
                   >
                     <span className="truncate">
-                      {index + 1}.{' '}
-                      {item.kind === 'playSong'
+                      {index + 1}.{" "}
+                      {item.kind === "playSong"
                         ? (songs.find((song) => song.id === item.songId)
-                            ?.title ?? 'Missing song')
-                        : item.kind === 'instant'
+                            ?.title ?? "Missing song")
+                        : item.kind === "instant"
                           ? (clips.find((clip) => clip.id === item.instantId)
-                              ?.name ?? 'Missing clip')
-                          : 'Stop'}
+                              ?.name ?? "Missing clip")
+                          : "Stop"}
                     </span>
                     <span className="shrink-0 font-mono text-text-secondary">
                       {formatClock(item.clockOffsetSeconds)}

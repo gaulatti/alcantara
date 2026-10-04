@@ -4,13 +4,26 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { RadioPanel } from "./RadioPanel";
+import * as flight from "../services/flight";
+vi.mock("../services/flight", () => ({
+  fetchFlightSequences: vi.fn(),
+  updateFlightSequence: vi.fn(),
+  activateFlightSequence: vi.fn(),
+  startFlight: vi.fn(),
+  stopFlight: vi.fn(),
+  goFlight: vi.fn(),
+}));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 function props(): ComponentProps<typeof RadioPanel> {
   const now = new Date().toISOString();
@@ -56,7 +69,7 @@ function props(): ComponentProps<typeof RadioPanel> {
             id: `cue-${i + 1}`,
             kind: "playSong" as const,
             songId: i + 1,
-            clockOffsetSeconds: i * 180,
+            ...(i === 0 ? { clockOffsetSeconds: 0 } : {}),
           })),
           createdAt: now,
           updatedAt: now,
@@ -160,30 +173,73 @@ it("keeps one on-air player in the transport dock with timing, confidence and th
     screen.getByRole("progressbar", { name: "Track progress" }),
   ).toHaveAttribute("aria-valuenow", "23");
   expect(screen.getByText("Audio detected")).toBeVisible();
-  expect(screen.getByRole("region", { name: "Rundown" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "On-air log" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Cartwall" })).toBeVisible();
   expect(screen.getByRole("slider", { name: "Music level" })).toBeVisible();
   expect(
-    screen.getByRole("button", { name: "Stop / Take Off Air" }),
+    screen.getByRole("button", { name: "Stop log / Take Off Air" }),
   ).toBeVisible();
 });
 
-it("opens the entire clocked log and supports keyboard tab navigation", () => {
+it("shows one complete on-air log without playlist tabs or playback modes", () => {
   mount();
-  fireEvent.keyDown(screen.getByRole("tab", { name: "Music playlist" }), {
-    key: "ArrowRight",
-  });
-  expect(screen.getByRole("tab", { name: /Clocked log/ })).toHaveFocus();
+  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("group", { name: "Playback mode" }),
+  ).not.toBeInTheDocument();
   const log = screen.getByRole("list", { name: "On-air log" });
   expect(within(log).getAllByRole("listitem")).toHaveLength(6);
   expect(within(log).getByText("NOW")).toBeVisible();
   expect(within(log).getByText("NEXT")).toBeVisible();
-  fireEvent.keyDown(screen.getByRole("tab", { name: /Clocked log/ }), {
-    key: "Home",
-  });
-  expect(
-    screen.getByRole("tabpanel", { name: "Music playlist" }),
-  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Remove event 1" })).toBeDisabled();
+  expect(screen.getByRole("link", { name: "Prepare hours" })).toHaveAttribute(
+    "href",
+    "/radio-log",
+  );
+});
+
+it("moves Play Next inside the persisted log instead of a second queue", async () => {
+  const p = props();
+  const original = p.fixtureData!.logs[0];
+  vi.mocked(flight.updateFlightSequence).mockImplementation(
+    async (_program, _id, data) => ({
+      ...original,
+      items: data.items!,
+      revision: 2,
+    }),
+  );
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Play event 4 next" }));
+  await waitFor(() =>
+    expect(flight.updateFlightSequence).toHaveBeenCalledWith("radio-demo", 1, {
+      revision: 1,
+      items: [
+        original.items[0],
+        original.items[3],
+        original.items[1],
+        original.items[2],
+        ...original.items.slice(4),
+      ],
+    }),
+  );
+  expect(p.onQueueSong).not.toHaveBeenCalled();
+  expect(p.onSaveSongSequence).not.toHaveBeenCalled();
+});
+
+it("routes transport to log execution and presents request failures", async () => {
+  vi.mocked(flight.goFlight).mockRejectedValue(
+    new Error("Log command rejected"),
+  );
+  const p = props();
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Advance log" }));
+  await waitFor(() =>
+    expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Log command rejected",
+  );
+  expect(p.onSaveSongSequence).not.toHaveBeenCalled();
 });
 
 it("keeps cartwall triggering, disabled clips, search and mixer controls wired", () => {
@@ -235,28 +291,8 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   mount(p);
   expect(screen.getByText("Nothing on air")).toBeVisible();
   expect(screen.queryByText("—:—")).not.toBeInTheDocument();
-  expect(screen.getByText("Playlist is empty")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Play selection" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("tab", { name: "Clocked log" }));
+  expect(screen.getByRole("button", { name: "Start log" })).toBeDisabled();
   expect(screen.getByText("No published hour is queued.")).toBeVisible();
-});
-
-it("shows the queued successor after the active entry and labels missing playlist items", () => {
-  const p = props();
-  p.songQueue = [
-    { id: "past", itemId: "song-1", enqueuedAt: 1 },
-    { id: "playing", itemId: "song-1", enqueuedAt: 2 },
-    { id: "next", itemId: "removed-song", enqueuedAt: 3 },
-  ];
-  p.programSongPlayback = {
-    ...p.programSongPlayback!,
-    queueEntryId: "playing",
-  };
-  mount(p);
-  expect(
-    screen.getByText("Play next · Unavailable playlist item"),
-  ).toBeVisible();
-  expect(screen.queryByText("Play next · City lights")).not.toBeInTheDocument();
 });
 
 it("renders reported metadata when the playing track is absent from the playlist", () => {

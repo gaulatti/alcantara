@@ -68,9 +68,7 @@ export type HighRotationActionResult =
   | 'history-persistence-failed';
 
 export type SnapshotReconciliationResult =
-  | 'accepted'
-  | 'instance-mismatch'
-  | 'instance-conflict';
+  'accepted' | 'instance-mismatch' | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -101,6 +99,10 @@ const OUTPUT_CONFIDENCE_STATES = [
   'silent',
 ] as const;
 const RADIO_LOG_RESULTS = [
+  'generated',
+  'edited',
+  'edit-failed',
+  'generation-failed',
   'published',
   'started',
   'start-failed',

@@ -192,6 +192,38 @@ async function main() {
     },
   });
 
+  // Fictional tags exercise the normal Library -> generated log path offline.
+  const demoMusicTag = await prisma.mediaLabel.upsert({
+    where: { name: 'Demo music' },
+    update: {},
+    create: {
+      id: 'seed:demo-music',
+      name: 'Demo music',
+      description: 'Fictional local radio pool',
+    },
+  });
+  for (const [position, song] of [assignedSong, availableSong].entries()) {
+    await syncSongAsset(prisma, song);
+    const linkedSong = await prisma.song.findUniqueOrThrow({
+      where: { id: song.id },
+      select: { assetId: true },
+    });
+    await prisma.mediaAssetLabel.upsert({
+      where: {
+        labelId_assetId: {
+          labelId: demoMusicTag.id,
+          assetId: linkedSong.assetId!,
+        },
+      },
+      update: {},
+      create: {
+        labelId: demoMusicTag.id,
+        assetId: linkedSong.assetId!,
+        position,
+      },
+    });
+  }
+
   const songSequence = {
     mode: 'manual',
     items: [
@@ -502,7 +534,14 @@ async function main() {
     ['test:alcantara:operator-b', 'desktop', 'audio', false, true, 360],
     ['test:alcantara:viewer', 'desktop', 'director', false, true, 320],
   ] as const;
-  for (const [subject, deviceClass, workspace, touchMode, shortcutsEnabled, dockWidth] of seededProfiles) {
+  for (const [
+    subject,
+    deviceClass,
+    workspace,
+    touchMode,
+    shortcutsEnabled,
+    dockWidth,
+  ] of seededProfiles) {
     const profile = {
       workspace,
       ...(dockWidth === null ? {} : { dockWidth }),

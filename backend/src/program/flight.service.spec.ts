@@ -1,5 +1,12 @@
 import { FlightService } from './flight.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { PrismaService } from '../prisma.service';
+import { ProgramService } from './program.service';
+import type {
+  FlightCue,
+  FlightRuntimeState,
+  FlightSequence,
+} from './flight.types';
 
 describe('FlightService song cues', () => {
   it('takes the catalog song on air after persisting the manual cue sequence', async () => {
@@ -93,16 +100,14 @@ describe('FlightService clocked logs', () => {
         findUniqueOrThrow: jest.fn().mockImplementation(async () => record),
       },
       song: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              id: 101,
-              enabled: true,
-              audioUrl: 'https://media.test/song.mp3',
-              durationMs: 120_000,
-            },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 101,
+            enabled: true,
+            audioUrl: 'https://media.test/song.mp3',
+            durationMs: 120_000,
+          },
+        ]),
       },
       instant: { findMany: jest.fn().mockResolvedValue([]) },
     } as any;
@@ -150,15 +155,13 @@ describe('FlightService clocked logs', () => {
         updateMany: jest.fn(),
       },
       song: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              id: 101,
-              enabled: false,
-              audioUrl: 'https://media.test/song.mp3',
-            },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 101,
+            enabled: false,
+            audioUrl: 'https://media.test/song.mp3',
+          },
+        ]),
       },
       instant: { findMany: jest.fn().mockResolvedValue([]) },
     } as any;
@@ -185,5 +188,184 @@ describe('FlightService clocked logs', () => {
       service.publishFlightSequence('radio-1', 7, 1),
     ).rejects.toThrow('song unavailable');
     expect(prisma.flightSequence.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('FlightService tag generation and live log edits', () => {
+  function setup() {
+    const record: Omit<FlightSequence, 'createdAt' | 'updatedAt'> = {
+      id: 7,
+      programStateId: 1,
+      name: 'Next hour',
+      scheduledAt: new Date(Date.now() + 3600000),
+      revision: 1,
+      publishedAt: null,
+      lastStartedAt: null,
+      loop: false,
+      isRunning: false,
+      activeItemId: null,
+      items: [
+        { id: 'now', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 },
+        { id: 'later', kind: 'playSong', songId: 2 },
+        { id: 'hard', kind: 'playSong', songId: 3, clockOffsetSeconds: 1800 },
+      ],
+    };
+    const songs = [1, 2, 3].map((id) => ({
+      id,
+      artist: `Artist ${id}`,
+      enabled: true,
+      audioUrl: `https://media.test/${id}.mp3`,
+      durationMs: 180000,
+      asset: { labels: [{ labelId: 'music', position: id }] },
+    }));
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 1, programId: 'radio-1', type: 'radio' }),
+      },
+      flightSequence: {
+        findFirst: jest.fn().mockResolvedValue(record),
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest
+          .fn()
+          .mockImplementation(({ data }: { data: { items?: FlightCue[] } }) => {
+            if (data.items) record.items = data.items;
+            record.revision++;
+            return Promise.resolve({ count: 1 });
+          }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve(record)),
+      },
+      song: { findMany: jest.fn().mockResolvedValue(songs) },
+      instant: { findMany: jest.fn().mockResolvedValue([]) },
+      mediaLabel: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'music', name: 'Music' }]),
+      },
+    };
+    const metrics = new RadioMetricsService();
+    const service = new FlightService(
+      prisma as unknown as PrismaService,
+      {} as ProgramService,
+      metrics,
+    );
+    return { record, prisma, metrics, service };
+  }
+  it('preflights a scoped tag preview and saves concrete IDs through the existing revision boundary', async () => {
+    const { service, prisma, record, metrics } = setup();
+    const { items } = await service.generateTaggedLog('radio-1', 7, {
+      revision: 1,
+      rules: {
+        slots: [{ labelId: 'music', count: 2, clockOffsetSeconds: 0 }],
+        artistSeparation: 1,
+      },
+    });
+    expect(prisma.flightSequence.findFirst).toHaveBeenCalledWith({
+      where: { id: 7, programStateId: 1 },
+    });
+    const query = prisma.song.findMany.mock.calls[0] as unknown as [
+      {
+        where: { asset: { labels: { some: { labelId: { in: string[] } } } } };
+      },
+    ];
+    expect(query[0].where.asset.labels.some.labelId.in).toEqual(['music']);
+    expect(prisma.flightSequence.updateMany).not.toHaveBeenCalled();
+    await service.updateFlightSequence('radio-1', 7, { revision: 1, items });
+    expect(record.items.map((cue) => cue.songId)).toEqual([1, 2]);
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="edited"} 1',
+    );
+    prisma.mediaLabel.findMany.mockResolvedValue([]);
+    expect((await service.preflightFlightSequence('radio-1', 7)).ready).toBe(
+      true,
+    );
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="generated"} 1',
+    );
+  });
+  it('refuses generation for published logs, stale revisions, and programs without a radio leg', async () => {
+    const { service, record, prisma, metrics } = setup();
+    record.publishedAt = new Date();
+    await expect(
+      service.generateTaggedLog('radio-1', 7, { revision: 1 }),
+    ).rejects.toThrow('unaired draft');
+    record.publishedAt = null;
+    await expect(
+      service.generateTaggedLog('radio-1', 7, { revision: 0 }),
+    ).rejects.toThrow('log changed');
+    prisma.programState.findUnique.mockResolvedValue({ id: 1, type: 'tv' });
+    await expect(
+      service.generateTaggedLog('radio-1', 7, { revision: 1 }),
+    ).rejects.toThrow('radio leg');
+    expect(prisma.song.findMany).not.toHaveBeenCalled();
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="generation-failed"} 3',
+    );
+  });
+  it('locks the played prefix and keeps a hard timer bound to the cue after future edits', async () => {
+    jest.useFakeTimers();
+    const { service, record, prisma } = setup();
+    record.publishedAt = new Date();
+    record.lastStartedAt = new Date();
+    record.isRunning = true;
+    const runtime: FlightRuntimeState = {
+      sequenceId: 7,
+      programId: 'radio-1',
+      items: record.items,
+      loop: false,
+      activeIndex: 0,
+      isRunning: true,
+      generation: 1,
+      timer: null,
+      waitingForSongEnd: true,
+      startedAt: Date.now(),
+      scheduledAtMs: Date.now(),
+    };
+    const internals = service as unknown as {
+      runtimes: Map<string, FlightRuntimeState>;
+      executeCueAtIndex: (
+        programId: string,
+        index: number,
+        generation: number,
+      ) => Promise<void>;
+    };
+    internals.runtimes.set('radio-1', runtime);
+    const execute = jest
+      .spyOn(internals, 'executeCueAtIndex')
+      .mockResolvedValue(undefined);
+    try {
+      await expect(
+        service.updateFlightSequence('radio-1', 7, {
+          revision: 1,
+          items: [{ ...record.items[0], songId: 2 }, ...record.items.slice(1)],
+        }),
+      ).rejects.toThrow('played log');
+      expect(prisma.flightSequence.updateMany).not.toHaveBeenCalled();
+      await service.updateFlightSequence('radio-1', 7, {
+        revision: 1,
+        items: [record.items[0], record.items[2]],
+      });
+      expect(runtime.items.map((item) => item.id)).toEqual(['now', 'hard']);
+      jest.advanceTimersByTime(1800000);
+      expect(execute).toHaveBeenCalledWith('radio-1', 1, 2);
+    } finally {
+      service.onModuleDestroy();
+      jest.useRealTimers();
+    }
+  });
+  it('refuses rewriting stopped history and rescheduling a published hour', async () => {
+    const { service, record } = setup();
+    record.publishedAt = new Date();
+    await expect(
+      service.updateFlightSequence('radio-1', 7, {
+        revision: 1,
+        scheduledAt: null,
+      }),
+    ).rejects.toThrow('published log');
+    record.lastStartedAt = new Date();
+    await expect(
+      service.updateFlightSequence('radio-1', 7, { revision: 1, items: [] }),
+    ).rejects.toThrow('stopped log');
   });
 });
