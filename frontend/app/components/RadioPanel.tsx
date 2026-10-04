@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
-import { AlertTriangle, List, Music2, Plus, Radio } from "lucide-react";
+import { AlertTriangle, List, Plus, Radio } from "lucide-react";
 import { ConsoleClock, ConsolePanel } from "./ConsoleSurface";
 import { Link } from "react-router";
 import type {
@@ -295,14 +295,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   );
 
   const isLive = stream?.running === true;
-  const isPlaying =
-    programSongPlayback?.isPlaying && programSongPlayback?.audioUrl;
-  const progress = programSongPlayback?.durationMs
-    ? Math.round(
-        (programSongPlayback.currentTimeMs / programSongPlayback.durationMs) *
-          100,
-      )
-    : 0;
   const activeLog = logs.find((sequence) => sequence.isRunning) ?? null;
   const nextLog =
     logs
@@ -346,12 +338,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         (item: any) => item.id === nextQueueEntry.itemId,
       )
     : null;
-  const remainingMs = programSongPlayback?.durationMs
-    ? Math.max(
-        0,
-        programSongPlayback.durationMs - programSongPlayback.currentTimeMs,
-      )
-    : null;
   const engineReady =
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
@@ -386,118 +372,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         <ConsoleClock />
       </header>
       <div className="radio-console-scroll">
-        <div className="radio-air-deck">
-          <section
-            className="radio-now"
-            aria-label="On-air player"
-            data-playing={Boolean(isPlaying)}
-          >
-            {isPlaying && programSongPlayback?.coverUrl ? (
-              <img
-                className="console-artwork"
-                src={programSongPlayback.coverUrl}
-                alt=""
-              />
-            ) : (
-              <div className="console-artwork">
-                <Music2 size={28} strokeWidth={1.3} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <span
-                className="console-status"
-                data-tone={isPlaying ? "live" : "muted"}
-              >
-                {isPlaying ? "ON AIR" : "PLAYER IDLE"}
-              </span>
-              <h2>
-                {isPlaying
-                  ? programSongPlayback?.title || "Untitled track"
-                  : "No track playing"}
-              </h2>
-              <p className="radio-now-artist truncate">
-                {isPlaying
-                  ? programSongPlayback?.artist || "Artist unavailable"
-                  : "Choose a song from the rundown to begin."}
-              </p>
-              {programSongPlayback?.introStatus === "degraded" ? (
-                <p className="mt-1 text-[10px] text-accent-yellow">
-                  Intro unavailable
-                  {programSongPlayback.introFailureReason
-                    ? `: ${programSongPlayback.introFailureReason}`
-                    : ""}
-                </p>
-              ) : programSongPlayback?.introStatus === "playing" ? (
-                <p className="mt-1 text-[10px] text-accent-yellow">
-                  Intro playing
-                </p>
-              ) : null}
-            </div>
-            <div className="radio-countdown">
-              <span className="console-eyebrow">
-                {programSongPlayback?.telemetryStale
-                  ? "Last reported remaining"
-                  : "Remaining"}
-              </span>
-              <strong>
-                {isPlaying && remainingMs !== null
-                  ? formatTime(remainingMs)
-                  : "—:—"}
-              </strong>
-              <small>
-                {isPlaying
-                  ? `${formatTime(programSongPlayback?.currentTimeMs || 0)} elapsed`
-                  : "Awaiting playback"}
-              </small>
-            </div>
-            {isPlaying && remainingMs !== null && (
-              <div
-                className="radio-progress"
-                role="progressbar"
-                aria-label="Track progress"
-                aria-valuenow={Math.max(0, Math.min(progress, 100))}
-                aria-valuemin={0}
-                aria-valuemax={100}
-              >
-                <span
-                  style={{ width: `${Math.max(0, Math.min(progress, 100))}%` }}
-                />
-              </div>
-            )}
-          </section>
-          <section
-            className="console-panel radio-next"
-            aria-label="Output confidence"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="console-eyebrow">Output confidence</span>
-              {outputTone === "live" ? (
-                <AlertTriangle size={14} />
-              ) : (
-                <Radio size={14} />
-              )}
-            </div>
-            <span
-              role="status"
-              className="console-status mt-2"
-              data-tone={outputTone}
-            >
-              {outputLabel}
-            </span>
-            <div className="console-next-foot">
-              <span>
-                {output?.lastSampleAt
-                  ? `Sample ${new Date(output.lastSampleAt).toLocaleTimeString()}`
-                  : "No level sample"}
-              </span>
-              <span>
-                {isLive && stream?.uptime != null
-                  ? `Up ${formatUptime(stream.uptime)}`
-                  : ""}
-              </span>
-            </div>
-          </section>
-        </div>
         <div className="radio-workspace">
           <ConsolePanel
             title="Rundown"
@@ -702,6 +576,38 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             </div>
           </ConsolePanel>
           <aside className="radio-tools" aria-label="Live audio tools">
+            <section
+              className="console-panel radio-next"
+              aria-label="Output confidence"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="console-eyebrow">Output confidence</span>
+                {outputTone === "live" ? (
+                  <AlertTriangle size={14} />
+                ) : (
+                  <Radio size={14} />
+                )}
+              </div>
+              <span
+                role="status"
+                className="console-status mt-2"
+                data-tone={outputTone}
+              >
+                {outputLabel}
+              </span>
+              <div className="console-next-foot">
+                <span>
+                  {output?.lastSampleAt
+                    ? `Sample ${new Date(output.lastSampleAt).toLocaleTimeString()}`
+                    : "No level sample"}
+                </span>
+                <span>
+                  {isLive && stream?.uptime != null
+                    ? `Up ${formatUptime(stream.uptime)}`
+                    : ""}
+                </span>
+              </div>
+            </section>
             <ConsolePanel
               title="Cartwall"
               eyebrow="Instant audio"

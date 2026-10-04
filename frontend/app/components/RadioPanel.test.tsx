@@ -144,11 +144,21 @@ function mount(p = props()) {
   );
 }
 
-it("shows authoritative on-air timing, confidence, rundown, cartwall and mixer together", () => {
+it("keeps one on-air player in the transport dock with timing, confidence and the full workspace", () => {
   mount();
   expect(
     within(screen.getByLabelText("On-air player")).getByText("02:18"),
   ).toBeVisible();
+  expect(screen.getAllByLabelText("On-air player")).toHaveLength(1);
+  expect(
+    screen.getByLabelText("On-air player").closest(".playback-dock"),
+  ).not.toBeNull();
+  expect(
+    within(screen.getByLabelText("On-air player")).getByText("City lights"),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("progressbar", { name: "Track progress" }),
+  ).toHaveAttribute("aria-valuenow", "23");
   expect(screen.getByText("Audio detected")).toBeVisible();
   expect(screen.getByRole("region", { name: "Rundown" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Cartwall" })).toBeVisible();
@@ -223,8 +233,8 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   p.programSongPlayback = null;
   p.fixtureData!.logs = [];
   mount(p);
-  expect(screen.getByText("No track playing")).toBeVisible();
-  expect(screen.getByText("—:—")).toBeVisible();
+  expect(screen.getByText("Nothing on air")).toBeVisible();
+  expect(screen.queryByText("—:—")).not.toBeInTheDocument();
   expect(screen.getByText("Playlist is empty")).toBeVisible();
   expect(screen.getByRole("button", { name: "Play selection" })).toBeDisabled();
   fireEvent.click(screen.getByRole("tab", { name: "Clocked log" }));
@@ -247,4 +257,43 @@ it("shows the queued successor after the active entry and labels missing playlis
     screen.getByText("Play next · Unavailable playlist item"),
   ).toBeVisible();
   expect(screen.queryByText("Play next · City lights")).not.toBeInTheDocument();
+});
+
+it("renders reported metadata when the playing track is absent from the playlist", () => {
+  const p = props();
+  p.programSongPlayback = {
+    ...p.programSongPlayback!,
+    token: "external:playback",
+    audioUrl: "https://example.test/external.mp3",
+    title: "External live track",
+    artist: "External artist",
+    coverUrl: "https://example.test/external-cover.png",
+    introStatus: "degraded",
+    introFailureReason: "Source unavailable",
+  };
+  mount(p);
+  const player = screen.getByLabelText("On-air player");
+  expect(within(player).getByText("External live track")).toBeVisible();
+  expect(within(player).getByText("External artist")).toBeVisible();
+  expect(player.querySelector("img")).toHaveAttribute(
+    "src",
+    "https://example.test/external-cover.png",
+  );
+  expect(within(player).queryByText("City lights")).not.toBeInTheDocument();
+  expect(within(player).getByText("02:18")).toBeVisible();
+  expect(
+    within(player).getByText("Intro unavailable: Source unavailable"),
+  ).toBeVisible();
+});
+
+it("does not use playlist duration when playback duration is unavailable", () => {
+  const p = props();
+  p.programSongPlayback = { ...p.programSongPlayback!, durationMs: null };
+  mount(p);
+  const player = screen.getByLabelText("On-air player");
+  expect(within(player).getByText("—:—")).toBeVisible();
+  expect(within(player).getByText("00:42 elapsed")).toBeVisible();
+  expect(
+    screen.queryByRole("progressbar", { name: "Track progress" }),
+  ).not.toBeInTheDocument();
 });

@@ -147,98 +147,9 @@
   padding: 12px;
   overflow-y: auto;
 }
-.radio-air-deck {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.38fr);
-  gap: 12px;
-  flex-shrink: 0;
-}
-.radio-now {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
-  position: relative;
-  min-height: 130px;
-  padding: 18px;
-  overflow: hidden;
-  border: 1px solid var(--console-border);
-  border-radius: var(--radius-ui);
-  background: var(--console-panel);
-}
-.radio-now::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  background: var(--console-muted);
-}
-.radio-now[data-playing="true"]::before {
-  background: var(--console-live);
-}
-.console-artwork {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border: 1px solid var(--console-border);
-  border-radius: var(--radius-ui);
-  background: var(--console-raised);
-  color: var(--console-ready);
-  object-fit: cover;
-}
-.radio-now h2 {
-  margin: 5px 0;
-  font-size: clamp(17px, 1.7vw, 25px);
-  line-height: 1.2;
-  font-weight: 650;
-  letter-spacing: -0.035em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.radio-now-artist {
-  font-size: 12px;
-  color: var(--console-muted);
-}
-.radio-countdown {
-  min-width: 125px;
-  text-align: right;
-}
-.radio-countdown strong {
-  display: block;
-  font-size: clamp(30px, 3vw, 42px);
-  line-height: 1.15;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.06em;
-}
-.radio-countdown small {
-  display: block;
-  margin-top: 5px;
-  font-size: 10px;
-  color: var(--console-muted);
-  font-variant-numeric: tabular-nums;
-}
-.radio-progress {
-  height: 3px;
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--console-border);
-}
-.radio-progress span {
-  display: block;
-  height: 100%;
-  background: var(--console-ready);
-}
 .radio-next {
   justify-content: center;
-  padding: 16px;
+  padding: 12px;
 }
 .radio-next h3 {
   margin: 7px 0 3px;
@@ -254,7 +165,7 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 6px;
   font-size: 10px;
   color: var(--console-muted);
 }
@@ -479,6 +390,13 @@
   padding: 10px 16px;
   box-shadow: 0 -5px 24px color-mix(in srgb, black 12%, transparent);
 }
+.broadcast-console .playback-track {
+  min-width: 190px;
+}
+.broadcast-console .playback-countdown strong {
+  color: var(--console-text);
+  letter-spacing: -0.04em;
+}
 .broadcast-console .transport-primary {
   border-radius: var(--radius-button);
   height: 42px;
@@ -672,21 +590,6 @@
   .radio-cartwall {
     min-height: 220px;
   }
-  .radio-air-deck {
-    grid-template-columns: minmax(0, 1fr) minmax(190px, 0.38fr);
-  }
-  .radio-now {
-    grid-template-columns: 48px minmax(0, 1fr) auto;
-    gap: 12px;
-    padding: 14px;
-  }
-  .radio-now .console-artwork {
-    width: 48px;
-    height: 48px;
-  }
-  .radio-countdown {
-    min-width: 100px;
-  }
 }
 @media (max-width: 767px) {
   .console-toolbar {
@@ -703,10 +606,6 @@
   .console-toolbar .console-status {
     font-size: 9px;
   }
-  .radio-air-deck {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
   .radio-next {
     min-height: 85px;
   }
@@ -715,24 +614,6 @@
   }
   .radio-tools {
     overflow: visible;
-  }
-  .radio-now {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
-    min-height: 115px;
-    gap: 10px;
-  }
-  .radio-now .console-artwork {
-    width: 40px;
-    height: 40px;
-  }
-  .radio-countdown {
-    min-width: 75px;
-  }
-  .radio-countdown strong {
-    font-size: 29px;
-  }
-  .radio-now h2 {
-    font-size: 16px;
   }
   .radio-console-scroll {
     padding: 8px;
@@ -853,10 +734,6 @@
 }
 
 @media (min-width: 1024px) and (max-height: 820px) {
-  .radio-now {
-    min-height: 105px;
-    padding: 12px 18px;
-  }
   .radio-tools .radio-cartwall {
     min-height: 160px;
   }

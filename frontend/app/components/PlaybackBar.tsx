@@ -248,68 +248,65 @@ export function PlaybackBar({
           ) : null}
         </div>
 
-        <div className='hidden min-w-0 flex-1 px-4 md:block'>
-          {programSongPlayback?.isPlaying && runtimeActiveItemId ? (
+        <section className='playback-track order-first w-full min-w-0 md:order-none md:w-auto md:flex-1' aria-label='On-air player'>
+          {programSongPlayback?.isPlaying ? (
             (() => {
-              const displayItem = sequence.items.find((i) => i.id === runtimeActiveItemId);
-              if (!displayItem || displayItem.kind !== 'preset') return null;
-              const songElapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
-              const totalMs =
-                programSongPlayback?.isPlaying && typeof programSongPlayback.durationMs === 'number'
-                  ? programSongPlayback.durationMs
-                  : typeof displayItem.durationMs === 'number' && displayItem.durationMs > 0
-                    ? displayItem.durationMs
-                    : null;
-              const hasTimeline = totalMs !== null && totalMs > 0;
-              const clamped = hasTimeline ? Math.max(0, Math.min(songElapsedMs, totalMs)) : Math.max(0, songElapsedMs);
-              const ratio = hasTimeline ? Math.max(0, Math.min(1, clamped / totalMs)) : 0;
+              const elapsedMs = Math.max(0, programSongPlayback.currentTimeMs);
+              const totalMs = programSongPlayback.durationMs;
+              const hasTimeline = typeof totalMs === 'number' && totalMs > 0;
+              const clamped = hasTimeline ? Math.min(elapsedMs, totalMs) : elapsedMs;
+              const ratio = hasTimeline ? clamped / totalMs : 0;
               const fmt = (ms: number) => {
-                const s = Math.floor(ms / 1000);
-                return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+                const seconds = Math.floor(ms / 1000);
+                return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
               };
               return (
-                <div className='relative overflow-hidden rounded-lg border border-sand/30 bg-dark-sand/80'>
+                <div className='playback-track-card relative overflow-hidden rounded-lg border border-sand/30 bg-dark-sand/80'>
                   {hasTimeline && (
                     <div
                       className='pointer-events-none absolute inset-0 origin-left bg-sea/20'
+                      role='progressbar'
+                      aria-label='Track progress'
+                      aria-valuenow={Math.round(ratio * 100)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
                       style={{ transform: `scaleX(${ratio})`, transition: 'transform 90ms linear' }}
                     />
                   )}
                   <div className='relative flex items-center gap-2 px-3 py-2'>
-                    {displayItem.coverUrl ? (
-                      <img src={displayItem.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
+                    {programSongPlayback.coverUrl ? (
+                      <img src={programSongPlayback.coverUrl} alt='' className='h-8 w-8 shrink-0 rounded-sm object-cover' />
                     ) : (
                       <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-dark-sand'>
                         <Music2 size={11} className='text-text-secondary' />
                       </div>
                     )}
                     <div className='min-w-0 flex-1'>
-                      <div className='truncate text-xs font-semibold text-sea'>{displayItem.title || ''}</div>
-                      <div className='truncate text-[10px] text-text-secondary'>{displayItem.artist || ''}</div>
-                      {programSongPlayback?.introStatus === 'degraded' ? (
+                      <div className='truncate text-xs font-semibold text-sea'>{programSongPlayback.title || 'Title unavailable'}</div>
+                      <div className='truncate text-[10px] text-text-secondary'>{programSongPlayback.artist || 'Artist unavailable'}</div>
+                      {programSongPlayback.introStatus === 'degraded' ? (
                         <div className='truncate text-[10px] font-medium text-amber-300'>
                           Intro unavailable{programSongPlayback.introFailureReason ? `: ${programSongPlayback.introFailureReason}` : ''}
                         </div>
-                      ) : programSongPlayback?.introStatus === 'playing' ? (
+                      ) : programSongPlayback.introStatus === 'playing' ? (
                         <div className='text-[10px] font-medium text-violet-300'>Intro playing</div>
                       ) : null}
                     </div>
-                    <div className='shrink-0 text-right text-[10px] tabular-nums text-text-secondary'>
-                      {hasTimeline && (
-                        <span>
-                          {fmt(clamped)}
-                          <span className='text-text-secondary/70'> / {fmt(totalMs)}</span>
-                        </span>
-                      )}
+                    <div className='playback-countdown shrink-0 text-right tabular-nums'>
+                      <span className='block text-[9px] text-text-secondary'>
+                        {programSongPlayback.telemetryStale ? 'Last reported remaining' : 'Remaining'}
+                      </span>
+                      <strong className='block text-xl leading-tight'>{hasTimeline ? fmt(totalMs - clamped) : '—:—'}</strong>
+                      <small className='block text-[9px] text-text-secondary'>{fmt(clamped)} elapsed</small>
                     </div>
                   </div>
                 </div>
               );
             })()
           ) : (
-            <p className='text-[11px] text-text-secondary'>Nothing on air</p>
+            <p className='px-3 text-[11px] text-text-secondary'>Nothing on air</p>
           )}
-        </div>
+        </section>
 
         <div className='order-1 flex w-full items-center justify-between gap-1 md:order-none md:w-auto md:justify-start md:gap-3'>
           <div

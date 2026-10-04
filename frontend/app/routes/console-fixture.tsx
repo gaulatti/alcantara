@@ -263,10 +263,22 @@ export default function ConsoleFixture() {
             programSongPlayback={
               playbackOnAir && fixture !== "radio-empty"
                 ? {
-                    token: "fixture-song-1:playback",
-                    audioUrl: "https://example.test/fixture-song-1.mp3",
-                    title: "Authoritative Feedback",
-                    artist: "The Test Signals",
+                    token:
+                      fixture === "radio-external"
+                        ? "external:playback"
+                        : "fixture-song-1:playback",
+                    audioUrl:
+                      fixture === "radio-external"
+                        ? "https://example.test/external.mp3"
+                        : "https://example.test/fixture-song-1.mp3",
+                    title:
+                      fixture === "radio-external"
+                        ? "External live track"
+                        : "Authoritative Feedback",
+                    artist:
+                      fixture === "radio-external"
+                        ? "External artist"
+                        : "The Test Signals",
                     progress: 0.23,
                     currentTimeMs: 42_000,
                     durationMs: 180_000,

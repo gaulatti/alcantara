@@ -79,9 +79,11 @@ and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene
 staging and TAKE.
 
-The Radio desk is a working console: the on-air track and remaining time sit
-above a dominant Rundown, with the Cartwall and three-channel Mixer beside it.
-Transport and playback modes stay visible at the bottom of the viewport. The
+The Radio desk has one persistent player at the bottom of the viewport, keeping
+artwork, reported track metadata, progress, remaining time, transport, and playback
+modes together. It remains visible on phones and displays the actual on-air track
+even when it is absent from the playlist. A dominant Rundown fills the freed
+space, with Output confidence, Cartwall, and the three-channel Mixer beside it. The
 Rundown switches between Music playlist (including Play Next) and the full
 Clocked log; arrow keys, Home, and End move between those tabs. Clocked cues
 show their scheduled time, catalog metadata, and explicit NOW/NEXT markers.
@@ -159,7 +161,9 @@ The `state=radio-workflow` fixture renders a populated twelve-track Radio desk,
 full clocked log, output confidence, Cartwall, and Mixer without commanding
 Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
 interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
-`state=radio-stale` cover the corresponding explicit states. These fixtures are
+`state=radio-stale` cover the corresponding explicit states.
+`state=radio-external` keeps the reported playing track visible when it is absent
+from the playlist. These fixtures are
 visual verification only; normal authenticated Compose console checks exercise
 the actual backend staging, activation, queue, and mix paths separately.
 
