@@ -1,5 +1,6 @@
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -28,6 +29,34 @@ vi.mock("@gaulatti/bleecker", async (original) => {
       </select>
     ),
   };
+});
+it("does not apply a late preview after leaving its inspector tab", async () => {
+  let resolve!: (result: {
+    items: typeof rundown.items;
+    warnings: string[];
+  }) => void;
+  vi.mocked(fillRundown).mockReturnValue(
+    new Promise((result) => {
+      resolve = result;
+    }),
+  );
+  const onFilled = vi.fn();
+  const view = render(
+    <RundownFillers
+      programId="radio-demo"
+      rundown={rundown}
+      items={rundown.items}
+      onFilled={onFilled}
+      fixtureLabels={[{ id: "music", name: "Music" }]}
+    />,
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Filler tag" }), {
+    target: { value: "music" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Preview fillers" }));
+  view.unmount();
+  await act(async () => resolve({ items: rundown.items, warnings: [] }));
+  expect(onFilled).not.toHaveBeenCalled();
 });
 afterEach(() => {
   cleanup();

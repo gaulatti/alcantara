@@ -25,6 +25,13 @@ export function RadioLogGenerator({
   const [error, setError] = useState<string | null>(null);
   const requestTarget = `${programId}:${log?.id}:${log?.revision}`;
   const currentTarget = useRef(requestTarget);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   currentTarget.current = requestTarget;
   useEffect(() => {
     if (fixtureLabels) return;
@@ -64,12 +71,13 @@ export function RadioLogGenerator({
         log.revision,
         rules,
       );
-      if (currentTarget.current === requestTarget) onGenerated(generated.items);
+      if (mounted.current && currentTarget.current === requestTarget)
+        onGenerated(generated.items);
     } catch (cause) {
-      if (currentTarget.current === requestTarget)
+      if (mounted.current && currentTarget.current === requestTarget)
         setError(cause instanceof Error ? cause.message : "Generation failed");
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   return (

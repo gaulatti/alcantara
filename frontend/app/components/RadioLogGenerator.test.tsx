@@ -1,5 +1,6 @@
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -28,6 +29,30 @@ vi.mock("@gaulatti/bleecker", async (importOriginal) => {
       </select>
     ),
   };
+});
+it("does not apply a late generation after leaving its inspector tab", async () => {
+  let resolve!: (result: { items: typeof log.items }) => void;
+  vi.mocked(generateTaggedLog).mockReturnValue(
+    new Promise((result) => {
+      resolve = result;
+    }),
+  );
+  const onGenerated = vi.fn();
+  const view = render(
+    <RadioLogGenerator
+      programId="radio-demo"
+      log={log}
+      onGenerated={onGenerated}
+      fixtureLabels={[{ id: "music", name: "Music" }]}
+    />,
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 1" }), {
+    target: { value: "music" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate draft" }));
+  view.unmount();
+  await act(async () => resolve({ items: log.items }));
+  expect(onGenerated).not.toHaveBeenCalled();
 });
 vi.mock("../services/flight", () => ({ generateTaggedLog: vi.fn() }));
 afterEach(() => {

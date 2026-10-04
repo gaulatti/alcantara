@@ -25,6 +25,13 @@ export function RundownFillers({
   const [warnings, setWarnings] = useState<string[]>([]);
   const identity = `${programId}:${rundown?.id}:${rundown?.revision}:${JSON.stringify(items)}`;
   const current = useRef(identity);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   current.current = identity;
   useEffect(() => {
     if (fixtureLabels) return;
@@ -59,17 +66,17 @@ export function RundownFillers({
         items,
         { labelId, artistSeparation: separation },
       );
-      if (current.current === identity) {
+      if (mounted.current && current.current === identity) {
         setWarnings(preview.warnings);
         onFilled(preview.items);
       }
     } catch (cause) {
-      if (current.current === identity)
+      if (mounted.current && current.current === identity)
         setError(
           cause instanceof Error ? cause.message : "Filler preview failed",
         );
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (

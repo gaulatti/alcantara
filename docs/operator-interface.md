@@ -195,4 +195,6 @@ The hour selector and New hour action sit above a compact event log. Start, type
 
 Select an event to edit its source, fixed start, clip duration, or voice track in the Event inspector. On phones, selection scrolls to that inspector. The Fillers and Build hour tabs keep generation controls available without repeating the sequence or putting a form in every row. Save, Discard, Check, and Publish stay above the log; it scrolls separately with its column headings visible. New hour opens a creation dialog, and unsaved edits lock hour selection. New events are inserted before a terminal +3600 Stop.
 
+Leaving the Fillers or Build hour tab while a preview is pending cancels applying its response. A late response cannot replace edits made in the Event inspector or after changing hours.
+
 `/console-fixture?state=rundown-desk` renders the same workspace with fictional timed news, music, filler cuts, and an unfilled gap. Persistence and publishing are disabled in that fixture. Browser acceptance covers the dense log and inspector at desktop and phone widths, plus source edits, filler preview, Save, and Publish through the normal authenticated local application.
