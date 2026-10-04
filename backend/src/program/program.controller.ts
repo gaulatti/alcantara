@@ -508,6 +508,16 @@ export class ProgramController {
     );
   }
 
+  @Post(':programId/flight/:sequenceId/fill')
+  @RequirePermission(ALCANTARA_PERMISSIONS.flight.manage)
+  async fillRundown(
+    @Param('programId') programId: string,
+    @Param('sequenceId') sequenceId: string,
+    @Body() data: { revision?: number; rules?: unknown; items?: unknown },
+  ) {
+    return this.flightService.fillRundown(programId, Number(sequenceId), data);
+  }
+
   @Get(':programId/flight/:sequenceId/preflight')
   @RequirePermission(ALCANTARA_PERMISSIONS.flight.read)
   async preflightFlightSequenceById(

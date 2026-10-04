@@ -75,7 +75,7 @@ export function RadioLogGenerator({
   return (
     <section
       className="rounded-xl border border-border-subtle bg-sand/5 p-4"
-      aria-label="Generate log from tags"
+      aria-label="Generate rundown from tags"
     >
       <h2 className="flex items-center gap-2 text-sm font-bold">
         <Tags size={16} /> Build from tags
@@ -83,7 +83,7 @@ export function RadioLogGenerator({
       <p className="mt-2 text-xs text-text-secondary">
         Tags define the music pool. Arrange blocks for this hour; generation
         picks each song once and favors songs used least recently in the
-        previous 24 published logs.
+        previous 24 published hours.
       </p>
       <fieldset disabled={locked || busy} className="mt-4 space-y-3">
         {rules.slots.map((slot, index) => (
@@ -206,7 +206,7 @@ export function RadioLogGenerator({
       <p className="mt-3 text-xs text-text-secondary">
         {locked
           ? "Choose an unaired draft to generate."
-          : "Review the generated events, then Save and Publish. Tags never change a saved log."}
+          : "Review the generated events, then Save and Publish. Tags never change a saved rundown."}
       </p>
       {labels.length === 0 && !error && (
         <p className="mt-2 text-xs">

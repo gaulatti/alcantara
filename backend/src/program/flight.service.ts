@@ -14,6 +14,7 @@ import type { Prisma } from '@prisma/client';
 import { ProgramService } from './program.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
 import { generateRadioLog, parseRadioLogRules } from './radio-log-generator';
+import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
 import type {
   FlightCue,
   FlightCueKind,
@@ -79,6 +80,7 @@ function normalizeFlightCue(value: unknown): FlightCue | null {
     label: normalizeOptionalString(value.label),
   };
 
+  if (typeof value.isFiller === 'boolean') cue.isFiller = value.isFiller;
   const clockOffsetSeconds = normalizeOptionalNumber(value.clockOffsetSeconds);
   if (clockOffsetSeconds !== undefined) {
     cue.clockOffsetSeconds = clockOffsetSeconds;
@@ -329,6 +331,92 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async fillRundown(
+    programId: string,
+    sequenceId: number,
+    data: { revision?: number; rules?: unknown; items?: unknown },
+  ) {
+    try {
+      const state = await this.getProgramStateRecord(programId);
+      if (state.type !== 'radio' && state.type !== 'both')
+        throw new BadRequestException('Scheduled rundowns require a radio leg');
+      const sequence = await this.prisma.flightSequence.findFirst({
+        where: { id: sequenceId, programStateId: state.id },
+      });
+      if (!sequence) throw new NotFoundException('rundown not found');
+      if (
+        !sequence.scheduledAt ||
+        sequence.publishedAt ||
+        sequence.lastStartedAt ||
+        sequence.isRunning
+      )
+        throw new BadRequestException(
+          'Fill gaps only in an unaired unpublished draft',
+        );
+      if (data?.revision !== sequence.revision)
+        throw new ConflictException(
+          'The rundown changed. Reload before filling.',
+        );
+      const rules = parseFillerRules(data.rules);
+      const items = this.normalizeClockItems(data.items);
+      const contentIds = items.flatMap((cue) =>
+        cue.songId ? [cue.songId] : [],
+      );
+      const [label, songs, previous] = await Promise.all([
+        this.prisma.mediaLabel.findUnique({ where: { id: rules.labelId } }),
+        this.prisma.song.findMany({
+          where: {
+            enabled: true,
+            audioUrl: { not: '' },
+            OR: [
+              { id: { in: contentIds } },
+              { asset: { labels: { some: { labelId: rules.labelId } } } },
+            ],
+          },
+          select: {
+            id: true,
+            artist: true,
+            title: true,
+            durationMs: true,
+            asset: {
+              select: { labels: { select: { labelId: true, position: true } } },
+            },
+          },
+        }),
+        this.prisma.flightSequence.findMany({
+          where: {
+            programStateId: state.id,
+            publishedAt: { not: null },
+            scheduledAt: { lt: sequence.scheduledAt },
+          },
+          orderBy: { scheduledAt: 'desc' },
+          take: 24,
+          select: { items: true },
+        }),
+      ]);
+      if (!label) throw new BadRequestException('Filler tag no longer exists');
+      const history = previous
+        .reverse()
+        .flatMap((log) =>
+          normalizeFlightItems(log.items).flatMap((cue) =>
+            cue.songId ? [cue.songId] : [],
+          ),
+        );
+      const preview = fillRadioRundown(rules, items, songs, history);
+      const preflight = await this.preflightClockItems(
+        programId,
+        preview.items,
+      );
+      if (!preflight.ready)
+        throw new BadRequestException(preflight.issues.join('; '));
+      this.metrics.recordRadioLogResult('filled');
+      return preview;
+    } catch (cause) {
+      this.metrics.recordRadioLogResult('fill-failed');
+      throw cause;
+    }
+  }
+
   private parseScheduledAt(value: string | null | undefined): Date | null {
     if (value == null) return null;
     if (
@@ -366,7 +454,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         if (
           !Number.isInteger(cue.clockOffsetSeconds) ||
           cue.clockOffsetSeconds < 0 ||
-          cue.clockOffsetSeconds >= 3600 ||
+          (cue.clockOffsetSeconds >= 3600 &&
+            !(
+              cue.clockOffsetSeconds === 3600 &&
+              cue.kind === 'stopSong' &&
+              index === items.length - 1
+            )) ||
           cue.clockOffsetSeconds < previousHardTime
         ) {
           throw new BadRequestException(
@@ -443,6 +536,15 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           'each log item needs an ID and supported cue kind',
         );
       }
+      if (raw.isFiller !== undefined && typeof raw.isFiller !== 'boolean')
+        throw new BadRequestException('isFiller must be boolean');
+      if (
+        raw.durationMs !== undefined &&
+        (typeof raw.durationMs !== 'number' ||
+          !Number.isFinite(raw.durationMs) ||
+          raw.durationMs <= 0)
+      )
+        throw new BadRequestException('durationMs must be positive');
       for (const field of [
         'clockOffsetSeconds',
         'songId',
@@ -851,6 +953,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         if (isActiveRuntime && runtime?.isRunning) {
           runtime.items = nextItems;
           if (runtime.waitingForSongEnd) this.armNextHardCue(runtime);
+          else if (
+            runtime.items[runtime.activeIndex]?.kind === 'instant' &&
+            runtime.items[runtime.activeIndex]?.durationMs
+          )
+            this.armTimedClip(runtime);
         }
 
         if (existing.scheduledAt) this.metrics.recordRadioLogResult('edited');
@@ -1224,6 +1331,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     await this.broadcastFlightUpdate(programId);
 
     try {
+      if (
+        runtime.scheduledAtMs !== null &&
+        cue.kind === 'instant' &&
+        cue.durationMs
+      )
+        await this.programService.takeProgramSongOffAir(programId);
       await this.executeCue(programId, cue);
     } catch (err) {
       console.error(`Flight cue execution failed (${cue.kind})`, err);
@@ -1246,6 +1359,16 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     if (runtime.scheduledAtMs !== null && cue.kind === 'playSong') {
       runtime.waitingForSongEnd = true;
       this.armNextHardCue(runtime);
+      return;
+    }
+
+    if (
+      runtime.scheduledAtMs !== null &&
+      cue.kind === 'instant' &&
+      cue.durationMs
+    ) {
+      runtime.cueStartedAt = Date.now();
+      this.armTimedClip(runtime);
       return;
     }
 
@@ -1275,6 +1398,44 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     }
 
     void this.advance(programId, generation);
+  }
+
+  private armTimedClip(runtime: FlightRuntimeState): void {
+    this.clearTimer(runtime);
+    const cue = runtime.items[runtime.activeIndex];
+    if (
+      !cue?.durationMs ||
+      runtime.scheduledAtMs === null ||
+      runtime.cueStartedAt === undefined
+    )
+      return;
+    const hard = runtime.items.find(
+      (item, row) =>
+        row > runtime.activeIndex && item.clockOffsetSeconds !== undefined,
+    );
+    const due = hard
+      ? runtime.scheduledAtMs + hard.clockOffsetSeconds! * 1000
+      : Infinity;
+    const target = runtime.cueStartedAt + cue.durationMs;
+    const generation = runtime.generation;
+    runtime.timer = setTimeout(
+      () => {
+        const current = this.runtimes.get(runtime.programId);
+        if (
+          current !== runtime ||
+          current.generation !== generation ||
+          !current.isRunning
+        )
+          return;
+        const index =
+          due <= target && hard
+            ? current.items.findIndex((item) => item.id === hard.id)
+            : current.activeIndex + 1;
+        if (index <= current.activeIndex) return;
+        void this.executeCueAtIndex(runtime.programId, index, generation);
+      },
+      Math.max(0, Math.min(target, due) - Date.now()),
+    );
   }
 
   private armNextHardCue(runtime: FlightRuntimeState): void {

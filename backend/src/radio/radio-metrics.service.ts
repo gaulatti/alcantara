@@ -99,6 +99,8 @@ const OUTPUT_CONFIDENCE_STATES = [
   'silent',
 ] as const;
 const RADIO_LOG_RESULTS = [
+  'filled',
+  'fill-failed',
   'generated',
   'edited',
   'edit-failed',

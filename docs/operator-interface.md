@@ -10,7 +10,7 @@ monitor or transport control cannot cover navigation.
 
 Navigation is grouped by operator intent rather than database model:
 
-- **Live** contains the mode-specific desk, Rundown, Radio or Simulcast Radio logs, Guest calls, and TV
+- **Live** contains the mode-specific desk, one Rundown workspace, Guest calls, and TV
   destinations where applicable.
 - **Library** contains Scenes and Scene templates for visual shows plus one
   Media destination for every show type. TV and Simulcast Media is organized by
@@ -180,3 +180,11 @@ Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not
 change Program, CUT/TAKE are in the same working viewport, fade-to-black is
 deliberate, and Radio/TV/Simulcast each expose the correct operational surface.
+
+## Unified Rundown
+
+`/flight` is the single Rundown destination in navigation and command search for every show type. Radio opens scheduled hours; TV opens operator cues. Simulcast has Scheduled hours and Operator cues views inside this workspace. Scheduled sequences are excluded from the operator cue selector, so a published hour is not offered as an untimed sequence. Only one sequence can be active per show under the existing backend contract. `/radio-log` redirects to Rundown for existing bookmarks.
+
+Scheduled Rundown preserves tag-based generation, recorded voice tracks, revision checks, preflight, and publication. **Preview fillers** preserves reviewed content and fills gaps from a Library tag before Save and Publish. Song durations come from the catalog; a standalone clip needs its duration entered in seconds. The planner shows gaps, unknown durations, and overruns, and marks generated fillers in both preparation and the live desk. Fixed boundaries cut the last filler; the generated end-of-hour Stop is at +3600 seconds. This does not change the separately configured Palazzo recovery playlist.
+
+The console fixtures include `radio-workflow` with filler rows and `rundown-fillers` for the filler selection panel.

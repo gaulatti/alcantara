@@ -13,6 +13,7 @@ import type { ProgramSongQueueEntry } from "../models/broadcast";
 import { ProgramSongSequenceEditor } from "../components/editors";
 import { ScenePreparationFixture } from "../components/ScenePreparationFixture";
 import { AppLoading } from "../components/AppLoading";
+import { RundownFillers } from "../components/RundownFillers";
 import { RadioPanel } from "../components/RadioPanel";
 
 const layout = {
@@ -162,6 +163,44 @@ export default function ConsoleFixture() {
   const isPlaybackFixture =
     fixture === "playback-live" || fixture === "playback-stale";
 
+  if (fixture === "rundown-fillers")
+    return (
+      <main
+        data-visual-fixture="rundown-fillers"
+        className="broadcast-console bg-dark-sand p-6 text-text-primary"
+      >
+        <h1 className="mb-4 text-3xl font-semibold">Rundown</h1>
+        <div className="max-w-md">
+          <RundownFillers
+            programId="radio-demo"
+            rundown={{
+              id: 1,
+              name: "Fixture hour",
+              revision: 1,
+              items: [],
+              scheduledAt: new Date().toISOString(),
+              publishedAt: null,
+              lastStartedAt: null,
+              isRunning: false,
+              loop: false,
+              activeItemId: null,
+              createdAt: "",
+              updatedAt: "",
+            }}
+            items={[
+              {
+                id: "block",
+                kind: "playSong",
+                songId: 1,
+                clockOffsetSeconds: 0,
+              },
+            ]}
+            onFilled={() => undefined}
+            fixtureLabels={[{ id: "fixture-music", name: "Music rotation" }]}
+          />
+        </div>
+      </main>
+    );
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
 
@@ -230,6 +269,7 @@ export default function ConsoleFixture() {
                           id: `fixture-cue-${index + 1}`,
                           kind: "playSong" as const,
                           songId: index + 1,
+                          isFiller: index > 0 && index < 6,
                           ...(index === 0 || index === 6
                             ? { clockOffsetSeconds: index * 240 }
                             : {}),

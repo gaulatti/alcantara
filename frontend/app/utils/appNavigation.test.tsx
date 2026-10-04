@@ -16,7 +16,7 @@ describe("program-aware application navigation", () => {
   it("keeps television-only preparation out of the radio workflow", () => {
     expect(labels("radio")).toEqual([
       "Radio desk",
-      "Radio logs",
+      "Rundown",
       "Media",
       "Shows",
       "Radio distribution",
@@ -28,7 +28,7 @@ describe("program-aware application navigation", () => {
     expect(simulcast).toContain("Simulcast control");
     expect(simulcast).toContain("TV destinations");
     expect(simulcast).toContain("Radio distribution");
-    expect(simulcast).toContain("Radio logs");
+    expect(simulcast.filter((label) => label === "Rundown")).toHaveLength(1);
     expect(simulcast).toContain("Scene templates");
   });
 

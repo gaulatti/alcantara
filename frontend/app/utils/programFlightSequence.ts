@@ -58,6 +58,7 @@ export function normalizeFlightCue(value: unknown): FlightCue | null {
     label: normalizeOptionalString(value.label)
   };
 
+  if (typeof value.isFiller === 'boolean') cue.isFiller = value.isFiller;
   const clockOffsetSeconds = normalizeOptionalNumber(value.clockOffsetSeconds);
   if (clockOffsetSeconds !== undefined) cue.clockOffsetSeconds = clockOffsetSeconds;
   const voiceTrackInstantId = normalizeOptionalNumber(value.voiceTrackInstantId);

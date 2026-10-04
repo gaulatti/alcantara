@@ -173,11 +173,11 @@ it("keeps one on-air player in the transport dock with timing, confidence and th
     screen.getByRole("progressbar", { name: "Track progress" }),
   ).toHaveAttribute("aria-valuenow", "23");
   expect(screen.getByText("Audio detected")).toBeVisible();
-  expect(screen.getByRole("region", { name: "On-air log" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "On-air rundown" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Cartwall" })).toBeVisible();
   expect(screen.getByRole("slider", { name: "Music level" })).toBeVisible();
   expect(
-    screen.getByRole("button", { name: "Stop log / Take Off Air" }),
+    screen.getByRole("button", { name: "Stop rundown / Take Off Air" }),
   ).toBeVisible();
 });
 
@@ -187,14 +187,14 @@ it("shows one complete on-air log without playlist tabs or playback modes", () =
   expect(
     screen.queryByRole("group", { name: "Playback mode" }),
   ).not.toBeInTheDocument();
-  const log = screen.getByRole("list", { name: "On-air log" });
+  const log = screen.getByRole("list", { name: "On-air rundown" });
   expect(within(log).getAllByRole("listitem")).toHaveLength(6);
   expect(within(log).getByText("NOW")).toBeVisible();
   expect(within(log).getByText("NEXT")).toBeVisible();
   expect(screen.getByRole("button", { name: "Remove event 1" })).toBeDisabled();
-  expect(screen.getByRole("link", { name: "Prepare hours" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "Prepare rundown" })).toHaveAttribute(
     "href",
-    "/radio-log",
+    "/flight",
   );
 });
 
@@ -232,7 +232,7 @@ it("routes transport to log execution and presents request failures", async () =
   );
   const p = props();
   mount(p);
-  fireEvent.click(screen.getByRole("button", { name: "Advance log" }));
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
   await waitFor(() =>
     expect(flight.goFlight).toHaveBeenCalledWith("radio-demo"),
   );
@@ -291,7 +291,7 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   mount(p);
   expect(screen.getByText("Nothing on air")).toBeVisible();
   expect(screen.queryByText("—:—")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Start log" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Start rundown" })).toBeDisabled();
   expect(screen.getByText("No published hour is queued.")).toBeVisible();
 });
 

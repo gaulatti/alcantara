@@ -279,6 +279,7 @@ export interface FlightMixerChange {
 }
 
 export interface FlightCue {
+  isFiller?: boolean;
   id: string;
   kind: FlightCueKind;
   clockOffsetSeconds?: number;

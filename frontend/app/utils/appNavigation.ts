@@ -38,12 +38,7 @@ export function getAppNavigationSections({
       label: "Live",
       items: [
         { id: "control", href: "/", label: controlLabel },
-        ...(hasTelevision
-          ? [{ id: "rundown", href: "/flight", label: "Rundown" }]
-          : []),
-        ...(hasRadio
-          ? [{ id: "radio-log", href: "/radio-log", label: "Radio logs" }]
-          : []),
+        { id: "rundown", href: "/flight", label: "Rundown" },
         ...(hasTelevision
           ? [
               { id: "calls", href: "/calls", label: "Guest calls" },
@@ -114,6 +109,11 @@ export function getAppNavigationSections({
           id: "radio-workflow-fixture",
           href: "/console-fixture?state=radio-workflow",
           label: "Radio workflow fixture",
+        },
+        {
+          id: "rundown-filler-fixture",
+          href: "/console-fixture?state=rundown-fillers",
+          label: "Rundown filler fixture",
         },
         {
           id: "media-fixture",

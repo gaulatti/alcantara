@@ -16,6 +16,7 @@ export interface FlightMixerChange {
 }
 
 export interface FlightCue {
+  isFiller?: boolean;
   id: string;
   kind: FlightCueKind;
   label?: string;
@@ -76,5 +77,6 @@ export interface FlightRuntimeState {
   timer: NodeJS.Timeout | null;
   waitingForSongEnd: boolean;
   startedAt: number;
+  cueStartedAt?: number;
   scheduledAtMs: number | null;
 }

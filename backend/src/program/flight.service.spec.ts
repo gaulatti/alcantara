@@ -242,6 +242,7 @@ describe('FlightService tag generation and live log edits', () => {
       instant: { findMany: jest.fn().mockResolvedValue([]) },
       mediaLabel: {
         findMany: jest.fn().mockResolvedValue([{ id: 'music', name: 'Music' }]),
+        findUnique: jest.fn().mockResolvedValue({ id: 'music', name: 'Music' }),
       },
     };
     const metrics = new RadioMetricsService();
@@ -367,5 +368,132 @@ describe('FlightService tag generation and live log edits', () => {
     await expect(
       service.updateFlightSequence('radio-1', 7, { revision: 1, items: [] }),
     ).rejects.toThrow('stopped log');
+  });
+  it('previews fillers without writing, then preserves filler markers and the hour boundary through save and preflight', async () => {
+    const { service, record, prisma, metrics } = setup();
+    const items: FlightCue[] = [
+      record.items[0],
+      { id: 'end-content', kind: 'stopSong', clockOffsetSeconds: 400 },
+    ];
+    const preview = await service.fillRundown('radio-1', 7, {
+      revision: 1,
+      items,
+      rules: { labelId: 'music', artistSeparation: 0 },
+    });
+    expect(prisma.flightSequence.findFirst).toHaveBeenCalledWith({
+      where: { id: 7, programStateId: 1 },
+    });
+    expect(prisma.flightSequence.updateMany).not.toHaveBeenCalled();
+    expect(
+      preview.items
+        .filter((cue) => cue.isFiller && cue.kind === 'playSong')
+        .map((cue) => cue.songId),
+    ).toEqual([2, 3]);
+    expect(preview.items.at(-1)).toMatchObject({
+      kind: 'stopSong',
+      clockOffsetSeconds: 3600,
+      isFiller: true,
+    });
+    await service.updateFlightSequence('radio-1', 7, {
+      revision: 1,
+      items: preview.items,
+    });
+    expect(record.items.filter((cue) => cue.isFiller)).toHaveLength(3);
+    expect((await service.preflightFlightSequence('radio-1', 7)).ready).toBe(
+      true,
+    );
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="filled"} 1',
+    );
+    record.publishedAt = new Date();
+    await expect(
+      service.fillRundown('radio-1', 7, {
+        revision: 2,
+        items,
+        rules: { labelId: 'music', artistSeparation: 0 },
+      }),
+    ).rejects.toThrow('unpublished');
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="fill-failed"} 1',
+    );
+  });
+  it('rejects stale filler previews, missing tags, and malformed filler markers', async () => {
+    const { service, prisma } = setup();
+    const input = {
+      revision: 0,
+      items: [
+        { id: 'content', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 },
+      ],
+      rules: { labelId: 'music', artistSeparation: 0 },
+    };
+    await expect(service.fillRundown('radio-1', 7, input)).rejects.toThrow(
+      'changed',
+    );
+    prisma.mediaLabel.findUnique.mockResolvedValue(null);
+    await expect(
+      service.fillRundown('radio-1', 7, { ...input, revision: 1 }),
+    ).rejects.toThrow('tag no longer exists');
+    await expect(
+      service.updateFlightSequence('radio-1', 7, {
+        revision: 1,
+        items: [{ ...input.items[0], isFiller: 'true' }],
+      }),
+    ).rejects.toThrow('isFiller must be boolean');
+  });
+  it('keeps a declared clip timer tied to the edited next fixed cue', () => {
+    jest.useFakeTimers();
+    const { service } = setup();
+    const runtime: FlightRuntimeState = {
+      sequenceId: 7,
+      programId: 'radio-1',
+      items: [
+        {
+          id: 'clip',
+          kind: 'instant',
+          instantId: 9,
+          durationMs: 60000,
+          clockOffsetSeconds: 0,
+        },
+        { id: 'hard', kind: 'playSong', songId: 2, clockOffsetSeconds: 30 },
+      ],
+      loop: false,
+      activeIndex: 0,
+      isRunning: true,
+      generation: 5,
+      timer: null,
+      waitingForSongEnd: false,
+      startedAt: Date.now(),
+      scheduledAtMs: Date.now(),
+      cueStartedAt: Date.now(),
+    };
+    const internals = service as unknown as {
+      runtimes: Map<string, FlightRuntimeState>;
+      armTimedClip: (runtime: FlightRuntimeState) => void;
+      executeCueAtIndex: (
+        programId: string,
+        index: number,
+        generation: number,
+      ) => Promise<void>;
+    };
+    internals.runtimes.set('radio-1', runtime);
+    const execute = jest
+      .spyOn(internals, 'executeCueAtIndex')
+      .mockResolvedValue(undefined);
+    try {
+      internals.armTimedClip(runtime);
+      runtime.items = [
+        runtime.items[0],
+        { id: 'follow', kind: 'playSong', songId: 3 },
+        { ...runtime.items[1], clockOffsetSeconds: 40 },
+      ];
+      internals.armTimedClip(runtime);
+      jest.advanceTimersByTime(30000);
+      expect(execute).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(10000);
+      expect(execute).toHaveBeenCalledWith('radio-1', 2, 5);
+    } finally {
+      service.onModuleDestroy();
+      jest.useRealTimers();
+    }
   });
 });

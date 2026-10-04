@@ -201,7 +201,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       setLogs(sequences.filter((sequence) => sequence.scheduledAt !== null));
     } catch (cause) {
       setLogLoadError(
-        cause instanceof Error ? cause.message : "Radio logs unavailable",
+        cause instanceof Error ? cause.message : "Rundowns unavailable",
       );
       setOutput(null);
       setLogs([]);
@@ -406,15 +406,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
-            title="On-air log"
+            title="On-air rundown"
             eyebrow="Playout"
             className="radio-rundown"
             actions={
               <Link
-                to="/radio-log"
+                to="/flight"
                 className="inline-flex items-center gap-1 text-sm"
               >
-                <List size={14} /> Prepare hours
+                <List size={14} /> Prepare rundown
               </Link>
             }
           >
@@ -438,12 +438,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     </small>
                   </>
                 ) : (
-                  "No radio log selected"
+                  "No rundown selected"
                 )}
               </div>
               {!runningLog && (
                 <Select
-                  aria-label="Select radio log"
+                  aria-label="Select rundown"
                   value={activeLog ? String(activeLog.id) : ""}
                   onChange={(value) => setSelectedLogId(Number(value))}
                   options={[
@@ -466,7 +466,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             )}
             <div className="radio-rundown-body">
               {activeLog ? (
-                <ol className="console-log" aria-label="On-air log">
+                <ol className="console-log" aria-label="On-air rundown">
                   {activeLog.items.map((cue, index) => {
                     const song =
                       cue.kind === "playSong"
@@ -516,6 +516,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                           <small>
                             {song?.artist ??
                               (clip ? "Audio clip" : "Transport command")}
+                            {cue.isFiller ? " · Filler" : ""}
                             {cue.voiceTrackInstantId ? " · Voice track" : ""}
                           </small>
                         </div>
@@ -615,7 +616,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     Prepare an hour from Library tags, review its events, then
                     publish.
                   </p>
-                  <Link to="/radio-log">Prepare a radio log</Link>
+                  <Link to="/flight">Prepare a rundown</Link>
                 </div>
               )}
             </div>
@@ -824,13 +825,13 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           busy: logBusy,
           label: runningLog
             ? Date.parse(runningLog.scheduledAt!) > Date.now()
-              ? "Log armed for scheduled hour"
-              : "Log automation running"
+              ? "Rundown armed for scheduled hour"
+              : "Rundown automation running"
             : activeLog?.lastStartedAt
-              ? "Log stopped"
+              ? "Rundown stopped"
               : activeLog?.publishedAt
                 ? "Waiting for scheduled hour"
-                : "Publish a log to start",
+                : "Publish a rundown to start",
           onStart: () => void commandLog("start"),
           onStop: () => void commandLog("stop"),
           onAdvance: () => void commandLog("advance"),

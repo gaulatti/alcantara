@@ -266,14 +266,14 @@ export function PlaybackBar({
                 type="button"
                 onClick={logTransport.onStart}
                 disabled={!logTransport.canStart || logTransport.busy}
-                aria-label="Start log"
+                aria-label="Start rundown"
               >
-                <Play size={17} fill="currentColor" /> Start log
+                <Play size={17} fill="currentColor" /> Start rundown
               </Button>
               <IconButton
                 type="button"
-                title="Stop log / Take Off Air"
-                aria-label="Stop log / Take Off Air"
+                title="Stop rundown / Take Off Air"
+                aria-label="Stop rundown / Take Off Air"
                 onClick={logTransport.onStop}
                 disabled={logTransport.busy}
               >
@@ -284,7 +284,7 @@ export function PlaybackBar({
                 variant="secondary"
                 onClick={logTransport.onAdvance}
                 disabled={!logTransport.canAdvance || logTransport.busy}
-                aria-label="Advance log"
+                aria-label="Advance rundown"
               >
                 <SkipForward size={16} /> Advance
               </Button>

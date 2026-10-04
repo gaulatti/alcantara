@@ -12,6 +12,7 @@ export interface RadioLogRules {
   artistSeparation: number;
 }
 export interface TaggedSong {
+  title?: string;
   id: number;
   artist: string;
   durationMs: number | null;

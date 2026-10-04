@@ -10,7 +10,7 @@ async function flightError(response: Response): Promise<Error> {
       ? detail
       : Array.isArray(detail)
         ? detail.join("; ")
-        : `Radio log request failed (${response.status})`,
+        : `Rundown request failed (${response.status})`,
   );
 }
 
@@ -188,6 +188,31 @@ export async function publishFlightSequence(
 export interface RadioLogRules {
   slots: { labelId: string; count: number; clockOffsetSeconds?: number }[];
   artistSeparation: number;
+}
+
+export interface FillerRules {
+  labelId: string;
+  artistSeparation: number;
+}
+export async function fillRundown(
+  programId: string,
+  sequenceId: number,
+  revision: number,
+  items: FlightCue[],
+  rules: FillerRules,
+): Promise<{ items: FlightCue[]; warnings: string[] }> {
+  const response = await fetch(
+    apiUrl(
+      `/program/${encodeURIComponent(programId)}/flight/${sequenceId}/fill`,
+    ),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision, items, rules }),
+    },
+  );
+  if (!response.ok) throw await flightError(response);
+  return response.json();
 }
 
 export async function generateTaggedLog(

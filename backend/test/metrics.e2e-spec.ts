@@ -69,6 +69,8 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     radioMetrics.recordRadioLogResult('generated');
     radioMetrics.recordRadioLogResult('edited');
     radioMetrics.recordRadioLogResult('edit-failed');
+    radioMetrics.recordRadioLogResult('filled');
+    radioMetrics.recordRadioLogResult('fill-failed');
     radioMetrics.recordRadioLogResult('generation-failed');
     radioMetrics.recordRadioLogResult('private-tag-id');
     radioMetrics.recordEventIgnored('sequence-gap');
@@ -154,6 +156,8 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain(
       'alcantara_radio_log_transitions_total{result="edit-failed"} 1',
     );
+    expect(body).toContain('alcantara_radio_log_transitions_total{result="filled"} 1');
+    expect(body).toContain('alcantara_radio_log_transitions_total{result="fill-failed"} 1');
     expect(body).not.toContain('private-tag-id');
     expect(body).toContain(
       'alcantara_operator_preference_operations_total{action="write",result="conflict"} 1',
