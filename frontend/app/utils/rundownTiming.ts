@@ -7,6 +7,7 @@ export function rundownTiming(
   return items.map((cue, index) => {
     if (cue.clockOffsetSeconds !== undefined)
       cursor = cue.clockOffsetSeconds * 1000;
+    const startMs = cursor;
     const duration =
       cue.kind === "stopSong"
         ? 0
@@ -23,6 +24,7 @@ export function rundownTiming(
     const next = items[index + 1];
     const boundary = next?.clockOffsetSeconds ?? (next ? undefined : 3600);
     return {
+      startMs,
       durationMs: duration,
       gapMs:
         boundary !== undefined && cursor !== null

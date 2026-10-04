@@ -13,6 +13,7 @@ import type { ProgramSongQueueEntry } from "../models/broadcast";
 import { ProgramSongSequenceEditor } from "../components/editors";
 import { ScenePreparationFixture } from "../components/ScenePreparationFixture";
 import { AppLoading } from "../components/AppLoading";
+import { RundownFixture } from "../components/RundownFixture";
 import { RundownFillers } from "../components/RundownFillers";
 import { RadioPanel } from "../components/RadioPanel";
 
@@ -201,6 +202,7 @@ export default function ConsoleFixture() {
         </div>
       </main>
     );
+  if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
 

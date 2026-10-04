@@ -188,3 +188,11 @@ deliberate, and Radio/TV/Simulcast each expose the correct operational surface.
 Scheduled Rundown preserves tag-based generation, recorded voice tracks, revision checks, preflight, and publication. **Preview fillers** preserves reviewed content and fills gaps from a Library tag before Save and Publish. Song durations come from the catalog; a standalone clip needs its duration entered in seconds. The planner shows gaps, unknown durations, and overruns, and marks generated fillers in both preparation and the live desk. Fixed boundaries cut the last filler; the generated end-of-hour Stop is at +3600 seconds. This does not change the separately configured Palazzo recovery playlist.
 
 The console fixtures include `radio-workflow` with filler rows and `rundown-fillers` for the filler selection panel.
+
+### Scheduled Rundown workspace
+
+The hour selector and New hour action sit above a compact event log. Start, type, event, length, and timing share aligned columns. Fixed starts have a clock marker; other starts are estimates calculated from catalog or declared clip duration, not promises that a track has aired. Unknown durations remain visible. Timing labels describe whether an event fits its boundary; **Check** and **Publish** independently validate audio availability.
+
+Select an event to edit its source, fixed start, clip duration, or voice track in the Event inspector. On phones, selection scrolls to that inspector. The Fillers and Build hour tabs keep generation controls available without repeating the sequence or putting a form in every row. Save, Discard, Check, and Publish stay above the log; it scrolls separately with its column headings visible. New hour opens a creation dialog, and unsaved edits lock hour selection. New events are inserted before a terminal +3600 Stop.
+
+`/console-fixture?state=rundown-desk` renders the same workspace with fictional timed news, music, filler cuts, and an unfilled gap. Persistence and publishing are disabled in that fixture. Browser acceptance covers the dense log and inspector at desktop and phone widths, plus source edits, filler preview, Save, and Publish through the normal authenticated local application.

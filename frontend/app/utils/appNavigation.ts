@@ -111,6 +111,11 @@ export function getAppNavigationSections({
           label: "Radio workflow fixture",
         },
         {
+          id: "rundown-desk-fixture",
+          href: "/console-fixture?state=rundown-desk",
+          label: "Rundown desk fixture",
+        },
+        {
           id: "rundown-filler-fixture",
           href: "/console-fixture?state=rundown-fillers",
           label: "Rundown filler fixture",

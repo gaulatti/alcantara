@@ -12,14 +12,15 @@ import {
   Clock3,
   Mic2,
   Plus,
-  Radio,
   Save,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../components/BroadcastConsole.css";
 import { RundownFillers } from "./RundownFillers";
+import { RundownEventList, formatRundownDuration } from "./RundownEventList";
 import { rundownTiming } from "../utils/rundownTiming";
+import "./Rundown.css";
 import { RadioLogGenerator } from "../components/RadioLogGenerator";
 import { VoiceTrackRecorder } from "../components/VoiceTrackRecorder";
 import type {
@@ -56,8 +57,14 @@ function message(error: unknown): string {
 
 export default function ScheduledRundown({
   onDirtyChange,
+  fixtureData,
 }: {
   onDirtyChange?: (dirty: boolean) => void;
+  fixtureData?: {
+    logs: FlightSequence[];
+    songs: SongCatalogItem[];
+    clips: InstantItem[];
+  };
 }) {
   const [programId] = useGlobalProgramId();
   const [logs, setLogs] = useState<FlightSequence[]>([]);
@@ -71,6 +78,12 @@ export default function ScheduledRundown({
     ready: boolean;
     issues: string[];
   } | null>(null);
+  const [inspector, setInspector] = useState<"event" | "fillers" | "build">(
+    "event",
+  );
+  const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const inspectorRef = useRef<HTMLElement>(null);
   const [recordIndex, setRecordIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selected = logs.find((log) => log.id === selectedId) ?? null;
@@ -93,6 +106,13 @@ export default function ScheduledRundown({
   }, [dirty, onDirtyChange]);
 
   const load = useCallback(async () => {
+    if (fixtureData) {
+      setLogs(fixtureData.logs);
+      setSongs(fixtureData.songs);
+      setClips(fixtureData.clips);
+      setSelectedId(fixtureData.logs[0]?.id ?? null);
+      return;
+    }
     const [sequences, songResponse, clipResponse] = await Promise.all([
       fetchFlightSequences(programId),
       fetch(apiUrl("/songs?page=1&limit=200")),
@@ -119,7 +139,7 @@ export default function ScheduledRundown({
         ? current
         : (sequences.find((log) => log.scheduledAt)?.id ?? null),
     );
-  }, [programId]);
+  }, [programId, fixtureData]);
 
   useEffect(() => {
     void load().catch((cause) => setError(message(cause)));
@@ -127,6 +147,7 @@ export default function ScheduledRundown({
   useEffect(() => {
     setItems(selected?.items ?? []);
     setPreflight(null);
+    setSelectedCueId(null);
   }, [selectedId, selected?.revision]);
 
   const create = async () => {
@@ -148,7 +169,8 @@ export default function ScheduledRundown({
       });
       await load();
       setSelectedId(created.id);
-      showAlert("Draft radio log created.", "success");
+      setCreating(false);
+      showAlert("Draft rundown created.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -212,7 +234,7 @@ export default function ScheduledRundown({
         current.map((log) => (log.id === published.id ? published : log)),
       );
       setPreflight({ ready: true, issues: [] });
-      showAlert("Log published for automatic start.", "success");
+      showAlert("Rundown published for automatic start.", "success");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -220,13 +242,16 @@ export default function ScheduledRundown({
     }
   };
 
-  const updateItem = (index: number, patch: Partial<FlightCue>) =>
+  const updateItem = (index: number, patch: Partial<FlightCue>) => {
+    setPreflight(null);
     setItems((current) =>
       current.map((item, row) =>
         row === index ? { ...item, ...patch } : item,
       ),
     );
+  };
   const add = (kind: "playSong" | "instant" | "stopSong") => {
+    setPreflight(null);
     const cue: FlightCue = {
       id: crypto.randomUUID(),
       kind,
@@ -236,7 +261,14 @@ export default function ScheduledRundown({
       cue.songId = songs.find((song) => song.enabled)?.id;
     if (kind === "instant")
       cue.instantId = clips.find((clip) => clip.enabled)?.id;
-    setItems((current) => [...current, cue]);
+    setItems((current) => {
+      const end = current.at(-1);
+      return end?.kind === "stopSong" && end.clockOffsetSeconds === 3600
+        ? [...current.slice(0, -1), cue, end]
+        : [...current, cue];
+    });
+    setSelectedCueId(cue.id);
+    setInspector("event");
   };
 
   const activeIndex = selected?.isRunning
@@ -250,444 +282,453 @@ export default function ScheduledRundown({
     : null;
 
   const timing = rundownTiming(items, songs);
+  const revealInspector = () => {
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      requestAnimationFrame(() =>
+        inspectorRef.current?.scrollIntoView({ block: "start" }),
+      );
+    }
+  };
+  const editIndex = items.findIndex((cue) => cue.id === selectedCueId);
+  const editCue = items[editIndex];
+  const editLocked = editIndex <= activeIndex;
+  const editable =
+    !!selected && (!selected.lastStartedAt || selected.isRunning);
+  const gapMs = timing.reduce(
+    (sum, row, index) =>
+      sum + (items[index].kind === "stopSong" ? 0 : (row.gapMs ?? 0)),
+    0,
+  );
+  const unknown = timing.filter((row) => row.durationMs == null).length;
+  const remove = () => {
+    setPreflight(null);
+    setItems((current) => {
+      const next = current.filter((cue) => cue.id !== selectedCueId);
+      if (next[0]) next[0] = { ...next[0], clockOffsetSeconds: 0 };
+      return next;
+    });
+    setSelectedCueId(null);
+  };
   return (
-    <main className="broadcast-console radio-log-planner min-h-full bg-dark-sand px-4 py-5 text-text-primary lg:px-7">
+    <main className="broadcast-console rundown-workspace">
       <AlertContainer />
-      <div className="mx-auto max-w-[92rem] space-y-5">
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border-subtle pb-5">
+      <header className="rundown-toolbar">
+        <div>
+          <span className="console-eyebrow">Radio production</span>
+          <h1>Rundown</h1>
+          <p>{programId} · Scheduled content and fillers</p>
+        </div>
+        <div className="rundown-hour-select">
           <div>
-            <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-accent-blue">
-              <Radio size={15} /> Radio production
-            </p>
-            <h1 className="text-3xl font-semibold">Rundown</h1>
-            <p className="mt-1 text-sm text-text-secondary">
-              Library tags → clock blocks → one reviewed log for air.
-            </p>
+            <Select
+              aria-label="Scheduled hour"
+              value={selectedId ? String(selectedId) : ""}
+              disabled={busy || dirty}
+              onChange={(value) => setSelectedId(Number(value))}
+              options={[
+                { value: "", label: "Choose an hour" },
+                ...scheduledLogs.map((log) => ({
+                  value: String(log.id),
+                  label: `${new Date(log.scheduledAt!).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${log.isRunning ? "On air" : log.lastStartedAt ? "Aired" : log.publishedAt ? "Published" : "Draft"}`,
+                })),
+              ]}
+            />
           </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs font-semibold text-text-secondary">
-              New hour
-              <Input
-                type="datetime-local"
-                step="3600"
-                value={hour}
-                onChange={(event) => setHour(event.target.value)}
-              />
-            </label>
-            <Button type="button" onClick={() => void create()} disabled={busy}>
-              <Plus size={16} /> New rundown
-            </Button>
-          </div>
-        </header>
-        {error ? (
-          <div
-            role="alert"
-            className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={busy || dirty || !!fixtureData}
+            onClick={() => setCreating(true)}
           >
-            {error}
-          </div>
-        ) : null}
-        <div className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] 2xl:grid-cols-[13rem_minmax(0,1fr)_20rem]">
-          <aside className="rounded-xl border border-border-subtle bg-sand/5 p-3">
-            <h2 className="px-2 pb-3 text-xs font-bold uppercase tracking-wider text-text-secondary">
-              Scheduled hours
-            </h2>
-            <div className="space-y-1">
-              {scheduledLogs.length ? (
-                scheduledLogs.map((log) => (
-                  <button
-                    key={log.id}
-                    type="button"
-                    disabled={busy || dirty}
-                    title={
-                      dirty
-                        ? "Save or discard the current draft first"
-                        : undefined
-                    }
-                    onClick={() => setSelectedId(log.id)}
-                    className={`w-full rounded-lg border px-3 py-3 text-left ${selectedId === log.id ? "border-accent-blue/60 bg-accent-blue/15" : "border-transparent hover:bg-sand/10"}`}
-                  >
-                    <span className="block text-sm font-semibold">
-                      {new Date(log.scheduledAt!).toLocaleString(undefined, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    <span className="mt-1 block text-xs text-text-secondary">
-                      {log.isRunning
-                        ? "ON AIR"
-                        : log.publishedAt
-                          ? log.lastStartedAt
-                            ? "Aired / interrupted"
-                            : "Ready for air"
-                          : "Draft"}{" "}
-                      · {log.items.length} items
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <p className="px-2 py-8 text-center text-sm text-text-secondary">
-                  No scheduled rundowns yet.
+            <Plus size={14} /> New hour
+          </Button>
+        </div>
+      </header>
+      {error && (
+        <div role="alert" className="rundown-errors">
+          {error}
+        </div>
+      )}
+      <div className="rundown-desk">
+        <section className="rundown-sequence" aria-label="Hour rundown">
+          <div className="rundown-sequence-heading">
+            <div>
+              <h2>Hour events</h2>
+              <p>
+                {selected
+                  ? `${selected.isRunning ? "ON AIR" : selected.lastStartedAt ? "AIRED / INTERRUPTED" : selected.publishedAt ? "PUBLISHED" : "DRAFT"} · Revision ${selected.revision} · ${items.length} events${dirty ? " · Unsaved changes" : ""}`
+                  : "Create an hour to plan its content."}
+              </p>
+              {!!selected && (
+                <p>
+                  {
+                    items.filter(
+                      (cue) => cue.isFiller && cue.kind === "playSong",
+                    ).length
+                  }{" "}
+                  fillers · {formatRundownDuration(gapMs)} unfilled
+                  {unknown ? ` · ${unknown} unknown durations` : ""}
                 </p>
               )}
             </div>
-          </aside>
-          <section className="min-w-0 rounded-xl border border-border-subtle bg-sand/5">
-            {selected ? (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle p-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Clock3 size={18} className="text-accent-blue" />
-                      <h2 className="text-lg font-semibold">
-                        {new Date(selected.scheduledAt!).toLocaleString(
-                          undefined,
-                          { dateStyle: "full", timeStyle: "short" },
-                        )}
-                      </h2>
-                    </div>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      Revision {selected.revision} ·{" "}
-                      {selected.isRunning
-                        ? "On air"
-                        : selected.publishedAt
-                          ? "Published"
-                          : "Draft"}
-                      {dirty ? " · Unsaved changes" : ""}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {dirty && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() => {
-                          setItems(selected.items);
-                          setPreflight(null);
-                        }}
-                      >
-                        Discard changes
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void save()}
-                      disabled={
-                        !dirty ||
-                        busy ||
-                        (!!selected.lastStartedAt && !selected.isRunning)
-                      }
-                    >
-                      <Save size={15} /> Save
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => void publish()}
-                      disabled={busy || selected.isRunning}
-                    >
-                      {selected.publishedAt ? "Recheck and publish" : "Publish"}
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-2 p-4">
-                  {items.map((item, index) => {
-                    const locked = index <= activeIndex;
-                    const song = item.songId
-                      ? songs.find((candidate) => candidate.id === item.songId)
-                      : null;
-                    return (
-                      <div
-                        key={item.id}
-                        className={`grid gap-3 rounded-xl border p-3 md:grid-cols-[4rem_minmax(0,1fr)_8rem_auto] ${locked ? "border-green-500/40 bg-green-500/5" : "border-border-subtle bg-dark-sand/40"}`}
-                      >
-                        <span className="self-center font-mono text-sm font-bold text-text-secondary">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-accent-blue">
-                            {item.kind === "playSong"
-                              ? item.isFiller
-                                ? "Filler"
-                                : "Song"
-                              : item.kind === "instant"
-                                ? "Audio clip"
-                                : "Stop"}
-                          </span>
-                          {item.kind === "playSong" ? (
-                            <Select
-                              value={item.songId ? String(item.songId) : ""}
-                              onChange={(value) =>
-                                updateItem(index, { songId: Number(value) })
-                              }
-                              disabled={locked}
-                              options={[
-                                { value: "", label: "Choose song" },
-                                ...songs.map((candidate) => ({
-                                  value: String(candidate.id),
-                                  label: `${candidate.artist} — ${candidate.title}${candidate.enabled ? "" : " (disabled)"}`,
-                                })),
-                              ]}
-                            />
-                          ) : item.kind === "instant" ? (
-                            <Select
-                              value={
-                                item.instantId ? String(item.instantId) : ""
-                              }
-                              onChange={(value) =>
-                                updateItem(index, { instantId: Number(value) })
-                              }
-                              disabled={locked}
-                              options={[
-                                { value: "", label: "Choose clip" },
-                                ...clips.map((candidate) => ({
-                                  value: String(candidate.id),
-                                  label: `${candidate.name}${candidate.enabled ? "" : " (disabled)"}`,
-                                })),
-                              ]}
-                            />
-                          ) : (
-                            <p className="text-sm">End program audio</p>
-                          )}
-                          <p className="mt-1 text-xs text-text-secondary">
-                            {timing[index].durationMs
-                              ? `${Math.round(timing[index].durationMs! / 1000)}s`
-                              : item.kind === "stopSong"
-                                ? "Stops audio"
-                                : "Duration required for fillers"}
-                            {timing[index].gapMs
-                              ? ` · ${Math.ceil(timing[index].gapMs! / 1000)}s ${item.kind === "stopSong" ? "intentional silence" : "to fill"}`
-                              : ""}
-                            {timing[index].cutMs
-                              ? ` · ${Math.ceil(timing[index].cutMs! / 1000)}s ${item.isFiller ? "cut at next boundary" : "content overrun"}`
-                              : ""}
-                          </p>
-                          {item.kind === "instant" && (
-                            <label className="mt-2 block text-xs text-text-secondary">
-                              Clip duration (seconds)
-                              <Input
-                                aria-label={`Clip duration for event ${index + 1}`}
-                                type="number"
-                                min="1"
-                                value={
-                                  item.durationMs ? item.durationMs / 1000 : ""
-                                }
-                                disabled={locked}
-                                onChange={(event) =>
-                                  updateItem(index, {
-                                    durationMs: event.target.value
-                                      ? Number(event.target.value) * 1000
-                                      : undefined,
-                                  })
-                                }
-                              />
-                            </label>
-                          )}
-                          {item.voiceTrackInstantId ? (
-                            <p className="mt-1 text-xs text-violet-300">
-                              Voice track #{item.voiceTrackInstantId} · song at{" "}
-                              {Math.round((item.voiceDuckGain ?? 0.35) * 100)}%
-                            </p>
-                          ) : null}
-                        </div>
-                        <label className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">
-                          Fixed start (+sec)
-                          <Input
-                            type="number"
-                            min="0"
-                            max={
-                              item.kind === "stopSong" &&
-                              index === items.length - 1
-                                ? "3600"
-                                : "3599"
-                            }
-                            value={item.clockOffsetSeconds ?? ""}
-                            onChange={(event) =>
-                              updateItem(index, {
-                                clockOffsetSeconds:
-                                  event.target.value === ""
-                                    ? undefined
-                                    : Number(event.target.value),
-                              })
-                            }
-                            disabled={locked || index === 0}
-                            placeholder="After previous"
-                          />
-                          <span className="font-normal normal-case">
-                            {formatClock(item.clockOffsetSeconds)}
-                          </span>
-                        </label>
-                        <div className="flex items-center gap-1">
-                          {item.kind === "playSong" && song ? (
-                            <Button
-                              type="button"
-                              size="xs"
-                              variant="secondary"
-                              onClick={() => setRecordIndex(index)}
-                              disabled={locked}
-                            >
-                              <Mic2 size={14} /> Voice
-                            </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="destructive"
-                            onClick={() =>
-                              setItems((current) => {
-                                const next = current.filter(
-                                  (_, row) => row !== index,
-                                );
-                                if (next[0])
-                                  next[0] = {
-                                    ...next[0],
-                                    clockOffsetSeconds: 0,
-                                  };
-                                return next;
-                              })
-                            }
-                            disabled={locked}
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => add("playSong")}
-                      disabled={
-                        busy ||
-                        (!!selected.lastStartedAt && !selected.isRunning)
-                      }
-                    >
-                      <Plus size={14} /> Song
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => add("instant")}
-                      disabled={
-                        busy ||
-                        (!!selected.lastStartedAt && !selected.isRunning)
-                      }
-                    >
-                      <Plus size={14} /> Clip
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => add("stopSong")}
-                      disabled={
-                        busy ||
-                        (!!selected.lastStartedAt && !selected.isRunning)
-                      }
-                    >
-                      <Plus size={14} /> Stop
-                    </Button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="p-12 text-center text-sm text-text-secondary">
-                Create or choose an hour to start building its rundown.
-              </div>
-            )}
-          </section>
-          <aside className="space-y-4 lg:col-span-2 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 2xl:col-span-1 2xl:block 2xl:space-y-4">
-            <RadioLogGenerator
-              programId={programId}
-              log={selected}
-              onGenerated={(generated) => {
-                setItems(generated);
-                setPreflight(null);
-              }}
-            />
-            <RundownFillers
-              programId={programId}
-              rundown={selected}
-              items={items}
-              onFilled={(filled) => {
-                setItems(filled);
-                setPreflight(null);
-              }}
-            />
-            <div className="rounded-xl border border-border-subtle bg-sand/5 p-4">
-              <h2 className="text-sm font-bold">Air readiness</h2>
-              <p className="mt-1 text-xs text-text-secondary">
-                Checks catalog availability before the hour is published.
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                className="mt-4 w-full"
-                onClick={() => void check()}
-                disabled={!selected || busy}
-              >
-                Check rundown
-              </Button>
-              {preflight ? (
-                <div
-                  className={`mt-3 rounded-lg p-3 text-sm ${preflight.ready ? "bg-green-500/10 text-green-300" : "bg-amber-500/10 text-amber-300"}`}
+            <div className="rundown-actions">
+              {dirty && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => {
+                    setItems(selected!.items);
+                    setPreflight(null);
+                  }}
                 >
-                  {preflight.ready ? (
-                    <span className="flex items-center gap-2">
-                      <CheckCircle2 size={16} /> Ready to publish
-                    </span>
-                  ) : (
+                  Discard
+                </Button>
+              )}
+              <Button
+                size="xs"
+                variant="secondary"
+                disabled={!dirty || busy || !editable || !!fixtureData}
+                onClick={() => void save().catch(() => {})}
+              >
+                <Save size={13} /> Save
+              </Button>
+              <Button
+                size="xs"
+                variant="secondary"
+                disabled={!selected || busy || !!fixtureData}
+                onClick={() => void check()}
+              >
+                Check
+              </Button>
+              <Button
+                size="xs"
+                disabled={
+                  !selected ||
+                  busy ||
+                  !!fixtureData ||
+                  !!selected.lastStartedAt ||
+                  !!selected.isRunning
+                }
+                onClick={() => void publish()}
+              >
+                Publish
+              </Button>
+            </div>
+          </div>
+          {selected ? (
+            <RundownEventList
+              items={items}
+              songs={songs}
+              clips={clips}
+              scheduledAt={selected.scheduledAt!}
+              activeIndex={activeIndex}
+              selectedCueId={selectedCueId}
+              onSelect={(id) => {
+                setSelectedCueId(id);
+                setInspector("event");
+                revealInspector();
+              }}
+            />
+          ) : (
+            <div className="rundown-empty">
+              <Clock3 size={28} className="mx-auto mb-3" />
+              <strong>Your broadcast hour starts here</strong>
+              <p>Create an hour, add timed content, then fill its gaps.</p>
+            </div>
+          )}
+          <div className="rundown-insert">
+            <Button
+              size="xs"
+              variant="secondary"
+              disabled={busy || !editable}
+              onClick={() => add("playSong")}
+            >
+              <Plus size={13} /> Song
+            </Button>
+            <Button
+              size="xs"
+              variant="secondary"
+              disabled={busy || !editable}
+              onClick={() => add("instant")}
+            >
+              <Plus size={13} /> Clip
+            </Button>
+            <Button
+              size="xs"
+              variant="secondary"
+              disabled={busy || !editable}
+              onClick={() => add("stopSong")}
+            >
+              <Plus size={13} /> Stop
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!selected}
+              onClick={() => setInspector("fillers")}
+            >
+              Fill gaps
+            </Button>
+          </div>
+          {preflight && (
+            <div className="rundown-sequence-heading" role="status">
+              {preflight.ready ? (
+                <span className="console-status" data-tone="ready">
+                  <CheckCircle2 size={13} /> Audio checked · ready for air
+                </span>
+              ) : (
+                <div>
+                  <span className="console-status" data-tone="warning">
+                    <AlertTriangle size={13} /> Needs attention
+                  </span>
+                  <ul>
+                    {preflight.issues.map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+        <aside
+          ref={inspectorRef}
+          className="rundown-inspector"
+          aria-label="Rundown inspector"
+        >
+          <div
+            className="rundown-inspector-tabs"
+            role="group"
+            aria-label="Rundown tools"
+          >
+            {(
+              [
+                ["event", "Event"],
+                ["fillers", "Fillers"],
+                ["build", "Build hour"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={inspector === id}
+                onClick={() => setInspector(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="rundown-inspector-body">
+            {inspector === "fillers" && (
+              <RundownFillers
+                programId={programId}
+                rundown={fixtureData ? null : selected}
+                fixtureLabels={
+                  fixtureData
+                    ? [{ id: "music", name: "Music rotation" }]
+                    : undefined
+                }
+                items={items}
+                onFilled={(filled) => {
+                  setItems(filled);
+                  setPreflight(null);
+                  setSelectedCueId(null);
+                }}
+              />
+            )}
+            {inspector === "build" && (
+              <RadioLogGenerator
+                programId={programId}
+                log={fixtureData ? null : selected}
+                fixtureLabels={
+                  fixtureData
+                    ? [{ id: "music", name: "Music rotation" }]
+                    : undefined
+                }
+                onGenerated={(generated) => {
+                  setItems(generated);
+                  setPreflight(null);
+                  setSelectedCueId(null);
+                }}
+              />
+            )}
+            {inspector === "event" &&
+              (editCue ? (
+                <>
+                  <span className="console-eyebrow">
+                    Event {String(editIndex + 1).padStart(2, "0")}
+                    {editCue.isFiller ? " · Filler" : ""}
+                    {editLocked ? " · Locked" : ""}
+                  </span>
+                  <h2 className="mt-2">
+                    {editCue.kind === "playSong"
+                      ? "Music event"
+                      : editCue.kind === "instant"
+                        ? "Audio clip"
+                        : "Stop program audio"}
+                  </h2>
+                  {editCue.kind === "playSong" && (
+                    <label>
+                      Catalog song
+                      <Select
+                        aria-label="Event song"
+                        disabled={editLocked || busy}
+                        value={editCue.songId ? String(editCue.songId) : ""}
+                        onChange={(value) =>
+                          updateItem(editIndex, { songId: Number(value) })
+                        }
+                        options={[
+                          { value: "", label: "Choose song" },
+                          ...songs.map((song) => ({
+                            value: String(song.id),
+                            label: `${song.artist} — ${song.title}${song.enabled ? "" : " (disabled)"}`,
+                          })),
+                        ]}
+                      />
+                    </label>
+                  )}
+                  {editCue.kind === "instant" && (
                     <>
-                      <span className="flex items-center gap-2 font-bold">
-                        <AlertTriangle size={16} /> Needs attention
-                      </span>
-                      <ul className="mt-2 list-disc pl-5">
-                        {preflight.issues.map((issue) => (
-                          <li key={issue}>{issue}</li>
-                        ))}
-                      </ul>
+                      <label>
+                        Audio clip
+                        <Select
+                          aria-label="Event clip"
+                          disabled={editLocked || busy}
+                          value={
+                            editCue.instantId ? String(editCue.instantId) : ""
+                          }
+                          onChange={(value) =>
+                            updateItem(editIndex, { instantId: Number(value) })
+                          }
+                          options={[
+                            { value: "", label: "Choose clip" },
+                            ...clips.map((clip) => ({
+                              value: String(clip.id),
+                              label: clip.name,
+                            })),
+                          ]}
+                        />
+                      </label>
+                      <label>
+                        Clip duration (seconds)
+                        <Input
+                          aria-label="Clip duration"
+                          type="number"
+                          min="1"
+                          value={
+                            editCue.durationMs ? editCue.durationMs / 1000 : ""
+                          }
+                          disabled={editLocked || busy}
+                          onChange={(event) =>
+                            updateItem(editIndex, {
+                              durationMs: event.target.value
+                                ? Number(event.target.value) * 1000
+                                : undefined,
+                            })
+                          }
+                        />
+                      </label>
                     </>
                   )}
-                </div>
-              ) : null}
-            </div>
-            <div className="rounded-xl border border-border-subtle bg-sand/5 p-4">
-              <h2 className="text-sm font-bold">Timing guide</h2>
-              <p className="mt-1 text-xs text-text-secondary">
-                A fixed start cuts to that item at its clock position. Items
-                without one follow the previous song’s confirmed end.
-              </p>
-              <div className="mt-3 space-y-2">
-                {items.map((item, index) => (
-                  <div
-                    key={item.id}
-                    className="flex justify-between gap-2 border-b border-border-subtle pb-2 text-xs"
-                  >
-                    <span className="truncate">
-                      {index + 1}.{" "}
-                      {item.kind === "playSong"
-                        ? (songs.find((song) => song.id === item.songId)
-                            ?.title ?? "Missing song")
-                        : item.kind === "instant"
-                          ? (clips.find((clip) => clip.id === item.instantId)
-                              ?.name ?? "Missing clip")
-                          : "Stop"}
-                    </span>
-                    <span className="shrink-0 font-mono text-text-secondary">
-                      {formatClock(item.clockOffsetSeconds)}
-                    </span>
+                  <label>
+                    Fixed start (seconds into hour)
+                    <Input
+                      aria-label="Fixed start"
+                      type="number"
+                      min="0"
+                      max={
+                        editCue.kind === "stopSong" &&
+                        editIndex === items.length - 1
+                          ? "3600"
+                          : "3599"
+                      }
+                      value={editCue.clockOffsetSeconds ?? ""}
+                      disabled={editLocked || editIndex === 0 || busy}
+                      placeholder="Follow previous event"
+                      onChange={(event) =>
+                        updateItem(editIndex, {
+                          clockOffsetSeconds:
+                            event.target.value === ""
+                              ? undefined
+                              : Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <p className="rundown-inspector-note">
+                    {editCue.clockOffsetSeconds === undefined
+                      ? "Follows the previous event. The start in the log is estimated from catalog duration."
+                      : `${formatClock(editCue.clockOffsetSeconds)} · Starts on time and cuts the preceding filler.`}
+                  </p>
+                  {editCue.voiceTrackInstantId && (
+                    <p className="rundown-inspector-note">
+                      Voice track #{editCue.voiceTrackInstantId} · music at{" "}
+                      {Math.round((editCue.voiceDuckGain ?? 0.35) * 100)}%
+                    </p>
+                  )}
+                  <div className="rundown-actions mt-5">
+                    {editCue.kind === "playSong" &&
+                      songs.some((song) => song.id === editCue.songId) && (
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          disabled={editLocked || busy || !!fixtureData}
+                          onClick={() => setRecordIndex(editIndex)}
+                        >
+                          <Mic2 size={13} /> Record voice
+                        </Button>
+                      )}
+                    <Button
+                      size="xs"
+                      variant="destructive"
+                      disabled={editLocked || busy}
+                      onClick={remove}
+                    >
+                      <Trash2 size={13} /> Remove
+                    </Button>
                   </div>
-                ))}
-              </div>
-            </div>
-          </aside>
-        </div>
+                </>
+              ) : (
+                <>
+                  <span className="console-eyebrow">Event inspector</span>
+                  <h2 className="mt-2">Select an event</h2>
+                  <p className="rundown-inspector-note">
+                    Read the hour in the log. Select a row to change its source,
+                    fixed start, clip duration, or voice track.
+                  </p>
+                  <p className="rundown-inspector-note">
+                    Fixed starts are marked with a clock. Estimated starts
+                    follow the previous event’s actual end.
+                  </p>
+                </>
+              ))}
+          </div>
+        </aside>
       </div>
+      <Modal
+        isOpen={creating}
+        onClose={() => setCreating(false)}
+        title="New broadcast hour"
+      >
+        <label className="block text-sm">
+          Scheduled start
+          <Input
+            aria-label="New hour"
+            type="datetime-local"
+            step="3600"
+            value={hour}
+            onChange={(event) => setHour(event.target.value)}
+          />
+        </label>
+        <p className="my-3 text-xs text-text-secondary">
+          Create a draft hour. It goes on air only after you publish it.
+        </p>
+        <Button disabled={busy} onClick={() => void create()}>
+          Create rundown
+        </Button>
+      </Modal>
       <Modal
         isOpen={recordIndex !== null}
         onClose={() => setRecordIndex(null)}
