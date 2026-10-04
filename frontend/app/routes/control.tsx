@@ -1953,6 +1953,8 @@ export default function Control() {
       }));
     } catch (err) {
       console.error("Failed to save program audio bus settings:", err);
+      await fetchProgramAudioBusSettings(activeProgramId, false);
+      throw err;
     } finally {
       setIsSavingProgramAudioBus(false);
     }
@@ -2064,6 +2066,7 @@ export default function Control() {
       console.log(`[Control] takeProgramSongOffAir response ${res.status}`);
     } catch (err) {
       console.error("Failed to take song off air:", err);
+      throw err;
     }
   };
 
@@ -3186,6 +3189,9 @@ export default function Control() {
     stageSceneForProgram,
   ]);
 
+  const [radioPlayoutError, setRadioPlayoutError] = useState<string | null>(null);
+  useEffect(() => setRadioPlayoutError(null), [activeProgramId]);
+
   const handleProgramEvent = useCallback(
     (data: any) => {
       if (!data || typeof data !== "object") {
@@ -3197,6 +3203,24 @@ export default function Control() {
       if (eventProgramId && eventProgramId !== activeProgramIdRef.current) {
         return;
       }
+
+      if (data.type === "radio_rotation_resume_failed") {
+        setRadioPlayoutError(
+          "The timed block ended, but continuous fillers could not resume. Check the engine before starting the rotation.",
+        );
+        return;
+      }
+      if (
+        data.type === "radio_log_start_failed" ||
+        data.type === "radio_log_cue_failed"
+      ) {
+        setRadioPlayoutError(
+          "The timed block could not play. Check its audio and the engine before restarting.",
+        );
+        return;
+      }
+      if (data.type === "song_playback_update" && data.playback?.isPlaying)
+        setRadioPlayoutError(null);
 
       if (!shouldApplyControlUpdatePayload(data)) {
         return;
@@ -3540,6 +3564,7 @@ export default function Control() {
     return (
       <RadioPanel
         programId={activeProgramId}
+        playoutError={radioPlayoutError}
         songSequence={programAudioBusSongSequence}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
@@ -3547,6 +3572,7 @@ export default function Control() {
         onSaveSongSequence={async (seq) => {
           await saveProgramAudioBusSongSequence(seq);
         }}
+        onTakeSelection={takeProgramSongSelection}
         onQueueSong={enqueueProgramSong}
         onRemoveQueuedSong={removeQueuedProgramSong}
         onReorderSongQueue={reorderProgramSongQueue}

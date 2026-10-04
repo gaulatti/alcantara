@@ -804,3 +804,63 @@ describe('ProgramService switcher state', () => {
     subscription.unsubscribe();
   });
 });
+
+describe('ProgramService timed-block audio cuts', () => {
+  const sequence = {
+    mode: 'shuffle',
+    loop: true,
+    activeItemId: 'filler',
+    items: [
+      {
+        id: 'filler',
+        kind: 'preset',
+        title: 'Filler',
+        audioUrl: 'https://example.test/filler.mp3',
+      },
+    ],
+  };
+  function setup() {
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ songSequence: sequence, audioMixer: null }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const engine = {
+      handleStopSong: jest.fn(),
+      handleSequenceUpdated: jest.fn(),
+    };
+    const service = new ProgramService(
+      prisma as never,
+      {} as never,
+      engine as never,
+    );
+    jest
+      .spyOn(service as any, 'forwardStopSongToRadio')
+      .mockResolvedValue(undefined);
+    return { service, prisma, engine };
+  }
+  it('cuts physical audio without clearing the persisted filler cursor or mode', async () => {
+    const { service, prisma, engine } = setup();
+    await service.stopProgramSongForTimedBlock('radio-1');
+    expect(prisma.programState.update).not.toHaveBeenCalled();
+    expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
+    expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1');
+  });
+  it('makes an explicit operator stop persist Manual so idle snapshots cannot restart playback', async () => {
+    const { service, prisma, engine } = setup();
+    await service.takeProgramSongOffAir('radio-1');
+    expect(prisma.programState.update).toHaveBeenCalledWith({
+      where: { programId: 'radio-1' },
+      data: {
+        songSequence: { ...sequence, mode: 'manual', activeItemId: null },
+      },
+    });
+    expect(engine.handleSequenceUpdated).toHaveBeenCalledWith(
+      'radio-1',
+      expect.objectContaining({ mode: 'manual', activeItemId: null }),
+    );
+  });
+});

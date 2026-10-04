@@ -19,6 +19,13 @@ import type {
   SongCatalogItem,
   InstantItem,
 } from "../models/broadcast";
+import { ProgramSongSequenceEditor } from "./editors/ProgramSongSequenceEditor";
+import { PlayNextQueue } from "./PlayNextQueue";
+import {
+  normalizeProgramSongSequence,
+  createProgramSongSequence,
+  type ProgramSongSequence,
+} from "../utils/programSequence";
 import { PlaybackBar } from "./PlaybackBar";
 import { InstantsPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
@@ -55,11 +62,13 @@ interface RadioPanelProps {
     recovery: RecoveryStatus;
   };
   programId: string;
+  playoutError?: string | null;
   songSequence: any;
   songQueue: ProgramSongQueueEntry[];
   songCatalog: SongCatalogItem[];
   programSongPlayback: ProgramSongPlaybackState | null;
   onSaveSongSequence: (seq: any) => Promise<void> | void;
+  onTakeSelection?: (seq: ProgramSongSequence) => Promise<void> | void;
   onQueueSong: (itemId: string) => Promise<void> | void;
   onRemoveQueuedSong: (entryId: string) => Promise<void> | void;
   onReorderSongQueue: (entryIds: string[]) => Promise<void> | void;
@@ -123,6 +132,15 @@ interface RecoveryStatus {
 export const RadioPanel: React.FC<RadioPanelProps> = ({
   fixtureData,
   programId,
+  playoutError,
+  songSequence,
+  songQueue,
+  onSaveSongSequence,
+  onTakeSelection,
+  onQueueSong,
+  onRemoveQueuedSong,
+  onReorderSongQueue,
+  onTakeOffAir,
   songCatalog,
   programSongPlayback,
   instants,
@@ -138,13 +156,27 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onToggleSongMuted,
   onToggleInstantMuted,
 }) => {
+  const rotation = normalizeProgramSongSequence(songSequence) ?? {
+    ...createProgramSongSequence("manual"),
+    activeItemId: null,
+  };
+  const runRotation = async (action: () => Promise<void> | void) => {
+    setQueueError(null);
+    try {
+      await action();
+    } catch (cause) {
+      setQueueError(
+        cause instanceof Error ? cause.message : "Rotation command failed",
+      );
+    }
+  };
+  const [addingFillers, setAddingFillers] = useState(false);
   const [stream, setStream] = useState<StreamStatus | null>(
     fixtureData?.stream ?? null,
   );
   const [palazzo, setPalazzo] = useState<PalazzoStatus | null>(
     fixtureData?.palazzo ?? null,
   );
-  const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const [addSongId, setAddSongId] = useState("");
   const [logBusy, setLogBusy] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
@@ -286,7 +318,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       )[0] ?? null;
   const activeLog =
     runningLog ??
-    logs.find((log) => log.id === selectedLogId) ??
     nextLog ??
     [...logs]
       .filter((log) => log.lastStartedAt)
@@ -349,6 +380,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
     items.splice(target, 0, cue);
     void editLog(items);
   };
+  const timedBlockOnAir =
+    !!runningLog && Date.parse(runningLog.scheduledAt!) <= Date.now();
   const currentLogIndex = activeLog?.isRunning
     ? activeLog.items.findIndex((item) => item.id === activeLog.activeItemId)
     : -1;
@@ -406,21 +439,34 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
-            title="On-air rundown"
+            title={timedBlockOnAir ? "On-air rundown" : "Continuous fillers"}
             eyebrow="Playout"
             className="radio-rundown"
             actions={
-              <Link
-                to="/flight"
-                className="inline-flex items-center gap-1 text-sm"
-              >
-                <List size={14} /> Prepare rundown
-              </Link>
+              <div className="flex items-center gap-3">
+                {!timedBlockOnAir && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => setAddingFillers((value) => !value)}
+                  >
+                    <Plus size={13} />{" "}
+                    {addingFillers ? "Done adding" : "Add fillers"}
+                  </Button>
+                )}
+                <Link
+                  to="/flight"
+                  className="inline-flex items-center gap-1 text-sm"
+                >
+                  <List size={14} /> Prepare rundown
+                </Link>
+              </div>
             }
           >
             <div className="console-log-summary flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                {activeLog ? (
+                {timedBlockOnAir && activeLog ? (
                   <>
                     <strong>{activeLog.name}</strong>
                     <small className="block">
@@ -438,34 +484,36 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     </small>
                   </>
                 ) : (
-                  "No rundown selected"
+                  <>
+                    <strong>24/7 rotation</strong>
+                    <small className="block">
+                      No hourly log required · {rotation.items.length} songs
+                      {rotation.mode === "shuffle"
+                        ? " · Shuffle pool; row order is not the next-song order"
+                        : ""}
+                    </small>
+                    {nextLog && (
+                      <small className="block">
+                        Next timed block: {nextLog.name} ·{" "}
+                        {new Date(nextLog.scheduledAt!).toLocaleString()}
+                      </small>
+                    )}
+                  </>
                 )}
               </div>
-              {!runningLog && (
-                <Select
-                  aria-label="Select rundown"
-                  value={activeLog ? String(activeLog.id) : ""}
-                  onChange={(value) => setSelectedLogId(Number(value))}
-                  options={[
-                    { value: "", label: "Choose an hour" },
-                    ...logs.map((log) => ({
-                      value: String(log.id),
-                      label: `${new Date(log.scheduledAt!).toLocaleString()} · ${log.publishedAt ? "Published" : "Draft"}`,
-                    })),
-                  ]}
-                />
-              )}
               <span className="console-count">
-                {activeLog?.items.length ?? 0} events
+                {timedBlockOnAir
+                  ? `${activeLog?.items.length ?? 0} events`
+                  : `${rotation.mode} · ${rotation.loop ? "Loop on" : "Loop off"}`}
               </span>
             </div>
-            {(queueError || logLoadError) && (
+            {(playoutError || queueError || logLoadError) && (
               <p role="alert" className="px-4 py-3 text-sm text-terracotta">
-                {queueError || logLoadError}
+                {playoutError || queueError || logLoadError}
               </p>
             )}
             <div className="radio-rundown-body">
-              {activeLog ? (
+              {timedBlockOnAir && activeLog ? (
                 <ol className="console-log" aria-label="On-air rundown">
                   {activeLog.items.map((cue, index) => {
                     const song =
@@ -610,17 +658,43 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   })}
                 </ol>
               ) : (
-                <div className="console-empty">
-                  <strong>No published hour is queued.</strong>
-                  <p>
-                    Prepare an hour from Library tags, review its events, then
-                    publish.
-                  </p>
-                  <Link to="/flight">Prepare a rundown</Link>
+                <div className="flex h-full min-h-0 flex-col">
+                  {songQueue.length > 0 && (
+                    <PlayNextQueue
+                      queue={songQueue}
+                      sequence={rotation}
+                      activeQueueEntryId={programSongPlayback?.queueEntryId}
+                      onRemove={onRemoveQueuedSong}
+                      onReorder={onReorderSongQueue}
+                    />
+                  )}
+                  <ProgramSongSequenceEditor
+                    sequence={rotation}
+                    songCatalog={songCatalog}
+                    programSongPlayback={programSongPlayback}
+                    onChange={(next) => {
+                      void Promise.resolve(onSaveSongSequence(next)).catch(
+                        (cause) =>
+                          setQueueError(
+                            cause instanceof Error
+                              ? cause.message
+                              : "Rotation was not changed",
+                          ),
+                      );
+                    }}
+                    onTakeSelection={
+                      onTakeSelection
+                        ? (next) => runRotation(() => onTakeSelection(next))
+                        : undefined
+                    }
+                    onQueueItem={onQueueSong}
+                    view={addingFillers ? "full" : "queue"}
+                    rotationLabel="Filler rotation"
+                  />
                 </div>
               )}
             </div>
-            {activeLog && (
+            {timedBlockOnAir && activeLog && (
               <div className="console-log-summary flex flex-wrap items-center gap-2">
                 <Select
                   aria-label="Song to add to log"
@@ -810,32 +884,52 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         </div>
       </div>
       <PlaybackBar
-        sequence={null as any}
+        sequence={rotation}
         programSongPlayback={programSongPlayback}
-        onChange={() => {}}
-        onStopAllInstants={onStopAllInstants}
-        logTransport={{
-          isRunning: !!runningLog,
-          canStart:
-            !!activeLog?.publishedAt && !activeLog.lastStartedAt && !runningLog,
-          canAdvance:
-            !!runningLog &&
-            Date.parse(runningLog.scheduledAt!) <= Date.now() &&
-            currentLogIndex < runningLog.items.length - 1,
-          busy: logBusy,
-          label: runningLog
-            ? Date.parse(runningLog.scheduledAt!) > Date.now()
-              ? "Rundown armed for scheduled hour"
-              : "Rundown automation running"
-            : activeLog?.lastStartedAt
-              ? "Rundown stopped"
-              : activeLog?.publishedAt
-                ? "Waiting for scheduled hour"
-                : "Publish a rundown to start",
-          onStart: () => void commandLog("start"),
-          onStop: () => void commandLog("stop"),
-          onAdvance: () => void commandLog("advance"),
+        onChange={(next) => {
+          void Promise.resolve(onSaveSongSequence(next)).catch((cause) =>
+            setQueueError(
+              cause instanceof Error
+                ? cause.message
+                : "Rotation was not changed",
+            ),
+          );
         }}
+        onTakeSelection={
+          onTakeSelection
+            ? (next) => runRotation(() => onTakeSelection(next))
+            : undefined
+        }
+        onTakeOffAir={() => runRotation(onTakeOffAir)}
+        onStopAllInstants={onStopAllInstants}
+        logTransport={
+          timedBlockOnAir
+            ? {
+                isRunning: !!runningLog,
+                canStart:
+                  !!activeLog?.publishedAt &&
+                  !activeLog.lastStartedAt &&
+                  !runningLog,
+                canAdvance:
+                  !!runningLog &&
+                  Date.parse(runningLog.scheduledAt!) <= Date.now() &&
+                  currentLogIndex < runningLog.items.length - 1,
+                busy: logBusy,
+                label: runningLog
+                  ? Date.parse(runningLog.scheduledAt!) > Date.now()
+                    ? "Rundown armed for scheduled start"
+                    : "Rundown automation running"
+                  : activeLog?.lastStartedAt
+                    ? "Rundown stopped"
+                    : activeLog?.publishedAt
+                      ? "Waiting for scheduled start"
+                      : "Publish a rundown to start",
+                onStart: () => void commandLog("start"),
+                onStop: () => void commandLog("stop"),
+                onAdvance: () => void commandLog("advance"),
+              }
+            : undefined
+        }
       />
     </div>
   );

@@ -291,8 +291,10 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   mount(p);
   expect(screen.getByText("Nothing on air")).toBeVisible();
   expect(screen.queryByText("—:—")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Start rundown" })).toBeDisabled();
-  expect(screen.getByText("No published hour is queued.")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Start rundown" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("Filler rotation is empty")).toBeVisible();
 });
 
 it("renders reported metadata when the playing track is absent from the playlist", () => {
@@ -332,4 +334,55 @@ it("does not use playlist duration when playback duration is unavailable", () =>
   expect(
     screen.queryByRole("progressbar", { name: "Track progress" }),
   ).not.toBeInTheDocument();
+});
+
+for (const futureBlock of [false, true]) {
+  it(`shows the real continuous fillers and transport with ${futureBlock ? "a future block" : "no blocks"}, without sending playback commands on mount`, async () => {
+    const p = props();
+    p.fixtureData!.logs = futureBlock
+      ? [
+          {
+            ...p.fixtureData!.logs[0],
+            isRunning: false,
+            lastStartedAt: null,
+            scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+          },
+        ]
+      : [];
+    p.onTakeSelection = vi.fn();
+    mount(p);
+    expect(
+      screen.getByRole("region", { name: "Continuous fillers" }),
+    ).toBeVisible();
+    expect(screen.getByText("24/7 rotation")).toBeVisible();
+    expect(screen.getByRole("group", { name: "Playback mode" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Start rundown" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add fillers" }));
+    expect(
+      screen.getByPlaceholderText("Search catalog to add..."),
+    ).toBeVisible();
+    expect(p.onSaveSongSequence).not.toHaveBeenCalled();
+    expect(p.onTakeSelection).not.toHaveBeenCalled();
+    expect(flight.activateFlightSequence).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Stop / Take Off Air" }),
+    );
+    await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
+    expect(flight.stopFlight).not.toHaveBeenCalled();
+  });
+}
+
+it("keeps a playout failure visible beside the current rotation", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.playoutError = "Continuous fillers could not resume";
+  mount(p);
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Continuous fillers could not resume",
+  );
+  expect(
+    screen.getByRole("region", { name: "Continuous fillers" }),
+  ).toBeVisible();
 });

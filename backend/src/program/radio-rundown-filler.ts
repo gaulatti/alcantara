@@ -96,7 +96,8 @@ export function fillRadioRundown(
     } else items.push(cue);
     const next = content[index + 1];
     if (next && next.clockOffsetSeconds === undefined) continue;
-    const boundary = (next?.clockOffsetSeconds ?? 3600) * 1000;
+    if (!next) continue;
+    const boundary = next.clockOffsetSeconds! * 1000;
     if (cursor > boundary)
       throw new BadRequestException(
         `Content overruns the next fixed boundary by ${Math.ceil((cursor - boundary) / 1000)}s. Remove or shorten content before filling.`,
@@ -141,14 +142,6 @@ export function fillRadioRundown(
         );
     }
   }
-  if (content[content.length - 1].clockOffsetSeconds !== 3600)
-    items.push({
-      id: randomUUID(),
-      kind: 'stopSong',
-      clockOffsetSeconds: 3600,
-      isFiller: true,
-      label: 'End of hour',
-    });
   if (items.length > 120)
     throw new BadRequestException(
       'A filled rundown can contain at most 120 events',

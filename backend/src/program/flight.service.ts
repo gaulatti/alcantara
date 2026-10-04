@@ -222,7 +222,14 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     private readonly metrics: RadioMetricsService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    // Runtime timers cannot survive a process restart. Preserve the one-time
+    // start claim and rotation; mark interrupted blocks accurately in the UI.
+    const interrupted = await this.prisma.flightSequence.updateMany({
+      where: { isRunning: true, scheduledAt: { not: null } },
+      data: { isRunning: false },
+    });
+    if (interrupted.count) this.metrics.recordRadioLogResult('interrupted');
     this.scheduleTimer = setInterval(() => {
       void this.startDuePublishedLogs();
     }, 1000);
@@ -268,7 +275,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         sequence.isRunning
       )
         throw new BadRequestException(
-          'Tag generation is available only for an unaired draft hour',
+          'Tag generation is available only for an unaired draft block',
         );
       if (data?.revision !== sequence.revision)
         throw new ConflictException(
@@ -428,7 +435,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     const parsed = new Date(value);
     if (
       !Number.isFinite(parsed.getTime()) ||
-      parsed.toISOString().slice(0, 13) !== value.slice(0, 13)
+      parsed.toISOString().slice(0, 19) !== value.slice(0, 19)
     ) {
       throw new BadRequestException('scheduledAt is invalid');
     }
@@ -452,25 +459,19 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       }
       if (cue.clockOffsetSeconds !== undefined) {
         if (
-          !Number.isInteger(cue.clockOffsetSeconds) ||
+          !Number.isSafeInteger(cue.clockOffsetSeconds) ||
           cue.clockOffsetSeconds < 0 ||
-          (cue.clockOffsetSeconds >= 3600 &&
-            !(
-              cue.clockOffsetSeconds === 3600 &&
-              cue.kind === 'stopSong' &&
-              index === items.length - 1
-            )) ||
           cue.clockOffsetSeconds < previousHardTime
         ) {
           throw new BadRequestException(
-            'clock times must be ordered within the hour',
+            'fixed starts must be ordered from the block start',
           );
         }
         previousHardTime = cue.clockOffsetSeconds;
       }
       if (index === 0 && cue.clockOffsetSeconds !== 0) {
         throw new BadRequestException(
-          'the first log item must start at the hour',
+          'the first event must start at the block start',
         );
       }
       if (
@@ -650,7 +651,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     });
     if (!sequence) throw new NotFoundException('flight sequence not found');
     if (!sequence.scheduledAt || sequence.scheduledAt.getTime() <= Date.now())
-      throw new BadRequestException('the scheduled hour must be in the future');
+      throw new BadRequestException('the scheduled start must be in the future');
     if (sequence.loop)
       throw new BadRequestException('a clocked log cannot loop');
     if (sequence.revision !== revision)
@@ -719,7 +720,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           await this.start(sequence.programState.programId);
         } catch (error) {
           this.metrics.recordRadioLogResult('start-failed');
-          // A claimed hour never repeats automatically after an ambiguous failure.
+          // A claimed block never repeats automatically after an ambiguous failure.
           this.programService.broadcastUpdate(sequence.programState.programId, {
             type: 'radio_log_start_failed',
             sequenceId: sequence.id,
@@ -799,7 +800,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       if (err?.code === 'P2002') {
         throw new BadRequestException(
           scheduledAt
-            ? 'a radio log already exists for this scheduled hour or name'
+            ? 'a radio log already exists for this scheduled start or name'
             : `flight sequence "${name}" already exists`,
         );
       }
@@ -867,7 +868,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       }
       if (existing.publishedAt && data.scheduledAt !== undefined) {
         throw new ConflictException(
-          'a published log cannot change its scheduled hour',
+          'a published log cannot change its scheduled start',
         );
       }
       const updateData: {
@@ -1038,7 +1039,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException(preflight.issues.join('; '));
     }
 
-    await this.stop(normalizedProgramId);
+    if (!existing.scheduledAt || this.runtimes.has(normalizedProgramId))
+      await this.stopRuntime(normalizedProgramId, !!existing.scheduledAt);
     this.runtimes.delete(normalizedProgramId);
 
     await this.prisma.programState.update({
@@ -1105,7 +1107,8 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException(preflight.issues.join('; '));
     }
 
-    await this.stop(normalizedProgramId);
+    if (!sequence.scheduledAt || this.runtimes.has(normalizedProgramId))
+      await this.stopRuntime(normalizedProgramId, !!sequence.scheduledAt);
 
     const runtime: FlightRuntimeState = {
       sequenceId: sequence.id,
@@ -1137,29 +1140,46 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return { ok: true };
   }
 
-  async stop(programId: string): Promise<{ ok: boolean }> {
+  stop(programId: string): Promise<{ ok: boolean }> {
+    return this.stopRuntime(programId, false);
+  }
+
+  private async stopRuntime(
+    programId: string,
+    preserveRotation: boolean,
+  ): Promise<{ ok: boolean }> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const runtime = this.runtimes.get(normalizedProgramId);
 
     if (runtime) {
-      runtime.isRunning = false;
       runtime.waitingForSongEnd = false;
       this.clearTimer(runtime);
-      this.runtimes.delete(normalizedProgramId);
-    }
-
-    const state = await this.getProgramStateRecord(normalizedProgramId);
-    if (state.activeFlightSequenceId) {
-      await this.prisma.flightSequence.update({
-        where: { id: state.activeFlightSequenceId },
-        data: { isRunning: false },
-      });
     }
 
     try {
-      await this.programService.takeProgramSongOffAir(normalizedProgramId);
-    } catch {
-      // ignore
+      const state = await this.getProgramStateRecord(normalizedProgramId);
+      if (state.activeFlightSequenceId) {
+        await this.prisma.flightSequence.update({
+          where: { id: state.activeFlightSequenceId },
+          data: { isRunning: false },
+        });
+      }
+      try {
+        if (preserveRotation)
+          await this.programService.stopProgramSongForTimedBlock(
+            normalizedProgramId,
+          );
+        else
+          await this.programService.takeProgramSongOffAir(normalizedProgramId);
+      } catch (error) {
+        if (preserveRotation) throw error;
+      }
+    } finally {
+      // Keep log ownership during the physical cut: a late track-ended event
+      // cannot advance the continuous cursor or start a second song.
+      if (runtime) runtime.isRunning = false;
+      if (this.runtimes.get(normalizedProgramId) === runtime)
+        this.runtimes.delete(normalizedProgramId);
     }
 
     await this.broadcastFlightUpdate(normalizedProgramId);
@@ -1179,7 +1199,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
     if (runtime.scheduledAtMs !== null && Date.now() < runtime.scheduledAtMs) {
       throw new BadRequestException(
-        'the log cannot advance before its scheduled hour',
+        'the log cannot advance before its scheduled start',
       );
     }
     this.clearTimer(runtime);
@@ -1198,7 +1218,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           runtime.generation,
         );
       } else {
-        await this.stop(normalizedProgramId);
+        await this.finishBlock(runtime);
       }
       return { ok: true };
     }
@@ -1237,7 +1257,11 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
   isClockedLogRunning(programId: string): boolean {
     const runtime = this.runtimes.get(programId);
-    return !!runtime?.isRunning && runtime.scheduledAtMs !== null;
+    return (
+      !!runtime?.isRunning &&
+      runtime.scheduledAtMs !== null &&
+      Date.now() >= runtime.scheduledAtMs
+    );
   }
 
   async handleSongEnded(programId: string): Promise<{ ok: boolean }> {
@@ -1269,7 +1293,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           runtime.generation,
         );
       } else {
-        await this.stop(normalizedProgramId);
+        await this.finishBlock(runtime);
       }
       return { ok: true };
     }
@@ -1306,7 +1330,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       if (runtime.loop && runtime.items.length > 0) {
         return this.executeCueAtIndexUnlocked(programId, 0, generation);
       }
-      await this.stop(programId);
+      await this.finishBlock(runtime);
       return;
     }
 
@@ -1318,9 +1342,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     ) {
       const dueAt = runtime.scheduledAtMs + cue.clockOffsetSeconds * 1000;
       if (dueAt > Date.now()) {
-        runtime.timer = setTimeout(() => {
-          void this.executeCueAtIndex(programId, index, generation);
-        }, dueAt - Date.now());
+        runtime.timer = setTimeout(
+          () => {
+            void this.executeCueAtIndex(programId, index, generation);
+          },
+          Math.min(2_147_483_647, dueAt - Date.now()),
+        );
         return;
       }
     }
@@ -1333,10 +1360,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     try {
       if (
         runtime.scheduledAtMs !== null &&
-        cue.kind === 'instant' &&
-        cue.durationMs
+        (cue.kind === 'playSong' || (cue.kind === 'instant' && cue.durationMs))
       )
-        await this.programService.takeProgramSongOffAir(programId);
+        await this.programService.stopProgramSongForTimedBlock(programId);
       await this.executeCue(programId, cue);
     } catch (err) {
       console.error(`Flight cue execution failed (${cue.kind})`, err);
@@ -1432,9 +1458,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
             ? current.items.findIndex((item) => item.id === hard.id)
             : current.activeIndex + 1;
         if (index <= current.activeIndex) return;
+        if (Date.now() < Math.min(target, due)) {
+          this.armTimedClip(current);
+          return;
+        }
         void this.executeCueAtIndex(runtime.programId, index, generation);
       },
-      Math.max(0, Math.min(target, due) - Date.now()),
+      Math.min(2_147_483_647, Math.max(0, Math.min(target, due) - Date.now())),
     );
   }
 
@@ -1453,6 +1483,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           return;
         const index = current.items.findIndex((cue) => cue.id === nextHard.id);
         if (index <= current.activeIndex) return;
+        if (
+          Date.now() <
+          current.scheduledAtMs! + nextHard.clockOffsetSeconds! * 1000
+        ) {
+          this.armNextHardCue(current);
+          return;
+        }
         current.waitingForSongEnd = false;
         current.generation += 1;
         void this.executeCueAtIndex(
@@ -1461,11 +1498,14 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           current.generation,
         );
       },
-      Math.max(
-        0,
-        runtime.scheduledAtMs +
-          nextHard.clockOffsetSeconds! * 1000 -
-          Date.now(),
+      Math.min(
+        2_147_483_647,
+        Math.max(
+          0,
+          runtime.scheduledAtMs +
+            nextHard.clockOffsetSeconds! * 1000 -
+            Date.now(),
+        ),
       ),
     );
   }
@@ -1481,12 +1521,39 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       if (runtime.loop) {
         await this.executeCueAtIndex(programId, 0, generation);
       } else {
-        await this.stop(programId);
+        await this.finishBlock(runtime);
       }
       return;
     }
 
     await this.executeCueAtIndex(programId, nextIndex, generation);
+  }
+
+  private async finishBlock(runtime: FlightRuntimeState): Promise<void> {
+    if (runtime.scheduledAtMs === null) {
+      await this.stop(runtime.programId);
+      return;
+    }
+    try {
+      // Persist the next continuous cursor while the block still owns playout.
+      // A concurrent idle snapshot cannot start the interrupted filler again.
+      await this.programService.prepareContinuousRotationResume(
+        runtime.programId,
+      );
+      await this.stopRuntime(runtime.programId, true);
+      this.programService.resumeContinuousRotation(runtime.programId);
+      this.metrics.recordRadioLogResult('completed');
+    } catch {
+      this.metrics.recordRadioLogResult('resume-failed');
+      await this.stop(runtime.programId);
+      this.programService.broadcastUpdate(runtime.programId, {
+        type: 'radio_rotation_resume_failed',
+        sequenceId: runtime.sequenceId,
+      });
+      this.logger.error(
+        'Continuous rotation could not resume after a timed block',
+      );
+    }
   }
 
   private async executeCue(programId: string, cue: FlightCue): Promise<void> {
@@ -1506,7 +1573,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case 'stopSong':
-        await this.programService.takeProgramSongOffAir(programId);
+        if (this.isClockedLogRunning(programId))
+          await this.programService.stopProgramSongForTimedBlock(programId);
+        else await this.programService.takeProgramSongOffAir(programId);
         break;
 
       case 'sceneUpdate':
@@ -1579,10 +1648,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     if (!selectedSong) {
       throw new BadRequestException('scheduled song is unavailable');
     }
-    await this.programService.updateProgramAudioBus(
-      { songSequence },
-      programId,
-    );
+    if (!this.isClockedLogRunning(programId)) {
+      await this.programService.updateProgramAudioBus(
+        { songSequence },
+        programId,
+      );
+    }
     this.programService.takeCatalogSongOnAir(
       programId,
       selectedSong,

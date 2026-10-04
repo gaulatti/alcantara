@@ -82,7 +82,7 @@ describe('tagged radio clock generation', () => {
     {
       slots: [
         { labelId: 'hits', count: 1, clockOffsetSeconds: 0 },
-        { labelId: 'hits', count: 1, clockOffsetSeconds: 3600 },
+        { labelId: 'hits', count: 1, clockOffsetSeconds: -1 },
       ],
       artistSeparation: 0,
     },

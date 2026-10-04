@@ -26,7 +26,7 @@ export function RundownWorkspace({
           className="flex gap-2 border-b border-border-subtle bg-dark-sand px-6 py-3"
         >
           {[
-            { view: "scheduled", label: "Scheduled hours" },
+            { view: "scheduled", label: "Timed blocks" },
             { view: "operator", label: "Operator cues" },
           ].map(({ view, label }) => (
             <button

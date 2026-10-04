@@ -145,7 +145,7 @@ not block unrelated Alcantara deployments.
 
 ### Radio automation
 
-Clocked hourly logs, per-cue browser voice tracks, output confidence, and a prepared Palazzo recovery playlist are documented in [`docs/radio-station-workflow.md`](docs/radio-station-workflow.md).
+Continuous filler rotation, optional timed content blocks, per-cue browser voice tracks, output confidence, and a prepared Palazzo recovery playlist are documented in [`docs/radio-station-workflow.md`](docs/radio-station-workflow.md).
 
 Radio song sequences default to autoplay when their mode is absent. An explicit
 operator choice of Manual remains authoritative. In autoplay, Alcantara advances

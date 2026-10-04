@@ -78,6 +78,14 @@ export function RundownEventList({
                       second: "2-digit",
                       hour12: false,
                     });
+              const eventDate =
+                row.startMs === null
+                  ? null
+                  : new Date(Date.parse(scheduledAt) + row.startMs);
+              const differentDay =
+                eventDate &&
+                eventDate.toDateString() !==
+                  new Date(scheduledAt).toDateString();
               const locked = index <= activeIndex;
               return (
                 <tr
@@ -87,7 +95,16 @@ export function RundownEventList({
                   data-active={index === activeIndex}
                 >
                   <td className="rundown-clock">
-                    <span>{clock}</span>
+                    <span title={eventDate?.toLocaleString()}>{clock}</span>
+                    {differentDay && (
+                      <span className="rundown-follows">
+                        {eventDate.toLocaleDateString([], {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    )}
                     {cue.clockOffsetSeconds !== undefined ? (
                       <span className="rundown-fixed">
                         <Clock3 size={10} /> Fixed
@@ -177,7 +194,7 @@ export function RundownEventList({
       </table>
       {!items.length && (
         <div className="rundown-empty">
-          <strong>Build this hour</strong>
+          <strong>Build this block</strong>
           <p>
             Add content at its fixed times, then fill the gaps from a Library
             tag.

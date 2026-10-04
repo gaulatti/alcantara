@@ -31,3 +31,11 @@ it("shows real gaps, filler cuts, unknown durations, and declared clip time", ()
   expect(timing[2].gapMs).toBe(50000);
   expect(timing[3].gapMs).toBeNull();
 });
+
+it("has no implicit hourly end or cut after the last content event", () => {
+  const [last] = rundownTiming(
+    [{ id: "a", kind: "playSong", songId: 1, clockOffsetSeconds: 7200 }],
+    [{ id: 1, durationMs: 200000 }],
+  );
+  expect(last).toMatchObject({ startMs: 7200000, gapMs: null, cutMs: null });
+});

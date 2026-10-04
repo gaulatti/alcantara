@@ -261,7 +261,7 @@ export default function ConsoleFixture() {
                 },
               },
               logs:
-                fixture === "radio-empty"
+                fixture === "radio-empty" || fixture === "radio-continuous"
                   ? []
                   : [
                       {

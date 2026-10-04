@@ -181,6 +181,62 @@ async function flush(times = 6): Promise<void> {
   }
 }
 
+describe('continuous filler restoration', () => {
+  afterEach(() => jest.useRealTimers());
+  it('persists the next base cursor under block ownership and requests exactly one song after release', async () => {
+    jest.useFakeTimers();
+    const { engine, radioService, flightService, getPersistedProgramState } =
+      createEngine({ reconciled: true, radio: true });
+    flightService.isClockedLogRunning.mockReturnValue(true);
+    engine.handleSequenceUpdated('radio-1', {
+      ...TWO_SONG_SEQUENCE,
+      loop: true,
+    });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('instance', 'boot', 1),
+    );
+    expect(radioService.playSong).not.toHaveBeenCalled();
+    await engine.prepareContinuousRotationResume('radio-1');
+    expect(getPersistedProgramState().songSequence).toMatchObject({
+      activeItemId: 'song-2',
+      mode: 'autoplay',
+      items: TWO_SONG_SEQUENCE.items,
+    });
+    expect(radioService.playSong).not.toHaveBeenCalled();
+    flightService.isClockedLogRunning.mockReturnValue(false);
+    engine.resumeContinuousRotation('radio-1');
+    engine.resumeContinuousRotation('radio-1');
+    await flush(20);
+    expect(radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(radioService.playSong.mock.calls[0][1]).toBe(
+      'https://example.test/song-2.mp3',
+    );
+    engine.handleStopSong('radio-1');
+  });
+  it('preserves a manual base without starting it automatically', async () => {
+    jest.useFakeTimers();
+    const { engine, radioService, getPersistedProgramState } = createEngine({
+      reconciled: true,
+      radio: true,
+    });
+    engine.handleSequenceUpdated('radio-1', {
+      ...TWO_SONG_SEQUENCE,
+      mode: 'manual',
+    });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('instance', 'boot', 1),
+    );
+    await engine.prepareContinuousRotationResume('radio-1');
+    engine.resumeContinuousRotation('radio-1');
+    expect(radioService.playSong).not.toHaveBeenCalled();
+    expect(getPersistedProgramState().songSequence).toMatchObject({
+      items: TWO_SONG_SEQUENCE.items,
+    });
+  });
+});
+
 describe('SongExecutionEngine authoritative playback', () => {
   beforeEach(() => {
     jest.useFakeTimers();

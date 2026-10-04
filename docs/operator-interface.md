@@ -79,20 +79,9 @@ and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene
 staging and TAKE.
 
-The Radio desk has one persistent player at the bottom, keeping artwork,
-reported track metadata, progress, remaining time, and log transport together.
-It remains visible on phones and displays the actual on-air track. **Start log**,
-**Stop log**, and **Advance** use flight/log execution; there are no radio
-playlist modes or loop controls. Start is available for a published, unaired
-hour; it respects the scheduled start rather than playing early.
+The Radio desk has one persistent player at the bottom with actual engine metadata, progress, and remaining time. Continuous fillers retain Manual/Autoplay/Shuffle/Loop and the saved songs. A future published block does not hide the playing rotation. When a timed block is on air, the desk shows its events and routes transport to Stop/Advance through flight execution.
 
-The dominant **On-air log** shows the entire selected hour with event times,
-catalog metadata, duration, voice-track indicators, and NOW/NEXT/PLAYED markers.
-**Play next**, up/down, remove, and Library insertion persist changes to this
-same log at its expected revision. Played/on-air events stay locked, and moving
-an event cannot cross a fixed-time boundary. **Prepare hours** opens the log
-planner; **Build from tags** resolves Library labels into a reviewable draft.
-See `radio-station-workflow.md` for selection rules and publish behavior.
+The dominant panel follows the current playout owner. Continuous mode shows the saved filler rotation and existing Play Next overrides; timed mode shows the on-air block with protected played/on-air events and fixed boundaries. **Prepare rundown** opens the planner with the continuous-fillers summary and optional timed blocks. **Build from tags** resolves Library labels into a reviewable block draft. See `radio-station-workflow.md` for selection and completion behavior.
 
 Output confidence, Cartwall, and the three-channel Mixer remain beside the log.
 The Cartwall has search, numbered pads, existing shortcut labels, and playing
@@ -183,18 +172,22 @@ deliberate, and Radio/TV/Simulcast each expose the correct operational surface.
 
 ## Unified Rundown
 
-`/flight` is the single Rundown destination in navigation and command search for every show type. Radio opens scheduled hours; TV opens operator cues. Simulcast has Scheduled hours and Operator cues views inside this workspace. Scheduled sequences are excluded from the operator cue selector, so a published hour is not offered as an untimed sequence. Only one sequence can be active per show under the existing backend contract. `/radio-log` redirects to Rundown for existing bookmarks.
+`/flight` is the single Rundown destination in navigation and command search for every show type. Radio opens timed blocks; TV opens operator cues. Simulcast has Timed blocks and Operator cues views inside this workspace. Scheduled sequences are excluded from the operator cue selector, so a published block is not offered as an untimed sequence. Only one sequence can be active per show under the existing backend contract. `/radio-log` redirects to Rundown for existing bookmarks.
 
-Scheduled Rundown preserves tag-based generation, recorded voice tracks, revision checks, preflight, and publication. **Preview fillers** preserves reviewed content and fills gaps from a Library tag before Save and Publish. Song durations come from the catalog; a standalone clip needs its duration entered in seconds. The planner shows gaps, unknown durations, and overruns, and marks generated fillers in both preparation and the live desk. Fixed boundaries cut the last filler; the generated end-of-hour Stop is at +3600 seconds. This does not change the separately configured Palazzo recovery playlist.
+Scheduled Rundown preserves tag-based generation, recorded voice tracks, revision checks, preflight, and publication. **Preview fillers** preserves reviewed content and fills gaps from a Library tag before Save and Publish. Song durations come from the catalog; a standalone clip needs its duration entered in seconds. The planner shows gaps, unknown durations, and overruns, and marks generated fillers in both preparation and the live desk. Fixed boundaries cut the last filler; only explicitly authored end boundaries are used. This does not change the separately configured Palazzo recovery playlist.
 
 The console fixtures include `radio-workflow` with filler rows and `rundown-fillers` for the filler selection panel.
 
 ### Scheduled Rundown workspace
 
-The hour selector and New hour action sit above a compact event log. Start, type, event, length, and timing share aligned columns. Fixed starts have a clock marker; other starts are estimates calculated from catalog or declared clip duration, not promises that a track has aired. Unknown durations remain visible. Timing labels describe whether an event fits its boundary; **Check** and **Publish** independently validate audio availability.
+The block selector and New block action sit above a compact event log. Start, type, event, length, and timing share aligned columns. Fixed starts have a clock marker; other starts are estimates calculated from catalog or declared clip duration, not promises that a track has aired. Unknown durations remain visible. Timing labels describe whether an event fits its boundary; **Check** and **Publish** independently validate audio availability.
 
-Select an event to edit its source, fixed start, clip duration, or voice track in the Event inspector. On phones, selection scrolls to that inspector. The Fillers and Build hour tabs keep generation controls available without repeating the sequence or putting a form in every row. Save, Discard, Check, and Publish stay above the log; it scrolls separately with its column headings visible. New hour opens a creation dialog, and unsaved edits lock hour selection. New events are inserted before a terminal +3600 Stop.
+Select an event to edit its source, fixed start, clip duration, or voice track in the Event inspector. On phones, selection scrolls to that inspector. The Fillers and Build block tabs keep generation controls available without repeating the sequence or putting a form in every row. Save, Discard, Check, and Publish stay above the log; it scrolls separately with its column headings visible. New block opens a creation dialog, and unsaved edits lock block selection. New events are inserted before an explicit terminal fixed Stop.
 
-Leaving the Fillers or Build hour tab while a preview is pending cancels applying its response. A late response cannot replace edits made in the Event inspector or after changing hours.
+Leaving the Fillers or Build block tab while a preview is pending cancels applying its response. A late response cannot replace edits made in the Event inspector or after changing blocks.
 
 `/console-fixture?state=rundown-desk` renders the same workspace with fictional timed news, music, filler cuts, and an unfilled gap. Persistence and publishing are disabled in that fixture. Browser acceptance covers the dense log and inspector at desktop and phone widths, plus source edits, filler preview, Save, and Publish through the normal authenticated local application.
+
+### Continuous radio management
+
+The Radio desk shows the saved continuous filler rotation whenever a timed block is not currently on air, including when future blocks are published. The ordinary transport controls remain connected to that rotation. The Rundown planner keeps a 24/7 continuous-fillers summary above optional timed blocks, with direct access to the live rotation. New blocks can start at any minute and are not forced to end after an hour; offsets, filler previews, duration estimates, and runtime timers follow explicit event boundaries. `/console-fixture?state=radio-continuous` covers a populated rotation with no scheduled blocks. The existing rundown fixture retains its authored +3600 stop to demonstrate compatibility, rather than imposing that boundary on new blocks.

@@ -287,6 +287,25 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async prepareContinuousRotationResume(programId: string): Promise<void> {
+    const state = this.states.get(programId);
+    if (
+      !state?.sequence ||
+      !['autoplay', 'shuffle'].includes(state.sequence.mode)
+    )
+      return;
+    const next = normalizeProgramSongSequence(state.sequence)!;
+    const current = resolveProgramSongLeaf(next);
+    if (current) advanceProgramSongSequence(next, current.id);
+    await this.persistPlaylistCursorForQueue(programId, next);
+  }
+
+  resumeContinuousRotation(programId: string): void {
+    const state = this.states.get(programId);
+    if (state) state.transitioning = false;
+    this.maybeStartSequence(programId);
+  }
+
   handleQueueUpdated(programId: string, rawQueue: unknown): void {
     const state = this.ensureState(programId);
     state.queue = normalizeProgramSongQueue(rawQueue);

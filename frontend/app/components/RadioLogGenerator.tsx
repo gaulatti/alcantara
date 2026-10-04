@@ -89,9 +89,9 @@ export function RadioLogGenerator({
         <Tags size={16} /> Build from tags
       </h2>
       <p className="mt-2 text-xs text-text-secondary">
-        Tags define the music pool. Arrange blocks for this hour; generation
+        Tags define the music pool. Arrange blocks for this block; generation
         picks each song once and favors songs used least recently in the
-        previous 24 published hours.
+        previous 24 published blocks.
       </p>
       <fieldset disabled={locked || busy} className="mt-4 space-y-3">
         {rules.slots.map((slot, index) => (
@@ -151,7 +151,6 @@ export function RadioLogGenerator({
                   aria-label={`Fixed start for block ${index + 1}`}
                   type="number"
                   min="0"
-                  max="3599"
                   placeholder="Follows"
                   disabled={index === 0}
                   value={slot.clockOffsetSeconds ?? ""}

@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router";
 import { RundownFixture } from "./RundownFixture";
 import { rundownFixtureLog } from "./RundownFixture";
 vi.mock("../utils/globalProgram", () => ({
@@ -17,7 +18,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 it("keeps the hour readable while editing only the selected event", async () => {
-  render(<RundownFixture />);
+  render(
+    <MemoryRouter>
+      <RundownFixture />
+    </MemoryRouter>,
+  );
   const table = await screen.findByRole("table", {
     name: "Scheduled rundown events",
   });
@@ -35,13 +40,17 @@ it("keeps the hour readable while editing only the selected event", async () => 
   expect(within(table).getAllByRole("row")[1]).toHaveTextContent("02:00");
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
   expect(
-    screen.getByRole("combobox", { name: "Scheduled hour" }),
+    screen.getByRole("combobox", { name: "Scheduled block" }),
   ).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Discard" }));
   expect(within(table).getAllByRole("row")[1]).toHaveTextContent("03:00");
 });
 it("inserts new content before the fixed end of hour", async () => {
-  render(<RundownFixture />);
+  render(
+    <MemoryRouter>
+      <RundownFixture />
+    </MemoryRouter>,
+  );
   const table = await screen.findByRole("table", {
     name: "Scheduled rundown events",
   });

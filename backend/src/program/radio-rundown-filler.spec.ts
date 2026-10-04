@@ -28,10 +28,10 @@ describe('scheduled rundown fillers', () => {
     expect(preview.items.filter((cue) => !cue.isFiller)).toEqual(content);
     expect(
       preview.items.filter((cue) => cue.isFiller).map((cue) => cue.songId),
-    ).toEqual([4, 3, undefined]);
+    ).toEqual([4, 3]);
     expect(preview.items.at(-1)).toMatchObject({
       kind: 'stopSong',
-      clockOffsetSeconds: 3600,
+      clockOffsetSeconds: 120,
     });
     expect(preview.warnings).toEqual([expect.stringContaining('cut 20s')]);
   });
@@ -90,7 +90,6 @@ describe('scheduled rundown fillers', () => {
       undefined,
       5,
       undefined,
-      undefined,
     ]);
     expect(() =>
       fillRadioRundown(
@@ -125,4 +124,17 @@ describe('scheduled rundown fillers', () => {
       ),
     ).toThrow('Not enough');
   });
+});
+
+it('does not invent an hour or append material after the last content event', () => {
+  const one: FlightCue[] = [
+    {
+      id: 'clip',
+      kind: 'instant',
+      instantId: 9,
+      durationMs: 10000,
+      clockOffsetSeconds: 0,
+    },
+  ];
+  expect(fillRadioRundown(rules, one, [], []).items).toEqual(one);
 });

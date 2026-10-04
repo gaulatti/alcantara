@@ -22,7 +22,7 @@ export function rundownTiming(
       cursor = null;
     else if (cursor !== null) cursor += duration;
     const next = items[index + 1];
-    const boundary = next?.clockOffsetSeconds ?? (next ? undefined : 3600);
+    const boundary = next?.clockOffsetSeconds;
     return {
       startMs,
       durationMs: duration,

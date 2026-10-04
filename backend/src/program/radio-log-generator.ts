@@ -53,13 +53,12 @@ export function parseRadioLogRules(value: unknown): RadioLogRules {
     count += slot.count;
     if (slot.clockOffsetSeconds !== undefined) {
       if (
-        !Number.isInteger(slot.clockOffsetSeconds) ||
+        !Number.isSafeInteger(slot.clockOffsetSeconds) ||
         slot.clockOffsetSeconds < 0 ||
-        slot.clockOffsetSeconds >= 3600 ||
         slot.clockOffsetSeconds < fixed
       )
         throw new BadRequestException(
-          'Fixed starts must increase within the hour',
+          'Fixed starts must increase from the block start',
         );
       fixed = slot.clockOffsetSeconds;
     }

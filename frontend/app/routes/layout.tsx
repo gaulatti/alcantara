@@ -75,6 +75,7 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   rundown: <List size={17} />,
   'radio-log': <List size={17} />,
   'radio-workflow-fixture': <RadioTower size={17} />,
+  'radio-continuous-fixture': <RadioTower size={17} />,
   calls: <PhoneCall size={17} />,
   destinations: <RadioTower size={17} />,
   scenes: <Clapperboard size={17} />,

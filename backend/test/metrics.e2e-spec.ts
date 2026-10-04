@@ -69,6 +69,9 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     radioMetrics.recordRadioLogResult('generated');
     radioMetrics.recordRadioLogResult('edited');
     radioMetrics.recordRadioLogResult('edit-failed');
+    radioMetrics.recordRadioLogResult('interrupted');
+    radioMetrics.recordRadioLogResult('completed');
+    radioMetrics.recordRadioLogResult('resume-failed');
     radioMetrics.recordRadioLogResult('filled');
     radioMetrics.recordRadioLogResult('fill-failed');
     radioMetrics.recordRadioLogResult('generation-failed');
@@ -143,7 +146,10 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain(
       'alcantara_recording_reconciliations_total{state="active",result="success"} 1',
     );
+    expect(body).toContain('alcantara_radio_log_transitions_total{result="interrupted"} 1');
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    expect(body).toContain('alcantara_radio_log_transitions_total{result="completed"} 1');
+    expect(body).toContain('alcantara_radio_log_transitions_total{result="resume-failed"} 1');
     expect(body).toContain(
       'alcantara_radio_log_transitions_total{result="generated"} 1',
     );

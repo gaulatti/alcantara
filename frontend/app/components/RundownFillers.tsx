@@ -87,8 +87,9 @@ export function RundownFillers({
       <h2 className="text-sm font-bold">Fill the gaps</h2>
       <p className="mt-2 text-xs text-text-secondary">
         Keep your timed content. Fillers cover the gaps to each fixed block and
-        the end of the hour. The next fixed start cuts the last filler if
-        needed.
+        an explicit end boundary, if you add one. The next fixed start cuts the
+        last filler if needed. After the last content event, the continuous
+        rotation resumes.
       </p>
       <fieldset disabled={locked || busy} className="mt-3 space-y-3">
         <Select

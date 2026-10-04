@@ -45,7 +45,8 @@ export function ProgramSongSequenceEditor({
   onTakeSelection,
   onQueueItem,
   depth = 0,
-  view = 'full'
+  view = 'full',
+  rotationLabel = 'Playlist'
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
@@ -55,6 +56,7 @@ export function ProgramSongSequenceEditor({
   onQueueItem?: (itemId: string) => Promise<void> | void;
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
+  rotationLabel?: string;
 }) {
   const sequence = useMemo(() => {
     const n = normalizeProgramSongSequence(_sequence);
@@ -69,7 +71,7 @@ export function ProgramSongSequenceEditor({
   const isNested = depth > 0;
   const showQueue = view !== 'catalog';
   const showCatalog = view !== 'queue';
-  const showQueueHeading = view === 'full';
+  const showQueueHeading = view === 'full' || rotationLabel !== 'Playlist';
   const isAutomatic = sequence.mode === 'autoplay' || sequence.mode === 'shuffle';
   const highRotationCount = useMemo(
     () => sequence.items.filter((item) => item.kind === 'preset' && item.highRotation).length,
@@ -80,9 +82,11 @@ export function ProgramSongSequenceEditor({
     if (programSongPlayback?.isPlaying) {
       const playbackItem = sequence.items.find((item) => programSongPlayback.token?.startsWith(`${item.id}:`));
       if (playbackItem) return playbackItem.id;
+      const byUrl = sequence.items.filter((item) => item.kind === 'preset' && item.audioUrl === programSongPlayback.audioUrl);
+      return byUrl.length === 1 ? byUrl[0].id : null;
     }
     return sequence.activeItemId ?? (isAutomatic ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
-  }, [isAutomatic, programSongPlayback?.isPlaying, programSongPlayback?.token, sequence]);
+  }, [isAutomatic, programSongPlayback?.isPlaying, programSongPlayback?.token, programSongPlayback?.audioUrl, sequence]);
 
   const availableSongCatalog = useMemo(
     () =>
@@ -286,7 +290,7 @@ export function ProgramSongSequenceEditor({
           <div className={`flex min-h-0 flex-1 flex-col ${showCatalog ? 'border-r-0 border-sand/30 md:border-r' : ''}`}>
             {showQueueHeading ? (
               <div className='flex items-center justify-between border-b border-sand/30 bg-dark-sand/70 px-4 py-2 border-t border-sand/20'>
-                <span className='text-[10px] font-semibold uppercase tracking-widest text-text-secondary'>Playlist</span>
+                <span className='text-[10px] font-semibold uppercase tracking-widest text-text-secondary'>{rotationLabel}</span>
                 <span className='text-[10px] text-text-secondary'>
                   {sequence.items.length} {sequence.items.length === 1 ? 'song' : 'songs'}
                 </span>
@@ -295,8 +299,8 @@ export function ProgramSongSequenceEditor({
             {sequence.items.length === 0 ? (
               <div className='flex flex-1 flex-col items-center justify-center px-4 py-16 text-center'>
                 <Music2 size={32} className='mb-3 text-text-secondary' />
-                <p className='text-sm font-medium text-text-primary'>Playlist is empty</p>
-                <p className='mt-1 text-xs text-text-secondary'>Search and add songs from the catalog panel.</p>
+                <p className='text-sm font-medium text-text-primary'>{rotationLabel} is empty</p>
+                <p className='mt-1 text-xs text-text-secondary'>{rotationLabel === 'Playlist' ? 'Search and add songs from the catalog panel.' : 'Use Add fillers to choose Library songs.'}</p>
               </div>
             ) : (
               <div className='min-h-0 flex-1 overflow-auto'>

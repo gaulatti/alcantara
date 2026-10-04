@@ -391,14 +391,13 @@ describe('FlightService tag generation and live log edits', () => {
     ).toEqual([2, 3]);
     expect(preview.items.at(-1)).toMatchObject({
       kind: 'stopSong',
-      clockOffsetSeconds: 3600,
-      isFiller: true,
+      clockOffsetSeconds: 400,
     });
     await service.updateFlightSequence('radio-1', 7, {
       revision: 1,
       items: preview.items,
     });
-    expect(record.items.filter((cue) => cue.isFiller)).toHaveLength(3);
+    expect(record.items.filter((cue) => cue.isFiller)).toHaveLength(2);
     expect((await service.preflightFlightSequence('radio-1', 7)).ready).toBe(
       true,
     );
@@ -496,4 +495,160 @@ describe('FlightService tag generation and live log edits', () => {
       jest.useRealTimers();
     }
   });
+});
+
+describe('continuous rotation around timed blocks', () => {
+  function setup() {
+    const metrics = new RadioMetricsService();
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 1, activeFlightSequenceId: 7 }),
+      },
+      flightSequence: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      song: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 101,
+          enabled: true,
+          audioUrl: 'https://example.test/song.mp3',
+          title: 'Content',
+          artist: 'Fictional',
+          durationMs: 1000,
+          coverUrl: null,
+        }),
+      },
+    };
+    const program = {
+      updateProgramAudioBus: jest.fn(),
+      takeCatalogSongOnAir: jest.fn(),
+      takeProgramSongOffAir: jest.fn().mockResolvedValue(undefined),
+      stopProgramSongForTimedBlock: jest.fn().mockResolvedValue(undefined),
+      prepareContinuousRotationResume: jest.fn().mockResolvedValue(undefined),
+      resumeContinuousRotation: jest.fn(),
+      broadcastUpdate: jest.fn(),
+    };
+    const service = new FlightService(prisma as any, program as any, metrics);
+    const internals = service as any;
+    jest.spyOn(internals, 'broadcastFlightUpdate').mockResolvedValue(undefined);
+    const runtime: FlightRuntimeState = {
+      sequenceId: 7,
+      programId: 'radio-1',
+      items: [
+        { id: 'content', kind: 'playSong', songId: 101, clockOffsetSeconds: 0 },
+      ],
+      loop: false,
+      activeIndex: 0,
+      isRunning: true,
+      generation: 1,
+      timer: null,
+      waitingForSongEnd: true,
+      startedAt: Date.now(),
+      scheduledAtMs: Date.now(),
+    };
+    internals.runtimes.set('radio-1', runtime);
+    return { service, internals, program, metrics, runtime };
+  }
+  it('keeps the saved filler pool when a timed content song is taken', async () => {
+    const { internals, program } = setup();
+    await internals.executePlaySongCue('radio-1', {
+      id: 'content',
+      kind: 'playSong',
+      songId: 101,
+    });
+    expect(program.updateProgramAudioBus).not.toHaveBeenCalled();
+    expect(program.takeCatalogSongOnAir).toHaveBeenCalled();
+  });
+  it('returns to continuous fillers after the final authoritative song end, once', async () => {
+    const { service, program, metrics } = setup();
+    await service.handleSongEnded('radio-1');
+    await service.handleSongEnded('radio-1');
+    expect(program.prepareContinuousRotationResume).toHaveBeenCalledTimes(1);
+    expect(program.resumeContinuousRotation).toHaveBeenCalledTimes(1);
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="completed"} 1',
+    );
+    expect(service.isClockedLogRunning('radio-1')).toBe(false);
+  });
+  it('retains timed ownership until the physical stop resolves', async () => {
+    const { service, program } = setup();
+    let release!: () => void;
+    program.stopProgramSongForTimedBlock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const completing = service.handleSongEnded('radio-1');
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(service.isClockedLogRunning('radio-1')).toBe(true);
+    expect(program.resumeContinuousRotation).not.toHaveBeenCalled();
+    expect((await service.handleSongEnded('radio-1')).ok).toBe(false);
+    release();
+    await completing;
+    expect(service.isClockedLogRunning('radio-1')).toBe(false);
+    expect(program.resumeContinuousRotation).toHaveBeenCalledTimes(1);
+  });
+  it('reports resume persistence failure and sends no resume command', async () => {
+    const { service, program, metrics } = setup();
+    program.prepareContinuousRotationResume.mockRejectedValue(
+      new Error('Database unavailable'),
+    );
+    await service.handleSongEnded('radio-1');
+    expect(program.resumeContinuousRotation).not.toHaveBeenCalled();
+    expect(program.broadcastUpdate).toHaveBeenCalledWith(
+      'radio-1',
+      expect.objectContaining({ type: 'radio_rotation_resume_failed' }),
+    );
+    expect(metrics.render()).toContain(
+      'alcantara_radio_log_transitions_total{result="resume-failed"} 1',
+    );
+    expect(metrics.render()).not.toContain('result="Database unavailable"');
+  });
+  it('accepts content beyond one hour and rejects malformed offsets', () => {
+    const { internals } = setup();
+    expect(() =>
+      internals.validateClockItems([
+        { id: 'first', kind: 'playSong', songId: 101, clockOffsetSeconds: 0 },
+        {
+          id: 'later',
+          kind: 'playSong',
+          songId: 101,
+          clockOffsetSeconds: 90000,
+        },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      internals.validateClockItems([
+        { id: 'first', kind: 'playSong', songId: 101, clockOffsetSeconds: 0 },
+        { id: 'later', kind: 'playSong', songId: 101, clockOffsetSeconds: -1 },
+      ]),
+    ).toThrow();
+  });
+});
+
+it('marks scheduled runtimes interrupted on startup without replaying them or changing the continuous rotation', async () => {
+  const prisma = {
+    flightSequence: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+  };
+  const program = {
+    updateProgramAudioBus: jest.fn(),
+    takeCatalogSongOnAir: jest.fn(),
+  };
+  const metrics = new RadioMetricsService();
+  const service = new FlightService(prisma as any, program as any, metrics);
+  await service.onModuleInit();
+  service.onModuleDestroy();
+  expect(prisma.flightSequence.updateMany).toHaveBeenCalledWith({
+    where: { isRunning: true, scheduledAt: { not: null } },
+    data: { isRunning: false },
+  });
+  expect(program.updateProgramAudioBus).not.toHaveBeenCalled();
+  expect(program.takeCatalogSongOnAir).not.toHaveBeenCalled();
+  expect(metrics.render()).toContain(
+    'alcantara_radio_log_transitions_total{result="interrupted"} 1',
+  );
 });

@@ -1692,6 +1692,18 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  prepareContinuousRotationResume(programId: string): Promise<void> {
+    return this.songExecutionEngine.prepareContinuousRotationResume(
+      this.normalizeProgramId(programId),
+    );
+  }
+
+  resumeContinuousRotation(programId: string): void {
+    this.songExecutionEngine.resumeContinuousRotation(
+      this.normalizeProgramId(programId),
+    );
+  }
+
   takeCatalogSongOnAir(
     programId: string,
     song: {
@@ -2908,9 +2920,15 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
-  async takeProgramSongOffAir(
-    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
-  ) {
+  takeProgramSongOffAir(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
+    return this.stopProgramSong(programId, false);
+  }
+
+  stopProgramSongForTimedBlock(programId: string) {
+    return this.stopProgramSong(programId, true);
+  }
+
+  private async stopProgramSong(programId: string, preserveRotation: boolean) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
 
@@ -2926,12 +2944,14 @@ export class ProgramService implements OnModuleInit {
     );
 
     if (
+      !preserveRotation &&
       currentState.songSequence &&
       typeof currentState.songSequence === 'object' &&
       !Array.isArray(currentState.songSequence)
     ) {
       const updatedSequence = {
         ...(currentState.songSequence as Record<string, unknown>),
+        mode: 'manual',
         activeItemId: null,
       };
       await this.prisma.programState.update({
@@ -2949,6 +2969,18 @@ export class ProgramService implements OnModuleInit {
         },
         updatedAt,
       });
+    }
+
+    if (!preserveRotation) {
+      const stoppedSequence = normalizeProgramSongSequence(
+        currentState.songSequence,
+      );
+      if (stoppedSequence)
+        this.songExecutionEngine.handleSequenceUpdated(normalizedProgramId, {
+          ...stoppedSequence,
+          mode: 'manual',
+          activeItemId: null,
+        });
     }
 
     const stoppedPlayback = {

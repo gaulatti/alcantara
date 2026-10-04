@@ -321,3 +321,28 @@
     max-height: none;
   }
 }
+
+.rundown-continuous {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--console-border);
+  background: var(--console-panel);
+}
+.rundown-continuous strong {
+  display: block;
+  font-size: 14px;
+}
+.rundown-continuous p,
+.rundown-continuous a {
+  font-size: 12px;
+}
+.rundown-continuous p {
+  color: var(--console-muted);
+}
+.rundown-continuous a {
+  color: var(--console-ready);
+}

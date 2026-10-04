@@ -15,6 +15,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../components/BroadcastConsole.css";
 import { RundownFillers } from "./RundownFillers";
@@ -39,9 +40,9 @@ import {
 import { apiUrl } from "../utils/apiBaseUrl";
 import { useGlobalProgramId } from "../utils/globalProgram";
 
-function nextLocalHour(): string {
+function nextLocalStart(): string {
   const date = new Date();
-  date.setHours(date.getHours() + 1, 0, 0, 0);
+  date.setMinutes(date.getMinutes() + 5, 0, 0);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
 }
@@ -67,12 +68,13 @@ export default function ScheduledRundown({
   };
 }) {
   const [programId] = useGlobalProgramId();
+  const [rotationCount, setRotationCount] = useState<number | null>(null);
   const [logs, setLogs] = useState<FlightSequence[]>([]);
   const [songs, setSongs] = useState<SongCatalogItem[]>([]);
   const [clips, setClips] = useState<InstantItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [items, setItems] = useState<FlightCue[]>([]);
-  const [hour, setHour] = useState(nextLocalHour);
+  const [startTime, setStartTime] = useState(nextLocalStart);
   const [busy, setBusy] = useState(false);
   const [preflight, setPreflight] = useState<{
     ready: boolean;
@@ -113,13 +115,19 @@ export default function ScheduledRundown({
       setSelectedId(fixtureData.logs[0]?.id ?? null);
       return;
     }
-    const [sequences, songResponse, clipResponse] = await Promise.all([
-      fetchFlightSequences(programId),
-      fetch(apiUrl("/songs?page=1&limit=200")),
-      fetch(apiUrl("/instants")),
-    ]);
+    const [sequences, songResponse, clipResponse, audioResponse] =
+      await Promise.all([
+        fetchFlightSequences(programId),
+        fetch(apiUrl("/songs?page=1&limit=200")),
+        fetch(apiUrl("/instants")),
+        fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`)),
+      ]);
     if (!songResponse.ok || !clipResponse.ok)
       throw new Error("Radio library is unavailable");
+    if (!audioResponse.ok)
+      throw new Error("Continuous rotation is unavailable");
+    const audio = await audioResponse.json();
+    setRotationCount(audio.songSequence?.items?.length ?? 0);
     const songPayload = await songResponse.json();
     const clipPayload = await clipResponse.json();
     const allSongs: SongCatalogItem[] = Array.isArray(songPayload.data)
@@ -152,12 +160,12 @@ export default function ScheduledRundown({
 
   const create = async () => {
     setError(null);
-    const scheduledAt = new Date(hour);
+    const scheduledAt = new Date(startTime);
     if (
       !Number.isFinite(scheduledAt.getTime()) ||
       scheduledAt.getTime() <= Date.now()
     ) {
-      setError("Choose a future hour.");
+      setError("Choose a future start time.");
       return;
     }
     setBusy(true);
@@ -263,7 +271,7 @@ export default function ScheduledRundown({
       cue.instantId = clips.find((clip) => clip.enabled)?.id;
     setItems((current) => {
       const end = current.at(-1);
-      return end?.kind === "stopSong" && end.clockOffsetSeconds === 3600
+      return end?.kind === "stopSong" && end.clockOffsetSeconds !== undefined
         ? [...current.slice(0, -1), cue, end]
         : [...current, cue];
     });
@@ -321,12 +329,12 @@ export default function ScheduledRundown({
         <div className="rundown-hour-select">
           <div>
             <Select
-              aria-label="Scheduled hour"
+              aria-label="Scheduled block"
               value={selectedId ? String(selectedId) : ""}
               disabled={busy || dirty}
               onChange={(value) => setSelectedId(Number(value))}
               options={[
-                { value: "", label: "Choose an hour" },
+                { value: "", label: "Choose a block" },
                 ...scheduledLogs.map((log) => ({
                   value: String(log.id),
                   label: `${new Date(log.scheduledAt!).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${log.isRunning ? "On air" : log.lastStartedAt ? "Aired" : log.publishedAt ? "Published" : "Draft"}`,
@@ -341,7 +349,7 @@ export default function ScheduledRundown({
             disabled={busy || dirty || !!fixtureData}
             onClick={() => setCreating(true)}
           >
-            <Plus size={14} /> New hour
+            <Plus size={14} /> New block
           </Button>
         </div>
       </header>
@@ -350,15 +358,31 @@ export default function ScheduledRundown({
           {error}
         </div>
       )}
+      <section
+        className="rundown-continuous"
+        aria-label="Continuous filler rotation"
+      >
+        <div>
+          <span className="console-eyebrow">Base playout · 24/7</span>
+          <strong>Continuous fillers</strong>
+          <p>
+            {rotationCount === null
+              ? "Your saved rotation runs independently of timed blocks."
+              : `${rotationCount} saved songs · runs independently of timed blocks.`}{" "}
+            No hourly schedules required.
+          </p>
+        </div>
+        <Link to="/control">Manage rotation & live controls</Link>
+      </section>
       <div className="rundown-desk">
-        <section className="rundown-sequence" aria-label="Hour rundown">
+        <section className="rundown-sequence" aria-label="Timed block rundown">
           <div className="rundown-sequence-heading">
             <div>
-              <h2>Hour events</h2>
+              <h2>Block events</h2>
               <p>
                 {selected
                   ? `${selected.isRunning ? "ON AIR" : selected.lastStartedAt ? "AIRED / INTERRUPTED" : selected.publishedAt ? "PUBLISHED" : "DRAFT"} · Revision ${selected.revision} · ${items.length} events${dirty ? " · Unsaved changes" : ""}`
-                  : "Create an hour to plan its content."}
+                  : "Continuous fillers run independently. Create a block only for timed content."}
               </p>
               {!!selected && (
                 <p>
@@ -434,8 +458,11 @@ export default function ScheduledRundown({
           ) : (
             <div className="rundown-empty">
               <Clock3 size={28} className="mx-auto mb-3" />
-              <strong>Your broadcast hour starts here</strong>
-              <p>Create an hour, add timed content, then fill its gaps.</p>
+              <strong>Timed content interrupts continuous fillers</strong>
+              <p>
+                Your filler rotation needs no scheduled blocks. Add a block for
+                news, a show, or other timed content.
+              </p>
             </div>
           )}
           <div className="rundown-insert">
@@ -507,7 +534,7 @@ export default function ScheduledRundown({
               [
                 ["event", "Event"],
                 ["fillers", "Fillers"],
-                ["build", "Build hour"],
+                ["build", "Build block"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -633,17 +660,11 @@ export default function ScheduledRundown({
                     </>
                   )}
                   <label>
-                    Fixed start (seconds into hour)
+                    Fixed start (seconds into block)
                     <Input
                       aria-label="Fixed start"
                       type="number"
                       min="0"
-                      max={
-                        editCue.kind === "stopSong" &&
-                        editIndex === items.length - 1
-                          ? "3600"
-                          : "3599"
-                      }
                       value={editCue.clockOffsetSeconds ?? ""}
                       disabled={editLocked || editIndex === 0 || busy}
                       placeholder="Follow previous event"
@@ -695,8 +716,8 @@ export default function ScheduledRundown({
                   <span className="console-eyebrow">Event inspector</span>
                   <h2 className="mt-2">Select an event</h2>
                   <p className="rundown-inspector-note">
-                    Read the hour in the log. Select a row to change its source,
-                    fixed start, clip duration, or voice track.
+                    Read the block in the log. Select a row to change its
+                    source, fixed start, clip duration, or voice track.
                   </p>
                   <p className="rundown-inspector-note">
                     Fixed starts are marked with a clock. Estimated starts
@@ -710,20 +731,21 @@ export default function ScheduledRundown({
       <Modal
         isOpen={creating}
         onClose={() => setCreating(false)}
-        title="New broadcast hour"
+        title="New timed block"
       >
         <label className="block text-sm">
           Scheduled start
           <Input
-            aria-label="New hour"
+            aria-label="New block"
             type="datetime-local"
-            step="3600"
-            value={hour}
-            onChange={(event) => setHour(event.target.value)}
+            step="60"
+            value={startTime}
+            onChange={(event) => setStartTime(event.target.value)}
           />
         </label>
         <p className="my-3 text-xs text-text-secondary">
-          Create a draft hour. It goes on air only after you publish it.
+          Choose any start minute. The block goes on air after publishing and
+          returns to continuous fillers when its events finish.
         </p>
         <Button disabled={busy} onClick={() => void create()}>
           Create rundown
