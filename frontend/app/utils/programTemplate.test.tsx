@@ -31,19 +31,19 @@ const manifest: ProgramTemplateManifest = {
 };
 
 describe("program template URLs", () => {
-  it("opens radio listener monitoring even when a TV template is present", () => {
+  it("returns to the inline Radio desk even when a TV template is present", () => {
     expect(
       resolveProgramOutputUrl(
         { programId: "radio/show", type: "radio", templateManifest: manifest },
         "https://api.test",
       ),
-    ).toBe("/radio-output/radio%2Fshow");
+    ).toBe("/#radio-monitor");
     expect(
       resolveProgramOutputUrl(
         { programId: "radio/show", type: "radio" },
         "https://api.test",
       ),
-    ).toBe("/radio-output/radio%2Fshow");
+    ).toBe("/#radio-monitor");
   });
   it("opens a registered renderer with its declared runtime parameters", () => {
     expect(

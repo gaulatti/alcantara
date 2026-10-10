@@ -6,7 +6,7 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { RadioPanel } from "./RadioPanel";
@@ -20,9 +20,15 @@ vi.mock("../services/flight", () => ({
   goFlight: vi.fn(),
 }));
 
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 function props(): ComponentProps<typeof RadioPanel> {
@@ -30,6 +36,7 @@ function props(): ComponentProps<typeof RadioPanel> {
   return {
     programId: "radio-demo",
     fixtureData: {
+      monitorAudioUrl: "https://example.test/monitor.mp3",
       stream: { running: true, uptime: 60_000 },
       palazzo: {
         programId: "radio-demo",
@@ -390,5 +397,44 @@ it("keeps a playout failure visible beside the current rotation", () => {
   );
   expect(
     screen.getByRole("region", { name: "Continuous fillers" }),
+  ).toBeVisible();
+});
+
+it("monitors listener audio inline without changing the on-air transport or mix", async () => {
+  const p = props();
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+  const { container } = mount(p);
+  const confidence = screen.getByLabelText("Output confidence");
+  const monitor = within(confidence).getByLabelText("Listener audio monitor");
+  expect(screen.queryByRole("link", { name: "Listen to Program" })).toBeNull();
+  expect(play).not.toHaveBeenCalled();
+  fireEvent.click(within(monitor).getByRole("button", { name: "Listen" }));
+  await waitFor(() =>
+    expect(within(monitor).getByRole("status")).toHaveTextContent(
+      "Listening to broadcast",
+    ),
+  );
+  fireEvent.change(
+    within(monitor).getByRole("slider", { name: "Monitor volume" }),
+    { target: { value: "0.2" } },
+  );
+  expect(container.querySelector("audio")!.volume).toBe(0.2);
+  fireEvent.click(
+    within(monitor).getByRole("button", { name: "Stop listening" }),
+  );
+  expect(container.querySelector("audio")).not.toHaveAttribute("src");
+  for (const fn of [
+    p.onSaveSongSequence,
+    p.onTakeOffAir,
+    p.onSongVolumeChange,
+    p.onMainVolumeChange,
+  ])
+    expect(fn).not.toHaveBeenCalled();
+  expect(
+    within(screen.getByLabelText("On-air player")).getByText("City lights"),
   ).toBeVisible();
 });

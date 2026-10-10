@@ -1,4 +1,5 @@
-import { Button, Slider } from "@gaulatti/bleecker";
+import { Slider } from "@gaulatti/bleecker";
+import { Button } from "./BleeckerButtons";
 import { Headphones, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "../utils/apiBaseUrl";
@@ -11,6 +12,8 @@ export function RadioOutputPlayer({
   listenerUrl?: string;
   programId?: string;
 }) {
+  const monitorRef = useRef<HTMLDivElement>(null);
+  const grantExpiresAt = useRef(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   const request = useRef(0);
   const [state, setState] = useState<"stopped" | "buffering" | "playing">(
@@ -22,8 +25,9 @@ export function RadioOutputPlayer({
   const [preparing, setPreparing] = useState(false);
   const [retry, setRetry] = useState(0);
 
-  // Prepare a short-lived native-audio grant before the click, preserving Safari's
-  // user gesture for play(). Refresh only while stopped; never interrupt audio.
+  // Prepare authorization before the click to keep play() inside Safari's user
+  // gesture. Idle grants refresh from the producer's lifetime; active audio is
+  // never replaced. Returning from a background tab refreshes an idle grant.
   useEffect(() => {
     if (!programId || state !== "stopped") return;
     const abort = new AbortController();
@@ -39,6 +43,8 @@ export function RadioOutputPlayer({
         if (!response.ok) throw new Error();
         const grant = await response.json();
         if (
+          !Number.isFinite(grant.expiresInMs) ||
+          grant.expiresInMs < 5_000 ||
           typeof grant.streamPath !== "string" ||
           !grant.streamPath.startsWith(
             `/radio/${encodeURIComponent(programId)}/monitor-audio?ticket=`,
@@ -46,8 +52,9 @@ export function RadioOutputPlayer({
         )
           throw new Error();
         if (abort.signal.aborted) return;
+        grantExpiresAt.current = Date.now() + grant.expiresInMs;
         setMonitorUrl(apiUrl(grant.streamPath));
-        timer = setTimeout(() => void prepare(), 10_000);
+        timer = setTimeout(() => void prepare(), grant.expiresInMs - 5_000);
       } catch {
         if (!abort.signal.aborted)
           setError("The Program monitor could not connect. Retry connection.");
@@ -55,12 +62,23 @@ export function RadioOutputPlayer({
         if (!abort.signal.aborted) setPreparing(false);
       }
     };
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      clearTimeout(timer);
+      setRetry((value) => value + 1);
+    };
+    document.addEventListener("visibilitychange", refreshOnReturn);
     void prepare();
     return () => {
+      document.removeEventListener("visibilitychange", refreshOnReturn);
       abort.abort();
       clearTimeout(timer);
     };
   }, [programId, state, retry]);
+
+  useEffect(() => {
+    if (window.location.hash === "#radio-monitor") monitorRef.current?.focus();
+  }, [programId]);
 
   const stop = () => {
     request.current += 1;
@@ -89,6 +107,14 @@ export function RadioOutputPlayer({
     const audio = audioRef.current;
     const source = programId ? monitorUrl : listenerUrl;
     if (!audio || !source) return;
+    if (programId && Date.now() >= grantExpiresAt.current) {
+      setMonitorUrl(null);
+      setError(
+        "Monitor connection expired. Preparing a new connection; press Listen when ready.",
+      );
+      setRetry((value) => value + 1);
+      return;
+    }
     const current = ++request.current;
     setError(null);
     setState("buffering");
@@ -105,7 +131,13 @@ export function RadioOutputPlayer({
   };
 
   return (
-    <div className="space-y-4" aria-label="Listener audio monitor">
+    <div
+      id="radio-monitor"
+      ref={monitorRef}
+      tabIndex={-1}
+      className="radio-output-monitor mt-3 space-y-2 border-t border-sand/20 pt-3"
+      aria-label="Listener audio monitor"
+    >
       <audio
         ref={audioRef}
         preload="none"
@@ -122,7 +154,7 @@ export function RadioOutputPlayer({
           setError("The listener stream is unavailable. Try listening again.");
         }}
       />
-      <p role="status">
+      <p role="status" className="text-xs text-text-secondary">
         {state === "playing"
           ? "Listening to broadcast"
           : state === "buffering"
@@ -136,14 +168,15 @@ export function RadioOutputPlayer({
           {error}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-6">
+      <div className="flex flex-wrap items-end gap-3">
         <Button
           type="button"
+          size="xs"
           disabled={state === "stopped" && !!programId && !monitorUrl}
           onClick={() => (state === "stopped" ? void listen() : stop())}
           title={
             state === "stopped"
-              ? "Listen to Palazzo's Icecast output through Alcántara"
+              ? "Listen to the station broadcast on this device"
               : "Stop listening on this device; broadcasting continues"
           }
         >
@@ -158,6 +191,7 @@ export function RadioOutputPlayer({
           <Button
             type="button"
             variant="secondary"
+            size="xs"
             onClick={() => {
               setError(null);
               setRetry((value) => value + 1);
@@ -166,7 +200,7 @@ export function RadioOutputPlayer({
             Retry connection
           </Button>
         )}
-        <div className="w-52 max-w-full">
+        <div className="min-w-0 flex-1 basis-28">
           <Slider
             label="Monitor volume"
             aria-label="Monitor volume"
@@ -181,9 +215,8 @@ export function RadioOutputPlayer({
           />
         </div>
       </div>
-      <p className="text-sm text-text-secondary">
-        Icecast buffering applies. Monitor volume and Stop listening affect only
-        this device.
+      <p className="text-xs text-text-secondary">
+        Delayed audio · This device only
       </p>
     </div>
   );

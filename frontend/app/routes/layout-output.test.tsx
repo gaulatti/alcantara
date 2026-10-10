@@ -4,7 +4,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { IconButton } from "@gaulatti/bleecker";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Headphones } from "lucide-react";
 import { resolveProgramOutputUrl } from "../utils/programTemplate";
 
 // Exercise the actual header control, including the mode supplied to its URL resolver.
@@ -15,36 +15,54 @@ const source = ts.createSourceFile(
   true,
   ts.ScriptKind.TSX,
 );
-function headerOutput(type: "radio" | "tv", resolved = true) {
+function expressionFor(name: string) {
   let expression: ts.Expression | undefined;
   const walk = (node: ts.Node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      node.name.getText(source) === "renderOpenProgramButton"
-    )
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === name)
       expression = node.initializer;
     ts.forEachChild(node, walk);
   };
   walk(source);
-  if (!expression) throw new Error("Missing Program header control");
-  const body = ts.transpileModule(`(${expression.getText(source)})`, {
+  if (!expression) throw new Error(`Missing ${name}`);
+  return ts.transpileModule(`(${expression.getText(source)})`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
   }).outputText;
+}
+function headerOutput(
+  type: "radio" | "tv",
+  resolved = true,
+  navigate = vi.fn(),
+) {
+  const action = new Function(
+    "useCallback",
+    "selectedProgramType",
+    "openProgramUrl",
+    "navigate",
+    `return ${expressionFor("openSelectedProgramOutput")}`,
+  )(
+    (fn: () => void) => fn,
+    type,
+    resolveProgramOutputUrl({ programId: "station", type }, "https://api.test"),
+    navigate,
+  );
+  const body = expressionFor("renderOpenProgramButton");
   return new Function(
     "React",
     "IconButton",
     "ExternalLink",
+    "Headphones",
     "selectedProgramType",
     "resolvedSelectedProgram",
-    "openProgramUrl",
+    "openSelectedProgramOutput",
     `return ${body}`,
   )(
     React,
     IconButton,
     ExternalLink,
+    Headphones,
     type,
     resolved ? { programId: "station", type } : undefined,
-    resolveProgramOutputUrl({ programId: "station", type }, "https://api.test"),
+    action,
   )();
 }
 it("does not open a TV renderer before the station type has loaded", () => {
@@ -60,15 +78,44 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it.each([
-  ["radio", "Listen to Radio Program", "/radio-output/station"],
-  ["tv", "Open Program Output", "/program/station"],
-] as const)(
-  "opens the correct %s output when the header Program button is clicked",
-  (type, label, path) => {
-    const open = vi.spyOn(window, "open").mockReturnValue(null);
-    render(headerOutput(type));
-    fireEvent.click(screen.getByRole("button", { name: label }));
-    expect(open).toHaveBeenCalledWith(path, "_blank", "noopener,noreferrer");
-  },
-);
+it("opens TV output in a separate tab", () => {
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  render(headerOutput("tv"));
+  fireEvent.click(screen.getByRole("button", { name: "Open Program Output" }));
+  expect(open).toHaveBeenCalledWith(
+    "/program/station",
+    "_blank",
+    "noopener,noreferrer",
+  );
+});
+
+it("navigates to the inline Radio monitor without opening a new tab", () => {
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  const navigate = vi.fn();
+  render(headerOutput("radio", true, navigate));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Listen to Radio Program" }),
+  );
+  expect(navigate).toHaveBeenCalledWith("/#radio-monitor");
+  expect(open).not.toHaveBeenCalled();
+});
+
+it("focuses the existing Radio monitor without navigating or interrupting audio", () => {
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  const navigate = vi.fn();
+  render(
+    <>
+      <div id="radio-monitor" tabIndex={-1} />
+      <div>{headerOutput("radio", true, navigate)}</div>
+    </>,
+  );
+  const monitor = document.getElementById("radio-monitor")!;
+  monitor.scrollIntoView = vi.fn();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Listen to Radio Program" }),
+  );
+  expect(monitor).toHaveFocus();
+  expect(monitor.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  expect(navigate).not.toHaveBeenCalled();
+  expect(open).not.toHaveBeenCalled();
+});

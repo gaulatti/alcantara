@@ -24,7 +24,6 @@ import {
 import { dbToFader } from "../utils/audioTaper";
 import { normalizeTakeVolumePresetDb } from "../utils/broadcast";
 import { RadioPanel } from "../components/RadioPanel";
-import { RadioOutputPlayer } from "../components/RadioOutputPlayer";
 
 const layout = {
   id: 1,
@@ -309,12 +308,6 @@ export default function ConsoleFixture() {
   if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
-  if (fixture === "radio-monitor") return (
-    <section className="broadcast-console p-6">
-      <h1 className="mb-4 text-xl font-semibold">Radio Program · local fixture</h1>
-      <RadioOutputPlayer listenerUrl={new URL("/fifthbell/audio/pipes.ogg", window.location.origin).toString()} />
-    </section>
-  );
   if (fixture.startsWith("prepare-")) return (
     <ScenePreparationFixture clock error={fixture === "prepare-error"} saving={fixture === "prepare-saving"} />
   );
@@ -340,6 +333,10 @@ export default function ConsoleFixture() {
           <RadioPanel
             programId="fixture"
             fixtureData={{
+              monitorAudioUrl: new URL(
+                "/fifthbell/audio/pipes.ogg",
+                window.location.origin,
+              ).toString(),
               stream: { running: fixture !== "radio-offline", uptime: 180_000 },
               palazzo: {
                 programId: "fixture",

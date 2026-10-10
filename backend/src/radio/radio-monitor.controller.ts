@@ -29,6 +29,7 @@ export class RadioMonitorController {
   @Public()
   @Header('Cache-Control', 'no-store')
   @Header('X-Accel-Buffering', 'no')
+  @Header('Accept-Ranges', 'none')
   async audio(
     @Param('programId') programId: string,
     @Query('ticket') ticket: string,

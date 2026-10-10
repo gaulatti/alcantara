@@ -27,6 +27,7 @@ import {
   createProgramSongSequence,
   type ProgramSongSequence,
 } from "../utils/programSequence";
+import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
 import { InstantsPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
@@ -56,6 +57,7 @@ export interface RadioMixerState {
 
 interface RadioPanelProps {
   fixtureData?: {
+    monitorAudioUrl?: string;
     stream: StreamStatus;
     palazzo: PalazzoStatus;
     output: OutputConfidence;
@@ -765,12 +767,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               <p className="mt-2 text-xs text-text-secondary">
                 Palazzo mix level before Icecast.
               </p>
-              <Link
-                className="mt-2 text-sm text-sea"
-                to={`/radio-output/${encodeURIComponent(programId)}`}
-              >
-                Listen to Program
-              </Link>
+              <RadioOutputPlayer
+                key={programId}
+                {...(fixtureData?.monitorAudioUrl
+                  ? { listenerUrl: fixtureData.monitorAudioUrl }
+                  : { programId })}
+              />
               <div className="console-next-foot">
                 <span>
                   {output?.lastSampleAt

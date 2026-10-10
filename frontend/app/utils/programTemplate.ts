@@ -41,8 +41,7 @@ export function resolveProgramOutputUrl(
   program: ProgramWithTemplate,
   apiBaseUrl: string,
 ): string {
-  if (program.type === "radio")
-    return `/radio-output/${encodeURIComponent(program.programId)}`;
+  if (program.type === "radio") return "/#radio-monitor";
   const manifest = program.templateManifest;
   if (!manifest?.entrypointUrl) {
     return `/program/${encodeURIComponent(program.programId)}`;

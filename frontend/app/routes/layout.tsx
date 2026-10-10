@@ -10,6 +10,7 @@ import {
   Code2,
   Eye,
   ExternalLink,
+  Headphones,
   Images,
   LayoutTemplate,
   List,
@@ -388,6 +389,20 @@ export default function Layout() {
     }
   }, [selectedProgramId]);
 
+  const openSelectedProgramOutput = useCallback(() => {
+    if (selectedProgramType !== 'radio') {
+      window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const monitor = document.getElementById('radio-monitor');
+    if (monitor) {
+      monitor.scrollIntoView({ block: 'nearest' });
+      monitor.focus();
+    } else {
+      navigate(openProgramUrl);
+    }
+  }, [selectedProgramType, openProgramUrl, navigate]);
+
   const renderOpenProgramButton = () => (
     <IconButton
       type='button'
@@ -396,11 +411,9 @@ export default function Layout() {
       title={selectedProgramType === 'radio' ? 'Listen to Radio Program' : 'Open Program Output'}
       aria-label={selectedProgramType === 'radio' ? 'Listen to Radio Program' : 'Open Program Output'}
       disabled={!resolvedSelectedProgram}
-      onClick={() => {
-        window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
-      }}
+      onClick={openSelectedProgramOutput}
     >
-      <ExternalLink size={16} strokeWidth={1.8} />
+      {selectedProgramType === 'radio' ? <Headphones size={16} strokeWidth={1.8} /> : <ExternalLink size={16} strokeWidth={1.8} />}
     </IconButton>
   );
 
@@ -538,12 +551,12 @@ export default function Layout() {
       {
         id: 'open-selected-program',
         title: selectedProgramTitle,
-        description: 'Launch selected program output in a new tab',
+        description: selectedProgramType === 'radio' ? 'Focus the listener monitor in the Radio desk' : 'Launch selected program output in a new tab',
         group: 'Programs',
         icon: <Radio size={16} />,
         onSelect: () => {
           if (typeof window === 'undefined') return;
-          window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
+          openSelectedProgramOutput();
         }
       },
       {
@@ -701,7 +714,7 @@ export default function Layout() {
     clearBroadcastTimeOverride,
     loadBroadcastSettings,
     navigate,
-    openProgramUrl,
+    openSelectedProgramOutput,
     programOptions,
     selectedProgramId,
     selectedProgramType,

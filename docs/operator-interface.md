@@ -125,10 +125,13 @@ This is a presentation change; API names and playback behavior are unchanged.
 
 ### Radio Program monitoring
 
-For Radio, the header Program action and command palette open the authenticated
-`/radio-output/:programId` listener monitor. TV and Simulcast retain their TV
-renderer output action. Renderer Refresh is hidden for Radio. Output confidence
-also links to the listener monitor.
+The Radio desk embeds Listen, Stop listening, and Monitor volume inside Output
+confidence, beside the rundown and Cartwall. The header headphones action and
+command palette focus this monitor without opening a new tab or interrupting
+listening. From another section they return to the selected station's Radio desk.
+Existing `/radio-output/:programId` links select that station and redirect to its
+desk. TV and Simulcast retain their TV renderer output action; Renderer Refresh
+is hidden for Radio.
 
 The player receives the existing station's output through
 **Liquidsoap → Icecast → Palazzo backend → Alcántara backend → browser audio**.
@@ -139,21 +142,32 @@ operator setup is required. The earlier optional `RadioSettings.listenerUrl`
 column/API remains for rollback compatibility but is unused by this monitor.
 
 The authenticated `POST /radio/:programId/monitor-ticket` requires `radio.read`
-and returns a station-bound stream path with a one-use, 15-second grant.
-`GET /radio/:programId/monitor-audio` consumes that grant before opening Palazzo.
-Long-lived login tokens and private control URLs never enter the audio element.
-The player prepares and refreshes a grant while stopped so native play occurs
-within the click, including on Safari. Playback does not refresh or replace its
-stream. Listen is disabled while preparing; errors offer Retry connection.
+and returns a station-bound stream path with a 60-second connection window.
+`GET /radio/:programId/monitor-audio` validates that grant on every request.
+Native media can probe and reconnect using the same URL: authorization remains
+valid while a stream is connected and for 30 seconds after the last disconnect.
+Expired, missing, or wrong-station grants return 401 without contacting Palazzo.
+These process-local grants require the existing single backend instance; a
+backend restart invalidates them. Long-lived login tokens and private control
+URLs never enter the audio element.
+
+The player prepares authorization before the click so native play stays inside
+the Safari user gesture. While stopped it renews five seconds before the
+producer's expiry and on returning to a visible tab. An expired idle grant is
+replaced before issuing a media request; press Listen again when ready. Playback
+never refreshes or replaces its source. Listen is disabled while preparing;
+connection errors offer Retry connection.
 
 Listen starts only on a click. Stop listening, changing station, and leaving the
 page close the browser, Alcántara, and Palazzo stream connections. Bytes are
 forwarded incrementally with backpressure; no backend buffers the entire live
 stream. Responses disable caching/proxy buffering and preserve the audio content
-type. Monitor volume changes only local audio; no playback/mixer commands are
-issued. Icecast encoding/buffering still adds delay. This checks the Icecast
+type. The live stream advertises `Accept-Ranges: none` and returns 200
+for range requests because its audio has no fixed byte length. Monitor volume
+changes only local audio; no playback/mixer commands are issued. Icecast encoding/buffering still adds delay. This checks the Icecast
 output, while the desk's engine confidence remains a pre-Icecast level signal.
-`radio-monitor` is the local player fixture.
+`radio-monitor` now shows the complete Radio desk with an inline local audio
+fixture; every Radio desk fixture includes these controls.
 
 Workspace options contains presets, keyboard shortcuts, touch mode, fullscreen,
 and source-list width. Program recording is a secondary disclosure and contacts

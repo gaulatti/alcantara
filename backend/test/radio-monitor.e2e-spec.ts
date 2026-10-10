@@ -109,7 +109,7 @@ describe('authenticated Program audio relay (e2e)', () => {
     return response.json();
   };
 
-  it('requires a real local session with radio.read and a station-bound unexpired one-use grant', async () => {
+  it('requires a real local session with radio.read and a station-bound unexpired media grant', async () => {
     expect(
       (
         await fetch(`${origin}/radio/station/monitor-ticket`, {
@@ -139,31 +139,54 @@ describe('authenticated Program audio relay (e2e)', () => {
     expect((await fetch(origin + wrong.streamPath)).status).toBe(401);
     const expired = await grant();
     const now = Date.now();
-    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 16_000);
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 61_000);
     expect((await fetch(origin + expired.streamPath)).status).toBe(401);
     clock.mockRestore();
     expect(paths).toHaveLength(0);
   });
 
-  it('returns bytes before the source ends and closes upstream when the player stops', async () => {
+  it('accepts native media probes and reconnects, streams incrementally and expires after disconnect', async () => {
     const output = await grant();
-    const closed = new Promise<void>((resolve) => (disconnected = resolve));
-    const abort = new AbortController();
-    const response = await fetch(origin + output.streamPath, {
-      signal: abort.signal,
-    });
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe('audio/mpeg');
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(response.headers.get('x-accel-buffering')).toBe('no');
-    const reader = response.body!.getReader();
-    expect(Array.from((await reader.read()).value!)).toEqual([
-      255, 251, 144, 0,
-    ]);
-    abort.abort();
-    await closed;
-    expect(paths).toEqual(['/v1/programs/station/output/audio']);
-    expect((await fetch(origin + output.streamPath)).status).toBe(401);
+    expect(output.expiresInMs).toBe(60_000);
+    const open = async (range: string) => {
+      const abort = new AbortController();
+      const response = await fetch(origin + output.streamPath, {
+        signal: abort.signal,
+        headers: { Range: range },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('audio/mpeg');
+      expect(response.headers.get('accept-ranges')).toBe('none');
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(response.headers.get('x-accel-buffering')).toBe('no');
+      expect(
+        Array.from((await response.body!.getReader().read()).value!),
+      ).toEqual([255, 251, 144, 0]);
+      return async () => {
+        const closed = new Promise<void>((resolve) => (disconnected = resolve));
+        abort.abort();
+        await closed;
+      };
+    };
+    // Safari's initial range probe must not consume the URL's authorization.
+    await (
+      await open('bytes=0-1')
+    )();
+    const stop = await open('bytes=0-');
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 61_000);
+    try {
+      // An active listening session remains usable past its initial connect window.
+      await (
+        await open('bytes=0-')
+      )();
+      await stop();
+      clock.mockReturnValue(now + 92_000);
+      expect((await fetch(origin + output.streamPath)).status).toBe(401);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(paths).toEqual(Array(3).fill('/v1/programs/station/output/audio'));
   });
 
   it('reports upstream failure explicitly and renders bounded lifecycle and dependency metrics', async () => {
@@ -172,10 +195,10 @@ describe('authenticated Program audio relay (e2e)', () => {
     expect((await fetch(origin + output.streamPath)).status).toBe(502);
     const metrics = app.get(RadioMetricsService).render();
     expect(metrics).toContain(
-      'alcantara_radio_monitor_sessions_total{result="opened"} 1',
+      'alcantara_radio_monitor_sessions_total{result="opened"} 3',
     );
     expect(metrics).toContain(
-      'alcantara_radio_monitor_sessions_total{result="aborted"} 1',
+      'alcantara_radio_monitor_sessions_total{result="aborted"} 3',
     );
     expect(metrics).toContain(
       'alcantara_radio_monitor_sessions_total{result="failure"} 1',

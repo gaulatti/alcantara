@@ -100,18 +100,16 @@ it("disconnects on a station change and keeps network errors visible for retry",
 
 it("prepares a protected monitor grant without manual configuration, plays within the click and renews after Stop", async () => {
   let grant = 0;
-  const transport = vi
-    .spyOn(globalThis, "fetch")
-    .mockImplementation(
-      async () =>
-        new Response(
-          JSON.stringify({
-            streamPath: `/radio/station/monitor-audio?ticket=grant-${++grant}`,
-            expiresInMs: 15000,
-          }),
-          { status: 201 },
-        ),
-    );
+  const transport = vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          streamPath: `/radio/station/monitor-audio?ticket=grant-${++grant}`,
+          expiresInMs: 60000,
+        }),
+        { status: 201 },
+      ),
+  );
   const { container, rerender } = render(
     <RadioOutputPlayer programId="station" />,
   );
@@ -163,7 +161,7 @@ it("shows connection failures and offers retry without a listener URL field", as
     new Response(
       JSON.stringify({
         streamPath: "/radio/station/monitor-audio?ticket=retry",
-        expiresInMs: 15000,
+        expiresInMs: 60000,
       }),
       { status: 201 },
     ),
@@ -173,4 +171,73 @@ it("shows connection failures and offers retry without a listener URL field", as
     expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
   );
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("refreshes an expired idle grant instead of sending it to native audio", async () => {
+  let grant = 0;
+  const transport = vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          streamPath: `/radio/station/monitor-audio?ticket=grant-${++grant}`,
+          expiresInMs: 60000,
+        }),
+        { status: 201 },
+      ),
+  );
+  const { container } = render(<RadioOutputPlayer programId="station" />);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
+  );
+  const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 61000);
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  expect(container.querySelector("audio")).not.toHaveAttribute("src");
+  expect(screen.getByRole("alert")).toHaveTextContent("connection expired");
+  await waitFor(() => expect(transport).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
+  );
+  clock.mockRestore();
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  expect(container.querySelector("audio")).toHaveAttribute(
+    "src",
+    expect.stringContaining("grant-2"),
+  );
+});
+
+it("refreshes on return to an idle tab and keeps active audio intact on return", async () => {
+  let grant = 0;
+  const transport = vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          streamPath: `/radio/station/monitor-audio?ticket=grant-${++grant}`,
+          expiresInMs: 60000,
+        }),
+        { status: 201 },
+      ),
+  );
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  const { container } = render(<RadioOutputPlayer programId="station" />);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
+  );
+  fireEvent(document, new Event("visibilitychange"));
+  await waitFor(() => expect(transport).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Listening to broadcast",
+    ),
+  );
+  fireEvent(document, new Event("visibilitychange"));
+  expect(transport).toHaveBeenCalledTimes(2);
+  expect(container.querySelector("audio")).toHaveAttribute(
+    "src",
+    expect.stringContaining("grant-2"),
+  );
 });

@@ -29,12 +29,14 @@ Use **Voice** on a song row to record a link with the browser microphone. Previe
 The Radio desk separates **STREAM CONNECTED** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
-**Listen to Program** returns Icecast audio through Palazzo and Alcántara's
+**Listen** returns Icecast audio through Palazzo and Alcántara's
 backends using the station's existing private Palazzo connection. It requires no
 public listener URL or manual configuration. Listening and monitor volume affect
 only the operator's device; Stop listening never stops broadcast playback.
-The Program action in the header and command palette uses this monitor for
-Radio. Failures are visible and can be retried; no public-stream fallback is used.
+Listen, Stop listening, and Monitor volume are inline in the Radio desk's
+Output confidence panel. The header headphones action and command palette focus
+these controls in the same tab. Failures are visible and can be retried; no
+public-stream fallback is used.
 The return audio includes Icecast buffering and does not test the public DNS/CDN
 listener path.
 
@@ -45,7 +47,9 @@ Only exact HTTPS URLs on the configured `MEDIA_S3_BUCKET` S3 host are accepted f
 ## Operations and metrics
 
 `alcantara_radio_monitor_sessions_total{result="opened|closed|aborted|failure|rejected"}`
-counts monitor connection transitions. `output-monitor` is a bounded operation
+counts monitor connection transitions, including repeated native media requests
+and rejection after the grant's idle deadline. `output-monitor` is a bounded
+operation
 in the existing Palazzo dependency request metrics. There are no station IDs,
 stream URLs, tickets, or free-form errors in metric labels. The old
 `alcantara_radio_listener_configuration_total{result="success|failure"}` remains
