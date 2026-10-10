@@ -130,19 +130,30 @@ For Radio, the header Program action and command palette open the authenticated
 renderer output action. Renderer Refresh is hidden for Radio. Output confidence
 also links to the listener monitor.
 
-Set **Public listener stream URL** in Radio distribution to the exact public
-HTTPS audio URL provided by the station. The optional `listenerUrl` is persisted
-in RadioSettings through its normal authenticated GET/PUT API; clearing it shows
-an explicit unconfigured state. URLs with credentials, fragments, or unsupported
-schemes are rejected. HTTP loopback URLs are accepted only outside production
-for local testing. No public address is inferred from Palazzo's private control
-URL. Existing stations receive no automatic URL or playback change.
+The player receives the existing station's output through
+**Liquidsoap → Icecast → Palazzo backend → Alcántara backend → browser audio**.
+Palazzo relays its configured Icecast port and mount through the private
+`GET /v1/programs/:programId/output/audio` API. Alcántara uses the station's
+existing approved Palazzo connection. No DNS lookup, public listener URL, or
+operator setup is required. The earlier optional `RadioSettings.listenerUrl`
+column/API remains for rollback compatibility but is unused by this monitor.
 
-Listen starts only on a click. Stop listening, changing the URL, and leaving the
-page release the browser's stream connection. Monitor volume changes only the
-local audio element. Playback and connection failures remain visible. This is
-the listener stream with its normal delay; it is independent of the pre-Icecast
-engine-level confidence signal. `radio-monitor` is the local audio fixture.
+The authenticated `POST /radio/:programId/monitor-ticket` requires `radio.read`
+and returns a station-bound stream path with a one-use, 15-second grant.
+`GET /radio/:programId/monitor-audio` consumes that grant before opening Palazzo.
+Long-lived login tokens and private control URLs never enter the audio element.
+The player prepares and refreshes a grant while stopped so native play occurs
+within the click, including on Safari. Playback does not refresh or replace its
+stream. Listen is disabled while preparing; errors offer Retry connection.
+
+Listen starts only on a click. Stop listening, changing station, and leaving the
+page close the browser, Alcántara, and Palazzo stream connections. Bytes are
+forwarded incrementally with backpressure; no backend buffers the entire live
+stream. Responses disable caching/proxy buffering and preserve the audio content
+type. Monitor volume changes only local audio; no playback/mixer commands are
+issued. Icecast encoding/buffering still adds delay. This checks the Icecast
+output, while the desk's engine confidence remains a pre-Icecast level signal.
+`radio-monitor` is the local player fixture.
 
 Workspace options contains presets, keyboard shortcuts, touch mode, fullscreen,
 and source-list width. Program recording is a secondary disclosure and contacts

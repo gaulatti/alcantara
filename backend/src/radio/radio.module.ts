@@ -1,5 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { RadioController } from './radio.controller';
+import { RadioMonitorController } from './radio-monitor.controller';
+import { RadioMonitorService } from './radio-monitor.service';
 import { RadioService } from './radio.service';
 import { SongExecutionEngine } from './song-execution.engine';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
@@ -11,9 +13,10 @@ import { PrismaService } from '../prisma.service';
 
 @Global()
 @Module({
-  controllers: [RadioController],
+  controllers: [RadioController, RadioMonitorController],
   providers: [
     RadioService,
+    RadioMonitorService,
     SongExecutionEngine,
     NowPlayingPublisherService,
     PalazzoRadioTelemetryService,

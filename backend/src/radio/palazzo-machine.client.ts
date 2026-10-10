@@ -185,6 +185,39 @@ export class PalazzoMachineClient {
     );
   }
 
+  async openOutput(
+    palazzoUrl: string,
+    programId: string,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), 10_000);
+    let response: Response;
+    try {
+      response = await this.request(palazzoUrl, programId, '/output/audio', {
+        operation: 'output-monitor',
+        signal: AbortSignal.any([signal, timeout.signal]),
+      });
+    } catch (error) {
+      if (timeout.signal.aborted && !signal.aborted) {
+        this.metrics.recordMachineRequest('output-monitor', 'unavailable');
+      }
+      throw error;
+    } finally {
+      // Bound connection establishment, not the lifetime of live audio.
+      clearTimeout(timer);
+    }
+    if (
+      !response.body ||
+      !response.headers.get('content-type')?.startsWith('audio/')
+    ) {
+      await response.body?.cancel();
+      return this.failMalformed('output-monitor');
+    }
+    this.metrics.recordMachineRequest('output-monitor', 'success');
+    return response;
+  }
+
   async playInstant(
     palazzoUrl: string,
     programId: string,
@@ -455,7 +488,9 @@ export class PalazzoMachineClient {
       Accept:
         options.operation === 'event-connect'
           ? 'text/event-stream'
-          : 'application/json',
+          : options.operation === 'output-monitor'
+            ? 'audio/*'
+            : 'application/json',
     };
     if (options.body !== undefined)
       headers['Content-Type'] = 'application/json';

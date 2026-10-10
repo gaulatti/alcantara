@@ -17,6 +17,7 @@ export type PalazzoMachineOperation =
   | 'mixer-update'
   | 'state-read'
   | 'event-connect'
+  | 'output-monitor'
   | 'filler-prepare'
   | 'automation-read'
   | 'automation-start'
@@ -152,6 +153,7 @@ const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
   'mixer-update',
   'state-read',
   'event-connect',
+  'output-monitor',
   'filler-prepare',
   'automation-read',
   'automation-start',
@@ -217,6 +219,17 @@ const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
  */
 @Injectable()
 export class RadioMetricsService {
+  private readonly monitorSessions = {
+    opened: 0,
+    closed: 0,
+    aborted: 0,
+    failure: 0,
+    rejected: 0,
+  };
+  recordMonitor(result: keyof RadioMetricsService['monitorSessions']): void {
+    this.monitorSessions[result] += 1;
+  }
+
   private readonly listenerConfiguration = { success: 0, failure: 0 };
   private readonly outputConfidenceTransitions = new Map<string, number>();
   private readonly radioLogResults = new Map<string, number>();
@@ -509,6 +522,12 @@ export class RadioMetricsService {
       `alcantara_radio_output_silent_programs ${this.outputSilentPrograms}`,
     );
     lines.push(
+      '# HELP alcantara_radio_monitor_sessions_total Backend Program monitor connection transitions.',
+      '# TYPE alcantara_radio_monitor_sessions_total counter',
+      ...Object.entries(this.monitorSessions).map(
+        ([result, value]) =>
+          `alcantara_radio_monitor_sessions_total{result="${result}"} ${value}`,
+      ),
       '# HELP alcantara_radio_listener_configuration_total Listener URL persistence outcomes, including validation failures.',
       '# TYPE alcantara_radio_listener_configuration_total counter',
       ...(['success', 'failure'] as const).map(

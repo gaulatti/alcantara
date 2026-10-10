@@ -68,6 +68,14 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     const radioMetrics = app.get(RadioMetricsService);
     radioMetrics.recordListenerConfiguration('success');
     radioMetrics.recordListenerConfiguration('failure');
+    for (const result of [
+      'opened',
+      'closed',
+      'aborted',
+      'failure',
+      'rejected',
+    ] as const)
+      radioMetrics.recordMonitor(result);
     radioMetrics.recordMachineRequest('song-play', 'deduplicated');
     radioMetrics.recordMachineRequest('event-connect', 'unauthorized');
     radioMetrics.recordMachineRetry('song-play');
@@ -120,6 +128,18 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain(
       'alcantara_radio_listener_configuration_total{result="failure"} 1',
     );
+
+    for (const result of [
+      'opened',
+      'closed',
+      'aborted',
+      'failure',
+      'rejected',
+    ]) {
+      expect(body).toContain(
+        `alcantara_radio_monitor_sessions_total{result="${result}"} 1`,
+      );
+    }
     expect(body).toContain('alcantara_process_cpu_user_seconds_total');
     expect(body).not.toContain('alcantara_nodejs_active_handles_total');
     expect(body).not.toContain('alcantara_nodejs_active_requests_total');
