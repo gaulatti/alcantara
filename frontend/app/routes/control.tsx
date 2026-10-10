@@ -2,7 +2,6 @@ import {
   Button,
   Input,
   LoadingSpinner,
-  Panel,
 } from "@gaulatti/bleecker";
 import {
   useCallback,
@@ -40,7 +39,6 @@ import {
 } from "../utils/programSequence";
 import type { Route } from "./+types/control";
 
-import { PanelColumn } from "../components/editors";
 import { PlaybackBar } from "../components/PlaybackBar";
 import { TvAudioWorkspace, type TvAudioChannel } from "../components/TvAudioWorkspace";
 import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
@@ -3506,69 +3504,53 @@ export default function Control() {
             {recordingOpen && <RecordingPanel programId={activeProgramId} />}
           </details>
           <div
-            className={`console-scene-workspace flex-1 min-h-[320px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
+            className={`console-scene-workspace w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
             data-workspace-content={consoleWorkspace}
           >
-            <div className="grid w-full h-full min-h-0 grid-cols-1">
-              <PanelColumn className="min-w-0 flex-1">
-                <Panel
-                  title={
-                    stagedSceneData
-                      ? `Prepare · ${stagedSceneData.name}`
-                      : "Prepare the next scene"
-                  }
-                  accent="#14b8a6"
-                  variant="monitor"
-                  className="min-h-0"
-                  grow
-                >
-                  <SceneAttributesPanel
-                    selectedScene={selectedScene}
-                    scenes={scenes}
-                    stagedIsOnAir={stagedIsOnAir}
-                    isSavingSceneAttributes={isSavingSceneAttributes}
-                    sceneAttributeSaveError={sceneAttributeSaveError}
-                    editableSceneComponentEntries={
-                      editableSceneComponentEntries
-                    }
-                    componentTypes={componentTypes}
-                    sceneEditorProps={sceneEditorProps}
-                    selectedSceneInstantId={selectedSceneInstantId}
-                    selectedBackgroundAudioAssetId={
-                      selectedBackgroundAudioAssetId
-                    }
-                    selectedBackgroundAudioAsset={selectedBackgroundAudioAsset}
-                    sceneInstantPlayback={sceneInstantPlayback}
-                    activeProgramId={activeProgramId}
-                    backgroundAudioAssets={backgroundAudioAssets}
-                    isLoadingBackgroundAudio={isLoadingBackgroundAudio}
-                    songCatalog={songCatalog}
-                    mediaGroups={mediaGroups}
-                    isLoadingMediaGroups={isLoadingMediaGroups}
-                    mediaLabels={mediaLabels}
-                    isLoadingMediaLabels={isLoadingMediaLabels}
-                    onBlurCapture={(event) => {
-                      if (selectedSceneRef.current !== null) {
-                        void flushSceneAttributeAutosaveForScene(
-                          selectedSceneRef.current,
-                        ).catch(() => {});
-                      }
-                    }}
-                    onSave={() => void saveStagedSceneAttributes()}
-                    onCommitComponentProps={(componentType, props) =>
-                      commitSceneEditorComponentProps(componentType, props)
-                    }
-                    onUpdateProp={updateSceneEditorProp}
-                    onReplaceProps={replaceSceneEditorComponentProps}
-                    onSyncComponentProps={syncSceneEditorComponentProps}
-                    onTakeSceneInstant={(sceneId, instantId, mediaAssetId) =>
-                      takeSceneInstant(sceneId, instantId, mediaAssetId)
-                    }
-                    onStopSceneInstant={() => stopSceneInstant()}
-                  />
-                </Panel>
-              </PanelColumn>
-            </div>
+            <SceneAttributesPanel
+              selectedScene={selectedScene}
+              scenes={scenes}
+              stagedIsOnAir={stagedIsOnAir}
+              isSavingSceneAttributes={isSavingSceneAttributes}
+              sceneAttributeSaveError={sceneAttributeSaveError}
+              editableSceneComponentEntries={
+                editableSceneComponentEntries
+              }
+              componentTypes={componentTypes}
+              sceneEditorProps={sceneEditorProps}
+              selectedSceneInstantId={selectedSceneInstantId}
+              selectedBackgroundAudioAssetId={
+                selectedBackgroundAudioAssetId
+              }
+              selectedBackgroundAudioAsset={selectedBackgroundAudioAsset}
+              sceneInstantPlayback={sceneInstantPlayback}
+              activeProgramId={activeProgramId}
+              backgroundAudioAssets={backgroundAudioAssets}
+              isLoadingBackgroundAudio={isLoadingBackgroundAudio}
+              songCatalog={songCatalog}
+              mediaGroups={mediaGroups}
+              isLoadingMediaGroups={isLoadingMediaGroups}
+              mediaLabels={mediaLabels}
+              isLoadingMediaLabels={isLoadingMediaLabels}
+              onBlurCapture={(event) => {
+                if (selectedSceneRef.current !== null) {
+                  void flushSceneAttributeAutosaveForScene(
+                    selectedSceneRef.current,
+                  ).catch(() => {});
+                }
+              }}
+              onSave={() => void saveStagedSceneAttributes()}
+              onCommitComponentProps={(componentType, props) =>
+                commitSceneEditorComponentProps(componentType, props)
+              }
+              onUpdateProp={updateSceneEditorProp}
+              onReplaceProps={replaceSceneEditorComponentProps}
+              onSyncComponentProps={syncSceneEditorComponentProps}
+              onTakeSceneInstant={(sceneId, instantId, mediaAssetId) =>
+                takeSceneInstant(sceneId, instantId, mediaAssetId)
+              }
+              onStopSceneInstant={() => stopSceneInstant()}
+            />
           </div>
         </>
       )}

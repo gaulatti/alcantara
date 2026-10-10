@@ -9,6 +9,7 @@ import type { Route } from './+types/radio-settings';
 
 interface RadioSettings {
   palazzoUrl: string;
+  listenerUrl: string | null;
   bumperEnabled: boolean;
   bumperInterval: number | null;
   bumperInstantIds: number[];
@@ -181,12 +182,14 @@ export default function RadioSettingsRoute() {
         <><RecoveryPlaylistPanel programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div>
-              <p className='text-xs font-semibold uppercase tracking-[0.12em] text-text-secondary'>Automation</p>
               <h2 className='mt-1 text-xl font-semibold'>Radio playout</h2>
             </div>
             <Checkbox checked={settings.enabled} onChange={(event) => setSettings({ ...settings, enabled: event.target.checked })} label='Enable Alcántara radio automation' />
             <Field label='Palazzo control URL'>
               <Input value={settings.palazzoUrl} onChange={(event) => setSettings({ ...settings, palazzoUrl: event.target.value })} />
+            </Field>
+            <Field label='Public listener stream URL' optional description='The exact HTTPS audio stream published by your station. Program opens this audio for monitoring; listening never changes the broadcast mix.'>
+              <Input type='url' value={settings.listenerUrl ?? ''} placeholder='https://radio.example/stream' onChange={(event) => setSettings({ ...settings, listenerUrl: event.target.value || null })} />
             </Field>
             <div className='rounded-[var(--radius-ui)] border border-sand/25 p-4 dark:border-white/10'>
               <Checkbox
@@ -259,7 +262,6 @@ export default function RadioSettingsRoute() {
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div className='flex flex-wrap items-start justify-between gap-3'>
               <div>
-                <p className='text-xs font-semibold uppercase tracking-[0.12em] text-text-secondary'>Distribution</p>
                 <h2 className='mt-1 text-xl font-semibold'>Now-playing consumers</h2>
                 <p className='mt-1 text-sm text-text-secondary'>Send bounded track metadata to configured downstream services.</p>
               </div>

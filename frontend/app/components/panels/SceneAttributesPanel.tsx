@@ -1,5 +1,5 @@
-import { Button, Select, Tabs } from "@gaulatti/bleecker";
-import { useEffect, useMemo, useState } from "react";
+import { Button, Card, Field, Select, Tabs } from "@gaulatti/bleecker";
+import { useEffect, useId, useMemo, useState } from "react";
 import type {
   BackgroundAudioAsset,
   MediaGroup,
@@ -75,6 +75,7 @@ export function SceneAttributesPanel({
   onTakeSceneInstant,
   onStopSceneInstant,
 }: SceneAttributesPanelProps) {
+  const panelId = useId();
   const [activeAttributeTab, setActiveAttributeTab] = useState<string>("");
 
   const attributeTabs = useMemo(
@@ -84,11 +85,12 @@ export function SceneAttributesPanel({
         return {
           id: componentType,
           label: compInfo?.name || componentType,
+          panelId,
         };
       }),
-      { id: "__scene", label: "Background audio" },
+      { id: "__scene", label: "Background audio", panelId },
     ],
-    [componentTypes, editableSceneComponentEntries],
+    [componentTypes, editableSceneComponentEntries, panelId],
   );
 
   useEffect(() => {
@@ -125,29 +127,43 @@ export function SceneAttributesPanel({
 
   if (!selectedScene) {
     return (
-      <p className="text-sm text-text-secondary dark:text-text-secondary">
-        Stage a scene above to edit its attributes before taking it live.
-      </p>
+      <Card className="scene-preparation-empty">
+        <h2 className="text-base font-semibold">Prepare the next scene</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Stage a scene above to edit its attributes before taking it live.
+        </p>
+      </Card>
     );
   }
 
   return (
-    <div
-      className="console-scene-editor flex h-full min-h-0 flex-col overflow-hidden"
+    <Card
+      padding="none"
+      className="console-scene-editor"
       onBlurCapture={onBlurCapture}
     >
+      <header className="scene-preparation-heading">
+        <h2>
+          Prepare ·{" "}
+          {scenes.find((scene) => scene.id === selectedScene)?.name ??
+            "Selected scene"}
+        </h2>
+      </header>
       {stagedIsOnAir && (
-        <p className="mb-3 rounded-[var(--radius-button)] border border-accent-yellow/40 bg-accent-yellow/10 px-3 py-2 text-xs text-accent-yellow">
+        <p className="scene-preparation-notice rounded-[var(--radius-button)] border border-accent-yellow/40 bg-accent-yellow/10 px-3 py-2 text-xs text-accent-yellow">
           This scene is on Program. Saved changes appear live.
         </p>
       )}
       {editableSceneComponentEntries
-        .filter(([, props]) => props.show === false)
+        .filter(
+          ([type, props]) =>
+            type === activeComponentEntry?.[0] && props.show === false,
+        )
         .map(([componentType]) => (
           <div
             key={componentType}
             role="status"
-            className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-button)] border border-accent-yellow/40 bg-accent-yellow/10 px-3 py-2 text-sm"
+            className="scene-preparation-notice flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-button)] border border-accent-yellow/40 bg-accent-yellow/10 px-3 py-2 text-sm"
           >
             <span>
               {componentTypes.find(
@@ -165,17 +181,27 @@ export function SceneAttributesPanel({
             </Button>
           </div>
         ))}
-      <div className="shrink-0 border-b border-sand/20 pb-2 dark:border-sand/40">
+      <div className="scene-preparation-tabs">
         <Tabs
+          aria-label="Scene components"
           tabs={attributeTabs}
+          size="sm"
+          variant="enclosed"
           activeTab={activeAttributeTab}
           onChange={(id) => setActiveAttributeTab(id)}
           className="overflow-x-auto"
         />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto py-3">
-        <div className="console-props-body space-y-3 rounded-xl border border-sand/20 p-4 dark:border-sand/40">
+      <div
+        className="scene-preparation-scroll"
+        role="tabpanel"
+        id={panelId}
+        aria-label={
+          attributeTabs.find((tab) => tab.id === activeAttributeTab)?.label
+        }
+      >
+        <div className="console-props-body">
           {activeProgramId === "fifthbell" && (
             <p className="text-xs text-text-secondary dark:text-text-secondary">
               FifthBell runtime settings are stored per component metadata
@@ -188,35 +214,33 @@ export function SceneAttributesPanel({
             <div className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex-1">
-                  <label className="mb-1 block text-xs text-text-secondary">
-                    Scene background audio
-                  </label>
-                  <Select
-                    value={selectedBackgroundAudioAssetId ?? ""}
-                    onChange={(value) => {
-                      const nextAssetId = value.trim() || null;
-                      const currentSceneInstantProps =
-                        sceneEditorProps?.sceneInstant &&
-                        typeof sceneEditorProps.sceneInstant === "object"
-                          ? sceneEditorProps.sceneInstant
-                          : {};
-                      void onCommitComponentProps("sceneInstant", {
-                        ...currentSceneInstantProps,
-                        assetId: nextAssetId,
-                        instantId: null,
-                      });
-                    }}
-                    className="w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50"
-                    options={[
-                      { value: "", label: "No background audio" },
-                      ...backgroundAudioAssets
-                        .filter((asset) => asset.enabled)
-                        .map((asset) => ({
-                          value: asset.id,
-                          label: asset.name,
-                        })),
-                    ]}
-                  />
+                  <Field label="Audio clip">
+                    <Select
+                      value={selectedBackgroundAudioAssetId ?? ""}
+                      onChange={(value) => {
+                        const nextAssetId = value.trim() || null;
+                        const currentSceneInstantProps =
+                          sceneEditorProps?.sceneInstant &&
+                          typeof sceneEditorProps.sceneInstant === "object"
+                            ? sceneEditorProps.sceneInstant
+                            : {};
+                        void onCommitComponentProps("sceneInstant", {
+                          ...currentSceneInstantProps,
+                          assetId: nextAssetId,
+                          instantId: null,
+                        });
+                      }}
+                      options={[
+                        { value: "", label: "No background audio" },
+                        ...backgroundAudioAssets
+                          .filter((asset) => asset.enabled)
+                          .map((asset) => ({
+                            value: asset.id,
+                            label: asset.name,
+                          })),
+                      ]}
+                    />
+                  </Field>
                   {isLoadingBackgroundAudio ? (
                     <p className="mt-1 text-xs text-text-secondary">
                       Loading background audio…
@@ -257,10 +281,6 @@ export function SceneAttributesPanel({
             </div>
           ) : activeComponentEntry ? (
             <div>
-              <h4 className="mb-2 text-md font-semibold text-text-primary dark:text-text-primary">
-                {attributeTabs.find((tab) => tab.id === activeComponentEntry[0])
-                  ?.label || activeComponentEntry[0]}
-              </h4>
               <ComponentPropsFields
                 componentType={activeComponentEntry[0]}
                 props={activeComponentEntry[1]}
@@ -291,27 +311,29 @@ export function SceneAttributesPanel({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-sand/20 pt-3 dark:border-sand/40">
+      <div className="scene-preparation-footer">
         <div className="flex flex-wrap items-center justify-between gap-2">
           {isSavingSceneAttributes ? (
             <p className="text-xs text-text-secondary dark:text-text-secondary">
               Autosaving scene attributes…
             </p>
           ) : sceneAttributeSaveError ? (
-            <p className="text-xs text-terracotta">{sceneAttributeSaveError}</p>
+            <p role="alert" className="text-xs text-terracotta">
+              {sceneAttributeSaveError}
+            </p>
           ) : (
             <span />
           )}
           <Button
             size="sm"
-            variant="secondary"
+            variant="primary"
             onClick={() => onSave()}
             disabled={!selectedScene || isSavingSceneAttributes}
           >
-            {isSavingSceneAttributes ? "SAVING…" : "SAVE"}
+            {isSavingSceneAttributes ? "Saving…" : "Save changes"}
           </Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

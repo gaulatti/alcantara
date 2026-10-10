@@ -323,7 +323,6 @@ export default function ScheduledRundown({
       <AlertContainer />
       <header className="rundown-toolbar">
         <div>
-          <span className="console-eyebrow">Radio production</span>
           <h1>Rundown</h1>
           <p>{programId} · Scheduled content and fillers</p>
         </div>
@@ -364,7 +363,7 @@ export default function ScheduledRundown({
         aria-label="Continuous filler rotation"
       >
         <div>
-          <span className="console-eyebrow">Base playout · 24/7</span>
+          <span className="console-eyebrow">24/7</span>
           <strong>Continuous fillers</strong>
           <p>
             {rotationCount === null
@@ -714,7 +713,6 @@ export default function ScheduledRundown({
                 </>
               ) : (
                 <>
-                  <span className="console-eyebrow">Event inspector</span>
                   <h2 className="mt-2">Select an event</h2>
                   <p className="rundown-inspector-note">
                     Read the block in the log. Select a row to change its

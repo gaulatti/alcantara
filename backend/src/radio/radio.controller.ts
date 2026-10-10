@@ -41,8 +41,14 @@ export class RadioController {
     @Param('programId') programId: string,
     @Body() data: RadioSettingsPayload,
   ) {
+    const previous = await this.radioService.getRadioSettings(programId);
     const result = await this.radioService.updateRadioSettings(programId, data);
-    await this.palazzoTelemetry.handleRadioSettingsChanged(programId);
+    if (
+      previous?.palazzoUrl !== result.palazzoUrl ||
+      previous?.enabled !== result.enabled
+    ) {
+      await this.palazzoTelemetry.handleRadioSettingsChanged(programId);
+    }
     return result;
   }
 

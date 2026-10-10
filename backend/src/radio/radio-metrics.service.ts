@@ -68,7 +68,9 @@ export type HighRotationActionResult =
   | 'history-persistence-failed';
 
 export type SnapshotReconciliationResult =
-  'accepted' | 'instance-mismatch' | 'instance-conflict';
+  | 'accepted'
+  | 'instance-mismatch'
+  | 'instance-conflict';
 
 export interface RadioMetricsSnapshot {
   connectionsByState: Record<string, number>;
@@ -215,6 +217,7 @@ const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
  */
 @Injectable()
 export class RadioMetricsService {
+  private readonly listenerConfiguration = { success: 0, failure: 0 };
   private readonly outputConfidenceTransitions = new Map<string, number>();
   private readonly radioLogResults = new Map<string, number>();
   private readonly recoveryPreparations = new Map<string, number>();
@@ -347,6 +350,10 @@ export class RadioMetricsService {
 
   recordOutputSilentPrograms(count: number): void {
     this.outputSilentPrograms = Math.max(0, Math.floor(count));
+  }
+
+  recordListenerConfiguration(result: 'success' | 'failure'): void {
+    this.listenerConfiguration[result] += 1;
   }
 
   recordRadioLogResult(result: string): void {
@@ -500,6 +507,14 @@ export class RadioMetricsService {
       '# HELP alcantara_radio_output_silent_programs Radio programs with expected playback and confirmed low output level.',
       '# TYPE alcantara_radio_output_silent_programs gauge',
       `alcantara_radio_output_silent_programs ${this.outputSilentPrograms}`,
+    );
+    lines.push(
+      '# HELP alcantara_radio_listener_configuration_total Listener URL persistence outcomes, including validation failures.',
+      '# TYPE alcantara_radio_listener_configuration_total counter',
+      ...(['success', 'failure'] as const).map(
+        (result) =>
+          `alcantara_radio_listener_configuration_total{result="${result}"} ${this.listenerConfiguration[result]}`,
+      ),
     );
     lines.push(
       '# HELP alcantara_radio_log_transitions_total Clocked radio log transitions by bounded result.',

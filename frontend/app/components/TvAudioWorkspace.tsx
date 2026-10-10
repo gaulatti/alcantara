@@ -209,7 +209,6 @@ export function TvAudioMixer({
     <section className="console-panel tv-audio-mixer" aria-label="Audio mixer">
       <header className="console-panel-heading">
         <div>
-          <span className="console-eyebrow">Program mix</span>
           <h2>Mixer</h2>
         </div>
         <label className="tv-audio-fade">
@@ -278,7 +277,6 @@ export function TvAudioWorkspace({
       >
         <header className="console-panel-heading">
           <div>
-            <span className="console-eyebrow">Continuous music</span>
             <h2>Playlist</h2>
           </div>
           <Button
@@ -307,11 +305,10 @@ export function TvAudioWorkspace({
         </div>
         <section
           className="console-panel tv-audio-cartwall"
-          aria-label="Instant audio cartwall"
+          aria-label="Cartwall"
         >
           <header className="console-panel-heading">
             <div>
-              <span className="console-eyebrow">Instant audio</span>
               <h2>Cartwall</h2>
             </div>
             <Button

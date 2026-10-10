@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Input, Select } from '@gaulatti/bleecker';
+import { Field, Checkbox, Button, Input, Select } from '@gaulatti/bleecker';
 import type { SongCatalogItem } from '../../models/broadcast';
 import { apiUrl } from '../../utils/apiBaseUrl';
 import {
@@ -334,37 +334,31 @@ export function ModoItalianoBracketEditorFields({
   return (
     <div className='space-y-6'>
       <div className='space-y-3 bg-[#1D1D1B] p-4 rounded-lg border border-[#3A3A3A]'>
-        <div>
-          <label className='block text-xs text-text-secondary mb-1'>Bracket Title</label>
+        <Field label='Bracket Title'>
           <Input
             type='text'
             value={props.title || ''}
             onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             placeholder='TORNEO CANCIÓN'
           />
-        </div>
+        </Field>
         <label className='flex items-center gap-2 text-sm text-text-primary'>
-          <Input
-            type='checkbox'
+          <Checkbox
             checked={typeof props.show === 'boolean' ? props.show : true}
             onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
-            className='h-4 w-4'
           />
           Show Bracket Overlay
         </label>
-        <div>
-          <label className='block text-xs text-text-secondary mb-1'>Starting Round</label>
+        <Field label='Starting Round'>
           <Select
             value={startRound}
             onChange={(value) => updateProp(componentType, 'startRound', normalizeModoItalianoBracketStartRound(value))}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             options={[
               { value: 'roundOf16', label: 'Round of 16' },
               { value: 'quarterfinals', label: 'Quarterfinals' }
             ]}
           />
-        </div>
+        </Field>
       </div>
 
       <div className='space-y-3 bg-[#1D1D1B] p-4 rounded-lg border border-[#3A3A3A]'>
@@ -403,7 +397,6 @@ export function ModoItalianoBracketEditorFields({
               step={1}
               value={drawSeed}
               onChange={(e) => updateDrawSeed(e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </label>
           <label className='text-sm text-text-primary'>
@@ -414,7 +407,6 @@ export function ModoItalianoBracketEditorFields({
               step={1}
               value={drawDurationSeconds}
               onChange={(e) => updateProp(componentType, 'drawDurationSeconds', normalizeModoItalianoBracketDrawDurationSeconds(e.target.value, drawSeed))}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </label>
         </div>
@@ -427,7 +419,6 @@ export function ModoItalianoBracketEditorFields({
           type='search'
           value={songSearch}
           onChange={(e) => setSongSearch(e.target.value)}
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           placeholder='Search songs by artist or title'
         />
 

@@ -18,6 +18,7 @@ import type { PalazzoPlaybackState } from './palazzo-contract';
 
 export interface RadioSettingsPayload {
   palazzoUrl?: string;
+  listenerUrl?: string | null;
   bumperEnabled?: boolean;
   bumperInterval?: number | null;
   bumperInstantIds?: number[];
@@ -226,6 +227,22 @@ export class RadioService {
   }
 
   async updateRadioSettings(programId: string, data: RadioSettingsPayload) {
+    try {
+      const result = await this.persistRadioSettings(programId, data);
+      if (data.listenerUrl !== undefined)
+        this.metrics.recordListenerConfiguration('success');
+      return result;
+    } catch (error) {
+      if (data.listenerUrl !== undefined)
+        this.metrics.recordListenerConfiguration('failure');
+      throw error;
+    }
+  }
+
+  private async persistRadioSettings(
+    programId: string,
+    data: RadioSettingsPayload,
+  ) {
     const state = await this.prisma.programState.findUnique({
       where: { programId },
       select: { id: true },
@@ -240,10 +257,12 @@ export class RadioService {
       data.bumperInstantIds,
     );
     const bumperMode = this.normalizeBumperMode(data.bumperMode);
+    const listenerUrl = this.normalizeListenerUrl(data.listenerUrl);
     const result = await this.prisma.radioSettings.upsert({
       where: { programStateId: state.id },
       update: {
         ...(data.palazzoUrl !== undefined && { palazzoUrl: data.palazzoUrl }),
+        ...(listenerUrl !== undefined && { listenerUrl }),
         ...(data.bumperEnabled !== undefined && {
           bumperEnabled: data.bumperEnabled,
         }),
@@ -255,6 +274,7 @@ export class RadioService {
       create: {
         programStateId: state.id,
         palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
+        listenerUrl: listenerUrl ?? null,
         bumperEnabled: data.bumperEnabled ?? false,
         bumperInterval: bumperInterval ?? null,
         bumperInstantIds: bumperInstantIds ?? [],
@@ -263,6 +283,38 @@ export class RadioService {
       },
     });
     return result;
+  }
+
+  private normalizeListenerUrl(value: unknown): string | null | undefined {
+    if (value === undefined || value === null) return value;
+    if (typeof value !== 'string')
+      throw new BadRequestException(
+        'listenerUrl must be a public HTTPS stream URL or null',
+      );
+    if (!value.trim()) return null;
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new BadRequestException(
+        'listenerUrl must be a public HTTPS stream URL',
+      );
+    }
+    const localHttp =
+      process.env.NODE_ENV !== 'production' &&
+      url.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (
+      (url.protocol !== 'https:' && !localHttp) ||
+      url.username ||
+      url.password ||
+      url.hash
+    ) {
+      throw new BadRequestException(
+        'listenerUrl must use HTTPS without credentials or a fragment',
+      );
+    }
+    return value.trim();
   }
 
   private normalizeBumperInterval(

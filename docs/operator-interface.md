@@ -103,6 +103,47 @@ Show component action. Editing a scene already on Program displays a live-change
 warning. The autosave queue releases completed and failed requests so later edits
 can persist; failed requests preserve a newer queued edit.
 
+Prepare uses one Bleecker Card with enclosed component Tabs, accessible Fields,
+and dedicated Checkbox controls. The selected tab names the component once.
+Short forms use their natural height; longer forms scroll within a readable
+1120px content width, independently of the Save changes footer. The editor never
+shrinks to the leftover height below the switcher. A warning identifies edits
+that affect Program; hidden-component warnings belong to the selected tab.
+`prepare-clock`, `prepare-error`, and `prepare-saving` console fixtures cover the
+clock, slideshow, player, background audio, and save states at desktop and phone
+widths. `hidden-component` retains explicit player restoration coverage.
+
+### Section names
+
+Each panel has one name. Radio and TV Audio use **Cartwall** and **Mixer** without
+the duplicate “Instant audio” and “Program mix” eyebrows. Playlist, continuous
+fillers, and Rundown also omit generic category headings. Recording uses its
+disclosure title once; component editors use their tab label once. Labels that
+carry separate information remain: Program/Preview, scene identity, Local time,
+24/7 operation, event position, locked state, and actual playback/save status.
+This is a presentation change; API names and playback behavior are unchanged.
+
+### Radio Program monitoring
+
+For Radio, the header Program action and command palette open the authenticated
+`/radio-output/:programId` listener monitor. TV and Simulcast retain their TV
+renderer output action. Renderer Refresh is hidden for Radio. Output confidence
+also links to the listener monitor.
+
+Set **Public listener stream URL** in Radio distribution to the exact public
+HTTPS audio URL provided by the station. The optional `listenerUrl` is persisted
+in RadioSettings through its normal authenticated GET/PUT API; clearing it shows
+an explicit unconfigured state. URLs with credentials, fragments, or unsupported
+schemes are rejected. HTTP loopback URLs are accepted only outside production
+for local testing. No public address is inferred from Palazzo's private control
+URL. Existing stations receive no automatic URL or playback change.
+
+Listen starts only on a click. Stop listening, changing the URL, and leaving the
+page release the browser's stream connection. Monitor volume changes only the
+local audio element. Playback and connection failures remain visible. This is
+the listener stream with its normal delay; it is independent of the pre-Icecast
+engine-level confidence signal. `radio-monitor` is the local audio fixture.
+
 Workspace options contains presets, keyboard shortcuts, touch mode, fullscreen,
 and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene

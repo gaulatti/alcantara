@@ -159,6 +159,12 @@ function mount(p = props()) {
 
 it("keeps one on-air player in the transport dock with timing, confidence and the full workspace", () => {
   mount();
+  for (const name of ["Cartwall", "Mixer"]) {
+    expect(screen.getAllByRole("heading", { name })).toHaveLength(1);
+  }
+  for (const label of ["Instant audio", "Program mix", "Playout"]) {
+    expect(screen.queryByText(label)).not.toBeInTheDocument();
+  }
   expect(
     within(screen.getByLabelText("On-air player")).getByText("02:18"),
   ).toBeVisible();
@@ -172,7 +178,7 @@ it("keeps one on-air player in the transport dock with timing, confidence and th
   expect(
     screen.getByRole("progressbar", { name: "Track progress" }),
   ).toHaveAttribute("aria-valuenow", "23");
-  expect(screen.getByText("Audio detected")).toBeVisible();
+  expect(screen.getByText("Engine audio detected")).toBeVisible();
   expect(screen.getByRole("region", { name: "On-air rundown" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Cartwall" })).toBeVisible();
   expect(screen.getByRole("slider", { name: "Music level" })).toBeVisible();
@@ -279,7 +285,7 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   expect(screen.getByText("Output unavailable")).toBeVisible();
   expect(screen.getByText("Stream offline")).toBeVisible();
   expect(screen.getByText("Engine unavailable")).toBeVisible();
-  expect(screen.queryByText("Audio detected")).not.toBeInTheDocument();
+  expect(screen.queryByText("Engine audio detected")).not.toBeInTheDocument();
 });
 
 it("shows explicit empty states without hiding transport or inventing a countdown", () => {

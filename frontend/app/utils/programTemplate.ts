@@ -24,6 +24,7 @@ export interface ProgramTemplateManifest {
 
 export interface ProgramWithTemplate {
   programId: string;
+  type?: "tv" | "radio" | "both";
   templateUrl?: string | null;
   templateManifest?: ProgramTemplateManifest | null;
   templateVerifiedAt?: string | null;
@@ -40,6 +41,8 @@ export function resolveProgramOutputUrl(
   program: ProgramWithTemplate,
   apiBaseUrl: string,
 ): string {
+  if (program.type === "radio")
+    return `/radio-output/${encodeURIComponent(program.programId)}`;
   const manifest = program.templateManifest;
   if (!manifest?.entrypointUrl) {
     return `/program/${encodeURIComponent(program.programId)}`;

@@ -57,9 +57,10 @@ export default function RecordingFixture() {
 
   return (
     <main
-      className="min-h-screen bg-zinc-950 p-6 text-zinc-100"
+      className="min-h-screen broadcast-console bg-dark-sand p-6 text-text-primary"
       data-visual-fixture={state}
     >
+      <h1 className="mb-3 text-lg font-semibold">Program recording</h1>
       <RecordingStatusView
         status={status}
         busy={null}

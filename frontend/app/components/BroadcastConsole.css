@@ -564,12 +564,8 @@
   border-radius: var(--radius-ui);
 }
 .console-scene-workspace {
+  flex: none;
   padding: 0 12px 12px;
-}
-.console-scene-workspace > div {
-  border: 1px solid var(--console-border);
-  border-radius: var(--radius-ui);
-  overflow: hidden;
 }
 @media (min-width: 1024px) {
   .radio-console-scroll {
@@ -673,13 +669,58 @@
   button[aria-label^="Play "][aria-label$=" next"] {
   color: var(--console-ready);
 }
-.broadcast-console .console-scene-editor {
-  padding: 12px;
-}
-.broadcast-console .console-props-body {
+/* The editor grows with short forms; long forms scroll without hiding Save. */
+.console-scene-editor {
+  min-width: 0;
   background: var(--console-panel);
   border-color: var(--console-border);
-  border-radius: var(--radius-ui);
+}
+.scene-preparation-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--console-border);
+}
+.scene-preparation-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.scene-preparation-notice {
+  margin: 12px 16px 0;
+}
+.scene-preparation-tabs {
+  min-width: 0;
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+.scene-preparation-scroll {
+  max-height: min(65vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 16px 20px;
+  scrollbar-gutter: stable;
+}
+.console-props-body {
+  width: 100%;
+  max-width: 1120px;
+}
+.scene-preparation-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--console-border);
+  background: var(--console-panel);
+}
+@media (max-width: 640px) {
+  .scene-preparation-scroll {
+    max-height: 60vh;
+  }
+  .console-props-body .grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @keyframes alcantaraInstantPlaybackSweep {
   from {

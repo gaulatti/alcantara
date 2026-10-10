@@ -1,6 +1,6 @@
 import { TooltipButton } from "../BleeckerButtons";
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Input } from '@gaulatti/bleecker';
+import { Field, Checkbox, Input } from '@gaulatti/bleecker';
 import type { MediaGroup, MediaItem } from '../../models/broadcast';
 import { apiUrl } from '../../utils/apiBaseUrl';
 
@@ -72,50 +72,42 @@ export function ModoItalianoPodcastPlayerEditorFields({
     <div className='space-y-4'>
       {/* Show toggle */}
       <label className='flex items-center gap-2 text-sm text-text-primary'>
-        <Input
-          type='checkbox'
+        <Checkbox
           checked={typeof props.show === 'boolean' ? props.show : true}
           onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
-          className='h-4 w-4'
         />
         Show Player
       </label>
 
       {/* Episode title */}
-      <div>
-        <label className='block text-xs text-text-secondary mb-1'>Episode Title</label>
+      <Field label='Episode Title'>
         <Input
           type='text'
           value={props.episodeTitle || ''}
           onChange={(e) => updateProp(componentType, 'episodeTitle', e.target.value)}
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           placeholder='Estrenos: 29 de Mayo'
         />
-      </div>
+      </Field>
 
       {/* Show name */}
-      <div>
-        <label className='block text-xs text-text-secondary mb-1'>Show / Author</label>
+      <Field label='Show / Author'>
         <Input
           type='text'
           value={props.showName || ''}
           onChange={(e) => updateProp(componentType, 'showName', e.target.value)}
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           placeholder='ModoItaliano'
         />
-      </div>
+      </Field>
 
       {/* Audio URL */}
-      <div>
-        <label className='block text-xs text-text-secondary mb-1'>Audio URL (MP3 / AAC)</label>
+      <Field label='Audio URL (MP3 / AAC)'>
         <Input
           type='text'
           value={props.audioUrl || ''}
           onChange={(e) => updateProp(componentType, 'audioUrl', e.target.value)}
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
           placeholder='https://example.com/episode.mp3'
         />
-      </div>
+      </Field>
 
       {/* Cover art */}
       <div className='space-y-2'>

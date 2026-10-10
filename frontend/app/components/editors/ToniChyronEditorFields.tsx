@@ -1,4 +1,4 @@
-import { Button, Input } from '@gaulatti/bleecker';
+import { Field, Checkbox, Button, Input } from '@gaulatti/bleecker';
 import {
   normalizeToniChyronSequence,
   getToniChyronContentMode,
@@ -58,13 +58,12 @@ export function ToniChyronEditorFields({
           <details className='rounded border border-dashed border-sand/40 px-3 py-2'>
             <summary className='cursor-pointer text-xs font-medium text-text-secondary'>Fallback direct text</summary>
             <div className='space-y-2 pt-3'>
-              <div>
-                <label className='block text-xs text-text-secondary mb-1'>Fallback Text</label>
+              <Field label='Fallback Text'>
                 <Input type='text' value={props.text || ''} onChange={e => updateProp(componentType, 'text', e.target.value)}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50' placeholder='Used only if the sequence is empty' />
-              </div>
+                  placeholder='Used only if the sequence is empty' />
+              </Field>
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input type='checkbox' checked={Boolean(props.useMarquee)} onChange={e => updateProp(componentType, 'useMarquee', e.target.checked)} className='h-4 w-4' />
+                <Checkbox checked={Boolean(props.useMarquee)} onChange={e => updateProp(componentType, 'useMarquee', e.target.checked)} />
                 Fallback marquee
               </label>
             </div>
@@ -72,13 +71,12 @@ export function ToniChyronEditorFields({
         </div>
       ) : (
         <div className='space-y-2'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Text</label>
+          <Field label='Text'>
             <Input type='text' value={props.text || ''} onChange={e => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50' placeholder='Chyron message' />
-          </div>
+              placeholder='Chyron message' />
+          </Field>
           <label className='flex items-center gap-2 text-sm text-text-primary'>
-            <Input type='checkbox' checked={Boolean(props.useMarquee)} onChange={e => updateProp(componentType, 'useMarquee', e.target.checked)} className='h-4 w-4' />
+            <Checkbox checked={Boolean(props.useMarquee)} onChange={e => updateProp(componentType, 'useMarquee', e.target.checked)} />
             Force marquee scrolling
           </label>
         </div>
@@ -88,7 +86,7 @@ export function ToniChyronEditorFields({
         <label className='block text-xs text-text-secondary'>Social Handles (comma-separated)</label>
         <Input type='text' value={socialHandlesValue.join(', ')}
           onChange={e => updateProp(componentType, 'socialHandles', e.target.value.split(',').map(e => e.trim()).filter(e => e.length > 0))}
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50' placeholder='@modoitaliano.oficial, @fifth.bell, @hnmages' />
+          placeholder='@modoitaliano.oficial, @fifth.bell, @hnmages' />
         <p className='text-xs text-text-secondary'>Set an empty value to hide social handles.</p>
       </div>
     </div>

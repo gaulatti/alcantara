@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Input, Select } from '@gaulatti/bleecker';
+import { Checkbox, Button, Input, Select } from '@gaulatti/bleecker';
 import { uploadFileToMediaBucket } from '../../services/uploads';
 import { normalizeSlideshowImageList, normalizeSlideshowLabelId, normalizeSlideshowMediaGroupId } from '../../utils/broadcast';
 import type { MediaLabel } from '../../models/broadcast';
@@ -69,31 +69,30 @@ export function SlideshowEditorFields({
           <Input type='number' min={1000} step={100}
             value={typeof props.intervalMs === 'number' ? props.intervalMs : 5000}
             onChange={e => updateProp(componentType, 'intervalMs', Math.max(1000, Number(e.target.value) || 5000))}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50' />
+            />
         </label>
         <label className='text-sm text-text-primary'>
           <span className='block text-xs text-text-secondary mb-1'>Transition (ms)</span>
           <Input type='number' min={100} step={50}
             value={typeof props.transitionMs === 'number' ? props.transitionMs : 900}
             onChange={e => updateProp(componentType, 'transitionMs', Math.max(100, Number(e.target.value) || 900))}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50' />
+            />
         </label>
         <label className='text-sm text-text-primary'>
           <span className='block text-xs text-text-secondary mb-1'>Fit Mode</span>
           <Select value={props.fitMode === 'contain' ? 'contain' : 'cover'}
             onChange={v => updateProp(componentType, 'fitMode', v)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             options={[{ value: 'cover', label: 'Cover' }, { value: 'contain', label: 'Contain' }]} />
         </label>
         <div className='flex flex-col justify-end gap-2 pb-1'>
           <label className='flex items-center gap-2 text-sm text-text-primary'>
-            <Input type='checkbox' checked={asBoolean(props.shuffle, false)}
-              onChange={e => updateProp(componentType, 'shuffle', e.target.checked)} className='h-4 w-4' />
+            <Checkbox checked={asBoolean(props.shuffle, false)}
+              onChange={e => updateProp(componentType, 'shuffle', e.target.checked)} />
             Shuffle
           </label>
           <label className='flex items-center gap-2 text-sm text-text-primary'>
-            <Input type='checkbox' checked={asBoolean(props.kenBurns, true)}
-              onChange={e => updateProp(componentType, 'kenBurns', e.target.checked)} className='h-4 w-4' />
+            <Checkbox checked={asBoolean(props.kenBurns, true)}
+              onChange={e => updateProp(componentType, 'kenBurns', e.target.checked)} />
             Ken Burns Motion
           </label>
         </div>
@@ -103,7 +102,6 @@ export function SlideshowEditorFields({
         <label className='block text-xs text-text-secondary'>Image label</label>
         <SearchableSelect value={selectedLabelId ?? ''}
           onChange={selectLabel}
-          className='w-full rounded border border-sand/40 px-3 py-2 text-sm focus:ring-2 focus:ring-sea/50'
           searchPlaceholder='Search labels…'
           options={[
             { value: '', label: 'Manual images in scene metadata' },

@@ -3,13 +3,11 @@ import { useEffect, useState, type ReactNode } from "react";
 /** Operator surfaces share Bleecker typography and broadcast-specific tokens. */
 export function ConsolePanel({
   title,
-  eyebrow,
   actions,
   children,
   className = "",
 }: {
   title: string;
-  eyebrow?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -18,7 +16,6 @@ export function ConsolePanel({
     <section className={`console-panel ${className}`} aria-label={title}>
       <header className="console-panel-heading">
         <div>
-          {eyebrow && <span className="console-eyebrow">{eyebrow}</span>}
           <h2>{title}</h2>
         </div>
         {actions && <div className="console-panel-actions">{actions}</div>}

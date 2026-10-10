@@ -428,6 +428,7 @@ model RadioSettings {
   programStateId   Int          @unique
   programState     ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
   palazzoUrl       String       @default("http://palazzo:3100")
+  listenerUrl      String?
   bumperEnabled    Boolean      @default(false)
   bumperInterval   Int?
   bumperInstantIds Int[]        @default([])

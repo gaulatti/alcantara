@@ -28,11 +28,25 @@ Use **Voice** on a song row to record a link with the browser microphone. Previe
 
 The Radio desk separates **STREAM CONNECTED** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
 
+**Engine audio detected** measures Palazzo's post-master mix before Icecast.
+**Listen to Program** opens the actual listener stream configured under Radio
+distribution → Public listener stream URL. Listening and monitor volume affect
+only the operator's device; Stop listening never stops broadcast playback.
+The Program action in the header and command palette uses this monitor for
+Radio. If no URL is configured, the monitor says so and links to distribution.
+
 Radio distribution contains **Prepared local playlist**. Choose one to 100 enabled songs from the managed S3 media bucket and prepare them. Alcantara reads each exact catalog URL to calculate SHA-256, then calls Palazzo's private filler preparation API with the same URL and checksum. Palazzo downloads, verifies, normalizes, and stores the version locally. The version and selected song IDs are saved only after Palazzo reports ready. Preparing a new version does not replace the active one. The Radio desk's **Start with fallback** binds the prepared version to a new Palazzo automation session; **Stop session** clears program audio and the binding. Palazzo's local playlist plays when its live song queue runs dry. Start/stop use Palazzo's monotonic command sequence and idempotency key. If Palazzo is unreachable, controls show an error and do not claim recovery is active.
 
 Only exact HTTPS URLs on the configured `MEDIA_S3_BUCKET` S3 host are accepted for preparation. Redirects and files above 512 MiB are rejected. The backend uses the existing private Palazzo URL allowlist; the browser never calls Palazzo directly. Palazzo is an external dependency and is not included in Alcantara's local Compose stack, so local UI can show an unavailable recovery state until a Palazzo instance is attached to the documented private URL.
 
 ## Operations and metrics
+
+`alcantara_radio_listener_configuration_total{result="success|failure"}` counts
+listener URL persistence attempts, including validation and database failures.
+It is exposed through the same authenticated private `/metrics` boundary and
+contains no URL or station labels. Updating only the listener URL does not
+reconnect Palazzo telemetry. The nullable database column is additive; reverting
+application code safely leaves it unused without removing station data.
 
 The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
 

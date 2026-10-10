@@ -85,6 +85,10 @@ describe("RecordingStatusView", () => {
       />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(label);
+    expect(screen.queryByText("Program recording")).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Program recording" }),
+    ).toBeInTheDocument();
     if (state === "active") {
       expect(screen.getByText("REC")).toBeInTheDocument();
     } else {

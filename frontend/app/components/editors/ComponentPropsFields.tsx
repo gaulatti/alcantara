@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Input, Select, Textarea } from '@gaulatti/bleecker';
+import { Field, Checkbox, Input, Select, Textarea } from '@gaulatti/bleecker';
 import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../../utils/timezones';
 import { SlideshowEditorFields } from './SlideshowEditorFields';
 import { ToniChyronEditorFields } from './ToniChyronEditorFields';
@@ -66,65 +66,55 @@ export function ComponentPropsFields({
     case 'ticker':
       return (
         <div className='grid grid-cols-2 gap-3'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Hashtag</label>
+          <Field label='Hashtag'>
             <Input
               type='text'
               value={props.hashtag || ''}
               onChange={(e) => updateProp(componentType, 'hashtag', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='#Hashtag'
             />
-          </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>URL</label>
+          </Field>
+          <Field label='URL'>
             <Input
               type='text'
               value={props.url || ''}
               onChange={(e) => updateProp(componentType, 'url', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='website.com'
             />
-          </div>
+          </Field>
         </div>
       );
     case 'chyron':
       return (
         <div className='space-y-2'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Text</label>
+          <Field label='Text'>
             <Input
               type='text'
               value={props.text || ''}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Chyron message'
             />
-          </div>
+          </Field>
         </div>
       );
     case 'header':
       return (
         <div className='grid grid-cols-2 gap-3'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Title</label>
+          <Field label='Title'>
             <Input
               type='text'
               value={props.title || ''}
               onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Program title'
             />
-          </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Date</label>
+          </Field>
+          <Field label='Date'>
             <Input
               type='text'
               value={props.date || ''}
               onChange={(e) => updateProp(componentType, 'date', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
-          </div>
+          </Field>
         </div>
       );
     case 'live-indicator':
@@ -136,33 +126,28 @@ export function ComponentPropsFields({
     case 'video-stream':
       return (
         <div className='space-y-3'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Source URL</label>
+          <Field label='Source URL'>
             <Input
               type='text'
               value={props.sourceUrl || ''}
               onChange={(e) => updateProp(componentType, 'sourceUrl', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='https://example.com/stream.m3u8'
             />
-          </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Poster URL (optional)</label>
+          </Field>
+          <Field label='Poster URL (optional)'>
             <Input
               type='text'
               value={props.posterUrl || ''}
               onChange={(e) => updateProp(componentType, 'posterUrl', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='https://example.com/poster.jpg'
             />
-          </div>
+          </Field>
           <div className='grid grid-cols-2 gap-3'>
             <label className='text-sm text-text-primary'>
               <span className='block text-xs text-text-secondary mb-1'>Fit Mode</span>
               <Select
                 value={props.objectFit || 'cover'}
                 onChange={(v) => updateProp(componentType, 'objectFit', v)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 options={[
                   { value: 'cover', label: 'Cover' },
                   { value: 'contain', label: 'Contain' }
@@ -172,19 +157,17 @@ export function ComponentPropsFields({
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.autoPlay, true)} onChange={(e) => updateProp(componentType, 'autoPlay', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.autoPlay, true)} onChange={(e) => updateProp(componentType, 'autoPlay', e.target.checked)} />
               Autoplay
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.loop, false)} onChange={(e) => updateProp(componentType, 'loop', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.loop, false)} onChange={(e) => updateProp(componentType, 'loop', e.target.checked)} />
               Loop
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
+              <Checkbox
                 checked={toBoolean(props.showControls, false)}
                 onChange={(e) => updateProp(componentType, 'showControls', e.target.checked)}
-                className='h-4 w-4'
               />
               Show Native Controls
             </label>
@@ -218,11 +201,9 @@ export function ComponentPropsFields({
             />
           </label>
           <label className='flex items-center gap-2 self-end pb-2 text-sm text-text-primary'>
-            <Input
-              type='checkbox'
+            <Checkbox
               checked={toBoolean(props.showStatus, true)}
               onChange={(event) => updateProp(componentType, 'showStatus', event.target.checked)}
-              className='h-4 w-4'
             />
             Show offline state
           </label>
@@ -236,18 +217,15 @@ export function ComponentPropsFields({
       const urlsText = urlsValue.join('\n');
       return (
         <div className='space-y-3'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Title (optional)</label>
+          <Field label='Title (optional)'>
             <Input
               type='text'
               value={props.title || ''}
               onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Optional wall title'
             />
-          </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Max Streams (1-4)</label>
+          </Field>
+          <Field label='Max Streams (1-4)'>
             <Input
               type='number'
               min={1}
@@ -258,9 +236,8 @@ export function ComponentPropsFields({
                 const normalized = Number.isFinite(raw) ? Math.max(1, Math.min(4, Math.round(raw))) : 4;
                 updateProp(componentType, 'maxStreams', normalized);
               }}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
-          </div>
+          </Field>
           <div>
             <label className='block text-xs text-text-secondary mb-1'>Stream URLs (one per line)</label>
             <Textarea
@@ -285,97 +262,81 @@ export function ComponentPropsFields({
     case 'scoreboard':
       return (
         <div className='space-y-3'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Title</label>
+          <Field label='Title'>
             <Input
               type='text'
               value={props.title || ''}
               onChange={(e) => updateProp(componentType, 'title', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='MATCH / FINAL / SEMIFINAL'
             />
-          </div>
+          </Field>
           <div className='grid grid-cols-2 gap-3'>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Home Team</label>
+            <Field label='Home Team'>
               <Input
                 type='text'
                 value={props.homeTeam || ''}
                 onChange={(e) => updateProp(componentType, 'homeTeam', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='HOME'
               />
-            </div>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Away Team</label>
+            </Field>
+            <Field label='Away Team'>
               <Input
                 type='text'
                 value={props.awayTeam || ''}
                 onChange={(e) => updateProp(componentType, 'awayTeam', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='AWAY'
               />
-            </div>
+            </Field>
           </div>
           <div className='grid grid-cols-2 gap-3'>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Home Score</label>
+            <Field label='Home Score'>
               <Input
                 type='text'
                 value={props.homeScore ?? '0'}
                 onChange={(e) => updateProp(componentType, 'homeScore', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
-            </div>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Away Score</label>
+            </Field>
+            <Field label='Away Score'>
               <Input
                 type='text'
                 value={props.awayScore ?? '0'}
                 onChange={(e) => updateProp(componentType, 'awayScore', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
-            </div>
+            </Field>
           </div>
           <div className='grid grid-cols-3 gap-3'>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Period</label>
+            <Field label='Period'>
               <Input
                 type='text'
                 value={props.period || ''}
                 onChange={(e) => updateProp(componentType, 'period', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='1ST'
               />
-            </div>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Clock</label>
+            </Field>
+            <Field label='Clock'>
               <Input
                 type='text'
                 value={props.clock || ''}
                 onChange={(e) => updateProp(componentType, 'clock', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='12:34'
               />
-            </div>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Status</label>
+            </Field>
+            <Field label='Status'>
               <Input
                 type='text'
                 value={props.status || ''}
                 onChange={(e) => updateProp(componentType, 'status', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='LIVE'
               />
-            </div>
+            </Field>
           </div>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.showPeriod, true)} onChange={(e) => updateProp(componentType, 'showPeriod', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.showPeriod, true)} onChange={(e) => updateProp(componentType, 'showPeriod', e.target.checked)} />
               Show Period
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.showClock, true)} onChange={(e) => updateProp(componentType, 'showClock', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.showClock, true)} onChange={(e) => updateProp(componentType, 'showClock', e.target.checked)} />
               Show Clock
             </label>
           </div>
@@ -389,7 +350,6 @@ export function ComponentPropsFields({
             type='text'
             value={props.content || ''}
             onChange={(e) => updateProp(componentType, 'content', e.target.value)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             placeholder='https://example.com'
           />
           <p className='text-xs text-text-secondary mt-1'>Enter URL or text to encode in QR code</p>
@@ -398,37 +358,31 @@ export function ComponentPropsFields({
     case 'broadcast-layout':
       return (
         <div className='grid grid-cols-2 gap-3'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Header Title</label>
+          <Field label='Header Title'>
             <Input
               type='text'
               value={props.headerTitle || ''}
               onChange={(e) => updateProp(componentType, 'headerTitle', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Program title'
             />
-          </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Hashtag</label>
+          </Field>
+          <Field label='Hashtag'>
             <Input
               type='text'
               value={props.hashtag || ''}
               onChange={(e) => updateProp(componentType, 'hashtag', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
-          </div>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>URL</label>
+          </Field>
+          <Field label='URL'>
             <Input
               type='text'
               value={props.url || ''}
               onChange={(e) => updateProp(componentType, 'url', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
-          </div>
+          </Field>
           <div className='col-span-2'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.showChyron, false)} onChange={(e) => updateProp(componentType, 'showChyron', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.showChyron, false)} onChange={(e) => updateProp(componentType, 'showChyron', e.target.checked)} />
               Show Chyron
             </label>
           </div>
@@ -439,7 +393,6 @@ export function ComponentPropsFields({
                 type='text'
                 value={props.chyronText || ''}
                 onChange={(e) => updateProp(componentType, 'chyronText', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='Optional lower chyron text'
               />
             </div>
@@ -450,7 +403,6 @@ export function ComponentPropsFields({
               type='text'
               value={props.qrCodeContent || ''}
               onChange={(e) => updateProp(componentType, 'qrCodeContent', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='https://example.com'
             />
           </div>
@@ -459,7 +411,6 @@ export function ComponentPropsFields({
             <Select
               value={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
               onChange={(v) => updateProp(componentType, 'clockTimezone', v)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               options={timezoneOptions}
             />
           </div>
@@ -467,40 +418,34 @@ export function ComponentPropsFields({
       );
     case 'clock-widget':
       return (
-        <div>
-          <label className='block text-xs text-text-secondary mb-1'>Timezone</label>
+        <Field label='Timezone'>
           <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
             onChange={(v) => updateProp(componentType, 'timezone', v)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             options={timezoneOptions}
           />
-        </div>
+        </Field>
       );
     case 'reloj-clock':
       return (
-        <div>
-          <label className='block text-xs text-text-secondary mb-1'>Timezone</label>
+        <Field label='Timezone'>
           <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
             onChange={(v) => updateProp(componentType, 'timezone', v)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             options={timezoneOptions}
           />
-        </div>
+        </Field>
       );
     case 'reloj-loop-clock':
       return (
         <div className='space-y-2'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Starting Timezone</label>
+          <Field label='Starting Timezone'>
             <Select
               value={props.timezone || 'Europe/Madrid'}
               onChange={(v) => updateProp(componentType, 'timezone', v)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               options={timezoneOptions}
             />
-          </div>
+          </Field>
           <p className='text-xs text-text-secondary'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>
         </div>
       );
@@ -531,24 +476,20 @@ export function ComponentPropsFields({
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
+              <Checkbox
                 checked={toBoolean(props.showWorldClocks, true)}
                 onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
-                className='h-4 w-4'
               />
               Show World Clocks
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.showLogo, true)} onChange={(e) => updateProp(componentType, 'showLogo', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.showLogo, true)} onChange={(e) => updateProp(componentType, 'showLogo', e.target.checked)} />
               Show Logo
             </label>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
+              <Checkbox
                 checked={toBoolean(props.showPlaybackProgress, true)}
                 onChange={(e) => updateProp(componentType, 'showPlaybackProgress', e.target.checked)}
-                className='h-4 w-4'
               />
               Show Playback Progress
             </label>
@@ -563,21 +504,17 @@ export function ComponentPropsFields({
         <div className='space-y-4'>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
+              <Checkbox
                 checked={toBoolean(props.showWorldClocks, true)}
                 onChange={(e) => updateProp(componentType, 'showWorldClocks', e.target.checked)}
-                className='h-4 w-4'
               />
               Show World Clocks
             </label>
             {canToggleBellIcon ? (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showBellIcon, false)}
                   onChange={(e) => updateProp(componentType, 'showBellIcon', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Bell Icon
               </label>
@@ -585,11 +522,9 @@ export function ComponentPropsFields({
               <div className='text-sm text-text-secondary'>FifthBell clock icon is always enabled.</div>
             )}
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input
-                type='checkbox'
+              <Checkbox
                 checked={toBoolean(props.worldClockShuffle, false)}
                 onChange={(e) => updateProp(componentType, 'worldClockShuffle', e.target.checked)}
-                className='h-4 w-4'
               />
               Shuffle world clocks
             </label>
@@ -602,7 +537,6 @@ export function ComponentPropsFields({
                 min={500}
                 value={props.worldClockRotateIntervalMs ?? 5000}
                 onChange={(e) => updateProp(componentType, 'worldClockRotateIntervalMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
             <label className='text-sm text-text-primary'>
@@ -612,7 +546,6 @@ export function ComponentPropsFields({
                 min={0}
                 value={props.worldClockTransitionMs ?? 300}
                 onChange={(e) => updateProp(componentType, 'worldClockTransitionMs', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
             <label className='text-sm text-text-primary'>
@@ -622,7 +555,6 @@ export function ComponentPropsFields({
                 min={120}
                 value={props.worldClockWidthPx ?? 200}
                 onChange={(e) => updateProp(componentType, 'worldClockWidthPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
           </div>
@@ -663,19 +595,17 @@ export function ComponentPropsFields({
       return (
         <div className='space-y-3'>
           <p className='text-xs text-text-secondary'>Shown only when ModoItaliano chyron is hidden/empty.</p>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Text</label>
+          <Field label='Text'>
             <Input
               type='text'
               value={props.text || ''}
               onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='Disclaimer text'
             />
-          </div>
+          </Field>
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
             <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Input type='checkbox' checked={toBoolean(props.show, true)} onChange={(e) => updateProp(componentType, 'show', e.target.checked)} className='h-4 w-4' />
+              <Checkbox checked={toBoolean(props.show, true)} onChange={(e) => updateProp(componentType, 'show', e.target.checked)} />
               Show Disclaimer
             </label>
             <label className='text-sm text-text-primary'>
@@ -683,7 +613,6 @@ export function ComponentPropsFields({
               <Select
                 value={props.align || 'right'}
                 onChange={(v) => updateProp(componentType, 'align', v)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 options={[
                   { value: 'left', label: 'Left' },
                   { value: 'center', label: 'Center' },
@@ -698,7 +627,6 @@ export function ComponentPropsFields({
                 min={0}
                 value={props.bottomPx ?? 24}
                 onChange={(e) => updateProp(componentType, 'bottomPx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
             <label className='text-sm text-text-primary'>
@@ -708,7 +636,6 @@ export function ComponentPropsFields({
                 min={10}
                 value={props.fontSizePx ?? 20}
                 onChange={(e) => updateProp(componentType, 'fontSizePx', Number(e.target.value))}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               />
             </label>
           </div>
@@ -721,7 +648,6 @@ export function ComponentPropsFields({
               step={0.05}
               value={props.opacity ?? 0.82}
               onChange={(e) => updateProp(componentType, 'opacity', Number(e.target.value))}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
             />
           </label>
         </div>
@@ -779,8 +705,7 @@ export function ComponentPropsFields({
             />
           </label>
           <label className='flex items-center gap-2 text-sm text-text-primary'>
-            <Input
-              type='checkbox'
+            <Checkbox
               checked={toBoolean(props.show, true)}
               onChange={(e) => updateProp(componentType, 'show', e.target.checked)}
               className='h-4 w-4 text-sea focus:ring-sea/50 border-sand/40 rounded'
@@ -792,37 +717,31 @@ export function ComponentPropsFields({
     case 'earone':
       return (
         <div className='space-y-2'>
-          <div>
-            <label className='block text-xs text-text-secondary mb-1'>Label</label>
+          <Field label='Label'>
             <Input
               type='text'
               value={props.label || 'EARONE'}
               onChange={(e) => updateProp(componentType, 'label', e.target.value)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
               placeholder='EARONE'
             />
-          </div>
+          </Field>
           <div className='grid grid-cols-2 gap-3'>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Rank</label>
+            <Field label='Rank'>
               <Input
                 type='text'
                 value={props.rank || ''}
                 onChange={(e) => updateProp(componentType, 'rank', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='Uses active sequence item'
               />
-            </div>
-            <div>
-              <label className='block text-xs text-text-secondary mb-1'>Spins Today</label>
+            </Field>
+            <Field label='Spins Today'>
               <Input
                 type='text'
                 value={props.spins || ''}
                 onChange={(e) => updateProp(componentType, 'spins', e.target.value)}
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='Uses active sequence item'
               />
-            </div>
+            </Field>
           </div>
           <p className='text-xs text-text-secondary'>Leave rank/spins blank to follow the active Toni chyron sequence item.</p>
         </div>
@@ -842,66 +761,54 @@ export function ComponentPropsFields({
           <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showArticles, true)}
                   onChange={(e) => updateProp(componentType, 'showArticles', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Articles
               </label>
             )}
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showWeather, true)}
                   onChange={(e) => updateProp(componentType, 'showWeather', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Weather
               </label>
             )}
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showEarthquakes, true)}
                   onChange={(e) => updateProp(componentType, 'showEarthquakes', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Earthquakes
               </label>
             )}
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showMarkets, true)}
                   onChange={(e) => updateProp(componentType, 'showMarkets', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Markets
               </label>
             )}
             {supportsMarquee && (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showMarquee, false)}
                   onChange={(e) => updateProp(componentType, 'showMarquee', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Bottom Marquee
               </label>
             )}
             {supportsContent && (
               <label className='flex items-center gap-2 text-sm text-text-primary'>
-                <Input
-                  type='checkbox'
+                <Checkbox
                   checked={toBoolean(props.showCallsignTake, true)}
                   onChange={(e) => updateProp(componentType, 'showCallsignTake', e.target.checked)}
-                  className='h-4 w-4'
                 />
                 Show Callsign Take
               </label>
@@ -914,7 +821,6 @@ export function ComponentPropsFields({
                   min={1000}
                   value={props.dataLoadTimeoutMs ?? 15000}
                   onChange={(e) => updateProp(componentType, 'dataLoadTimeoutMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -926,7 +832,6 @@ export function ComponentPropsFields({
                   min={1000}
                   value={props.articlesDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'articlesDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -938,7 +843,6 @@ export function ComponentPropsFields({
                   min={1000}
                   value={props.weatherDurationMs ?? 5000}
                   onChange={(e) => updateProp(componentType, 'weatherDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -950,7 +854,6 @@ export function ComponentPropsFields({
                   min={1000}
                   value={props.earthquakesDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'earthquakesDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -962,7 +865,6 @@ export function ComponentPropsFields({
                   min={1000}
                   value={props.marketsDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'marketsDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -974,7 +876,6 @@ export function ComponentPropsFields({
                   min={1000}
                   value={props.playlistDefaultDurationMs ?? 10000}
                   onChange={(e) => updateProp(componentType, 'playlistDefaultDurationMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -986,7 +887,6 @@ export function ComponentPropsFields({
                   min={50}
                   value={props.playlistUpdateIntervalMs ?? 100}
                   onChange={(e) => updateProp(componentType, 'playlistUpdateIntervalMs', Number(e.target.value))}
-                  className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 />
               </label>
             )}
@@ -998,14 +898,12 @@ export function ComponentPropsFields({
               <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5'>
                 {FIFTHBELL_AVAILABLE_WEATHER_CITIES.map((city) => (
                   <label key={city} className='flex items-center gap-1.5 text-xs text-text-primary cursor-pointer'>
-                    <Input
-                      type='checkbox'
+                    <Checkbox
                       checked={selectedCitySet.has(city)}
                       onChange={(e) => {
                         const next = e.target.checked ? [...selectedWeatherCities, city] : selectedWeatherCities.filter((c) => c !== city);
                         updateProp(componentType, 'weatherCities', next);
                       }}
-                      className='h-3.5 w-3.5'
                     />
                     {city}
                   </label>
@@ -1030,7 +928,6 @@ export function ComponentPropsFields({
                       .filter(Boolean)
                   )
                 }
-                className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                 placeholder='en, es, en, it'
               />
             </div>
@@ -1041,11 +938,9 @@ export function ComponentPropsFields({
               <summary className='cursor-pointer text-xs font-medium text-text-secondary'>Advanced Timing</summary>
               <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3'>
                 <label className='flex items-center gap-2 text-sm text-text-primary'>
-                  <Input
-                    type='checkbox'
+                  <Checkbox
                     checked={toBoolean(props.audioCueEnabled, true)}
                     onChange={(e) => updateProp(componentType, 'audioCueEnabled', e.target.checked)}
-                    className='h-4 w-4'
                   />
                   Audio Cue
                 </label>
@@ -1057,7 +952,6 @@ export function ComponentPropsFields({
                     max={59}
                     value={props.audioCueMinute ?? 59}
                     onChange={(e) => updateProp(componentType, 'audioCueMinute', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1068,7 +962,6 @@ export function ComponentPropsFields({
                     max={59}
                     value={props.audioCueSecond ?? 55}
                     onChange={(e) => updateProp(componentType, 'audioCueSecond', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1077,7 +970,6 @@ export function ComponentPropsFields({
                     type='text'
                     value={props.callsignPrelaunchUntilNyc ?? ''}
                     onChange={(e) => updateProp(componentType, 'callsignPrelaunchUntilNyc', e.target.value)}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                     placeholder='2026-01-02T21:30:00'
                   />
                 </label>
@@ -1089,7 +981,6 @@ export function ComponentPropsFields({
                     max={59}
                     value={props.callsignWindowStartSecond ?? 50}
                     onChange={(e) => updateProp(componentType, 'callsignWindowStartSecond', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1100,7 +991,6 @@ export function ComponentPropsFields({
                     max={59}
                     value={props.callsignWindowEndSecond ?? 3}
                     onChange={(e) => updateProp(componentType, 'callsignWindowEndSecond', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
               </div>
@@ -1118,7 +1008,6 @@ export function ComponentPropsFields({
                     min={1}
                     value={props.marqueeMinPostsCount ?? 4}
                     onChange={(e) => updateProp(componentType, 'marqueeMinPostsCount', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1130,7 +1019,6 @@ export function ComponentPropsFields({
                     step={0.01}
                     value={props.marqueeMinAverageRelevance ?? 0}
                     onChange={(e) => updateProp(componentType, 'marqueeMinAverageRelevance', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1142,7 +1030,6 @@ export function ComponentPropsFields({
                     step={0.01}
                     value={props.marqueeMinMedianRelevance ?? 0}
                     onChange={(e) => updateProp(componentType, 'marqueeMinMedianRelevance', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1152,7 +1039,6 @@ export function ComponentPropsFields({
                     min={1}
                     value={props.marqueePixelsPerSecond ?? 150}
                     onChange={(e) => updateProp(componentType, 'marqueePixelsPerSecond', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1162,7 +1048,6 @@ export function ComponentPropsFields({
                     min={1}
                     value={props.marqueeMinDurationSeconds ?? 10}
                     onChange={(e) => updateProp(componentType, 'marqueeMinDurationSeconds', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
                 <label className='text-sm text-text-primary'>
@@ -1172,7 +1057,6 @@ export function ComponentPropsFields({
                     min={20}
                     value={props.marqueeHeightPx ?? 72}
                     onChange={(e) => updateProp(componentType, 'marqueeHeightPx', Number(e.target.value))}
-                    className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                   />
                 </label>
               </div>
@@ -1199,16 +1083,15 @@ export function ZIndexField({
 }) {
   const zIndex = typeof props.zIndex === 'number' && Number.isFinite(props.zIndex) ? props.zIndex : 0;
   return (
-    <div className='mt-3 flex items-center gap-3 border-t border-sand/20 pt-3'>
-      <label className='text-xs text-text-secondary'>Z-Index</label>
+    <Field label='Z-Index' className='mt-4 w-40 border-t border-sand/20 pt-4'>
       <Input
         type='number'
         value={zIndex}
         min={-100}
         max={100}
         onChange={(e) => updateProp(componentType, 'zIndex', Number(e.target.value))}
-        className='w-24 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50'
+        inputSize='sm'
       />
-    </div>
+    </Field>
   );
 }

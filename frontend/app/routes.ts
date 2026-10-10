@@ -5,6 +5,7 @@ export default [
   route('logout', 'routes/logout.tsx'),
   layout('routes/protected.tsx', [
     layout('routes/layout.tsx', [
+      route('radio-output/:programId', 'routes/radio-output.tsx'),
       index('routes/control.tsx'),
       route('control', 'routes/control-legacy.tsx'),
       route('instants', 'routes/instants.tsx'),

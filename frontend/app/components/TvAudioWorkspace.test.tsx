@@ -111,6 +111,12 @@ function props(): ComponentProps<typeof TvAudioWorkspace> {
 }
 it("renders the complete desk with one monitor, every channel, twelve songs and one cartwall search", () => {
   render(<TvAudioWorkspace {...props()} />);
+  expect(screen.getAllByRole("heading", { name: "Cartwall" })).toHaveLength(2); // section and mixer channel
+  expect(screen.getAllByRole("heading", { name: "Mixer" })).toHaveLength(1);
+  expect(screen.getAllByRole("heading", { name: "Playlist" })).toHaveLength(1);
+  for (const label of ["Instant audio", "Program mix", "Continuous music"]) {
+    expect(screen.queryByText(label)).not.toBeInTheDocument();
+  }
   expect(screen.getAllByTitle("PROGRAM confidence monitor")).toHaveLength(1);
   expect(screen.getByTitle("PROGRAM confidence monitor")).toHaveAttribute(
     "src",

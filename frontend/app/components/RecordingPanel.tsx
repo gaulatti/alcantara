@@ -1,4 +1,4 @@
-import { TooltipButton } from "./BleeckerButtons";
+import { Button } from "@gaulatti/bleecker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RecordingStatus } from "../models/broadcast";
 import {
@@ -91,14 +91,11 @@ export function RecordingStatusView({
     <section
       aria-label="Program recording"
       data-recording-state={status?.state ?? "unavailable"}
-      className="mx-3 mt-3 rounded-xl border border-zinc-700 bg-zinc-950/90 px-4 py-3 shadow-lg"
+      className="px-4 py-3 text-text-primary"
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-              Program recording
-            </h2>
             {status?.state === "active" ? (
               <span className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-black tracking-widest text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]">
                 REC
@@ -113,14 +110,14 @@ export function RecordingStatusView({
           <p
             role="status"
             aria-live="polite"
-            className={`mt-1 text-sm font-semibold ${status?.state === "failed" ? "text-red-300" : status?.state === "finalizing" ? "text-amber-300" : "text-zinc-100"}`}
+            className={`mt-1 text-sm font-semibold ${status?.state === "failed" ? "text-terracotta" : status?.state === "finalizing" ? "text-accent-yellow" : "text-text-primary"}`}
           >
             {status
               ? stateLabels[status.state]
               : "Recording status unavailable"}
           </p>
           {status ? (
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-text-secondary">
               {formatDuration(status.durationSeconds)} ·{" "}
               {formatBytes(
                 status.state === "complete" && status.finalBytes > 0
@@ -151,33 +148,36 @@ export function RecordingStatusView({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {!status ? (
-            <TooltipButton
+            <Button
               type="button"
               onClick={onRefresh}
-              className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-xs font-bold text-zinc-100 hover:bg-zinc-700"
+              size="sm"
+              variant="secondary"
             >
               Retry status
-            </TooltipButton>
+            </Button>
           ) : null}
           {canStart ? (
-            <TooltipButton
+            <Button
               type="button"
               onClick={onStart}
               disabled={busy !== null}
-              className="rounded border border-red-500/70 bg-red-950 px-4 py-2 text-xs font-black uppercase tracking-widest text-red-100 hover:bg-red-900 disabled:cursor-wait disabled:opacity-50"
+              size="sm"
+              variant="destructive"
             >
               {busy === "start" ? "Requesting…" : "Start recording"}
-            </TooltipButton>
+            </Button>
           ) : null}
           {canStop ? (
-            <TooltipButton
+            <Button
               type="button"
               onClick={onStop}
               disabled={busy !== null}
-              className="rounded border border-amber-500/70 bg-amber-950 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-900 disabled:cursor-wait disabled:opacity-50"
+              size="sm"
+              variant="secondary"
             >
               {busy === "stop" ? "Stopping…" : "Stop and finalize"}
-            </TooltipButton>
+            </Button>
           ) : null}
         </div>
       </div>

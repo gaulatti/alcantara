@@ -394,7 +394,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         : "warning";
   const outputLabel =
     output?.state === "audible"
-      ? "Audio detected"
+      ? "Engine audio detected"
       : output?.state === "silent"
         ? "Expected audio is silent"
         : output?.state === "unavailable"
@@ -441,7 +441,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
         <div className="radio-workspace">
           <ConsolePanel
             title={timedBlockOnAir ? "On-air rundown" : "Continuous fillers"}
-            eyebrow="Playout"
             className="radio-rundown"
             actions={
               <div className="flex items-center gap-3">
@@ -763,6 +762,15 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               >
                 {outputLabel}
               </span>
+              <p className="mt-2 text-xs text-text-secondary">
+                Palazzo mix level before Icecast.
+              </p>
+              <Link
+                className="mt-2 text-sm text-sea"
+                to={`/radio-output/${encodeURIComponent(programId)}`}
+              >
+                Listen to Program
+              </Link>
               <div className="console-next-foot">
                 <span>
                   {output?.lastSampleAt
@@ -778,7 +786,6 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             </section>
             <ConsolePanel
               title="Cartwall"
-              eyebrow="Instant audio"
               className="radio-cartwall"
               actions={
                 <Button
@@ -802,7 +809,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 />
               </div>
             </ConsolePanel>
-            <ConsolePanel title="Mixer" eyebrow="Program mix">
+            <ConsolePanel title="Mixer">
               <div className="console-mixer">
                 <RadioMixerChannel
                   label="Music"

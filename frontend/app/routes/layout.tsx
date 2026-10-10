@@ -393,8 +393,9 @@ export default function Layout() {
       type='button'
       size='sm'
       variant='subtle'
-      title='Open Program Output'
-      aria-label='Open Program Output'
+      title={selectedProgramType === 'radio' ? 'Listen to Radio Program' : 'Open Program Output'}
+      aria-label={selectedProgramType === 'radio' ? 'Listen to Radio Program' : 'Open Program Output'}
+      disabled={!resolvedSelectedProgram}
       onClick={() => {
         window.open(openProgramUrl, '_blank', 'noopener,noreferrer');
       }}
@@ -403,7 +404,7 @@ export default function Layout() {
     </IconButton>
   );
 
-  const renderRefreshProgramButton = () => (
+  const renderRefreshProgramButton = () => !resolvedSelectedProgram || selectedProgramType === 'radio' ? null : (
     <IconButton
       type='button'
       size='sm'
@@ -427,7 +428,7 @@ export default function Layout() {
   );
 
   const commandActions = useMemo<CommandSpotlightAction[]>(() => {
-    const selectedProgramTitle = `Open Program Output (${selectedProgramId})`;
+    const selectedProgramTitle = `${selectedProgramType === 'radio' ? 'Listen to Radio Program' : 'Open Program Output'} (${selectedProgramId})`;
     const selectedProgramQuery = `programId=${encodeURIComponent(selectedProgramId)}`;
 
     const baseActions: CommandSpotlightAction[] = [
@@ -680,6 +681,7 @@ export default function Layout() {
 
     const televisionOnlyActions = new Set(['nav-media', 'nav-calls', 'nav-broadcasts', 'nav-scenes', 'nav-layouts', 'nav-preview', 'open-transition-settings']);
     const visibleBaseActions = baseActions.filter((action) => {
+      if (action.id === 'open-selected-program' && !resolvedSelectedProgram) return false;
       if (selectedProgramType === 'radio' && televisionOnlyActions.has(action.id)) return false;
       if (selectedProgramType === 'tv' && (action.id === 'nav-radio-settings')) return false;
       return true;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Input } from '@gaulatti/bleecker';
+import { Checkbox, Button, Input } from '@gaulatti/bleecker';
 import { GripVertical } from 'lucide-react';
 import {
   createProgramTextSequence,
@@ -107,7 +107,7 @@ export function ProgramTextSequenceEditor({
   return (
     <div className={`space-y-3 rounded border ${isNested ? 'border-sand/30 bg-dark-sand/70' : 'border-sand/40 bg-dark-sand/60'} p-3`}>
       <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
+        {isNested && <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>Nested sequence</span>}
         <Button
           type='button'
           onClick={() =>
@@ -141,11 +141,9 @@ export function ProgramTextSequenceEditor({
               className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50'
             />
             <label className='flex items-center gap-1 text-xs text-text-secondary'>
-              <Input
-                type='checkbox'
+              <Checkbox
                 checked={sequence.loop !== false}
                 onChange={(e) => applySequence({ ...sequence, loop: e.target.checked })}
-                className='h-3.5 w-3.5'
               />
               Loop
             </label>
@@ -210,17 +208,14 @@ export function ProgramTextSequenceEditor({
                       type='text'
                       value={displayItem.text}
                       onChange={(e) => updateItem(index, { ...displayItem, text: e.target.value })}
-                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50'
                       placeholder={textPlaceholder}
                     />
                   </label>
                   {includeMarquee && (
                     <label className='flex items-center gap-2 text-sm text-text-primary'>
-                      <Input
-                        type='checkbox'
+                      <Checkbox
                         checked={Boolean(displayItem.useMarquee)}
                         onChange={(e) => updateItem(index, { ...displayItem, useMarquee: e.target.checked })}
-                        className='h-4 w-4'
                       />
                       Force marquee scrolling
                     </label>

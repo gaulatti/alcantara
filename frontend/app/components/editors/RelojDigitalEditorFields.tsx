@@ -1,6 +1,6 @@
 import { TooltipButton } from "../BleeckerButtons";
 import { useMemo, useState } from 'react';
-import { Input, Select } from '@gaulatti/bleecker';
+import { Field, Input, Select } from '@gaulatti/bleecker';
 import { normalizeProgramTextSequence, createProgramTextSequence, type ProgramTextSequence } from '../../utils/programSequence';
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 import { SearchableSelect } from './SearchableSelect';
@@ -88,19 +88,16 @@ export function RelojDigitalEditorFields({
 
   return (
     <div className='space-y-4'>
-      <div>
-        <label className='block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1'>Mode</label>
+      <Field label='Mode'>
         <Select value={props.mode || 'clock'} onChange={v => updateProp(componentType, 'mode', v)}
-          className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 bg-black/20 text-white'
           options={[{ value: 'clock', label: 'Clock' }, { value: 'countdown', label: 'Countdown' }]} />
-      </div>
+      </Field>
 
       {!isCountdown && (
-        <div>
-          <label className='block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1'>Starting Timezone</label>
+        <Field label='Starting Timezone'>
           <Select value={props.timezone || 'America/New_York'} onChange={v => updateProp(componentType, 'timezone', v)}
-            className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 bg-black/20 text-white' options={timezoneOptions} />
-        </div>
+            options={timezoneOptions} />
+        </Field>
       )}
 
       {isCountdown && (
@@ -135,18 +132,15 @@ export function RelojDigitalEditorFields({
             <label className='block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1'>Target Scene</label>
             <SearchableSelect value={String(props.countdownTargetSceneId ?? '')}
               onChange={v => updateProp(componentType, 'countdownTargetSceneId', v === '' ? null : Number(v))}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 bg-black/20 text-white'
               searchPlaceholder='Search scenes…'
               options={[{ value: '', label: '— Select scene —' }, ...sceneOptions]} />
           </div>
 
-          <div>
-            <label className='block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1'>Transition</label>
+          <Field label='Transition'>
             <Select value={props.countdownTransitionId || 'cut'}
               onChange={v => updateProp(componentType, 'countdownTransitionId', v)}
-              className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50 bg-black/20 text-white'
               options={transitionOptions} />
-          </div>
+          </Field>
 
           <div className='pt-2'>
             {isRunning ? (

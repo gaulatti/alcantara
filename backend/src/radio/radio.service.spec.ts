@@ -4,6 +4,121 @@ import { createHash } from 'node:crypto';
 import { RadioMetricsService } from './radio-metrics.service';
 
 describe('RadioService settings', () => {
+  it('permits loopback listener fixtures locally and refuses them in production', async () => {
+    const previousEnvironment = process.env.NODE_ENV;
+    const prisma = {
+      programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
+      radioSettings: {
+        upsert: jest.fn().mockImplementation(async ({ update }) => update),
+      },
+    } as any;
+    const service = new RadioService(
+      prisma,
+      {} as any,
+      {} as any,
+      new RadioMetricsService(),
+    );
+    try {
+      process.env.NODE_ENV = 'test';
+      await expect(
+        service.updateRadioSettings('radio', {
+          listenerUrl: 'http://localhost:5177/fixture.ogg',
+        }),
+      ).resolves.toMatchObject({
+        listenerUrl: 'http://localhost:5177/fixture.ogg',
+      });
+      process.env.NODE_ENV = 'production';
+      await expect(
+        service.updateRadioSettings('radio', {
+          listenerUrl: 'http://localhost:5177/fixture.ogg',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    } finally {
+      if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnvironment;
+    }
+  });
+  it('persists and clears listener URLs without altering existing playout settings and renders bounded outcomes', async () => {
+    const settings: Record<string, unknown> = {
+      palazzoUrl: 'http://palazzo:3100',
+      enabled: true,
+      bumperInterval: 3,
+    };
+    const prisma = {
+      programState: {
+        findUnique: jest.fn().mockImplementation(async () => ({
+          id: 10,
+          radioSettings: settings,
+        })),
+      },
+      radioSettings: {
+        upsert: jest
+          .fn()
+          .mockImplementation(async ({ update }) =>
+            Object.assign(settings, update),
+          ),
+      },
+    } as any;
+    const metrics = new RadioMetricsService();
+    const service = new RadioService(prisma, {} as any, {} as any, metrics);
+    await service.updateRadioSettings('radio', {
+      listenerUrl: 'https://radio.example/stream?format=mp3',
+    });
+    expect(await service.getRadioSettings('radio')).toMatchObject({
+      listenerUrl: 'https://radio.example/stream?format=mp3',
+      enabled: true,
+      bumperInterval: 3,
+    });
+    await service.updateRadioSettings('radio', { listenerUrl: null });
+    expect(settings.listenerUrl).toBeNull();
+    await expect(
+      service.updateRadioSettings('radio', {
+        listenerUrl: 'javascript:alert(1)',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    prisma.radioSettings.upsert.mockRejectedValueOnce(
+      new Error('database unavailable'),
+    );
+    await expect(
+      service.updateRadioSettings('radio', {
+        listenerUrl: 'https://radio.example/stream',
+      }),
+    ).rejects.toThrow('database unavailable');
+    const rendered = metrics.render();
+    expect(rendered).toContain(
+      'alcantara_radio_listener_configuration_total{result="success"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_listener_configuration_total{result="failure"} 2',
+    );
+    expect(rendered).not.toContain('radio.example');
+  });
+
+  it.each([
+    'not-a-url',
+    'https://user:password@radio.example/stream',
+    'http://radio.example/stream',
+    'https://radio.example/stream#fragment',
+    12,
+  ])(
+    'rejects an invalid or credential-bearing listener URL %s before persistence',
+    async (listenerUrl) => {
+      const prisma = {
+        programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
+        radioSettings: { upsert: jest.fn() },
+      } as any;
+      const service = new RadioService(
+        prisma,
+        {} as any,
+        {} as any,
+        new RadioMetricsService(),
+      );
+      await expect(
+        service.updateRadioSettings('radio', { listenerUrl } as any),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.radioSettings.upsert).not.toHaveBeenCalled();
+    },
+  );
   it('persists every bumper field exposed by the radio console', async () => {
     const prisma = {
       programState: { findUnique: jest.fn().mockResolvedValue({ id: 10 }) },
@@ -138,15 +253,13 @@ describe('RadioService recovery playlist', () => {
           .mockImplementation(async () => ({ radioSettings: settings })),
       },
       song: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              id: 5,
-              enabled: true,
-              audioUrl: 'https://media-test.s3.amazonaws.com/song.mp3',
-            },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 5,
+            enabled: true,
+            audioUrl: 'https://media-test.s3.amazonaws.com/song.mp3',
+          },
+        ]),
       },
       radioSettings: {
         update: jest
@@ -158,14 +271,12 @@ describe('RadioService recovery playlist', () => {
     } as any;
     const palazzo = {
       prepareFiller: jest.fn().mockResolvedValue(undefined),
-      getAutomation: jest
-        .fn()
-        .mockResolvedValue({
-          lastSequence: 1,
-          requestedState: 'stopped',
-          actualState: 'stopped',
-          filler: { activeVersion: null, ready: false },
-        }),
+      getAutomation: jest.fn().mockResolvedValue({
+        lastSequence: 1,
+        requestedState: 'stopped',
+        actualState: 'stopped',
+        filler: { activeVersion: null, ready: false },
+      }),
     } as any;
     const config = {
       get: (key: string) =>
@@ -209,11 +320,9 @@ describe('RadioService recovery playlist', () => {
   it('rejects off-bucket URLs before downloading or preparing', async () => {
     const prisma = {
       programState: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            radioSettings: { id: 9, palazzoUrl: 'http://palazzo:3100' },
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          radioSettings: { id: 9, palazzoUrl: 'http://palazzo:3100' },
+        }),
       },
       song: {
         findMany: jest

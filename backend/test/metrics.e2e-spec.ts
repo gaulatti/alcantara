@@ -66,6 +66,8 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingStatus('active', 'success');
     const radioMetrics = app.get(RadioMetricsService);
+    radioMetrics.recordListenerConfiguration('success');
+    radioMetrics.recordListenerConfiguration('failure');
     radioMetrics.recordMachineRequest('song-play', 'deduplicated');
     radioMetrics.recordMachineRequest('event-connect', 'unauthorized');
     radioMetrics.recordMachineRetry('song-play');
@@ -112,6 +114,12 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     );
     const body = await response.text();
     expect(body).toContain('alcantara_service_info');
+    expect(body).toContain(
+      'alcantara_radio_listener_configuration_total{result="success"} 1',
+    );
+    expect(body).toContain(
+      'alcantara_radio_listener_configuration_total{result="failure"} 1',
+    );
     expect(body).toContain('alcantara_process_cpu_user_seconds_total');
     expect(body).not.toContain('alcantara_nodejs_active_handles_total');
     expect(body).not.toContain('alcantara_nodejs_active_requests_total');

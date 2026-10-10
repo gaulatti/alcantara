@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Input } from '@gaulatti/bleecker';
+import { Field, Checkbox, Button, Input } from '@gaulatti/bleecker';
 import { GripVertical } from 'lucide-react';
 import {
   countSequenceLeafItems,
@@ -89,7 +89,7 @@ export function ToniChyronSequenceEditor({
   return (
     <div className={`space-y-3 rounded border ${isNested ? 'border-sand/30 bg-dark-sand/70' : 'border-sand/40 bg-dark-sand/60'} p-3`}>
       <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>{isNested ? 'Nested Sequence' : 'Sequence'}</span>
+        {isNested && <span className='text-xs font-semibold uppercase tracking-wide text-text-secondary'>Nested sequence</span>}
         <Button type='button' onClick={() => applySequence({ ...sequence, mode: 'manual', activeItemId: sequence.mode === 'autoplay' ? (effectiveActiveItemId ?? sequence.activeItemId) : sequence.activeItemId, startedAt: Date.now() })}
           className={`px-2.5 py-1 rounded text-xs font-medium border ${sequence.mode === 'manual' ? 'bg-sea text-white border-sea' : 'bg-dark-sand/80 text-text-primary border-sand/40 hover:bg-sand/10'}`}>Manual</Button>
         <Button type='button' onClick={() => applySequence({ ...sequence, mode: 'autoplay', startedAt: Date.now() })}
@@ -101,7 +101,7 @@ export function ToniChyronSequenceEditor({
               onChange={e => applySequence({ ...sequence, intervalMs: Math.max(500, Number(e.target.value) || 4000), startedAt: Date.now() })}
               className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50' />
             <label className='flex items-center gap-1 text-xs text-text-secondary'>
-              <Input type='checkbox' checked={sequence.loop !== false} onChange={e => applySequence({ ...sequence, loop: e.target.checked })} className='h-3.5 w-3.5' />
+              <Checkbox checked={sequence.loop !== false} onChange={e => applySequence({ ...sequence, loop: e.target.checked })} />
               Loop
             </label>
           </>
@@ -133,13 +133,12 @@ export function ToniChyronSequenceEditor({
 
               {displayItem.kind === 'preset' ? (
                 <div className='mt-3 space-y-2'>
-                  <div>
-                    <label className='block text-xs text-text-secondary mb-1'>Text</label>
+                  <Field label='Text'>
                     <Input type='text' value={displayItem.text} onChange={e => updateItem(index, { ...displayItem, text: e.target.value })}
-                      className='w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-sea/50' placeholder='Chyron message' />
-                  </div>
+                      placeholder='Chyron message' />
+                  </Field>
                   <label className='flex items-center gap-2 text-sm text-text-primary'>
-                    <Input type='checkbox' checked={Boolean(displayItem.useMarquee)} onChange={e => updateItem(index, { ...displayItem, useMarquee: e.target.checked })} className='h-4 w-4' />
+                    <Checkbox checked={Boolean(displayItem.useMarquee)} onChange={e => updateItem(index, { ...displayItem, useMarquee: e.target.checked })} />
                     Force marquee scrolling
                   </label>
                 </div>
