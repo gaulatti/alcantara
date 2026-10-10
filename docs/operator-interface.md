@@ -68,6 +68,18 @@ or activation shows an error beside them and does not claim the scene is live.
 TAKE waits for staging and scene autosave, then consumes the backend's
 acknowledged Program state.
 
+TAKE and CUT swap the buses: the prepared Preview scene becomes Program, and
+the former Program scene becomes Preview. A second TAKE returns to that scene.
+When Program had no scene, Preview becomes empty after TAKE. Both scene IDs are
+persisted together and returned in the acknowledgement and `scene_change`
+event, so other directors, both confidence monitors, and a page reload see the
+same pair. A failed persistence operation leaves both buses unchanged. The
+`normal` console fixture supports repeated TAKE/CUT swaps for visual review.
+
+The private Prometheus scrape includes
+`alcantara_scene_handoffs_total{result="success|failure|unknown"}` for scene
+handoff persistence outcomes. It contains no program or scene identifiers.
+
 Scene preparation opens the component fields first; Background audio is a
 separate tab. A hidden component is identified above the editor with an explicit
 Show component action. Editing a scene already on Program displays a live-change

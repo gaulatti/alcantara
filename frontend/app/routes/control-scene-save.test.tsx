@@ -34,10 +34,57 @@ function routeCallback(name: string, bindings: Record<string, unknown>) {
   );
 }
 afterEach(() => vi.restoreAllMocks());
+it("applies both acknowledged scene buses after TAKE, so the next TAKE returns to the former Program", async () => {
+  const selectedSceneRef = { current: 80 as number | null };
+  let state: any = null;
+  const sync = routeCallback("syncProgramStateAndStagedScene", {
+    setProgramState: (next: unknown) => {
+      state = next;
+    },
+    setSelectedScene: (update: () => number | null) => {
+      selectedSceneRef.current = update();
+    },
+  });
+  const response = {
+    activeSceneId: 80,
+    stagedSceneId: 20,
+    scenes: [{ sceneId: 80 }, { sceneId: 20 }],
+  };
+  const requestSceneTake = vi
+    .fn()
+    .mockResolvedValueOnce(response)
+    .mockResolvedValueOnce({
+      ...response,
+      activeSceneId: 20,
+      stagedSceneId: 80,
+    });
+  const take = routeCallback("takeStagedSceneLive", {
+    selectedSceneRef,
+    activeProgramIdRef: { current: "main" },
+    takeInFlightRef: { current: false },
+    setTakeBusy: vi.fn(),
+    setTakeError: vi.fn(),
+    flushSceneAttributeAutosaveForScene: vi.fn(),
+    isSceneAssigned: () => true,
+    requestSceneTake,
+    selectedTransitionId: "cut",
+    shouldApplyControlUpdatePayload: () => true,
+    normalizeProgramState: (value: unknown) => value,
+    syncProgramStateAndStagedScene: sync,
+  });
+  await take();
+  expect(state).toEqual(response);
+  expect(selectedSceneRef.current).toBe(20);
+  await take();
+  expect(requestSceneTake).toHaveBeenNthCalledWith(2, "main", 20, "cut");
+  expect(state).toMatchObject({ activeSceneId: 20, stagedSceneId: 80 });
+});
 it("saves repeated scene edits and preserves the latest edit after failure", async () => {
   const pending = { current: null as any };
   const slot = { current: null as Promise<void> | null };
-  const persist = vi.fn(async (_id: number, _props: unknown) => undefined);
+  const persist = vi.fn(
+    async (_id: number, _props: unknown): Promise<void> => undefined,
+  );
   const bindings: Record<string, any> = {
     runSceneSaveDrain,
     sceneAttributeSaveDrainPromiseRef: slot,

@@ -132,6 +132,12 @@ export default function ConsoleFixture() {
         : previewScene,
   );
   const [ftb, setFtb] = useState(fixture === "ftb");
+  const [onAirScene, setOnAirScene] = useState<Scene | null>(programScene);
+  const takeFixtureScene = () => {
+    if (!staged || fixture === "take-failed") return;
+    setOnAirScene(staged);
+    setStaged(onAirScene);
+  };
   const [songs, setSongs] = useState(
     fixture.startsWith("radio-")
       ? fixture === "radio-empty"
@@ -439,7 +445,7 @@ export default function ConsoleFixture() {
       ) : (
         <BroadcastSwitcherDeck
           programId="fixture"
-          activeScene={programScene}
+          activeScene={onAirScene}
           stagedScene={staged}
           scenes={[previewScene, programScene]}
           transitionId={transition}
@@ -463,8 +469,8 @@ export default function ConsoleFixture() {
                   : null,
             )
           }
-          onTake={() => undefined}
-          onCut={() => undefined}
+          onTake={takeFixtureScene}
+          onCut={takeFixtureScene}
           onFadeToBlack={() => setFtb((current) => !current)}
         />
       )}

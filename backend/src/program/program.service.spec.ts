@@ -1,5 +1,6 @@
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import { ProgramService } from './program.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 describe('ProgramService switcher state', () => {
   const scene = {
@@ -27,17 +28,137 @@ describe('ProgramService switcher state', () => {
           .fn()
           .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
             currentState = { ...currentState, ...data };
+            if ('activeSceneId' in data) {
+              const scenes = Array.isArray(currentState.scenes)
+                ? (currentState.scenes as Array<{
+                    sceneId: number;
+                    scene: unknown;
+                  }>)
+                : [];
+              currentState.activeScene =
+                scenes.find((entry) => entry.sceneId === data.activeSceneId)
+                  ?.scene ?? null;
+            }
             return Promise.resolve(currentState);
           }),
       },
     };
+    const metrics = new ManagedMetricsService();
     const service = new ProgramService(
       prisma as never,
       {} as never,
       {} as never,
+      metrics,
     );
-    return { service, prisma };
+    return { service, prisma, metrics };
   };
+
+  it.each(['cut', 'crescendo-prism'])(
+    'swaps both buses and broadcasts the persisted pair using %s',
+    async (transitionId) => {
+      const previous = { ...scene, id: 8, name: 'Previous Program' };
+      const { service, prisma, metrics } = buildService({
+        id: 1,
+        programId: 'main',
+        type: 'tv',
+        activeSceneId: previous.id,
+        activeScene: previous,
+        stagedSceneId: scene.id,
+        fadeToBlack: false,
+        scenes: [
+          { sceneId: scene.id, scene },
+          { sceneId: previous.id, scene: previous },
+        ],
+      });
+      const events: Array<Record<string, unknown>> = [];
+      service.addEventListener((event) => events.push(event.data));
+      const first = await service.activateScene(scene.id, 'main', transitionId);
+      expect(prisma.programState.update).toHaveBeenLastCalledWith({
+        where: { id: 1 },
+        data: { activeSceneId: scene.id, stagedSceneId: previous.id },
+      });
+      expect(first).toMatchObject({
+        activeSceneId: scene.id,
+        activeScene: scene,
+        stagedSceneId: previous.id,
+        stagedScene: previous,
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: 'scene_change',
+        transitionId,
+        state: {
+          activeSceneId: scene.id,
+          stagedSceneId: previous.id,
+          stagedScene: previous,
+        },
+      });
+      expect(await service.getState('main')).toMatchObject({
+        activeSceneId: scene.id,
+        stagedSceneId: previous.id,
+      });
+      const second = await service.activateScene(
+        first.stagedSceneId!,
+        'main',
+        transitionId,
+      );
+      expect(second).toMatchObject({
+        activeSceneId: previous.id,
+        activeScene: previous,
+        stagedSceneId: scene.id,
+        stagedScene: scene,
+      });
+      expect(await metrics.render('')).toContain(
+        'alcantara_scene_handoffs_total{result="success"} 2',
+      );
+    },
+  );
+
+  it('leaves Preview empty when taking the first scene to an empty Program', async () => {
+    const { service } = buildService({
+      id: 1,
+      programId: 'main',
+      type: 'tv',
+      activeSceneId: null,
+      stagedSceneId: scene.id,
+      scenes: [{ sceneId: scene.id, scene }],
+    });
+    expect(await service.activateScene(scene.id, 'main')).toMatchObject({
+      activeSceneId: scene.id,
+      stagedSceneId: null,
+      stagedScene: null,
+    });
+  });
+
+  it('keeps both buses and sends no scene change when the handoff cannot persist', async () => {
+    const previous = { ...scene, id: 8 };
+    const { service, prisma, metrics } = buildService({
+      id: 1,
+      programId: 'main',
+      type: 'tv',
+      activeSceneId: previous.id,
+      stagedSceneId: scene.id,
+      scenes: [
+        { sceneId: scene.id, scene },
+        { sceneId: previous.id, scene: previous },
+      ],
+    });
+    const events: unknown[] = [];
+    service.addEventListener((event) => events.push(event.data));
+    prisma.programState.update.mockRejectedValueOnce(
+      new Error('Database unavailable'),
+    );
+    await expect(service.activateScene(scene.id, 'main')).rejects.toThrow(
+      'Database unavailable',
+    );
+    expect(await service.getState('main')).toMatchObject({
+      activeSceneId: previous.id,
+      stagedSceneId: scene.id,
+    });
+    expect(events).toEqual([]);
+    expect(await metrics.render('')).toContain(
+      'alcantara_scene_handoffs_total{result="failure"} 1',
+    );
+  });
 
   it('persists the selected Preview scene before broadcasting it', async () => {
     const programState = {

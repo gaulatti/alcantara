@@ -2769,10 +2769,16 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Scene is not assigned to this program');
     }
 
-    await this.prisma.programState.update({
-      where: { id: state.id },
-      data: { activeSceneId: sceneId, stagedSceneId: sceneId },
-    });
+    try {
+      await this.prisma.programState.update({
+        where: { id: state.id },
+        data: { activeSceneId: sceneId, stagedSceneId: state.activeSceneId },
+      });
+      this.metrics?.recordSceneHandoff('success');
+    } catch (error) {
+      this.metrics?.recordSceneHandoff('failure');
+      throw error;
+    }
     const updatedState =
       await this.getProgramStateWithScenes(normalizedProgramId);
 

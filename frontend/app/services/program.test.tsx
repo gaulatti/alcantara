@@ -5,7 +5,7 @@ vi.mock("../utils/apiBaseUrl", () => ({
 }));
 afterEach(() => vi.unstubAllGlobals());
 it("returns the authoritative Program state after TAKE", async () => {
-  const state = { activeSceneId: 80, stateVersion: 4 };
+  const state = { activeSceneId: 80, stagedSceneId: 20, stateVersion: 4 };
   const request = vi.fn(async () => new Response(JSON.stringify(state)));
   vi.stubGlobal("fetch", request);
   expect(await activateScene("show/test", 80, "cut")).toEqual(state);

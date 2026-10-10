@@ -82,6 +82,7 @@ const JOBS = new Set([
 ]);
 const JOB_RESULTS = new Set(['success', 'failure', 'skipped', 'unknown']);
 const MEDIA_LABEL_ASSIGNMENT_RESULTS = new Set(['success', 'failure']);
+const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
 const PREFERENCE_ACTIONS = new Set([
   'read',
   'write',
@@ -158,6 +159,7 @@ export class ManagedMetricsService {
   private readonly dependencyDuration: Histogram<string>;
   private readonly jobs: Counter<string>;
   private readonly mediaLabelAssignments: Counter<string>;
+  private readonly sceneHandoffs: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
@@ -226,6 +228,12 @@ export class ManagedMetricsService {
     this.mediaLabelAssignments = new Counter({
       name: 'alcantara_media_label_assignments_total',
       help: 'Media asset label replacement transactions by result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.sceneHandoffs = new Counter({
+      name: 'alcantara_scene_handoffs_total',
+      help: 'Atomic Program and Preview scene handoff persistence outcomes.',
       labelNames: ['result'],
       registers: [this.registry],
     });
@@ -337,6 +345,10 @@ export class ManagedMetricsService {
     this.mediaLabelAssignments.inc({
       result: bounded(result, MEDIA_LABEL_ASSIGNMENT_RESULTS),
     });
+  }
+
+  recordSceneHandoff(result: string): void {
+    this.sceneHandoffs.inc({ result: bounded(result, SCENE_HANDOFF_RESULTS) });
   }
 
   recordPreference(action: string, result: string): void {
