@@ -35,3 +35,7 @@ export * from '@gaulatti/bleecker/layout/footer';
 export * from '@gaulatti/bleecker/layout/header';
 export * from '@gaulatti/bleecker/layout/panel-layout';
 export * from '@gaulatti/bleecker/layout/page-frame';
+
+// App controls share the installed Bleecker Tooltip without changing their layout.
+export { Button, IconButton } from './components/BleeckerButtons';
+export * from '@gaulatti/bleecker/components/tooltip';

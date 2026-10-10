@@ -40,6 +40,23 @@ assignments even when called outside the browser. Changing an existing show to
 Radio removes any obsolete visual assignments atomically. Simulcast remains the
 explicit type for a shared TV and radio program.
 
+## Button help
+
+Alcántara uses the Tooltip from the installed Bleecker component library for
+shared Button and IconButton controls, and for styled broadcast buttons, Cartwall
+pads, and rundown controls. Help opens on pointer hover or keyboard focus and
+closes on Escape. Existing title text is preferred, then the accessible label,
+then the visible action label. Native browser titles are removed when Bleecker
+renders the help, so there is one tooltip. Bleecker's `asChild` trigger adds no
+layout wrapper and preserves the existing action, ref, style, and accessible name.
+Disabled native controls remain inert while allowing hover help.
+
+Audio preset tooltips explain their target dB level; Mute, Solo, and Stop all
+explain their effect on Program. The `audio` fixture includes these controls;
+ordinary Director and Library fixtures exercise the shared buttons.
+`/console-fixture?state=button-help` isolates a labeled action, icon action, and
+disabled action for keyboard and hover review.
+
 ## Control grammar
 
 Ordinary actions use Bleecker buttons and controls. Surface hierarchy uses the
@@ -124,12 +141,42 @@ Public Program renderers do not load authenticated operator preferences. Console
 preferences belong to the protected operator workspace. Startup and authentication
 checks share the branded, accessible loading view.
 
+## TV Audio desk
+
+The Audio workspace removes the large monitor row and empty explanatory panel.
+On wide desktops the desk has three columns: Mixer, music Playlist, and a utility
+column containing the compact Program monitor, optional recording disclosure,
+and Cartwall. The bottom transport remains the only current-song display.
+The playlist and Cartwall scroll independently; neither shares half of a short
+column with the other. Cartwall has one search and a visible Stop all action.
+
+Mixer strips expose Music, Cartwall, Scene audio, and Main mix together. Stream
+appears when Preview or Program includes a video-stream component, as before.
+Vertical keyboard-accessible faders and editable dB values use the existing
+console taper and debounced audio-bus persistence. Channel Mute, Solo, saved A/B
+levels, and TAKE A/B retain their existing operations. Preset fade is beside the
+Mixer heading. Authoritative meters include VU, peak, and hold; Stream shows no
+meter because its producer supplies none. Loading disables channel controls;
+persistence failure remains visible beside the mixer instead of claiming success.
+
+Below 1280px the monitor and Cartwall move beneath Mixer and Playlist. Below
+900px the columns stack, with a bounded playlist. At narrow phone widths mixer
+strips wrap into rows. Short windows scroll the workspace while the transport
+stays at the bottom; strips never require horizontal scrolling to reach Main mix.
+Director and Radio keep their existing layouts and operation paths.
+
+`/console-fixture?state=audio` renders the complete desk with five interactive
+fictional mixer channels, twelve songs, and eight Cartwall pads. `audio-empty`,
+`audio-loading`, and `audio-error` expose missing-content and persistence states.
+Fixture controls do not issue production audio commands.
+
 ## Workspaces and ergonomics
 
 - **Director** shows Preview and Program, the source bank, transition, CUT, TAKE,
   and the lower scene-property workspace.
-- **Audio** shows Program confidence plus the mixer, playlist, sounders, and
-  playback controls. Radio adds a bounded Play Next queue above the playlist;
+- **Audio** puts the mixer and music playlist in separate working columns, with
+  a compact Program confidence monitor above the Cartwall. Radio adds a bounded
+  Play Next queue above the playlist;
   playlist-row actions enqueue without interrupting the current song, and the
   queue returns to normal playlist order after it drains. A separate star
   marks up to 12 playlist songs for High Rotation and shows the current count;

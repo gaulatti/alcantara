@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button, IconButton, Input } from "@gaulatti/bleecker";
 import {
@@ -317,7 +318,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
   );
 }
 
-function ConfidenceMonitor({
+export function ConfidenceMonitor({
   label,
   tone,
   scene,
@@ -579,7 +580,7 @@ export function BroadcastSwitcherDeck(props: Props) {
           const isPreview = scene.id === props.stagedScene?.id;
           const isProgram = scene.id === props.activeScene?.id;
           return (
-            <button
+            <TooltipButton
               key={scene.id}
               type="button"
               onClick={() => void stageScene(scene.id)}
@@ -603,7 +604,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                       ? "Program"
                       : "Stage"}
               </span>
-            </button>
+            </TooltipButton>
           );
         })}
         {!filteredScenes.length && (
@@ -717,36 +718,26 @@ export function BroadcastSwitcherDeck(props: Props) {
           </div>
         </details>
       </div>
-      <div
-        className={
-          workspace === "audio"
-            ? "switcher-body grid gap-3 p-3 md:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]"
-            : "switcher-body grid grid-cols-2 gap-3 p-3 md:grid-cols-[var(--source-width)_minmax(0,1fr)_minmax(0,1fr)]"
-        }
-        style={
-          { "--source-width": `min(${dockWidth}px, 30vw)` } as CSSProperties
-        }
-      >
-        {workspace !== "audio" && sourceBank}
-        {workspace !== "audio" && (
+      {workspace !== "audio" && (
+        <div
+          className="switcher-body grid grid-cols-2 gap-3 p-3 md:grid-cols-[var(--source-width)_minmax(0,1fr)_minmax(0,1fr)]"
+          style={
+            { "--source-width": `min(${dockWidth}px, 30vw)` } as CSSProperties
+          }
+        >
+          {sourceBank}
           <ConfidenceMonitor
             label="PREVIEW"
             tone="preview"
             scene={props.stagedScene}
             src={`/program/${encodeURIComponent(props.programId)}?confidence=preview`}
           />
-        )}
-        <ConfidenceMonitor
-          label="PROGRAM"
-          tone="program"
-          scene={props.activeScene}
-          src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
-        />
-        {workspace === "audio" ? (
-          <div className="hidden items-center rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand px-5 text-sm text-text-secondary md:flex">
-            Program stays visible while you operate audio below.
-          </div>
-        ) : (
+          <ConfidenceMonitor
+            label="PROGRAM"
+            tone="program"
+            scene={props.activeScene}
+            src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
+          />
           <div className="switcher-transports order-4 col-span-2 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand p-3 md:order-4">
             <div className="flex flex-wrap items-end gap-3">
               <label className="w-full min-w-0 text-xs text-text-secondary sm:w-auto sm:flex-1">
@@ -790,7 +781,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                     ? `Ready: ${props.stagedScene.name}`
                     : "Choose a source to prepare the next scene."}
               </p>
-              <button
+              <TooltipButton
                 type="button"
                 onClick={requestFadeToBlack}
                 aria-pressed={props.fadeToBlack}
@@ -801,7 +792,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                   : ftbArmed
                     ? "CONFIRM FADE TO BLACK"
                     : "ARM FADE TO BLACK"}
-              </button>
+              </TooltipButton>
             </div>
             {(props.takeError || stageError) && (
               <p
@@ -812,8 +803,8 @@ export function BroadcastSwitcherDeck(props: Props) {
               </p>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { TooltipButton } from "../BleeckerButtons";
 import { Input } from "@gaulatti/bleecker";
 import { Play } from "lucide-react";
 import type { InstantItem, InstantPlaybackState } from "../../models/broadcast";
@@ -62,7 +63,7 @@ export function InstantsPanel({
                 const shortcutLetter = getInstantShortcutLetter(originalIndex);
 
                 return (
-                  <button
+                  <TooltipButton
                     key={instant.id}
                     type="button"
                     onClick={() => onTrigger(instant.id)}
@@ -106,7 +107,7 @@ export function InstantsPanel({
                         )}
                       </div>
                     ) : null}
-                  </button>
+                  </TooltipButton>
                 );
               })}
             </div>

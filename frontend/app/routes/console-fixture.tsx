@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Button, IconButton } from "@gaulatti/bleecker";
+import { TooltipButton } from "../components/BleeckerButtons";
 import { useSearchParams } from "react-router";
 import {
   BroadcastSwitcherDeck,
@@ -15,6 +17,12 @@ import { ScenePreparationFixture } from "../components/ScenePreparationFixture";
 import { AppLoading } from "../components/AppLoading";
 import { RundownFixture } from "../components/RundownFixture";
 import { RundownFillers } from "../components/RundownFillers";
+import {
+  TvAudioWorkspace,
+  type TvAudioChannel,
+} from "../components/TvAudioWorkspace";
+import { dbToFader } from "../utils/audioTaper";
+import { normalizeTakeVolumePresetDb } from "../utils/broadcast";
 import { RadioPanel } from "../components/RadioPanel";
 
 const layout = {
@@ -117,7 +125,7 @@ export default function ConsoleFixture() {
   const fixture = params.get("state") || "normal";
   const mode = params.get("mode") || "tv";
   const [workspace, setWorkspace] = useState<ConsoleWorkspace>(
-    fixture === "audio"
+    fixture.startsWith("audio")
       ? "audio"
       : fixture === "remote"
         ? "compact"
@@ -139,8 +147,8 @@ export default function ConsoleFixture() {
     setStaged(onAirScene);
   };
   const [songs, setSongs] = useState(
-    fixture.startsWith("radio-")
-      ? fixture === "radio-empty"
+    fixture.startsWith("radio-") || fixture.startsWith("audio")
+      ? fixture === "radio-empty" || fixture === "audio-empty"
         ? { ...consoleSongs, items: [], activeItemId: null }
         : consoleSongs
       : playbackSequence,
@@ -158,6 +166,68 @@ export default function ConsoleFixture() {
     instants: { volume: 0.8, peak: 0, muted: false },
     main: { volume: 0.9, peak: fixture === "radio-empty" ? 0 : 0.4 },
   });
+  const [audioFadeMs, setAudioFadeMs] = useState(5000);
+  const [audioChannels, setAudioChannels] = useState<TvAudioChannel[]>(
+    (["song", "stream", "instants", "sceneInstant", "main"] as const).map(
+      (id, index) => ({
+        id,
+        label: ["Music", "Stream", "Cartwall", "Scene audio", "Main mix"][
+          index
+        ],
+        volume: index === 4 ? 1 : 0.8,
+        muted: false,
+        solo: false,
+        ...(id === "stream"
+          ? {}
+          : {
+              meter: {
+                fill: index === 0 || index === 4 ? 0.45 : 0,
+                peak: index === 0 || index === 4 ? 0.6 : 0,
+                hold: 0.7,
+              },
+            }),
+        ...(id === "main" ? {} : { presets: { aDb: -15, bDb: -30 } }),
+        onVolumeChange: () => {},
+      }),
+    ),
+  );
+  const updateAudioChannel = (
+    id: TvAudioChannel["id"],
+    patch: Partial<TvAudioChannel>,
+  ) =>
+    setAudioChannels((current) =>
+      current.map((channel) =>
+        channel.id === id ? { ...channel, ...patch } : channel,
+      ),
+    );
+  const interactiveAudioChannels = audioChannels.map((channel) => ({
+    ...channel,
+    onVolumeChange: (volume: number) =>
+      updateAudioChannel(channel.id, { volume }),
+    ...(channel.id === "main"
+      ? {}
+      : {
+          onToggleMuted: () =>
+            updateAudioChannel(channel.id, { muted: !channel.muted }),
+          onToggleSolo: () =>
+            updateAudioChannel(channel.id, { solo: !channel.solo }),
+          onCommitPreset: (side: "a" | "b", raw: string) => {
+            const key = side === "a" ? "aDb" : "bDb";
+            const db = normalizeTakeVolumePresetDb(
+              Number(raw),
+              channel.presets![key],
+            );
+            updateAudioChannel(channel.id, {
+              presets: { ...channel.presets!, [key]: db },
+            });
+            return db;
+          },
+          onTake: (side: "a" | "b") =>
+            updateAudioChannel(channel.id, {
+              volume: dbToFader(channel.presets![side === "a" ? "aDb" : "bDb"]),
+            }),
+        }),
+  }));
   const [playbackOnAir, setPlaybackOnAir] = useState(true);
   const [songQueue, setSongQueue] = useState<ProgramSongQueueEntry[]>(
     fixture === "radio-empty"
@@ -208,13 +278,40 @@ export default function ConsoleFixture() {
         </div>
       </main>
     );
+  if (fixture === "button-help")
+    return (
+      <main
+        className="broadcast-console min-h-screen p-8"
+        data-visual-fixture="button-help"
+      >
+        <h1 className="mb-2 text-xl font-semibold">Button help</h1>
+        <p className="mb-8 text-sm text-text-secondary">
+          Hover or focus a control. Escape closes its Bleecker tooltip.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <Button title="Choose songs from the Media library for this playlist">
+            Add songs
+          </Button>
+          <IconButton aria-label="Open Media library">
+            <span aria-hidden="true">＋</span>
+          </IconButton>
+          <TooltipButton
+            className="rounded border border-sand/30 px-4"
+            disabled
+            title="Stage a scene before TAKE"
+          >
+            TAKE
+          </TooltipButton>
+        </div>
+      </main>
+    );
   if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
 
   return (
     <main
-      className="broadcast-console h-full min-h-0"
+      className={`broadcast-console h-full min-h-0 ${workspace === "audio" ? "flex flex-col overflow-y-auto" : ""}`}
       data-visual-fixture={fixture}
     >
       {mode === "both" ? <SimulcastStatusRail programId="fixture" /> : null}
@@ -474,6 +571,76 @@ export default function ConsoleFixture() {
           onFadeToBlack={() => setFtb((current) => !current)}
         />
       )}
+      {workspace === "audio" &&
+        !isPlaybackFixture &&
+        !fixture.startsWith("radio-") && (
+          <>
+            <TvAudioWorkspace
+              programId="fixture"
+              activeScene={onAirScene}
+              mixer={{
+                channels: interactiveAudioChannels,
+                fadeMs: audioFadeMs,
+                onFadeChange: setAudioFadeMs,
+                loading: fixture === "audio-loading",
+                saving: false,
+                error:
+                  fixture === "audio-error"
+                    ? "Mixer change was not applied to Palazzo. Try again."
+                    : null,
+              }}
+              music={{
+                sequence: songs,
+                songCatalog: [],
+                programSongPlayback: null,
+                onChange: setSongs,
+                onTakeSelection: (next) => {
+                  setSongs(next);
+                },
+                onAddSongs: () => setSongs(consoleSongs),
+              }}
+              cartwall={{
+                isLoading: false,
+                instants: fixture === "audio-empty" ? [] : consoleInstants,
+                search: cartSearch,
+                onSearchChange: setCartSearch,
+                playback: cartPlayback,
+                onTrigger: (id) =>
+                  setCartPlayback((current) => ({
+                    ...current,
+                    [id]: { startedAtMs: Date.now(), endsAtMs: null },
+                  })),
+                onStopAll: () => setCartPlayback({}),
+              }}
+              recording={
+                <details className="console-recording">
+                  <summary>Program recording</summary>
+                  <p className="p-3 text-xs">
+                    Recorder fixture · no external commands
+                  </p>
+                </details>
+              }
+            />
+            <div className="tv-audio-transport">
+              <PlaybackBar
+                sequence={songs}
+                programSongPlayback={null}
+                onChange={setSongs}
+                onTakeSelection={(next) => {
+                  setSongs(next);
+                }}
+                onTakeOffAir={() =>
+                  setSongs((current) => ({
+                    ...current,
+                    mode: "manual",
+                    activeItemId: null,
+                  }))
+                }
+                onStopAllInstants={() => setCartPlayback({})}
+              />
+            </div>
+          </>
+        )}
       {isPlaybackFixture ? (
         <div className="fixed inset-x-0 bottom-0 z-50">
           <PlaybackBar

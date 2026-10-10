@@ -15,7 +15,9 @@ profile for the current subject.
 
 Director reserves the lower workspace for staged-scene properties;
 the full mixer, playlist, instants and playback bar live in Audio. Audio keeps a
-small Program confidence monitor, without the scene grid or video switcher.
+small Program confidence monitor above Cartwall, beside full-height Mixer and
+music Playlist columns, without the scene grid or video switcher. Channel strips
+share one mixer and never require horizontal scrolling to reach Main mix.
 Confidence monitors have bounded height and the scene strip scrolls independently.
 The properties workspace retains at least 420 px of height; smaller windows can
 scroll the console instead of clipping the editor. Switching workspaces does not

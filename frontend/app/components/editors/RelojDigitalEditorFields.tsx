@@ -1,3 +1,4 @@
+import { TooltipButton } from "../BleeckerButtons";
 import { useMemo, useState } from 'react';
 import { Input, Select } from '@gaulatti/bleecker';
 import { normalizeProgramTextSequence, createProgramTextSequence, type ProgramTextSequence } from '../../utils/programSequence';
@@ -149,16 +150,16 @@ export function RelojDigitalEditorFields({
 
           <div className='pt-2'>
             {isRunning ? (
-              <button onClick={toggleCountdown}
+              <TooltipButton onClick={toggleCountdown}
                 className='w-full px-4 py-2 text-sm font-semibold uppercase tracking-wide rounded bg-terracotta/80 hover:bg-terracotta text-white transition-colors'>
                 Stop Countdown
-              </button>
+              </TooltipButton>
             ) : (
-              <button onClick={toggleCountdown}
+              <TooltipButton onClick={toggleCountdown}
                 disabled={!props.countdownTargetSceneId}
                 className='w-full px-4 py-2 text-sm font-semibold uppercase tracking-wide rounded bg-sea/80 hover:bg-sea text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed'>
                 Start Countdown
-              </button>
+              </TooltipButton>
             )}
           </div>
         </>

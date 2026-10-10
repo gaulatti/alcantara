@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import {
   AlertContainer,
   Button,
@@ -537,14 +538,14 @@ export default function ScheduledRundown({
                 ["build", "Build block"],
               ] as const
             ).map(([id, label]) => (
-              <button
+              <TooltipButton
                 key={id}
                 type="button"
                 aria-pressed={inspector === id}
                 onClick={() => setInspector(id)}
               >
                 {label}
-              </button>
+              </TooltipButton>
             ))}
           </div>
           <div className="rundown-inspector-body">

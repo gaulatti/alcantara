@@ -1,3 +1,4 @@
+import { TooltipButton } from "../BleeckerButtons";
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Input } from '@gaulatti/bleecker';
 import type { MediaGroup, MediaItem } from '../../models/broadcast';
@@ -126,9 +127,9 @@ export function ModoItalianoPodcastPlayerEditorFields({
             <img src={props.coverUrl} alt='Selected cover' className='h-14 w-14 rounded object-cover shrink-0 border border-sand/30' />
             <div className='flex-1 min-w-0'>
               <p className='text-xs text-text-primary truncate'>{props.coverUrl.split('/').pop()}</p>
-              <button type='button' onClick={() => updateProp(componentType, 'coverUrl', '')} className='mt-1 text-xs text-terracotta hover:underline'>
+              <TooltipButton type='button' onClick={() => updateProp(componentType, 'coverUrl', '')} className='mt-1 text-xs text-terracotta hover:underline'>
                 Clear
-              </button>
+              </TooltipButton>
             </div>
           </div>
         ) : null}
@@ -153,7 +154,7 @@ export function ModoItalianoPodcastPlayerEditorFields({
                 {filteredImages.map(({ url, label }) => {
                   const isSelected = props.coverUrl === url;
                   return (
-                    <button
+                    <TooltipButton
                       key={url}
                       type='button'
                       title={label}
@@ -168,7 +169,7 @@ export function ModoItalianoPodcastPlayerEditorFields({
                           <span className='text-white text-lg font-bold drop-shadow'>✓</span>
                         </div>
                       )}
-                    </button>
+                    </TooltipButton>
                   );
                 })}
               </div>

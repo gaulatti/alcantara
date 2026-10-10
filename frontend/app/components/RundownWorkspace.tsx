@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AppLoading } from "./AppLoading";
@@ -29,7 +30,7 @@ export function RundownWorkspace({
             { view: "scheduled", label: "Timed blocks" },
             { view: "operator", label: "Operator cues" },
           ].map(({ view, label }) => (
-            <button
+            <TooltipButton
               key={view}
               type="button"
               disabled={dirty}
@@ -43,7 +44,7 @@ export function RundownWorkspace({
               onClick={() => setSearch({ view })}
             >
               {label}
-            </button>
+            </TooltipButton>
           ))}
         </nav>
       )}

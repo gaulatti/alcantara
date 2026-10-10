@@ -1,3 +1,4 @@
+import { TooltipButton } from "../components/BleeckerButtons";
 import { AlertContainer, Button, Card, Checkbox, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, Pagination, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
@@ -218,14 +219,14 @@ export default function SongsCatalog() {
   const SortHeader = ({ field, children }: { field: string; children: React.ReactNode }) => {
     const isActive = sortBy === field;
     return (
-      <button
+      <TooltipButton
         type='button'
         onClick={() => handleSort(field)}
         className='inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:text-text-secondary hover:text-sea dark:hover:text-sea transition-colors'
       >
         {children}
         {isActive ? sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} /> : <ArrowUpDown size={12} className='opacity-30' />}
-      </button>
+      </TooltipButton>
     );
   };
 

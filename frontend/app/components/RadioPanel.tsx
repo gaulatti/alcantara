@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import { useCallback, useEffect, useState } from "react";
 import { Button, Select } from "@gaulatti/bleecker";
 import { apiUrl } from "../utils/apiBaseUrl";
@@ -973,13 +974,13 @@ function RadioMixerChannel({
         <span style={{ width: peakPercent }} />
       </div>
       {onToggleMuted ? (
-        <button
+        <TooltipButton
           type="button"
           onClick={onToggleMuted}
           aria-pressed={channel.muted === true}
         >
           {channel.muted ? "MUTED" : "MUTE"}
-        </button>
+        </TooltipButton>
       ) : (
         <span className="console-eyebrow text-center mt-2">Master</span>
       )}

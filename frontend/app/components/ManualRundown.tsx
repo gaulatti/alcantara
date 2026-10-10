@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import {
   AlertContainer,
   Button,
@@ -985,13 +986,13 @@ function SceneUpdateFields({
                 ? "Editing effective metadata"
                 : "Showing current scene metadata"}
             </span>
-            <button
+            <TooltipButton
               type="button"
               onClick={() => updateEffectiveMetadata(currentMetadata)}
               className="text-xs font-medium text-sea hover:text-sea/80"
             >
               Reset to scene metadata
-            </button>
+            </TooltipButton>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1088,14 +1089,14 @@ function ComponentPropsCard({
             </span>
           )}
         </div>
-        <button
+        <TooltipButton
           type="button"
           onClick={onRemoveComponent}
           title="Remove component"
           className="flex h-7 w-7 items-center justify-center rounded text-red-400 transition-colors hover:bg-red-950/30"
         >
           <Trash2 size={14} />
-        </button>
+        </TooltipButton>
       </div>
 
       <div className="space-y-2">
@@ -1162,7 +1163,7 @@ function PropRow({ propKey, value, onChange, onRemove }: PropRowProps) {
       </span>
 
       {type === "boolean" ? (
-        <button
+        <TooltipButton
           type="button"
           onClick={() => onChange(!Boolean(value))}
           className={`rounded px-2 py-1 text-xs font-semibold ${
@@ -1170,7 +1171,7 @@ function PropRow({ propKey, value, onChange, onRemove }: PropRowProps) {
           }`}
         >
           {value ? "true" : "false"}
-        </button>
+        </TooltipButton>
       ) : (
         <Input
           value={formatValueForInput(value)}
@@ -1179,14 +1180,14 @@ function PropRow({ propKey, value, onChange, onRemove }: PropRowProps) {
         />
       )}
 
-      <button
+      <TooltipButton
         type="button"
         onClick={onRemove}
         title="Remove property"
         className="flex h-7 w-7 items-center justify-center rounded text-red-400 transition-colors hover:bg-red-950/30"
       >
         <Trash2 size={12} />
-      </button>
+      </TooltipButton>
     </div>
   );
 }
@@ -1461,7 +1462,7 @@ function IconButton({
   title,
 }: IconButtonProps) {
   return (
-    <button
+    <TooltipButton
       type="button"
       onClick={onClick}
       disabled={disabled}
@@ -1473,6 +1474,6 @@ function IconButton({
       } disabled:opacity-30`}
     >
       {children}
-    </button>
+    </TooltipButton>
   );
 }

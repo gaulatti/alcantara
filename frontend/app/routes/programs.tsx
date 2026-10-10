@@ -1,3 +1,4 @@
+import { TooltipButton } from "../components/BleeckerButtons";
 import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
 import { ExternalLink, Link2, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -662,7 +663,7 @@ export default function ProgramsAdmin() {
               <label className='mb-2 block text-sm font-medium text-text-primary dark:text-text-primary'>Program Type</label>
               <div className='flex gap-2'>
                 {(['tv', 'radio', 'both'] as const).map((type) => (
-                  <button
+                  <TooltipButton
                     key={type}
                     type='button'
                     onClick={() => setSelectedType(type)}
@@ -675,7 +676,7 @@ export default function ProgramsAdmin() {
                   >
                     {type === 'radio' ? <Radio size={14} /> : type === 'both' ? <><Tv size={14} /><Radio size={14} /></> : <Tv size={14} />}
                     {type === 'tv' ? 'TV' : type === 'radio' ? 'Radio' : 'Simulcast'}
-                  </button>
+                  </TooltipButton>
                 ))}
               </div>
               {selectedType === 'radio' ? (

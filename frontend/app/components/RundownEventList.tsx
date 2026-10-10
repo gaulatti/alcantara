@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import { Clock3, Mic2, LockKeyhole } from "lucide-react";
 import type {
   FlightCue,
@@ -119,7 +120,7 @@ export function RundownEventList({
                     </span>
                   </td>
                   <td>
-                    <button
+                    <TooltipButton
                       type="button"
                       className="rundown-event-select"
                       aria-pressed={selectedCueId === cue.id}
@@ -146,7 +147,7 @@ export function RundownEventList({
                             : "content overrun"}
                         </span>
                       )}
-                    </button>
+                    </TooltipButton>
                   </td>
                   <td className="rundown-duration">
                     {formatRundownDuration(row.durationMs)}

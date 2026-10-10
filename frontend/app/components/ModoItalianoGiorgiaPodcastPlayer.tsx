@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import React, { useEffect, useRef, useState } from 'react';
 import type { ModoItalianoPodcastPlayerProps } from './ModoItalianoPodcastPlayer';
 
@@ -148,8 +149,8 @@ export function ModoItalianoGiorgiaPodcastPlayer({
             <span>{timestamp(currentTime)}</span><span>{timestamp(duration)}</span>
           </div>
           {failed ? <p role='alert' style={{ margin: 0, fontSize: '28px' }}>Unable to play this audio.</p>
-            : blocked ? <button onClick={() => void play()} style={{ alignSelf: 'flex-start', border: `1px solid ${THEME.signal}`, color: '#fff',
-              background: THEME.navy, padding: '8px 18px', fontFamily: THEME.font, fontSize: '28px' }}>Start playback</button> : null}
+            : blocked ? <TooltipButton onClick={() => void play()} style={{ alignSelf: 'flex-start', border: `1px solid ${THEME.signal}`, color: '#fff',
+              background: THEME.navy, padding: '8px 18px', fontFamily: THEME.font, fontSize: '28px' }}>Start playback</TooltipButton> : null}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { TooltipButton } from "../components/BleeckerButtons";
 import { Button, Field, Select, StatusBadge } from '@gaulatti/bleecker';
 import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Radio, Volume2 } from 'lucide-react';
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
@@ -457,13 +458,13 @@ export default function GuestRoute() {
                 }))}
               />
             </Field>
-            <button type='button' onClick={() => void playSpeakerTest()} className='flex items-center gap-3 rounded-xl border border-white/10 p-4 text-left hover:bg-white/[0.05]'>
+            <TooltipButton type='button' onClick={() => void playSpeakerTest()} className='flex items-center gap-3 rounded-xl border border-white/10 p-4 text-left hover:bg-white/[0.05]'>
               <Volume2 className={speakerChecked ? 'text-emerald-300' : 'text-sky-300'} />
               <span>
                 <strong className='block'>Speaker test</strong>
                 <small className='text-white/50'>{speakerChecked ? 'Completed' : 'Play test tone'}</small>
               </span>
-            </button>
+            </TooltipButton>
             <div className='rounded-xl border border-white/10 p-4'>
               <strong className='block'>Network</strong>
               <small className='text-white/50'>{network}</small>

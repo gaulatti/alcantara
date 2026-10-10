@@ -3,7 +3,6 @@ import {
   Input,
   LoadingSpinner,
   Panel,
-  PanelLayout,
 } from "@gaulatti/bleecker";
 import {
   useCallback,
@@ -11,7 +10,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useSSE, type SSEConnectionState } from "../hooks/useSSE";
 import {
@@ -25,7 +23,7 @@ import { runSceneSaveDrain } from "../utils/sceneSaveDrain";
 import { activateScene as requestSceneTake } from "../services/program";
 import { fetchAllMediaLabels } from "../services/mediaLabels";
 import { normalizeProgramSongQueue } from "../utils/songQueue";
-import { dbToFader, faderToGain } from "../utils/audioTaper";
+import { dbToFader } from "../utils/audioTaper";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import { useGlobalTransitionId } from "../utils/globalTransition";
 import { getProgramRealtimeSocketUrl } from "../utils/programRealtimeSocket";
@@ -44,14 +42,13 @@ import type { Route } from "./+types/control";
 
 import { PanelColumn } from "../components/editors";
 import { PlaybackBar } from "../components/PlaybackBar";
+import { TvAudioWorkspace, type TvAudioChannel } from "../components/TvAudioWorkspace";
 import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
 import { useConsolePreferences } from "../contexts/ConsolePreferencesContext";
 import { RadioPanel } from "../components/RadioPanel";
 import { RecordingPanel } from "../components/RecordingPanel";
 import { SimulcastStatusRail } from "../components/SimulcastStatusRail";
 import {
-  InstantsPanel,
-  PlaylistPanel,
   PlaylistSheetPanel,
   SceneAttributesPanel,
 } from "../components/panels";
@@ -96,8 +93,6 @@ import {
   TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS,
   createEmptyMeterChannel,
   defaultMixerChannelsFromScalars,
-  formatMixerLevelInputValue,
-  formatTakePresetDbInputValue,
   getInstantShortcutLetter,
   isEditableTarget,
   meterLevelToFill,
@@ -110,7 +105,6 @@ import {
   normalizeSceneInstantPlayback,
   normalizeTakeVolumeFadeMs,
   normalizeTakeVolumePresetDb,
-  parseMixerLevelInputToFader,
   parseSceneMetadata,
   readControlUpdateVersion,
   reconcileProgramAudioMeter,
@@ -147,230 +141,6 @@ function normalizeProgramSongPlaylist(
         ? sequence.activeItemId
         : (playlistItems[0]?.id ?? null);
   return { ...sequence, items: playlistItems, activeItemId };
-}
-
-interface MixerStripProps {
-  title: string;
-  widthClass: string;
-  stripClassName: string;
-  headerClassName: string;
-  titleClassName: string;
-  showMuteSolo?: boolean;
-  muted?: boolean;
-  solo?: boolean;
-  onToggleMuted?: () => void;
-  onToggleSolo?: () => void;
-  showPresets?: boolean;
-  presetAKey: string;
-  presetBKey: string;
-  presetADb: number;
-  presetBDb: number;
-  onCommitPresetA: (raw: string) => number;
-  onCommitPresetB: (raw: string) => number;
-  onTakeA: () => void;
-  onTakeB: () => void;
-  isTakingA: boolean;
-  isTakingB: boolean;
-  topPanel?: ReactNode;
-  levelKey: string;
-  levelValue: number;
-  levelAriaLabel: string;
-  onCommitLevel: (raw: string) => number;
-  levelContainerClassName: string;
-  levelInputClassName: string;
-  liveClassName: string;
-  isLive: boolean;
-  meterFill?: number;
-  meterPeakFill?: number;
-  meterPeakHoldFill?: number;
-  showMeterSignal?: boolean;
-  meterBarCount?: 1 | 2;
-  combineMarkerRail?: boolean;
-  markerA: number;
-  markerB: number;
-  markerBorderClassName: string;
-  markerTextClassName: string;
-  showMarkerLabels?: boolean;
-  combinedMarkerLineClassName?: string;
-  combinedMarkerLabelOffsetClassName?: string;
-  markerTrackClassName?: string;
-  scaleClassName?: string;
-  scalePositiveClassName?: string;
-}
-
-function MixerStrip({
-  title,
-  widthClass,
-  stripClassName,
-  headerClassName,
-  titleClassName,
-  showMuteSolo = true,
-  muted = false,
-  solo = false,
-  onToggleMuted,
-  onToggleSolo,
-  showPresets = true,
-  presetAKey,
-  presetBKey,
-  presetADb,
-  presetBDb,
-  onCommitPresetA,
-  onCommitPresetB,
-  onTakeA,
-  onTakeB,
-  isTakingA,
-  isTakingB,
-  topPanel,
-  levelKey,
-  levelValue,
-  levelAriaLabel,
-  onCommitLevel,
-  levelContainerClassName,
-  levelInputClassName,
-  liveClassName,
-  isLive,
-  meterFill,
-  meterPeakFill,
-  meterPeakHoldFill,
-  showMeterSignal = true,
-  meterBarCount = 1,
-  combineMarkerRail = meterBarCount === 1,
-  markerA,
-  markerB,
-  markerBorderClassName,
-  markerTextClassName,
-  showMarkerLabels = true,
-  combinedMarkerLineClassName = "w-8",
-  combinedMarkerLabelOffsetClassName = "-right-6",
-  markerTrackClassName = "w-8",
-  scaleClassName = "text-zinc-500",
-  scalePositiveClassName,
-}: MixerStripProps) {
-  return (
-    <div
-      className={`flex ${widthClass} shrink-0 flex-col pb-3 ${stripClassName}`}
-    >
-      <div
-        className={`w-full rounded-t-lg border-b py-2.5 text-center ${headerClassName}`}
-      >
-        <span
-          className={`text-[11px] font-bold tracking-widest ${titleClassName}`}
-        >
-          {title}
-        </span>
-      </div>
-
-      <div className="mt-3 flex w-full gap-3 px-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {topPanel}
-
-          {showMuteSolo ? (
-            <div className="flex gap-1.5">
-              <Button
-                type="button"
-                onClick={onToggleMuted}
-                className={`flex h-8 flex-1 items-center justify-center rounded transition-all font-bold text-[10px] uppercase tracking-wider ${
-                  muted
-                    ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]"
-                    : "border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                M
-              </Button>
-              <Button
-                type="button"
-                onClick={onToggleSolo}
-                className={`flex h-8 flex-1 items-center justify-center rounded transition-all font-bold text-[10px] uppercase tracking-wider ${
-                  solo
-                    ? "bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]"
-                    : "border border-zinc-700/50 bg-zinc-900 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                S
-              </Button>
-            </div>
-          ) : null}
-
-          {showPresets ? (
-            <div className="flex gap-2">
-              <div className="flex flex-1 flex-col gap-1">
-                <label className="text-[10px] font-mono text-sky-300">
-                  <span className="block text-center">A (dB)</span>
-                  <Input
-                    key={presetAKey}
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue={formatTakePresetDbInputValue(presetADb)}
-                    onBlur={(event) => {
-                      const nextValue = onCommitPresetA(event.target.value);
-                      event.target.value =
-                        formatTakePresetDbInputValue(nextValue);
-                    }}
-                    className="w-full rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400"
-                  />
-                </label>
-                <Button
-                  type="button"
-                  onClick={onTakeA}
-                  disabled={isTakingA}
-                  className="w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50"
-                >
-                  TAKE A
-                </Button>
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <label className="text-[10px] font-mono text-amber-300">
-                  <span className="block text-center">B (dB)</span>
-                  <Input
-                    key={presetBKey}
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue={formatTakePresetDbInputValue(presetBDb)}
-                    onBlur={(event) => {
-                      const nextValue = onCommitPresetB(event.target.value);
-                      event.target.value =
-                        formatTakePresetDbInputValue(nextValue);
-                    }}
-                    className="w-full rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400"
-                  />
-                </label>
-                <Button
-                  type="button"
-                  onClick={onTakeB}
-                  disabled={isTakingB}
-                  className="w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50"
-                >
-                  TAKE B
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          <div
-            className={`flex h-9 w-full flex-col justify-center rounded border text-center ${levelContainerClassName}`}
-          >
-            <Input
-              key={levelKey}
-              type="text"
-              inputMode="decimal"
-              defaultValue={formatMixerLevelInputValue(levelValue)}
-              aria-label={levelAriaLabel}
-              onBlur={(event) => {
-                const nextValue = onCommitLevel(event.target.value);
-                event.target.value = formatMixerLevelInputValue(nextValue);
-              }}
-              className={levelInputClassName}
-            />
-            <span
-              className={`font-mono text-[8px] tracking-wider leading-none ${liveClassName}`}
-            >
-              {isLive ? "LIVE" : "CUT"}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function meta({}: Route.MetaArgs) {
@@ -3440,62 +3210,6 @@ export default function Control() {
       ),
     [programAudioBusSettings.songSequence],
   );
-  const hasSoloChannel =
-    mixerLevels.songSolo ||
-    mixerLevels.instantSolo ||
-    mixerLevels.sceneInstantSolo ||
-    mixerLevels.streamSolo;
-  const streamAudible =
-    (hasSoloChannel ? mixerLevels.streamSolo : true) &&
-    !mixerLevels.streamMuted;
-  const songAudible =
-    (hasSoloChannel ? mixerLevels.songSolo : true) && !mixerLevels.songMuted;
-  const instantsAudible =
-    (hasSoloChannel ? mixerLevels.instantSolo : true) &&
-    !mixerLevels.instantMuted;
-  const sceneInstantAudible =
-    (hasSoloChannel ? mixerLevels.sceneInstantSolo : true) &&
-    !mixerLevels.sceneInstantMuted;
-  const mainMixGain = faderToGain(mixerLevels.mainMasterVolume);
-  const songChannelGain = songAudible
-    ? faderToGain(mixerLevels.songMasterVolume)
-    : 0;
-  const instantsChannelGain = instantsAudible
-    ? faderToGain(mixerLevels.instantMasterVolume)
-    : 0;
-  const sceneInstantChannelGain = sceneInstantAudible
-    ? faderToGain(mixerLevels.sceneInstantMasterVolume)
-    : 0;
-  const streamChannelGain = streamAudible
-    ? faderToGain(mixerLevels.streamMasterVolume)
-    : 0;
-  const songOutputGain = songChannelGain * mainMixGain;
-  const instantsOutputGain = instantsChannelGain * mainMixGain;
-  const sceneInstantOutputGain = sceneInstantChannelGain * mainMixGain;
-  const streamOutputGain = streamChannelGain * mainMixGain;
-  const songPresetAFader = dbToFader(mixerTakePresetsDb.song.aDb);
-  const songPresetBFader = dbToFader(mixerTakePresetsDb.song.bDb);
-  const streamPresetAFader = dbToFader(mixerTakePresetsDb.stream.aDb);
-  const streamPresetBFader = dbToFader(mixerTakePresetsDb.stream.bDb);
-  const instantsPresetAFader = dbToFader(mixerTakePresetsDb.instants.aDb);
-  const instantsPresetBFader = dbToFader(mixerTakePresetsDb.instants.bDb);
-  const sceneInstantPresetAFader = dbToFader(
-    mixerTakePresetsDb.sceneInstant.aDb,
-  );
-  const sceneInstantPresetBFader = dbToFader(
-    mixerTakePresetsDb.sceneInstant.bDb,
-  );
-  const mainPresetAFader = dbToFader(mixerTakePresetsDb.main.aDb);
-  const mainPresetBFader = dbToFader(mixerTakePresetsDb.main.bDb);
-  const sceneQuickActions = useMemo(() => {
-    return assignedScenes.map((scene, index) => ({
-      id: scene.id,
-      name: scene.name,
-      isActive: scene.id === activeSceneId,
-      isStaged: scene.id === selectedScene,
-      shortcutLabel: `^ Ctrl+${index < 9 ? (index + 1) % 10 : 0}`,
-    }));
-  }, [assignedScenes, activeSceneId, selectedScene]);
   const activeSceneComponentTypes = (
     programState?.activeScene?.layout.componentType || ""
   )
@@ -3537,18 +3251,92 @@ export default function Control() {
   const mainMixPeakHoldFill = meterLevelToFill(
     programAudioMeterLevels.main.peakHold,
   );
-  const onlineStatusLabel = isProgramRealtimeConnected
-    ? "Realtime Online"
-    : "Fallback Mode";
-  const onlineStatusTone = isProgramRealtimeConnected
-    ? "text-sea bg-sea/15 border-sea/40"
-    : "text-text-primary bg-accent-blue/15 border-accent-blue/35";
-  const activeSongLabel =
-    programSongPlaybackState.isPlaying && programSongPlaybackState.audioUrl
-      ? "Playing"
-      : "Idle";
-  const controlDeckGrowProps = { grow: true } as any;
-
+  const tvAudioInputs: TvAudioChannel[] = [
+    {
+      id: "song",
+      label: "Music",
+      volume: mixerLevels.songMasterVolume,
+      muted: mixerLevels.songMuted,
+      solo: mixerLevels.songSolo,
+      onVolumeChange: setSongMasterVolume,
+      onToggleMuted: toggleSongMuted,
+      onToggleSolo: toggleSongSolo,
+      meter: { fill: songMeterFill, peak: songPeakFill, hold: songPeakHoldFill },
+    },
+    ...(shouldShowStreamStrip
+      ? [
+          {
+            id: "stream" as const,
+            label: "Stream",
+            volume: mixerLevels.streamMasterVolume,
+            muted: mixerLevels.streamMuted,
+            solo: mixerLevels.streamSolo,
+            onVolumeChange: setStreamMasterVolume,
+            onToggleMuted: toggleStreamMuted,
+            onToggleSolo: toggleStreamSolo,
+          },
+        ]
+      : []),
+    {
+      id: "instants",
+      label: "Cartwall",
+      volume: mixerLevels.instantMasterVolume,
+      muted: mixerLevels.instantMuted,
+      solo: mixerLevels.instantSolo,
+      onVolumeChange: setInstantMasterVolume,
+      onToggleMuted: toggleInstantMuted,
+      onToggleSolo: toggleInstantSolo,
+      meter: {
+        fill: instantsMeterFill,
+        peak: instantsPeakFill,
+        hold: instantsPeakHoldFill,
+      },
+    },
+    {
+      id: "sceneInstant",
+      label: "Scene audio",
+      volume: mixerLevels.sceneInstantMasterVolume,
+      muted: mixerLevels.sceneInstantMuted,
+      solo: mixerLevels.sceneInstantSolo,
+      onVolumeChange: setSceneInstantMasterVolume,
+      onToggleMuted: toggleSceneInstantMuted,
+      onToggleSolo: toggleSceneInstantSolo,
+      meter: {
+        fill: sceneInstantMeterFill,
+        peak: sceneInstantPeakFill,
+        hold: sceneInstantPeakHoldFill,
+      },
+    },
+    {
+      id: "main",
+      label: "Main mix",
+      volume: mixerLevels.mainMasterVolume,
+      onVolumeChange: setMainMasterVolume,
+      meter: {
+        fill: mainMixMeterFill,
+        peak: mainMixPeakFill,
+        hold: mainMixPeakHoldFill,
+      },
+    },
+  ];
+  const tvAudioChannels = tvAudioInputs.map((channel) =>
+    channel.id === "main"
+      ? channel
+      : {
+          ...channel,
+          presets: mixerTakePresetsDb[channel.id],
+          taking: isApplyingTakePresetByChannel[channel.id],
+          onCommitPreset: (side: MixerTakePresetSide, raw: string) =>
+            commitTakePresetDbInput(
+              channel.id,
+              side,
+              raw,
+              mixerTakePresetsDb[channel.id][side === "a" ? "aDb" : "bDb"],
+            ),
+          onTake: (side: MixerTakePresetSide) =>
+            triggerChannelTake(channel.id, side),
+        },
+  );
   if (!programState) {
     return (
       <div className="flex h-full min-h-64 items-center justify-center bg-dark-sand text-text-secondary">
@@ -3658,556 +3446,134 @@ export default function Control() {
           void setFadeToBlack(programState?.fadeToBlack !== true)
         }
       />
-      <details className="console-recording" onToggle={(event) => setRecordingOpen(event.currentTarget.open)}>
-        <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-text-secondary">Program recording</summary>
-        {recordingOpen && <RecordingPanel programId={activeProgramId} />}
-      </details>
-      <div
-        className={`console-scene-workspace flex-1 min-h-[320px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
-        data-workspace-content={consoleWorkspace}
-      >
-        <div
-          className={`grid w-full h-full min-h-0 grid-cols-1 ${consoleWorkspace === "audio" ? "md:grid-cols-2" : ""}`}
-        >
-          <PanelColumn className="min-w-0 flex-1">
-            {consoleWorkspace === "audio" ? (
-              <Panel
-                title="Mixer"
-                accent="#38bdf8"
-                variant="monitor"
-                className="min-h-0"
-                grow
-              >
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    {isLoadingMixerLevels ? (
-                      <span className="text-xs font-mono text-amber-500 animate-pulse">
-                        LOADING STATE...
-                      </span>
-                    ) : isSavingMixerLevels ? (
-                      <span className="text-xs font-mono text-emerald-500 animate-pulse">
-                        STORING...
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-2.5">
-                    <div className="overflow-x-auto">
-                      <div className="flex min-w-max items-end justify-between gap-3">
-                        <div className="flex items-end gap-2">
-                          <div className="flex items-center gap-2 self-end">
-                            <p className="text-[10px] font-bold tracking-widest text-violet-300">
-                              SCENE INSTANT
-                            </p>
-                            <Button
-                              type="button"
-                              onClick={toggleSceneInstantMuted}
-                              className={`flex h-8 items-center justify-center rounded px-2.5 transition-all font-bold text-[10px] uppercase tracking-wider ${mixerLevels.sceneInstantMuted ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.5)]" : "bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50"}`}
-                            >
-                              Mute
-                            </Button>
-                            <Button
-                              type="button"
-                              onClick={toggleSceneInstantSolo}
-                              className={`flex h-8 items-center justify-center rounded px-2.5 transition-all font-bold text-[10px] uppercase tracking-wider ${mixerLevels.sceneInstantSolo ? "bg-yellow-500 text-yellow-950 shadow-[0_0_12px_rgba(234,179,8,0.4)]" : "bg-zinc-900 text-zinc-400 hover:bg-zinc-700 border border-zinc-700/50"}`}
-                            >
-                              Solo
-                            </Button>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-mono text-sky-300">
-                              <span className="mb-0.5 block text-center">
-                                A (dB)
-                              </span>
-                              <Input
-                                key={`scene-instant-preset-a-${mixerTakePresetsDb.sceneInstant.aDb}`}
-                                type="text"
-                                inputMode="decimal"
-                                defaultValue={formatTakePresetDbInputValue(
-                                  mixerTakePresetsDb.sceneInstant.aDb,
-                                )}
-                                onBlur={(event) => {
-                                  const nextValue = commitTakePresetDbInput(
-                                    "sceneInstant",
-                                    "a",
-                                    event.target.value,
-                                    mixerTakePresetsDb.sceneInstant.aDb,
-                                  );
-                                  event.target.value =
-                                    formatTakePresetDbInputValue(nextValue);
-                                }}
-                                className="w-20 rounded border border-sky-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-sky-200 outline-none focus:border-sky-400"
-                              />
-                            </label>
-                            <Button
-                              type="button"
-                              onClick={() =>
-                                triggerChannelTake("sceneInstant", "a")
-                              }
-                              disabled={
-                                isApplyingTakePresetByChannel.sceneInstant
-                              }
-                              className="w-full rounded border border-sky-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-sky-300 transition hover:bg-sky-900/20 disabled:opacity-50"
-                            >
-                              TAKE A
-                            </Button>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-mono text-amber-300">
-                              <span className="mb-0.5 block text-center">
-                                B (dB)
-                              </span>
-                              <Input
-                                key={`scene-instant-preset-b-${mixerTakePresetsDb.sceneInstant.bDb}`}
-                                type="text"
-                                inputMode="decimal"
-                                defaultValue={formatTakePresetDbInputValue(
-                                  mixerTakePresetsDb.sceneInstant.bDb,
-                                )}
-                                onBlur={(event) => {
-                                  const nextValue = commitTakePresetDbInput(
-                                    "sceneInstant",
-                                    "b",
-                                    event.target.value,
-                                    mixerTakePresetsDb.sceneInstant.bDb,
-                                  );
-                                  event.target.value =
-                                    formatTakePresetDbInputValue(nextValue);
-                                }}
-                                className="w-20 rounded border border-amber-800/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-amber-200 outline-none focus:border-amber-400"
-                              />
-                            </label>
-                            <Button
-                              type="button"
-                              onClick={() =>
-                                triggerChannelTake("sceneInstant", "b")
-                              }
-                              disabled={
-                                isApplyingTakePresetByChannel.sceneInstant
-                              }
-                              className="w-full rounded border border-amber-800/50 bg-zinc-900 py-1 text-[9px] font-bold tracking-wider text-amber-300 transition hover:bg-amber-900/20 disabled:opacity-50"
-                            >
-                              TAKE B
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-2 px-1">
-                      <Input
-                        key={`scene-instant-level-${mixerLevels.sceneInstantMasterVolume}`}
-                        type="text"
-                        inputMode="decimal"
-                        defaultValue={formatMixerLevelInputValue(
-                          mixerLevels.sceneInstantMasterVolume,
-                        )}
-                        aria-label="Scene instant channel level in dB"
-                        onBlur={(event) => {
-                          const nextValue = parseMixerLevelInputToFader(
-                            event.target.value,
-                            mixerLevels.sceneInstantMasterVolume,
-                          );
-                          setSceneInstantMasterVolume(nextValue);
-                          event.target.value =
-                            formatMixerLevelInputValue(nextValue);
-                        }}
-                        className="h-8 w-full rounded border border-violet-900/40 bg-zinc-950 px-2 text-center font-mono text-xs font-bold text-violet-300 outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-                    <div className="flex flex-1 overflow-x-auto pb-2 custom-scrollbar">
-                      <div className="flex min-w-max items-stretch gap-5 pr-3">
-                        <MixerStrip
-                          title="SONG"
-                          widthClass="w-44"
-                          stripClassName="rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg"
-                          headerClassName="border-zinc-700 bg-zinc-900"
-                          titleClassName="text-zinc-400"
-                          muted={mixerLevels.songMuted}
-                          solo={mixerLevels.songSolo}
-                          onToggleMuted={toggleSongMuted}
-                          onToggleSolo={toggleSongSolo}
-                          presetAKey={`song-preset-a-${mixerTakePresetsDb.song.aDb}`}
-                          presetBKey={`song-preset-b-${mixerTakePresetsDb.song.bDb}`}
-                          presetADb={mixerTakePresetsDb.song.aDb}
-                          presetBDb={mixerTakePresetsDb.song.bDb}
-                          onCommitPresetA={(raw) =>
-                            commitTakePresetDbInput(
-                              "song",
-                              "a",
-                              raw,
-                              mixerTakePresetsDb.song.aDb,
-                            )
-                          }
-                          onCommitPresetB={(raw) =>
-                            commitTakePresetDbInput(
-                              "song",
-                              "b",
-                              raw,
-                              mixerTakePresetsDb.song.bDb,
-                            )
-                          }
-                          onTakeA={() => triggerChannelTake("song", "a")}
-                          onTakeB={() => triggerChannelTake("song", "b")}
-                          isTakingA={isApplyingTakePresetByChannel.song}
-                          isTakingB={isApplyingTakePresetByChannel.song}
-                          levelKey={`song-level-${mixerLevels.songMasterVolume}`}
-                          levelValue={mixerLevels.songMasterVolume}
-                          levelAriaLabel="Song channel level in dB"
-                          onCommitLevel={(raw) => {
-                            const nextValue = parseMixerLevelInputToFader(
-                              raw,
-                              mixerLevels.songMasterVolume,
-                            );
-                            setSongMasterVolume(nextValue);
-                            return nextValue;
-                          }}
-                          levelContainerClassName="border-[#1a3525] bg-[#0a1510]"
-                          levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none"
-                          liveClassName="text-emerald-700"
-                          isLive={songOutputGain > 0}
-                          meterFill={songMeterFill}
-                          meterPeakFill={songPeakFill}
-                          meterPeakHoldFill={songPeakHoldFill}
-                          markerA={songPresetAFader}
-                          markerB={songPresetBFader}
-                          markerBorderClassName="border-sky-300/90"
-                          markerTextClassName="text-sky-300"
-                          markerTrackClassName="w-8"
-                        />
-
-                        {shouldShowStreamStrip ? (
-                          <MixerStrip
-                            title="STREAM"
-                            widthClass="w-44"
-                            stripClassName="rounded-lg border border-cyan-700/40 bg-zinc-800/80 shadow-lg"
-                            headerClassName="border-cyan-900/60 bg-cyan-950/20"
-                            titleClassName="text-violet-300"
-                            muted={mixerLevels.streamMuted}
-                            solo={mixerLevels.streamSolo}
-                            onToggleMuted={toggleStreamMuted}
-                            onToggleSolo={toggleStreamSolo}
-                            presetAKey={`stream-preset-a-${mixerTakePresetsDb.stream.aDb}`}
-                            presetBKey={`stream-preset-b-${mixerTakePresetsDb.stream.bDb}`}
-                            presetADb={mixerTakePresetsDb.stream.aDb}
-                            presetBDb={mixerTakePresetsDb.stream.bDb}
-                            onCommitPresetA={(raw) =>
-                              commitTakePresetDbInput(
-                                "stream",
-                                "a",
-                                raw,
-                                mixerTakePresetsDb.stream.aDb,
-                              )
-                            }
-                            onCommitPresetB={(raw) =>
-                              commitTakePresetDbInput(
-                                "stream",
-                                "b",
-                                raw,
-                                mixerTakePresetsDb.stream.bDb,
-                              )
-                            }
-                            onTakeA={() => triggerChannelTake("stream", "a")}
-                            onTakeB={() => triggerChannelTake("stream", "b")}
-                            isTakingA={isApplyingTakePresetByChannel.stream}
-                            isTakingB={isApplyingTakePresetByChannel.stream}
-                            levelKey={`stream-level-${mixerLevels.streamMasterVolume}`}
-                            levelValue={mixerLevels.streamMasterVolume}
-                            levelAriaLabel="Stream channel level in dB"
-                            onCommitLevel={(raw) => {
-                              const nextValue = parseMixerLevelInputToFader(
-                                raw,
-                                mixerLevels.streamMasterVolume,
-                              );
-                              setStreamMasterVolume(nextValue);
-                              return nextValue;
-                            }}
-                            levelContainerClassName="border-cyan-900/30 bg-[#07161a]"
-                            levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-sky-300 outline-none"
-                            liveClassName="text-sky-300"
-                            isLive={streamOutputGain > 0}
-                            showMeterSignal={false}
-                            markerA={streamPresetAFader}
-                            markerB={streamPresetBFader}
-                            markerBorderClassName="border-sky-300/90"
-                            markerTextClassName="text-sky-300"
-                            markerTrackClassName="w-8"
-                          />
-                        ) : null}
-
-                        <MixerStrip
-                          title="INSTANTS"
-                          widthClass="w-44"
-                          stripClassName="rounded-lg border border-zinc-600/50 bg-zinc-800/80 shadow-lg"
-                          headerClassName="border-zinc-700 bg-zinc-900"
-                          titleClassName="text-zinc-400"
-                          muted={mixerLevels.instantMuted}
-                          solo={mixerLevels.instantSolo}
-                          onToggleMuted={toggleInstantMuted}
-                          onToggleSolo={toggleInstantSolo}
-                          presetAKey={`instants-preset-a-${mixerTakePresetsDb.instants.aDb}`}
-                          presetBKey={`instants-preset-b-${mixerTakePresetsDb.instants.bDb}`}
-                          presetADb={mixerTakePresetsDb.instants.aDb}
-                          presetBDb={mixerTakePresetsDb.instants.bDb}
-                          onCommitPresetA={(raw) =>
-                            commitTakePresetDbInput(
-                              "instants",
-                              "a",
-                              raw,
-                              mixerTakePresetsDb.instants.aDb,
-                            )
-                          }
-                          onCommitPresetB={(raw) =>
-                            commitTakePresetDbInput(
-                              "instants",
-                              "b",
-                              raw,
-                              mixerTakePresetsDb.instants.bDb,
-                            )
-                          }
-                          onTakeA={() => triggerChannelTake("instants", "a")}
-                          onTakeB={() => triggerChannelTake("instants", "b")}
-                          isTakingA={isApplyingTakePresetByChannel.instants}
-                          isTakingB={isApplyingTakePresetByChannel.instants}
-                          levelKey={`instants-level-${mixerLevels.instantMasterVolume}`}
-                          levelValue={mixerLevels.instantMasterVolume}
-                          levelAriaLabel="Instants channel level in dB"
-                          onCommitLevel={(raw) => {
-                            const nextValue = parseMixerLevelInputToFader(
-                              raw,
-                              mixerLevels.instantMasterVolume,
-                            );
-                            setInstantMasterVolume(nextValue);
-                            return nextValue;
-                          }}
-                          levelContainerClassName="border-[#1a3525] bg-[#0a1510]"
-                          levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-emerald-500 outline-none"
-                          liveClassName="text-emerald-700"
-                          isLive={instantsOutputGain > 0}
-                          meterFill={instantsMeterFill}
-                          meterPeakFill={instantsPeakFill}
-                          meterPeakHoldFill={instantsPeakHoldFill}
-                          markerA={instantsPresetAFader}
-                          markerB={instantsPresetBFader}
-                          markerBorderClassName="border-sky-300/90"
-                          markerTextClassName="text-sky-300"
-                          markerTrackClassName="w-8"
-                        />
-                      </div>
-                    </div>
-
-                    <MixerStrip
-                      title="MAIN MIX"
-                      widthClass="w-48"
-                      stripClassName="rounded-lg border border-red-700/40 bg-zinc-800 shadow-xl"
-                      headerClassName="border-red-900/50 bg-red-950/20"
-                      titleClassName="text-red-500"
-                      showMuteSolo={false}
-                      showPresets={false}
-                      presetAKey={`main-preset-a-${mixerTakePresetsDb.main.aDb}`}
-                      presetBKey={`main-preset-b-${mixerTakePresetsDb.main.bDb}`}
-                      presetADb={mixerTakePresetsDb.main.aDb}
-                      presetBDb={mixerTakePresetsDb.main.bDb}
-                      onCommitPresetA={(raw) =>
-                        commitTakePresetDbInput(
-                          "main",
-                          "a",
-                          raw,
-                          mixerTakePresetsDb.main.aDb,
-                        )
-                      }
-                      onCommitPresetB={(raw) =>
-                        commitTakePresetDbInput(
-                          "main",
-                          "b",
-                          raw,
-                          mixerTakePresetsDb.main.bDb,
-                        )
-                      }
-                      onTakeA={() => triggerChannelTake("main", "a")}
-                      onTakeB={() => triggerChannelTake("main", "b")}
-                      isTakingA={isApplyingTakePresetByChannel.main}
-                      isTakingB={isApplyingTakePresetByChannel.main}
-                      topPanel={
-                        <div className="flex flex-col gap-1 rounded border border-red-900/20 bg-zinc-900/50 px-2 py-1.5 shadow-inner">
-                          <label className="text-[10px] font-mono text-red-300">
-                            <span className="block text-center">
-                              TAKE FADE (ms)
-                            </span>
-                            <Input
-                              type="number"
-                              step={100}
-                              min={0}
-                              max={20000}
-                              value={takePresetFadeMs}
-                              onChange={(event) =>
-                                setTakePresetFadeMs(
-                                  normalizeTakeVolumeFadeMs(
-                                    Number(event.target.value),
-                                    takePresetFadeMs,
-                                  ),
-                                )
-                              }
-                              className="w-full rounded border border-red-900/50 bg-zinc-900 px-1 py-0.5 text-center text-[10px] text-red-200 outline-none focus:border-red-400"
-                            />
-                          </label>
-                        </div>
-                      }
-                      levelKey={`main-level-${mixerLevels.mainMasterVolume}`}
-                      levelValue={mixerLevels.mainMasterVolume}
-                      levelAriaLabel="Main mix level in dB"
-                      onCommitLevel={(raw) => {
-                        const nextValue = parseMixerLevelInputToFader(
-                          raw,
-                          mixerLevels.mainMasterVolume,
-                        );
-                        setMainMasterVolume(nextValue);
-                        return nextValue;
-                      }}
-                      levelContainerClassName="border-red-950/50 bg-[#1a0a0a]"
-                      levelInputClassName="w-full bg-transparent px-2 text-center font-mono text-sm font-bold text-red-300 outline-none"
-                      liveClassName="text-red-700"
-                      isLive={mainMixGain > 0}
-                      meterFill={mainMixMeterFill}
-                      meterPeakFill={mainMixPeakFill}
-                      meterPeakHoldFill={mainMixPeakHoldFill}
-                      meterBarCount={2}
-                      combineMarkerRail={true}
-                      markerA={mainPresetAFader}
-                      markerB={mainPresetBFader}
-                      markerBorderClassName="border-sky-300/90"
-                      markerTextClassName="text-sky-300"
-                      showMarkerLabels={false}
-                      combinedMarkerLineClassName="w-6"
-                      markerTrackClassName="w-8"
-                      scalePositiveClassName="text-red-400"
-                    />
-                  </div>
-                </div>
-              </Panel>
-            ) : null}
-
-            {consoleWorkspace !== "audio" ? (
-              <Panel
-                title={stagedSceneData ? `Prepare · ${stagedSceneData.name}` : "Prepare the next scene"}
-                accent="#14b8a6"
-                variant="monitor"
-                className="min-h-0"
-                grow
-              >
-                <SceneAttributesPanel
-                  selectedScene={selectedScene}
-                  scenes={scenes}
-                  stagedIsOnAir={stagedIsOnAir}
-                  isSavingSceneAttributes={isSavingSceneAttributes}
-                  sceneAttributeSaveError={sceneAttributeSaveError}
-                  editableSceneComponentEntries={editableSceneComponentEntries}
-                  componentTypes={componentTypes}
-                  sceneEditorProps={sceneEditorProps}
-                  selectedSceneInstantId={selectedSceneInstantId}
-                  selectedBackgroundAudioAssetId={selectedBackgroundAudioAssetId}
-                  selectedBackgroundAudioAsset={selectedBackgroundAudioAsset}
-                  sceneInstantPlayback={sceneInstantPlayback}
-                  activeProgramId={activeProgramId}
-                  backgroundAudioAssets={backgroundAudioAssets}
-                  isLoadingBackgroundAudio={isLoadingBackgroundAudio}
-                  songCatalog={songCatalog}
-                  mediaGroups={mediaGroups}
-                  isLoadingMediaGroups={isLoadingMediaGroups}
-                  mediaLabels={mediaLabels}
-                  isLoadingMediaLabels={isLoadingMediaLabels}
-                  onBlurCapture={(event) => {
-                    if (selectedSceneRef.current !== null) {
-                      void flushSceneAttributeAutosaveForScene(
-                        selectedSceneRef.current,
-                      ).catch(() => {});
+      {consoleWorkspace === "audio" ? (
+        <TvAudioWorkspace
+          programId={activeProgramId}
+          activeScene={programState?.activeScene ?? null}
+          mixer={{
+            channels: tvAudioChannels,
+            fadeMs: takePresetFadeMs,
+            onFadeChange: (value) =>
+              setTakePresetFadeMs(
+                normalizeTakeVolumeFadeMs(value, takePresetFadeMs),
+              ),
+            loading: isLoadingMixerLevels,
+            saving: isSavingMixerLevels,
+            error: mixerSaveError,
+          }}
+          music={{
+            sequence: programAudioBusSongSequence,
+            songCatalog,
+            programSongPlayback: programSongPlaybackState,
+            onChange: (next) => {
+              void saveProgramAudioBusSongSequence(next);
+            },
+            onTakeSelection: takeProgramSongSelection,
+            onAddSongs: () => setIsPlaylistSheetOpen(true),
+          }}
+          cartwall={{
+            isLoading: isLoadingInstants,
+            instants,
+            search: instantSearch,
+            playback: instantPlayback,
+            onSearchChange: setInstantSearch,
+            onTrigger: (id) => {
+              void triggerInstant(id);
+            },
+            onStopAll: () => {
+              void stopAllInstants();
+            },
+          }}
+          recording={
+            <details
+              className="console-recording"
+              onToggle={(event) => setRecordingOpen(event.currentTarget.open)}
+            >
+              <summary>Program recording</summary>
+              {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+            </details>
+          }
+        />
+      ) : (
+        <>
+          <details
+            className="console-recording"
+            onToggle={(event) => setRecordingOpen(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-text-secondary">
+              Program recording
+            </summary>
+            {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+          </details>
+          <div
+            className={`console-scene-workspace flex-1 min-h-[320px] w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
+            data-workspace-content={consoleWorkspace}
+          >
+            <div className="grid w-full h-full min-h-0 grid-cols-1">
+              <PanelColumn className="min-w-0 flex-1">
+                <Panel
+                  title={
+                    stagedSceneData
+                      ? `Prepare · ${stagedSceneData.name}`
+                      : "Prepare the next scene"
+                  }
+                  accent="#14b8a6"
+                  variant="monitor"
+                  className="min-h-0"
+                  grow
+                >
+                  <SceneAttributesPanel
+                    selectedScene={selectedScene}
+                    scenes={scenes}
+                    stagedIsOnAir={stagedIsOnAir}
+                    isSavingSceneAttributes={isSavingSceneAttributes}
+                    sceneAttributeSaveError={sceneAttributeSaveError}
+                    editableSceneComponentEntries={
+                      editableSceneComponentEntries
                     }
-                  }}
-                  onSave={() => void saveStagedSceneAttributes()}
-                  onCommitComponentProps={(componentType, props) =>
-                    commitSceneEditorComponentProps(componentType, props)
-                  }
-                  onUpdateProp={updateSceneEditorProp}
-                  onReplaceProps={replaceSceneEditorComponentProps}
-                  onSyncComponentProps={syncSceneEditorComponentProps}
-                  onTakeSceneInstant={(sceneId, instantId, mediaAssetId) =>
-                    takeSceneInstant(sceneId, instantId, mediaAssetId)
-                  }
-                  onStopSceneInstant={() => stopSceneInstant()}
-                />
-              </Panel>
-            ) : null}
-          </PanelColumn>
-
-          {consoleWorkspace === "audio" && (
-            <PanelColumn className="min-w-0 flex-1">
-              <Panel
-                title="Playlist"
-                accent="#8b5cf6"
-                variant="monitor"
-                className="min-h-0"
-                grow
-                toolbar={
-                  <div className="flex w-full items-center justify-start">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setIsPlaylistSheetOpen(true);
-                      }}
-                    >
-                      Add to Playlist
-                    </Button>
-                  </div>
-                }
-              >
-                <PlaylistPanel
-                  sequence={programAudioBusSongSequence}
-                  songCatalog={songCatalog}
-                  programSongPlayback={programSongPlaybackState}
-                  onChange={(nextSequence) => {
-                    void saveProgramAudioBusSongSequence(nextSequence);
-                  }}
-                  onTakeSelection={async (nextSequence) => {
-                    await takeProgramSongSelection(nextSequence);
-                  }}
-                />
-              </Panel>
-              <Panel
-                title="Instants"
-                accent="#f59e0b"
-                variant="monitor"
-                className="min-h-0"
-                grow
-                toolbar={
-                  <div className="flex w-full items-center gap-2">
-                    <Input
-                      type="text"
-                      placeholder="Search instants…"
-                      value={instantSearch}
-                      onChange={(e) => setInstantSearch(e.target.value)}
-                      className="min-w-0 flex-1 rounded border border-sand/30 bg-dark-sand/60 px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent-blue/60 focus:outline-none dark:border-sand/20 dark:bg-dark-sand/70 dark:text-text-primary dark:placeholder:text-text-secondary dark:focus:border-accent-blue/40"
-                    />
-                  </div>
-                }
-              >
-                <InstantsPanel
-                  isLoading={isLoadingInstants}
-                  instants={instants}
-                  search={instantSearch}
-                  playback={instantPlayback}
-                  onSearchChange={setInstantSearch}
-                  onTrigger={(id) => void triggerInstant(id)}
-                />
-              </Panel>
-            </PanelColumn>
-          )}
-        </div>
-      </div>
+                    componentTypes={componentTypes}
+                    sceneEditorProps={sceneEditorProps}
+                    selectedSceneInstantId={selectedSceneInstantId}
+                    selectedBackgroundAudioAssetId={
+                      selectedBackgroundAudioAssetId
+                    }
+                    selectedBackgroundAudioAsset={selectedBackgroundAudioAsset}
+                    sceneInstantPlayback={sceneInstantPlayback}
+                    activeProgramId={activeProgramId}
+                    backgroundAudioAssets={backgroundAudioAssets}
+                    isLoadingBackgroundAudio={isLoadingBackgroundAudio}
+                    songCatalog={songCatalog}
+                    mediaGroups={mediaGroups}
+                    isLoadingMediaGroups={isLoadingMediaGroups}
+                    mediaLabels={mediaLabels}
+                    isLoadingMediaLabels={isLoadingMediaLabels}
+                    onBlurCapture={(event) => {
+                      if (selectedSceneRef.current !== null) {
+                        void flushSceneAttributeAutosaveForScene(
+                          selectedSceneRef.current,
+                        ).catch(() => {});
+                      }
+                    }}
+                    onSave={() => void saveStagedSceneAttributes()}
+                    onCommitComponentProps={(componentType, props) =>
+                      commitSceneEditorComponentProps(componentType, props)
+                    }
+                    onUpdateProp={updateSceneEditorProp}
+                    onReplaceProps={replaceSceneEditorComponentProps}
+                    onSyncComponentProps={syncSceneEditorComponentProps}
+                    onTakeSceneInstant={(sceneId, instantId, mediaAssetId) =>
+                      takeSceneInstant(sceneId, instantId, mediaAssetId)
+                    }
+                    onStopSceneInstant={() => stopSceneInstant()}
+                  />
+                </Panel>
+              </PanelColumn>
+            </div>
+          </div>
+        </>
+      )}
       {consoleWorkspace === "audio" && (
-        <div className="relative z-20 shrink-0">
+        <div className="tv-audio-transport relative z-20 shrink-0">
           <PlaybackBar
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}

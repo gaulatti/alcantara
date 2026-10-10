@@ -1,3 +1,4 @@
+import { TooltipButton } from "../components/BleeckerButtons";
 import {
   Button,
   Card,
@@ -769,14 +770,14 @@ export default function MediaRoute() {
                 className="pl-9 pr-9"
               />
               {search ? (
-                <button
+                <TooltipButton
                   type="button"
                   aria-label="Clear search"
                   onClick={() => setSearch("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary"
                 >
                   <X size={16} />
-                </button>
+                </TooltipButton>
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -960,7 +961,7 @@ export default function MediaRoute() {
                     .includes(debouncedSearch.toLowerCase()),
               )
               .map((label) => (
-                <button
+                <TooltipButton
                   key={label.id}
                   type="button"
                   onClick={() => setSelectedLabel(label)}
@@ -972,7 +973,7 @@ export default function MediaRoute() {
                   <span className="mt-1 block text-xs text-text-secondary">
                     {label.assetCount} asset{label.assetCount === 1 ? "" : "s"}
                   </span>
-                </button>
+                </TooltipButton>
               ))}
             {!isLoading && labels.length === 0 ? (
               <Empty

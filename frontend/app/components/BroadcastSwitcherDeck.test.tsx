@@ -48,9 +48,11 @@ const props = {
   onCut: vi.fn(),
   onFadeToBlack: vi.fn(),
 };
-it("reserves Audio for audio tools with only a small program monitor", () => {
+it("leaves the Audio workspace to its tools without a duplicate monitor", () => {
   render(<BroadcastSwitcherDeck {...props} workspace="audio" />);
-  expect(screen.getByTitle("PROGRAM confidence monitor")).toBeInTheDocument();
+  expect(
+    screen.queryByTitle("PROGRAM confidence monitor"),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByTitle("PREVIEW confidence monitor"),
   ).not.toBeInTheDocument();

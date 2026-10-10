@@ -1,3 +1,4 @@
+import { TooltipButton } from "./BleeckerButtons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RecordingStatus } from "../models/broadcast";
 import {
@@ -150,33 +151,33 @@ export function RecordingStatusView({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {!status ? (
-            <button
+            <TooltipButton
               type="button"
               onClick={onRefresh}
               className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-xs font-bold text-zinc-100 hover:bg-zinc-700"
             >
               Retry status
-            </button>
+            </TooltipButton>
           ) : null}
           {canStart ? (
-            <button
+            <TooltipButton
               type="button"
               onClick={onStart}
               disabled={busy !== null}
               className="rounded border border-red-500/70 bg-red-950 px-4 py-2 text-xs font-black uppercase tracking-widest text-red-100 hover:bg-red-900 disabled:cursor-wait disabled:opacity-50"
             >
               {busy === "start" ? "Requesting…" : "Start recording"}
-            </button>
+            </TooltipButton>
           ) : null}
           {canStop ? (
-            <button
+            <TooltipButton
               type="button"
               onClick={onStop}
               disabled={busy !== null}
               className="rounded border border-amber-500/70 bg-amber-950 px-4 py-2 text-xs font-black uppercase tracking-widest text-amber-100 hover:bg-amber-900 disabled:cursor-wait disabled:opacity-50"
             >
               {busy === "stop" ? "Stopping…" : "Stop and finalize"}
-            </button>
+            </TooltipButton>
           ) : null}
         </div>
       </div>
