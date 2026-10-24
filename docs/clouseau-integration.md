@@ -175,6 +175,36 @@ external diagnostics. This cleanup is a separate change from installing the
 native producer. The frozen frontend coverage rows predate this removal and do not
 silently claim new totals.
 
+## Validated runtime boundaries
+
+Independent static review identified a few unreachable alternatives without
+changing product behavior. Template network classification now relies on its
+sole caller's native IPv4 validation while retaining every reserved-range rule.
+The redirect loop expresses its existing return/throw structure and retains the
+same maximum four requests, per-hop destination checks and failure messages.
+Realtime upgrade rejection accepts only its actual private-call codes, 400/401,
+with the same HTTP responses. Its unchanged UTF-8 decoder is a named pure helper;
+tests exercise real string, Buffer, fragmented multibyte Buffer and ArrayBuffer
+forms without changing websocket internals or invoking private handlers.
+
+Playback helpers now receive the same already-owned state object from validated
+callers. The private state map never removes or replaces an entry; callbacks read
+current fields from that object. Public unknown-program, active-song, request,
+queue, frozen-state, generation and asynchronous ownership guards remain.
+Autoplay's known positive-duration cycle and unknown-duration traversal encode
+established invariants. The sparse-array guard and known-duration numeric-overflow
+fallback remain and have real public-input counterexamples in the tests. No
+native predicate, private map, callback extraction or counter alteration is used
+to manufacture coverage.
+
+These changes are separate from repairing a product defect. Existing fractional
+fader behavior and other external product diagnostics are unchanged. Negative
+controls, public concurrency/error regressions, source hashes and exact before
+bytes are retained outside the repository. The canonical backend verifier rebuilt
+both production and instrumented application trees and passed all 1,991 native
+cases and all 34 normal e2e cases after these refactors; coverage still failed.
+Later test-only additions are measured separately at the frozen checkpoint.
+
 ## Protected installation and hosted proof still required
 
 The accepted base has no local recipe, trusted Clouseau policy, or enrolled
