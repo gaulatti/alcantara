@@ -38,8 +38,8 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const bgRafRef = useRef<number | null>(null);
   const vizRafRef = useRef<number | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
-  const timeArrayRef = useRef<Uint8Array | null>(null);
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const timeArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const bgTimeRef = useRef(0);
 
   const isPlayingRef = useRef(false);

@@ -752,7 +752,7 @@ export function ComponentPropsFields({
     case 'fifthbell-corner': {
       const supportsContent = componentType === 'fifthbell' || componentType === 'fifthbell-content';
       const supportsMarquee = componentType === 'fifthbell' || componentType === 'fifthbell-marquee';
-      const selectedWeatherCities = Array.isArray(props.weatherCities) ? props.weatherCities.filter((c: unknown): c is string => typeof c === 'string') : [];
+      const selectedWeatherCities: string[] = Array.isArray(props.weatherCities) ? props.weatherCities.filter((c: unknown): c is string => typeof c === 'string') : [];
       const selectedCitySet = new Set(selectedWeatherCities);
       const languageRotation = Array.isArray(props.languageRotation) ? props.languageRotation.filter((l: unknown): l is string => typeof l === 'string') : ['en', 'es', 'en', 'it'];
 

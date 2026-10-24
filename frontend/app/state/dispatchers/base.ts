@@ -1,5 +1,5 @@
-import type { Action } from 'redux';
+import type { UnknownAction } from 'redux';
 
-export interface ReduxAction extends Action {
+export interface ReduxAction extends UnknownAction {
   payload?: any;
 }

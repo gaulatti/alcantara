@@ -15,6 +15,8 @@ node_modules/
 dist/
 build/
 .react-router/
+/backend/coverage/
+/frontend/coverage/
 
 # IDE
 .vscode/

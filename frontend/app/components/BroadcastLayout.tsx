@@ -63,7 +63,7 @@ export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
       <div className='broadcast-content'>{children}</div>
 
       {/* Chyron - Above Ticker */}
-      <ChyronHolder text={chyronText} show={showChyron} duration={chyronDuration} />
+      <ChyronHolder text={chyronText} show={showChyron} />
 
       {/* Ticker - Bottom */}
       <Ticker hashtag={hashtag} url={url} />

@@ -46,7 +46,7 @@ interface ProgramAudioBusState {
   meterContext: AudioContext | null;
   meterSource: AudioNode | null;
   meterAnalyser: AnalyserNode | null;
-  meterBuffer: Float32Array | null;
+  meterBuffer: Float32Array<ArrayBuffer> | null;
   lastSignalLevel: number;
   meterUsesMediaElementFallback: boolean;
   meterEnvelopeUrl: string;

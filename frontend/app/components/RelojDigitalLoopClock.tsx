@@ -307,7 +307,7 @@ export default function RelojDigitalLoopClock({
       {(titleText !== '' || ctaText !== '') && (
         <div id='lower-third'>
           {ctaText !== '' && (
-            <div id='cta' className={activeCtaItem?.mode === 'in' ? 'in-anim' : activeCtaItem?.mode === 'out' ? 'out' : ''}>
+            <div id='cta'>
               {ctaText}
             </div>
           )}

@@ -35,7 +35,7 @@ import {
 import RelojClone from '../components/RelojClone';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
-import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
+import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import {
@@ -174,7 +174,7 @@ interface InstantAudioRuntimeState {
   baseVolume: number;
   meterSource: AudioNode | null;
   meterAnalyser: AnalyserNode | null;
-  meterBuffer: Float32Array | null;
+  meterBuffer: Float32Array<ArrayBuffer> | null;
   meterUsesMediaElementFallback: boolean;
 }
 

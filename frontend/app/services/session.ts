@@ -18,11 +18,13 @@ function readStoredTestSession(): AppSession | null {
     ) as
       | (AppSession & { expiresAt?: string })
       | null;
+    const expiresAt = Date.parse(stored?.expiresAt ?? '');
     if (
       !stored?.token ||
       !stored.userSub ||
       !stored.expiresAt ||
-      Date.parse(stored.expiresAt) <= Date.now() + 30_000
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now() + 30_000
     ) {
       return null;
     }
