@@ -137,7 +137,7 @@ describe('MediaGroupsService application boundary', () => {
     });
   });
 
-  it.each([undefined, null, []])(
+  it.each([undefined, null, []].map((value) => [value] as const))(
     'creates an empty group without querying or inserting media: %p',
     async (mediaIds) => {
       const f = fixture();
@@ -167,16 +167,17 @@ describe('MediaGroupsService application boundary', () => {
     },
   );
 
-  it.each(['3', {}, [0], [-1], [1.1], [NaN], [Infinity], ['not-an-id']])(
-    'rejects invalid media input: %p',
-    async (mediaIds) => {
-      const f = fixture();
-      await expect(
-        f.service.create({ name: 'Invalid', mediaIds: mediaIds as any }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(f.prisma.$transaction).not.toHaveBeenCalled();
-    },
-  );
+  it.each(
+    ['3', {}, [0], [-1], [1.1], [NaN], [Infinity], ['not-an-id']].map(
+      (value) => [value] as const,
+    ),
+  )('rejects invalid media input: %p', async (mediaIds) => {
+    const f = fixture();
+    await expect(
+      f.service.create({ name: 'Invalid', mediaIds: mediaIds as any }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(f.prisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it('rejects unknown media before writing a group', async () => {
     const f = fixture();

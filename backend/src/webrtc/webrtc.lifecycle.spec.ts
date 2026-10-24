@@ -404,6 +404,29 @@ describe('WebrtcService invitation/session and LiveKit boundary', () => {
     ).toEqual({ activeSessionId: joined.sessionToken.split('.')[1] });
   });
 
+  it.each([
+    { returnAudioBus: null, canSubscribe: false },
+    { returnAudioBus: 'master', canSubscribe: true },
+  ])(
+    'limits no-video guest subscriptions to the configured audio return: %p',
+    async ({ returnAudioBus, canSubscribe }) => {
+      const f = fixture();
+      f.invitation().returnVideo = 'none';
+      f.invitation().returnAudioBus = returnAudioBus;
+      const joined = await f.service.redeemInvitation(
+        invitationToken,
+        undefined,
+      );
+      const claims = await new TokenVerifier(
+        config.LIVEKIT_API_KEY,
+        config.LIVEKIT_API_SECRET,
+      ).verify(joined.token);
+      expect(claims.video?.canSubscribe).toBe(canSubscribe);
+      expect(claims.video?.canPublish).toBe(true);
+      expect(claims.video?.room).toBe('alcantara-news');
+    },
+  );
+
   it.each([undefined, '', 'only-id', `${id}.secret.extra`, 'unknown.secret'])(
     'rejects malformed or missing invitation credentials: %p',
     async (token) => {

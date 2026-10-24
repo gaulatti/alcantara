@@ -1,193 +1,181 @@
 # Clouseau integration status
 
-This is installation preparation, not a working CI acceptance gate. The resumed
-audit on 2026-10-24 refreshed protected central Clouseau main to
-`7d350031a5172282fae462cdaa2416c424c5c16f`, engine content digest
-`495da50549927a87e46227504505278932c6b437a67a1eeffddb5c3abb8f9768`.
-The authoritative interface is
-[Clouseau local review](https://github.com/gaulatti/clouseau/blob/7d350031a5172282fae462cdaa2416c424c5c16f/docs/local-review.md)
-and its immutable source, not an unreleased development branch.
+This branch prepares the installation; it is not a working protected acceptance
+path yet. The audited released engine is Clouseau
+`c4e07381a288fc74200fd712f04ac3265ef2184a`, content digest
+`1eaed29fd22aa45f111b5a8ed37da2299576e303b80743ab846ef53848c680e7`.
+Its immutable cache checkout was verified clean. Use the
+[released interface](https://github.com/gaulatti/clouseau/blob/c4e07381a288fc74200fd712f04ac3265ef2184a/docs/local-review.md),
+not an unmerged central branch or a copied review engine.
 
-## Installed locally
+## Local installation and application scope
 
-Bastille's startup updater refreshes the public shared Clouseau installation
-and user-wide skill independently of CI. Repository instructions require local
-review, investigation, repair, final-revision review, and signed-evidence
-publication before a ready PR. Local review uses authenticated Codex or Claude
-Code accounts and needs no CI provider API key.
+Bastille's startup updater refreshes the public shared Clouseau source and
+user-wide skill independently of CI. The managed-standard refresh succeeded at
+Bastille `6fab28b11662a6b1b6f1fa0c3e0273278538d721`. Private Bastille access
+is not required: checked-in standards remain usable and the public bootstrap
+still runs. The global installer creates no Actions jobs, provider secrets,
+signing identities, or branch rules. Supported local harnesses are authenticated
+Codex and Claude Code; they require no CI provider API keys.
 
-The current managed-standard refresh succeeded at Bastille
-`6fab28b11662a6b1b6f1fa0c3e0273278538d721`. Private Bastille availability is
-not a prerequisite: the checked-in rules remain usable, and the public Clouseau
-bootstrap still runs. Global installation creates no provider secrets or CI jobs.
+Both agent instruction files require reading the accepted requirement and
+purpose, complete verification, local shared review, investigation and repairs,
+review of the final changed revision, and eligible signed-evidence publication
+before opening a ready PR with the returned marker in its initial body.
 
-## Existing repository verification
+The audited accepted default branch was
+`8a4cb2a2132810e36ca3e73ff2147ae7f5207771`. This pnpm workspace uses Node 22
+and pnpm 9. Product application inventory comprises every runtime source under
+`backend/src` (NestJS/Fastify/Prisma, 112 native entries including a purely typed
+module) and `frontend/app` (React Router/Vite, 187 files). Colocated tests and
+`.d.ts` declarations are not application code. The separate `infra/aws` package
+contains deployment definitions; its existing local static tests and TypeScript
+build remain verification requirements, separately from product runtime coverage.
+No CDK CLI or AWS operation is part of the local recipe.
 
-The accepted default branch audited was
-`8a4cb2a2132810e36ca3e73ff2147ae7f5207771`. The project is a pnpm workspace
-with a NestJS/Fastify/Prisma backend, React Router/Vite frontend, and TypeScript
-AWS infrastructure definitions. Existing CI uses Node 22 and pnpm 9.
+## Native verification recipe
 
-The backend PR workflow installs the workspace with a frozen lockfile, generates
-Prisma, applies migrations to disposable PostgreSQL 17, runs Jest, exercises
-metrics/media-label concurrency end-to-end tests, tests deployment contracts,
-builds the backend and infrastructure definitions, and parses an authenticated
-Prometheus scrape with `promtool`. Frontend tests currently execute in the
-production deployment workflow; there is no equivalent protected frontend PR
-gate. Native tooling is Jest/Istanbul for backend coverage and Vitest/V8 for
-frontend coverage. The preparation branch adds native frontend instrumentation;
-both package configurations enforce exact 100% line and branch coverage and fail
-while application counters remain uncovered.
+The proposed `.clouseau-local.json` uses released version 2: separate untouched
+native Istanbul JSON reports and explicit nonoverlapping product source roots.
+The shared parser now supports this inventory, colocated test exclusions, and
+genuine empty native maps for type-only modules. Earlier single-root and
+empty-map limitations no longer apply to this audited release.
 
-At this base, the corrected inventory has 111 executable backend application
-files plus one declaration-only file, and 187 frontend application files.
-Declaration-only files and colocated tests are not application code. New tests
-do not narrow that inventory. These counts establish scope, not a coverage pass.
-
-The clean-base backend measurement used Node 22.22.0, pnpm 9.15.9, Prisma
-generation, and the repository's Jest command with native JSON and JSON-summary
-coverage reporters. All 55 suites and 323 tests passed. Native application
-coverage was **4,542/8,040 lines** and **3,405/6,662 branches**, below the required
-exact 100%. The report contained 112 entries, including a declaration-only entry
-that the shared checker rejects; shared coverage acceptance did not pass.
-Frontend type generation completed, but TypeScript initially failed with 16
-existing diagnostics. The resumed branch repairs those type contracts without
-changing output behavior: Web Audio buffers identify their actual ArrayBuffer
-backing, optional browser media capture is declared explicitly, Redux actions
-satisfy the installed Redux contract, sequence duration accumulation is numeric,
-and unsupported renderer props are no longer read or passed. Node 22 frontend
-type generation, TypeScript and production build then passed. Complete exact
-coverage remains below 100%.
-
-The default frontend test run passed 144 tests and timed out on two. A complete
-rerun with at most two workers passed all 36 files and 146 tests without changing
-tests, assertions, or timeouts. Both logs were retained. This distinguishes the
-resource-sensitive test run from the original typecheck and coverage gaps.
-
-The resumed work adds tests at actual public boundaries: Program rendering and
-SSE/poll reconciliation, Preview isolation, scene cuts and transition timing,
-audio playback/fades and analyser output, countdown activation authority,
-caption replacement, real Redux logout, persisted sequences, session lifecycle,
-API error handling, and backend transaction/scene/chart/upload/WebSocket paths.
-Two existing Node-test files were not discovered by the frontend's Vitest
-command. Their assertions now run through that supported runner, including the
-out-of-order staging regression.
-
-The session tests demonstrated a real malformed-expiry defect before repair:
-`Date.parse` could return `NaN`, which escaped the old expiry comparison and
-reused a cached local-test token. The finite-expiry validation now rejects it
-and obtains a fresh session. The failing-before and passing-after evidence is
-retained outside the checkout. No production credential or provider key is used.
-
-Run the native gates from the repository root:
+Run the complete local recipe independently of Actions:
 
 ```sh
-pnpm --dir backend run test:cov --runInBand
-pnpm --dir backend run test:e2e
-pnpm --dir frontend run test:coverage
-pnpm --dir frontend run typecheck
-pnpm --dir frontend run build
+node scripts/verify-local.mjs
 ```
 
-Use the repository's Node 22 and pnpm 9 toolchain. Native reports are written to
-the ignored package `coverage/` directories. A failed exact-coverage command is
-an installation blocker even when all behavioral tests passed. Coverage output
-is diagnostic data; no consumer-specific coverage checker or translated report
-is installed.
+Prerequisites are installed workspace dependencies, Node 22, pnpm 9, and a local
+Docker context exposed through a Unix socket. The verifier creates one unique,
+disposable PostgreSQL 17 container with an in-memory data directory and an
+explicit free localhost port, applies the real migrations, runs all native tests,
+coverage, type checks and builds, then parses the authenticated e2e metrics scrape
+with the existing CI's pinned Prometheus 3.9.0 `promtool`. It always removes only
+its own container. It fails if any command fails, and removes prior native
+reports and the metrics scrape before the run. It contains no provider settings,
+production credentials, review engine, or consumer-specific coverage checker.
 
-At the resumed verification checkpoint, all 509 frontend tests across 67 files
-passed, and frontend typechecking and the production build passed. Native V8
-coverage included all 187 application files and measured **13,742/34,409 lines**
-and **3,217/4,079 branches**. The latest complete backend coverage measurement
-passed 692 unit cases across 65 suites and measured **6,407/8,040 lines** and
-**4,984/6,662 branches**. Both exact-coverage commands failed honestly. Later
-focused test additions are not silently included in those frozen measurements.
-The subsequent unit-only checkpoint passed all 703 cases across the same 65
-suites. Backend end-to-end tests require `DATABASE_URL` to name a migrated,
-isolated local PostgreSQL database called `alcantara_ci`; the guards reject a
-different host or database.
+Its actual commands are:
 
-The complete backend end-to-end inventory now builds the actual candidate before
-testing it: **19 cases across all seven suites passed** against a dedicated local
-PostgreSQL 17 database after applying every migration. The application smoke test
-boots the actual compiled entry point under Node 22, including native ESM
-dependencies and the production Fastify adapter, and exercises health, normal
-local-session issuance, the real global guard, protected PostgreSQL reads and
-viewer mutation denial over HTTP. The destination tests start their own local
-Alana fixture and seed and clean their own fictional program/catalog state;
-they do not require an already running application or production credentials.
-The original missing-test-fixture failures are retained. The actual authenticated
-Prometheus scrape also passed the existing CI's pinned Prometheus 3.9.0
-`promtool check metrics` parser.
+```sh
+pnpm --dir backend run prisma:generate
+pnpm --dir backend run db:migrate:prisma
+pnpm --dir backend run test:cov --runInBand
+pnpm --dir backend run test:e2e --runInBand
+pnpm --dir backend run test:deployment
+pnpm --dir frontend run typecheck
+pnpm --dir frontend run build
+pnpm --dir frontend run test:coverage
+pnpm --dir infra/aws exec jest --runInBand
+pnpm --dir infra/aws run build
+```
 
-Native TypeScript branch accounting still needs a producer-level investigation:
-the default Jest/Istanbul and native Jest V8 reports include emitted decorator
-metadata alternatives at original constructor lines. These are not repaired by
-artificially erasing imported classes or editing counters. Any adopted producer
-must instrument actual source through standard tooling, retain complete native
-maps and preserve real Nest dependency injection and the end-to-end tests.
+Native reports remain in ignored package `coverage/` directories. Exact 100%
+lines and branches are enforced by both native test commands and the shared
+Clouseau parser. Neither application root can compensate for the other's gaps.
+The accepted protected base must supply this recipe before ordinary local
+review; proposed configuration cannot authorize itself.
 
-## Shared capabilities required before acceptance
+Backend coverage instruments authored TypeScript with native Istanbul before
+real TypeScript compilation. This preserves actual source branches while keeping
+Nest constructor metadata, instead of counting compiler-generated metadata
+alternatives as application decisions. The same producer runs unit and e2e
+contexts. The stock Node child entry point uses an instrumented compiled tree;
+its untouched native counters are merged with Istanbul's standard map merger
+before Jest emits the native report. Normal e2e execution continues to build and
+boot the uninstrumented candidate. Source-map tests check authored locations,
+real branches, constructor metadata, type-only modules, and a real Node child
+with identical native statement and branch maps. No counters are reinterpreted
+or removed. Frontend coverage uses the native Vitest V8 provider with its supported
+`experimentalAstAwareRemapping` option. The [versioned coverage guide](https://github.com/vitest-dev/vitest/blob/v3.2.7/docs/guide/coverage.md)
+and installed types document this source-aware producer; its complete 187-file
+report is accepted by the shared inventory checker. It measures authored code
+and exposes real branch alternatives instead of counting comments, type-only
+syntax and JSX formatting as executable lines. No coverage is waived.
 
-1. The local recipe requires a single native coverage report and a single source
-   directory. Its Istanbul inventory recursively includes every JS/TS file under
-   that directory, including colocated tests, and has no supported multi-root
-   application inventory. Alcantara needs complete separate backend/frontend
-   inventories and native reports without dependencies, test code, or uncovered
-   application files being misclassified. Do not supply a backend-only recipe,
-   fabricate a combined report, or copy a consumer coverage checker.
-   The initial backend report included `runtime-secret-contract.d.ts` with
-   empty counters and was rejected. Native Jest collection now omits only
-   declaration-only files, producing 111 executable source entries. That repair
-   preserves the full application inventory; the shared multi-root and colocated
-   test inventory limitation remains.
-2. No recipe, trusted CI policy, or enrolled signing identity exists on the
-   accepted base. The released local CLI requires those accepted-base inputs
-   and provides no initial-installation review/enrollment command. Proposed
-   configuration cannot authorize itself. Initial trust enrollment and ordinary
-   application approval must remain separate.
-3. The released shared integration still documents fixed reviewed engine pins;
-   no automatic protected-main engine resolver is available in the accepted
-   interface. The refreshed release does include code-owner-only automatic merge,
-   review convergence, and explicit completeness manifests. Those central
-   capabilities must not be listed as missing, but their hosted consumer path
-   has not yet been installed or proved here. Consumer-specific replacements
-   remain outside the shared contract.
+The combined native child-coverage path passed the complete 1,083-case backend
+measurement, including every e2e suite. The new disposable-database orchestration
+still needs its complete invocation verified. Neither passing tests nor a passing
+producer fixture compensates for the remaining exact-coverage failures.
 
-## Repository controls still required
+## Measured verification evidence
 
-The accepted-base audit found no CODEOWNERS, branch protection, or repository
-rulesets. GitHub lists `gaulatti` as the sole collaborator and administrator;
-accepted-branch history identifies the same existing maintainer. The proposed
-`.github/CODEOWNERS` therefore assigns every path and the ownership definition
-itself to `@gaulatti`. No existing path or team ownership was replaced. This
-proposal grants no authority until accepted on the protected base.
+Frozen diagnostic checkpoints are distinct from later focused additions:
+
+| Checkpoint                                           | Behavioral tests        | Native lines    | Native branches |
+| ---------------------------------------------------- | ----------------------- | --------------- | --------------- |
+| Accepted-base backend, default emitted-code producer | 323 passing / 55 suites | 4,542 / 8,040   | 3,405 / 6,662   |
+| Source-first backend unit checkpoint                 | 718 passing / 66 suites | 5,877 / 7,115   | 4,757 / 6,150   |
+| Complete frontend V8 checkpoint                      | 509 passing / 67 files  | 13,742 / 34,409 | 3,217 / 4,079   |
+
+Both exact-coverage commands failed honestly. The frozen released shared checker
+accepted both complete native inventories and rejected the actual gaps: 612
+uncovered backend lines and 901 branches, plus 6,772 uncovered frontend lines
+and 6,428 branches. Later focused tests are not included
+in these counters until a new complete native report is measured. An Istanbul
+frontend comparison was also retained, but its incomplete source inventory was
+not adopted.
+
+Frontend type generation, TypeScript and production build passed after repairing
+16 existing type-contract diagnostics. Meaningful tests also demonstrated a
+malformed local-test session expiry defect: `Date.parse` could return `NaN` and
+reuse an invalid cached token. The narrowly scoped finite-expiry repair has
+failing-before and passing-after evidence. Further tests cover actual Program
+and Control route rendering, scene/transition and event reconciliation, audio,
+session lifecycle, editor controls, and backend lifecycle/transaction boundaries.
+Two previously undiscovered Node-test files now run their existing assertions
+through the supported frontend runner.
+
+All seven backend e2e suites passed, **19 tests**, against isolated local
+PostgreSQL 17 after every migration. Tests boot the actual compiled Fastify entry
+point under stock Node 22, exercise normal local-session issuance and real global
+authorization, and make protected PostgreSQL reads. Destination tests own their
+fictional catalog/program data and local Alana fixture, including cleanup.
+The actual authenticated Prometheus scrape passed `promtool check metrics`
+from `prom/prometheus:v3.9.0`, image digest
+`sha256:3ea2ed3b8cdfe3ff78aa05473a7ad36b916bdf2464c83b06bcd37c1a67620233`.
+Failed reviews, original fixture failures and alternate-producer diagnostics are
+retained outside source control. No test is skipped to manufacture acceptance.
+
+## Protected installation and hosted proof still required
+
+The accepted base has no local recipe, trusted Clouseau policy, or enrolled
+signing identity. Initial trust installation remains separate from ordinary PR
+approval and must use the shared supported bootstrap. The released engine
+includes owner-only automatic merge, convergence and completeness manifests;
+their hosted path is not yet installed or proved in this repository. The audited
+release still documents fixed reviewed engine pins. Automatic protected-main
+engine upgrades must use a released shared resolver, rather than a competing
+consumer updater.
+
+The effective accepted-base audit found no CODEOWNERS, branch protection or
+rulesets. GitHub identifies `gaulatti` as the sole collaborator/administrator;
+accepted history identifies the same maintainer. Proposed `.github/CODEOWNERS`
+therefore assigns all paths and itself to `@gaulatti`, replacing no existing
+ownership boundary. Proposed ownership cannot authorize its own change.
 
 Auto-merge is enabled, but Actions approving reviews are disabled. No Clouseau
-provider secret is installed. Required checks and fresh approval protection
-must be added through the released installation path without waiving tests,
-adding bypasses, or removing unrelated controls. The current release can enforce
-the ownership rule; unattended merge remains uninstalled pending the complete
-verification, accepted-base bootstrap and trusted CI integration.
-
-No ready installation PR or proof PR has been opened: initial local review and
-complete native coverage cannot yet satisfy the released protocol. No approval,
-protected merge, receipt reuse, paid CI review, or deployment is claimed.
+CI provider secret is installed. Required verification/acceptance checks and
+fresh approval protection remain to be installed without removing unrelated
+controls, adding bypasses, or waiving coverage. No ready installation/proof PR,
+receipt reuse, paid fallback review, bot approval, protected merge, or successful
+unattended proof is claimed.
 
 ## Deployment and documentation
 
 Backend and frontend push-to-main workflows perform real production AWS/SSM/S3
-operations for their respective path filters. A coverage repair under application
-paths would therefore require deployment authorization before a deployable PR.
-No production operation was run for this installation audit.
+operations for their path filters. Application-path installation changes require
+deployment authorization before opening an automatically deployable PR. No
+production operation was run for this task.
 
 The last observed successful deployments both used
 `43190938039d975f83751efddde20fc1e23456b0`:
 [backend run 38093068080](https://github.com/gaulatti/alcantara/actions/runs/38093068080)
 and [frontend run 38093068071](https://github.com/gaulatti/alcantara/actions/runs/38093068071).
-They are historical delivery evidence and do not establish deployment of the
-newer audited default branch or live health. No deployment-bound documentation
-publisher is installed. The public repository has the wiki feature enabled,
-but the startup updater could not access its wiki remote. In-repository
-documentation is maintained until a real wiki and supported publication route
-are available. Documentation publication and ticket closeout remain unproved.
+Those historical runs do not prove deployment of this candidate or current live
+health. No deployment-bound documentation publisher is installed. GitHub has the
+public wiki feature enabled, but the startup updater could not access its wiki
+remote; documentation is maintained here until a real supported publication
+route is available. Documentation publication and ticket closeout remain unproved.

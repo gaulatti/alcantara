@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "base_branch": "main",
+  "readme": "README.md",
+  "repository_policy": "AGENTS.md",
+  "verification": [["node", "scripts/verify-local.mjs"]],
+  "coverage": [
+    {
+      "format": "istanbul",
+      "report": "backend/coverage/coverage-final.json",
+      "source_directory": "backend/src"
+    },
+    {
+      "format": "istanbul",
+      "report": "frontend/coverage/coverage-final.json",
+      "source_directory": "frontend/app"
+    }
+  ]
+}

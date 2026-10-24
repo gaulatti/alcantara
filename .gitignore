@@ -16,6 +16,7 @@ dist/
 build/
 .react-router/
 /backend/coverage/
+/backend/.coverage-dist/
 /frontend/coverage/
 
 # IDE

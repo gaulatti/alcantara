@@ -1008,7 +1008,7 @@ describe('ProgramService persisted program workflows', () => {
     ).toEqual(preserved.mixerSettings);
   });
 
-  it.each([[], 'not an object', 1])(
+  it.each([[], 'not an object', 1].map((value) => [value] as const))(
     'rejects malformed audio-bus input: %p',
     async (input) => {
       const f = fixture();
