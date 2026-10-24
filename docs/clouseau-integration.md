@@ -95,24 +95,35 @@ report is accepted by the shared inventory checker. It measures authored code
 and exposes real branch alternatives instead of counting comments, type-only
 syntax and JSX formatting as executable lines. No coverage is waived.
 
-The combined native child-coverage path passed the complete 1,083-case backend
-measurement, including every e2e suite. The new disposable-database orchestration
-still needs its complete invocation verified. Neither passing tests nor a passing
-producer fixture compensates for the remaining exact-coverage failures.
+The disposable-database backend orchestration was executed end to end: Prisma
+generation/migrations, application build, five native-producer fixtures, all
+1,513 combined native tests, all 34 normal e2e tests, 18 deployment-contract
+tests, and the real authenticated metrics parser passed. Its unique PostgreSQL
+container was removed. The command returned failure because exact coverage is
+still below 100%; passing behavioral tests do not waive that requirement.
+
+The accepted recipe runs the backend subcommand with its own database lifecycle,
+then uses separate supported argument arrays for frontend type checking, build,
+coverage and static infrastructure verification. This keeps each command within
+the shared runner's per-command timeout. The convenience command without the
+`backend` argument runs all the same checks independently of Actions.
 
 ## Measured verification evidence
 
 Frozen diagnostic checkpoints are distinct from later focused additions:
 
-| Checkpoint                                           | Behavioral tests        | Native lines    | Native branches |
-| ---------------------------------------------------- | ----------------------- | --------------- | --------------- |
-| Accepted-base backend, default emitted-code producer | 323 passing / 55 suites | 4,542 / 8,040   | 3,405 / 6,662   |
-| Source-first backend unit checkpoint                 | 718 passing / 66 suites | 5,877 / 7,115   | 4,757 / 6,150   |
-| Complete frontend V8 checkpoint                      | 509 passing / 67 files  | 13,742 / 34,409 | 3,217 / 4,079   |
+| Checkpoint                                           | Behavioral tests          | Native lines    | Native branches |
+| ---------------------------------------------------- | ------------------------- | --------------- | --------------- |
+| Accepted-base backend, default emitted-code producer | 323 passing / 55 suites   | 4,542 / 8,040   | 3,405 / 6,662   |
+| Source-first backend unit checkpoint                 | 718 passing / 66 suites   | 5,877 / 7,115   | 4,757 / 6,150   |
+| Combined source-first backend checkpoint             | 1,083 passing / 78 suites | 6,503 / 7,115   | 5,249 / 6,150   |
+| Executed disposable-database backend recipe          | 1,513 passing / 83 suites | 6,871 / 7,115   | 5,586 / 6,150   |
+| Complete frontend legacy V8 checkpoint               | 509 passing / 67 files    | 13,742 / 34,409 | 3,217 / 4,079   |
+| Frontend source-aware native V8                      | 589 passing / 69 files    | 4,970 / 11,742  | 4,259 / 10,687  |
 
 Both exact-coverage commands failed honestly. The frozen released shared checker
-accepted both complete native inventories and rejected the actual gaps: 612
-uncovered backend lines and 901 branches, plus 6,772 uncovered frontend lines
+accepted both complete native inventories and rejected the actual gaps: 244
+uncovered backend lines and 564 branches, plus 6,772 uncovered frontend lines
 and 6,428 branches. Later focused tests are not included
 in these counters until a new complete native report is measured. An Istanbul
 frontend comparison was also retained, but its incomplete source inventory was
@@ -128,11 +139,14 @@ session lifecycle, editor controls, and backend lifecycle/transaction boundaries
 Two previously undiscovered Node-test files now run their existing assertions
 through the supported frontend runner.
 
-All seven backend e2e suites passed, **19 tests**, against isolated local
+All eight backend e2e suites passed, **34 tests**, against isolated local
 PostgreSQL 17 after every migration. Tests boot the actual compiled Fastify entry
 point under stock Node 22, exercise normal local-session issuance and real global
 authorization, and make protected PostgreSQL reads. Destination tests own their
 fictional catalog/program data and local Alana fixture, including cleanup.
+Native CLI tests additionally verify bounded stdin, redacted preflight failures,
+private export/no-overwrite behavior and real PostgreSQL report/apply/idempotency
+while preserving the original subject. No live identity migration is performed.
 The actual authenticated Prometheus scrape passed `promtool check metrics`
 from `prom/prometheus:v3.9.0`, image digest
 `sha256:3ea2ed3b8cdfe3ff78aa05473a7ad36b916bdf2464c83b06bcd37c1a67620233`.
@@ -158,7 +172,7 @@ workflows. The source before removal remains available at
 `12cb3d42695ef071592a294ae1811a3c542fb9d9`; full symbol references, exact source
 hashes, original bytes and deleted declaration ranges are retained with the task's
 external diagnostics. This cleanup is a separate change from installing the
-native producer. The frozen coverage table predates this removal and does not
+native producer. The frozen frontend coverage rows predate this removal and do not
 silently claim new totals.
 
 ## Protected installation and hosted proof still required

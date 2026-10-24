@@ -3,7 +3,14 @@
   "base_branch": "main",
   "readme": "README.md",
   "repository_policy": "AGENTS.md",
-  "verification": [["node", "scripts/verify-local.mjs"]],
+  "verification": [
+    ["node", "scripts/verify-local.mjs", "backend"],
+    ["pnpm", "--dir", "frontend", "run", "typecheck"],
+    ["pnpm", "--dir", "frontend", "run", "build"],
+    ["pnpm", "--dir", "frontend", "run", "test:coverage"],
+    ["pnpm", "--dir", "infra/aws", "exec", "jest", "--runInBand"],
+    ["pnpm", "--dir", "infra/aws", "run", "build"]
+  ],
   "coverage": [
     {
       "format": "istanbul",

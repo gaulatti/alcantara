@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const container = `alcantara-verification-${randomUUID()}`;
 const scrape = join(root, "backend/coverage/authenticated-metrics.prom");
+const backendOnly = process.argv[2] === "backend";
 let created = false;
 let failed = false;
 
@@ -37,6 +38,9 @@ function capture(command, args) {
 }
 
 try {
+  if (process.argv.length > (backendOnly ? 3 : 2)) {
+    throw new Error("Usage: node scripts/verify-local.mjs [backend]");
+  }
   if (Number(process.versions.node.split(".")[0]) !== 22) {
     throw new Error("Repository verification requires Node 22");
   }
@@ -115,11 +119,14 @@ try {
   if (!ready) throw new Error("Isolated PostgreSQL did not become ready");
 
   mkdirSync(dirname(scrape), { recursive: true });
-  for (const artifact of [
+  const previousArtifacts = [
     scrape,
     join(root, "backend/coverage/coverage-final.json"),
-    join(root, "frontend/coverage/coverage-final.json"),
-  ]) {
+    ...(!backendOnly
+      ? [join(root, "frontend/coverage/coverage-final.json")]
+      : []),
+  ];
+  for (const artifact of previousArtifacts) {
     rmSync(artifact, { force: true });
   }
   const env = {
@@ -134,11 +141,15 @@ try {
     ["--dir", "backend", "run", "test:cov", "--runInBand"],
     ["--dir", "backend", "run", "test:e2e", "--runInBand"],
     ["--dir", "backend", "run", "test:deployment"],
-    ["--dir", "frontend", "run", "typecheck"],
-    ["--dir", "frontend", "run", "build"],
-    ["--dir", "frontend", "run", "test:coverage"],
-    ["--dir", "infra/aws", "exec", "jest", "--runInBand"],
-    ["--dir", "infra/aws", "run", "build"],
+    ...(!backendOnly
+      ? [
+          ["--dir", "frontend", "run", "typecheck"],
+          ["--dir", "frontend", "run", "build"],
+          ["--dir", "frontend", "run", "test:coverage"],
+          ["--dir", "infra/aws", "exec", "jest", "--runInBand"],
+          ["--dir", "infra/aws", "run", "build"],
+        ]
+      : []),
   ];
   for (const args of commands) run("pnpm", args, { env });
   if (!existsSync(scrape))
