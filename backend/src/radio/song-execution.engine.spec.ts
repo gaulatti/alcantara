@@ -2670,4 +2670,145 @@ describe('SongExecutionEngine bounded history and delayed successor ownership', 
       expect(f.nowPlayingPublisher.publishStopped).not.toHaveBeenCalled();
     },
   );
+
+  it.each(['play', 'storage-failure', 'stale-active-head'] as const)(
+    'handles a queue arriving during the station bumper without losing the advanced playlist cursor: %s',
+    async (outcome) => {
+      const f = fixture();
+      f.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+      f.engine.handlePalazzoSnapshot(
+        'radio-1',
+        idleSnapshot('instance', 'boot', 1),
+      );
+      await flush(20);
+      f.radioService.getRadioSettings.mockResolvedValue({
+        bumperEnabled: true,
+        bumperInterval: 1,
+        bumperInstantIds: [11],
+        bumperMode: 'sequential',
+      });
+      f.prisma.instant.findUnique.mockResolvedValue({
+        audioUrl: 'https://media.test/ident.mp3',
+        name: 'Ident',
+      });
+      f.engine.handlePalazzoEvent('radio-1', {
+        type: 'track.ended',
+        data: { playbackRequestId: f.radioService.playSong.mock.calls[0][4] },
+      });
+      await flush(20);
+      expect(f.radioService.playInstant).toHaveBeenCalledTimes(1);
+      const queue =
+        outcome === 'stale-active-head'
+          ? [
+              {
+                id: 'restored-head',
+                itemId: 'removed-song',
+                enqueuedAt: Date.now(),
+                active: true,
+                playbackRequestId: 'restored-request',
+              },
+            ]
+          : await f.engine.enqueueSong('radio-1', 'song-1');
+      if (outcome === 'stale-active-head') {
+        // A persisted queue can outlive a playlist edit or a process restart.
+        // Ingest that real serialized state through the public update boundary.
+        f.setPersistedProgramState({ songQueue: queue });
+        f.engine.handleQueueUpdated('radio-1', queue);
+      }
+      if (outcome === 'storage-failure')
+        f.prisma.programState.update.mockRejectedValueOnce(
+          new Error('late cursor write unavailable'),
+        );
+      expect(f.radioService.playSong).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(8000);
+      await flush(30);
+      if (outcome === 'play') {
+        expect(f.getPersistedProgramState().songSequence).toMatchObject({
+          activeItemId: 'song-2',
+        });
+        expect(
+          f.radioService.playSong.mock.calls.map((call) => call[1]),
+        ).toEqual([
+          'https://example.test/song-1.mp3',
+          'https://example.test/song-1.mp3',
+        ]);
+        expect(f.engine.getPlaybackState('radio-1')).toMatchObject({
+          queueEntryId: queue[0].id,
+        });
+        expect(f.nowPlayingPublisher.publishStopped).not.toHaveBeenCalled();
+      } else {
+        expect(f.radioService.playSong).toHaveBeenCalledTimes(1);
+        expect(f.getPersistedProgramState().songQueue).toEqual(queue);
+        expect(f.nowPlayingPublisher.publishStopped).toHaveBeenCalledWith(
+          'radio-1',
+        );
+        if (outcome === 'storage-failure')
+          expect(f.metrics.recordSongQueueAction).toHaveBeenCalledWith(
+            'persistence-failed',
+          );
+      }
+    },
+  );
+
+  it('keeps TV playback independent of Palazzo status, snapshots and levels', async () => {
+    const f = createEngine({ reconciled: true, tv: true });
+    engines.push(f.engine);
+    const broadcast = jest.fn();
+    f.engine.setBroadcastHandler(broadcast);
+    f.engine.handleManualSong(
+      'tv-1',
+      'https://media.test/operator.mp3',
+      'TV operator',
+      undefined,
+      2000,
+    );
+    await flush();
+    broadcast.mockClear();
+    f.engine.handlePalazzoStatus('tv-1', {
+      programId: 'radio-1',
+      programType: 'radio',
+      palazzoUrl: 'https://radio.example',
+      instanceId: 'foreign',
+      connection: 'unavailable',
+      lastEventAt: null,
+      lastSnapshotAt: null,
+      degraded: true,
+      detail: 'Not a radio leg',
+    });
+    f.engine.handlePalazzoSnapshot(
+      'tv-1',
+      playingSnapshot(
+        'foreign',
+        'boot',
+        1,
+        'foreign-request',
+        'https://media.test/foreign.mp3',
+      ),
+    );
+    f.engine.handlePalazzoEvent('tv-1', {
+      type: 'audio.levels',
+      data: idleSnapshot('foreign', 'boot', 2).levels,
+    });
+    expect(f.engine.getPlaybackState('tv-1')).toMatchObject({
+      audioUrl: 'https://media.test/operator.mp3',
+      title: 'TV operator',
+      telemetryStale: false,
+    });
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(f.radioService.playSong).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a foreign confirmed track id without adopting or commanding an unrelated song', () => {
+    const f = fixture();
+    f.engine.handleSequenceUpdated('radio-1', null);
+    f.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: 'foreign-confirmed' },
+    });
+    expect(f.metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-mismatch',
+    );
+    expect(f.engine.getPlaybackState('radio-1')).toBeNull();
+    expect(f.radioService.playSong).not.toHaveBeenCalled();
+  });
 });

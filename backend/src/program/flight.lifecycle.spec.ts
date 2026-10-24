@@ -100,15 +100,13 @@ function fixture() {
       findMany: jest.fn(async () => [song]),
     },
     instant: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            id: 12,
-            enabled: true,
-            audioUrl: 'https://media.example/ident.mp3',
-          },
-        ]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 12,
+          enabled: true,
+          audioUrl: 'https://media.example/ident.mp3',
+        },
+      ]),
     },
     scene: {
       findUnique: jest.fn(async () => scene),
@@ -1034,97 +1032,239 @@ describe('FlightService public lifecycle and clock boundary', () => {
 
   it('rejects generation/filler previews for missing drafts or programs without a radio leg', async () => {
     const f = setup();
-    const rules = { slots: [{ labelId: 'music', count: 1, clockOffsetSeconds: 0 }], artistSeparation: 0 };
-    await expect(f.service.generateTaggedLog('news', 99, { revision: 1, rules })).rejects.toBeInstanceOf(NotFoundException);
-    await expect(f.service.fillRundown('news', 99, { revision: 1, rules: { labelId: 'music', artistSeparation: 0 } })).rejects.toBeInstanceOf(NotFoundException);
+    const rules = {
+      slots: [{ labelId: 'music', count: 1, clockOffsetSeconds: 0 }],
+      artistSeparation: 0,
+    };
+    await expect(
+      f.service.generateTaggedLog('news', 99, { revision: 1, rules }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      f.service.fillRundown('news', 99, {
+        revision: 1,
+        rules: { labelId: 'music', artistSeparation: 0 },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
     f.state.type = 'tv';
-    await expect(f.service.fillRundown('news', 7, {})).rejects.toThrow('require a radio leg');
+    await expect(f.service.fillRundown('news', 7, {})).rejects.toThrow(
+      'require a radio leg',
+    );
   });
 
   it('uses prior concrete song history for tag previews and refuses an unavailable generated result before saving', async () => {
-    const f = setup(); clocked(f); f.sequence().publishedAt = null;
-    const rules = { slots: [{ labelId: 'music', count: 1, clockOffsetSeconds: 0 }], artistSeparation: 0 };
-    f.prisma.flightSequence.findMany.mockResolvedValueOnce([{ items: [{ id: 'old', kind: 'playSong', songId: 5 }, { id: 'pause', kind: 'wait' }] }]);
-    expect((await f.service.generateTaggedLog('news', 7, { revision: 1, rules })).items[0].songId).toBe(5);
-    f.prisma.song.findMany.mockResolvedValueOnce([{ id: 5, artist: 'Artist', durationMs: 1000, asset: { labels: [{ labelId: 'music', position: 0 }] } }]).mockResolvedValueOnce([]);
-    await expect(f.service.generateTaggedLog('news', 7, { revision: 1, rules })).rejects.toThrow('song unavailable');
+    const f = setup();
+    clocked(f);
+    f.sequence().publishedAt = null;
+    const rules = {
+      slots: [{ labelId: 'music', count: 1, clockOffsetSeconds: 0 }],
+      artistSeparation: 0,
+    };
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([
+      {
+        items: [
+          { id: 'old', kind: 'playSong', songId: 5 },
+          { id: 'pause', kind: 'wait' },
+        ],
+      },
+    ]);
+    expect(
+      (await f.service.generateTaggedLog('news', 7, { revision: 1, rules }))
+        .items[0].songId,
+    ).toBe(5);
+    f.prisma.song.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 5,
+          artist: 'Artist',
+          durationMs: 1000,
+          asset: { labels: [{ labelId: 'music', position: 0 }] },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    await expect(
+      f.service.generateTaggedLog('news', 7, { revision: 1, rules }),
+    ).rejects.toThrow('song unavailable');
     expect(f.prisma.flightSequence.updateMany).not.toHaveBeenCalled();
   });
 
   it('preflights filler previews against current audio and rejects missing item arrays', async () => {
-    const f = setup(); clocked(f); f.sequence().publishedAt = null;
+    const f = setup();
+    clocked(f);
+    f.sequence().publishedAt = null;
     const rules = { labelId: 'music', artistSeparation: 0 };
-    await expect(f.service.fillRundown('news', 7, { revision: 1, rules })).rejects.toThrow('items must be an array');
-    const items = [{ id: 'content', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 }, { id: 'end', kind: 'stopSong', clockOffsetSeconds: 1 }];
-    f.prisma.flightSequence.findMany.mockResolvedValueOnce([{ items: [{ id: 'old', kind: 'playSong', songId: 5 }, { id: 'pause', kind: 'wait' }] }]);
-    f.prisma.song.findMany.mockResolvedValueOnce([{ id: 5, artist: 'Artist', durationMs: 1000, asset: { labels: [{ labelId: 'music', position: 0 }] } }]).mockResolvedValueOnce([]);
-    await expect(f.service.fillRundown('news', 7, { revision: 1, rules, items })).rejects.toThrow('song unavailable');
+    await expect(
+      f.service.fillRundown('news', 7, { revision: 1, rules }),
+    ).rejects.toThrow('items must be an array');
+    const items = [
+      { id: 'content', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 },
+      { id: 'end', kind: 'stopSong', clockOffsetSeconds: 1 },
+    ];
+    f.prisma.flightSequence.findMany.mockResolvedValueOnce([
+      {
+        items: [
+          { id: 'old', kind: 'playSong', songId: 5 },
+          { id: 'pause', kind: 'wait' },
+        ],
+      },
+    ]);
+    f.prisma.song.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 5,
+          artist: 'Artist',
+          durationMs: 1000,
+          asset: { labels: [{ labelId: 'music', position: 0 }] },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    await expect(
+      f.service.fillRundown('news', 7, { revision: 1, rules, items }),
+    ).rejects.toThrow('song unavailable');
     expect(f.prisma.flightSequence.updateMany).not.toHaveBeenCalled();
   });
 
   it('validates schedule/type/loop changes and revision freshness before editing clocked drafts', async () => {
-    const f = setup(); clocked(f); f.sequence().publishedAt = null;
-    await expect(f.service.updateFlightSequence('news', 7, { revision: 99, name: 'Stale' })).rejects.toBeInstanceOf(ConflictException);
-    const changed = await f.service.updateFlightSequence('news', 7, { revision: 1, scheduledAt: '2026-01-01T13:00:00Z' });
+    const f = setup();
+    clocked(f);
+    f.sequence().publishedAt = null;
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        revision: 99,
+        name: 'Stale',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    const changed = await f.service.updateFlightSequence('news', 7, {
+      revision: 1,
+      scheduledAt: '2026-01-01T13:00:00Z',
+    });
     expect(changed.scheduledAt).toEqual(new Date('2026-01-01T13:00:00Z'));
     f.state.type = 'tv';
-    await expect(f.service.updateFlightSequence('news', 7, { revision: 2, name: 'No radio' })).rejects.toThrow('no radio leg');
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        revision: 2,
+        name: 'No radio',
+      }),
+    ).rejects.toThrow('no radio leg');
     f.state.type = 'radio';
-    await expect(f.service.updateFlightSequence('news', 7, { revision: 2, loop: true })).rejects.toThrow('cannot loop');
-    f.sequence().publishedAt = new Date(); f.prisma.song.findMany.mockResolvedValue([]);
-    await expect(f.service.updateFlightSequence('news', 7, { revision: 2, name: 'Missing media' })).rejects.toThrow('song unavailable');
+    await expect(
+      f.service.updateFlightSequence('news', 7, { revision: 2, loop: true }),
+    ).rejects.toThrow('cannot loop');
+    f.sequence().publishedAt = new Date();
+    f.prisma.song.findMany.mockResolvedValue([]);
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        revision: 2,
+        name: 'Missing media',
+      }),
+    ).rejects.toThrow('song unavailable');
   });
 
   it('keeps an on-air clock schedule immutable and rearms a clip after an accepted future-only edit', async () => {
-    const f = setup(); clocked(f, [{ id: 'clip', kind: 'instant', instantId: 12, clockOffsetSeconds: 0, durationMs: 2000 }, { id: 'end', kind: 'stopSong', clockOffsetSeconds: 10 }]);
-    await f.service.start('news'); await flush();
-    await expect(f.service.updateFlightSequence('news', 7, { revision: 1, loop: false })).rejects.toThrow('on-air log cannot change');
-    const updated = await f.service.updateFlightSequence('news', 7, { revision: 1, items: [{ id: 'clip', kind: 'instant', instantId: 12, clockOffsetSeconds: 0, durationMs: 2000 }, { id: 'end', kind: 'stopSong', clockOffsetSeconds: 5 }] });
+    const f = setup();
+    clocked(f, [
+      {
+        id: 'clip',
+        kind: 'instant',
+        instantId: 12,
+        clockOffsetSeconds: 0,
+        durationMs: 2000,
+      },
+      { id: 'end', kind: 'stopSong', clockOffsetSeconds: 10 },
+    ]);
+    await f.service.start('news');
+    await flush();
+    await expect(
+      f.service.updateFlightSequence('news', 7, { revision: 1, loop: false }),
+    ).rejects.toThrow('on-air log cannot change');
+    const updated = await f.service.updateFlightSequence('news', 7, {
+      revision: 1,
+      items: [
+        {
+          id: 'clip',
+          kind: 'instant',
+          instantId: 12,
+          clockOffsetSeconds: 0,
+          durationMs: 2000,
+        },
+        { id: 'end', kind: 'stopSong', clockOffsetSeconds: 5 },
+      ],
+    });
     expect(updated.revision).toBe(2);
     await jest.advanceTimersByTimeAsync(5000);
     expect(f.programs.resumeContinuousRotation).toHaveBeenCalledWith('news');
   });
 
   it('propagates failure to physically cut an already running clocked block before reactivation', async () => {
-    const f = setup(); clocked(f);
-    await f.service.start('news'); await flush();
-    f.programs.stopProgramSongForTimedBlock.mockRejectedValueOnce(new Error('physical stop unavailable'));
-    await expect(f.service.activateFlightSequence('news', 7)).rejects.toThrow('physical stop unavailable');
+    const f = setup();
+    clocked(f);
+    await f.service.start('news');
+    await flush();
+    f.programs.stopProgramSongForTimedBlock.mockRejectedValueOnce(
+      new Error('physical stop unavailable'),
+    );
+    await expect(f.service.activateFlightSequence('news', 7)).rejects.toThrow(
+      'physical stop unavailable',
+    );
     expect(f.service.isClockedLogRunning('news')).toBe(false);
   });
 
   it('uses GO to advance and finish nonlooping waits, while authoritative song-end feedback can loop a waiting sequence', async () => {
-    const f = setup(); f.sequence().items.push({ id: 'second', kind: 'wait', durationMs: 1000 });
-    await f.service.start('news'); await flush();
+    const f = setup();
+    f.sequence().items.push({ id: 'second', kind: 'wait', durationMs: 1000 });
+    await f.service.start('news');
+    await flush();
     await f.service.go('news');
     expect(f.sequence().activeItemId).toBe('second');
     await f.service.go('news');
     expect(f.sequence().isRunning).toBe(false);
-    f.sequence().items = [{ id: 'end-wait', kind: 'waitForSongEnd' }]; f.sequence().loop = true;
-    await f.service.start('news'); await flush();
+    f.sequence().items = [{ id: 'end-wait', kind: 'waitForSongEnd' }];
+    f.sequence().loop = true;
+    await f.service.start('news');
+    await flush();
     expect(await f.service.handleSongEnded('news')).toEqual({ ok: true });
     expect(f.sequence().isRunning).toBe(true);
   });
 
   it('loops a timed wait and ignores an in-flight completion after the operator has stopped the runtime', async () => {
-    const f = setup(); f.sequence().loop = true;
-    await f.service.start('news'); await flush();
+    const f = setup();
+    f.sequence().loop = true;
+    await f.service.start('news');
+    await flush();
     const writes = f.prisma.flightSequence.update.mock.calls.length;
     await jest.advanceTimersByTimeAsync(1000);
-    expect(f.prisma.flightSequence.update.mock.calls.length).toBeGreaterThan(writes);
+    expect(f.prisma.flightSequence.update.mock.calls.length).toBeGreaterThan(
+      writes,
+    );
     await f.service.stop('news');
     let release!: () => void;
-    f.programs.activateScene.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
-    f.sequence().items = [{ id: 'slow', kind: 'scene', sceneId: 3 }, { id: 'clip', kind: 'instant', instantId: 12 }]; f.sequence().loop = false;
-    await f.service.start('news'); await flush();
-    await f.service.stop('news'); release(); await flush();
+    f.programs.activateScene.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    f.sequence().items = [
+      { id: 'slow', kind: 'scene', sceneId: 3 },
+      { id: 'clip', kind: 'instant', instantId: 12 },
+    ];
+    f.sequence().loop = false;
+    await f.service.start('news');
+    await flush();
+    await f.service.stop('news');
+    release();
+    await flush();
     expect(f.programs.playInstant).not.toHaveBeenCalled();
     expect(f.sequence().isRunning).toBe(false);
   });
 
   it('rechecks hard-cue wall time after a backward clock adjustment instead of cutting early', async () => {
-    const f = setup(); clocked(f, [{ id: 'song', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 }, { id: 'end', kind: 'stopSong', clockOffsetSeconds: 10 }]);
-    await f.service.start('news'); await flush();
+    const f = setup();
+    clocked(f, [
+      { id: 'song', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 },
+      { id: 'end', kind: 'stopSong', clockOffsetSeconds: 10 },
+    ]);
+    await f.service.start('news');
+    await flush();
     jest.setSystemTime(new Date('2026-01-01T11:59:55Z'));
     await jest.advanceTimersByTimeAsync(10000);
     expect(f.programs.resumeContinuousRotation).not.toHaveBeenCalled();
@@ -1133,8 +1273,18 @@ describe('FlightService public lifecycle and clock boundary', () => {
   });
 
   it('rechecks clip wall time after a backward clock adjustment rather than ending the clip early', async () => {
-    const f = setup(); clocked(f, [{ id: 'clip', kind: 'instant', instantId: 12, clockOffsetSeconds: 0, durationMs: 2000 }]);
-    await f.service.start('news'); await flush();
+    const f = setup();
+    clocked(f, [
+      {
+        id: 'clip',
+        kind: 'instant',
+        instantId: 12,
+        clockOffsetSeconds: 0,
+        durationMs: 2000,
+      },
+    ]);
+    await f.service.start('news');
+    await flush();
     jest.setSystemTime(new Date('2026-01-01T11:59:59Z'));
     await jest.advanceTimersByTimeAsync(2000);
     expect(f.programs.resumeContinuousRotation).not.toHaveBeenCalled();
@@ -1143,13 +1293,213 @@ describe('FlightService public lifecycle and clock boundary', () => {
   });
 
   it('continues past an unavailable unclocked catalog song, absent scene and empty mixer patch without making up side effects', async () => {
-    const f = setup(); f.prisma.song.findUnique.mockResolvedValue(null); f.prisma.scene.findUnique.mockResolvedValue(null);
-    f.sequence().items = [{ id: 'song', kind: 'playSong', songId: 5 }, { id: 'patch', kind: 'sceneUpdate', sceneId: 3, metadataPatch: { title: 'New' } }, { id: 'mix', kind: 'mixer', mixerChange: { channelId: 'main' } }, { id: 'stop', kind: 'stopSong' }, { id: 'wait', kind: 'wait', durationMs: 1000 }];
-    await f.service.start('news'); await flush();
+    const f = setup();
+    f.prisma.song.findUnique.mockResolvedValue(null);
+    f.prisma.scene.findUnique.mockResolvedValue(null);
+    f.sequence().items = [
+      { id: 'song', kind: 'playSong', songId: 5 },
+      {
+        id: 'patch',
+        kind: 'sceneUpdate',
+        sceneId: 3,
+        metadataPatch: { title: 'New' },
+      },
+      { id: 'mix', kind: 'mixer', mixerChange: { channelId: 'main' } },
+      { id: 'stop', kind: 'stopSong' },
+      { id: 'wait', kind: 'wait', durationMs: 1000 },
+    ];
+    await f.service.start('news');
+    await flush();
     expect(f.programs.takeCatalogSongOnAir).not.toHaveBeenCalled();
     expect(f.prisma.scene.update).not.toHaveBeenCalled();
     expect(f.programs.updateProgramAudioBus).not.toHaveBeenCalled();
     expect(f.programs.takeProgramSongOffAir).toHaveBeenCalledTimes(2);
     expect(f.sequence().activeItemId).toBe('wait');
   });
+
+  it('discards superseded rapid GO operations queued behind a real in-flight scene transition', async () => {
+    const f = setup();
+    f.state.type = 'both';
+    f.sequence().items = [
+      { id: 'scene', kind: 'scene', sceneId: 3 },
+      { id: 'ident', kind: 'instant', instantId: 12 },
+      { id: 'wait', kind: 'wait', durationMs: 1000 },
+    ];
+    let releaseScene!: () => void;
+    f.programs.activateScene.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseScene = resolve;
+        }),
+    );
+    await f.service.start('news');
+    await flush();
+    const firstGo = f.service.go('news');
+    const secondGo = f.service.go('news');
+    releaseScene();
+    await Promise.all([firstGo, secondGo]);
+    await flush();
+    expect(f.programs.playInstant).toHaveBeenCalledTimes(1);
+    expect(f.sequence().activeItemId).toBe('wait');
+  });
+
+  it('edits an in-flight unclocked instant without accidentally creating a clocked clip timer', async () => {
+    const f = setup();
+    f.sequence().items = [
+      { id: 'ident', kind: 'instant', instantId: 12, durationMs: 1000 },
+      { id: 'wait', kind: 'wait', durationMs: 2000 },
+    ];
+    let releaseInstant!: () => void;
+    f.programs.playInstant.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseInstant = resolve;
+        }),
+    );
+    await f.service.start('news');
+    await flush();
+    const edited = f.service.updateFlightSequence('news', 7, {
+      name: 'Edited future log',
+    });
+    releaseInstant();
+    await edited;
+    await flush();
+    expect(f.sequence().name).toBe('Edited future log');
+    expect(f.sequence().activeItemId).toBe('wait');
+    expect(f.service.isClockedLogRunning('news')).toBe(false);
+    expect(jest.getTimerCount()).toBe(1);
+    expect(f.programs.playInstant).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])(
+    'handles a concurrently removed future cue before a previously queued GO reaches it: loop=%p',
+    async (loop) => {
+      const f = setup();
+      f.sequence().loop = loop;
+      f.sequence().items = [
+        { id: 'first', kind: 'waitForSongEnd' },
+        { id: 'future', kind: 'instant', instantId: 12 },
+      ];
+      const update = f.prisma.flightSequence.update.getMockImplementation();
+      let writes = 0;
+      let releaseWrite!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      f.prisma.flightSequence.update.mockImplementation(async (input: any) => {
+        if (
+          input.data.isRunning === true &&
+          input.data.activeItemId === 'first' &&
+          ++writes === 2
+        )
+          await gate;
+        return update(input);
+      });
+      await f.service.start('news');
+      await flush();
+      const edited = f.service.updateFlightSequence('news', 7, {
+        items: [{ id: 'first', kind: 'waitForSongEnd' }],
+      });
+      const go = f.service.go('news');
+      releaseWrite();
+      await Promise.all([edited, go]);
+      await flush();
+      expect(f.programs.playInstant).not.toHaveBeenCalled();
+      expect(f.sequence().isRunning).toBe(loop);
+      if (loop) expect(f.sequence().activeItemId).toBe('first');
+      else expect(f.programs.takeProgramSongOffAir).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('normalizes blank legacy cue metadata and rejects an absent sequence name without persistence', async () => {
+    const f = setup();
+    const result = await f.service.createFlightSequence('news', {
+      name: 'Legacy',
+      items: [
+        { id: ' ', kind: 'wait', label: ' ', transitionId: ' ', durationMs: 0 },
+      ],
+    });
+    expect(result.items[0]).toMatchObject({
+      id: expect.stringMatching(/^cue_/),
+      kind: 'wait',
+      durationMs: 0,
+    });
+    expect(result.items[0].label).toBeUndefined();
+    await expect(
+      f.service.createFlightSequence('news', {
+        name: undefined as unknown as string,
+      }),
+    ).rejects.toThrow('name is required');
+    expect(f.prisma.flightSequence.create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])(
+    'forwards a recorded voice track and explicit mix alongside its actual catalog song: clocked=%p',
+    async (scheduled) => {
+      const f = setup();
+      const song = await f.prisma.song.findUnique({ where: { id: 5 } });
+      f.prisma.song.findUnique.mockResolvedValue({ ...song, durationMs: null });
+      const cue = {
+        id: 'voiced-song',
+        kind: 'playSong',
+        songId: 5,
+        voiceTrackInstantId: 12,
+        voiceDuckGain: 0.4,
+        voiceFadeInSeconds: 2,
+        voiceFadeOutSeconds: 3,
+        ...(scheduled ? { clockOffsetSeconds: 0 } : {}),
+      };
+      if (scheduled) clocked(f, [cue]);
+      else f.sequence().items = [cue, { id: 'end', kind: 'waitForSongEnd' }];
+      await f.service.start('news');
+      await flush();
+      expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledWith(
+        'news',
+        expect.objectContaining({ id: 5, durationMs: null }),
+        { instantId: 12, duckGain: 0.4, fadeInSeconds: 2, fadeOutSeconds: 3 },
+      );
+      if (!scheduled)
+        expect(f.programs.updateProgramAudioBus).toHaveBeenCalledWith(
+          expect.objectContaining({
+            songSequence: expect.objectContaining({
+              mode: 'manual',
+              items: [
+                expect.objectContaining({ songId: 5, durationMs: undefined }),
+              ],
+            }),
+          }),
+          'news',
+        );
+    },
+  );
+
+  it.each([{ metadata: null }, { metadata: 'null' }, { metadata: '[]' }])(
+    'patches a real nullable/non-object scene metadata value into a coherent object: %p',
+    async ({ metadata }) => {
+      const f = setup();
+      f.state.type = 'both';
+      f.scene().metadata = metadata;
+      f.sequence().items = [
+        {
+          id: 'patch',
+          kind: 'sceneUpdate',
+          sceneId: 3,
+          metadataPatch: { title: { text: 'Live' } },
+        },
+        { id: 'wait', kind: 'wait', durationMs: 1000 },
+      ];
+      await f.service.start('news');
+      await flush();
+      expect(JSON.parse(f.scene().metadata)).toEqual({
+        title: { text: 'Live' },
+      });
+      expect(f.programs.broadcastUpdate).toHaveBeenCalledWith(
+        'sports',
+        expect.objectContaining({
+          type: 'scene_update',
+          scene: expect.objectContaining({ id: 3 }),
+        }),
+      );
+    },
+  );
 });

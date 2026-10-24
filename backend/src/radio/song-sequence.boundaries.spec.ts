@@ -491,3 +491,32 @@ describe('program song sequence tree traversal', () => {
     expect(activateProgramSongLeaf(tree, 'deep')).toBe(false);
   });
 });
+
+it('retains a concrete playable selection when accepted finite numeric timing values overflow aggregate arithmetic', () => {
+  const normalized = normalizeProgramSongSequence({
+    mode: 'autoplay',
+    activeItemId: 'one',
+    loop: true,
+    startedAt: -Number.MAX_VALUE,
+    items: ['one', 'two'].map((id) => ({
+      kind: 'preset',
+      id,
+      artist: 'Artist',
+      title: id,
+      coverUrl: '',
+      audioUrl: `https://media.example/${id}.mp3`,
+      durationMs: Number.MAX_VALUE,
+    })),
+  });
+  if (!normalized) throw new Error('Valid finite sequence was rejected');
+  expect(Number.isFinite(normalized.startedAt)).toBe(true);
+  expect(
+    normalized.items.every(
+      (item) => item.kind === 'preset' && Number.isFinite(item.durationMs),
+    ),
+  ).toBe(true);
+  expect(resolveProgramSongLeaf(normalized, Number.MAX_VALUE)).toMatchObject({
+    id: 'one',
+    audioUrl: 'https://media.example/one.mp3',
+  });
+});

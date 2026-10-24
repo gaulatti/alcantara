@@ -1,5 +1,6 @@
 import { createServer, Server } from 'node:http';
-import { AddressInfo } from 'node:net';
+import { AddressInfo, createConnection } from 'node:net';
+import { Logger } from '@nestjs/common';
 import { WebSocket } from 'ws';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
@@ -356,5 +357,123 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     await until(() => renderer.socket.readyState === WebSocket.CLOSED);
     expect(server.listeners('upgrade')).toHaveLength(0);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves other upgrade paths and malformed host URLs to the HTTP server', async () => {
+    async function unhandledUpgrade(
+      path: string,
+      host: string,
+    ): Promise<string> {
+      server.once('upgrade', (_request, socket) => {
+        socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      });
+      const socket = createConnection(
+        (server.address() as AddressInfo).port,
+        '127.0.0.1',
+      );
+      let response = '';
+      socket.on('data', (data) => {
+        response += data.toString();
+      });
+      await new Promise<void>((resolve, reject) => {
+        socket.on('error', reject);
+        socket.once('close', () => resolve());
+        socket.once('connect', () =>
+          socket.write(
+            [
+              `GET ${path} HTTP/1.1`,
+              `Host: ${host}`,
+              'Connection: Upgrade',
+              'Upgrade: websocket',
+              'Sec-WebSocket-Version: 13',
+              'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+              '',
+              '',
+            ].join('\r\n'),
+          ),
+        );
+      });
+      return response;
+    }
+    expect(
+      await unhandledUpgrade('/other/ws?role=program', 'localhost'),
+    ).toContain('404 Not Found');
+    expect(
+      await unhandledUpgrade('/program/ws?role=program', '[invalid'),
+    ).toContain('404 Not Found');
+    expect(programs.getState).not.toHaveBeenCalled();
+  });
+
+  it('closes malformed UTF-8 renderer frames and removes the failed client', async () => {
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const renderer = await connect('program', 'news');
+    renderer.socket.send(Buffer.from([0xc0]), { binary: false });
+    await until(() => renderer.socket.readyState === WebSocket.CLOSED);
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining('Program WS client error:'),
+    );
+    expect(programs.updateProgramAudioMeter).not.toHaveBeenCalled();
+    service.broadcastAudioMeterUpdate('news', { main: { vu: 0.1 } } as any);
+    expect(renderer.packets).toEqual([]);
+  });
+
+  it('discards an initial snapshot that resolves after its operator connection closes', async () => {
+    let finishState!: (state: unknown) => void;
+    programs.getState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishState = resolve;
+        }),
+    );
+    const token = tickets.issue('news').ticket;
+    const socket = new WebSocket(
+      `${baseUrl}/program/ws?role=control&programId=news&ticket=${token}`,
+    );
+    sockets.push(socket);
+    const packets: any[] = [];
+    socket.on('message', (data) => packets.push(JSON.parse(data.toString())));
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', resolve);
+      socket.once('error', reject);
+    });
+    await until(() => packets.length === 5);
+    socket.close();
+    await until(() => socket.readyState === WebSocket.CLOSED);
+    finishState({ version: 99, activeSceneId: 8 });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(packets).toHaveLength(5);
+    expect(
+      packets.some((packet) => packet.type === 'program_state_snapshot'),
+    ).toBe(false);
+  });
+
+  it('applies the role guard to a hostless HTTP upgrade using the local URL base', async () => {
+    const socket = createConnection(
+      (server.address() as AddressInfo).port,
+      '127.0.0.1',
+    );
+    let response = '';
+    socket.on('data', (data) => {
+      response += data.toString();
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once('error', reject);
+      socket.once('close', () => resolve());
+      socket.once('connect', () =>
+        socket.write(
+          [
+            'GET /program/ws?role=unknown HTTP/1.0',
+            'Connection: Upgrade',
+            'Upgrade: websocket',
+            'Sec-WebSocket-Version: 13',
+            'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+            '',
+            '',
+          ].join('\r\n'),
+        ),
+      );
+    });
+    expect(response).toContain('400 Bad Request');
+    expect(programs.getState).not.toHaveBeenCalled();
   });
 });

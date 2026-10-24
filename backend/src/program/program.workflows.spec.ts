@@ -1694,3 +1694,199 @@ describe('ProgramService persisted program workflows', () => {
     expect(metrics.recordProgramSseSnapshot).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ProgramService default main-console compatibility', () => {
+  beforeEach(() =>
+    jest.spyOn(console, 'log').mockImplementation(() => undefined),
+  );
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  it('keeps omitted program ids bound to main across renderer snapshots, audio controls and playback caches', async () => {
+    const f = fixture();
+    expect(await f.service.getState()).toMatchObject({ programId: 'main' });
+    expect(await f.service.getPublicState()).toMatchObject({
+      programId: 'main',
+    });
+    expect(await f.service.getStagedScene()).toMatchObject({
+      programId: 'main',
+      stagedSceneId: null,
+    });
+    expect((await f.service.getProgramAudioBus()).mixerSettings).toBeDefined();
+    await f.service.updateProgramAudioBus({
+      mixerSettings: { songMasterVolume: 0.5 },
+    });
+    await f.service.updateProgramAudioMeter({
+      song: 0,
+      instants: 0,
+      sceneInstant: 0,
+      main: 0.3,
+    });
+    expect((await f.service.getProgramAudioMeter()).main.vu).toBe(0.3);
+    expect((await f.service.getProgramAudioMeter('news')).main.vu).toBe(0);
+    await f.service.updateProgramSongPlayback({
+      token: 'main-renderer',
+      progress: 0.1,
+      audioUrl: 'https://media.example/song.mp3',
+      isPlaying: true,
+      currentTimeMs: 100,
+      durationMs: 1000,
+    });
+    expect(await f.service.getProgramSongPlayback()).toMatchObject({
+      token: 'main-renderer',
+      isPlaying: true,
+    });
+    expect((await f.service.getProgramSongPlayback('news')).isPlaying).toBe(
+      false,
+    );
+    expect(f.radio.playSong).not.toHaveBeenCalled();
+    expect(
+      f.service.getProgramUpdateVersion(undefined, 'audioMeter'),
+    ).toBeGreaterThan(0);
+  });
+
+  it('keeps legacy main scene/background and instantaneous playout operations scoped to the default program', async () => {
+    const f = fixture();
+    expect((await f.service.takeProgramSceneInstant(null)).programId).toBe(
+      'main',
+    );
+    expect((await f.service.getProgramSceneInstantPlayback()).isPlaying).toBe(
+      true,
+    );
+    expect((await f.service.stopProgramSceneInstant()).isPlaying).toBe(false);
+    expect(
+      (await f.service.listInstants()).map((instant) => instant.id),
+    ).toContain(12);
+    await f.service.playInstant(12);
+    await f.service.stopAllInstants();
+    await f.service.stageScene(7);
+    await f.service.activateScene(7);
+    await f.service.setFadeToBlack(true);
+    await f.service.requestProgramReload();
+    await f.service.takeProgramSongOffAir();
+    await f.service.takeProgramOffAir();
+    expect(f.states.get('main').activeSceneId).toBeNull();
+    expect(f.states.get('news').activeSceneId).toBe(7);
+    expect(
+      f.events
+        .filter((event) => event.scope === 'program')
+        .every((event) => event.programId === 'main'),
+    ).toBe(true);
+    expect(f.engine.handleStopSong).toHaveBeenCalledWith('main');
+  });
+
+  it('retains default-main catalog assignment and removal without changing another program', async () => {
+    const f = fixture();
+    await f.service.addSceneToProgram(7);
+    await f.service.addMediaGroupToProgram(3);
+    await f.service.addStingerToProgram(4);
+    expect(
+      (await f.service.listProgramMediaGroups()).map((group) => group.id),
+    ).toEqual([3]);
+    expect(
+      (await f.service.listProgramStingers()).map((stinger) => stinger.id),
+    ).toEqual([4]);
+    await f.service.removeSceneFromProgram(7);
+    await f.service.removeMediaGroupFromProgram(3);
+    await f.service.removeStingerFromProgram(4);
+    const id = f.states.get('main').id;
+    expect(f.prisma.programScene.deleteMany).toHaveBeenCalledWith({
+      where: { programStateId: id, sceneId: 7 },
+    });
+    expect(f.prisma.programMediaGroup.deleteMany).toHaveBeenCalledWith({
+      where: { programStateId: id, mediaGroupId: 3 },
+    });
+    expect(f.prisma.programStinger.deleteMany).toHaveBeenCalledWith({
+      where: { programStateId: id, stingerId: 4 },
+    });
+    expect(f.states.get('news').activeSceneId).toBe(7);
+  });
+
+  it('delivers global broadcast controls through an already subscribed main renderer after its snapshot', async () => {
+    jest.useFakeTimers();
+    const f = fixture();
+    const received: any[] = [];
+    const subscription = f.service
+      .getEventStream()
+      .subscribe((event) => received.push(JSON.parse(event.data)));
+    await jest.advanceTimersByTimeAsync(0);
+    f.service.broadcastUpdate(undefined, {
+      type: 'program_reload',
+      triggeredAt: 'now',
+    });
+    await f.service.updateBroadcastSettings({ mainMasterVolume: 0.7 });
+    expect(received.map((event) => event.type)).toEqual([
+      'program_state_snapshot',
+      'program_reload',
+      'broadcast_settings_update',
+    ]);
+    expect(received[0].programId).toBe('main');
+    expect(received[2].settings.mainMasterVolume).toBe(0.7);
+    subscription.unsubscribe();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('reports a non-Error background failure without rolling back an already persisted scene switch', async () => {
+    const f = fixture();
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    f.prisma.instant.findUnique.mockRejectedValueOnce(
+      'background source rejected',
+    );
+    expect(await f.service.activateScene(7, 'news')).toMatchObject({
+      activeSceneId: 7,
+    });
+    expect(console.warn).toHaveBeenCalledWith(
+      'Could not play background instant for scene 7:',
+      'background source rejected',
+    );
+    expect(f.events.some((event) => event.data.type === 'scene_change')).toBe(
+      true,
+    );
+  });
+});
+
+describe('ProgramService inactive caches and renderer handoff boundaries', () => {
+  beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => undefined));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('renames and deletes an unused program without requiring live telemetry or an event subscriber', async () => {
+    const f = fixture();
+    expect(await f.service.renameProgram('news', 'renamed-news')).toMatchObject({ programId: 'renamed-news' });
+    expect(f.states.has('news')).toBe(false);
+    expect((await f.service.getProgramAudioMeter('renamed-news')).main.vu).toBe(0);
+    expect(await f.service.deleteProgram('renamed-news')).toEqual({ deletedProgramId: 'renamed-news' });
+    expect(f.states.has('renamed-news')).toBe(false);
+    expect(f.states.has('main')).toBe(true);
+  });
+
+  it('projects the registered renderer contract at the public state boundary instead of publishing operator-only audio state', async () => {
+    const f = fixture();
+    f.states.get('news').templateManifest = validateProgramTemplateManifest({
+      kind: 'alcantara.program-template', contractVersion: 1, id: 'test.renderer', name: 'Test renderer', package: '@test/renderer', bundleVersion: '1.0.0', schemaVersion: 1, entrypoint: 'index.html', capabilities: ['scene.configuration'],
+      control: { protocol: 'alcantara.program.v1', transport: 'server-sent-events', snapshotPath: 'state', eventsPath: 'events', runtimeParameters: { programId: 'programId', apiBaseUrl: 'apiBaseUrl' }, signals: ['program_state_snapshot'] },
+    }, new URL('https://cdn.example/manifest.json'));
+    f.states.get('news').songSequence = { privateQueue: true };
+    const state = await f.service.getPublicState('news');
+    expect(state).toMatchObject({ schemaVersion: 1, programId: 'news', activeSceneId: 7, activeScene: { id: 7 } });
+    expect(state).not.toHaveProperty('songSequence');
+    expect(state).not.toHaveProperty('templateManifest');
+  });
+
+  it('fades out the previous scene background when the next persisted scene has no background configured', async () => {
+    const f = fixture();
+    const nextScene = { ...f.scene, id: 8, metadata: null };
+    f.states.get('news').scenes.push({ sceneId: 8, scene: nextScene });
+    const update = f.prisma.programState.update.getMockImplementation();
+    f.prisma.programState.update.mockImplementation(async (input: any) => {
+      const state = await update(input);
+      if (Object.prototype.hasOwnProperty.call(input.data, 'activeSceneId')) state.activeScene = state.scenes.find(entry => entry.sceneId === state.activeSceneId)?.scene ?? null;
+      return state;
+    });
+    await f.service.takeProgramSceneInstant(7, 'news');
+    expect(await f.service.activateScene(8, 'news')).toMatchObject({ activeSceneId: 8 });
+    expect((await f.service.getProgramSceneInstantPlayback('news')).isPlaying).toBe(false);
+    expect(f.events.some(event => event.data.type === 'scene_instant_stop' && event.data.fadeMs === 1500)).toBe(true);
+  });
+});
