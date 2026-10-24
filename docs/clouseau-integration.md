@@ -50,6 +50,11 @@ that the shared checker rejects; shared coverage acceptance did not pass.
 Frontend type generation completed, but TypeScript failed with 16 existing
 diagnostics. No all-application verification or exact-coverage success is claimed.
 
+The default frontend test run passed 144 tests and timed out on two. A complete
+rerun with at most two workers passed all 36 files and 146 tests without changing
+tests, assertions, or timeouts. Both logs were retained. This distinguishes the
+resource-sensitive test run from the unresolved typecheck and coverage gaps.
+
 ## Shared capabilities required before acceptance
 
 1. The local recipe requires a single native coverage report and a single source
@@ -74,12 +79,18 @@ diagnostics. No all-application verification or exact-coverage success is claime
 
 ## Repository controls still required
 
-The audit found no CODEOWNERS, branch protection, or repository rulesets. Auto-merge
-is enabled, but Actions approving reviews are disabled. No Clouseau provider
-secret is installed. Required checks and fresh approval protection must be added
-through the released installation path without waiving tests, adding bypasses,
-or removing unrelated controls. Ownership must be explicitly established and
-protect its own definition before unattended merge can be enabled.
+The accepted-base audit found no CODEOWNERS, branch protection, or repository
+rulesets. GitHub lists `gaulatti` as the sole collaborator and administrator;
+accepted-branch history identifies the same existing maintainer. The proposed
+`.github/CODEOWNERS` therefore assigns every path and the ownership definition
+itself to `@gaulatti`. No existing path or team ownership was replaced. This
+proposal grants no authority until accepted on the protected base.
+
+Auto-merge is enabled, but Actions approving reviews are disabled. No Clouseau
+provider secret is installed. Required checks and fresh approval protection
+must be added through the released installation path without waiving tests,
+adding bypasses, or removing unrelated controls. The released controller cannot
+yet enforce the required ownership rule, so unattended merge is not installed.
 
 No ready installation PR or proof PR has been opened: initial local review and
 complete native coverage cannot yet satisfy the released protocol. No approval,

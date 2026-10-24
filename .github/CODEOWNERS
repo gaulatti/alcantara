@@ -1,0 +1,5 @@
+# The repository owner is its sole collaborator and existing maintainer.
+* @gaulatti
+
+# Ownership changes require the existing owner's review.
+/.github/CODEOWNERS @gaulatti
