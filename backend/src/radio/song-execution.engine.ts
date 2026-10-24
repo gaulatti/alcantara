@@ -66,7 +66,11 @@ export interface SongPlaybackData {
 }
 
 export type IntroPlaybackStatus =
-  'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+  | 'none'
+  | 'pending'
+  | 'playing'
+  | 'completed'
+  | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -157,6 +161,8 @@ const RADIO_PROGRAM_TYPES = new Set(['radio', 'both']);
 @Injectable()
 export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SongExecutionEngine.name);
+  // ensureState owns one stable entry per program for this engine instance.
+  // Private continuations receive that same entry and recheck its live fields.
   private readonly states = new Map<string, SongEngineState>();
   private broadcast: SongEngineBroadcastFn | null = null;
   private telemetry: PalazzoTelemetrySource | null = null;
@@ -653,19 +659,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
     void this.withRotationMutationLock(programId, async () => {
       try {
-        const current = this.states.get(programId);
-        if (!current) return;
         await this.prisma.programState.update({
           where: { programId },
           data: {
-            songRotation: current.rotation as unknown as Prisma.InputJsonValue,
+            songRotation: state.rotation as unknown as Prisma.InputJsonValue,
           },
         });
-        current.rotationHistoryHealthy = true;
+        state.rotationHistoryHealthy = true;
         this.metrics.recordHighRotationAction('played');
       } catch (error) {
-        const current = this.states.get(programId);
-        if (current) current.rotationHistoryHealthy = false;
+        state.rotationHistoryHealthy = false;
         this.metrics.recordHighRotationAction('history-persistence-failed');
         this.logger.error(
           `High rotation history persistence failed on ${programId}; automatic favorites are suspended: ${String(error)}`,
@@ -729,14 +732,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     };
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
-    this.startProgress(programId);
+    this.startProgress(programId, state);
     if (!this.isRadioCapable(programId)) {
       // TV-only programs have no Palazzo telemetry; preserve their legacy
       // estimated-duration completion behavior.
-      this.setTimer(programId, dur);
+      this.setTimer(programId, state, dur);
     }
     void this.pushCommand(
       programId,
+      state,
       playbackRequestId,
       audioUrl,
       title,
@@ -1037,7 +1041,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       );
       this.emitPlaybackActive(programId, state.activeSong);
       void this.publishNowPlaying(programId, state.activeSong);
-      this.startProgress(programId);
+      this.startProgress(programId, state);
       return;
     }
 
@@ -1202,7 +1206,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         return;
       }
       state.transitioning = false;
-      if (this.playNext(programId)) return;
+      if (this.playNext(programId, state)) return;
       state.queueBlocked = true;
       this.logger.error(
         `Queued playlist item could not be resolved on ${programId}; stopping without falling through`,
@@ -1220,7 +1224,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // This callback originates from an authoritative Palazzo end event;
       // the general reconciliation/pending guards have already been
       // satisfied above. Dispatch the resolved successor directly.
-      if (this.playNext(programId)) return;
+      if (this.playNext(programId, state)) return;
       this.logger.error(
         `Successor could not be resolved on ${programId}: cursor=${state.sequence.activeItemId ?? 'none'}`,
       );
@@ -1293,7 +1297,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!this.telemetry?.isReconciled(programId)) return false;
     }
     if (state.busyWithForeignTrack) return false;
-    return this.playNext(programId);
+    return this.playNext(programId, state);
   }
 
   private resolveNextPlaylistSong(
@@ -1348,11 +1352,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private playNext(programId: string): boolean {
+  private playNext(programId: string, state: SongEngineState): boolean {
     // Log ownership also protects against queue claims begun before log start.
     if (this.flightService.isClockedLogRunning(programId)) return true;
-    const state = this.states.get(programId);
-    if (!state?.sequence) return false;
+    if (!state.sequence) return false;
 
     if (state.queueBlocked) return false;
     const queueEntry = state.queue[0] ?? null;
@@ -1361,11 +1364,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       state.transitioning = true;
       void this.claimQueueHead(programId, queueEntry.id, queuePlaybackRequestId)
         .then((claimed) => {
-          const nextState = this.states.get(programId);
-          if (!nextState) return;
-          nextState.transitioning = false;
+          state.transitioning = false;
           if (claimed) {
-            if (!this.playNext(programId)) {
+            if (!this.playNext(programId, state)) {
               this.logger.error(
                 `Claimed Play Next item could not be resolved on ${programId}; stopping without falling through`,
               );
@@ -1422,6 +1423,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     );
     void this.pushCommand(
       programId,
+      state,
       playbackRequestId,
       resolved.audioUrl,
       resolved.title,
@@ -1431,15 +1433,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     );
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
-    this.startProgress(programId);
+    this.startProgress(programId, state);
     if (!this.isRadioCapable(programId)) {
-      this.setTimer(programId, dur);
+      this.setTimer(programId, state, dur);
     }
     return true;
   }
 
   private async pushCommand(
     programId: string,
+    state: SongEngineState,
     playbackRequestId: string,
     audioUrl: string,
     title?: string,
@@ -1453,8 +1456,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       fadeOutSeconds?: number;
     },
   ): Promise<void> {
-    const stateBeforeCommand = this.states.get(programId);
-    const activeSong = stateBeforeCommand?.activeSong;
+    const activeSong = state.activeSong;
     let intro:
       | {
           playbackId: string;
@@ -1542,10 +1544,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         );
       }
     }
-    if (
-      this.states.get(programId)?.activeSong?.playbackRequestId !==
-      playbackRequestId
-    ) {
+    if (state.activeSong?.playbackRequestId !== playbackRequestId) {
       return;
     }
     let result: Awaited<ReturnType<RadioService['playSong']>>;
@@ -1563,11 +1562,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Palazzo command errored on ${programId} (${playbackRequestId}): ${String(error)}`,
       );
-      this.handleCommandFailure(programId, playbackRequestId);
+      this.handleCommandFailure(programId, state, playbackRequestId);
       return;
     }
-    const state = this.states.get(programId);
-    if (!state) return;
     if (result.ok && result.playbackRequestId) {
       if (intro && state.activeSong?.playbackRequestId === playbackRequestId) {
         if (result.introPlaybackId === intro.playbackId) {
@@ -1595,16 +1592,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Palazzo command failed on ${programId} (${playbackRequestId}); clearing pending command`,
       );
-      this.handleCommandFailure(programId, playbackRequestId);
+      this.handleCommandFailure(programId, state, playbackRequestId);
     }
   }
 
   private handleCommandFailure(
     programId: string,
+    state: SongEngineState,
     playbackRequestId: string,
   ): void {
-    const state = this.states.get(programId);
-    if (!state) return;
     state.pendingRequestIds.delete(playbackRequestId);
     if (
       !this.isRadioCapable(programId) ||
@@ -1632,30 +1628,31 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * programs never call this; they advance only on authoritative Palazzo
    * track end events.
    */
-  private setTimer(programId: string, durationMs: number): void {
-    const state = this.states.get(programId);
-    if (!state) return;
+  private setTimer(
+    programId: string,
+    state: SongEngineState,
+    durationMs: number,
+  ): void {
     this.clearTimer(programId);
     state.timer = setTimeout(() => {
-      const s = this.states.get(programId);
-      if (!s) return;
       this.handleSongEnded(programId);
-      const endedSong = s.activeSong;
-      s.activeSong = null;
-      s.pendingRequestIds.clear();
-      s.songCount++;
+      const endedSong = state.activeSong;
+      state.activeSong = null;
+      state.pendingRequestIds.clear();
+      state.songCount++;
       const hasSuccessor =
-        s.sequence?.mode === 'autoplay' || s.sequence?.mode === 'shuffle'
-          ? advanceProgramSongSequence(s.sequence, endedSong?.itemId)
+        state.sequence?.mode === 'autoplay' ||
+        state.sequence?.mode === 'shuffle'
+          ? advanceProgramSongSequence(state.sequence, endedSong?.itemId)
           : false;
       void this.maybeBumper(programId).then(() => {
-        const st = this.states.get(programId);
-        if (!st || st.activeSong) return;
+        if (state.activeSong) return;
 
         if (
-          st.sequence &&
+          state.sequence &&
           hasSuccessor &&
-          (st.sequence.mode === 'autoplay' || st.sequence.mode === 'shuffle')
+          (state.sequence.mode === 'autoplay' ||
+            state.sequence.mode === 'shuffle')
         ) {
           if (this.maybeStartSequence(programId)) return;
         }
@@ -1742,17 +1739,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.emitPlaybackUpdate(programId, song);
   }
 
-  private startProgress(programId: string): void {
-    const state = this.states.get(programId);
-    if (!state) return;
+  private startProgress(programId: string, state: SongEngineState): void {
     this.stopProgress(programId);
     state.progressInterval = setInterval(() => {
-      const s = this.states.get(programId);
-      if (s?.activeSong)
+      if (state.activeSong)
         this.emit({
           type: 'playback_update',
           programId,
-          playback: this.playbackData(programId, s.activeSong),
+          playback: this.playbackData(programId, state.activeSong),
         });
     }, 250);
   }
