@@ -139,6 +139,28 @@ from `prom/prometheus:v3.9.0`, image digest
 Failed reviews, original fixture failures and alternate-producer diagnostics are
 retained outside source control. No test is skipped to manufacture acceptance.
 
+## Unreachable declaration cleanup
+
+A repository-wide TypeScript compiler-symbol audit found seven private declarations
+with no callers, JSX bindings, exports, returned references, property assignments
+or dynamic uses. Control's `openSceneModal`, `openEditSceneModal`, `createScene`
+and `deleteScene` were detached from the rendered interface. ManualRundown's
+`loadSequences` and `loadScenes` callbacks were never called, and `deepMerge`
+referenced only itself. Their initializer expressions created deferred closures;
+the two `useCallback` dependency arrays read only the existing program identifier.
+No documentation/configuration promised these private identifiers as an interface.
+
+Only those seven complete declarations were removed: 113 lines from Control and
+40 from ManualRundown. No application file, reachable fallback, validation guard,
+source inventory entry or coverage counter was excluded. Existing UI behavior is
+verified through the unchanged runtime tests for real Control and ManualRundown
+workflows. The source before removal remains available at
+`12cb3d42695ef071592a294ae1811a3c542fb9d9`; full symbol references, exact source
+hashes, original bytes and deleted declaration ranges are retained with the task's
+external diagnostics. This cleanup is a separate change from installing the
+native producer. The frozen coverage table predates this removal and does not
+silently claim new totals.
+
 ## Protected installation and hosted proof still required
 
 The accepted base has no local recipe, trusted Clouseau policy, or enrolled

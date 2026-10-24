@@ -2682,43 +2682,7 @@ export default function Control() {
     };
   }, [flushQueuedSceneAttributeSaves, flushSceneAttributeAutosaveForScene]);
 
-  const openSceneModal = () => {
-    if (layouts.length === 0) {
-      alert("Please create a layout first");
-      return;
-    }
-    setEditingScene(null);
-    setNewSceneName("");
-    setSelectedLayoutId(null);
-    setSceneComponentProps({});
-    setSceneErrors({ name: "", layout: "", props: "" });
-    setShowSceneModal(true);
-  };
 
-  const openEditSceneModal = (scene: Scene) => {
-    setEditingScene(scene);
-    setNewSceneName(scene.name);
-    setSelectedLayoutId(scene.layoutId);
-
-    try {
-      const metadata = parseSceneMetadata(scene.metadata);
-      if (
-        metadata &&
-        typeof metadata === "object" &&
-        !Array.isArray(metadata)
-      ) {
-        setSceneComponentProps(buildComponentPropsForScene(scene));
-      } else {
-        handleLayoutSelect(scene.layoutId);
-      }
-    } catch (err) {
-      console.error("Failed to parse scene metadata:", err);
-      handleLayoutSelect(scene.layoutId);
-    }
-
-    setSceneErrors({ name: "", layout: "", props: "" });
-    setShowSceneModal(true);
-  };
 
   const closeSceneModal = () => {
     setShowSceneModal(false);
@@ -2809,84 +2773,7 @@ export default function Control() {
     }));
   };
 
-  const createScene = async () => {
-    const errors = { name: "", layout: "", props: "" };
 
-    if (!newSceneName.trim()) {
-      errors.name = "Please enter a scene name";
-    }
-
-    if (!selectedLayoutId) {
-      errors.layout = "Please select a layout";
-    }
-
-    if (errors.name || errors.layout) {
-      setSceneErrors(errors);
-      return;
-    }
-
-    setIsCreatingScene(true);
-
-    try {
-      const existingMetadata = editingScene
-        ? parseSceneMetadata(editingScene.metadata)
-        : {};
-      const payload = {
-        name: newSceneName,
-        layoutId: selectedLayoutId,
-        metadata: withIndependentProgramClockMetadata({
-          ...existingMetadata,
-          ...sceneComponentProps,
-        }),
-      };
-
-      const url = editingScene
-        ? apiUrl(`/scenes/${editingScene.id}`)
-        : apiUrl("/scenes");
-      const method = editingScene ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      await fetchScenes();
-      closeSceneModal();
-    } catch (err) {
-      console.error("Failed to save scene:", err);
-      setSceneErrors({
-        ...errors,
-        name: "Failed to save scene. Please try again.",
-      });
-    } finally {
-      setIsCreatingScene(false);
-    }
-  };
-
-  const deleteScene = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this scene?")) return;
-
-    try {
-      await fetch(apiUrl(`/scenes/${id}`), {
-        method: "DELETE",
-      });
-      if (selectedScene === id) {
-        setSelectedScene(null);
-        void stageSceneForProgram(null);
-      }
-      fetchScenes();
-      if (!isProgramRealtimeConnected) {
-        fetchProgramState(activeProgramId);
-      }
-    } catch (err) {
-      console.error("Failed to delete scene:", err);
-    }
-  };
 
   useEffect(() => {
     let sceneHotkeyArmedUntil = 0;

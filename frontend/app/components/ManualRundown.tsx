@@ -109,33 +109,7 @@ export default function ManualRundown() {
     [sequences, activeSequenceId],
   );
 
-  const loadSequences = useCallback(async () => {
-    try {
-      const data = await fetchFlightSequences(activeProgramId);
-      setSequences(data.filter((sequence) => !sequence.scheduledAt));
-    } catch (err) {
-      console.error("Failed to load flight sequences:", err);
-      showAlert("Failed to load rundowns.", "error");
-    }
-  }, [activeProgramId]);
 
-  const loadScenes = useCallback(async () => {
-    try {
-      const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/state`),
-      );
-      if (!res.ok) return;
-      const state = await res.json();
-      const entries = Array.isArray(state?.scenes) ? state.scenes : [];
-      setScenes(
-        entries
-          .map((entry: any) => entry.scene)
-          .filter((scene: unknown): scene is Scene => Boolean(scene)),
-      );
-    } catch (err) {
-      console.error("Failed to load scenes:", err);
-    }
-  }, [activeProgramId]);
 
   const loadSongs = useCallback(async () => {
     try {
@@ -1317,20 +1291,6 @@ function parsePropValue(raw: string): unknown {
   }
 }
 
-function deepMerge(
-  target: Record<string, unknown>,
-  source: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...target };
-  for (const [key, value] of Object.entries(source)) {
-    if (isRecord(value) && isRecord(result[key])) {
-      result[key] = deepMerge(result[key] as Record<string, unknown>, value);
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
-}
 
 interface RuntimePanelProps {
   activeSequence: FlightSequence | null;
