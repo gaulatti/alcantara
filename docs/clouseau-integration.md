@@ -1,11 +1,14 @@
 # Clouseau integration status
 
 This branch prepares the installation; it is not a working protected acceptance
-path yet. The audited released engine is Clouseau
+path yet. The original installation audit used released Clouseau
 `c4e07381a288fc74200fd712f04ac3265ef2184a`, content digest
 `1eaed29fd22aa45f111b5a8ed37da2299576e303b80743ab846ef53848c680e7`.
-Its immutable cache checkout was verified clean. Use the
-[released interface](https://github.com/gaulatti/clouseau/blob/c4e07381a288fc74200fd712f04ac3265ef2184a/docs/local-review.md),
+Its immutable cache checkout was verified clean. The local AI policy correction
+below follows released Clouseau `1df7a5fe244ac837023caa0e14a22412d123f12c`,
+content digest `5f5afe9aa60dfb41418625e06c7a8405c143c4f964845079ee1c81b97658030f`;
+this documentation change is not a new application review or coverage result. Use the
+[released interface](https://github.com/gaulatti/clouseau/blob/1df7a5fe244ac837023caa0e14a22412d123f12c/docs/local-review.md),
 not an unmerged central branch or a copied review engine.
 
 ## Local installation and application scope
@@ -21,7 +24,10 @@ Codex and Claude Code; they require no CI provider API keys.
 Both agent instruction files require reading the accepted requirement and
 purpose, complete verification, local shared review, investigation and repairs,
 review of the final changed revision, and eligible signed-evidence publication
-before opening a ready PR with the returned marker in its initial body.
+before opening a ready PR with the returned marker in its initial body. Local
+AI review is required before every PR regardless of coverage percentage, a
+failing coverage command or unavailable/invalid coverage. Real verification
+outcomes and the AI quality decision are separate claims.
 
 The audited accepted default branch was
 `8a4cb2a2132810e36ca3e73ff2147ae7f5207771`. This pnpm workspace uses Node 22
@@ -32,6 +38,26 @@ module) and `frontend/app` (React Router/Vite, 187 files). Colocated tests and
 contains deployment definitions; its existing local static tests and TypeScript
 build remain verification requirements, separately from product runtime coverage.
 No CDK CLI or AWS operation is part of the local recipe.
+
+## Local AI quality and technical acceptance
+
+The released local runner records real command outcomes, coverage counts and
+unavailable/invalid coverage diagnostics, then runs AI review regardless of
+coverage percentage or a failing coverage command. It never turns those outcomes
+into fabricated passing verification. A passing AI quality review may produce
+eligible signed reuse evidence even with partial coverage. That evidence does
+not authorize technical acceptance or merge: independent CI still requires all
+mandatory tests and exact 100% line and branch coverage. Demonstrated defects,
+deceptive tests and missing material behavioral context remain review blockers.
+
+This release removes the former coverage prerequisite to local AI review. It
+does not resolve this repository's missing accepted-base recipe/policy, signing
+enrollment and initial trust authorization, complete-source/evidence capacity
+limits, or incomplete hosted integration. Use the released
+[initial-installation procedure](https://github.com/gaulatti/clouseau/blob/1df7a5fe244ac837023caa0e14a22412d123f12c/docs/initial-installation.md)
+where required; proposed configuration and an unsigned diagnostic report cannot
+authorize approval. No application AI verdict or receipt reuse is proved by
+this documentation correction.
 
 ## Native verification recipe
 
@@ -74,7 +100,8 @@ pnpm --dir infra/aws run build
 
 Native reports remain in ignored package `coverage/` directories. Exact 100%
 lines and branches are enforced by both native test commands and the shared
-Clouseau parser. Neither application root can compensate for the other's gaps.
+Clouseau CI coverage parser. Their failure is recorded without suppressing local
+AI review. Neither application root can compensate for the other's gaps.
 The accepted protected base must supply this recipe before ordinary local
 review; proposed configuration cannot authorize itself.
 
@@ -212,9 +239,9 @@ signing identity. Initial trust installation remains separate from ordinary PR
 approval and must use the shared supported bootstrap. The released engine
 includes owner-only automatic merge, convergence and completeness manifests;
 their hosted path is not yet installed or proved in this repository. The audited
-release still documents fixed reviewed engine pins. Automatic protected-main
-engine upgrades must use a released shared resolver, rather than a competing
-consumer updater.
+release documented fixed reviewed engine pins. Any automatic protected-main
+engine integration must use the current released shared resolver, rather than a
+competing consumer updater; that hosted integration remains unproved here.
 
 The original accepted-base audit found no CODEOWNERS, branch protection or
 rulesets. GitHub identifies `gaulatti` as the sole collaborator/administrator;

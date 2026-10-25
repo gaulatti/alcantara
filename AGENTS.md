@@ -400,18 +400,25 @@ end-to-end contract.
   requirement and the repository's broadcast-control purpose.
 - Verify the complete committed candidate with the real application tests,
   type checks, builds, runtime checks, and native coverage recipe. Exact 100%
-  application line and branch coverage remains mandatory for Clouseau acceptance.
-- Before opening a ready PR, use the current shared Clouseau skill through an
-  authenticated supported Codex or Claude Code harness. Investigate findings,
+  application line and branch coverage remains mandatory for independent CI
+  technical acceptance and automatic approval/merge. Record actual verification
+  and coverage outcomes separately from the local AI quality decision.
+- Before opening every PR, run the current shared Clouseau local AI review through
+  an authenticated supported Codex or Claude Code harness, regardless of partial
+  coverage, a failing coverage command, or unavailable/invalid coverage. Those
+  conditions must be reported honestly and must never suppress local AI review
+  or become invented passing counts. Investigate findings,
   repair demonstrated blockers within the requirement, and review the final
   changed revision. Preserve failed reviews and diagnostics.
 - Publish eligible signed evidence with the supported `clouseau publish`
   command and include its returned receipt marker in the initial ready PR body.
+  A local AI quality receipt does not authorize technical acceptance or merge.
   Signing requires an explicitly enrolled identity and accepted base policy;
   proposed policy and unsigned reports do not grant approval authority.
-- If the shared protocol cannot review an initial installation, retain the
-  concrete candidate and verification evidence and report the missing bootstrap
-  capability. Do not invent a receipt, weaken checks, or repeatedly retry an
+- If source completeness, accepted trust, or shared evidence capacity prevents
+  review, retain the concrete candidate and verification evidence and report the
+  actual blocker. Use the released initial-installation procedure where required.
+  Do not invent a receipt, weaken checks, or repeatedly retry an
   unchanged failure. See `docs/clouseau-integration.md` for the installation state.
 - Human input is for unresolved purpose, authority, ownership, credentials, or
   meaningful product/risk decisions. Investigate and repair technical defects

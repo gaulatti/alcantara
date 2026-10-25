@@ -15,7 +15,12 @@ Consume its released implementation without copying that engine into Alcantara.
 Application verification covers both `backend/src` and `frontend/app`, plus
 the applicable deployment, migration, integration, infrastructure-definition,
 and runtime checks. All tests and exact 100% application line and branch
-coverage are required. Uncovered application files must remain in the native
+coverage are required for independent CI technical acceptance and automatic
+approval/merge. Local AI quality review is required before every PR regardless
+of partial coverage, a failing coverage command or unavailable/invalid coverage.
+Record the real verification and coverage outcomes separately from the AI
+decision; never suppress AI review or invent passing coverage because of them.
+Uncovered application files must remain in the native
 reports. Test code is separate from application coverage; unrelated dependencies
 and generated output cannot mask application gaps.
 
@@ -23,7 +28,11 @@ Review-control and signing-enrollment changes require the supported explicit
 owner installation procedure. Ordinary contributions require independent CI
 verification and either eligible signed local evidence or the configured
 qualified CI provider. Invalid evidence must fail closed without paid fallback.
-An unsigned report is diagnostic evidence, never an approval receipt.
+An unsigned report is diagnostic evidence, never an approval receipt. A signed
+local AI quality receipt authenticates reusable review evidence; it cannot waive
+independent CI tests or exact coverage or authorize merge on its own. Missing
+accepted trust, incomplete immutable source and shared evidence-capacity limits
+remain genuine review blockers.
 
 Applicable code-owner-authored PRs may merge automatically after the complete
 mandatory test suite, exact 100% line and branch coverage, and all required
