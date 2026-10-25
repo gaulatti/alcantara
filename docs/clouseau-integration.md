@@ -216,18 +216,40 @@ release still documents fixed reviewed engine pins. Automatic protected-main
 engine upgrades must use a released shared resolver, rather than a competing
 consumer updater.
 
-The effective accepted-base audit found no CODEOWNERS, branch protection or
+The original accepted-base audit found no CODEOWNERS, branch protection or
 rulesets. GitHub identifies `gaulatti` as the sole collaborator/administrator;
 accepted history identifies the same maintainer. Proposed `.github/CODEOWNERS`
 therefore assigns all paths and itself to `@gaulatti`, replacing no existing
 ownership boundary. Proposed ownership cannot authorize its own change.
 
-Auto-merge is enabled, but Actions approving reviews are disabled. No Clouseau
-CI provider secret is installed. Required verification/acceptance checks and
-fresh approval protection remain to be installed without removing unrelated
-controls, adding bypasses, or waiving coverage. No ready installation/proof PR,
-receipt reuse, paid fallback review, bot approval, protected merge, or successful
-unattended proof is claimed.
+The live policy follow-up confirms auto-merge is disabled and active main-branch
+ruleset `25801209` requires PRs, prevents deletion and force pushes, dismisses
+stale reviews on new pushes, and requires resolved review threads. It has no
+bypass actors. These are temporary guardrails: the required approval count is
+zero and required Clouseau/verification checks are not installed. This is not
+fully verified protection or acceptance enforcement. Actions approving reviews
+remain disabled, and no Clouseau CI provider secret is installed.
+
+The intended policy permits applicable internal code-owner-authored PRs to merge
+automatically only after the complete suite, exact 100% line and branch coverage,
+and required Clouseau gates pass. The author must own every affected path from
+the exact accepted protected base, including both sides of renames. Missing or
+unverifiable ownership denies automatic merge. External or non-owner
+contributions require current-head human code-owner approval and manual merge;
+repository visibility alone does not require manual merge. Initial bootstrap
+owner acceptance is a separate trust operation. Live auto-merge remains disabled
+until supported enforcement is installed and verified.
+
+Remaining coverage work is tracked in
+[backend issue #82](https://github.com/gaulatti/alcantara/issues/82) and
+[frontend issue #83](https://github.com/gaulatti/alcantara/issues/83). The frozen
+verification and capacity evidence at
+`9d12ef5b13d9757549e265995130a40d58718ed3` is historical; this policy-only
+follow-up does not claim a new coverage result. Required verification/acceptance
+checks and fresh approval enforcement remain to be installed without removing
+unrelated controls, adding bypasses, or waiving coverage. No ready
+installation/proof PR, receipt reuse, paid fallback review, bot approval,
+protected merge, or successful unattended proof is claimed.
 
 ## Deployment and documentation
 

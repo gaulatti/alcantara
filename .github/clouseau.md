@@ -25,11 +25,20 @@ verification and either eligible signed local evidence or the configured
 qualified CI provider. Invalid evidence must fail closed without paid fallback.
 An unsigned report is diagnostic evidence, never an approval receipt.
 
-Automatic merge may operate only when the released shared controller establishes
-that the actual PR author owns every affected path using accepted protected-base
-ownership. General write access is insufficient. Non-owner contributions require
-current-head code-owner involvement and manual merge. Do not invent a consumer
-merge controller while the shared implementation is unavailable.
+Applicable code-owner-authored PRs may merge automatically after the complete
+mandatory test suite, exact 100% line and branch coverage, and all required
+Clouseau review gates pass. The released shared controller must establish that
+the actual PR author owns every affected path from the exact accepted protected
+base, including both paths of a rename. Missing ownership or unverifiable
+membership grants no automatic merge. General write access is insufficient, and
+a proposed CODEOWNERS edit cannot authorize its own author. Repository visibility
+does not impose a blanket manual-merge policy on eligible owner contributions.
+
+External or non-owner contributions require current-head human code-owner
+approval and manual merge. Automated approval alone cannot authorize their
+merge. Initial trust installation remains separate from ordinary PR approval
+and follows the released bootstrap's owner-acceptance procedure. Consume shared
+merge enforcement; do not implement a consumer merge controller.
 
 Production AWS, SSM, CDK, CloudFormation, migrations, and infrastructure operations
 require separate explicit authorization. Existing push-to-main deployment
