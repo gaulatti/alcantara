@@ -7,6 +7,20 @@ import { ProgramService } from './program.service';
 import { FlightService } from './flight.service';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
 
+/** Decode the supported native and compatibility websocket payload forms. */
+export function decodeProgramRealtimeData(rawData: RawData | string): string {
+  if (typeof rawData === 'string') {
+    return rawData;
+  }
+  if (rawData instanceof Buffer) {
+    return rawData.toString('utf8');
+  }
+  if (Array.isArray(rawData)) {
+    return Buffer.concat(rawData).toString('utf8');
+  }
+  return Buffer.from(rawData).toString('utf8');
+}
+
 type ProgramRealtimeRole = 'program' | 'control' | 'unknown';
 
 interface ProgramRealtimeClient {
@@ -207,17 +221,10 @@ export class ProgramRealtimeService implements OnModuleDestroy {
 
   private rejectUpgrade(
     socket: Socket,
-    statusCode: number,
+    statusCode: 400 | 401,
     reason: string,
   ): void {
-    const statusText =
-      statusCode === 400
-        ? 'Bad Request'
-        : statusCode === 401
-          ? 'Unauthorized'
-          : statusCode === 403
-            ? 'Forbidden'
-            : 'Service Unavailable';
+    const statusText = statusCode === 400 ? 'Bad Request' : 'Unauthorized';
     socket.end(
       `HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n${reason}`,
     );
@@ -435,7 +442,7 @@ export class ProgramRealtimeService implements OnModuleDestroy {
     client: ProgramRealtimeClient,
     rawData: RawData,
   ): Promise<void> {
-    const messageText = this.decodeRawData(rawData);
+    const messageText = decodeProgramRealtimeData(rawData);
     if (!messageText) {
       return;
     }
@@ -506,22 +513,6 @@ export class ProgramRealtimeService implements OnModuleDestroy {
       }
       return;
     }
-  }
-
-  private decodeRawData(rawData: RawData): string {
-    if (typeof rawData === 'string') {
-      return rawData;
-    }
-
-    if (rawData instanceof Buffer) {
-      return rawData.toString('utf8');
-    }
-
-    if (Array.isArray(rawData)) {
-      return Buffer.concat(rawData).toString('utf8');
-    }
-
-    return Buffer.from(rawData).toString('utf8');
   }
 
   private sendJson(socket: WebSocket, payload: unknown): void {

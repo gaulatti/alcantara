@@ -21,14 +21,15 @@
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test:cov": "pnpm run test:coverage-tooling && node scripts/run-source-coverage.cjs",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e": "pnpm run build && jest --config ./test/jest-e2e.json",
     "test:deployment": "node --test test/deployment-gate.test.js test/runtime-secret-contract.test.js test/alana-recording-fixture.test.mjs",
     "seed": "ts-node prisma/seed.ts",
     "principals:export": "ts-node src/identity/principals-cli.ts export",
     "principals:report": "ts-node src/identity/principals-cli.ts report",
-    "principals:apply": "ts-node src/identity/principals-cli.ts apply"
+    "principals:apply": "ts-node src/identity/principals-cli.ts apply",
+    "test:coverage-tooling": "node --test test/source-coverage.test.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1016.0",
@@ -54,6 +55,7 @@
     "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@ampproject/remapping": "2.3.0",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
@@ -69,6 +71,8 @@
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-instrument": "6.0.3",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
     "prisma": "^7.5.0",
@@ -90,12 +94,20 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": "<rootDir>/../scripts/jest-source-coverage-transformer.cjs"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.d.ts"
     ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 100,
+        "branches": 100
+      }
+    },
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "coverageProvider": "babel"
   }
 }

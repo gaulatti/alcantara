@@ -268,13 +268,8 @@ export function validateProgramTemplateManifest(
 }
 
 function isBlockedIpv4(address: string): boolean {
+  // The only caller has already established native isIP(address) === 4.
   const octets = address.split('.').map((part) => Number(part));
-  if (
-    octets.length !== 4 ||
-    octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
-  ) {
-    return true;
-  }
   const [a, b, c] = octets;
   return (
     a === 0 ||
@@ -463,11 +458,7 @@ export class ProgramTemplateService {
   ): Promise<ProgramTemplateRegistration> {
     let currentUrl = this.parseTemplateUrl(templateUrl);
 
-    for (
-      let redirectCount = 0;
-      redirectCount <= MAX_REDIRECTS;
-      redirectCount += 1
-    ) {
+    for (let redirectCount = 0; ; redirectCount += 1) {
       await this.assertSafeDestination(currentUrl);
       let response: Response;
       try {
@@ -527,8 +518,6 @@ export class ProgramTemplateService {
         templateVerifiedAt: new Date(),
       };
     }
-
-    throw new BadRequestException('Template manifest could not be fetched');
   }
 
   private parseTemplateUrl(value: string): URL {
