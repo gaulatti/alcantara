@@ -38,3 +38,6 @@ prisma/migrations/*
 
 # Claude
 .claude/
+
+/backend/coverage/
+/backend/.coverage-dist/

@@ -377,10 +377,6 @@ function getSelectedSongItem(
         (sum, durationMs) => sum + durationMs,
         0,
       );
-      if (cycleDurationMs <= 0) {
-        return sequence.items[baseIndex] ?? null;
-      }
-
       let remainingMs = elapsedMs % cycleDurationMs;
       for (let step = 0; step < sequence.items.length; step += 1) {
         const index = (baseIndex + step) % sequence.items.length;
@@ -398,7 +394,9 @@ function getSelectedSongItem(
     }
 
     let remainingMs = elapsedMs;
-    for (let step = 0; step < sequence.items.length; step += 1) {
+    // A concrete unknown duration exists in this private mapped array; the
+    // modulo traversal returns at that item within one complete revolution.
+    for (let step = 0; ; step += 1) {
       const index = (baseIndex + step) % sequence.items.length;
       const itemDurationMs = itemDurations[index];
       if (typeof itemDurationMs !== 'number') {
@@ -409,8 +407,6 @@ function getSelectedSongItem(
       }
       remainingMs -= itemDurationMs;
     }
-
-    return sequence.items[baseIndex] ?? null;
   }
 
   let index = baseIndex;

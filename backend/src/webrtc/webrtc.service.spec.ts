@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { RoomServiceClient } from 'livekit-server-sdk';
 import { WebrtcService } from './webrtc.service';
 
 describe('WebrtcService', () => {
+  afterEach(() => jest.restoreAllMocks());
   const operator = {
     principalId: 'principal-1',
     subject: 'operator-1',
@@ -79,7 +81,21 @@ describe('WebrtcService', () => {
       }),
       prisma as never,
     );
-    jest.spyOn(service as never, 'roomService', 'get').mockReturnValue(livekit);
+    jest
+      .spyOn(RoomServiceClient.prototype, 'listRooms')
+      .mockImplementation(livekit.listRooms);
+    jest
+      .spyOn(RoomServiceClient.prototype, 'createRoom')
+      .mockImplementation(livekit.createRoom);
+    jest
+      .spyOn(RoomServiceClient.prototype, 'listParticipants')
+      .mockImplementation(livekit.listParticipants);
+    jest
+      .spyOn(RoomServiceClient.prototype, 'removeParticipant')
+      .mockImplementation(livekit.removeParticipant);
+    jest
+      .spyOn(RoomServiceClient.prototype, 'sendData')
+      .mockImplementation(livekit.sendData);
     return { service, prisma, livekit };
   }
 
