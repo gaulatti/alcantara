@@ -38,3 +38,6 @@ prisma/migrations/*
 
 # Claude
 .claude/
+
+# test coverage output
+coverage/
