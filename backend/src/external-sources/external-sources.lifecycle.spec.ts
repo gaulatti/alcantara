@@ -452,4 +452,20 @@ describe('ExternalSourcesService lifecycle and safe presentation', () => {
     ).rejects.toThrow('unsafe pull URL');
     expect(f.prisma.externalSource.update).not.toHaveBeenCalled();
   });
+
+  it('keeps the stored name when an update omits it', async () => {
+    const f = fixture();
+    const updated = await f.service.update('source-a', {}, authorization);
+    expect(updated.name).toBe('Camera');
+    const data = f.prisma.externalSource.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('name');
+  });
+
+  it('presents a stored source without program assignments as an empty program list', async () => {
+    const f = fixture();
+    delete f.source().programs;
+    await expect(f.service.get('source-a', authorization)).resolves.toEqual(
+      expect.objectContaining({ id: 'source-a', programIds: [] }),
+    );
+  });
 });

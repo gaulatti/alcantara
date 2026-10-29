@@ -476,4 +476,37 @@ describe('ProgramRealtimeService actual WebSocket boundary', () => {
     expect(response).toContain('400 Bad Request');
     expect(programs.getState).not.toHaveBeenCalled();
   });
+
+  it('ignores an upgrade that arrives after the service has detached its WebSocket server', () => {
+    const upgrade = (service as any).handleUpgrade as (
+      request: unknown,
+      socket: unknown,
+      head: Buffer,
+    ) => void;
+    const request = {
+      url: '/program/ws?role=unknown',
+      headers: { host: 'localhost' },
+    };
+    const live = { end: jest.fn() };
+    upgrade(request, live, Buffer.alloc(0));
+    expect(live.end).toHaveBeenCalledWith(
+      expect.stringContaining('400 Bad Request'),
+    );
+
+    service.onModuleDestroy();
+    const detached = { end: jest.fn() };
+    upgrade(request, detached, Buffer.alloc(0));
+    expect(detached.end).not.toHaveBeenCalled();
+  });
+
+  it('leaves an upgrade request without a URL to the HTTP server', () => {
+    const socket = { end: jest.fn() };
+    (service as any).handleUpgrade(
+      { headers: { host: 'localhost' } },
+      socket,
+      Buffer.alloc(0),
+    );
+    expect(socket.end).not.toHaveBeenCalled();
+    expect(programs.getState).not.toHaveBeenCalled();
+  });
 });

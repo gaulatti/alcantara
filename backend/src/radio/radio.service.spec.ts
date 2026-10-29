@@ -353,4 +353,45 @@ describe('RadioService recovery playlist', () => {
       request.mockRestore();
     }
   });
+
+  it('rejects reads and updates for a program that does not exist', async () => {
+    const prisma = {
+      programState: { findUnique: jest.fn().mockResolvedValue(null) },
+      radioSettings: { upsert: jest.fn() },
+    } as any;
+    const service = new RadioService(
+      prisma,
+      {} as any,
+      {} as any,
+      new RadioMetricsService(),
+    );
+    await expect(service.getRadioSettings('missing')).rejects.toThrow(
+      'Program not found',
+    );
+    await expect(
+      service.updateRadioSettings('missing', { enabled: true }),
+    ).rejects.toThrow('Program not found');
+    expect(prisma.radioSettings.upsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses Palazzo commands when stored settings carry no Palazzo URL', async () => {
+    const prisma = {
+      programState: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 10, radioSettings: { id: 9 } }),
+      },
+    } as any;
+    const palazzo = { getPlaybackState: jest.fn() } as any;
+    const service = new RadioService(
+      prisma,
+      palazzo,
+      {} as any,
+      new RadioMetricsService(),
+    );
+    await expect(service.getPlaybackState('radio')).rejects.toThrow(
+      'playback state is unavailable',
+    );
+    expect(palazzo.getPlaybackState).not.toHaveBeenCalled();
+  });
 });
