@@ -476,13 +476,13 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       }
       if (
         cue.kind === 'playSong' &&
-        (!Number.isInteger(cue.songId) || (cue.songId ?? 0) < 1)
+        (!Number.isInteger(cue.songId) || (cue.songId as number) < 1)
       ) {
         throw new BadRequestException('each song cue needs a catalog song');
       }
       if (
         cue.kind === 'instant' &&
-        (!Number.isInteger(cue.instantId) || (cue.instantId ?? 0) < 1)
+        (!Number.isInteger(cue.instantId) || (cue.instantId as number) < 1)
       ) {
         throw new BadRequestException('each clip cue needs an audio clip');
       }

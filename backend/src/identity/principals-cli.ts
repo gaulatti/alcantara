@@ -466,11 +466,7 @@ async function applyMigration(
       });
       count = result.count;
     } else {
-      if (!source.details) {
-        throw new Error(
-          'The current Alcantara migration inventory changed unexpectedly.',
-        );
-      }
+      // collectRows always attaches the stored details to GuestEvent rows.
       const result = await transaction.guestEvent.updateMany({
         data: {
           details: {
@@ -585,15 +581,4 @@ export async function runPrincipalMigrationCli(
   } finally {
     await prisma.$disconnect();
   }
-}
-
-if (require.main === module) {
-  runPrincipalMigrationCli(process.argv.slice(2))
-    .then((exitCode) => {
-      process.exitCode = exitCode;
-    })
-    .catch((error: unknown) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    });
 }

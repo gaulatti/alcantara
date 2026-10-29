@@ -16,6 +16,7 @@ export type RuntimeSecretPayload = {
 
 export function isPrivateServiceHostname(hostname: string): boolean;
 export function isValidAlanaControlToken(value: string): boolean;
+export function main(): Promise<void>;
 export function normalizeAlanaControlUrl(value: string): string;
 export function normalizePrivateServiceUrl(
   value: string,

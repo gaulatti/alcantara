@@ -218,6 +218,8 @@ export class AlanaClient {
   ): Promise<SafeAlanaState> {
     const started = process.hrtime.bigint();
     let result = 'failure';
+    let state: SafeAlanaState | null = null;
+    let failure: AlanaRequestError | null = null;
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         ...init,
@@ -238,28 +240,32 @@ export class AlanaClient {
           error: 'Alana returned an invalid response',
         });
       }
-      const state = sanitizeAlanaState(payload);
+      const responseState = sanitizeAlanaState(payload);
       if (!response.ok) {
         result = 'http-error';
-        throw new AlanaRequestError(response.status, state);
+        throw new AlanaRequestError(response.status, responseState);
       }
       result = 'success';
-      return state;
+      state = responseState;
     } catch (error) {
-      if (error instanceof AlanaRequestError) throw error;
-      result = 'unavailable';
-      throw new AlanaRequestError(503, {
-        ...sanitizeAlanaState({}),
-        error: 'Alana is unavailable',
-      });
-    } finally {
-      this.metrics.recordDependency(
-        'alana',
-        operation,
-        result,
-        Number(process.hrtime.bigint() - started) / 1_000_000_000,
-      );
+      if (error instanceof AlanaRequestError) {
+        failure = error;
+      } else {
+        result = 'unavailable';
+        failure = new AlanaRequestError(503, {
+          ...sanitizeAlanaState({}),
+          error: 'Alana is unavailable',
+        });
+      }
     }
+    this.metrics.recordDependency(
+      'alana',
+      operation,
+      result,
+      Number(process.hrtime.bigint() - started) / 1_000_000_000,
+    );
+    if (failure) throw failure;
+    return state as SafeAlanaState;
   }
 }
 
