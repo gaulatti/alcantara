@@ -1,5 +1,5 @@
 import { TooltipButton } from "../BleeckerButtons";
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Field, Checkbox, Input } from '@gaulatti/bleecker';
 import type { MediaGroup, MediaItem } from '../../models/broadcast';
 import { apiUrl } from '../../utils/apiBaseUrl';
@@ -24,49 +24,47 @@ export function ModoItalianoPodcastPlayerEditorFields({
   isLoadingMediaGroups: boolean;
 }) {
   const [search, setSearch] = useState('');
-  const [allMedia, setAllMedia] = useState<MediaItem[]>([]);
+  const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [isLoadingAll, setIsLoadingAll] = useState(false);
-  const fetchedRef = useRef(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
-  // Fetch full media library once when user starts typing
+  // Search the full media library on the server (the endpoint is paginated: { data, meta })
   useEffect(() => {
-    if (!search.trim() || fetchedRef.current) return;
-    fetchedRef.current = true;
-    setIsLoadingAll(true);
-    fetch(apiUrl('/media'))
-      .then((r) => r.json())
-      .then((data: MediaItem[]) => {
-        setAllMedia(Array.isArray(data) ? data.filter((m) => !!m.imageUrl) : []);
-      })
-      .catch(() => {})
-      .finally(() => setIsLoadingAll(false));
+    const term = search.trim();
+    if (!term) {
+      setSearchResults([]);
+      setSearchError(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setIsLoadingAll(true);
+      setSearchError(null);
+      fetch(apiUrl(`/media?search=${encodeURIComponent(term)}&limit=48`), { signal: controller.signal })
+        .then(async (r) => {
+          if (!r.ok) throw new Error(`Media search failed (${r.status})`);
+          return r.json() as Promise<{ data: MediaItem[] }>;
+        })
+        .then((body) => setSearchResults(body.data.filter((m) => !!m.imageUrl)))
+        .catch((error: Error) => {
+          if (controller.signal.aborted) return;
+          setSearchResults([]);
+          setSearchError(error.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsLoadingAll(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [search]);
 
-  // Grouped images from already-loaded media groups (instant, no fetch)
-  const groupImages = useMemo(() => {
-    const seen = new Set<string>();
-    const result: { url: string; label: string }[] = [];
-    for (const group of mediaGroups) {
-      for (const item of group.items) {
-        const url = item.media.imageUrl;
-        if (url && !seen.has(url)) {
-          seen.add(url);
-          result.push({ url, label: `${group.name} — ${item.media.name}` });
-        }
-      }
-    }
-    return result;
-  }, [mediaGroups]);
-
-  const filteredImages = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return groupImages;
-    // Search full library if loaded, otherwise search groups
-    const pool = allMedia.length > 0
-      ? allMedia.map((m) => ({ url: m.imageUrl, label: m.name }))
-      : groupImages;
-    return pool.filter(({ label }) => label.toLowerCase().includes(q));
-  }, [search, allMedia, groupImages]);
+  const filteredImages = useMemo(
+    () => searchResults.map((m) => ({ url: m.imageUrl, label: m.name })),
+    [searchResults],
+  );
 
   return (
     <div className='space-y-4'>
@@ -135,9 +133,10 @@ export function ModoItalianoPodcastPlayerEditorFields({
           className='w-full px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50'
         />
 
-        {isLoadingAll && <p className='text-xs text-text-secondary'>Loading full media library…</p>}
+        {isLoadingAll && <p className='text-xs text-text-secondary'>Searching media library…</p>}
+        {searchError && <p className='text-xs text-terracotta'>{searchError}</p>}
 
-        {search.trim() && (
+        {search.trim() && !searchError && (
           <div className='max-h-52 overflow-y-auto rounded border border-sand/30 p-2'>
             {filteredImages.length === 0 ? (
               <p className='text-xs text-text-secondary italic py-3 text-center'>No images match &ldquo;{search}&rdquo;</p>
