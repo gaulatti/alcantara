@@ -326,7 +326,6 @@ export class ProgramService implements OnModuleInit {
   private withResolvedBroadcastMixerChannels<T extends Record<string, any>>(
     settings: T,
   ): T & { mixerChannels: BroadcastMixerChannel[] } {
-    const defaultChannels = this.createDefaultBroadcastMixerChannels();
     const legacyChannels: BroadcastMixerChannel[] = [
       {
         id: 'song',
@@ -360,7 +359,7 @@ export class ProgramService implements OnModuleInit {
 
     const normalizedChannels = this.normalizeBroadcastMixerChannels(
       settings.mixerChannels,
-      legacyChannels.length ? legacyChannels : defaultChannels,
+      legacyChannels,
     );
     const song = this.getBroadcastMixerChannel(normalizedChannels, 'song');
     const stream = this.getBroadcastMixerChannel(normalizedChannels, 'stream');

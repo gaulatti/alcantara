@@ -21,7 +21,7 @@ const contractPath = join(
   '..',
   'src',
   'config',
-  'runtime-secret-contract.js',
+  'runtime-secret-contract-cli.js',
 );
 
 test('accepts only the exact required production secret keys', () => {

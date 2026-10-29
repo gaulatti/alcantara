@@ -358,7 +358,7 @@ function getSelectedSongItem(
   }
 
   if (sequence.mode === 'manual') {
-    return sequence.items[baseIndex] ?? null;
+    return sequence.items[baseIndex];
   }
 
   const startedAt = sequence.startedAt ?? nowMs;
@@ -372,45 +372,45 @@ function getSelectedSongItem(
       (durationMs) => durationMs === null,
     );
     if (!hasUnknownDuration) {
+      // Every duration is a known integer of at least one millisecond, so the
+      // cycle is positive and the remainder lands inside exactly one item. A
+      // non-finite clock yields a NaN remainder, which keeps the active item.
       const knownDurations = itemDurations as number[];
       const cycleDurationMs = knownDurations.reduce(
         (sum, durationMs) => sum + durationMs,
         0,
       );
-      if (cycleDurationMs <= 0) {
-        return sequence.items[baseIndex] ?? null;
-      }
 
       let remainingMs = elapsedMs % cycleDurationMs;
       for (let step = 0; step < sequence.items.length; step += 1) {
         const index = (baseIndex + step) % sequence.items.length;
         const itemDurationMs = knownDurations[index];
-        if (typeof itemDurationMs !== 'number') {
-          return sequence.items[index] ?? null;
-        }
         if (remainingMs < itemDurationMs) {
-          return sequence.items[index] ?? null;
+          return sequence.items[index];
         }
         remainingMs -= itemDurationMs;
       }
 
-      return sequence.items[baseIndex] ?? null;
+      return sequence.items[baseIndex];
     }
 
+    // At least one duration is unknown, so the walk always stops at the first
+    // unknown item at the latest.
     let remainingMs = elapsedMs;
-    for (let step = 0; step < sequence.items.length; step += 1) {
-      const index = (baseIndex + step) % sequence.items.length;
-      const itemDurationMs = itemDurations[index];
-      if (typeof itemDurationMs !== 'number') {
-        return sequence.items[index] ?? null;
-      }
-      if (remainingMs < itemDurationMs) {
-        return sequence.items[index] ?? null;
-      }
-      remainingMs -= itemDurationMs;
-    }
-
-    return sequence.items[baseIndex] ?? null;
+    const stopIndex = itemDurations
+      .map((_, step) => (baseIndex + step) % sequence.items.length)
+      .find((index) => {
+        const itemDurationMs = itemDurations[index];
+        if (
+          typeof itemDurationMs !== 'number' ||
+          remainingMs < itemDurationMs
+        ) {
+          return true;
+        }
+        remainingMs -= itemDurationMs;
+        return false;
+      }) as number;
+    return sequence.items[stopIndex];
   }
 
   let index = baseIndex;
@@ -418,7 +418,7 @@ function getSelectedSongItem(
   while (index < sequence.items.length - 1) {
     const itemDurationMs = itemDurations[index];
     if (typeof itemDurationMs !== 'number') {
-      return sequence.items[index] ?? null;
+      return sequence.items[index];
     }
     if (remainingMs < itemDurationMs) {
       break;
@@ -427,7 +427,7 @@ function getSelectedSongItem(
     index += 1;
   }
 
-  return sequence.items[index] ?? null;
+  return sequence.items[index];
 }
 
 function resolveSongSequenceRecursive(

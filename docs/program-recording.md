@@ -135,7 +135,7 @@ NEW_SECRET_DOCUMENT='<protected-path-to-complete-new-secret-json>'
 NEW_ALANA_TOKEN_FILE='<protected-path-to-new-alana-token>'
 ALANA_TOKEN_DESTINATION='<alana-host-token-path>'
 
-node backend/src/config/runtime-secret-contract.js < "$NEW_SECRET_DOCUMENT"
+node backend/src/config/runtime-secret-contract-cli.js < "$NEW_SECRET_DOCUMENT"
 aws secretsmanager put-secret-value \
   --secret-id "$SECRET_ID" \
   --secret-string "file://$NEW_SECRET_DOCUMENT"

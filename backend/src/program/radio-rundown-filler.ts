@@ -42,7 +42,8 @@ export function fillRadioRundown(
   );
   const pool = tagged
     .filter(
-      (song) => Number.isFinite(song.durationMs) && (song.durationMs ?? 0) > 0,
+      (song) =>
+        Number.isFinite(song.durationMs) && (song.durationMs as number) > 0,
     )
     .sort(
       (a, b) =>
