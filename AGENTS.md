@@ -389,11 +389,20 @@ end-to-end contract.
 - Before creating any pull request, run the current shared `clouseau` skill
   locally with your authenticated coding harness against the complete change.
   The accepted local recipe is `.clouseau-local.json`.
-- Fix the reported defects and required changes, run the recipe's verification,
-  and rerun Clouseau after repairs. Resolve every actionable finding; do not
-  create a PR with unresolved findings or an incomplete review.
-- Review the final committed change with a clean worktree. A change to the code
-  or base requires a matching fresh review; never repeat an unchanged review to
-  obtain a pass.
-- Submit changes through PRs; never push directly to `main`.
-
+- Fix the reported defects and required changes, run the local verification
+  recipe, and rerun Clouseau after repairs. Resolve every actionable finding;
+  do not create a PR with unresolved findings or an incomplete review.
+- Review the final committed change with a clean worktree. A change to the code,
+  base or protected review policy requires a matching fresh review. Preserve
+  negative review records; never repeat an unchanged review to obtain a pass.
+- Publish the passing signed receipt and include its returned marker in the
+  initial body of a ready, non-draft PR. Agent-created PRs must not omit local
+  review to move paid AI work into CI. Follow Clouseau's bounded repair policy;
+  if the review cannot pass, report the blocker before creating the PR.
+- CI independently verifies the receipt, tests and exact 100% line/branch
+  coverage of `backend/src`. Local review never waives those checks. Changes
+  without an agent's signed review, including manual and dependency-bot
+  changes, use CI AI review. See `docs/clouseau-ci.md` for the gated scope:
+  `frontend/`, `infra/aws` and `backend/scripts` are not gated, but any change
+  there must add tests for the code it touches where a test runner exists.
+- Submit changes through protected PRs; never push directly to `main`.

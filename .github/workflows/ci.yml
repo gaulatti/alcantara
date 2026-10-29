@@ -1,0 +1,489 @@
+name: Alcantara CI
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('Verify PR #{0}', github.event.pull_request.number) ||
+      inputs.check_provider && 'Verify AI provider' ||
+      inputs.check_author && 'Verify repair author' ||
+      format('PR intent review ({0})', github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref_name) }}
+
+on:
+  push:
+    branches: ['policy-install/**']
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Metadata only: this event never executes contributor code.
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'PR number to reassess; leave empty to run tests on this ref'
+        required: false
+        type: string
+      check_author:
+        description: 'Only inspect the existing deployment token identity and repository access; never deploy or write'
+        required: false
+        default: false
+        type: boolean
+      check_provider:
+        description: 'Only check the provider and live review scenarios; never approve or merge'
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: alcantara-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-clouseau:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.engine.outputs.sha }}
+      digest: ${{ steps.engine.outputs.digest }}
+    steps:
+      - id: engine
+        uses: gaulatti/clouseau/scripts/resolve@fd655851419980f833ff13a94b0d6ff41a901cb2
+
+  verify:
+    # Schedule the job so GitHub resolves its name, including metadata events.
+    # Step and service guards keep those events from running contributor code.
+    name: >-
+      ${{ (github.event_name == 'pull_request' ||
+          (github.event_name == 'workflow_dispatch' && inputs.pull_request == '' && !inputs.check_provider && !inputs.check_author)) && 'verify' || 'metadata-only' }}
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    needs: resolve-clouseau
+    steps:
+      - uses: actions/checkout@v4
+        if: &verify-code >-
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'workflow_dispatch' && inputs.pull_request == '' && !inputs.check_provider && !inputs.check_author)
+        with:
+          persist-credentials: false
+      - name: Check out this run frozen Clouseau engine
+        if: *verify-code
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          fetch-depth: 0
+          path: .clouseau-ci
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: *verify-code
+        with:
+          node-version: 22
+      - name: Install dependencies
+        if: *verify-code
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm install --frozen-lockfile
+      - name: Start PostgreSQL for migration and metrics checks
+        if: *verify-code
+        run: |
+          docker run --detach --name alcantara-ci-postgres \
+            --env POSTGRES_DB=alcantara_ci \
+            --env POSTGRES_USER=alcantara \
+            --env POSTGRES_PASSWORD=alcantara-ci-password \
+            --publish 127.0.0.1:5432:5432 \
+            --health-cmd "pg_isready -U alcantara -d alcantara_ci" \
+            --health-interval 5s --health-timeout 5s --health-retries 12 \
+            postgres:17-alpine
+          for attempt in $(seq 1 30); do
+            test "$(docker inspect --format '{{.State.Health.Status}}' alcantara-ci-postgres)" = healthy && exit 0
+            sleep 2
+          done
+          docker logs alcantara-ci-postgres
+          exit 1
+      - name: Set up Python for frozen shared tests
+        if: *verify-code
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install frozen shared test dependencies
+        if: *verify-code
+        run: python3 -m pip install --disable-pip-version-check -r .clouseau-ci/requirements-test.txt
+      - name: Test approval policy
+        if: *verify-code
+        uses: ./.clouseau-ci
+        with:
+          operation: test
+      - name: Test workflow routing
+        if: *verify-code
+        run: |
+          npm ci --prefix .github/tests --ignore-scripts --no-audit --no-fund
+          npm test --prefix .github/tests
+      - name: Generate the Prisma client and apply migrations
+        if: *verify-code
+        env:
+          DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
+        run: |
+          pnpm --dir backend run prisma:generate
+          pnpm --dir backend run db:migrate:prisma
+      - name: Run backend tests with source coverage
+        if: *verify-code
+        id: coverage
+        run: pnpm --dir backend run test:coverage
+      - name: Enforce 100% line and branch coverage
+        if: *verify-code
+        uses: ./.clouseau-ci
+        with:
+          operation: coverage
+          coverage-format: istanbul
+          coverage-report: backend/coverage/coverage-final.json
+          source-directory: backend/src
+      - name: Run backend end-to-end metrics and concurrency checks
+        if: *verify-code
+        env:
+          DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
+          METRICS_SCRAPE_OUTPUT: /tmp/alcantara.prom
+        run: pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns='metrics|media-label-concurrency'
+      - name: Parse the actual authenticated scrape
+        if: *verify-code
+        run: |
+          test -s /tmp/alcantara.prom
+          docker run --rm -i --entrypoint /bin/promtool prom/prometheus:v3.9.0 check metrics < /tmp/alcantara.prom
+      - name: Run backend deployment contract tests
+        if: *verify-code
+        run: pnpm --dir backend run test:deployment
+      - name: Build backend
+        if: *verify-code
+        run: pnpm --dir backend run build
+      - name: Test and build infrastructure
+        if: *verify-code
+        run: |
+          pnpm --dir infra/aws exec jest --runInBand
+          pnpm --dir infra/aws run build
+      - name: Retain coverage evidence
+        if: >-
+          always() && (github.event_name == 'pull_request' ||
+          (github.event_name == 'workflow_dispatch' && inputs.pull_request == '' && !inputs.check_provider && !inputs.check_author)) &&
+          steps.coverage.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backend/coverage/coverage-final.json
+          if-no-files-found: error
+
+  assess-intent:
+    if: &review-event >-
+      (github.event_name == 'pull_request_target' && !github.event.pull_request.draft) ||
+      (github.event_name == 'push' && !github.event.deleted && startsWith(github.ref, 'refs/heads/policy-install/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      assessment: ${{ steps.local-review.outputs.assessment || steps.assess.outputs.assessment }}
+      number: ${{ steps.install.outputs.number || github.event.pull_request.number }}
+    needs: resolve-clouseau
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    steps:
+      - name: Verify the owner-authorized frozen reviewer installation
+        if: github.event_name == 'push'
+        id: install
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const match = context.ref.match(/^refs\/heads\/policy-install\/pr-([1-9][0-9]*)$/);
+            if (context.actor !== context.repo.owner || !/^[a-f0-9]{40}$/.test(context.sha) || !match) {
+              throw new Error('Reviewer installation requires the repository owner and a ready PR number');
+            }
+            const pull_number = Number(match[1]);
+            if (!Number.isSafeInteger(pull_number)) throw new Error('Invalid installation PR number');
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number});
+            if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
+                pr.user.login !== context.repo.owner || pr.head.sha !== context.sha ||
+                pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              throw new Error('Installation requires the owner-authored same-repository PR at this exact workflow revision');
+            }
+            const comments = await github.paginate(github.rest.issues.listComments,
+              {...context.repo, issue_number: pull_number, per_page: 100});
+            if (!comments.some(comment => comment.user?.type === 'User' && comment.user.login === context.repo.owner &&
+                comment.body.trim() === `/approve-intent ${context.sha}`)) {
+              throw new Error('Installation requires owner intent confirmation at this exact revision');
+            }
+            core.setOutput('number', String(pull_number));
+      # Never load the controller or its configuration from the PR.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check out this run frozen Clouseau engine
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          path: .clouseau-ci
+          persist-credentials: false
+      - name: Select authenticated local review or the installed CI reviewer
+        id: review-route
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('local', String((context.payload.pull_request?.body || '').includes('clouseau-local-review:v1')));
+      - name: Verify authenticated local review without AI credentials
+        if: steps.review-route.outputs.local == 'true'
+        id: local-review
+        uses: ./.clouseau-ci
+        with:
+          operation: verify-local
+          pull-request: ${{ steps.install.outputs.number }}
+          wait-for-verification: 'true'
+      - name: Review unstamped PR through the installed CI AI reviewer
+        if: steps.review-route.outputs.local != 'true'
+        uses: ./.clouseau-ci
+        id: assess
+        with:
+          operation: assess
+          pull-request: ${{ steps.install.outputs.number }}
+          wait-for-verification: 'true'
+          provider-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          typesafe-key: ${{ secrets.TYPESAFE_API_KEY }}
+      - name: Retain acceptance record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clouseau-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/clouseau-acceptance*.json
+          if-no-files-found: ignore
+
+  approve-and-merge:
+    name: >-
+      ${{ ((github.event_name == 'pull_request_target' && !github.event.pull_request.draft) ||
+          (github.event_name == 'push' && !github.event.deleted && startsWith(github.ref, 'refs/heads/policy-install/'))) && 'approve-and-merge' || 'metadata-only-approval' }}
+    needs: [assess-intent, resolve-clouseau]
+    # Always resolve the job name; only trusted, ready PR events run its steps.
+    # A failed assessment must still fail the required native approval check.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    concurrency:
+      group: pr-approval-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    steps:
+      - name: Require a completed assessment
+        if: >-
+          ((github.event_name == 'pull_request_target' && !github.event.pull_request.draft) ||
+          (github.event_name == 'push' && !github.event.deleted && startsWith(github.ref, 'refs/heads/policy-install/'))) &&
+          needs.assess-intent.result != 'success'
+        run: exit 1
+      - uses: actions/checkout@v4
+        if: *review-event
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check out this run frozen Clouseau engine
+        if: *review-event
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          path: .clouseau-ci
+          persist-credentials: false
+      - name: Load this run's acceptance record
+        if: >-
+          ((github.event_name == 'pull_request_target' && !github.event.pull_request.draft) ||
+          (github.event_name == 'push' && !github.event.deleted && startsWith(github.ref, 'refs/heads/policy-install/'))) &&
+          needs.assess-intent.result == 'success' &&
+          fromJSON(needs.assess-intent.outputs.assessment).record_digest != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: clouseau-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work
+      - if: *review-event
+        uses: ./.clouseau-ci
+        with:
+          operation: gate
+          native-gate: 'true'
+          pull-request: ${{ needs.assess-intent.outputs.number }}
+          assessment: ${{ needs.assess-intent.outputs.assessment }}
+
+  apply-repair:
+    needs: [assess-intent, approve-and-merge, resolve-clouseau]
+    if: >-
+      always() && github.event_name == 'pull_request_target' && !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.assess-intent.result == 'success' && needs.approve-and-merge.result == 'failure' &&
+      fromJSON(needs.assess-intent.outputs.assessment).repair_digest != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
+    concurrency:
+      group: pr-approval-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check out this run frozen Clouseau engine
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          path: .clouseau-ci
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: clouseau-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work
+      - uses: ./.clouseau-ci
+        with:
+          operation: repair
+          assessment: ${{ needs.assess-intent.outputs.assessment }}
+          repair-token: ${{ secrets.DEPLOYMENT_TOKEN }}
+
+  finalize-merge:
+    needs: [assess-intent, approve-and-merge, resolve-clouseau]
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check out this run frozen Clouseau engine
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          path: .clouseau-ci
+          persist-credentials: false
+      - uses: ./.clouseau-ci
+        with:
+          operation: finalize
+          assessment: ${{ needs.assess-intent.outputs.assessment }}
+
+  request-reassessment:
+    if: >-
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/approve-intent ')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.pull_request != '' && !inputs.check_provider && !inputs.check_author)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    needs: resolve-clouseau
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check out this run frozen Clouseau engine
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          path: .clouseau-ci
+          persist-credentials: false
+      - uses: ./.clouseau-ci
+        with:
+          operation: request-reassessment
+          pull-request: ${{ inputs.pull_request }}
+
+  check-provider:
+    if: github.event_name == 'workflow_dispatch' && inputs.check_provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    needs: resolve-clouseau
+    env:
+      CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
+      CLOUSEAU_ENGINE_DIGEST: ${{ needs.resolve-clouseau.outputs.digest }}
+    steps:
+      - name: Check out this run frozen Clouseau engine
+        uses: actions/checkout@v4
+        with:
+          repository: gaulatti/clouseau
+          ref: ${{ needs.resolve-clouseau.outputs.sha || '0000000000000000000000000000000000000000' }}
+          path: .clouseau-ci
+          persist-credentials: false
+      - uses: ./.clouseau-ci
+        with:
+          operation: check-provider
+          provider-key: ${{ secrets.DEEPSEEK_API_KEY }}
+      - name: Qualify routed acceptance decisions
+        uses: ./.clouseau-ci
+        with:
+          operation: evaluate-acceptance
+          provider-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          typesafe-key: ${{ secrets.TYPESAFE_API_KEY }}
+      - name: Retain qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/acceptance-evaluation.json
+          if-no-files-found: ignore
+
+  check-author:
+    if: github.event_name == 'workflow_dispatch' && inputs.check_author
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      - name: Inspect existing GitHub author identity and permissions without writes
+        uses: actions/github-script@v7
+        env:
+          ALCANTARA_AUTHOR_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        with:
+          script: |
+            const authorGithub = new github.constructor({auth: process.env.ALCANTARA_AUTHOR_TOKEN});
+            const user = await authorGithub.rest.users.getAuthenticated();
+            const scopes = (user.headers['x-oauth-scopes'] || '').split(',').map(value => value.trim());
+            const results = [];
+            for (const repository of [context.repo, {owner: 'gaulatti', repo: 'clouseau'}]) {
+              const {data} = await authorGithub.rest.repos.get(repository);
+              results.push({repository: data.full_name, owner_can_push: data.permissions?.push === true,
+                classic_repository_write_scope: scopes.includes('repo') || (!data.private && scopes.includes('public_repo'))});
+            }
+            core.info(JSON.stringify({login: user.data.login, type: user.data.type, scopes, repositories: results}));
+            if (user.data.type !== 'User' || user.data.login === 'github-actions[bot]') throw new Error('An author identity independent of the approval bot is required');

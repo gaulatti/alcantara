@@ -470,3 +470,12 @@ The frontend SSE client automatically reconnects with a 3-second interval if the
 ## License
 
 MIT
+
+## Clouseau CI
+
+Pull requests run the full verification suite and an exact 100% line/branch
+coverage gate for `backend/src`, then automatic Clouseau review, approval and
+merge. See [`docs/clouseau-ci.md`](docs/clouseau-ci.md), the
+[review contract](.github/clouseau.md) and the
+[configuration](.github/clouseau.json). The frontend, `infra/aws` and
+`backend/scripts` are outside the exact gate for now; their tests still run.
