@@ -103,7 +103,7 @@ jobs:
             --publish 127.0.0.1:5432:5432 \
             --health-cmd "pg_isready -U alcantara -d alcantara_ci" \
             --health-interval 5s --health-timeout 5s --health-retries 12 \
-            postgres:17-alpine
+            pgvector/pgvector:pg17
           for attempt in $(seq 1 30); do
             test "$(docker inspect --format '{{.State.Health.Status}}' alcantara-ci-postgres)" = healthy && exit 0
             sleep 2
