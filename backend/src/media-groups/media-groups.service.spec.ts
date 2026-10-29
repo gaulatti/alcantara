@@ -257,6 +257,21 @@ describe('MediaGroupsService application boundary', () => {
     },
   );
 
+  it.each(['create', 'update'] as const)(
+    'reports a missing group when the %s transaction yields no record',
+    async (method) => {
+      const f = fixture();
+      f.prisma.$transaction.mockResolvedValueOnce(null as never);
+      const call =
+        method === 'create'
+          ? f.service.create({ name: 'Opening' })
+          : f.service.update(7, {});
+      await expect(call).rejects.toThrow(
+        `Media group not found after ${method}`,
+      );
+    },
+  );
+
   it('deletes the legacy mirror with its group and rejects a missing group before mutation', async () => {
     const f = fixture();
     expect(await f.service.remove(7)).toEqual({ deletedMediaGroupId: 7 });

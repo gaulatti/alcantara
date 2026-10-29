@@ -1937,3 +1937,279 @@ describe('ProgramService inactive caches and renderer handoff boundaries', () =>
     ).toBe(true);
   });
 });
+
+describe('ProgramService version envelopes and renderer state projection boundaries', () => {
+  beforeEach(() =>
+    jest.spyOn(console, 'log').mockImplementation(() => undefined),
+  );
+  afterEach(() => jest.restoreAllMocks());
+
+  const topicEvents = {
+    state: 'scene_change',
+    audioBus: 'audio_bus_update',
+    audioMeter: 'audio_meter_update',
+    songPlayback: 'song_playback_update',
+    sceneInstant: 'scene_instant_state',
+  } as const;
+
+  const cases: Array<
+    [
+      string,
+      keyof typeof topicEvents,
+      (service: ProgramService) => Promise<{ version: number }>,
+    ]
+  > = [
+    [
+      'updateProgramAudioBus',
+      'audioBus',
+      (s) => s.updateProgramAudioBus({ songSequence: null }, 'news') as any,
+    ],
+    [
+      'updateProgramAudioMeter',
+      'audioMeter',
+      (s) =>
+        s.updateProgramAudioMeter(
+          { song: 0.1, instants: 0.2, main: 0.3 },
+          'news',
+        ) as any,
+    ],
+    [
+      'updateProgramSongPlayback',
+      'songPlayback',
+      (s) =>
+        s.updateProgramSongPlayback(
+          {
+            token: 'song-1',
+            audioUrl: 'https://media.example/song.mp3',
+            progress: 0.2,
+            currentTimeMs: 200,
+            durationMs: 1000,
+            isPlaying: false,
+          },
+          'news',
+        ) as any,
+    ],
+    [
+      'takeProgramSceneInstant',
+      'sceneInstant',
+      (s) => s.takeProgramSceneInstant(7, 'news') as any,
+    ],
+    [
+      'stopProgramSceneInstant',
+      'sceneInstant',
+      (s) => s.stopProgramSceneInstant('news') as any,
+    ],
+    [
+      'addSceneToProgram',
+      'state',
+      (s) => s.addSceneToProgram(7, 'news') as any,
+    ],
+    [
+      'removeSceneFromProgram',
+      'state',
+      (s) => s.removeSceneFromProgram(7, 'news') as any,
+    ],
+    [
+      'addMediaGroupToProgram',
+      'state',
+      (s) => s.addMediaGroupToProgram(3, 'news') as any,
+    ],
+    [
+      'removeMediaGroupFromProgram',
+      'state',
+      (s) => s.removeMediaGroupFromProgram(3, 'news') as any,
+    ],
+    [
+      'addStingerToProgram',
+      'state',
+      (s) => s.addStingerToProgram(4, 'news') as any,
+    ],
+    [
+      'removeStingerFromProgram',
+      'state',
+      (s) => s.removeStingerFromProgram(4, 'news') as any,
+    ],
+    ['stageScene', 'state', (s) => s.stageScene(7, 'news') as any],
+    ['activateScene', 'state', (s) => s.activateScene(7, 'news') as any],
+    ['setFadeToBlack', 'state', (s) => s.setFadeToBlack(true, 'news') as any],
+    ['takeProgramOffAir', 'state', (s) => s.takeProgramOffAir('news') as any],
+  ];
+
+  it.each(cases)(
+    '%s reports the stored topic version when the broadcast carries no version',
+    async (_name, topic, invoke) => {
+      const f = fixture();
+      f.service.broadcastUpdate('news', { type: topicEvents[topic] });
+      f.service.broadcastUpdate('news', { type: topicEvents[topic] });
+      expect(f.service.getProgramUpdateVersion('news', topic)).toBe(2);
+      const eventCount = f.events.length;
+      jest.spyOn(f.service, 'broadcastUpdate').mockReturnValue(undefined);
+      const result = await invoke(f.service);
+      expect(result.version).toBe(2);
+      expect(f.service.getProgramUpdateVersion('news', topic)).toBe(2);
+      expect(f.events).toHaveLength(eventCount);
+    },
+  );
+
+  it('returns the version carried by the fade-to-black broadcast, which is not a versioned topic event', async () => {
+    const f = fixture();
+    expect(
+      (await f.service.setFadeToBlack(true, 'news')) as { version: number },
+    ).toMatchObject({ version: 0 });
+    const broadcast = jest
+      .spyOn(f.service, 'broadcastUpdate')
+      .mockReturnValue({ type: 'fade_to_black', version: 9 });
+    expect(await f.service.setFadeToBlack(false, 'news')).toMatchObject({
+      fadeToBlack: false,
+      version: 9,
+    });
+    expect(broadcast).toHaveBeenCalledWith(
+      'news',
+      expect.objectContaining({ type: 'fade_to_black', active: false }),
+    );
+  });
+
+  it('reports the stored global version when a settings broadcast carries no version', async () => {
+    const f = fixture();
+    jest
+      .spyOn(f.service as any, 'broadcastGlobalUpdate')
+      .mockReturnValue(undefined);
+    const updated = await f.service.updateBroadcastSettings({
+      mainMasterVolume: 0.5,
+    });
+    expect(updated.mainMasterVolume).toBe(0.5);
+    expect(updated.version).toBe(0);
+    expect(f.service.getGlobalBroadcastVersion()).toBe(0);
+    expect(f.events).toEqual([]);
+  });
+
+  it('reads a program topic version without bumping it and bumps by default', () => {
+    const f = fixture();
+    const internals = f.service as any;
+    expect(
+      internals.withProgramVersionEnvelope('news', { type: 'scene_change' }),
+    ).toEqual({ type: 'scene_change', version: 1 });
+    expect(
+      internals.withProgramVersionEnvelope(
+        'news',
+        { type: 'scene_change', extra: true },
+        { bumpVersion: false },
+      ),
+    ).toEqual({ type: 'scene_change', extra: true, version: 1 });
+    expect(f.service.getProgramUpdateVersion('news', 'state')).toBe(1);
+  });
+
+  it('versions global payloads, wraps non-object payloads, and reads without bumping when asked', () => {
+    const f = fixture();
+    const internals = f.service as any;
+    expect(internals.withGlobalVersionEnvelope({ type: 'a' })).toEqual({
+      type: 'a',
+      version: 1,
+    });
+    expect(
+      internals.withGlobalVersionEnvelope(
+        { type: 'b' },
+        { bumpVersion: false },
+      ),
+    ).toEqual({ type: 'b', version: 1 });
+    expect(f.service.getGlobalBroadcastVersion()).toBe(1);
+    expect(internals.withGlobalVersionEnvelope('text')).toEqual({
+      type: 'global_update',
+      payload: 'text',
+      version: 2,
+    });
+    expect(f.service.getGlobalBroadcastVersion()).toBe(2);
+  });
+
+  it('keeps the original time-override start when a legacy enabled row has no recorded start', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-01-01T12:00:00Z'));
+    try {
+      const f = fixture();
+      await f.service.updateBroadcastSettings({
+        enabled: true,
+        startTime: '09:30',
+      });
+      f.prisma.broadcastSettings.upsert.mockImplementationOnce(
+        async ({ create }: any) => ({
+          ...create,
+          timeOverrideEnabled: true,
+          timeOverrideStartTime: '09:30',
+          timeOverrideStartedAt: null,
+        }),
+      );
+      const updated = await f.service.updateBroadcastSettings({
+        songMasterVolume: 0.5,
+      });
+      expect(updated.timeOverrideStartTime).toBe('09:30');
+      expect(updated.timeOverrideStartedAt).toEqual(
+        new Date('2026-01-01T12:00:00Z'),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('treats a persisted row without a staged scene field, or with malformed scene entries, as having an empty Preview', async () => {
+    const f = fixture();
+    delete f.states.get('news').stagedSceneId;
+    expect(await f.service.getState('news')).toMatchObject({
+      stagedSceneId: null,
+      stagedScene: null,
+    });
+
+    f.states.get('news').stagedSceneId = 7;
+    f.states.get('news').scenes = [null, [], 'scene', { sceneId: 7 }];
+    expect(await f.service.getState('news')).toMatchObject({
+      stagedSceneId: 7,
+      stagedScene: null,
+    });
+
+    f.states.get('news').scenes = [{ sceneId: 7, scene: null }];
+    expect(await f.service.getState('news')).toMatchObject({
+      stagedSceneId: 7,
+      stagedScene: null,
+    });
+
+    f.states.get('news').scenes = [null, { sceneId: 7, scene: f.scene }];
+    expect(await f.service.getState('news')).toMatchObject({
+      stagedSceneId: 7,
+      stagedScene: f.scene,
+    });
+  });
+
+  it('forwards a song to the radio when the same token starts a different audio file', async () => {
+    const f = fixture();
+    f.radio.getRadioSettings.mockResolvedValue({ enabled: true });
+    const playback = {
+      token: 'song-1',
+      progress: 0,
+      currentTimeMs: 0,
+      durationMs: 1000,
+      isPlaying: true,
+    };
+    await f.service.updateProgramSongPlayback(
+      { ...playback, audioUrl: 'https://media.example/a.mp3' },
+      'news',
+    );
+    await f.service.updateProgramSongPlayback(
+      { ...playback, audioUrl: 'https://media.example/b.mp3' },
+      'news',
+    );
+    expect(f.radio.playSong.mock.calls).toEqual([
+      ['news', 'https://media.example/a.mp3'],
+      ['news', 'https://media.example/b.mp3'],
+    ]);
+  });
+
+  it('propagates a failure of the live event subject to the subscriber', async () => {
+    const f = fixture();
+    const failure = new Error('subject failed');
+    const errors: unknown[] = [];
+    const subscription = f.service
+      .getEventStream('news')
+      .subscribe({ error: (error) => errors.push(error) });
+    (f.service as any).getEventSubject('news').error(failure);
+    expect(errors).toEqual([failure]);
+    subscription.unsubscribe();
+  });
+});

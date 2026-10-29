@@ -1502,4 +1502,272 @@ describe('FlightService public lifecycle and clock boundary', () => {
       );
     },
   );
+
+  it('refuses to rewrite an aired log through schedule-only or loop-only edits', async () => {
+    const f = setup();
+    Object.assign(f.sequence(), {
+      scheduledAt: new Date('2025-12-31T10:00:00Z'),
+      lastStartedAt: new Date('2025-12-31T10:00:01Z'),
+      publishedAt: new Date('2025-12-31T09:00:00Z'),
+    });
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        revision: 1,
+        scheduledAt: '2026-02-01T10:00:00Z',
+      }),
+    ).rejects.toThrow('an aired or stopped log cannot be rewritten');
+    await expect(
+      f.service.updateFlightSequence('news', 7, { revision: 1, loop: true }),
+    ).rejects.toThrow('an aired or stopped log cannot be rewritten');
+    expect(f.prisma.flightSequence.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('names the stored sequence in a uniqueness conflict when an edit does not rename it', async () => {
+    const f = setup();
+    f.prisma.flightSequence.updateMany.mockRejectedValueOnce({
+      code: 'P2002',
+    });
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        items: [{ id: 'pause', kind: 'wait', durationMs: 5 }],
+      }),
+    ).rejects.toThrow('flight sequence "Rundown" already exists');
+  });
+
+  it('keeps the active pointer when deleting a sequence that is not active', async () => {
+    const f = setup();
+    f.state.activeFlightSequenceId = 99;
+    await expect(f.service.deleteFlightSequence('news', 7)).resolves.toEqual({
+      deletedId: 7,
+    });
+    expect(f.prisma.flightSequence.delete).toHaveBeenCalledWith({
+      where: { id: 7 },
+    });
+    expect(f.prisma.programState.update).not.toHaveBeenCalled();
+    expect(f.state.activeFlightSequenceId).toBe(99);
+  });
+
+  it('completes an unclocked stop when taking the song off air fails', async () => {
+    const f = setup();
+    await f.service.start('news');
+    await flush();
+    f.programs.takeProgramSongOffAir.mockRejectedValueOnce(
+      new Error('audio bus unavailable'),
+    );
+    await expect(f.service.stop('news')).resolves.toEqual({ ok: true });
+    expect(f.sequence().isRunning).toBe(false);
+    expect(f.service.isClockedLogRunning('news')).toBe(false);
+  });
+
+  it('does not remove a newer runtime started while an older stop is still releasing audio', async () => {
+    const f = setup();
+    f.sequence().items = [
+      { id: 'first', kind: 'wait', durationMs: 60000 },
+      { id: 'second', kind: 'wait', durationMs: 60000 },
+    ];
+    let release!: () => void;
+    f.programs.takeProgramSongOffAir.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const stopping = f.service.stop('news');
+    await flush();
+    await f.service.start('news');
+    await flush();
+    expect(f.sequence().activeItemId).toBe('first');
+    release();
+    await stopping;
+    await f.service.go('news');
+    expect(f.sequence().activeItemId).toBe('second');
+    expect(f.sequence().isRunning).toBe(true);
+  });
+
+  describe('timers armed while a stop is still in flight', () => {
+    // The cue continuation passes its generation check while the runtime is
+    // still marked running, arms a timer, and the stop then discards the
+    // runtime. The late timer must not act on the discarded runtime.
+    const stopWhileCueIsInFlight = async (
+      f: ReturnType<typeof fixture>,
+      gate: jest.Mock,
+    ) => {
+      let releaseCue!: () => void;
+      gate.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseCue = resolve;
+          }),
+      );
+      let releaseStop!: () => void;
+      f.programs.takeProgramSongOffAir.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseStop = resolve;
+          }),
+      );
+      await f.service.start('news');
+      await flush();
+      const stopping = f.service.stop('news');
+      await flush();
+      releaseCue();
+      await flush();
+      releaseStop();
+      await stopping;
+    };
+
+    it('ignores a late wait timer', async () => {
+      const f = setup();
+      f.sequence().items = [
+        { id: 'pause', kind: 'wait', durationMs: 1000 },
+        { id: 'after', kind: 'wait', durationMs: 1000 },
+      ];
+      let releaseStop!: () => void;
+      await f.service.start('news');
+      f.programs.takeProgramSongOffAir.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseStop = resolve;
+          }),
+      );
+      const stopping = f.service.stop('news');
+      await flush();
+      releaseStop();
+      await stopping;
+      const afterStop = f.prisma.flightSequence.update.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(f.prisma.flightSequence.update.mock.calls.length).toBe(afterStop);
+      expect(f.sequence().activeItemId).not.toBe('after');
+      expect(f.sequence().isRunning).toBe(false);
+    });
+
+    it('ignores a late song-end timeout', async () => {
+      const f = setup();
+      f.sequence().items = [
+        { id: 'song-end', kind: 'waitForSongEnd' },
+        { id: 'after', kind: 'wait', durationMs: 1000 },
+      ];
+      let releaseStop!: () => void;
+      await f.service.start('news');
+      f.programs.takeProgramSongOffAir.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseStop = resolve;
+          }),
+      );
+      const stopping = f.service.stop('news');
+      await flush();
+      releaseStop();
+      await stopping;
+      const writes = f.prisma.flightSequence.update.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+      expect(f.prisma.flightSequence.update.mock.calls.length).toBe(writes);
+      expect(f.sequence().activeItemId).not.toBe('after');
+      expect(f.sequence().isRunning).toBe(false);
+    });
+
+    it('ignores a late hard-cue timer armed for a clocked song', async () => {
+      const f = setup();
+      clocked(f, [
+        { id: 'song', kind: 'playSong', songId: 5, clockOffsetSeconds: 0 },
+        { id: 'end', kind: 'stopSong', clockOffsetSeconds: 10 },
+      ]);
+      await stopWhileCueIsInFlight(f, f.programs.stopProgramSongForTimedBlock);
+      expect(f.programs.takeCatalogSongOnAir).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(20000);
+      expect(f.programs.resumeContinuousRotation).not.toHaveBeenCalled();
+      expect(f.sequence().activeItemId).toBe('song');
+      expect(f.service.isClockedLogRunning('news')).toBe(false);
+    });
+
+    it('ignores a late clip-end timer armed for a clocked clip', async () => {
+      const f = setup();
+      clocked(f, [
+        {
+          id: 'clip',
+          kind: 'instant',
+          instantId: 12,
+          durationMs: 2000,
+          clockOffsetSeconds: 0,
+        },
+        { id: 'end', kind: 'stopSong', clockOffsetSeconds: 10 },
+      ]);
+      await stopWhileCueIsInFlight(f, f.programs.stopProgramSongForTimedBlock);
+      expect(f.programs.playInstant).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(20000);
+      expect(f.programs.resumeContinuousRotation).not.toHaveBeenCalled();
+      expect(f.sequence().activeItemId).toBe('clip');
+      expect(f.service.isClockedLogRunning('news')).toBe(false);
+    });
+  });
+
+  it('skips a mixer cue when the program has no mixer settings', async () => {
+    const f = setup();
+    f.programs.getProgramAudioBus.mockResolvedValue({ mixerSettings: null });
+    f.sequence().items = [
+      {
+        id: 'mix',
+        kind: 'mixer',
+        mixerChange: { channelId: 'song', volume: 0 },
+      },
+      { id: 'wait', kind: 'wait', durationMs: 1000 },
+    ];
+    await f.service.start('news');
+    await flush();
+    expect(f.programs.getProgramAudioBus).toHaveBeenCalledWith('news');
+    expect(f.programs.updateProgramAudioBus).not.toHaveBeenCalled();
+    expect(f.sequence().activeItemId).toBe('wait');
+  });
+
+  it('replaces missing or malformed stored mixer channels with a bounded patch', async () => {
+    const f = setup();
+    f.sequence().items = [
+      {
+        id: 'mix',
+        kind: 'mixer',
+        mixerChange: { channelId: 'song', volume: 0 },
+      },
+      { id: 'wait', kind: 'wait', durationMs: 1000 },
+    ];
+    f.programs.getProgramAudioBus.mockResolvedValueOnce({
+      mixerSettings: { mixerChannels: 'not-a-list' },
+    });
+    await f.service.start('news');
+    await flush();
+    expect(f.programs.updateProgramAudioBus).toHaveBeenLastCalledWith(
+      { mixerSettings: { mixerChannels: [] } },
+      'news',
+    );
+    await f.service.stop('news');
+    f.programs.getProgramAudioBus.mockResolvedValueOnce({
+      mixerSettings: {
+        mixerChannels: [null, { id: 'song', volume: 1, muted: false }],
+      },
+    });
+    await f.service.start('news');
+    await flush();
+    expect(f.programs.updateProgramAudioBus).toHaveBeenLastCalledWith(
+      {
+        mixerSettings: {
+          mixerChannels: [{}, { id: 'song', volume: 0, muted: false }],
+        },
+      },
+      'news',
+    );
+  });
+
+  it('rejects a non-string program identity at the public boundary', async () => {
+    const f = setup();
+    await expect(f.service.stop(42 as unknown as string)).rejects.toThrow(
+      'programId is required',
+    );
+    expect(f.prisma.programState.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('presents a stored sequence without a revision as revision one', async () => {
+    const f = setup();
+    delete f.sequence().revision;
+    const [listed] = await f.service.listFlightSequences('news');
+    expect(listed.revision).toBe(1);
+  });
 });

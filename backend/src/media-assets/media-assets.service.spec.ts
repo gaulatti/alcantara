@@ -785,6 +785,34 @@ describe('MediaAssetsService catalog mutation and compatibility boundaries', () 
     expect(f.tx.mediaAssetLabel.createMany).not.toHaveBeenCalled();
   });
 
+  it('authorizes previously assigned assets together with the replacement membership', async () => {
+    const f = lifecycleHarness();
+    f.prisma.mediaAssetLabel.findMany.mockResolvedValue([
+      { assetId: 'image:old' },
+      { assetId: 'image:1' },
+    ]);
+    f.prisma.mediaAsset.findMany.mockResolvedValue([
+      imageAsset('image:old'),
+      imageAsset('image:1'),
+    ]);
+    await f.service.replaceLabelAssets(
+      'label-1',
+      ['image:1'],
+      catalogAuthority,
+    );
+    expect(f.prisma.mediaAsset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['image:old', 'image:1'] } },
+      }),
+    );
+    expect(f.tx.mediaAssetLabel.deleteMany).toHaveBeenCalledWith({
+      where: { labelId: 'label-1' },
+    });
+    expect(f.tx.mediaAssetLabel.createMany).toHaveBeenCalledWith({
+      data: [{ labelId: 'label-1', assetId: 'image:1', position: 0 }],
+    });
+  });
+
   it('refuses missing labels or unknown replacement assets before deleting current membership', async () => {
     const f = lifecycleHarness();
     f.prisma.mediaLabel.findUnique.mockResolvedValueOnce(null);

@@ -265,6 +265,21 @@ describe('UploadsService validation and storage boundary', () => {
     },
   );
 
+  it('returns tags without artwork and stores no cover when the song has no embedded picture', async () => {
+    (parseBuffer as jest.Mock).mockResolvedValue({
+      common: { artist: 'Artist', title: 'Title' },
+      format: { duration: 2 },
+    });
+    const result = await service().upload(payload({ kind: 'song' }) as any);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(result.metadata).toEqual({
+      artist: 'Artist',
+      title: 'Title',
+      durationMs: 2000,
+      coverUrl: undefined,
+    });
+  });
+
   it('returns an uploaded song without metadata when parsing fails', async () => {
     (parseBuffer as jest.Mock).mockRejectedValue(new Error('malformed audio'));
     expect(

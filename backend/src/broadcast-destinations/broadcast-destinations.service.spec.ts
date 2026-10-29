@@ -593,6 +593,24 @@ describe('BroadcastDestinationsService catalog and immutable command lifecycle',
     },
   );
 
+  it('reports a null downstream status when a stored successful retry has none', async () => {
+    const f = makeHarness();
+    f.alana.stop.mockResolvedValue(stoppedState());
+    const input = confirmed({ destinationIds: [] });
+    await f.service.stop('main', input, 'operator');
+    f.prisma.broadcastDestinationCommand.findUnique.mockResolvedValue({
+      ...f.command(),
+      downstreamStatus: null,
+    });
+    const repeated = await f.service.stop('main', input, 'operator');
+    expect(repeated).toMatchObject({
+      duplicate: true,
+      status: 'succeeded',
+      downstream: null,
+    });
+    expect(f.alana.stop).toHaveBeenCalledTimes(1);
+  });
+
   it('does not let an existing command id authorize another action, program or selection', async () => {
     const f = makeHarness();
     await f.service.start('main', confirmed(), 'operator');

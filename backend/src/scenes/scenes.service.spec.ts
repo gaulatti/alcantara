@@ -480,4 +480,118 @@ describe('ScenesService persisted scene and program events', () => {
     ).rejects.toThrow('Scene not found');
     expect(f.prisma.scene.update).not.toHaveBeenCalled();
   });
+
+  describe('bracket metadata boundaries', () => {
+    it('draws with an explicit component type and falls back to a five second duration when none is configured', async () => {
+      jest.useFakeTimers();
+      const f = fixture({
+        'modoitaliano-bracket': {
+          startRound: 'quarterfinals',
+          randomSongPoolIds: [1, 2],
+        },
+      });
+      const result = await f.service.drawModoItalianoBracket(7, {
+        componentType: 'modoitaliano-bracket',
+        seed: 1,
+      });
+      expect(result.durationSeconds).toBe(5);
+      expect(f.programs.broadcastUpdate).toHaveBeenCalledWith(
+        'program-a',
+        expect.objectContaining({
+          type: 'modoitaliano_bracket_draw_start',
+          componentType: 'modoitaliano-bracket',
+          durationSeconds: 5,
+        }),
+      );
+      await jest.advanceTimersByTimeAsync(5000);
+      const saved = JSON.parse(f.current().metadata)['modoitaliano-bracket'];
+      expect(saved.matches).toHaveLength(15);
+      expect(saved.matches[8].songAId).toEqual(expect.any(Number));
+    });
+
+    it('rejects votes with a non-text voter, and for scenes with no bracket or voters', async () => {
+      const f = fixture(bracketMetadata());
+      await expect(
+        f.service.voteModoItalianoBracket(7, {
+          matchId: 9,
+          voterId: 5 as any,
+          songId: 1,
+        }),
+      ).rejects.toThrow('Invalid vote');
+      f.current().metadata = '{}';
+      await expect(
+        f.service.voteModoItalianoBracket(7, {
+          matchId: 9,
+          voterId: 'a',
+          songId: 1,
+        }),
+      ).rejects.toThrow('Unknown voter');
+      f.current().metadata = JSON.stringify({
+        'modoitaliano-bracket': { voters: 'not-a-list' },
+      });
+      await expect(
+        f.service.voteModoItalianoBracket(7, {
+          matchId: 9,
+          voterId: 'a',
+          songId: 1,
+        }),
+      ).rejects.toThrow('Unknown voter');
+      expect(f.prisma.scene.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to open voting for a scene without bracket metadata', async () => {
+      const f = fixture({});
+      await expect(
+        f.service.openModoItalianoBracketVoting(7, { matchId: 9 }),
+      ).rejects.toThrow('This match is not open for voting');
+      expect(f.prisma.scene.update).not.toHaveBeenCalled();
+    });
+
+    it('completes a draw against a scene whose bracket was cleared meanwhile', async () => {
+      jest.useFakeTimers();
+      const f = fixture(bracketMetadata({ drawDurationSeconds: 1 }));
+      await f.service.drawModoItalianoBracket(7, { seed: 1 });
+      f.prisma.scene.findUnique.mockResolvedValueOnce({
+        ...f.current(),
+        metadata: '{}',
+      });
+      await jest.advanceTimersByTimeAsync(1000);
+      const saved = JSON.parse(f.current().metadata)['modoitaliano-bracket'];
+      expect(saved.matches[8].songAId).toEqual(expect.any(Number));
+    });
+
+    it('does not persist a completed draw when every opening slot is already filled', async () => {
+      jest.useFakeTimers();
+      const f = fixture(bracketMetadata({ drawDurationSeconds: 1 }));
+      await f.service.drawModoItalianoBracket(7, { seed: 1 });
+      f.prisma.scene.findUnique.mockResolvedValueOnce({
+        ...f.current(),
+        metadata: JSON.stringify(
+          bracketMetadata({
+            matches: [9, 10, 11, 12].map((id) => ({
+              id,
+              songAId: 1,
+              songBId: 2,
+            })),
+          }),
+        ),
+      });
+      f.programs.broadcastUpdate.mockClear();
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(f.prisma.scene.update).not.toHaveBeenCalled();
+      expect(f.programs.broadcastUpdate).not.toHaveBeenCalled();
+    });
+
+    it('ignores a draw completion that no longer matches the active draw', async () => {
+      const f = fixture(bracketMetadata());
+      await (f.service as any).completeModoItalianoBracketDraw(
+        7,
+        'modoitaliano-bracket',
+        1,
+        1,
+      );
+      expect(f.prisma.scene.findUnique).not.toHaveBeenCalled();
+      expect(f.prisma.scene.update).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { sign } from 'jsonwebtoken';
+import { decode, sign } from 'jsonwebtoken';
 import { ALCANTARA_PERMISSIONS } from './permissions';
 import {
   assertTestAuthSafety,
@@ -27,6 +27,40 @@ describe('TestAuthService', () => {
     expect(() => service({ TEST_AUTH_SECRET: 'short' })).toThrow(
       'at least 32 characters',
     );
+  });
+
+  it('grants operators only string permission leaves when the permission map holds other values', () => {
+    let isolated!: typeof import('./test-auth.service');
+    jest.isolateModules(() => {
+      jest.doMock('./permissions', () => {
+        const actual = jest.requireActual('./permissions');
+        return {
+          ...actual,
+          ALCANTARA_PERMISSIONS: {
+            ...actual.ALCANTARA_PERMISSIONS,
+            retired: 0,
+            unset: null,
+          },
+        };
+      });
+      isolated = require('./test-auth.service');
+    });
+    jest.dontMock('./permissions');
+    const auth = new isolated.TestAuthService(
+      new ConfigService({
+        NODE_ENV: 'test',
+        AUTH_MODE: 'test',
+        TEST_AUTH_SECRET: 'fictional-local-test-secret-over-32-chars',
+      }),
+    );
+    const claims = decode(auth.issue('operator-a').accessToken) as {
+      permissions: unknown[];
+    };
+    expect(claims.permissions.length).toBeGreaterThan(0);
+    expect(claims.permissions.every((value) => typeof value === 'string')).toBe(
+      true,
+    );
+    expect(claims.permissions).toContain(ALCANTARA_PERMISSIONS.layout.manage);
   });
 
   it('issues isolated operator and viewer permissions through normal authorization', () => {

@@ -71,6 +71,21 @@ describe('hourly backup scheduling and platform failure boundaries', () => {
     service.onModuleDestroy();
   });
 
+  it('does not reschedule when shutdown happened but the platform could not cancel the pending timer', async () => {
+    jest.useFakeTimers({ now: new Date('2026-10-24T12:59:59.999Z') });
+    const { service, dump } = fixture();
+    service.onModuleInit();
+    const clearSpy = jest
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation(() => undefined);
+    service.onModuleDestroy();
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+    clearSpy.mockRestore();
+    await jest.advanceTimersByTimeAsync(1);
+    expect(dump).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('can restart scheduling after an orderly module shutdown', async () => {
     jest.useFakeTimers({ now: new Date('2026-10-24T12:59:59.999Z') });
     const { service, dump } = fixture();

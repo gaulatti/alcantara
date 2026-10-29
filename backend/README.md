@@ -67,9 +67,16 @@ $ pnpm run test
 # e2e tests
 $ pnpm run test:e2e
 
-# test coverage
-$ pnpm run test:cov
+# exact native coverage (builds, then runs unit and e2e specs against the
+# disposable alcantara_ci PostgreSQL; writes backend/coverage/coverage-final.json)
+$ pnpm run test:coverage   # `test:cov` is an alias
 ```
+
+`test:coverage` is the command the local Clouseau recipe (`.clouseau-local.json`)
+reads. The global 100% line and branch thresholds are intentionally unchanged
+and currently fail: the remaining gaps are defensive branches that no public
+interface can reach (see issue #82). Do not satisfy them with exclusions or
+counter changes.
 
 ## Deployment
 

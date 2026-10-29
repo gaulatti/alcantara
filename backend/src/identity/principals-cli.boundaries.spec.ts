@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import {
+  buildConsumerReferences,
   mappingsFromMigrationReport,
   readMigrationReportFile,
   runPrincipalMigrationCli,
@@ -442,5 +443,101 @@ describe('principal migration hostile and stale producer inputs', () => {
     expect(transaction.operatorPreference.updateMany).toHaveBeenCalledTimes(1);
     expect(transaction.guestInvitation.updateMany).toHaveBeenCalledTimes(1);
     expect(transaction.sharedConsoleLayout.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('exports no reference for rows without a usable subject', () => {
+    expect(
+      buildConsumerReferences([
+        { ...row, id: 'blank', subject: '   ' },
+        { ...row, id: 'null', subject: null },
+        { ...row, id: 'padded', subject: '  subject-a  ' },
+      ]),
+    ).toEqual([
+      {
+        consumer: 'alcantara',
+        reference: 'SharedConsoleLayout:padded',
+        subject: 'subject-a',
+      },
+    ]);
+  });
+
+  it('inventories only guest events carrying a usable operator identity and trims a stored canonical principal', async () => {
+    const events = [
+      { id: 'numeric', details: { operatorIdentity: 7 } },
+      { id: 'blank', details: { operatorIdentity: '   ' } },
+      { id: 'missing', details: { other: true } },
+      {
+        id: 'migrated',
+        details: {
+          operatorIdentity: 'event-subject-a',
+          operatorPrincipalId: '  principal-for-event-subject-a  ',
+        },
+      },
+      {
+        id: 'blank-principal',
+        details: {
+          operatorIdentity: 'event-subject-b',
+          operatorPrincipalId: '   ',
+        },
+      },
+    ];
+    const transaction = {
+      operatorPreference: { findMany: jest.fn().mockResolvedValue([]) },
+      sharedConsoleLayout: { findMany: jest.fn().mockResolvedValue([]) },
+      guestInvitation: { findMany: jest.fn().mockResolvedValue([]) },
+      guestEvent: { findMany: jest.fn().mockResolvedValue(events) },
+    };
+    const prisma = {
+      ...transaction,
+      $transaction: jest.fn(
+        async (callback: (value: unknown) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+      $disconnect: jest.fn().mockResolvedValue(undefined),
+    };
+    const writeReferences = jest.fn<void, [string, unknown[]]>();
+    const log = jest.fn<void, [string]>();
+    const dependencies = {
+      bootstrapDatabase: jest.fn().mockResolvedValue(undefined),
+      createPrisma: () => prisma as unknown as PrismaClient,
+      error: jest.fn(),
+      log,
+      writeReferences,
+    };
+
+    expect(
+      await runPrincipalMigrationCli(['export', 'unused'], dependencies),
+    ).toBe(0);
+    const references = writeReferences.mock.calls[0][1] as {
+      reference: string;
+      subject: string;
+    }[];
+    expect(references).toEqual([
+      expect.objectContaining({
+        reference: 'GuestEvent:migrated',
+        subject: 'event-subject-a',
+      }),
+      expect.objectContaining({
+        reference: 'GuestEvent:blank-principal',
+        subject: 'event-subject-b',
+      }),
+    ]);
+
+    const path = file({
+      references: references.map((entry) => ({
+        ...entry,
+        principal_id: `principal-for-${entry.subject}`,
+      })),
+      collisions: [],
+      missing: [],
+    });
+    log.mockClear();
+    expect(await runPrincipalMigrationCli(['report', path], dependencies)).toBe(
+      0,
+    );
+    const report = log.mock.calls[0][0];
+    expect(report).toContain('already-migrated: 1');
+    expect(report).toContain('mapped: 1');
+    expect(report).toContain('conflicting: 0');
   });
 });
