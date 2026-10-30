@@ -1,11 +1,9 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
-  forwardRef,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
@@ -86,7 +84,6 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => RadioMetricsService))
     private readonly metrics: RadioMetricsService,
   ) {}
 
@@ -277,10 +274,11 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
       if (fromCatalog.outcome === 'selected') result = fromCatalog;
     }
 
+    // Every candidate id was registered in `leafByItemId` above.
     const leaf = result.chosen
-      ? (leafByItemId.get(result.chosen.itemId) ?? null)
+      ? (leafByItemId.get(result.chosen.itemId) as ProgramResolvedSongLeaf)
       : null;
-    return leaf ? { result, leaf } : { result, leaf: null };
+    return { result, leaf };
   }
 
   /** Marks the artist of a song that started airing, when similarity is active. */

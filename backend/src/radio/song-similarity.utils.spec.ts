@@ -10,6 +10,7 @@ import {
   toVectorLiteral,
   validateEmbeddingUploadHeader,
   validateEmbeddingUploadSong,
+  validateEmbeddingVector,
   EXPECTED_EMBEDDING_DIMENSION,
   SIMILARITY_MODEL,
   type SimilarityCandidate,
@@ -191,7 +192,7 @@ describe('artist cycle state', () => {
 
 describe('embedding upload validation', () => {
   const vec = () => {
-    const v = new Array(EXPECTED_EMBEDDING_DIMENSION).fill(0);
+    const v = new Array<number>(EXPECTED_EMBEDDING_DIMENSION).fill(0);
     v[0] = 1;
     return v;
   };
@@ -249,5 +250,50 @@ describe('embedding upload validation', () => {
     expect(
       validateEmbeddingUploadHeader({ ...header, windowSeconds: 1 }).ok,
     ).toBe(false);
+  });
+});
+
+describe('validateEmbeddingVector', () => {
+  it('rejects non-finite values', () => {
+    const vector = new Array<number>(EXPECTED_EMBEDDING_DIMENSION).fill(0);
+    vector[0] = Number.NaN;
+    expect(validateEmbeddingVector(vector)).toEqual({
+      ok: false,
+      reason: 'vector contains non-finite values',
+    });
+  });
+});
+
+describe('edge cases', () => {
+  it('normalizes a missing artist to an empty key', () => {
+    expect(normalizeArtistKey(null)).toBe('');
+    expect(normalizeArtistKey(undefined)).toBe('');
+  });
+
+  it('parses an empty vector literal', () => {
+    expect(parseVectorLiteral('[]')).toEqual([]);
+  });
+
+  it('requires a songs array in the upload header', () => {
+    expect(
+      validateEmbeddingUploadHeader({
+        schema: 1,
+        model: { ...SIMILARITY_MODEL },
+        windowSeconds: 30,
+      }),
+    ).toEqual({ ok: false, reason: 'songs required' });
+  });
+
+  it('resets the cycle without remembering a blank current artist', () => {
+    const result = pickSimilarSong({
+      currentClosing: unit(1, 0),
+      currentSongId: 1,
+      currentArtist: '',
+      candidates: [candidate(2, 'B', unit(1, 0))],
+      cycle: { artists: ['b'] },
+      threshold: 0.5,
+    });
+    expect(result.cycleReset).toBe(true);
+    expect(result.chosen?.songId).toBe(2);
   });
 });
