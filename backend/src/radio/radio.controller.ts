@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { RadioService } from './radio.service';
 import { SongExecutionEngine } from './song-execution.engine';
@@ -15,6 +16,7 @@ import {
 } from './now-playing-publisher.service';
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
+import { SongSimilarityService } from './song-similarity.service';
 import type { RadioSettingsPayload } from './radio.service';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -28,7 +30,46 @@ export class RadioController {
     private readonly nowPlayingPublisherService: NowPlayingPublisherService,
     private readonly palazzoTelemetry: PalazzoRadioTelemetryService,
     private readonly outputConfidence: RadioOutputConfidenceService,
+    private readonly songSimilarity: SongSimilarityService,
   ) {}
+
+  @Get(':programId/similarity/coverage')
+  async similarityCoverage(@Param('programId') programId: string) {
+    return this.songSimilarity.getCoverage(programId);
+  }
+
+  @Get(':programId/similarity/decisions')
+  async similarityDecisions(
+    @Param('programId') programId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.songSimilarity.listDecisions(
+      programId,
+      limit ? Number(limit) : 50,
+    );
+  }
+
+  @Get(':programId/similarity/export')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
+  async similarityExport(
+    @Param('programId') programId: string,
+    @Query('scope') scope?: string,
+    @Query('missingOnly') missingOnly?: string,
+  ) {
+    if (scope !== 'sequence' && scope !== 'catalog')
+      throw new BadRequestException('scope must be sequence or catalog');
+    return this.songSimilarity.exportSongs(
+      programId,
+      scope,
+      missingOnly === 'true',
+    );
+  }
+
+  @Post(':programId/similarity/embeddings')
+  @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
+  async similarityUpload(@Body() body: unknown) {
+    return this.songSimilarity.storeEmbeddings(body);
+  }
 
   @Get(':programId/settings')
   async getSettings(@Param('programId') programId: string) {
@@ -43,6 +84,14 @@ export class RadioController {
   ) {
     const previous = await this.radioService.getRadioSettings(programId);
     const result = await this.radioService.updateRadioSettings(programId, data);
+    if (
+      data.similarityMode !== undefined ||
+      data.similarityThreshold !== undefined ||
+      data.similarityWindowSeconds !== undefined ||
+      data.similarityPool !== undefined
+    ) {
+      await this.songSimilarity.onSettingsChanged();
+    }
     if (
       previous?.palazzoUrl !== result.palazzoUrl ||
       previous?.enabled !== result.enabled

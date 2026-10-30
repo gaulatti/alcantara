@@ -5,6 +5,8 @@ import type { PrismaService } from '../prisma.service';
 import type { NowPlayingPublisherService } from './now-playing-publisher.service';
 import type { RadioMetricsService } from './radio-metrics.service';
 import type { PalazzoPlaybackState } from './palazzo-contract';
+import { SongSimilarityService } from './song-similarity.service';
+import { SIMILARITY_MODEL } from './song-similarity.utils';
 
 function idleSnapshot(
   instanceId: string,
@@ -99,6 +101,7 @@ function createEngine(opts: {
   reconciled: boolean;
   radio?: boolean;
   tv?: boolean;
+  similarity?: SongSimilarityService;
 }) {
   let currentProgramState = {
     programId: opts.tv ? 'tv-1' : 'radio-1',
@@ -149,6 +152,7 @@ function createEngine(opts: {
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordSimilarityAction: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -156,6 +160,7 @@ function createEngine(opts: {
     prisma as unknown as PrismaService,
     nowPlayingPublisher as unknown as NowPlayingPublisherService,
     metrics as unknown as RadioMetricsService,
+    opts.similarity,
   );
   engine.setPalazzoTelemetry({
     isReconciled: () => opts.reconciled,
@@ -1428,5 +1433,239 @@ describe('SongExecutionEngine authoritative playback', () => {
     expect(second).toHaveLength(2);
     expect(second[0].id).not.toBe(second[1].id);
     expect(getPersistedProgramState().songQueue).toEqual(second);
+  });
+});
+
+describe('similarity picker in the engine', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const leaf = (n: number, artist: string) => ({
+    id: `item-${n}`,
+    kind: 'preset',
+    songId: n,
+    title: `Song ${n}`,
+    artist,
+    coverUrl: '',
+    audioUrl: `https://example.test/${n}.mp3`,
+    durationMs: 1000,
+  });
+  const SIM_SEQUENCE = {
+    mode: 'autoplay',
+    loop: true,
+    intervalMs: 500,
+    items: [leaf(1, 'A'), leaf(2, 'B'), leaf(3, 'C')],
+  };
+  const W = 30;
+  const row = (songId: number, segment: string, vector: number[]) => ({
+    songId,
+    segment,
+    windowSeconds: W,
+    vector: `[${vector.join(',')}]`,
+  });
+  // Song 1 closes like song 3 opens; song 2 opens orthogonally; song 4 only
+  // exists in the catalog and also opens like song 1 closes.
+  const FULL_ROWS = [
+    row(1, 'closing', [1, 0, 0]),
+    row(2, 'opening', [0, 1, 0]),
+    row(3, 'opening', [1, 0.1, 0]),
+    row(4, 'opening', [1, 0.05, 0]),
+  ];
+
+  async function build(
+    mode: string,
+    rows = FULL_ROWS,
+    extra: { pool?: string; threshold?: number } = {},
+  ) {
+    const similarityRows = {
+      radioSettings: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            similarityMode: mode,
+            similarityThreshold: extra.threshold ?? 0.8,
+            similarityWindowSeconds: W,
+            similarityPool: extra.pool ?? 'sequence',
+            programState: { programId: 'radio-1', songArtistCycle: null },
+          },
+        ]),
+      },
+      $queryRaw: jest.fn().mockResolvedValue(rows),
+      song: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 4,
+            artist: 'D',
+            title: 'Song 4',
+            audioUrl: 'https://example.test/4.mp3',
+            coverUrl: null,
+            durationMs: 1000,
+          },
+        ]),
+      },
+      similarityDecision: { create: jest.fn().mockResolvedValue({}) },
+      programState: { update: jest.fn().mockResolvedValue({}) },
+    };
+    const metricsStub = { recordSimilarityAction: jest.fn() };
+    const similarity = new SongSimilarityService(
+      similarityRows as never,
+      metricsStub as never,
+    );
+    await similarity.onModuleInit();
+    similarity.onModuleDestroy();
+    const harness = createEngine({ reconciled: true, radio: true, similarity });
+    harness.engine.handleSequenceUpdated('radio-1', SIM_SEQUENCE);
+    harness.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    return { ...harness, similarity, similarityRows };
+  }
+
+  const playedUrls = (radioService: { playSong: jest.Mock }) =>
+    radioService.playSong.mock.calls.map((call) => call[1] as string);
+
+  async function endCurrent(
+    h: Awaited<ReturnType<typeof build>>,
+    callIndex: number,
+  ) {
+    const requestId = h.radioService.playSong.mock.calls[callIndex][4];
+    h.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    h.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush(20);
+  }
+
+  it('off: follows the cursor and never touches similarity data', async () => {
+    const h = await build('off');
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService).slice(0, 2)).toEqual([
+      'https://example.test/1.mp3',
+      'https://example.test/2.mp3',
+    ]);
+    expect(h.similarityRows.similarityDecision.create).not.toHaveBeenCalled();
+    expect(h.similarityRows.programState.update).not.toHaveBeenCalled();
+    expect(h.similarityRows.$queryRaw).not.toHaveBeenCalled();
+    expect(h.metrics.recordSimilarityAction).not.toHaveBeenCalled();
+  });
+
+  it('without a similarity service the engine behaves as before', async () => {
+    const h = createEngine({ reconciled: true, radio: true });
+    h.engine.handleSequenceUpdated('radio-1', SIM_SEQUENCE);
+    h.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    expect(playedUrls(h.radioService)).toEqual(['https://example.test/1.mp3']);
+  });
+
+  it('shadow: plays the cursor song and records the proposal beside it', async () => {
+    const h = await build('shadow');
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService).slice(0, 2)).toEqual([
+      'https://example.test/1.mp3',
+      'https://example.test/2.mp3',
+    ]);
+    const decisions = h.similarityRows.similarityDecision.create.mock.calls.map(
+      (c: [{ data: Record<string, unknown> }]) => c[0].data,
+    );
+    const second = decisions.at(-1);
+    expect(second).toMatchObject({
+      programId: 'radio-1',
+      mode: 'shadow',
+      outcome: 'selected',
+      currentSongId: 1,
+      proposedSongId: 3,
+      playedSongId: 2,
+    });
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith(
+      'shadow-recorded',
+    );
+  });
+
+  it('on: plays the closest passing song and resumes the cursor after it', async () => {
+    const h = await build('on');
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/3.mp3');
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith('selected');
+  });
+
+  it('on: falls back to the cursor when the current song has no embedding', async () => {
+    const h = await build(
+      'on',
+      FULL_ROWS.filter((r) => r.segment !== 'closing'),
+    );
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith(
+      'fallback-no-embedding',
+    );
+  });
+
+  it('on: falls back when nothing clears the threshold', async () => {
+    const h = await build('on', FULL_ROWS, { threshold: 0.9999999 });
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith(
+      'fallback-no-candidate',
+    );
+  });
+
+  it('on: leaves favorites to the high-rotation quota instead of ranking them', async () => {
+    const h = await build('on');
+    h.engine.handleSequenceUpdated('radio-1', {
+      ...SIM_SEQUENCE,
+      items: [
+        SIM_SEQUENCE.items[0],
+        SIM_SEQUENCE.items[1],
+        { ...SIM_SEQUENCE.items[2], highRotation: true },
+      ],
+    });
+    const before = h.metrics.recordSimilarityAction.mock.calls.length;
+    await endCurrent(h, 0);
+    // The quota (due, empty history) airs the favorite; similarity is not asked.
+    expect(h.metrics.recordHighRotationAction).toHaveBeenCalledWith('selected');
+    expect(h.metrics.recordSimilarityAction.mock.calls).toHaveLength(before);
+  });
+
+  it('on + catalog pool: fills from the catalog and does not skip the cursor successor', async () => {
+    // Only song 4 (catalog) opens like song 1 closes.
+    const rows = [
+      row(1, 'closing', [1, 0, 0]),
+      row(2, 'opening', [0, 1, 0]),
+      row(3, 'opening', [0, 0, 1]),
+      row(4, 'opening', [1, 0.05, 0]),
+    ];
+    const h = await build('on', rows, { pool: 'catalog' });
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/4.mp3');
+    await endCurrent(h, 1);
+    expect(playedUrls(h.radioService)[2]).toBe('https://example.test/2.mp3');
+  });
+
+  it('on + sequence pool never leaves the playlist', async () => {
+    const rows = [
+      row(1, 'closing', [1, 0, 0]),
+      row(2, 'opening', [0, 1, 0]),
+      row(3, 'opening', [0, 0, 1]),
+      row(4, 'opening', [1, 0.05, 0]),
+    ];
+    const h = await build('on', rows);
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
+  });
+
+  it('records the model identity the vectors are matched against', () => {
+    expect(SIMILARITY_MODEL.name).toBe('discogs-effnet-bs64-1');
   });
 });

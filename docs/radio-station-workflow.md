@@ -20,6 +20,10 @@ Save keeps the log a draft. **Check** validates cue shape and referenced enabled
 
 The existing `/program/:programId/flight` list, create, update, activate, and start APIs carry the additive `scheduledAt`, `publishedAt`, `lastStartedAt`, and `revision` fields. `GET .../flight/:sequenceId/preflight` returns `{ready,issues}`; `POST .../publish` accepts `{revision}`. Program `flight.read` and `flight.manage` permissions remain in force.
 
+## Song similarity selection
+
+By default the continuous rotation follows its saved order. A station can opt in to choosing the next playlist song by audio similarity (`off`, `shadow` or `on`; default `off`, which changes nothing). It applies only where the engine picks the next playlist song: queued songs, manual songs, timed blocks and the high-rotation quota keep their precedence, and favorites are never ranked. When no song qualifies the engine falls back to the saved order. See [song-similarity.md](song-similarity.md) for the model, artist cycle, fallback rules and how to run the analysis.
+
 ## Voice tracks
 
 Use **Voice** on a song row to record a link with the browser microphone. Preview the take alone or over the chosen song, set duck and fade values, then **Use this take**. The recording uploads as a managed audio clip and is attached to that exact cue by `voiceTrackInstantId`; changing another play of the same song does not change this cue. Palazzo receives the voice clip with the song command and applies the saved duck/fades. Browser preview approximates the mix. A missing or disabled clip fails preflight; if it disappears between preflight and playout, the Radio desk shows intro degradation.

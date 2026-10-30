@@ -15,6 +15,12 @@ import {
   type PalazzoIntroCommand,
 } from './palazzo-machine.client';
 import type { PalazzoPlaybackState } from './palazzo-contract';
+import {
+  MAX_WINDOW_SECONDS,
+  MIN_WINDOW_SECONDS,
+  SIMILARITY_MODES,
+  SIMILARITY_POOLS,
+} from './song-similarity.utils';
 
 export interface RadioSettingsPayload {
   palazzoUrl?: string;
@@ -24,6 +30,10 @@ export interface RadioSettingsPayload {
   bumperInstantIds?: number[];
   bumperMode?: 'sequential' | 'random';
   enabled?: boolean;
+  similarityMode?: string;
+  similarityThreshold?: number;
+  similarityWindowSeconds?: number;
+  similarityPool?: string;
 }
 
 export interface RadioMixerPayload {
@@ -258,6 +268,7 @@ export class RadioService {
     );
     const bumperMode = this.normalizeBumperMode(data.bumperMode);
     const listenerUrl = this.normalizeListenerUrl(data.listenerUrl);
+    const similarity = this.normalizeSimilarityPayload(data);
     const result = await this.prisma.radioSettings.upsert({
       where: { programStateId: state.id },
       update: {
@@ -270,6 +281,7 @@ export class RadioService {
         ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
         ...(data.bumperMode !== undefined && { bumperMode }),
         ...(data.enabled !== undefined && { enabled: data.enabled }),
+        ...similarity,
       },
       create: {
         programStateId: state.id,
@@ -280,9 +292,59 @@ export class RadioService {
         bumperInstantIds: bumperInstantIds ?? [],
         bumperMode: bumperMode ?? 'sequential',
         enabled: data.enabled ?? false,
+        ...similarity,
       },
     });
     return result;
+  }
+
+  /** Rejects invalid similarity fields explicitly; absent fields stay untouched. */
+  private normalizeSimilarityPayload(data: RadioSettingsPayload): {
+    similarityMode?: string;
+    similarityThreshold?: number;
+    similarityWindowSeconds?: number;
+    similarityPool?: string;
+  } {
+    const out: ReturnType<RadioService['normalizeSimilarityPayload']> = {};
+    if (data.similarityMode !== undefined) {
+      if (
+        !(SIMILARITY_MODES as readonly string[]).includes(data.similarityMode)
+      )
+        throw new BadRequestException(
+          'similarityMode must be off, shadow or on',
+        );
+      out.similarityMode = data.similarityMode;
+    }
+    if (data.similarityPool !== undefined) {
+      if (
+        !(SIMILARITY_POOLS as readonly string[]).includes(data.similarityPool)
+      )
+        throw new BadRequestException(
+          'similarityPool must be sequence or catalog',
+        );
+      out.similarityPool = data.similarityPool;
+    }
+    if (data.similarityThreshold !== undefined) {
+      const t = data.similarityThreshold;
+      if (typeof t !== 'number' || !Number.isFinite(t) || t < -1 || t > 1)
+        throw new BadRequestException(
+          'similarityThreshold must be between -1 and 1',
+        );
+      out.similarityThreshold = t;
+    }
+    if (data.similarityWindowSeconds !== undefined) {
+      const w = data.similarityWindowSeconds;
+      if (
+        !Number.isInteger(w) ||
+        w < MIN_WINDOW_SECONDS ||
+        w > MAX_WINDOW_SECONDS
+      )
+        throw new BadRequestException(
+          `similarityWindowSeconds must be an integer between ${MIN_WINDOW_SECONDS} and ${MAX_WINDOW_SECONDS}`,
+        );
+      out.similarityWindowSeconds = w;
+    }
+    return out;
   }
 
   private normalizeListenerUrl(value: unknown): string | null | undefined {

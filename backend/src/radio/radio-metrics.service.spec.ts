@@ -23,6 +23,11 @@ describe('RadioMetricsService', () => {
     metrics.recordSongQueueDepth(3);
     metrics.recordHighRotationAction('selected');
     metrics.recordHighRotationAction('history-persistence-failed');
+    metrics.recordSimilarityAction('selected');
+    metrics.recordSimilarityAction('selected');
+    metrics.recordSimilarityAction('fallback-no-embedding');
+    metrics.recordSimilarityAction('shadow-recorded');
+    metrics.recordSimilarityAction('bogus' as never);
     metrics.recordHighRotationFavorites(12);
     metrics.recordMachineRequest('song-play', 'success');
     metrics.recordMachineRequest('song-play', 'deduplicated');
@@ -72,6 +77,19 @@ describe('RadioMetricsService', () => {
     expect(rendered).toContain(
       'alcantara_radio_high_rotation_actions_total{result="history-persistence-failed"} 1',
     );
+    expect(rendered).toContain(
+      'alcantara_radio_similarity_total{result="selected"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_similarity_total{result="fallback-no-embedding"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_similarity_total{result="shadow-recorded"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_similarity_total{result="fallback-no-candidate"} 0',
+    );
+    expect(rendered).not.toContain('bogus');
     expect(rendered).toContain('alcantara_radio_high_rotation_favorites 12');
     expect(rendered).toContain(
       'alcantara_palazzo_machine_requests_total{operation="song-play",result="success"} 1',
