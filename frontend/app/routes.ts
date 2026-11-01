@@ -24,6 +24,7 @@ export default [
       route('console-fixture', 'routes/console-fixture.tsx'),
       route('media-fixture', 'routes/media-fixture.tsx'),
       route('song-intro-fixture', 'routes/song-intro-fixture.tsx'),
+      route('similarity-fixture', 'routes/similarity-fixture.tsx'),
       route('slideshow-fixture', 'routes/slideshow-fixture.tsx'),
       route('recording-fixture', 'routes/recording-fixture.tsx'),
       route('flight', 'routes/flight.tsx')

@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   Inject,
+  Optional,
   forwardRef,
   NotFoundException,
   OnModuleInit,
@@ -47,6 +48,9 @@ import {
   type ProgramSongRotationState,
 } from './song-rotation.utils';
 
+import { SongSimilarityService } from './song-similarity.service';
+import { CATALOG_ITEM_PREFIX } from './song-similarity.utils';
+
 export interface SongPlaybackData {
   token: string;
   audioUrl: string;
@@ -66,7 +70,11 @@ export interface SongPlaybackData {
 }
 
 export type IntroPlaybackStatus =
-  'none' | 'pending' | 'playing' | 'completed' | 'degraded';
+  | 'none'
+  | 'pending'
+  | 'playing'
+  | 'completed'
+  | 'degraded';
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
@@ -120,6 +128,8 @@ interface ActiveSong {
   authoritativeUpdatedAt: number | null;
   queueEntryId: string | null;
   highRotation: boolean;
+  /** The similarity picker started a new artist cycle with this song. */
+  cycleReset?: boolean;
 }
 
 interface SongEngineState {
@@ -141,6 +151,9 @@ interface SongEngineState {
   lastIdleSequence: number | null;
   transitioning: boolean;
   queueBlocked: boolean;
+  /** Song that most recently finished; the similarity picker's "current". */
+  lastEnded: { songId: number | null; artist: string } | null;
+  pendingCycleReset: boolean;
 }
 
 const MAX_ENDED_REQUEST_IDS = 128;
@@ -172,6 +185,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     private readonly nowPlayingPublisherService: NowPlayingPublisherService,
     @Inject(forwardRef(() => RadioMetricsService))
     private readonly metrics: RadioMetricsService,
+    @Optional() private readonly similarity?: SongSimilarityService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -255,6 +269,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         lastIdleSequence: null,
         transitioning: false,
         queueBlocked: false,
+        lastEnded: null,
+        pendingCycleReset: false,
       };
       this.states.set(programId, s);
     }
@@ -641,6 +657,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     song: ActiveSong,
     playedAt: number,
   ): void {
+    this.similarity?.noteSongStarted(programId, song.artist, {
+      resetCycle: song.cycleReset === true,
+    });
     if (!song.highRotation || !song.itemId) return;
     const recorded = recordHighRotationPlay(
       state.rotation,
@@ -1117,6 +1136,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
     this.metrics.recordTrackTransition('advanced');
     const endedSong = state.activeSong;
+    state.lastEnded = { songId: endedSong.songId, artist: endedSong.artist };
     state.activeSong = null;
     // An authoritative end is a command-reconciliation boundary. Palazzo is
     // idle, so no older command can still legitimately be pending.
@@ -1128,13 +1148,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       : null;
     const isAutomatic =
       nextSequence?.mode === 'autoplay' || nextSequence?.mode === 'shuffle';
-    const hasSuccessor = endedSong.queueEntryId
-      ? Boolean(isAutomatic && resolveProgramSongLeaf(nextSequence))
-      : Boolean(
-          isAutomatic &&
-          nextSequence &&
-          advanceProgramSongSequence(nextSequence, endedSong.itemId),
-        );
+    // Queue entries and songs picked from outside the playlist never moved
+    // the cursor, which already points at the pending successor.
+    const hasSuccessor =
+      endedSong.queueEntryId || endedSong.itemId.startsWith(CATALOG_ITEM_PREFIX)
+        ? Boolean(isAutomatic && resolveProgramSongLeaf(nextSequence))
+        : Boolean(
+            isAutomatic &&
+            nextSequence &&
+            advanceProgramSongSequence(nextSequence, endedSong.itemId),
+          );
     state.transitioning = true;
     this.logger.log(
       `Authoritative end on ${programId}: source=${endedSong.queueEntryId ? 'queue' : 'playlist'} mode=${nextSequence?.mode ?? 'none'} loop=${nextSequence?.loop ?? false} cursor=${nextSequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
@@ -1321,6 +1344,135 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const similarityMode =
+      this.similarity?.getSettings(programId).mode ?? 'off';
+    if (similarityMode === 'off') {
+      return this.resolveCursorPlaylistSong(
+        programId,
+        state,
+        sequence,
+        favoriteCount,
+        now,
+      );
+    }
+    return this.resolveWithSimilarity(
+      programId,
+      state,
+      sequence,
+      favoriteCount,
+      similarityMode,
+      now,
+    );
+  }
+
+  /**
+   * Similarity picking for `shadow` and `on`. It can never break playout: any
+   * failure falls back to the cursor selection exactly as `off` would behave.
+   */
+  private resolveWithSimilarity(
+    programId: string,
+    state: SongEngineState,
+    sequence: ProgramSongSequence,
+    favoriteCount: number,
+    mode: 'shadow' | 'on',
+    now: number,
+  ): ProgramResolvedSongLeaf | null {
+    const similarity = this.similarity!;
+    let proposal: ReturnType<SongSimilarityService['propose']> | null = null;
+    try {
+      proposal = similarity.propose(programId, {
+        currentSongId: state.lastEnded?.songId ?? null,
+        currentArtist: state.lastEnded?.artist ?? '',
+        // Favorites are scheduled by the high-rotation quota, never by cursor.
+        leaves: collectProgramSongLeaves(sequence).map((leaf) => ({
+          leaf,
+          blocked: leaf.highRotation === true,
+        })),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Similarity proposal failed on ${programId}; using the playlist cursor: ${String(error)}`,
+      );
+    }
+
+    const baseline = (): ProgramResolvedSongLeaf | null =>
+      this.resolveCursorPlaylistSong(
+        programId,
+        state,
+        sequence,
+        favoriteCount,
+        now,
+      );
+
+    if (mode === 'shadow') {
+      const played = baseline();
+      if (proposal) {
+        similarity.recordDecision(programId, {
+          mode,
+          outcome: proposal.result.outcome,
+          currentSongId: state.lastEnded?.songId ?? null,
+          proposedSongId: proposal.result.chosen?.songId ?? null,
+          playedSongId: played?.songId ?? null,
+          score: proposal.result.chosen?.score ?? null,
+          runnerUps: proposal.result.runnerUps.map((r) => ({
+            songId: r.songId,
+            score: r.score,
+          })),
+        });
+        this.metrics.recordSimilarityAction('shadow-recorded');
+      }
+      return played;
+    }
+
+    if (proposal?.leaf) {
+      if (!proposal.leaf.id.startsWith(CATALOG_ITEM_PREFIX)) {
+        activateProgramSongLeaf(sequence, proposal.leaf.id);
+      }
+      state.pendingCycleReset = proposal.result.cycleReset;
+      this.metrics.recordSimilarityAction('selected');
+      similarity.recordDecision(programId, {
+        mode,
+        outcome: 'selected',
+        currentSongId: state.lastEnded?.songId ?? null,
+        proposedSongId: proposal.leaf.songId ?? null,
+        playedSongId: proposal.leaf.songId ?? null,
+        score: proposal.result.chosen?.score ?? null,
+        runnerUps: proposal.result.runnerUps.map((r) => ({
+          songId: r.songId,
+          score: r.score,
+        })),
+      });
+      return proposal.leaf;
+    }
+
+    const played = baseline();
+    if (proposal) {
+      const outcome = proposal.result.outcome;
+      this.metrics.recordSimilarityAction(
+        outcome === 'fallback-no-embedding'
+          ? 'fallback-no-embedding'
+          : 'fallback-no-candidate',
+      );
+      similarity.recordDecision(programId, {
+        mode,
+        outcome,
+        currentSongId: state.lastEnded?.songId ?? null,
+        proposedSongId: null,
+        playedSongId: played?.songId ?? null,
+        score: null,
+        runnerUps: [],
+      });
+    }
+    return played;
+  }
+
+  private resolveCursorPlaylistSong(
+    programId: string,
+    state: SongEngineState,
+    sequence: ProgramSongSequence,
+    favoriteCount: number,
+    now: number,
+  ): ProgramResolvedSongLeaf | null {
     const maxAttempts = collectProgramSongLeaves(sequence).length;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const resolved = resolveProgramSongLeaf(sequence, now);
@@ -1415,7 +1567,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       authoritativeUpdatedAt: null,
       queueEntryId: queueEntry?.id ?? null,
       highRotation: resolved.highRotation === true,
+      cycleReset: !queueEntry && state.pendingCycleReset ? true : undefined,
     };
+    state.pendingCycleReset = false;
 
     this.logger.log(
       `Commanding ${resolved.title} by ${resolved.artist} on ${programId} (${playbackRequestId})`,

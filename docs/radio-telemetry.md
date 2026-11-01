@@ -282,3 +282,7 @@ configured path.
 and must not be persisted in Alcantara. The operational Play Next order is
 persisted separately in `ProgramState.songQueue` so a backend restart can adopt
 an already-playing queue head and resume without losing or duplicating it.
+
+## Song similarity metric
+
+`alcantara_radio_similarity_total{result}` counts similarity picker outcomes with the bounded results `selected`, `fallback-no-candidate`, `fallback-no-embedding`, `shadow-recorded` and `decision-persistence-failed`. It is silent while every station is `off`. Labels never include songs, artists, URLs or program IDs. See [song-similarity.md](song-similarity.md).
