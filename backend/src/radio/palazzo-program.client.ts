@@ -172,18 +172,18 @@ export class PalazzoProgramClient {
       return false;
     }
 
+    let consumed = true;
     try {
       await this.consumeStream(response.body);
-      return true;
     } catch {
-      return false;
-    } finally {
-      try {
-        await response.body?.cancel();
-      } catch {
-        // no-op
-      }
+      consumed = false;
     }
+    try {
+      await response.body?.cancel();
+    } catch {
+      // no-op
+    }
+    return consumed;
   }
 
   private async consumeStream(body: ReadableStream<Uint8Array>): Promise<void> {

@@ -193,12 +193,11 @@ async function main() {
   }
 }
 
-if (require.main === module) void main();
-
 module.exports = {
   RUNTIME_SECRET_KEYS,
   isPrivateServiceHostname,
   isValidAlanaControlToken,
+  main,
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
   parseRuntimeSecretPayload,

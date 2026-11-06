@@ -268,14 +268,8 @@ export function validateProgramTemplateManifest(
 }
 
 function isBlockedIpv4(address: string): boolean {
-  const octets = address.split('.').map((part) => Number(part));
-  if (
-    octets.length !== 4 ||
-    octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
-  ) {
-    return true;
-  }
-  const [a, b, c] = octets;
+  // Callers pass only addresses that `isIP` already accepted as IPv4.
+  const [a, b, c] = address.split('.').map((part) => Number(part));
   return (
     a === 0 ||
     a === 10 ||
@@ -460,75 +454,68 @@ export class ProgramTemplateService {
 
   private async inspectManifest(
     templateUrl: string,
+    redirectCount = 0,
   ): Promise<ProgramTemplateRegistration> {
-    let currentUrl = this.parseTemplateUrl(templateUrl);
+    const currentUrl = this.parseTemplateUrl(templateUrl);
 
-    for (
-      let redirectCount = 0;
-      redirectCount <= MAX_REDIRECTS;
-      redirectCount += 1
-    ) {
-      await this.assertSafeDestination(currentUrl);
-      let response: Response;
-      try {
-        response = await this.fetchManifest(currentUrl, {
-          headers: { Accept: 'application/json' },
-          redirect: 'manual',
-          signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
-        });
-      } catch {
-        throw new BadRequestException('Template manifest could not be fetched');
-      }
-
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location || redirectCount === MAX_REDIRECTS) {
-          throw new BadRequestException(
-            'Template manifest redirect could not be followed safely',
-          );
-        }
-        currentUrl = this.parseTemplateUrl(
-          new URL(location, currentUrl).toString(),
-        );
-        continue;
-      }
-      if (!response.ok) {
-        throw new BadRequestException(
-          `Template manifest returned HTTP ${response.status}`,
-        );
-      }
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!/(?:application\/json|\+json)(?:;|$)/i.test(contentType)) {
-        throw new BadRequestException(
-          'Template manifest must use a JSON content type',
-        );
-      }
-      const declaredSize = Number(response.headers.get('content-length'));
-      if (Number.isFinite(declaredSize) && declaredSize > MAX_MANIFEST_BYTES) {
-        throw new BadRequestException('Template manifest is too large');
-      }
-      let body: Buffer;
-      try {
-        body = await readBoundedManifestBody(response);
-      } catch (error) {
-        if (error instanceof BadRequestException) throw error;
-        throw new BadRequestException('Template manifest could not be read');
-      }
-
-      let decoded: unknown;
-      try {
-        decoded = JSON.parse(body.toString('utf8')) as unknown;
-      } catch {
-        throw new BadRequestException('Template manifest is not valid JSON');
-      }
-      return {
-        templateUrl: currentUrl.toString(),
-        templateManifest: validateProgramTemplateManifest(decoded, currentUrl),
-        templateVerifiedAt: new Date(),
-      };
+    await this.assertSafeDestination(currentUrl);
+    let response: Response;
+    try {
+      response = await this.fetchManifest(currentUrl, {
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
+      });
+    } catch {
+      throw new BadRequestException('Template manifest could not be fetched');
     }
 
-    throw new BadRequestException('Template manifest could not be fetched');
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location || redirectCount === MAX_REDIRECTS) {
+        throw new BadRequestException(
+          'Template manifest redirect could not be followed safely',
+        );
+      }
+      return this.inspectManifest(
+        new URL(location, currentUrl).toString(),
+        redirectCount + 1,
+      );
+    }
+    if (!response.ok) {
+      throw new BadRequestException(
+        `Template manifest returned HTTP ${response.status}`,
+      );
+    }
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!/(?:application\/json|\+json)(?:;|$)/i.test(contentType)) {
+      throw new BadRequestException(
+        'Template manifest must use a JSON content type',
+      );
+    }
+    const declaredSize = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_MANIFEST_BYTES) {
+      throw new BadRequestException('Template manifest is too large');
+    }
+    let body: Buffer;
+    try {
+      body = await readBoundedManifestBody(response);
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException('Template manifest could not be read');
+    }
+
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(body.toString('utf8')) as unknown;
+    } catch {
+      throw new BadRequestException('Template manifest is not valid JSON');
+    }
+    return {
+      templateUrl: currentUrl.toString(),
+      templateManifest: validateProgramTemplateManifest(decoded, currentUrl),
+      templateVerifiedAt: new Date(),
+    };
   }
 
   private parseTemplateUrl(value: string): URL {
