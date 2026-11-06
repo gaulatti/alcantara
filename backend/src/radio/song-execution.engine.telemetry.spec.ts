@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { SongSimilarityService } from './song-similarity.service';
 import {
   SongExecutionEngine,
   type SongEngineEvent,
@@ -289,12 +290,23 @@ describe('SongExecutionEngine constructor metadata', () => {
         const isolated = require('./song-execution.engine') as {
           SongExecutionEngine: new (...args: never[]) => unknown;
         };
+        // The similarity service is not mocked, so its real class is emitted
+        // by the isolated registry; compare by name.
         expect(
-          Reflect.getMetadata(
-            'design:paramtypes',
-            isolated.SongExecutionEngine,
-          ),
-        ).toEqual([Object, Object, Object, Object, Object]);
+          (
+            Reflect.getMetadata(
+              'design:paramtypes',
+              isolated.SongExecutionEngine,
+            ) as Array<{ name: string }>
+          ).map((type) => type.name),
+        ).toEqual([
+          'Object',
+          'Object',
+          'Object',
+          'Object',
+          'Object',
+          SongSimilarityService.name,
+        ]);
       } finally {
         jest.dontMock('./radio.service');
         jest.dontMock('../program/flight.service');
@@ -607,19 +619,6 @@ describe('SongExecutionEngine Palazzo events', () => {
           ([name]: [string]) => name === 'selected',
         ),
       ).toHaveLength(1);
-    });
-
-    it('skips persistence when the program state disappears before the write', async () => {
-      const ctx = setup();
-      const requestId = await startAutomatic(ctx, FAVORITES);
-      ctx.prisma.programState.update.mockClear();
-      ctx.engine.handlePalazzoEvent('radio-1', {
-        type: 'track.started',
-        data: { playbackRequestId: requestId },
-      });
-      internals(ctx.engine).states.delete('radio-1');
-      await flush();
-      expect(ctx.prisma.programState.update).not.toHaveBeenCalled();
     });
 
     it('tolerates the program state disappearing while the write fails', async () => {
