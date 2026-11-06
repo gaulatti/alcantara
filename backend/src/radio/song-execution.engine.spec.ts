@@ -3047,6 +3047,209 @@ describe('similarity picker in the engine', () => {
     expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
   });
 
+  it('on: passes a cycle reset to the artist cycle when the picker asks for one', async () => {
+    const h = await build('on');
+    const original = h.similarity.propose.bind(h.similarity);
+    jest.spyOn(h.similarity, 'propose').mockImplementation((...args) => {
+      const proposal = original(...args);
+      return {
+        ...proposal,
+        result: { ...proposal.result, cycleReset: true },
+      };
+    });
+    const noteStarted = jest.spyOn(h.similarity, 'noteSongStarted');
+    await endCurrent(h, 0);
+    const requestId = h.radioService.playSong.mock.calls[1][4];
+    h.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/3.mp3');
+    expect(noteStarted).toHaveBeenLastCalledWith('radio-1', 'C', {
+      resetCycle: true,
+    });
+  });
+
+  describe.each(['shadow', 'on'] as const)(
+    '%s: resolution edge cases',
+    (mode) => {
+      function resolver(
+        propose: jest.Mock,
+        baseline: unknown = null,
+        lastEnded: unknown = null,
+      ) {
+        const similarity = {
+          propose,
+          recordDecision: jest.fn(),
+        };
+        const h = createEngine({
+          reconciled: true,
+          radio: true,
+          similarity: similarity as never,
+        });
+        const internals = h.engine as unknown as {
+          resolveWithSimilarity: (...args: unknown[]) => unknown;
+          resolveCursorPlaylistSong: unknown;
+        };
+        internals.resolveCursorPlaylistSong = jest
+          .fn()
+          .mockReturnValue(baseline);
+        const logger = jest
+          .spyOn(
+            (h.engine as unknown as { logger: { error: () => void } }).logger,
+            'error',
+          )
+          .mockImplementation();
+        const run = () =>
+          internals.resolveWithSimilarity.call(
+            h.engine,
+            'radio-1',
+            { lastEnded, pendingCycleReset: false },
+            structuredClone(SIM_SEQUENCE),
+            0,
+            mode,
+            Date.now(),
+          );
+        return { similarity, h, run, logger };
+      }
+
+      it('falls back to the cursor and records nothing when the proposal throws', () => {
+        const baseline = { songId: 2 };
+        const { similarity, run, logger, h } = resolver(
+          jest.fn(() => {
+            throw new Error('boom');
+          }),
+          baseline,
+        );
+        expect(run()).toBe(baseline);
+        expect(logger).toHaveBeenCalledWith(
+          expect.stringContaining('using the playlist cursor: Error: boom'),
+        );
+        expect(similarity.recordDecision).not.toHaveBeenCalled();
+        expect(h.metrics.recordSimilarityAction).not.toHaveBeenCalled();
+      });
+
+      it('records absent song ids and scores as null when nothing was chosen', () => {
+        const { similarity, run } = resolver(
+          jest.fn().mockReturnValue({
+            leaf: null,
+            result: {
+              outcome: 'fallback-no-candidate',
+              chosen: undefined,
+              runnerUps: [],
+              cycleReset: false,
+            },
+          }),
+        );
+        expect(run()).toBeNull();
+        expect(similarity.recordDecision).toHaveBeenCalledWith(
+          'radio-1',
+          expect.objectContaining({
+            mode,
+            outcome: 'fallback-no-candidate',
+            currentSongId: null,
+            proposedSongId: null,
+            playedSongId: null,
+            score: null,
+            runnerUps: [],
+          }),
+        );
+      });
+    },
+  );
+
+  it('on: records a selected leaf without a catalog song id as null ids', () => {
+    const leafWithoutSong = {
+      ...leaf(9, 'Z'),
+      id: 'item-1',
+      songId: undefined,
+    };
+    const similarity = {
+      propose: jest.fn().mockReturnValue({
+        leaf: leafWithoutSong,
+        result: {
+          outcome: 'selected',
+          chosen: undefined,
+          runnerUps: [{ songId: 5, score: 0.5 }],
+          cycleReset: false,
+        },
+      }),
+      recordDecision: jest.fn(),
+    };
+    const h = createEngine({
+      reconciled: true,
+      radio: true,
+      similarity: similarity as never,
+    });
+    const resolved = (
+      h.engine as unknown as {
+        resolveWithSimilarity: (...args: unknown[]) => unknown;
+      }
+    ).resolveWithSimilarity(
+      'radio-1',
+      { lastEnded: null, pendingCycleReset: false },
+      structuredClone(SIM_SEQUENCE),
+      0,
+      'on',
+      Date.now(),
+    );
+    expect(resolved).toBe(leafWithoutSong);
+    expect(similarity.recordDecision).toHaveBeenCalledWith('radio-1', {
+      mode: 'on',
+      outcome: 'selected',
+      currentSongId: null,
+      proposedSongId: null,
+      playedSongId: null,
+      score: null,
+      runnerUps: [{ songId: 5, score: 0.5 }],
+    });
+  });
+
+  it('shadow: records the runner-ups beside the cursor song', () => {
+    const similarity = {
+      propose: jest.fn().mockReturnValue({
+        leaf: null,
+        result: {
+          outcome: 'selected',
+          chosen: { songId: 3, score: 0.9 },
+          runnerUps: [{ songId: 4, score: 0.8 }],
+          cycleReset: false,
+        },
+      }),
+      recordDecision: jest.fn(),
+    };
+    const h = createEngine({
+      reconciled: true,
+      radio: true,
+      similarity: similarity as never,
+    });
+    const internals = h.engine as unknown as {
+      resolveWithSimilarity: (...args: unknown[]) => unknown;
+      resolveCursorPlaylistSong: unknown;
+    };
+    internals.resolveCursorPlaylistSong = jest
+      .fn()
+      .mockReturnValue({ songId: 2 });
+    internals.resolveWithSimilarity.call(
+      h.engine,
+      'radio-1',
+      { lastEnded: { songId: 1 }, pendingCycleReset: false },
+      structuredClone(SIM_SEQUENCE),
+      0,
+      'shadow',
+      Date.now(),
+    );
+    expect(similarity.recordDecision).toHaveBeenCalledWith('radio-1', {
+      mode: 'shadow',
+      outcome: 'selected',
+      currentSongId: 1,
+      proposedSongId: 3,
+      playedSongId: 2,
+      score: 0.9,
+      runnerUps: [{ songId: 4, score: 0.8 }],
+    });
+  });
+
   it('records the model identity the vectors are matched against', () => {
     expect(SIMILARITY_MODEL.name).toBe('discogs-effnet-bs64-1');
   });
