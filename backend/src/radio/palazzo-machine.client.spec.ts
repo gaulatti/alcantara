@@ -112,7 +112,7 @@ describe('PalazzoMachineClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     for (const [url, init] of fetchImpl.mock.calls) {
       expect(url).toBe('http://palazzo:3100/v1/programs/radio-1/playback/song');
-      expect(init.headers.Authorization).toBeUndefined();
+      expect(new Headers(init.headers).get('Authorization')).toBeNull();
       expect(init.headers['Idempotency-Key']).toBe('song-1');
       expect(JSON.parse(init.body)).toEqual({
         song: {
@@ -230,10 +230,12 @@ describe('PalazzoMachineClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(7);
     for (const [url, init] of fetchImpl.mock.calls) {
       expect(url).toContain('/v1/programs/radio-1/');
-      expect(init.headers.Authorization).toBeUndefined();
+      expect(new Headers(init.headers).get('Authorization')).toBeNull();
     }
     const eventCall = fetchImpl.mock.calls.at(-1);
-    expect(eventCall?.[1].headers['Last-Event-ID']).toBe('boot-a:6');
+    expect(new Headers(eventCall?.[1]?.headers).get('Last-Event-ID')).toBe(
+      'boot-a:6',
+    );
   });
 
   it('prepares an immutable filler and starts its exact version with ordered commands', async () => {

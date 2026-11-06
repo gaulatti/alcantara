@@ -74,14 +74,17 @@ describe('ExternalSourcesService', () => {
       },
       auth,
     );
-    expect(result.credential.secret).toHaveLength(43);
+    const credential = result.credential;
+    if (!credential)
+      throw new Error('Push source did not return its one-time credential');
+    expect(credential.secret).toHaveLength(43);
     expect(result.lifecycle).toBe('waiting');
     expect(created[0].teamId).toBe(1);
     expect(created[0].programs.create).toEqual([{ programId: 'main' }]);
     expect(created[0].credentials.create.secretHash).not.toContain(
-      result.credential.secret,
+      credential.secret,
     );
-    expect(JSON.stringify(created[0])).not.toContain(result.credential.secret);
+    expect(JSON.stringify(created[0])).not.toContain(credential.secret);
     expect(created[0].transportConfigCiphertext).not.toBe('{}');
   });
 

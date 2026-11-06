@@ -20,14 +20,30 @@ function build() {
     getStatus: jest.fn(),
   };
   const confidence = { get: jest.fn() };
+  const similarity = {
+    getCoverage: jest.fn(),
+    listDecisions: jest.fn(),
+    exportSongs: jest.fn(),
+    storeEmbeddings: jest.fn(),
+    onSettingsChanged: jest.fn(),
+  };
   const controller = new RadioController(
     radio as any,
     engine as any,
     nowPlaying as any,
     telemetry as any,
     confidence as any,
+    similarity as any,
   );
-  return { controller, radio, engine, nowPlaying, telemetry, confidence };
+  return {
+    controller,
+    radio,
+    engine,
+    nowPlaying,
+    telemetry,
+    confidence,
+    similarity,
+  };
 }
 
 describe('RadioController coverage', () => {
@@ -258,5 +274,98 @@ describe('RadioController coverage', () => {
     radio.getPalazzoStatus.mockResolvedValue({ s: 1 });
     await expect(controller.getStatus('p')).resolves.toEqual({ s: 1 });
     expect(radio.getPalazzoStatus).toHaveBeenCalledWith('p');
+  });
+});
+
+describe('RadioController similarity endpoints', () => {
+  it('returns similarity coverage for the program', async () => {
+    const { controller, similarity } = build();
+    similarity.getCoverage.mockResolvedValue({ total: 3, embedded: 2 });
+    await expect(controller.similarityCoverage('p')).resolves.toEqual({
+      total: 3,
+      embedded: 2,
+    });
+    expect(similarity.getCoverage).toHaveBeenCalledWith('p');
+  });
+
+  it('lists decisions with the default and an explicit limit', async () => {
+    const { controller, similarity } = build();
+    similarity.listDecisions.mockResolvedValue([{ id: 1 }]);
+    await expect(controller.similarityDecisions('p')).resolves.toEqual([
+      { id: 1 },
+    ]);
+    expect(similarity.listDecisions).toHaveBeenLastCalledWith('p', 50);
+    await controller.similarityDecisions('p', '7');
+    expect(similarity.listDecisions).toHaveBeenLastCalledWith('p', 7);
+  });
+
+  it.each([
+    ['sequence', undefined, false],
+    ['catalog', 'true', true],
+    ['catalog', 'false', false],
+  ])(
+    'exports the %s pool with missingOnly=%s',
+    async (scope, missingOnly, expected) => {
+      const { controller, similarity } = build();
+      similarity.exportSongs.mockResolvedValue({ songs: [] });
+      await expect(
+        controller.similarityExport('p', scope, missingOnly),
+      ).resolves.toEqual({ songs: [] });
+      expect(similarity.exportSongs).toHaveBeenCalledWith('p', scope, expected);
+    },
+  );
+
+  it.each([undefined, '', 'all'])(
+    'rejects an export scope of %p',
+    async (scope) => {
+      const { controller, similarity } = build();
+      await expect(controller.similarityExport('p', scope)).rejects.toThrow(
+        new BadRequestException('scope must be sequence or catalog'),
+      );
+      expect(similarity.exportSongs).not.toHaveBeenCalled();
+    },
+  );
+
+  it('stores uploaded embeddings', async () => {
+    const { controller, similarity } = build();
+    const body = { items: [] };
+    similarity.storeEmbeddings.mockResolvedValue({ stored: 0 });
+    await expect(controller.similarityUpload(body)).resolves.toEqual({
+      stored: 0,
+    });
+    expect(similarity.storeEmbeddings).toHaveBeenCalledWith(body);
+  });
+
+  it.each([
+    { similarityMode: 'on' },
+    { similarityThreshold: 0.2 },
+    { similarityWindowSeconds: 20 },
+    { similarityPool: 'catalog' },
+  ])('reloads similarity settings after saving %p', async (data) => {
+    const { controller, radio, similarity } = build();
+    radio.getRadioSettings.mockResolvedValue({
+      palazzoUrl: 'a',
+      enabled: true,
+    });
+    radio.updateRadioSettings.mockResolvedValue({
+      palazzoUrl: 'a',
+      enabled: true,
+    });
+    await controller.updateSettings('p', data as any);
+    expect(similarity.onSettingsChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload similarity settings for unrelated changes', async () => {
+    const { controller, radio, similarity } = build();
+    radio.getRadioSettings.mockResolvedValue({
+      palazzoUrl: 'a',
+      enabled: true,
+    });
+    radio.updateRadioSettings.mockResolvedValue({
+      palazzoUrl: 'a',
+      enabled: true,
+    });
+    await controller.updateSettings('p', { bumperEnabled: true } as any);
+    expect(similarity.onSettingsChanged).not.toHaveBeenCalled();
   });
 });

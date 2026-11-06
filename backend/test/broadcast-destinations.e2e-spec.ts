@@ -13,6 +13,10 @@ import { BroadcastDestinationsController } from '../src/broadcast-destinations/b
 import { BroadcastDestinationsService } from '../src/broadcast-destinations/broadcast-destinations.service';
 import { ObservabilityModule } from '../src/observability/observability.module';
 import { PrismaService } from '../src/prisma.service';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer } from 'node:net';
+import { once } from 'node:events';
+import { join } from 'node:path';
 
 @Controller()
 @Public()
@@ -39,11 +43,75 @@ describe('broadcast destination API contract (e2e)', () => {
   let origin: string;
   let operatorToken: string;
   let viewerToken: string;
-  const alanaOrigin = process.env.ALANA_CONTROL_URL ?? 'http://alana:8080';
-  const alanaToken =
-    process.env.ALANA_CONTROL_TOKEN ?? 'alana-local-control-token';
+  let alanaOrigin: string;
+  let fixture: ChildProcess | undefined;
+  let prisma: PrismaService | undefined;
+  const alanaToken = 'a'.repeat(64);
+  const programId = 'destination-e2e';
+  const environmentKeys = [
+    'AUTH_MODE',
+    'TEST_AUTH_SECRET',
+    'ALANA_CONTROL_URL',
+    'ALANA_CONTROL_TOKEN',
+  ] as const;
+  const originalEnvironment = Object.fromEntries(
+    environmentKeys.map((key) => [key, process.env[key]]),
+  );
 
   beforeAll(async () => {
+    const database = new URL(
+      process.env.DATABASE_URL ?? 'postgresql://missing',
+    );
+    if (
+      !['localhost', '127.0.0.1'].includes(database.hostname) ||
+      database.pathname !== '/alcantara_ci'
+    ) {
+      throw new Error(
+        'Broadcast destination e2e requires isolated local alcantara_ci PostgreSQL',
+      );
+    }
+    const reservation = createServer();
+    reservation.listen(0, '127.0.0.1');
+    await once(reservation, 'listening');
+    const port = (reservation.address() as { port: number }).port;
+    await new Promise<void>((resolve, reject) =>
+      reservation.close((error) => (error ? reject(error) : resolve())),
+    );
+    alanaOrigin = `http://127.0.0.1:${port}`;
+    fixture = spawn(
+      process.execPath,
+      [join(__dirname, 'fixtures/alana-recording-server.mjs')],
+      {
+        env: {
+          PATH: process.env.PATH,
+          PORT: String(port),
+          DESTINATION_PROGRAM_ID: programId,
+          ALANA_CONTROL_TOKEN: alanaToken,
+        },
+        stdio: 'ignore',
+      },
+    );
+    const deadline = Date.now() + 10_000;
+    let ready = false;
+    while (Date.now() < deadline) {
+      if (fixture.exitCode !== null)
+        throw new Error('Local Alana fixture exited before readiness');
+      try {
+        ready = (
+          await fetch(`${alanaOrigin}/health`, {
+            signal: AbortSignal.timeout(300),
+          })
+        ).ok;
+      } catch {}
+      if (ready) break;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    if (!ready) throw new Error('Local Alana fixture did not become ready');
+    process.env.AUTH_MODE = 'test';
+    process.env.TEST_AUTH_SECRET =
+      'alcantara-broadcast-e2e-local-only-signing-fixture';
+    process.env.ALANA_CONTROL_URL = alanaOrigin;
+    process.env.ALANA_CONTROL_TOKEN = alanaToken;
     const moduleRef = await Test.createTestingModule({
       imports: [TestModule],
     }).compile();
@@ -52,12 +120,63 @@ describe('broadcast destination API contract (e2e)', () => {
     );
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
+    const fixturePrisma = app.get<PrismaService>(PrismaService);
+    prisma = fixturePrisma;
+    await fixturePrisma.programState.upsert({
+      where: { programId },
+      update: {},
+      create: { programId },
+    });
+    for (const [position, id] of ['primary', 'secondary'].entries()) {
+      const destination = {
+        displayName: `${id === 'primary' ? 'Primary' : 'Secondary'} rehearsal destination`,
+        secretId: `broadcast/local/${id}`,
+        secretVersionId: 'fictional-version-1',
+        position,
+        retiredAt: null,
+      };
+      await fixturePrisma.broadcastDestination.upsert({
+        where: { id },
+        update: destination,
+        create: { id, ...destination },
+      });
+    }
     operatorToken = await session('operator-a');
     viewerToken = await session('viewer');
-  });
+  }, 15_000);
 
   afterAll(async () => {
-    await app.close();
+    try {
+      if (prisma) {
+        await prisma.broadcastDestinationCommand.deleteMany({
+          where: { programId },
+        });
+        await prisma.broadcastDestinationSelectionItem.deleteMany({
+          where: { selection: { programId } },
+        });
+        await prisma.broadcastDestinationSelection.deleteMany({
+          where: { programId },
+        });
+        await prisma.broadcastDestinationRuntime.deleteMany({
+          where: { programId },
+        });
+        await prisma.programState.deleteMany({ where: { programId } });
+        await prisma.broadcastDestination.deleteMany({
+          where: { id: { in: ['primary', 'secondary'] } },
+        });
+      }
+    } finally {
+      await app?.close();
+      if (fixture && fixture.exitCode === null) {
+        const exited = once(fixture, 'exit');
+        fixture.kill('SIGTERM');
+        await exited;
+      }
+      for (const key of environmentKeys) {
+        if (originalEnvironment[key] === undefined) delete process.env[key];
+        else process.env[key] = originalEnvironment[key];
+      }
+    }
   });
 
   async function session(identity: string) {
@@ -80,7 +199,10 @@ describe('broadcast destination API contract (e2e)', () => {
   }
 
   it('separates view, operate, and manage permissions and redacts references', async () => {
-    const stateResponse = await api('/broadcast/programs/main', viewerToken);
+    const stateResponse = await api(
+      '/broadcast/programs/destination-e2e',
+      viewerToken,
+    );
     expect(stateResponse.status).toBe(200);
     const stateBody = JSON.stringify(await stateResponse.json());
     expect(stateBody).toContain('Primary rehearsal destination');
@@ -90,7 +212,7 @@ describe('broadcast destination API contract (e2e)', () => {
     ).toBe(403);
     expect(
       (
-        await api('/broadcast/programs/main/start', viewerToken, {
+        await api('/broadcast/programs/destination-e2e/start', viewerToken, {
           method: 'POST',
           body: JSON.stringify({
             commandId: 'viewer-start',
@@ -114,7 +236,7 @@ describe('broadcast destination API contract (e2e)', () => {
   it('requires confirmation, reloads while stopped, starts exactly, and handles idempotency', async () => {
     expect(
       (
-        await api('/broadcast/programs/main/start', operatorToken, {
+        await api('/broadcast/programs/destination-e2e/start', operatorToken, {
           method: 'POST',
           body: JSON.stringify({
             commandId: 'unconfirmed-start',
@@ -126,7 +248,7 @@ describe('broadcast destination API contract (e2e)', () => {
     ).toBe(400);
 
     const reloadResponse = await api(
-      '/broadcast/programs/main/reload',
+      '/broadcast/programs/destination-e2e/reload',
       operatorToken,
       {
         method: 'POST',
@@ -141,9 +263,9 @@ describe('broadcast destination API contract (e2e)', () => {
     const reload = (await reloadResponse.json()) as {
       selectionVersion: string;
     };
-    expect((await api('/broadcast/programs/main', viewerToken)).status).toBe(
-      200,
-    );
+    expect(
+      (await api('/broadcast/programs/destination-e2e', viewerToken)).status,
+    ).toBe(200);
 
     const startRequest = {
       method: 'POST',
@@ -155,7 +277,7 @@ describe('broadcast destination API contract (e2e)', () => {
       }),
     };
     const startResponse = await api(
-      '/broadcast/programs/main/start',
+      '/broadcast/programs/destination-e2e/start',
       operatorToken,
       startRequest,
     );
@@ -165,31 +287,35 @@ describe('broadcast destination API contract (e2e)', () => {
     expect(startBody).not.toContain('broadcast/local/primary');
 
     const duplicate = await api(
-      '/broadcast/programs/main/start',
+      '/broadcast/programs/destination-e2e/start',
       operatorToken,
       startRequest,
     );
     expect(duplicate.status).toBe(201);
     expect(await duplicate.json()).toMatchObject({ duplicate: true });
-    const altered = await api('/broadcast/programs/main/start', operatorToken, {
-      method: 'POST',
-      body: JSON.stringify({
-        commandId: 'start-1',
-        confirmed: true,
-        destinationIds: ['secondary'],
-      }),
-    });
+    const altered = await api(
+      '/broadcast/programs/destination-e2e/start',
+      operatorToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          commandId: 'start-1',
+          confirmed: true,
+          destinationIds: ['secondary'],
+        }),
+      },
+    );
     expect(altered.status).toBe(409);
   });
 
   it('keeps the active snapshot immutable, blocks active reload, and rejects later retired starts', async () => {
     const activeState = (await (
-      await api('/broadcast/programs/main', viewerToken)
+      await api('/broadcast/programs/destination-e2e', viewerToken)
     ).json()) as any;
     const activeVersion = activeState.downstream.activeDestinations.version;
     expect(
       (
-        await api('/broadcast/programs/main/reload', operatorToken, {
+        await api('/broadcast/programs/destination-e2e/reload', operatorToken, {
           method: 'POST',
           body: JSON.stringify({
             commandId: 'reload-active',
@@ -216,13 +342,13 @@ describe('broadcast destination API contract (e2e)', () => {
       method: 'POST',
     });
     const unchanged = (await (
-      await api('/broadcast/programs/main', viewerToken)
+      await api('/broadcast/programs/destination-e2e', viewerToken)
     ).json()) as any;
     expect(unchanged.downstream.activeDestinations.version).toBe(activeVersion);
 
     expect(
       (
-        await api('/broadcast/programs/main/stop', operatorToken, {
+        await api('/broadcast/programs/destination-e2e/stop', operatorToken, {
           method: 'POST',
           body: JSON.stringify({ commandId: 'stop-1', confirmed: true }),
         })
@@ -230,7 +356,7 @@ describe('broadcast destination API contract (e2e)', () => {
     ).toBe(201);
     expect(
       (
-        await api('/broadcast/programs/main/start', operatorToken, {
+        await api('/broadcast/programs/destination-e2e/start', operatorToken, {
           method: 'POST',
           body: JSON.stringify({
             commandId: 'retired-start',
@@ -255,7 +381,7 @@ describe('broadcast destination API contract (e2e)', () => {
       body: JSON.stringify({ mode: 'partial' }),
     });
     const response = await api(
-      '/broadcast/programs/main/start',
+      '/broadcast/programs/destination-e2e/start',
       operatorToken,
       {
         method: 'POST',
@@ -270,14 +396,17 @@ describe('broadcast destination API contract (e2e)', () => {
     const body = JSON.stringify(await response.json());
     expect(body).toContain('exact destination selection');
     expect(body).not.toContain('broadcast/local/secondary');
-    const reconciled = await api('/broadcast/programs/main', viewerToken);
+    const reconciled = await api(
+      '/broadcast/programs/destination-e2e',
+      viewerToken,
+    );
     expect(reconciled.status).toBe(200);
     expect(JSON.stringify(await reconciled.json())).not.toContain(
       'broadcast/local/secondary',
     );
     expect(
       (
-        await api('/broadcast/programs/main/stop', operatorToken, {
+        await api('/broadcast/programs/destination-e2e/stop', operatorToken, {
           method: 'POST',
           body: JSON.stringify({
             commandId: 'partial-cleanup-stop',

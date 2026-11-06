@@ -14,8 +14,14 @@ function controllerMethod(name: 'start' | 'stop'): object {
 }
 
 describe('RecordingController', () => {
-  const status = jest.fn<AlanaRecordingClient['status']>();
-  const command = jest.fn<AlanaRecordingClient['command']>();
+  const status = jest.fn<
+    ReturnType<AlanaRecordingClient['status']>,
+    Parameters<AlanaRecordingClient['status']>
+  >();
+  const command = jest.fn<
+    ReturnType<AlanaRecordingClient['command']>,
+    Parameters<AlanaRecordingClient['command']>
+  >();
   const recording = {
     status,
     command,
