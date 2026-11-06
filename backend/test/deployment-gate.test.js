@@ -31,7 +31,7 @@ test('validates the production secret contract before build, push, or host mutat
   assert.match(workflow, /secretsmanager get-secret-value/);
   assert.match(
     workflow,
-    /node backend\/src\/config\/runtime-secret-contract\.js/,
+    /node backend\/src\/config\/runtime-secret-contract-cli\.js/,
   );
   assert.match(
     workflow,

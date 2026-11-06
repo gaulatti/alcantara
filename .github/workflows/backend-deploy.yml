@@ -37,7 +37,7 @@ jobs:
             --secret-id "$ALCANTARA_CONFIG_SECRET_ID" \
             --query SecretString \
             --output text \
-            | node backend/src/config/runtime-secret-contract.js
+            | node backend/src/config/runtime-secret-contract-cli.js
 
   build:
     needs: production-config-preflight
