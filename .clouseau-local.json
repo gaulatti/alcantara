@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "base_branch": "main",
+  "readme": "README.md",
+  "repository_policy": "AGENTS.md",
+  "verification": [
+    [
+      "pnpm",
+      "--dir",
+      "backend",
+      "run",
+      "build"
+    ],
+    [
+      "pnpm",
+      "--dir",
+      "backend",
+      "run",
+      "test:coverage"
+    ]
+  ],
+  "coverage": {
+    "format": "istanbul",
+    "report": "backend/coverage/coverage-final.json",
+    "source_directory": "backend/src"
+  }
+}

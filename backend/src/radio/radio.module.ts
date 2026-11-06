@@ -9,6 +9,7 @@ import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 import { RadioMetricsService } from './radio-metrics.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
+import { SongSimilarityService } from './song-similarity.service';
 import { PrismaService } from '../prisma.service';
 
 @Global()
@@ -23,6 +24,7 @@ import { PrismaService } from '../prisma.service';
     RadioMetricsService,
     RadioOutputConfidenceService,
     PalazzoMachineClient,
+    SongSimilarityService,
     PrismaService,
   ],
   exports: [
@@ -33,6 +35,7 @@ import { PrismaService } from '../prisma.service';
     RadioMetricsService,
     RadioOutputConfidenceService,
     PalazzoMachineClient,
+    SongSimilarityService,
   ],
 })
 export class RadioModule {}

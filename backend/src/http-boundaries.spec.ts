@@ -10,6 +10,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { RadioController } from './radio/radio.controller';
 import { RadioService } from './radio/radio.service';
+import { SongSimilarityService } from './radio/song-similarity.service';
 import { SongExecutionEngine } from './radio/song-execution.engine';
 import { NowPlayingPublisherService } from './radio/now-playing-publisher.service';
 import { PalazzoRadioTelemetryService } from './radio/palazzo-telemetry.service';
@@ -147,6 +148,7 @@ describe('controller contracts through native Fastify HTTP routing', () => {
         { provide: NowPlayingPublisherService, useValue: publisher },
         { provide: PalazzoRadioTelemetryService, useValue: telemetry },
         { provide: RadioOutputConfidenceService, useValue: confidence },
+        { provide: SongSimilarityService, useValue: {} },
         { provide: WebrtcService, useValue: webrtc },
         { provide: MediaAssetsService, useValue: assets },
         { provide: ScenesService, useValue: scenes },

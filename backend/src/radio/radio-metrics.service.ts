@@ -68,6 +68,13 @@ export type HighRotationActionResult =
   | 'quota-unmet'
   | 'history-persistence-failed';
 
+export type SimilarityActionResult =
+  | 'selected'
+  | 'fallback-no-candidate'
+  | 'fallback-no-embedding'
+  | 'shadow-recorded'
+  | 'decision-persistence-failed';
+
 export type SnapshotReconciliationResult =
   | 'accepted'
   | 'instance-mismatch'
@@ -85,6 +92,7 @@ export interface RadioMetricsSnapshot {
   songQueueActions: Record<string, number>;
   songQueueDepth: number;
   highRotationActions: Record<string, number>;
+  similarityActions: Record<string, number>;
   highRotationFavorites: number;
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
@@ -202,6 +210,14 @@ const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
   'persistence-failed',
 ];
 
+const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
+  'selected',
+  'fallback-no-candidate',
+  'fallback-no-embedding',
+  'shadow-recorded',
+  'decision-persistence-failed',
+];
+
 const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
   'selected',
   'played',
@@ -247,6 +263,7 @@ export class RadioMetricsService {
   private readonly songQueueActions = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
+  private readonly similarityActions = new Map<string, number>();
   private highRotationFavorites = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
@@ -327,6 +344,14 @@ export class RadioMetricsService {
     );
   }
 
+  recordSimilarityAction(result: SimilarityActionResult): void {
+    if (!SIMILARITY_ACTION_RESULTS.includes(result)) return;
+    this.similarityActions.set(
+      result,
+      (this.similarityActions.get(result) ?? 0) + 1,
+    );
+  }
+
   recordHighRotationFavorites(count: number): void {
     this.highRotationFavorites = Math.max(0, Math.floor(count));
   }
@@ -399,6 +424,7 @@ export class RadioMetricsService {
       songQueueActions: Object.fromEntries(this.songQueueActions),
       songQueueDepth: this.songQueueDepth,
       highRotationActions: Object.fromEntries(this.highRotationActions),
+      similarityActions: Object.fromEntries(this.similarityActions),
       highRotationFavorites: this.highRotationFavorites,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
@@ -489,6 +515,15 @@ export class RadioMetricsService {
     for (const result of HIGH_ROTATION_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_high_rotation_actions_total{result="${result}"} ${this.highRotationActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_similarity_total Similarity picker outcomes by bounded result.',
+      '# TYPE alcantara_radio_similarity_total counter',
+    );
+    for (const result of SIMILARITY_ACTION_RESULTS) {
+      lines.push(
+        `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
       );
     }
     lines.push(

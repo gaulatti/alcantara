@@ -50,6 +50,7 @@ model ProgramState {
   songSequence           Json?
   songQueue              Json?
   songRotation           Json?
+  songArtistCycle        Json?
   shuffleOrder           Json?
   audioMixer             Json?
   activeFlightSequenceId Int?
@@ -335,8 +336,46 @@ model Song {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   intro        SongIntro?
+  embeddings   SongEmbedding[]
 
   @@index([coverAssetId])
+}
+
+/// Audio embedding of a song's opening or closing window. The vector column is
+/// pgvector's dimensionless `vector` type so another model can be stored later;
+/// it is read and written with raw SQL because Prisma cannot model it.
+model SongEmbedding {
+  id            Int      @id @default(autoincrement())
+  songId        Int
+  song          Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  segment       String
+  model         String
+  modelVersion  String
+  license       String
+  windowSeconds Int
+  audioSha256   String
+  vector        Unsupported("vector")
+  computedAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@unique([songId, segment, model, windowSeconds])
+  @@index([model, windowSeconds])
+}
+
+/// Shadow/on-air record of what the similarity picker proposed at a song change.
+model SimilarityDecision {
+  id             Int      @id @default(autoincrement())
+  programId      String
+  mode           String
+  outcome        String
+  currentSongId  Int?
+  proposedSongId Int?
+  playedSongId   Int?
+  score          Float?
+  runnerUps      Json
+  createdAt      DateTime @default(now())
+
+  @@index([programId, createdAt])
 }
 
 model SongIntro {
@@ -436,6 +475,10 @@ model RadioSettings {
   fillerSongIds    Int[]        @default([])
   fillerVersion    String?
   enabled          Boolean      @default(false)
+  similarityMode          String @default("off")
+  similarityThreshold     Float  @default(0.8)
+  similarityWindowSeconds Int    @default(30)
+  similarityPool          String @default("sequence")
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }

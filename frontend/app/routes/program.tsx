@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { useSSE } from '../hooks/useSSE';
+import { useTransparentDocument } from '../hooks/useTransparentDocument';
 import { apiUrl } from '../utils/apiBaseUrl';
 import {
   BroadcastLayout,
@@ -699,6 +700,7 @@ function buildSceneInstantPlaybackToken(
 }
 
 export default function Program() {
+  useTransparentDocument();
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const programId = id ?? 'main';

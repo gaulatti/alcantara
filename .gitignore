@@ -41,3 +41,6 @@ prisma/migrations/*
 
 /backend/coverage/
 /backend/.coverage-dist/
+
+# test coverage output
+coverage/
