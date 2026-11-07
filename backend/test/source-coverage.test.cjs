@@ -265,7 +265,10 @@ test('child coverage capture validates its destination and flushes only real cou
   const previousFile = process.env.ALCANTARA_CHILD_COVERAGE_FILE;
   delete process.env.ALCANTARA_CHILD_COVERAGE_FILE;
   delete require.cache[modulePath];
-  assert.throws(() => require(modulePath), /explicit output path/);
+  assert.throws(
+    () => require('../scripts/capture-child-coverage.cjs'),
+    /explicit output path/,
+  );
   const before = {
     exit: process.listeners('exit'),
     term: process.listeners('SIGTERM'),
@@ -275,7 +278,7 @@ test('child coverage capture validates its destination and flushes only real cou
     'unused-child.json',
   );
   delete require.cache[modulePath];
-  const { install } = require(modulePath);
+  const { install } = require('../scripts/capture-child-coverage.cjs');
   for (const [event, kept] of [
     ['exit', before.exit],
     ['SIGTERM', before.term],
