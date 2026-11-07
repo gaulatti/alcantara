@@ -260,17 +260,65 @@ test('jest transformer instruments authored source and defers to ts-jest otherwi
   );
 });
 
-test('child coverage capture refuses to run without an explicit output path', () => {
-  const previous = process.env.ALCANTARA_CHILD_COVERAGE_FILE;
+test('child coverage capture validates its destination and flushes only real counters', () => {
+  const modulePath = require.resolve('../scripts/capture-child-coverage.cjs');
+  const previousFile = process.env.ALCANTARA_CHILD_COVERAGE_FILE;
   delete process.env.ALCANTARA_CHILD_COVERAGE_FILE;
+  delete require.cache[modulePath];
+  assert.throws(() => require(modulePath), /explicit output path/);
+  const before = {
+    exit: process.listeners('exit'),
+    term: process.listeners('SIGTERM'),
+  };
+  process.env.ALCANTARA_CHILD_COVERAGE_FILE = join(
+    tmpdir(),
+    'unused-child.json',
+  );
+  delete require.cache[modulePath];
+  const { install } = require(modulePath);
+  for (const [event, kept] of [
+    ['exit', before.exit],
+    ['SIGTERM', before.term],
+  ]) {
+    for (const listener of process.listeners(event)) {
+      if (!kept.includes(listener)) process.removeListener(event, listener);
+    }
+  }
+  if (previousFile === undefined)
+    delete process.env.ALCANTARA_CHILD_COVERAGE_FILE;
+  else process.env.ALCANTARA_CHILD_COVERAGE_FILE = previousFile;
+  assert.throws(() => install(undefined), /explicit output path/);
+  const directory = mkdtempSync(join(tmpdir(), 'alcantara-child-capture-'));
   try {
-    assert.throws(
-      () => require('../scripts/capture-child-coverage.cjs'),
-      /explicit output path/,
-    );
+    const handlers = {};
+    const killed = [];
+    const target = {
+      pid: 7,
+      once: (event, handler) => (handlers[event] = handler),
+      kill: (pid, signal) => killed.push([pid, signal]),
+    };
+    const destination = join(directory, 'out.json');
+    let counters = {};
+    install(destination, target, () => counters);
+    assert.throws(() => handlers.exit(), /no Istanbul coverage/);
+    counters = undefined;
+    assert.throws(() => handlers.exit(), /no Istanbul coverage/);
+    counters = { '/a.ts': { path: '/a.ts' } };
+    handlers.SIGTERM();
+    assert.deepEqual(JSON.parse(readFileSync(destination, 'utf8')), counters);
+    assert.deepEqual(killed, [[7, 'SIGTERM']]);
+    globalThis.__coverage__ = { '/b.ts': { path: '/b.ts' } };
+    try {
+      install(destination, target)();
+      assert.deepEqual(
+        Object.keys(JSON.parse(readFileSync(destination, 'utf8'))),
+        ['/b.ts'],
+      );
+    } finally {
+      delete globalThis.__coverage__;
+    }
   } finally {
-    if (previous !== undefined)
-      process.env.ALCANTARA_CHILD_COVERAGE_FILE = previous;
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
