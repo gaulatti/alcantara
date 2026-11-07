@@ -78,6 +78,9 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
     devDependencies:
+      '@ampproject/remapping':
+        specifier: 2.3.0
+        version: 2.3.0
       '@eslint/eslintrc':
         specifier: ^3.2.0
         version: 3.3.3
@@ -123,6 +126,12 @@ importers:
       globals:
         specifier: ^16.0.0
         version: 16.5.0
+      istanbul-lib-coverage:
+        specifier: 3.2.2
+        version: 3.2.2
+      istanbul-lib-instrument:
+        specifier: 6.0.3
+        version: 6.0.3
       jest:
         specifier: ^30.0.0
         version: 30.2.0(@types/node@22.19.9)(ts-node@10.9.2(@types/node@22.19.9)(typescript@5.9.3))
@@ -286,6 +295,10 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@ampproject/remapping@2.3.0':
+    resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
+    engines: {node: ">=6.0.0"}
 
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
@@ -7175,6 +7188,11 @@ packages:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
 
 snapshots:
+
+  '@ampproject/remapping@2.3.0':
+    dependencies:
+      '@jridgewell/gen-mapping': 0.3.13
+      '@jridgewell/trace-mapping': 0.3.31
 
   '@adobe/css-tools@4.5.0': {}
 
