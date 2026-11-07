@@ -227,6 +227,15 @@ from `METRICS_TOKEN_FILE` (default
 `503`; absent or incorrect bearer values return `401`. Never publish or pass the
 credential as a build argument or ordinary environment value.
 
+Deployment provisioning: the production secret `broadcast/production/config`
+carries a `metrics_bearer_token` field (ignored by the runtime secret contract).
+Each deploy reads it inside the new image (`scripts/print-metrics-token.mjs`),
+writes it to a root-owned `0400` file (`/etc/alcantara/metrics-token` on
+Cumulus), and mounts that file read-only at
+`/run/secrets/alcantara-metrics-token`. A missing field fails the deploy before
+the live backend is touched. Rotate by changing the secret field and redeploying,
+then updating the scraper's token file.
+
 | Metric family                                  | Bounded labels                      | Operational meaning                            |
 | ---------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
 | `alcantara_service_info`                       | `service`, `runtime`, `version`     | Service/build identity                         |
