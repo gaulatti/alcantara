@@ -1,7 +1,7 @@
 'use strict';
 
 const { createInstrumenter, defaultOpts } = require('istanbul-lib-instrument');
-const remapping = require('@ampproject/remapping');
+const remapping = require('@jridgewell/remapping');
 
 // Instrument authored TypeScript before TSC adds decorator metadata and helpers.
 // The native counters therefore describe source branches, not compiler output.
