@@ -145,3 +145,34 @@ test('reclaims only unused images before pulling and after retiring the rollback
   assert.doesNotMatch(deployScript, /docker system prune/);
   assert.match(deployScript, /trap 'rm -rf "\$docker_config_dir"' EXIT/);
 });
+
+test('mounts the scrape credential from the production secret read-only without exposing it', () => {
+  const tokenScript = readFileSync('./scripts/print-metrics-token.mjs', 'utf8');
+  const resolve = deployScript.indexOf('node scripts/print-metrics-token.mjs');
+  const stop = deployScript.indexOf('docker stop alcantara-backend');
+  const run = deployScript.indexOf('docker run -d --name alcantara-backend');
+
+  assert.ok(resolve >= 0);
+  assert.ok(resolve < stop);
+  assert.ok(stop < run);
+  assert.match(tokenScript, /metrics_bearer_token/);
+  assert.match(tokenScript, /process\.exit\(1\)/);
+  assert.doesNotMatch(tokenScript, /console\.(log|error)\([^)]*token\)/);
+  assert.match(deployScript, /chmod 0400 "\$metrics_token_file\.new"/);
+  assert.match(deployScript, /install -d -m 0755 -o root -g root/);
+  assert.match(
+    deployScript,
+    /-v "\$metrics_token_file":\/run\/secrets\/alcantara-metrics-token:ro/,
+  );
+  assert.match(
+    deployScript,
+    /-e METRICS_TOKEN_FILE=\/run\/secrets\/alcantara-metrics-token/,
+  );
+  assert.match(
+    workflow,
+    /-v "\$metrics_token_file":\/run\/secrets\/alcantara-metrics-token:ro/,
+  );
+  assert.match(workflow, /node scripts\/print-metrics-token\.mjs/);
+  assert.doesNotMatch(deployScript, /metrics_bearer_token/);
+  assert.doesNotMatch(workflow, /metrics_bearer_token/);
+});
