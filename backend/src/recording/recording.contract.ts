@@ -178,3 +178,64 @@ export function normalizeRecordingStatus(value: unknown): RecordingStatus {
   }
   return status;
 }
+
+export type TapeStatus = {
+  tape: { enabled: boolean; active: boolean; pipelineHealthy: boolean };
+  recording: RecordingStatus;
+  commandResult?: {
+    action: 'start' | 'stop';
+    status: number;
+    result: string;
+    duplicate: boolean;
+  };
+};
+
+const tapeResults = new Set([
+  'accepted',
+  'complete',
+  'disabled',
+  'already-active',
+  'not-active',
+  'program-live',
+  'pipeline-not-ready',
+  ...RECORDING_FAILURE_REASONS,
+]);
+
+export function normalizeTapeStatus(value: unknown): TapeStatus {
+  const candidate = record(value);
+  const tape = record(candidate.tape);
+  if (
+    typeof tape.enabled !== 'boolean' ||
+    typeof tape.active !== 'boolean' ||
+    typeof tape.pipelineHealthy !== 'boolean'
+  ) {
+    throw new Error('invalid tape response');
+  }
+  const status: TapeStatus = {
+    tape: {
+      enabled: tape.enabled,
+      active: tape.active,
+      pipelineHealthy: tape.pipelineHealthy,
+    },
+    recording: normalizeRecordingStatus(candidate.recording),
+  };
+  const command = candidate.commandResult;
+  if (command && typeof command === 'object' && !Array.isArray(command)) {
+    const entry = command as Record<string, unknown>;
+    if (
+      (entry.action === 'start' || entry.action === 'stop') &&
+      typeof entry.status === 'number'
+    ) {
+      status.commandResult = {
+        action: entry.action,
+        status: entry.status,
+        result:
+          typeof entry.result === 'string' && tapeResults.has(entry.result)
+            ? entry.result
+            : 'unknown',
+        duplicate: entry.duplicate === true,
+      };
+    }
+  }
+  return status;
+}

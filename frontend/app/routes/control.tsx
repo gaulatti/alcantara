@@ -45,6 +45,7 @@ import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
 import { useConsolePreferences } from "../contexts/ConsolePreferencesContext";
 import { RadioPanel } from "../components/RadioPanel";
 import { RecordingPanel } from "../components/RecordingPanel";
+import { TapePanel } from "../components/TapePanel";
 import { SimulcastStatusRail } from "../components/SimulcastStatusRail";
 import {
   PlaylistSheetPanel,
@@ -3488,7 +3489,12 @@ export default function Control() {
               onToggle={(event) => setRecordingOpen(event.currentTarget.open)}
             >
               <summary>Program recording</summary>
-              {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+              {recordingOpen && (
+                <>
+                  <TapePanel programId={activeProgramId} />
+                  <RecordingPanel programId={activeProgramId} />
+                </>
+              )}
             </details>
           }
         />
@@ -3501,7 +3507,12 @@ export default function Control() {
             <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-text-secondary">
               Program recording
             </summary>
-            {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+            {recordingOpen && (
+              <>
+                <TapePanel programId={activeProgramId} />
+                <RecordingPanel programId={activeProgramId} />
+              </>
+            )}
           </details>
           <div
             className={`console-scene-workspace w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
