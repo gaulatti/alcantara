@@ -30,7 +30,7 @@ const failureLabels: Record<string, string> = {
   unknown: "Unclassified recording failure",
 };
 
-function formatBytes(value: number): string {
+export function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const index = Math.min(
@@ -40,7 +40,7 @@ function formatBytes(value: number): string {
   return `${(value / 1000 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-function formatDuration(value: number): string {
+export function formatDuration(value: number): string {
   const seconds = Math.max(0, Math.floor(value));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
