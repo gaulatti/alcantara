@@ -3,6 +3,10 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Field, Checkbox, Input } from '@gaulatti/bleecker';
 import type { MediaGroup, MediaItem } from '../../models/broadcast';
 import { apiUrl } from '../../utils/apiBaseUrl';
+import { FileDropField } from '../common/FileDropField';
+
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+const MAX_COVER_BYTES = 10 * 1024 * 1024;
 
 export function ModoItalianoPodcastPlayerEditorFields({
   componentType,
@@ -98,14 +102,23 @@ export function ModoItalianoPodcastPlayerEditorFields({
       </Field>
 
       {/* Audio URL */}
-      <Field label='Audio URL (MP3 / AAC)'>
+      <div className='space-y-2'>
+        <label className='block text-xs text-text-secondary'>Audio (MP3 / AAC)</label>
+        <FileDropField
+          kind='instant'
+          accept='audio/*,.mp3,.aac,.m4a,.wav,.flac,.ogg'
+          maxBytes={MAX_AUDIO_BYTES}
+          label='Drop an audio file or click to upload (max 100MB)'
+          onUploaded={(url) => updateProp(componentType, 'audioUrl', url)}
+        />
         <Input
           type='text'
+          aria-label='Audio URL'
           value={props.audioUrl || ''}
           onChange={(e) => updateProp(componentType, 'audioUrl', e.target.value)}
-          placeholder='https://example.com/episode.mp3'
+          placeholder='…or paste a URL: https://example.com/episode.mp3'
         />
-      </Field>
+      </div>
 
       {/* Cover art */}
       <div className='space-y-2'>
@@ -123,6 +136,14 @@ export function ModoItalianoPodcastPlayerEditorFields({
             </div>
           </div>
         ) : null}
+
+        <FileDropField
+          kind='artwork'
+          accept='image/*'
+          maxBytes={MAX_COVER_BYTES}
+          label='Drop an image or click to upload cover art (max 10MB)'
+          onUploaded={(url) => updateProp(componentType, 'coverUrl', url)}
+        />
 
         {/* Search — searches full media library */}
         <Input
