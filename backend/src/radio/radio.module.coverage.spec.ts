@@ -13,6 +13,7 @@ import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 import { RadioMetricsService } from './radio-metrics.service';
 import { RadioOutputConfidenceService } from './radio-output-confidence.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
+import { SongSimilarityService } from './song-similarity.service';
 import { PrismaService } from '../prisma.service';
 
 const configStub = {
@@ -51,6 +52,7 @@ describe('RadioModule wiring', () => {
         RadioMetricsService,
         RadioOutputConfidenceService,
         PalazzoMachineClient,
+        SongSimilarityService,
         PrismaService,
       ]),
     );
@@ -62,6 +64,7 @@ describe('RadioModule wiring', () => {
       RadioMetricsService,
       RadioOutputConfidenceService,
       PalazzoMachineClient,
+      SongSimilarityService,
     ]);
   });
 

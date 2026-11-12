@@ -284,6 +284,7 @@ describe('SongExecutionEngine constructor metadata', () => {
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('./now-playing-publisher.service', () => ({}));
       jest.doMock('./radio-metrics.service', () => ({}));
+      jest.doMock('./song-similarity.service', () => ({}));
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const isolated = require('./song-execution.engine') as {
@@ -294,7 +295,7 @@ describe('SongExecutionEngine constructor metadata', () => {
             'design:paramtypes',
             isolated.SongExecutionEngine,
           ),
-        ).toEqual([Object, Object, Object, Object, Object]);
+        ).toEqual([Object, Object, Object, Object, Object, Object]);
       } finally {
         jest.dontMock('./radio.service');
         jest.dontMock('../program/flight.service');
