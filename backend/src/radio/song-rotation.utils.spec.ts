@@ -93,7 +93,11 @@ describe('radio high rotation scheduling', () => {
 
     expect(
       getHighRotationEligibility(
-        { ...favorite, activePathLabels: [] },
+        {
+          ...favorite,
+          highRotation: favorite.highRotation === true,
+          activePathLabels: [],
+        },
         history([
           {
             songId: 1,
@@ -106,7 +110,11 @@ describe('radio high rotation scheduling', () => {
     ).toBe('cooldown');
     expect(
       getHighRotationEligibility(
-        { ...favorite, activePathLabels: [] },
+        {
+          ...favorite,
+          highRotation: favorite.highRotation === true,
+          activePathLabels: [],
+        },
         history([{ songId: 1, playedAt: NOW - 2 * HOUR }]),
         4,
         NOW,

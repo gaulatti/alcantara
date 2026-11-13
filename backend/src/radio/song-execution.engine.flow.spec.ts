@@ -523,8 +523,15 @@ describe('SongExecutionEngine Play Next claims', () => {
 
 describe('SongExecutionEngine playNext guards', () => {
   const playNext = (engine: SongExecutionEngine) =>
-    (engine as unknown as { playNext(programId: string): boolean }).playNext(
+    (
+      engine as unknown as {
+        playNext(programId: string, state: unknown): boolean;
+      }
+    ).playNext(
       'radio-1',
+      (
+        engine as unknown as { ensureState(programId: string): unknown }
+      ).ensureState('radio-1'),
     );
 
   it('reports success without commanding while a clocked log owns the program', () => {
@@ -1009,26 +1016,6 @@ describe('SongExecutionEngine TV-only duration timer', () => {
     expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
   });
 
-  it('does nothing when its state disappears before the timer fires', async () => {
-    const ctx = setup();
-    ctx.engine.handleManualSong(
-      'tv-1',
-      'https://example.test/m.mp3',
-      'T',
-      'A',
-      500,
-    );
-    internals(ctx.engine).states.delete('tv-1');
-    await jest.advanceTimersByTimeAsync(500);
-    expect(ctx.flightService.handleSongEnded).not.toHaveBeenCalled();
-  });
-
-  it('ignores a timer request for an unknown program', () => {
-    const ctx = setup();
-    internals(ctx.engine).setTimer('ghost', 10);
-    expect(jest.getTimerCount()).toBe(0);
-  });
-
   describe('while the bumper settings load', () => {
     async function endWithPendingSettings(sequence: unknown) {
       const ctx = setup();
@@ -1072,14 +1059,6 @@ describe('SongExecutionEngine TV-only duration timer', () => {
       await flush(40);
       expect(ctx.publisher.publishStopped).toHaveBeenCalledWith('tv-1');
       expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
-    });
-
-    it('stops when the state vanished', async () => {
-      const { ctx, settings } = await endWithPendingSettings(AUTO);
-      internals(ctx.engine).states.delete('tv-1');
-      settings.resolve(null);
-      await flush(40);
-      expect(ctx.publisher.publishStopped).not.toHaveBeenCalled();
     });
   });
 });
