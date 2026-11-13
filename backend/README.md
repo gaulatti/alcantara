@@ -129,8 +129,8 @@ empty Arauco database. Restore the production backup first. Deployment checks
 for the restored `ProgramState` table and at least one program row before it
 runs the committed Prisma migrations. The backend listens only on loopback and
 nginx terminates TLS for `api.alcantara.gaulatti.com` with buffering disabled
-for SSE and WebSocket traffic. Cumulus nginx accepts request bodies up to 110 MB
-so multipart overhead does not prevent the backend from enforcing its 100 MB
+for SSE and WebSocket traffic. Cumulus nginx accepts request bodies up to 210 MB
+so multipart overhead does not prevent the backend from enforcing its 200 MB
 per-file upload limit. LiveKit remains disabled on Cumulus until its separate
 public media-port and secret contract is provisioned.
 

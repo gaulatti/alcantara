@@ -114,9 +114,9 @@ describe("ModoItalianoPodcastPlayerEditorFields uploads", () => {
     const upload = vi.fn();
     const updateProp = await renderWithUpload(upload);
     const file = new File(["x"], "big.mp3", { type: "audio/mpeg" });
-    Object.defineProperty(file, "size", { value: 101 * 1024 * 1024 });
+    Object.defineProperty(file, "size", { value: 201 * 1024 * 1024 });
     fireEvent.change(screen.getAllByTestId("file-drop-input")[0], { target: { files: [file] } });
-    expect(await screen.findByRole("alert")).toHaveTextContent("Max size is 100MB");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Max size is 200MB");
     expect(upload).not.toHaveBeenCalled();
     expect(updateProp).not.toHaveBeenCalled();
   });

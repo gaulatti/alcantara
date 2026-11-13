@@ -5,7 +5,7 @@ import type { MediaGroup, MediaItem } from '../../models/broadcast';
 import { apiUrl } from '../../utils/apiBaseUrl';
 import { FileDropField } from '../common/FileDropField';
 
-const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
 const MAX_COVER_BYTES = 10 * 1024 * 1024;
 
 export function ModoItalianoPodcastPlayerEditorFields({
@@ -108,7 +108,7 @@ export function ModoItalianoPodcastPlayerEditorFields({
           kind='instant'
           accept='audio/*,.mp3,.aac,.m4a,.wav,.flac,.ogg'
           maxBytes={MAX_AUDIO_BYTES}
-          label='Drop an audio file or click to upload (max 100MB)'
+          label='Drop an audio file or click to upload (max 200MB)'
           onUploaded={(url) => updateProp(componentType, 'audioUrl', url)}
         />
         <Input

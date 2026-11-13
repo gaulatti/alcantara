@@ -121,9 +121,9 @@ describe('UploadsService (coverage)', () => {
     });
 
     it.each([
-      ['instant', 100],
-      ['background', 100],
-      ['song', 100],
+      ['instant', 200],
+      ['background', 200],
+      ['song', 200],
       ['stinger', 50],
       ['artwork', 10],
     ] as const)('rejects oversized %s uploads (%iMB)', async (kind, mb) => {
