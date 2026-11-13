@@ -33,7 +33,7 @@ describe('Tape controllers decorator metadata', () => {
       ).toEqual([Object, Object]);
       const handlerTypes = Reflect.getMetadata(
         'design:paramtypes',
-        RecordingFileController.prototype,
+        RecordingFileController.prototype as object,
         'file',
       ) as unknown[];
       expect(handlerTypes).toEqual([String, Object, Object, Object]);
@@ -49,6 +49,7 @@ describe('RecordingFileController return metadata', () => {
     jest.isolateModules(() => {
       globals.Promise = undefined;
       try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         loaded = require('./recording-file.controller');
       } finally {
         globals.Promise = originalPromise;
