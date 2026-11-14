@@ -32,9 +32,9 @@ export interface UploadResult {
   };
 }
 
-const MAX_INSTANT_BYTES = 100 * 1024 * 1024;
+const MAX_INSTANT_BYTES = 200 * 1024 * 1024;
 const MAX_ARTWORK_BYTES = 10 * 1024 * 1024;
-const MAX_SONG_BYTES = 100 * 1024 * 1024;
+const MAX_SONG_BYTES = 200 * 1024 * 1024;
 const MAX_STINGER_BYTES = 50 * 1024 * 1024;
 
 const INSTANT_MIME_TYPES = new Set<string>([

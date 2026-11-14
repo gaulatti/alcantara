@@ -92,8 +92,8 @@ test('keeps the backend private to nginx and preserves realtime proxy behavior',
 });
 
 test('allows song upload bodies through nginx while retaining the application file limit', () => {
-  assert.match(nginx, /client_max_body_size 110m;/);
-  assert.match(backendMain, /fileSize: 100 \* 1024 \* 1024/);
+  assert.match(nginx, /client_max_body_size 210m;/);
+  assert.match(backendMain, /fileSize: 200 \* 1024 \* 1024/);
 });
 
 test('uses bounded host-local logs without a CloudWatch dependency', () => {

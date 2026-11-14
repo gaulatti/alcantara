@@ -117,7 +117,7 @@ describe('main bootstrap', () => {
     expect(h.order).toEqual(['assert', 'db', 'runtime']);
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(h.app.register).toHaveBeenCalledWith(mockMultipart, {
-      limits: { files: 1, fileSize: 100 * 1024 * 1024 },
+      limits: { files: 1, fileSize: 200 * 1024 * 1024 },
     });
     expect(h.app.listen).toHaveBeenCalledWith(3000, '0.0.0.0');
     const corsOptions = h.app.enableCors.mock.calls[0][0] as Record<

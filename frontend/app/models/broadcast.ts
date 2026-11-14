@@ -50,6 +50,17 @@ export type RecordingState =
   | "complete"
   | "failed";
 
+export interface TapeStatus {
+  tape: { enabled: boolean; active: boolean; pipelineHealthy: boolean };
+  recording: RecordingStatus;
+  commandResult?: {
+    action: "start" | "stop";
+    status: number;
+    result: string;
+    duplicate: boolean;
+  };
+}
+
 export interface RecordingStatus {
   enabled: boolean;
   state: RecordingState;
