@@ -15,12 +15,16 @@ jest.mock('./palazzo-telemetry.service', () => ({
 jest.mock('./radio-output-confidence.service', () => ({
   RadioOutputConfidenceService: undefined,
 }));
+jest.mock('./song-similarity.service', () => ({
+  SongSimilarityService: undefined,
+}));
 
 import { RadioController } from './radio.controller';
 
 describe('RadioController constructor metadata', () => {
   it('falls back to Object parameter types when dependencies are unresolved', () => {
     expect(Reflect.getMetadata('design:paramtypes', RadioController)).toEqual([
+      Object,
       Object,
       Object,
       Object,
