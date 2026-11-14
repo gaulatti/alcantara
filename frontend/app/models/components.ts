@@ -354,12 +354,10 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
       show: true,
       artist: '',
       songTitle: '',
+      labelId: null,
       images: ['', '', '', ''],
-      audioUrl: '',
-      eyebrow: '',
       contentType: '',
-      creditLines: ['', ''],
-      siteUrl: ''
+      creditLines: ['', '']
     }
   },
   {

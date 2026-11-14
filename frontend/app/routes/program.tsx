@@ -2541,13 +2541,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     show={typeof props.show === 'boolean' ? props.show : true}
                     artist={props.artist}
                     songTitle={props.songTitle}
+                    labelId={props.labelId}
                     images={props.images}
-                    audioUrl={props.audioUrl}
-                    eyebrow={props.eyebrow}
                     contentType={props.contentType}
                     creditLines={props.creditLines}
-                    siteUrl={props.siteUrl}
-                    masterGain={outputGain}
                   />
                 );
               case 'toni-logo':

@@ -678,7 +678,15 @@ export function ComponentPropsFields({
         />
       );
     case 'modoitaliano-giorgia-artist-bumper':
-      return <ModoItalianoGiorgiaArtistBumperEditorFields componentType={componentType} props={props} updateProp={updateProp} />;
+      return (
+        <ModoItalianoGiorgiaArtistBumperEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          mediaLabels={mediaLabels}
+          isLoadingMediaLabels={isLoadingMediaLabels}
+        />
+      );
     case 'cronica-background':
       return <p className='text-xs text-text-secondary italic'>No configurable fields for Cronica background.</p>;
     case 'cronica-chyron':
