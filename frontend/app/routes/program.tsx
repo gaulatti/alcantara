@@ -24,6 +24,7 @@ import {
   ModoItalianoBracket,
   ModoItalianoPodcastPlayer,
   ModoItalianoGiorgiaPodcastPlayer,
+  ModoItalianoGiorgiaArtistBumper,
   CronicaChyron,
   CronicaBackground,
   CronicaReiteramos,
@@ -2533,6 +2534,22 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               }
+              case 'modoitaliano-giorgia-artist-bumper':
+                return (
+                  <ModoItalianoGiorgiaArtistBumper
+                    key={componentType}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    artist={props.artist}
+                    songTitle={props.songTitle}
+                    images={props.images}
+                    audioUrl={props.audioUrl}
+                    eyebrow={props.eyebrow}
+                    contentType={props.contentType}
+                    creditLines={props.creditLines}
+                    siteUrl={props.siteUrl}
+                    masterGain={outputGain}
+                  />
+                );
               case 'toni-logo':
                 return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
               case 'earone':

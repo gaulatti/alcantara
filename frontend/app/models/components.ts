@@ -346,6 +346,23 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     defaultProps: { show: true, coverUrl: '', episodeTitle: '', showName: '', audioUrl: '' }
   },
   {
+    id: 'modoitaliano-giorgia-artist-bumper',
+    name: 'Modo Italiano Giorgia Artist Bumper',
+    description: "Giorgia's 12-second artist and song introduction, ending on the In onda ora card",
+    hasConfigurableSceneAttributes: true,
+    defaultProps: {
+      show: true,
+      artist: '',
+      songTitle: '',
+      images: ['', '', '', ''],
+      audioUrl: '',
+      eyebrow: '',
+      contentType: '',
+      creditLines: ['', ''],
+      siteUrl: ''
+    }
+  },
+  {
     id: 'toni-logo',
     name: 'Toni Logo',
     description: 'Station logo with callsign',

@@ -13,7 +13,8 @@ import {
   RelojClone,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaChyron,
-  ModoItalianoGiorgiaPodcastPlayer
+  ModoItalianoGiorgiaPodcastPlayer,
+  ModoItalianoGiorgiaArtistBumper
 } from '../components';
 import { OVERLAY_COMPONENTS, getComponentMetadata } from '../models/components';
 
@@ -60,6 +61,19 @@ export default function Preview() {
             <div style={{ position: 'relative', width: '1920px', height: '1080px', transform: `scale(${previewWidth / 1920})`, transformOrigin: 'top left' }}>
               <ModoItalianoGiorgiaPodcastPlayer coverUrl='/cover.jpg' showName='Modo Italiano · Estrenos'
                 episodeTitle='La musica italiana, senza compromessi' />
+            </div>
+          </div>
+        );
+      case 'modoitaliano-giorgia-artist-bumper':
+        return (
+          <div className={STAGE_CLASS}>
+            <div style={{ position: 'relative', width: '1920px', height: '1080px', transform: `scale(${previewWidth / 1920})`, transformOrigin: 'top left' }}>
+              <ModoItalianoGiorgiaArtistBumper
+                artist='Giorgia'
+                songTitle='La cura per me'
+                images={['/cover.jpg', '/cover.jpg?cut=2', '/cover.jpg?cut=3', '/cover.jpg?cut=4']}
+                masterGain={0}
+              />
             </div>
           </div>
         );

@@ -7,6 +7,7 @@ import { RelojDigitalEditorFields } from './RelojDigitalEditorFields';
 import { ProgramChyronEditorFields } from './ProgramChyronEditorFields';
 import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFields';
 import { ModoItalianoPodcastPlayerEditorFields } from './ModoItalianoPodcastPlayerEditorFields';
+import { ModoItalianoGiorgiaArtistBumperEditorFields } from './ModoItalianoGiorgiaArtistBumperEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
 import { createProgramTextSequence } from '../../utils/programSequence';
 import type { Scene, SongCatalogItem, MediaGroup, MediaLabel } from '../../models/broadcast';
@@ -676,6 +677,8 @@ export function ComponentPropsFields({
           isLoadingMediaGroups={isLoadingMediaGroups}
         />
       );
+    case 'modoitaliano-giorgia-artist-bumper':
+      return <ModoItalianoGiorgiaArtistBumperEditorFields componentType={componentType} props={props} updateProp={updateProp} />;
     case 'cronica-background':
       return <p className='text-xs text-text-secondary italic'>No configurable fields for Cronica background.</p>;
     case 'cronica-chyron':
