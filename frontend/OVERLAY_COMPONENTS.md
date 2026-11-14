@@ -83,7 +83,7 @@ No visible text is rendered by the current component. The visible output is the 
 The Giorgia clock is two pieces of type, not a card. Both follow the artist bumper in `@modoitaliano/giorgia`:
 
 - **Header** (top-left, `left: 82px`, `top: 68px`): the white MI mark followed by the time and city as an uppercase label. The city changes with a hard cut.
-- **On-air block** (bottom-left, `left: 82px`, `bottom: 70px`): shown only while a song is live. A square cover, the magenta rule, a magenta label ("Estás escuchando" / "In onda ora" / "On air now"), the artist as the hero line fitted to the width, and the song title beneath in wide-tracked Barlow. Playback progress is a hairline under the title.
+- **On-air block** (bottom-left, `left: 82px`, `bottom: 70px`): shown only while a song is live. A square cover, the magenta rule, a magenta label ("Estás escuchando" / "In onda ora" / "On air now"), the artist as the hero line fitted to the width, and the song title beneath in wide-tracked Barlow. Both are fitted first and wrap when they cannot fit; neither is truncated. Playback progress is a hairline under the title.
 
 ```tsx
 import { ModoItalianoGiorgiaClock } from '~/components';
@@ -95,7 +95,7 @@ Use the component type `modoitaliano-giorgia-clock`. Its scene attributes match 
 
 ### `ModoItalianoGiorgiaChyron`
 
-A Giorgia headline: uppercase Barlow Condensed 800 hanging from the magenta rule, set straight on a navy grade with no panel. The headline is fitted to the available width between 76px and 120px; when it cannot fit on one line it wraps to two balanced lines. It is never cut with an ellipsis. The call to action is a magenta uppercase label above it. Showing, hiding and changing text are hard cuts. The explicit marquee option still scrolls a single 96px line.
+A Giorgia headline: uppercase Barlow Condensed 800 hanging from the magenta rule, set straight on a navy grade with no panel. The headline is fitted to the available width between 76px and 120px; when it cannot fit on one line at 76px it wraps onto as many balanced lines as it needs, growing upwards from the bottom edge. Nothing is clamped, clipped or cut with an ellipsis, including the call to action. The call to action is a magenta uppercase label above it. Showing, hiding and changing text are hard cuts. The explicit marquee option still scrolls a single 96px line.
 
 ```tsx
 import { ModoItalianoGiorgiaChyron } from '~/components';
@@ -161,9 +161,11 @@ The anchoring clock decides the geometry:
 | `modoitaliano-clock` (legacy) | `left`/`right`/`bottom: 110px` | legacy chyron or disclaimer | the clock card, docked right |
 | `modoitaliano-giorgia-clock` | `left`/`right: 82px`, `bottom: 70px` | the Giorgia chyron | the on-air block; the header stays top-left |
 
-While the left slot has content it keeps at least half the row, so a long now-playing title cannot squeeze the chyron. With a Giorgia clock and nothing in the left slot, the on-air block takes the left edge.
+In the Giorgia row the headline keeps at least half the row, so a long now-playing title cannot squeeze it; while the chyron is hidden the on-air block takes the left edge. The legacy row is unchanged: the chyron slot shrinks freely and the clock card never does.
 
-On their own, the original clock sits top-right (`top: 64px`, `right: 110px`) and the original chyron spans the bottom at `110px`.
+The row is rendered by `ModoItalianoProgramRow` (`app/components/ModoItalianoProgramRow.tsx`).
+
+On their own, the legacy clock sits top-right (`top: 64px`, `right: 96px`) and the legacy chyron spans the bottom at `110px`.
 
 ---
 

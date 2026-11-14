@@ -31,12 +31,17 @@ describe('ModoItalianoGiorgiaChyron', () => {
     expect(block?.style.bottom).toBe('70px');
   });
 
-  it('wraps a headline that cannot fit one line instead of truncating it', () => {
-    const { container } = render(<ModoItalianoGiorgiaChyron show textSequence={sequence('palabra '.repeat(12))} />);
+  it('wraps a headline that cannot fit one line and never clamps or clips it', () => {
+    const { container } = render(<ModoItalianoGiorgiaChyron show textSequence={sequence('palabra '.repeat(40))} ctaSequence={sequence('etiqueta '.repeat(30))} />);
     const headline = container.querySelector<HTMLElement>('.modoitaliano-giorgia-chyron-headline');
     expect(headline?.style.fontSize).toBe('76px');
     expect(headline?.style.whiteSpace).toBe('');
-    expect(headline?.style.webkitLineClamp).toBe('2');
+    expect(headline?.textContent).toBe('PALABRA '.repeat(40).trim());
+    for (const element of container.querySelectorAll<HTMLElement>('.modoitaliano-giorgia-chyron, .modoitaliano-giorgia-chyron *')) {
+      expect(element.style.overflow).toBe('');
+      expect(element.style.textOverflow).toBe('');
+      expect(element.style.webkitLineClamp ?? '').toBe('');
+    }
   });
 
   it('cuts hard: nothing renders when hidden or empty', () => {
@@ -73,6 +78,22 @@ describe('ModoItalianoGiorgiaClock', () => {
     expect(onAir?.textContent).toContain('LA CURA PER ME');
     expect(onAir?.textContent).toContain('Estás escuchando');
     expect(onAir?.querySelector('.modoitaliano-giorgia-clock-progress')).not.toBeNull();
+  });
+
+  it('wraps a long artist and title instead of truncating them', () => {
+    const { container } = render(
+      <ModoItalianoGiorgiaClock programId='giorgia-test' playingSong songArtist={'Artista '.repeat(12)} songTitle={'Titulo '.repeat(20)} />
+    );
+    const onAir = container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air');
+    expect(onAir?.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-hero')?.style.fontSize).toBe('54px');
+    expect(onAir?.textContent).toContain('ARTISTA '.repeat(12).trim());
+    expect(onAir?.textContent).toContain('TITULO '.repeat(20).trim());
+    for (const element of onAir?.querySelectorAll<HTMLElement>('div') ?? []) {
+      expect(element.style.overflow).toBe('');
+      expect(element.style.textOverflow).toBe('');
+      expect(element.style.webkitLineClamp ?? '').toBe('');
+      if (/ARTISTA|TITULO/.test(element.textContent ?? '') && element.children.length === 0) expect(element.style.whiteSpace).toBe('');
+    }
   });
 
   it('renders each part on its own for the scene row', () => {

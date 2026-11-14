@@ -35,7 +35,7 @@ import {
 } from '../components';
 import RelojClone from '../components/RelojClone';
 import { resolveProgramRow } from '../utils/programRow';
-import { GIORGIA } from '../components/giorgiaBroadcast';
+import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
 import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
@@ -2212,29 +2212,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       }
       return fallback;
     };
-    const programRowChyronProps = (programRow?.chyronType ? metadata[programRow.chyronType] : null) || {};
-    const programRowClockProps = (programRow ? metadata[programRow.clockType] : null) || {};
-    const programRowDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
-    const programRowDisclaimerText = typeof programRowDisclaimerProps.text === 'string' ? programRowDisclaimerProps.text.trim() : '';
-    const showProgramRowChyron = Boolean(programRow?.chyronType) && toBoolean(programRowChyronProps.show, true);
-    const showProgramRowDisclaimer =
-      Boolean(programRow?.hasDisclaimer) && !showProgramRowChyron && toBoolean(programRowDisclaimerProps.show, true) && !!programRowDisclaimerText;
-    const ProgramRowChyron = programRow?.chyronType === 'modoitaliano-giorgia-chyron' ? ModoItalianoGiorgiaChyron : ModoItalianoChyron;
-    const isGiorgiaProgramRow = programRow?.clockType === 'modoitaliano-giorgia-clock';
-    const programRowClockCommonProps = {
-      programId,
-      timeOverride: globalTimeOverride,
-      transitionDurationMs: 300,
-      shuffleCities: false,
-      widthPx: 220,
-      showWorldClocks: toBoolean(programRowClockProps.showWorldClocks, true),
-      showLogo: toBoolean(programRowClockProps.showLogo, true),
-      showPlaybackProgress: toBoolean(programRowClockProps.showPlaybackProgress, true),
-      showBellIcon: false,
-      songSequence: audioBusSettings?.songSequence,
-      language: 'es' as const
-    };
-
     // Handle legacy single-component layouts
     if (components.length === 1) {
       const componentType = components[0];
@@ -2618,55 +2595,14 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             </div>
           );
         })}
-        {programRow && isGiorgiaProgramRow && (
-          // The Giorgia clock is a top-left header, separate from the row; only its on-air block sits in the row.
-          <ModoItalianoGiorgiaClock {...programRowClockCommonProps} part='header' />
-        )}
         {programRow && (
-          <div
-            className={`absolute z-[950] flex items-end ${isGiorgiaProgramRow ? 'gap-12' : 'gap-6'}`}
-            style={
-              isGiorgiaProgramRow
-                ? { left: `${GIORGIA.safeX}px`, right: `${GIORGIA.safeX}px`, bottom: `${GIORGIA.safeBottom}px` }
-                : { left: '110px', right: '110px', bottom: '110px' }
-            }
-          >
-            {/*
-              The left slot keeps at least half the row while it has content, so a long song title cannot squeeze
-              the chyron out. When it is empty, the Giorgia on-air block takes the left edge and the original
-              clock stays docked right.
-            */}
-            <div className={`flex-1 min-w-[50%] ${isGiorgiaProgramRow ? 'empty:hidden' : 'empty:min-w-0'}`}>
-              {programRow.chyronType && !showProgramRowDisclaimer ? (
-                <ProgramRowChyron
-                  show={showProgramRowChyron}
-                  textSequence={programRowChyronProps.textSequence}
-                  ctaSequence={programRowChyronProps.ctaSequence}
-                  inline
-                />
-              ) : showProgramRowDisclaimer ? (
-                <ModoItalianoDisclaimer
-                  text={programRowDisclaimerProps.text || ''}
-                  show
-                  align={
-                    programRowDisclaimerProps.align === 'left' || programRowDisclaimerProps.align === 'center' || programRowDisclaimerProps.align === 'right'
-                      ? programRowDisclaimerProps.align
-                      : 'right'
-                  }
-                  fontSizePx={typeof programRowDisclaimerProps.fontSizePx === 'number' ? programRowDisclaimerProps.fontSizePx : 20}
-                  opacity={typeof programRowDisclaimerProps.opacity === 'number' ? programRowDisclaimerProps.opacity : 0.82}
-                  inline
-                />
-              ) : null}
-            </div>
-            <div className='min-w-0'>
-              {isGiorgiaProgramRow ? (
-                <ModoItalianoGiorgiaClock {...programRowClockCommonProps} part='onAir' inline />
-              ) : (
-                <ModoItalianoClock {...programRowClockCommonProps} inline />
-              )}
-            </div>
-          </div>
+          <ModoItalianoProgramRow
+            plan={programRow}
+            metadata={metadata}
+            programId={programId}
+            timeOverride={globalTimeOverride}
+            songSequence={audioBusSettings?.songSequence}
+          />
         )}
       </div>
     );

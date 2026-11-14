@@ -20,7 +20,8 @@ const UNMEASURED_WIDTH_PX = 1920 - GIORGIA.safeX * 2;
 
 /**
  * Giorgia headline: a fitted line of condensed type hanging from the magenta
- * rule, set on a navy grade. It appears and disappears with hard cuts.
+ * rule, set on a navy grade. Text is fitted, then wrapped, and never truncated.
+ * It appears and disappears with hard cuts.
  */
 export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps> = ({
   show = true,
@@ -66,7 +67,7 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
   if (!show || !headline) return null;
 
   const availableWidth = (blockWidth || UNMEASURED_WIDTH_PX) - TEXT_INSET_PX;
-  // A headline too long for one line at the smallest size wraps to two; it is never cut with an ellipsis.
+  // A headline too long for one line at the smallest size wraps onto as many lines as it needs; it is never cut.
   const wraps = headline.length * HEADLINE_GLYPH * HEADLINE_MIN_PX > availableWidth;
   const headlineSize = wraps ? HEADLINE_MIN_PX : fitGiorgiaText(headline, availableWidth, HEADLINE_MAX_PX, HEADLINE_MIN_PX, HEADLINE_GLYPH);
 
@@ -102,7 +103,9 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
       `}</style>
       <GiorgiaGrade />
       <GiorgiaRule />
-      {cta ? <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal, marginBottom: '16px', overflow: 'hidden' }}>{cta}</div> : null}
+      {cta ? (
+        <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal, marginBottom: '16px', whiteSpace: 'normal', lineHeight: 1.15, overflowWrap: 'anywhere' }}>{cta}</div>
+      ) : null}
       {useMarquee ? (
         <div style={{ ...headlineStyle, fontSize: `${MARQUEE_PX}px`, lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {/* Two identical halves, each carrying its own trailing space, so -50% lands exactly on the seam. */}
@@ -125,9 +128,8 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
             lineHeight: 0.9,
             // Room for descenders and accents that the tight leading would otherwise clip.
             padding: '0.06em 0',
-            ...(wraps
-              ? { textWrap: 'balance', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
-              : { whiteSpace: 'nowrap' })
+            // The block is anchored at the bottom, so extra lines grow upwards; nothing is clamped or clipped.
+            ...(wraps ? { textWrap: 'balance', overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
           }}
         >
           {headline}

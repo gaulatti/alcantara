@@ -229,6 +229,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   const heroSize = fitGiorgiaText(heroText, ON_AIR_TEXT_WIDTH_PX, 104, 54, 0.5);
   const heroWraps = heroText.length * 0.5 * 54 > ON_AIR_TEXT_WIDTH_PX;
   const supportSize = fitGiorgiaText(supportText, ON_AIR_TEXT_WIDTH_PX, 32, 20, 0.78);
+  const supportWraps = supportText.length * 0.78 * 20 > ON_AIR_TEXT_WIDTH_PX;
 
   const onAir =
     part === 'header' || !hasSong ? null : (
@@ -273,9 +274,8 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
               lineHeight: 0.86,
               letterSpacing: '-0.035em',
               textShadow: GIORGIA.displayShadow,
-              ...(heroWraps
-                ? { textWrap: 'balance', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
-                : { whiteSpace: 'nowrap' })
+              // Too long for one line at the smallest size: wrap, never clamp or clip.
+              ...(heroWraps ? { textWrap: 'balance', overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
             }}
           >
             {heroText}
@@ -291,8 +291,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
                 letterSpacing: '0.18em',
                 color: 'rgba(255,255,255,0.78)',
                 textShadow: GIORGIA.labelShadow,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden'
+                ...(supportWraps ? { overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
               }}
             >
               {supportText}
