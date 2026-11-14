@@ -49,6 +49,7 @@ export function ModoItalianoGiorgiaArtistBumperEditorFields({
   const selectedLabel = selectedLabelId ? (mediaLabels.find((label) => label.id === selectedLabelId) ?? null) : null;
   const selectedLabelUrls = selectedLabel ? labelImageUrls(selectedLabel) : [];
   const pickedLabelImages = pickArtistBumperLabelImages(selectedLabelUrls);
+  const distinctLabelImageCount = new Set(selectedLabelUrls).size;
   // Until the labels have loaded, a saved label cannot be judged, so no warning is shown for it.
   const problem = selectedLabelId && !selectedLabel ? describeArtistBumperProblem({ ...props, labelId: null, images: ['-', '--', '---', '----'] }) : describeArtistBumperProblem(props, selectedLabelUrls);
 
@@ -86,7 +87,9 @@ export function ModoItalianoGiorgiaArtistBumperEditorFields({
           {isLoadingMediaLabels
             ? 'Loading labels...'
             : selectedLabelId
-              ? 'The bumper uses the first four different images of this label, in its saved order.'
+              ? distinctLabelImageCount > 0 && distinctLabelImageCount < 4
+                ? `This label has ${distinctLabelImageCount} ${distinctLabelImageCount === 1 ? 'image' : 'images'}, so ${distinctLabelImageCount === 1 ? 'it repeats' : 'they repeat'} to fill the four cuts.`
+                : 'The bumper uses the first four different images of this label, in its saved order.'
               : 'Select a label to take the four images from it.'}
         </p>
         {pickedLabelImages ? (

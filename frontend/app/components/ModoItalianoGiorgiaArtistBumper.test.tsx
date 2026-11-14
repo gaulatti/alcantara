@@ -69,9 +69,25 @@ describe('label images', () => {
     expect(normalizeArtistBumperLabelId(null)).toBeNull();
   });
 
-  it('takes the first four different images in order and needs at least four', () => {
+  it('takes the first four different images in order', () => {
     expect(pickArtistBumperLabelImages([IMAGES[0], IMAGES[0], '', IMAGES[1], IMAGES[2], IMAGES[3], 'https://img.test/5.jpg'])).toEqual(IMAGES);
-    expect(pickArtistBumperLabelImages([IMAGES[0], IMAGES[0], IMAGES[1], IMAGES[2]])).toBeNull();
+  });
+
+  it('repeats the images of a label that has fewer than four, as four distinct urls', () => {
+    const three = pickArtistBumperLabelImages([IMAGES[0], IMAGES[0], IMAGES[1], IMAGES[2]]);
+    expect(three).toEqual([IMAGES[0], IMAGES[1], IMAGES[2], `${IMAGES[0]}#repeat-2`]);
+    expect(pickArtistBumperLabelImages(IMAGES.slice(0, 2))).toEqual([IMAGES[0], IMAGES[1], `${IMAGES[0]}#repeat-2`, `${IMAGES[1]}#repeat-2`]);
+    const one = pickArtistBumperLabelImages([IMAGES[0]]);
+    expect(one).toEqual([IMAGES[0], `${IMAGES[0]}#repeat-2`, `${IMAGES[0]}#repeat-3`, `${IMAGES[0]}#repeat-4`]);
+    for (const picked of [three, one]) {
+      expect(new Set(picked).size).toBe(4);
+      expect(resolveArtistBumperImages([...(picked ?? [])])).not.toBeNull();
+    }
+  });
+
+  it('has nothing to give when the label has no images', () => {
+    expect(pickArtistBumperLabelImages([])).toBeNull();
+    expect(pickArtistBumperLabelImages(['', '  ', null])).toBeNull();
   });
 });
 
@@ -85,7 +101,8 @@ describe('describeArtistBumperProblem', () => {
 
   it('judges a label by its own images, ignoring the hand-set ones', () => {
     const props = { artist: 'ROB', songTitle: 'x', images: IMAGES, labelId: 'rob' };
-    expect(describeArtistBumperProblem(props, IMAGES.slice(0, 3))).toBe('The label needs at least four different images.');
+    expect(describeArtistBumperProblem(props, [])).toBe('The label has no images.');
+    expect(describeArtistBumperProblem(props, IMAGES.slice(0, 3))).toBeNull();
     expect(describeArtistBumperProblem({ ...props, images: [] }, IMAGES)).toBeNull();
   });
 });
@@ -137,10 +154,17 @@ describe('ModoItalianoGiorgiaArtistBumper', () => {
     ]);
   });
 
-  it('plays nothing when the label has fewer than four images or cannot be loaded', async () => {
-    const few = stubLabelFetch(IMAGES.slice(0, 3).map((imageUrl, position) => ({ imageUrl, position })));
+  it('plays a label with three images by repeating the first', async () => {
+    stubLabelFetch(IMAGES.slice(0, 3).map((imageUrl, position) => ({ imageUrl, position })));
+    render(<ModoItalianoGiorgiaArtistBumper artist='ROB' songTitle='x' labelId='rob' images={['', '', '', '']} />);
+    await screen.findByTestId('bumper-player');
+    expect(played.at(-1)?.inputProps.images).toEqual([IMAGES[0], IMAGES[1], IMAGES[2], `${IMAGES[0]}#repeat-2`]);
+  });
+
+  it('plays nothing when the label has no images or cannot be loaded', async () => {
+    const empty = stubLabelFetch([]);
     const first = render(<ModoItalianoGiorgiaArtistBumper artist='ROB' songTitle='x' labelId='rob' images={IMAGES} />);
-    await vi.waitFor(() => expect(few).toHaveBeenCalled());
+    await vi.waitFor(() => expect(empty).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(first.container.innerHTML).toBe('');
     first.unmount();
@@ -211,9 +235,14 @@ describe('ModoItalianoGiorgiaArtistBumperEditorFields', () => {
     expect(document.body.textContent).toContain('first four different images of this label');
   });
 
-  it('warns when the label has too few images, but not while labels are still loading', () => {
-    editor({ artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: IMAGES }, [label('rob', IMAGES.slice(0, 2))]);
-    expect(screen.getByRole('status').textContent).toContain('The label needs at least four different images.');
+  it('says when a short label repeats, warns when it is empty, and stays quiet while labels load', () => {
+    editor({ artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: [] }, [label('rob', IMAGES.slice(0, 3))]);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.body.textContent).toContain('This label has 3 images, so they repeat to fill the four cuts.');
+    expect(screen.getAllByAltText(/^Label image \d$/)).toHaveLength(4);
+    cleanup();
+    editor({ artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: IMAGES }, [label('rob', [])]);
+    expect(screen.getByRole('status').textContent).toContain('The label has no images.');
     cleanup();
     editor({ artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: [] }, [], vi.fn(), true);
     expect(screen.queryByRole('status')).toBeNull();

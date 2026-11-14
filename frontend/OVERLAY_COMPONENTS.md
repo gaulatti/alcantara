@@ -123,7 +123,7 @@ Use the component type `modoitaliano-giorgia-artist-bumper`.
 |--------------|----------|---------|
 | `show` | no | Hides the bumper when `false` (default `true`) |
 | `artist`, `songTitle` | yes | Text of the identity and on-air cards |
-| `labelId` | one of the two | Media label to take the images from, as the slideshow does: the first four different images of the label, in its saved order |
+| `labelId` | one of the two | Media label to take the images from, as the slideshow does: the first four different images of the label, in its saved order. A label with one to three images still plays, repeating its images to fill the four cuts |
 | `images` | one of the two | Exactly four different 16:9 image URLs, in playback order; used only when no label is set |
 | `contentType`, `creditLines` | no | Left blank, Giorgia's default content type ("Singolo") applies and the credits stay empty |
 
