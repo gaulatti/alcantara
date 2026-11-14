@@ -42,6 +42,7 @@ interface ModoItalianoGiorgiaClockProps {
 
 const ON_AIR_TEXT_WIDTH_PX = 560;
 const COVER_PX = 168;
+const ON_AIR_TRANSITION_MS = 450;
 const CITIES: ModoItalianoGiorgiaClockCity[] = [
   { city: 'IT', timezone: 'Europe/Rome' },
   { city: 'ES', timezone: 'Europe/Madrid' },
@@ -190,6 +191,24 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   const coverUrl = (liveSong?.coverUrl ?? resolvedSong?.coverUrl ?? songCoverUrl).trim();
   const hasSong = songGateEnabled && Boolean(artist || title) && (!liveSong || audioBus.endedToken !== liveSong.token);
   const progress = Math.max(0, Math.min(1, liveSong ? audioBus.progress : 0));
+
+  // The on-air block eases in and out instead of cutting: while it leaves, it keeps showing the song that just ended.
+  const [shownSong, setShownSong] = useState({ artist, title, coverUrl });
+  const [onAirMounted, setOnAirMounted] = useState(hasSong);
+  const [onAirVisible, setOnAirVisible] = useState(hasSong);
+  useEffect(() => {
+    if (hasSong) setShownSong({ artist, title, coverUrl });
+  }, [hasSong, artist, title, coverUrl]);
+  useEffect(() => {
+    if (hasSong) {
+      setOnAirMounted(true);
+      const frame = window.requestAnimationFrame(() => setOnAirVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    setOnAirVisible(false);
+    const timer = window.setTimeout(() => setOnAirMounted(false), ON_AIR_TRANSITION_MS);
+    return () => window.clearTimeout(timer);
+  }, [hasSong]);
   const city = cityPool[cityIndex] ?? CITIES[0];
   const timeText = formatClockValue(city.timezone, now, timeOverride);
   const listeningLabel = language === 'it' ? 'In onda ora' : language === 'en' ? 'On air now' : 'Estás escuchando';
@@ -221,8 +240,8 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
       </div>
     );
 
-  const artistText = artist.toUpperCase();
-  const titleText = title.toUpperCase();
+  const artistText = shownSong.artist.toUpperCase();
+  const titleText = shownSong.title.toUpperCase();
   // Without an artist the title leads, so the block always has one hero line.
   const heroText = artistText || titleText;
   const supportText = artistText ? titleText : '';
@@ -232,13 +251,16 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   const supportWraps = supportText.length * 0.78 * 20 > ON_AIR_TEXT_WIDTH_PX;
 
   const onAir =
-    part === 'header' || !hasSong ? null : (
+    part === 'header' || !onAirMounted ? null : (
       <div
         className='modoitaliano-giorgia-clock-on-air'
         aria-label='Modo Italiano Giorgia now playing'
         style={{
           display: 'flex',
           alignItems: 'stretch',
+          opacity: onAirVisible ? 1 : 0,
+          transform: onAirVisible ? 'translateY(0px)' : 'translateY(18px)',
+          transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease, transform ${ON_AIR_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`,
           ...(inline
             ? { position: 'relative' }
             : { position: 'absolute', left: `${GIORGIA.safeX}px`, bottom: `${GIORGIA.safeBottom}px`, zIndex: 950 })
@@ -246,7 +268,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
       >
         <GiorgiaGrade />
         <img
-          src={coverUrl || '/cover.jpg'}
+          src={shownSong.coverUrl || '/cover.jpg'}
           alt=''
           style={{ width: `${COVER_PX}px`, height: `${COVER_PX}px`, objectFit: 'cover', display: 'block', flexShrink: 0, alignSelf: 'flex-end' }}
         />
