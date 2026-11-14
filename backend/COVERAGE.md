@@ -7,7 +7,7 @@ pnpm install --frozen-lockfile
 node backend/scripts/verify-local.mjs
 ```
 
-The runner creates an isolated temporary PostgreSQL 17 database, applies the real
+The runner creates an isolated temporary PostgreSQL 17/pgvector database (the same `pgvector/pgvector:pg17` image as Compose), applies the real
 migrations, generates Prisma, builds the backend, runs the complete unit and
 end-to-end inventory with native coverage, reruns end-to-end tests against the
 normal compiled application, and verifies deployment contracts and the actual
@@ -36,3 +36,5 @@ under the current Clouseau protocol.
 
 A push changing `backend/**` on main matches the existing backend deployment
 workflow. Opening or merging a PR does not itself prove deployment or live health.
+
+The reconciled verifier uses the actual split CLI entry points (`runtime-secret-contract-cli.js` and `principals-cli.main.js`), not import-only libraries. Upload tests follow the landed 200 MiB audio boundary and still reject one byte above the limit before storage. Native coverage gaps and failed migrations remain failures.

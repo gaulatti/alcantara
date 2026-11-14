@@ -149,8 +149,8 @@ describe('UploadsService validation and storage boundary', () => {
   );
 
   it.each([
-    ['instant', 100],
-    ['song', 100],
+    ['instant', 200],
+    ['song', 200],
     ['artwork', 10],
     ['stinger', 50],
   ])(

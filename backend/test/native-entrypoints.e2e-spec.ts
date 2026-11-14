@@ -111,7 +111,7 @@ describe('native command entry points and real local migration transactions', ()
 
   it('validates the fixture over real stdin without printing any configuration values', () => {
     const result = command(
-      'config/runtime-secret-contract.js',
+      'config/runtime-secret-contract-cli.js',
       [],
       JSON.stringify(fixture),
     );
@@ -125,7 +125,7 @@ describe('native command entry points and real local migration transactions', ()
   it.each(['{', 'null', '[]', '{}', ' '.repeat(65_537)])(
     'fails malformed, incomplete or oversized native stdin (%#)',
     (input) => {
-      const result = command('config/runtime-secret-contract.js', [], input);
+      const result = command('config/runtime-secret-contract-cli.js', [], input);
       expect(result.status).toBe(1);
       expect(result.stdout).toBe('');
       expect(result.stderr).toMatch(
@@ -137,7 +137,7 @@ describe('native command entry points and real local migration transactions', ()
   it.each([['unsupported'], ['export'], ['report'], ['apply']])(
     'returns usage status before database construction for %j',
     (...args: string[]) => {
-      const result = command('identity/principals-cli.js', args);
+      const result = command('identity/principals-cli.main.js', args);
       expect(result.status).toBe(2);
       expect(result.stderr).toMatch(/Usage:|path is required/);
       expect(result.stdout).toBe('');
@@ -145,7 +145,7 @@ describe('native command entry points and real local migration transactions', ()
   );
 
   it('reports missing database bootstrap configuration before opening any migration client', () => {
-    const result = command('identity/principals-cli.js', [
+    const result = command('identity/principals-cli.main.js', [
       'export',
       join(directory, 'must-not-exist.json'),
     ]);
@@ -160,7 +160,7 @@ describe('native command entry points and real local migration transactions', ()
     const output = join(directory, 'references.json');
     const environment = { DATABASE_URL: process.env.DATABASE_URL };
     const result = command(
-      'identity/principals-cli.js',
+      'identity/principals-cli.main.js',
       ['export', output],
       undefined,
       environment,
@@ -179,7 +179,7 @@ describe('native command entry points and real local migration transactions', ()
     ]);
     expect(statSync(output).mode & 0o777).toBe(0o600);
     const repeated = command(
-      'identity/principals-cli.js',
+      'identity/principals-cli.main.js',
       ['export', output],
       undefined,
       environment,
@@ -208,7 +208,7 @@ describe('native command entry points and real local migration transactions', ()
     );
     const environment = { DATABASE_URL: process.env.DATABASE_URL };
     const preview = command(
-      'identity/principals-cli.js',
+      'identity/principals-cli.main.js',
       ['report', report],
       undefined,
       environment,
@@ -222,7 +222,7 @@ describe('native command entry points and real local migration transactions', ()
         .ownerPrincipalId,
     ).toBeNull();
     const applied = command(
-      'identity/principals-cli.js',
+      'identity/principals-cli.main.js',
       ['apply', report],
       undefined,
       environment,
@@ -235,7 +235,7 @@ describe('native command entry points and real local migration transactions', ()
       await prisma.sharedConsoleLayout.findUniqueOrThrow({ where: { id } }),
     ).toMatchObject({ ownerSubject: subject, ownerPrincipalId: principalId });
     const repeated = command(
-      'identity/principals-cli.js',
+      'identity/principals-cli.main.js',
       ['apply', report],
       undefined,
       environment,

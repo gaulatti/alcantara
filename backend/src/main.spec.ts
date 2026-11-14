@@ -85,7 +85,7 @@ describe('application bootstrap configuration', () => {
       create.mock.invocationCallOrder[0],
     );
     expect(app.register).toHaveBeenCalledWith(expect.any(Function), {
-      limits: { files: 1, fileSize: 100 * 1024 * 1024 },
+      limits: { files: 1, fileSize: 200 * 1024 * 1024 },
     });
     expect(app.listen).toHaveBeenCalledWith(3000, '0.0.0.0');
     expect(attach).toHaveBeenCalledWith(fastifyServer);

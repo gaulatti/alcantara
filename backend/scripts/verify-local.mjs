@@ -89,7 +89,7 @@ try {
     'POSTGRES_USER=alcantara',
     '--env',
     'POSTGRES_PASSWORD=alcantara-ci-password',
-    'postgres:17-alpine',
+    'pgvector/pgvector:pg17',
   ]);
   created = true;
   const deadline = Date.now() + 30_000;
