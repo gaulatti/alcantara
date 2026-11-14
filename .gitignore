@@ -39,5 +39,8 @@ prisma/migrations/*
 # Claude
 .claude/
 
+/backend/coverage/
+/backend/.coverage-dist/
+
 # test coverage output
 coverage/

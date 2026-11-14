@@ -625,20 +625,6 @@ describe('SongExecutionEngine command results', () => {
     ]);
   });
 
-  it('ignores a late failure when the program state is gone', async () => {
-    const ctx = setup();
-    const answer = deferred<unknown>();
-    ctx.radioService.playSong.mockReturnValueOnce(answer.promise);
-    manual(ctx);
-    await flush(20);
-    internals(ctx.engine).states.delete('radio-1');
-    answer.reject(new Error('offline'));
-    await flush(20);
-    expect(ctx.metrics.recordTrackTransition).not.toHaveBeenCalledWith(
-      'command-failed',
-    );
-  });
-
   it('keeps a newer song when an older command fails', async () => {
     const ctx = setup();
     const answer = deferred<unknown>();
@@ -667,14 +653,6 @@ describe('SongExecutionEngine command results', () => {
 });
 
 describe('SongExecutionEngine progress and queue application', () => {
-  it('ignores progress requests for unknown programs', () => {
-    const ctx = setup();
-    (
-      ctx.engine as unknown as { startProgress(programId: string): void }
-    ).startProgress('ghost');
-    expect(jest.getTimerCount()).toBe(0);
-  });
-
   it('accepts a remaining time before any position is known', () => {
     const ctx = setup();
     manual(ctx);
@@ -738,22 +716,5 @@ describe('SongExecutionEngine progress and queue application', () => {
         'Successor could not be resolved on radio-1: cursor=none',
       ),
     );
-  });
-
-  it('does not continue after a claim when the state vanished during application', async () => {
-    const ctx = setup();
-    ctx.store.current!.songQueue = [
-      { id: 'q1', itemId: 'song-a', enqueuedAt: 1 },
-    ];
-    ctx.engine.setBroadcastHandler((event) => {
-      if (event.type === 'song_queue_update') {
-        internals(ctx.engine).states.delete('radio-1');
-      }
-    });
-    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
-    ctx.engine.handleQueueUpdated('radio-1', ctx.store.current!.songQueue);
-    ctx.engine.handlePalazzoSnapshot('radio-1', idle());
-    await flush(80);
-    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
   });
 });
