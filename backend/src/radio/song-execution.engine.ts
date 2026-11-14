@@ -594,21 +594,18 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   private releaseQueueClaimAfterPlaybackStops(
     programId: string,
+    state: SongEngineState,
     entryId: string,
     blockQueueAfterRelease = false,
   ): void {
-    const state = this.states.get(programId);
-    if (state) state.transitioning = true;
+    state.transitioning = true;
     void this.releaseQueueClaim(programId, entryId)
       .then(() => {
-        const nextState = this.states.get(programId);
-        if (nextState) {
-          nextState.transitioning = false;
-          nextState.queueBlocked = blockQueueAfterRelease;
-        }
+        state.transitioning = false;
+        state.queueBlocked = blockQueueAfterRelease;
       })
       .catch((error) => {
-        this.blockQueueAfterPersistenceFailure(programId, error, false);
+        this.blockQueueAfterPersistenceFailure(programId, state, error, false);
       });
   }
 
@@ -790,7 +787,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     });
     void this.nowPlayingPublisherService.publishStopped(programId);
     if (stoppedQueueEntryId) {
-      this.releaseQueueClaimAfterPlaybackStops(programId, stoppedQueueEntryId);
+      this.releaseQueueClaimAfterPlaybackStops(
+        programId,
+        state,
+        stoppedQueueEntryId,
+      );
     }
   }
 
@@ -1164,6 +1165,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     );
     void this.continueAfterAuthoritativeEnd(
       programId,
+      state,
       endedSong.queueEntryId,
       nextSequence,
       hasSuccessor,
@@ -1172,6 +1174,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   private async continueAfterAuthoritativeEnd(
     programId: string,
+    state: SongEngineState,
     endedQueueEntryId: string | null,
     nextSequence: ProgramSongSequence | null,
     hasSequenceSuccessor: boolean,
@@ -1180,8 +1183,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       try {
         await this.flightService.handleSongEnded(programId);
       } finally {
-        const state = this.states.get(programId);
-        if (state) state.transitioning = false;
+        state.transitioning = false;
       }
       return;
     }
@@ -1199,21 +1201,19 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           this.applyPersistedQueue(programId, nextQueue, 'consumed');
         });
       } else {
-        const state = this.states.get(programId);
-        if (state) state.sequence = nextSequence;
-        if (state?.queue.length && nextSequence) {
+        state.sequence = nextSequence;
+        if (state.queue.length && nextSequence) {
           await this.persistPlaylistCursorForQueue(programId, nextSequence);
           cursorPersisted = true;
         }
       }
     } catch (error) {
-      this.blockQueueAfterPersistenceFailure(programId, error);
+      this.blockQueueAfterPersistenceFailure(programId, state, error);
       return;
     }
 
     await this.maybeBumper(programId);
-    const state = this.states.get(programId);
-    if (!state || state.activeSong || state.frozen) return;
+    if (state.activeSong || state.frozen) return;
 
     if (state.queue.length) {
       try {
@@ -1221,7 +1221,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           await this.persistPlaylistCursorForQueue(programId, nextSequence);
         }
       } catch (error) {
-        this.blockQueueAfterPersistenceFailure(programId, error);
+        this.blockQueueAfterPersistenceFailure(programId, state, error);
         return;
       }
       state.transitioning = false;
@@ -1276,14 +1276,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   private blockQueueAfterPersistenceFailure(
     programId: string,
+    state: SongEngineState,
     error: unknown,
     publishStopped = true,
   ): void {
-    const state = this.states.get(programId);
-    if (state) {
-      state.transitioning = false;
-      state.queueBlocked = true;
-    }
+    state.transitioning = false;
+    state.queueBlocked = true;
     this.metrics.recordSongQueueAction('persistence-failed');
     this.logger.error(
       `Play Next persistence failed on ${programId}; stopping safely: ${String(error)}`,
@@ -1521,6 +1519,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
               this.publishStopped(programId);
               this.releaseQueueClaimAfterPlaybackStops(
                 programId,
+                state,
                 queueEntry.id,
                 true,
               );
@@ -1530,7 +1529,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           this.maybeStartSequence(programId);
         })
         .catch((error) => {
-          this.blockQueueAfterPersistenceFailure(programId, error);
+          this.blockQueueAfterPersistenceFailure(programId, state, error);
         });
       return true;
     }
@@ -1769,7 +1768,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       triggeredAt: new Date().toISOString(),
     });
     if (failedQueueEntryId) {
-      this.releaseQueueClaimAfterPlaybackStops(programId, failedQueueEntryId);
+      this.releaseQueueClaimAfterPlaybackStops(
+        programId,
+        state,
+        failedQueueEntryId,
+      );
     }
   }
 

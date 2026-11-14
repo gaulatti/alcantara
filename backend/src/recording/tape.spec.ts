@@ -152,6 +152,116 @@ describe('AlanaRecordingClient tape', () => {
     });
   });
 
+  it.each(['status', 'start', 'stop'] as const)(
+    'reports unavailable and malformed tape %s without leaking provider detail',
+    async (operation) => {
+      for (const failure of ['unavailable', 'malformed']) {
+        const transport =
+          failure === 'unavailable'
+            ? jest.fn().mockRejectedValue(new Error('private provider detail'))
+            : jest.fn().mockResolvedValue(Response.json({ tape: {} }));
+        const api = client(transport);
+        const result =
+          operation === 'status'
+            ? api.tapeStatus('main')
+            : api.tapeCommand('main', operation, 'fixture-key');
+        await expect(result).rejects.toMatchObject({
+          response: {
+            error:
+              failure === 'unavailable'
+                ? 'ALANA_TAPE_UNAVAILABLE'
+                : 'ALANA_TAPE_INVALID_RESPONSE',
+          },
+        });
+      }
+    },
+  );
+
+  it('bounds invalid HTTP status and unknown tape command metadata', async () => {
+    const transport = jest
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          tapeBody(
+            {},
+            {},
+            {
+              commandResult: {
+                action: 'stop',
+                status: 302,
+                result: 'private detail',
+              },
+            },
+          ),
+          { status: 302 },
+        ),
+      );
+    const error = await client(transport)
+      .tapeCommand('main', 'stop', '')
+      .catch((e) => e);
+    expect(error.getStatus()).toBe(502);
+    expect(error.getResponse()).toMatchObject({ reason: 'unknown' });
+    for (const commandResult of [
+      [],
+      { action: 'invalid', status: 200 },
+      { action: 'start', status: 'invalid' },
+    ]) {
+      const api = client(
+        jest
+          .fn()
+          .mockResolvedValue(
+            Response.json(tapeBody({}, {}, { commandResult })),
+          ),
+      );
+      expect(await api.tapeStatus('main')).not.toHaveProperty('commandResult');
+    }
+  });
+
+  it('handles bodyless/range-error and rejected downloads without forwarding provider bodies', async () => {
+    for (const response of [
+      new Response(null, { status: 204 }),
+      new Response(null, { status: 416 }),
+      new Response('private error body', { status: 500 }),
+    ]) {
+      const opened = await client(
+        jest.fn().mockResolvedValue(response),
+      ).openRecordingFile('main');
+      expect(opened.body).toBeNull();
+      expect(opened.status).toBe(response.status);
+    }
+    await expect(
+      client(
+        jest.fn().mockRejectedValue(new Error('private detail')),
+      ).openRecordingFile('main'),
+    ).rejects.toMatchObject({
+      response: { error: 'ALANA_RECORDING_UNAVAILABLE' },
+    });
+  });
+
+  it('aborts the bounded header wait and exposes explicit cancellation to the caller', async () => {
+    jest.useFakeTimers();
+    try {
+      const transport = jest.fn(
+        (_url, init) =>
+          new Promise<Response>((resolve) => {
+            init.signal.addEventListener(
+              'abort',
+              () => resolve(new Response(null, { status: 416 })),
+              { once: true },
+            );
+          }),
+      );
+      const opening = client(transport).openRecordingFile('main');
+      await jest.advanceTimersByTimeAsync(5000);
+      const opened = await opening;
+      expect(transport.mock.calls[0][1].signal.aborted).toBe(true);
+      opened.abort();
+      expect(opened.body).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('streams the file, forwards Range, and keeps only download headers', async () => {
     const transport = jest.fn().mockResolvedValue(
       new Response('0123456789', {
@@ -185,6 +295,18 @@ describe('AlanaRecordingClient tape', () => {
 });
 
 describe('RecordingDownloadTicketService', () => {
+  it('evicts only the oldest ticket at the bounded capacity', () => {
+    const service = new RecordingDownloadTicketService();
+    const first = service.issue('main');
+    const second = service.issue('main');
+    for (let i = 2; i < 100; i++) service.issue('main');
+    expect(service.validate(first.ticket, 'main')).toBe(true);
+    const newest = service.issue('main');
+    expect(service.validate(first.ticket, 'main')).toBe(false);
+    expect(service.validate(second.ticket, 'main')).toBe(true);
+    expect(service.validate(newest.ticket, 'main')).toBe(true);
+  });
+
   it('validates only the issuing program and expires', () => {
     jest.useFakeTimers();
     const service = new RecordingDownloadTicketService();
@@ -227,6 +349,8 @@ describe('TapeController permissions and keys', () => {
   });
 
   it('passes the caller key through and rejects bad identifiers', () => {
+    void controller.status('main');
+    expect(controller['alana'].tapeStatus).toHaveBeenCalledWith('main');
     void controller.start('main', 'tape-1');
     expect(tapeCommand).toHaveBeenCalledWith('main', 'start', 'tape-1');
     expect(() => void controller.start('main', undefined)).toThrow(
@@ -330,6 +454,24 @@ describe('RecordingFileController', () => {
       makeReply() as never,
     );
     expect(open).toHaveBeenCalledWith('main', undefined);
+  });
+
+  it('issues a normalized ticket and preserves a range-unsatisfiable response', async () => {
+    const issued = controller.issue('main');
+    expect(tickets.validate(issued.ticket, 'main')).toBe(true);
+    open.mockResolvedValue({
+      status: 416,
+      headers: { 'content-range': 'bytes */42' },
+      body: null,
+      abort: jest.fn(),
+    });
+    const reply = makeReply();
+    await controller.file('main', issued.ticket, 'bytes=99-', reply as never);
+    expect(reply.status).toHaveBeenCalledWith(416);
+    expect(reply.headers).toHaveBeenCalledWith({
+      'content-range': 'bytes */42',
+    });
+    expect(reply.send).toHaveBeenCalledWith();
   });
 
   it('reports 404 when no verified file exists', async () => {

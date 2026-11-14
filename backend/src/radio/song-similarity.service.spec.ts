@@ -483,9 +483,36 @@ describe('SongSimilarityService', () => {
   });
 
   describe('exportSongs', () => {
-    const sequence = [
-      { type: 'song', id: 'i1', songId: 1, artist: 'A', title: 'One' },
-    ];
+    const sequence = {
+      mode: 'manual',
+      activeItemId: 'i1',
+      loop: false,
+      items: [
+        {
+          kind: 'preset',
+          id: 'i1',
+          songId: 1,
+          artist: 'A',
+          title: 'One',
+          coverUrl: '',
+        },
+        {
+          kind: 'preset',
+          id: 'unindexed',
+          artist: 'B',
+          title: 'No catalog id',
+          coverUrl: '',
+        },
+        {
+          kind: 'preset',
+          id: 'duplicate',
+          songId: 1,
+          artist: 'A',
+          title: 'One again',
+          coverUrl: '',
+        },
+      ],
+    };
 
     it('rejects an unknown program', async () => {
       const { prisma, service } = setup();
@@ -540,7 +567,7 @@ describe('SongSimilarityService', () => {
       expect(result.windowSeconds).toBe(30);
       expect(prisma.song.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { enabled: true, id: { in: expect.any(Array) as number[] } },
+          where: { enabled: true, id: { in: [1] } },
         }),
       );
     });

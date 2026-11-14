@@ -503,7 +503,7 @@ export class PalazzoMachineClient {
     if (options.lastEventId) headers['Last-Event-ID'] = options.lastEventId;
 
     const attempts = options.retryable ? MAX_ATTEMPTS : 1;
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    for (let attempt = 1; ; attempt += 1) {
       try {
         const response = await this.fetchImpl(url, {
           method: options.method ?? 'GET',
@@ -541,7 +541,6 @@ export class PalazzoMachineClient {
         signal: options.signal,
       }).catch(() => undefined);
     }
-    throw new PalazzoMachineError('unavailable');
   }
 }
 

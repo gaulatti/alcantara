@@ -38,3 +38,7 @@ A push changing `backend/**` on main matches the existing backend deployment
 workflow. Opening or merging a PR does not itself prove deployment or live health.
 
 The reconciled verifier uses the actual split CLI entry points (`runtime-secret-contract-cli.js` and `principals-cli.main.js`), not import-only libraries. Upload tests follow the landed 200 MiB audio boundary and still reject one byte above the limit before storage. Native coverage gaps and failed migrations remain failures.
+
+Remaining source reconciliation expresses closed invariants rather than testing impossible states. The private test-auth permission visitor receives only the fixed nested string tree; both catalog-normalization callers supply a required destination id; every final Palazzo retry returns or throws; and engine callbacks retain the state from their initiating operation (the map has no delete/clear operation). Passing that captured state makes the lifetime requirement explicit. A leaf resolved synchronously from a sequence belongs to the same tree being advanced. Existing public refusal, failure, retry and queue-order tests remain required.
+
+Recording boundary coverage exercises bounded ticket eviction, upstream header timeout/cancellation, absent/rejected download bodies, range-unsatisfiable propagation, tape transport/format failures and bounded error metadata. Sequence-catalog export now uses the actual object-shaped sequence and requires exactly the unique catalog ids, omitting leaves without an id; the old array fixture had only asserted that an array existed.

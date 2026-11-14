@@ -78,7 +78,7 @@ export class BroadcastDestinationsService {
   }
 
   async createDestination(input: CatalogInput) {
-    const normalized = normalizeCatalogInput(input, true);
+    const normalized = normalizeCatalogInput(input);
     const position = await this.prisma.broadcastDestination.count();
     try {
       return await this.prisma.broadcastDestination.create({
@@ -97,10 +97,7 @@ export class BroadcastDestinationsService {
 
   async updateDestination(destinationId: string, input: CatalogInput) {
     validateDestinationId(destinationId);
-    const normalized = normalizeCatalogInput(
-      { ...input, id: destinationId },
-      false,
-    );
+    const normalized = normalizeCatalogInput({ ...input, id: destinationId });
     try {
       return await this.prisma.broadcastDestination.update({
         where: { id: destinationId },
@@ -695,9 +692,9 @@ function parseCommandInput(
   return { commandId: input.commandId, destinationIds, selectionVersion };
 }
 
-function normalizeCatalogInput(input: CatalogInput, includeId: boolean) {
+function normalizeCatalogInput(input: CatalogInput) {
   const id = typeof input.id === 'string' ? input.id.trim() : '';
-  if (includeId || id) validateDestinationId(id);
+  validateDestinationId(id);
   const displayName =
     typeof input.displayName === 'string' ? input.displayName.trim() : '';
   const secretId =

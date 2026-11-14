@@ -14,10 +14,10 @@ const TEST_IDENTITIES = ['operator-a', 'operator-b', 'viewer'] as const;
 
 function allPermissions(): AlcantaraPermission[] {
   const result: string[] = [];
-  const visit = (value: unknown) => {
+  type PermissionTree = string | { readonly [key: string]: PermissionTree };
+  const visit = (value: PermissionTree) => {
     if (typeof value === 'string') result.push(value);
-    else if (value && typeof value === 'object')
-      Object.values(value).forEach(visit);
+    else Object.values(value).forEach(visit);
   };
   visit(ALCANTARA_PERMISSIONS);
   return result as AlcantaraPermission[];

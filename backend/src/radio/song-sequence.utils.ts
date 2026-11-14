@@ -144,8 +144,9 @@ export function advanceProgramSongSequence(
   if (active.kind === 'sequence') {
     const resolved = resolveProgramSongLeaf(sequence);
     if (resolved) {
-      const result = advanceSequenceCursor(sequence, resolved.id);
-      if (result !== 'not-found') return result === 'advanced';
+      // The resolved leaf belongs to this same tree; no mutation or await
+      // occurs between resolution and advancement.
+      return advanceSequenceCursor(sequence, resolved.id) === 'advanced';
     }
   }
 
