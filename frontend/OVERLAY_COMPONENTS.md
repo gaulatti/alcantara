@@ -4,7 +4,7 @@ This document describes the Toni-style broadcast overlay components available in
 
 These components use the visual language from **fifthbell/toni**: dark backgrounds, brand red accents, and a compact broadcast-style layout.
 
-The Modo Italiano Giorgia variants use the Giorgia editorial language: deep navy surfaces, signal magenta (`#ed0076`), hard rectangular geometry, the white MI mark, and Barlow Condensed display typography.
+The Modo Italiano Giorgia variants follow Giorgia's broadcast language, taken from its artist bumper and the Giorgia templates in Broadway: square geometry with no rounded corners, navy (`#0a1234`), one signal magenta (`#ed0076`) used as a vertical rule and label colour, the white MI mark, condensed display type set directly on the picture over a navy grade, and hard cuts instead of fades.
 
 All components are designed for a **1920 × 1080** broadcast canvas.
 
@@ -80,36 +80,32 @@ No visible text is rendered by the current component. The visible output is the 
 
 ### `ModoItalianoGiorgiaClock`
 
-A separate Giorgia-branded clock and now-playing overlay. It keeps the original Modo Italiano clock geometry, paired lower-third placement, cover treatment, world-clock rotation, program audio-bus integration, song-sequence support, and playback progress. The variant changes only the visual language: deep navy, signal magenta, and Giorgia typography.
+The Giorgia clock is two pieces of type, not a card. Both follow the artist bumper in `@modoitaliano/giorgia`:
+
+- **Header** (top-left, `left: 82px`, `top: 68px`): the white MI mark followed by the time and city as an uppercase label. The city changes with a hard cut.
+- **On-air block** (bottom-left, `left: 82px`, `bottom: 70px`): shown only while a song is live. A square cover, the magenta rule, a magenta label ("Estás escuchando" / "In onda ora" / "On air now"), the artist as the hero line fitted to the width, and the song title beneath in wide-tracked Barlow. Playback progress is a hairline under the title.
 
 ```tsx
 import { ModoItalianoGiorgiaClock } from '~/components';
 
-<ModoItalianoGiorgiaClock
-  programId="modoitaliano"
-  showWorldClocks
-  showLogo
-  showPlaybackProgress
-/>
+<ModoItalianoGiorgiaClock programId="modoitaliano" showWorldClocks showLogo showPlaybackProgress />
 ```
 
-Use the component type `modoitaliano-giorgia-clock`. Its configurable scene attributes match `modoitaliano-clock`: `showWorldClocks`, `showLogo`, and `showPlaybackProgress`.
+Use the component type `modoitaliano-giorgia-clock`. Its scene attributes match `modoitaliano-clock`: `showWorldClocks`, `showLogo`, and `showPlaybackProgress`. The `part` prop (`'all'`, `'header'`, `'onAir'`) lets the scene row place the two pieces separately. Song data, the program audio bus, song sequences and time overrides behave as in `modoitaliano-clock`.
 
 ### `ModoItalianoGiorgiaChyron`
 
-A separate Giorgia-branded editorial lower third with a hard-edged navy panel, signal-magenta rule, and condensed editorial typography. It preserves the existing manual, autoplay, nested-sequence, CTA, and explicit-marquee behavior without adding a second logo. When paired with the Giorgia clock, the MI mark appears only in the clock.
+A Giorgia headline: uppercase Barlow Condensed 800 hanging from the magenta rule, set straight on a navy grade with no panel. The headline is fitted to the available width between 76px and 120px; when it cannot fit on one line it wraps to two balanced lines. It is never cut with an ellipsis. The call to action is a magenta uppercase label above it. Showing, hiding and changing text are hard cuts. The explicit marquee option still scrolls a single 96px line.
 
 ```tsx
 import { ModoItalianoGiorgiaChyron } from '~/components';
 
-<ModoItalianoGiorgiaChyron
-  show
-  textSequence={textSequence}
-  ctaSequence={ctaSequence}
-/>
+<ModoItalianoGiorgiaChyron show textSequence={textSequence} ctaSequence={ctaSequence} />
 ```
 
-Use the component type `modoitaliano-giorgia-chyron`. Configure it with the same program chyron editor used by `modoitaliano-chyron`.
+Use the component type `modoitaliano-giorgia-chyron`. Configure it with the same program chyron editor used by `modoitaliano-chyron`. Standalone it spans `left`/`right: 82px`, `bottom: 70px`.
+
+Shared tokens and helpers for both (`GIORGIA`, `GiorgiaMark`, `GiorgiaRule`, `GiorgiaGrade`, `fitGiorgiaText`) live in `app/components/giorgiaBroadcast.tsx`.
 
 ---
 
@@ -146,17 +142,40 @@ Example scene metadata:
 }
 ```
 
+### Modo Italiano bottom row
+
+The Giorgia family is the current Modo Italiano look. The original family (`modoitaliano-clock`, `modoitaliano-chyron`, `modoitaliano-disclaimer`, `modoitaliano-bracket`, `modoitaliano-podcast-player`) is kept for legacy and historical scenes. Do not combine the two in one layout.
+
+When a scene pairs a clock with its chyron, the renderer lays them out together along the bottom instead of rendering each standalone. `resolveProgramRow` in `app/utils/programRow.ts` makes that decision:
+
+- `modoitaliano-giorgia-clock` rows only with `modoitaliano-giorgia-chyron`.
+- `modoitaliano-clock` rows with `modoitaliano-chyron`, and without a chyron still moves into its row beside `modoitaliano-disclaimer`, `cronica-chyron`, `modoitaliano-bracket`, `modoitaliano-podcast-player`, or `modoitaliano-giorgia-podcast-player`.
+- The families never pair with each other. A component of the other family in the same layout renders standalone, in its own position.
+- A scene gets at most one row; the Giorgia pair takes it when both families are complete.
+- The disclaimer takes the left slot of the legacy row only while no chyron is showing.
+
+The anchoring clock decides the geometry:
+
+| Anchor | Row position | Left slot | Right slot |
+|--------|--------------|-----------|------------|
+| `modoitaliano-clock` (legacy) | `left`/`right`/`bottom: 110px` | legacy chyron or disclaimer | the clock card, docked right |
+| `modoitaliano-giorgia-clock` | `left`/`right: 82px`, `bottom: 70px` | the Giorgia chyron | the on-air block; the header stays top-left |
+
+While the left slot has content it keeps at least half the row, so a long now-playing title cannot squeeze the chyron. With a Giorgia clock and nothing in the left slot, the on-air block takes the left edge.
+
+On their own, the original clock sits top-right (`top: 64px`, `right: 110px`) and the original chyron spans the bottom at `110px`.
+
 ---
 
 ## Fonts
 
-Shared Google Fonts are loaded globally in `app/root.tsx`, including `Encode Sans`, `EB Garamond`, `JetBrains Mono`, `Libre Franklin`, and `Plus Jakarta Sans`.
+Shared Google Fonts are loaded globally in `app/root.tsx`, including `Barlow`, `Barlow Condensed`, `Encode Sans`, `EB Garamond`, `JetBrains Mono`, `Libre Franklin`, and `Plus Jakarta Sans`.
 
 For the current Toni components:
 - `ToniChyron` uses `Encode Sans`.
 - `ToniClock` currently uses a system sans stack.
 - `ToniLogo` is image-based.
-- `ModoItalianoGiorgiaClock` and `ModoItalianoGiorgiaChyron` use `Barlow Condensed` with the shared global fallback stack.
+- `ModoItalianoGiorgiaClock` and `ModoItalianoGiorgiaChyron` use `Barlow Condensed` (700 and 800) for display and labels and `Barlow` 700 for the song title.
 
 ---
 

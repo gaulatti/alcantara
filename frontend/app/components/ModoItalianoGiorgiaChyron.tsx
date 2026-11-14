@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
+import { GIORGIA, GiorgiaGrade, GiorgiaRule, fitGiorgiaText, giorgiaLabelStyle, useElementWidth } from './giorgiaBroadcast';
 
 interface ModoItalianoGiorgiaChyronProps {
   show?: boolean;
@@ -8,9 +9,19 @@ interface ModoItalianoGiorgiaChyronProps {
   inline?: boolean;
 }
 
-const SIGNAL = '#ed0076';
-const SWAP_MS = 220;
+const HEADLINE_MAX_PX = 120;
+const HEADLINE_MIN_PX = 76;
+const MARQUEE_PX = 96;
+/** Average glyph advance of uppercase Barlow Condensed 800, as a fraction of the font size. */
+const HEADLINE_GLYPH = 0.5;
+const TEXT_INSET_PX = GIORGIA.ruleWidth + 28;
+/** Width assumed until the block is measured (the full row between the safe edges). */
+const UNMEASURED_WIDTH_PX = 1920 - GIORGIA.safeX * 2;
 
+/**
+ * Giorgia headline: a fitted line of condensed type hanging from the magenta
+ * rule, set on a navy grade. It appears and disappears with hard cuts.
+ */
 export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps> = ({
   show = true,
   textSequence,
@@ -18,6 +29,7 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
   inline = false
 }) => {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [blockRef, blockWidth] = useElementWidth<HTMLDivElement>();
   const normalizedTextSequence = useMemo(
     () => normalizeProgramTextSequence(textSequence, 0, { includeMarquee: true }),
     [textSequence]
@@ -45,204 +57,82 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
 
   useEffect(() => setNowMs(Date.now()), [textSequence, ctaSequence]);
 
-  const resolvedTextLeaf = resolveProgramTextLeaf(
-    { contentMode: 'sequence', sequence: normalizedTextSequence },
-    nowMs,
-    { includeMarquee: true }
-  );
-  const resolvedCtaLeaf = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedCtaSequence }, nowMs);
-  const resolvedMainText = resolvedTextLeaf?.text.trim() ?? '';
-  const resolvedUseMarquee = Boolean(resolvedTextLeaf?.useMarquee);
-  const resolvedCtaText = resolvedCtaLeaf?.text.trim() ?? '';
+  const textLeaf = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedTextSequence }, nowMs, { includeMarquee: true });
+  const ctaLeaf = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedCtaSequence }, nowMs);
+  const headline = (textLeaf?.text.trim() ?? '').toUpperCase();
+  const useMarquee = Boolean(textLeaf?.useMarquee);
+  const cta = ctaLeaf?.text.trim() ?? '';
 
-  const [displayMainText, setDisplayMainText] = useState(resolvedMainText);
-  const [displayUseMarquee, setDisplayUseMarquee] = useState(resolvedUseMarquee);
-  const [mainTextActive, setMainTextActive] = useState(true);
-  const [displayCtaText, setDisplayCtaText] = useState(resolvedCtaText);
-  const [ctaActive, setCtaActive] = useState(true);
-  const shouldShow = Boolean(show && resolvedMainText);
-  const [isMounted, setIsMounted] = useState(shouldShow);
-  const [isVisible, setIsVisible] = useState(shouldShow);
-  const mainTimer = useRef<number | null>(null);
-  const ctaTimer = useRef<number | null>(null);
-  const visibilityTimer = useRef<number | null>(null);
-  const visibilityFrame = useRef<number | null>(null);
+  if (!show || !headline) return null;
 
-  useEffect(() => {
-    if (visibilityTimer.current !== null) window.clearTimeout(visibilityTimer.current);
-    if (visibilityFrame.current !== null) window.cancelAnimationFrame(visibilityFrame.current);
+  const availableWidth = (blockWidth || UNMEASURED_WIDTH_PX) - TEXT_INSET_PX;
+  // A headline too long for one line at the smallest size wraps to two; it is never cut with an ellipsis.
+  const wraps = headline.length * HEADLINE_GLYPH * HEADLINE_MIN_PX > availableWidth;
+  const headlineSize = wraps ? HEADLINE_MIN_PX : fitGiorgiaText(headline, availableWidth, HEADLINE_MAX_PX, HEADLINE_MIN_PX, HEADLINE_GLYPH);
 
-    if (shouldShow) {
-      setIsMounted(true);
-      visibilityFrame.current = window.requestAnimationFrame(() => {
-        setIsVisible(true);
-        visibilityFrame.current = null;
-      });
-      return;
-    }
-
-    setIsVisible(false);
-    visibilityTimer.current = window.setTimeout(() => {
-      setIsMounted(false);
-      visibilityTimer.current = null;
-    }, SWAP_MS);
-  }, [shouldShow]);
-
-  useEffect(() => {
-    if (resolvedMainText === displayMainText && resolvedUseMarquee === displayUseMarquee) return;
-    if (mainTimer.current !== null) window.clearTimeout(mainTimer.current);
-    setMainTextActive(false);
-    mainTimer.current = window.setTimeout(() => {
-      setDisplayMainText(resolvedMainText);
-      setDisplayUseMarquee(resolvedUseMarquee);
-      setMainTextActive(true);
-      mainTimer.current = null;
-    }, SWAP_MS);
-  }, [resolvedMainText, resolvedUseMarquee, displayMainText, displayUseMarquee]);
-
-  useEffect(() => {
-    if (resolvedCtaText === displayCtaText) return;
-    if (ctaTimer.current !== null) window.clearTimeout(ctaTimer.current);
-    setCtaActive(false);
-    ctaTimer.current = window.setTimeout(() => {
-      setDisplayCtaText(resolvedCtaText);
-      setCtaActive(true);
-      ctaTimer.current = null;
-    }, SWAP_MS);
-  }, [resolvedCtaText, displayCtaText]);
-
-  useEffect(
-    () => () => {
-      if (mainTimer.current !== null) window.clearTimeout(mainTimer.current);
-      if (ctaTimer.current !== null) window.clearTimeout(ctaTimer.current);
-      if (visibilityTimer.current !== null) window.clearTimeout(visibilityTimer.current);
-      if (visibilityFrame.current !== null) window.cancelAnimationFrame(visibilityFrame.current);
-    },
-    []
-  );
-
-  if (!isMounted) return null;
-
-  const wrapperStyle: React.CSSProperties = inline
-    ? {
-        width: '100%',
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0px)' : 'translateY(8px)',
-        transition: `opacity ${SWAP_MS}ms ease, transform ${SWAP_MS}ms ease`
-      }
-    : {
-        position: 'absolute',
-        left: '110px',
-        right: '110px',
-        bottom: '110px',
-        zIndex: 950,
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0px)' : 'translateY(8px)',
-        transition: `opacity ${SWAP_MS}ms ease, transform ${SWAP_MS}ms ease`
-      };
-  const textMotion: React.CSSProperties = {
-    opacity: mainTextActive ? 1 : 0,
-    transform: mainTextActive ? 'translateY(0px)' : 'translateY(10px)',
-    transition: `opacity ${SWAP_MS}ms ease, transform ${SWAP_MS}ms ease`
+  const headlineStyle: React.CSSProperties = {
+    margin: 0,
+    color: '#ffffff',
+    fontFamily: GIORGIA.display,
+    fontWeight: 800,
+    letterSpacing: '-0.03em',
+    textShadow: GIORGIA.displayShadow
   };
-  const headline = displayMainText.toUpperCase();
 
   return (
-    <div className='modoitaliano-giorgia-chyron' style={wrapperStyle} aria-label='Modo Italiano Giorgia chyron'>
+    <div
+      ref={blockRef}
+      className='modoitaliano-giorgia-chyron'
+      aria-label='Modo Italiano Giorgia chyron'
+      style={{
+        paddingLeft: `${TEXT_INSET_PX}px`,
+        ...(inline
+          ? { position: 'relative', width: '100%' }
+          : { position: 'absolute', left: `${GIORGIA.safeX}px`, right: `${GIORGIA.safeX}px`, bottom: `${GIORGIA.safeBottom}px`, zIndex: 950 })
+      }}
+    >
       <style>{`
-        @keyframes modoItalianoGiorgiaChyronBgFlow {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
         @keyframes modoItalianoGiorgiaChyronMarquee {
           from { transform: translateX(0); }
           to { transform: translateX(-50%); }
         }
         @media (prefers-reduced-motion: reduce) {
-          .modoitaliano-giorgia-chyron,
-          .modoitaliano-giorgia-chyron * { transition-duration: 0.01ms !important; }
-          .modoitaliano-giorgia-chyron-panel,
           .modoitaliano-giorgia-chyron-marquee { animation: none !important; }
         }
       `}</style>
-      {displayCtaText ? (
-        <div
+      <GiorgiaGrade />
+      <GiorgiaRule />
+      {cta ? <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal, marginBottom: '16px', overflow: 'hidden' }}>{cta}</div> : null}
+      {useMarquee ? (
+        <div style={{ ...headlineStyle, fontSize: `${MARQUEE_PX}px`, lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {/* Two identical halves, each carrying its own trailing space, so -50% lands exactly on the seam. */}
+          <div
+            className='modoitaliano-giorgia-chyron-marquee'
+            style={{ display: 'inline-flex', animation: 'modoItalianoGiorgiaChyronMarquee 20s linear infinite' }}
+          >
+            <span style={{ paddingRight: '96px' }}>{headline}</span>
+            <span aria-hidden='true' style={{ paddingRight: '96px' }}>
+              {headline}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <h2
+          className='modoitaliano-giorgia-chyron-headline'
           style={{
-            width: '100%',
-            marginBottom: '14px',
-            paddingLeft: '34px',
-            color: '#ffffff',
-            fontFamily: "'Barlow Condensed', 'Encode Sans', system-ui, sans-serif",
-            fontSize: '30px',
-            fontWeight: 700,
-            lineHeight: 1,
-            letterSpacing: '0.08em',
-            textAlign: 'left',
-            textTransform: 'uppercase',
-            textShadow: '0 4px 18px rgba(0,0,0,0.96)',
-            opacity: ctaActive ? 1 : 0,
-            transform: ctaActive ? 'translateY(0px)' : 'translateY(6px)',
-            transition: `opacity ${SWAP_MS}ms ease, transform ${SWAP_MS}ms ease`,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
+            ...headlineStyle,
+            fontSize: `${headlineSize}px`,
+            lineHeight: 0.9,
+            // Room for descenders and accents that the tight leading would otherwise clip.
+            padding: '0.06em 0',
+            ...(wraps
+              ? { textWrap: 'balance', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
+              : { whiteSpace: 'nowrap' })
           }}
         >
-          {displayCtaText}
-        </div>
-      ) : null}
-      <div
-        className='modoitaliano-giorgia-chyron-panel'
-        style={{
-          position: 'relative',
-          height: '150px',
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          overflow: 'hidden',
-          background: 'linear-gradient(125deg, #080d2a 0%, #111c50 48%, #080d2a 100%)',
-          backgroundSize: '200% 200%',
-          animation: 'modoItalianoGiorgiaChyronBgFlow 8s ease-in-out infinite',
-          borderLeft: `10px solid ${SIGNAL}`,
-          boxShadow: '0 24px 54px rgba(0,0,0,0.72)',
-          padding: '0 42px'
-        }}
-      >
-        <div
-          aria-hidden='true'
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: SIGNAL }}
-        />
-        <div
-          style={{
-            width: '100%',
-            color: '#ffffff',
-            fontFamily: "'Barlow Condensed', 'Encode Sans', system-ui, sans-serif",
-            fontSize: '70px',
-            fontWeight: 700,
-            lineHeight: 1,
-            letterSpacing: '0.02em',
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textAlign: 'left'
-          }}
-        >
-          {displayUseMarquee ? (
-            <div style={{ ...textMotion, width: '100%', overflow: 'hidden' }}>
-              <div
-                className='modoitaliano-giorgia-chyron-marquee'
-                style={{ display: 'inline-flex', gap: '96px', minWidth: '200%', animation: 'modoItalianoGiorgiaChyronMarquee 20s linear infinite' }}
-              >
-                <span>{headline}</span>
-                <span>{headline}</span>
-              </div>
-            </div>
-          ) : (
-            <div style={{ ...textMotion, overflow: 'hidden', textOverflow: 'ellipsis' }}>{headline}</div>
-          )}
-        </div>
-      </div>
+          {headline}
+        </h2>
+      )}
     </div>
   );
 };
