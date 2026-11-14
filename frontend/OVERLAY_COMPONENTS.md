@@ -109,17 +109,12 @@ Use the component type `modoitaliano-giorgia-chyron`. Configure it with the same
 
 Giorgia's own 12-second artist-and-song introduction, full screen. Alcantara does not define any of it: the composition (`ArtistBumper`), its timeline, layout and type come from the `@modoitaliano/giorgia` package (`@modoitaliano/giorgia/video`), played with Remotion's player the same way Giorgia's Storybook plays it. To change how the bumper looks, change it in Giorgia and bump the dependency.
 
-It shows three image cuts, then the artist, song and credits over the fourth image, then the animated "In onda ora" card, which it holds. It plays once each time it is shown or its content changes.
+It shows three image cuts, then the artist, song and credits over the fourth image, then the animated "In onda ora" card, which it holds. It plays once, silent, each time it is shown or its content changes.
 
 ```tsx
 import { ModoItalianoGiorgiaArtistBumper } from '~/components';
 
-<ModoItalianoGiorgiaArtistBumper
-  artist="ROB"
-  songTitle="Cento ragazze"
-  images={[image1, image2, image3, image4]}
-  audioUrl={audioUrl}
-/>
+<ModoItalianoGiorgiaArtistBumper artist="ROB" songTitle="Cento ragazze" labelId="artist:rob" />
 ```
 
 Use the component type `modoitaliano-giorgia-artist-bumper`.
@@ -128,11 +123,13 @@ Use the component type `modoitaliano-giorgia-artist-bumper`.
 |--------------|----------|---------|
 | `show` | no | Hides the bumper when `false` (default `true`) |
 | `artist`, `songTitle` | yes | Text of the identity and on-air cards |
-| `images` | yes | Exactly four different 16:9 image URLs, in playback order |
-| `audioUrl` | no | Audio played with the bumper |
-| `eyebrow`, `contentType`, `creditLines`, `siteUrl` | no | Left blank, Giorgia's defaults apply ("ModoItaliano presenta", "Singolo", `modoitaliano.fm`) |
+| `labelId` | one of the two | Media label to take the images from, as the slideshow does: the first four different images of the label, in its saved order |
+| `images` | one of the two | Exactly four different 16:9 image URLs, in playback order; used only when no label is set |
+| `contentType`, `creditLines` | no | Left blank, Giorgia's default content type ("Singolo") applies and the credits stay empty |
 
-Giorgia's composition throws unless it receives exactly four distinct images, so the component renders nothing until the artist, the song title and all four images are set; the editor says which is missing. The Remotion player and Giorgia's video entry load only when a bumper is shown.
+The eyebrow ("ModoItaliano presenta") and the site address (`modoitaliano.fm`) are Giorgia's own defaults and cannot be changed here, and the bumper carries no audio.
+
+Giorgia's composition throws unless it receives exactly four distinct images, so the component renders nothing until the artist, the song title and four images are available (from the label once it has loaded, or set by hand); the editor says which is missing. The Remotion player and Giorgia's video entry load only when a bumper is shown.
 
 Shared tokens and helpers for both (`GIORGIA`, `GiorgiaMark`, `GiorgiaRule`, `GiorgiaGrade`, `fitGiorgiaText`) live in `app/components/giorgiaBroadcast.tsx`.
 
@@ -161,7 +158,7 @@ The components are available as named component types in the dynamic program ren
 | `toni-logo` | `callsign`, `subtitle` (used for image alt text only) |
 | `modoitaliano-giorgia-clock` | `showWorldClocks`, `showLogo`, `showPlaybackProgress` |
 | `modoitaliano-giorgia-chyron` | `show`, `textSequence`, `ctaSequence` |
-| `modoitaliano-giorgia-artist-bumper` | `show`, `artist`, `songTitle`, `images`, `audioUrl`, `eyebrow`, `contentType`, `creditLines`, `siteUrl` |
+| `modoitaliano-giorgia-artist-bumper` | `show`, `artist`, `songTitle`, `labelId`, `images`, `contentType`, `creditLines` |
 
 Example scene metadata:
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { Player, type PlayerRef } from '@remotion/player';
+import React from 'react';
+import { Player } from '@remotion/player';
 import {
   ARTIST_BUMPER_DURATION_IN_FRAMES,
   ARTIST_BUMPER_FPS,
@@ -11,7 +11,6 @@ import {
 
 interface ArtistBumperPlayerProps {
   inputProps: ArtistBumperProps;
-  masterGain: number;
 }
 
 /**
@@ -19,21 +18,9 @@ interface ArtistBumperPlayerProps {
  * defined here: the timeline, layout and type all come from
  * `@modoitaliano/giorgia/video`, played the way Giorgia's Storybook plays it.
  */
-export default function ModoItalianoGiorgiaArtistBumperPlayer({ inputProps, masterGain }: ArtistBumperPlayerProps) {
-  const playerRef = useRef<PlayerRef>(null);
-  const gain = Number.isFinite(masterGain) ? Math.max(0, Math.min(1, masterGain)) : 0;
-
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
-    player.setVolume(gain);
-    if (gain <= 0.0001) player.mute();
-    else player.unmute();
-  }, [gain]);
-
+export default function ModoItalianoGiorgiaArtistBumperPlayer({ inputProps }: ArtistBumperPlayerProps) {
   return (
     <Player
-      ref={playerRef}
       component={ArtistBumper}
       inputProps={inputProps}
       acknowledgeRemotionLicense
@@ -49,7 +36,8 @@ export default function ModoItalianoGiorgiaArtistBumperPlayer({ inputProps, mast
       clickToPlay={false}
       doubleClickToFullscreen={false}
       spaceKeyToPlayOrPause={false}
-      initiallyMuted={gain <= 0.0001}
+      // The bumper carries no audio; muted also lets it autoplay in any browser.
+      initiallyMuted
       style={{ width: '100%', height: '100%' }}
     />
   );

@@ -72,7 +72,6 @@ export default function Preview() {
                 artist='Giorgia'
                 songTitle='La cura per me'
                 images={['/cover.jpg', '/cover.jpg?cut=2', '/cover.jpg?cut=3', '/cover.jpg?cut=4']}
-                masterGain={0}
               />
             </div>
           </div>
