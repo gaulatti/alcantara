@@ -83,7 +83,7 @@ No visible text is rendered by the current component. The visible output is the 
 The Giorgia clock is two pieces of type, not a card. Both follow the artist bumper in `@modoitaliano/giorgia`:
 
 - **Header** (top-left, `left: 82px`, `top: 68px`): the white MI mark followed by the time and city as an uppercase label. The city changes with a hard cut.
-- **On-air block** (bottom-left, `left: 82px`, `bottom: 70px`): shown only while a song is live. A square cover, the magenta rule, a magenta label ("Estás escuchando" / "In onda ora" / "On air now"), the artist as the hero line fitted to the width, and the song title beneath in wide-tracked Barlow. Both are fitted first and wrap when they cannot fit; neither is truncated. Playback progress is a hairline under the title.
+- **On-air block** (bottom-left, `left: 82px`, `bottom: 70px`): shown only while a song is live. A square cover, the magenta rule, a magenta label ("Estás escuchando" / "In onda ora" / "On air now"), the artist as the hero line fitted to the width, and the song title beneath in wide-tracked Barlow. Both are fitted first and wrap when they cannot fit; neither is truncated. Playback progress is a hairline under the title. The block eases in and out over 450ms (fade and a short rise) so a song ending does not cut it off; while it leaves it keeps showing the song that just ended, and the headline beside it eases to its new size.
 
 ```tsx
 import { ModoItalianoGiorgiaClock } from '~/components';

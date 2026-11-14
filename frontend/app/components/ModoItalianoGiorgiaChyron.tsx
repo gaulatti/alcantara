@@ -99,6 +99,7 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
         }
         @media (prefers-reduced-motion: reduce) {
           .modoitaliano-giorgia-chyron-marquee { animation: none !important; }
+          .modoitaliano-giorgia-chyron-headline { transition: none !important; }
         }
       `}</style>
       <GiorgiaGrade />
@@ -125,6 +126,8 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
           style={{
             ...headlineStyle,
             fontSize: `${headlineSize}px`,
+            // The headline refits when the on-air block beside it comes or goes; ease that change.
+            transition: 'font-size 450ms cubic-bezier(0.2, 0.8, 0.2, 1)',
             lineHeight: 0.9,
             // Room for descenders and accents that the tight leading would otherwise clip.
             padding: '0.06em 0',

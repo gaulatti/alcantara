@@ -1,5 +1,5 @@
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModoItalianoGiorgiaChyron } from './ModoItalianoGiorgiaChyron';
 import { ModoItalianoGiorgiaClock } from './ModoItalianoGiorgiaClock';
 import { fitGiorgiaText } from './giorgiaBroadcast';
@@ -105,6 +105,34 @@ describe('ModoItalianoGiorgiaClock', () => {
     expect(onAir.querySelector('.modoitaliano-giorgia-clock-header')).toBeNull();
     expect(onAir.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air')?.style.position).toBe('relative');
     expect(onAir.querySelector('.modoitaliano-giorgia-clock-progress')).toBeNull();
+  });
+
+  it('eases the on-air block out, still showing the song that ended, before removing it', () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(<ModoItalianoGiorgiaClock programId='giorgia-test' {...song} />);
+      const onAir = () => container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air');
+      expect(onAir()?.style.opacity).toBe('1');
+      expect(onAir()?.style.transition).toContain('opacity 450ms');
+
+      rerender(<ModoItalianoGiorgiaClock programId='giorgia-test' playingSong={false} />);
+      expect(onAir()?.style.opacity).toBe('0');
+      expect(onAir()?.style.transform).toBe('translateY(18px)');
+      expect(onAir()?.querySelector('.modoitaliano-giorgia-clock-hero')?.textContent).toBe('GIORGIA');
+
+      act(() => vi.advanceTimersByTime(449));
+      expect(onAir()).not.toBeNull();
+      act(() => vi.advanceTimersByTime(1));
+      expect(onAir()).toBeNull();
+
+      rerender(<ModoItalianoGiorgiaClock programId='giorgia-test' {...song} songArtist='Mina' />);
+      expect(onAir()?.style.opacity).toBe('0');
+      act(() => vi.advanceTimersByTime(50));
+      expect(onAir()?.style.opacity).toBe('1');
+      expect(onAir()?.querySelector('.modoitaliano-giorgia-clock-hero')?.textContent).toBe('MINA');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows no on-air block without a song, and honours the logo and clock switches', () => {
