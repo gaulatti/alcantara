@@ -1,0 +1,43 @@
+# LiveKit Ingress production configuration template.
+# Render this template from deployment secrets. Never commit real values.
+
+logging:
+  level: warn
+
+api_key: replace-api-key
+api_secret: replace-api-secret
+ws_url: ws://livekit:7880
+
+redis:
+  address: redis:6379
+  # password: replace-redis-password
+
+# Private monitoring ports (bound to loopback in Docker Compose)
+health_port: 8081
+prometheus_port: 8082
+
+# WHIP ingestion (enabled)
+whip_port: 8080
+http_relay_port: 9090
+
+# WebRTC UDP transport for WHIP
+rtc_config:
+  udp_port: 7885
+  use_external_ip: true
+
+# Capacity and CPU cost controls (ADR 001)
+# Reserves 30% CPU (min_idle_ratio: 0.3) for stability.
+# Per-team concurrent-source and bitrate limits are enforced in the Alcantara backend.
+cpu_cost:
+  rtmp_cpu_cost: 2.0
+  whip_cpu_cost: 2.0
+  whip_bypass_transcoding_cpu_cost: 0.1
+  url_cpu_cost: 2.0
+  min_idle_ratio: 0.3
+
+# Protocol gates (ADR 001):
+# - RTMP: Disabled (rtmp_port: 0). Ingress 1.5.0 logs the complete RTMP stream key.
+#   It remains off until a canary proves stream keys are not logged or collected (gaulatti/alcantara#44 / #51).
+# - SRT: Disabled (srt listener omitted/disabled). SRT failed to publish video on arm64;
+#   it remains off until certified on the Intel production host (gaulatti/alcantara#47).
+rtmp_port: 0
