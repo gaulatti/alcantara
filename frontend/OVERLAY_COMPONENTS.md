@@ -105,6 +105,35 @@ import { ModoItalianoGiorgiaChyron } from '~/components';
 
 Use the component type `modoitaliano-giorgia-chyron`. Configure it with the same program chyron editor used by `modoitaliano-chyron`. Standalone it spans `left`/`right: 82px`, `bottom: 70px`.
 
+### `ModoItalianoGiorgiaArtistBumper`
+
+Giorgia's own 12-second artist-and-song introduction, full screen. Alcantara does not define any of it: the composition (`ArtistBumper`), its timeline, layout and type come from the `@modoitaliano/giorgia` package (`@modoitaliano/giorgia/video`), played with Remotion's player the same way Giorgia's Storybook plays it. To change how the bumper looks, change it in Giorgia and bump the dependency.
+
+It shows three image cuts, then the artist, song and credits over the fourth image, then the animated "In onda ora" card, which it holds. It plays once each time it is shown or its content changes.
+
+```tsx
+import { ModoItalianoGiorgiaArtistBumper } from '~/components';
+
+<ModoItalianoGiorgiaArtistBumper
+  artist="ROB"
+  songTitle="Cento ragazze"
+  images={[image1, image2, image3, image4]}
+  audioUrl={audioUrl}
+/>
+```
+
+Use the component type `modoitaliano-giorgia-artist-bumper`.
+
+| Metadata key | Required | Meaning |
+|--------------|----------|---------|
+| `show` | no | Hides the bumper when `false` (default `true`) |
+| `artist`, `songTitle` | yes | Text of the identity and on-air cards |
+| `images` | yes | Exactly four different 16:9 image URLs, in playback order |
+| `audioUrl` | no | Audio played with the bumper |
+| `eyebrow`, `contentType`, `creditLines`, `siteUrl` | no | Left blank, Giorgia's defaults apply ("ModoItaliano presenta", "Singolo", `modoitaliano.fm`) |
+
+Giorgia's composition throws unless it receives exactly four distinct images, so the component renders nothing until the artist, the song title and all four images are set; the editor says which is missing. The Remotion player and Giorgia's video entry load only when a bumper is shown.
+
 Shared tokens and helpers for both (`GIORGIA`, `GiorgiaMark`, `GiorgiaRule`, `GiorgiaGrade`, `fitGiorgiaText`) live in `app/components/giorgiaBroadcast.tsx`.
 
 ---
@@ -132,6 +161,7 @@ The components are available as named component types in the dynamic program ren
 | `toni-logo` | `callsign`, `subtitle` (used for image alt text only) |
 | `modoitaliano-giorgia-clock` | `showWorldClocks`, `showLogo`, `showPlaybackProgress` |
 | `modoitaliano-giorgia-chyron` | `show`, `textSequence`, `ctaSequence` |
+| `modoitaliano-giorgia-artist-bumper` | `show`, `artist`, `songTitle`, `images`, `audioUrl`, `eyebrow`, `contentType`, `creditLines`, `siteUrl` |
 
 Example scene metadata:
 

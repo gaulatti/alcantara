@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@gaulatti/bleecker": "0.1.41",
+    "@modoitaliano/giorgia": "0.1.106",
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
+    "@remotion/player": "4.0.524",
     "aws-amplify": "^6.16.0",
     "axios": "^1.13.2",
     "fast-average-color": "^9.5.0",

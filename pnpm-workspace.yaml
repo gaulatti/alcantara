@@ -2,3 +2,5 @@ packages:
   - 'frontend'
   - 'backend'
   - 'infra/aws'
+minimumReleaseAgeExclude:
+  - '@modoitaliano/giorgia@0.1.106'
