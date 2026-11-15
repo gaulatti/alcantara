@@ -1,7 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import {
+  DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
   PROGRAM_TEMPLATE_SIGNALS,
+  PROGRAM_TEMPLATE_V2_CAPABILITIES,
+  PROGRAM_TEMPLATE_V2_SIGNALS,
   ProgramTemplateService,
+  V2_ONLY_SIGNALS,
+  getApprovedTemplateOrigins,
   isPublicNetworkAddress,
   projectProgramTemplateSignal,
   projectProgramTemplateState,
@@ -29,6 +34,43 @@ const baseManifest = () => ({
     signals: ['program_state_snapshot', 'scene_change'],
   },
 });
+const baseV2Manifest = () => ({
+  kind: 'alcantara.program-template',
+  contractVersion: 2,
+  id: 'harbor-light.live-program',
+  name: 'Harbor Light Live Program',
+  package: '@harbor-light/template',
+  bundleVersion: '1.0.0',
+  schemaVersion: 2,
+  entrypoint: 'index.html',
+  capabilities: ['audio.playback', 'sequence.song'],
+  control: {
+    protocol: 'alcantara.program.v2',
+    transport: 'server-sent-events',
+    snapshotPath: 'state',
+    eventsPath: 'events',
+    runtimeParameters: { programId: 'programId', apiBaseUrl: 'apiBaseUrl' },
+    signals: [
+      'program_state_snapshot',
+      'chyron_update',
+      'fade_to_black',
+      'song_playback_active',
+      'song_playback_update',
+      'song_queue_update',
+      'audio_levels',
+      'audience_interaction_draw_start',
+      'audience_interaction_draw_end',
+    ],
+  },
+  files: [
+    {
+      key: 'index.html',
+      bytes: 1024,
+      contentType: 'text/html',
+      sha256: 'a'.repeat(64),
+    },
+  ],
+});
 const manifestUrl = new URL('https://cdn.fifthbell.com/t/manifest.json');
 const withControl = (control: Record<string, unknown>) => ({
   ...baseManifest(),
@@ -52,8 +94,8 @@ describe('validateProgramTemplateManifest rejections', () => {
     expect(() => validate({ ...baseManifest(), kind: 'other' })).toThrow(
       'Template manifest kind must be alcantara.program-template',
     );
-    expect(() => validate({ ...baseManifest(), contractVersion: 2 })).toThrow(
-      'Unsupported template contract version 2',
+    expect(() => validate({ ...baseManifest(), contractVersion: 3 })).toThrow(
+      'Unsupported template contract version 3',
     );
     expect(() =>
       validate({ ...baseManifest(), contractVersion: undefined }),
@@ -200,6 +242,156 @@ describe('validateProgramTemplateManifest rejections', () => {
     expect(result.name).toBe('Padded');
     expect(result.capabilities).toEqual(['audio.playback']);
   });
+
+  describe('v2 manifest validation', () => {
+    it('accepts a valid v2 manifest with and without files', () => {
+      const manifestUrlV2 = new URL(
+        'https://template.harborlight.test/t/manifest.json',
+      );
+      const valid = validateProgramTemplateManifest(
+        baseV2Manifest(),
+        manifestUrlV2,
+      );
+      expect(valid.contractVersion).toBe(2);
+      expect(valid.schemaVersion).toBe(2);
+      expect(valid.control.protocol).toBe('alcantara.program.v2');
+      expect(valid.files).toHaveLength(1);
+
+      const noFiles = { ...baseV2Manifest() };
+      delete (noFiles as Record<string, unknown>).files;
+      const validNoFiles = validateProgramTemplateManifest(
+        noFiles,
+        manifestUrlV2,
+      );
+      expect(validNoFiles.files).toBeUndefined();
+    });
+
+    it('rejects invalid schemaVersion or protocol for v2', () => {
+      expect(() => validate({ ...baseV2Manifest(), schemaVersion: 1 })).toThrow(
+        'Unsupported program state schema version 1',
+      );
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          control: {
+            ...baseV2Manifest().control,
+            protocol: 'alcantara.program.v1',
+          },
+        }),
+      ).toThrow(
+        'Template manifest control protocol must be alcantara.program.v2',
+      );
+    });
+
+    it('rejects capabilities and signals outside v2 enums', () => {
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          capabilities: ['audio.playback', 'unsupported.capability'],
+        }),
+      ).toThrow(
+        'Template manifest requests unsupported capability unsupported.capability',
+      );
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          control: {
+            ...baseV2Manifest().control,
+            signals: ['program_state_snapshot', 'unsupported_signal'],
+          },
+        }),
+      ).toThrow(
+        'Template manifest requests unsupported signal unsupported_signal',
+      );
+    });
+
+    it('rejects unrecognized properties on v2 manifest, control, and runtimeParameters', () => {
+      expect(() =>
+        validate({ ...baseV2Manifest(), extraField: 'bad' }),
+      ).toThrow('Template manifest contains unrecognized property extraField');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          control: { ...baseV2Manifest().control, extraField: 'bad' },
+        }),
+      ).toThrow(
+        'Template manifest control contains unrecognized property extraField',
+      );
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          control: {
+            ...baseV2Manifest().control,
+            runtimeParameters: {
+              ...baseV2Manifest().control.runtimeParameters,
+              extraField: 'bad',
+            },
+          },
+        }),
+      ).toThrow(
+        'Template manifest control.runtimeParameters contains unrecognized property extraField',
+      );
+    });
+
+    it('validates v2 files array structure and fields', () => {
+      expect(() =>
+        validate({ ...baseV2Manifest(), files: 'not-array' }),
+      ).toThrow('Template manifest files must be an array');
+      expect(() =>
+        validate({ ...baseV2Manifest(), files: ['not-an-object'] }),
+      ).toThrow('Template manifest file at index 0 must be an object');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], extraProperty: 123 }],
+        }),
+      ).toThrow(
+        'Template manifest file at index 0 contains unrecognized property extraProperty',
+      );
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], key: '   ' }],
+        }),
+      ).toThrow('Template manifest files[0].key is required');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], bytes: -1 }],
+        }),
+      ).toThrow('Template manifest file at index 0 bytes is invalid');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], bytes: 1.5 }],
+        }),
+      ).toThrow('Template manifest file at index 0 bytes is invalid');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], bytes: 'not-number' }],
+        }),
+      ).toThrow('Template manifest file at index 0 bytes is invalid');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], contentType: '  ' }],
+        }),
+      ).toThrow('Template manifest files[0].contentType is required');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], sha256: 'short' }],
+        }),
+      ).toThrow('Template manifest file at index 0 sha256 is invalid');
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...baseV2Manifest().files[0], sha256: 12345 }],
+        }),
+      ).toThrow('Template manifest file at index 0 sha256 is invalid');
+    });
+  });
 });
 
 describe('isPublicNetworkAddress', () => {
@@ -277,7 +469,7 @@ describe('readProgramTemplateManifest', () => {
     ['null', null],
     ['an array', []],
     ['the wrong kind', { ...stored(), kind: 'x' }],
-    ['the wrong contract version', { ...stored(), contractVersion: 2 }],
+    ['the wrong contract version', { ...stored(), contractVersion: 3 }],
     ['a missing entrypointUrl', { ...stored(), entrypointUrl: 3 }],
     ['non-array capabilities', { ...stored(), capabilities: 'a' }],
     ['a missing control', { ...stored(), control: null }],
@@ -495,6 +687,292 @@ describe('program template projections', () => {
       programId: 'p',
       schemaVersion: 1,
       version: 1,
+    });
+  });
+
+  it('returns null for v2-only signals when manifest is contractVersion 1', () => {
+    for (const signalType of V2_ONLY_SIGNALS) {
+      expect(
+        projectProgramTemplateSignal(
+          { type: signalType, programId: 'p', version: 1 },
+          {
+            ...manifest,
+            control: { ...manifest.control, signals: [signalType] },
+          },
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it('projects the eight v2 signals with exactly their pinned fields for v2 manifest', () => {
+    const v2Manifest: ProgramTemplateManifest = {
+      kind: 'alcantara.program-template',
+      contractVersion: 2,
+      id: 'harbor-light.live-program',
+      name: 'Harbor Light Live Program',
+      package: '@harbor-light/template',
+      bundleVersion: '1.0.0',
+      schemaVersion: 2,
+      entrypoint: 'index.html',
+      entrypointUrl: 'https://template.harborlight.test/index.html',
+      capabilities: ['audio.playback'],
+      control: {
+        protocol: 'alcantara.program.v2',
+        transport: 'server-sent-events',
+        snapshotPath: 'state',
+        eventsPath: 'events',
+        runtimeParameters: { programId: 'p', apiBaseUrl: 'u' },
+        signals: Array.from(V2_ONLY_SIGNALS),
+      },
+    };
+
+    // 1. chyron_update
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'chyron_update',
+          programId: 'harbor-light-tv',
+          version: 1,
+          sceneId: 'scene-1',
+          chyronText: 'Breaking News',
+          dropped: 'extra',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'chyron_update',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      sceneId: 'scene-1',
+      chyronText: 'Breaking News',
+    });
+
+    // 2. fade_to_black
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'fade_to_black',
+          programId: 'harbor-light-tv',
+          version: 1,
+          active: true,
+          dropped: 'extra',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'fade_to_black',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      active: true,
+    });
+
+    // 3. song_playback_active
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'song_playback_active',
+          programId: 'harbor-light-tv',
+          version: 1,
+          songId: 's-1',
+          title: 'Song Title',
+          artist: 'Song Artist',
+          coverUrl: 'https://cover.test/1.png',
+          durationMs: 180000,
+          startedAt: 1000,
+          externalChartProvider: 'chart-1',
+          externalChartRank: 1,
+          externalChartSpins: 42,
+          untrusted: 'ignored',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'song_playback_active',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      songId: 's-1',
+      title: 'Song Title',
+      artist: 'Song Artist',
+      coverUrl: 'https://cover.test/1.png',
+      durationMs: 180000,
+      startedAt: 1000,
+      externalChartProvider: 'chart-1',
+      externalChartRank: 1,
+      externalChartSpins: 42,
+    });
+
+    // 4. song_playback_update
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'song_playback_update',
+          programId: 'harbor-light-tv',
+          version: 1,
+          songId: 's-1',
+          positionMs: 5000,
+          durationMs: 180000,
+          untrusted: 'ignored',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'song_playback_update',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      songId: 's-1',
+      positionMs: 5000,
+      durationMs: 180000,
+    });
+
+    // 5. song_queue_update
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'song_queue_update',
+          programId: 'harbor-light-tv',
+          version: 1,
+          items: [
+            { songId: 's-1', title: 'T1', artist: 'A1', extra: 'drop' },
+            'not-an-item',
+            { songId: 's-2', title: 'T2', artist: 'A2' },
+          ],
+          untrusted: 'ignored',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'song_queue_update',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      items: [
+        { songId: 's-1', title: 'T1', artist: 'A1' },
+        { songId: 's-2', title: 'T2', artist: 'A2' },
+      ],
+    });
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'song_queue_update',
+          programId: 'harbor-light-tv',
+          version: 1,
+          items: null,
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'song_queue_update',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+    });
+
+    // 6. audio_levels
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'audio_levels',
+          programId: 'harbor-light-tv',
+          version: 1,
+          rms: -14.2,
+          peak: -1.0,
+          untrusted: 'ignored',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'audio_levels',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      rms: -14.2,
+      peak: -1.0,
+    });
+
+    // 7. audience_interaction_draw_start
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'audience_interaction_draw_start',
+          programId: 'harbor-light-tv',
+          version: 1,
+          sceneId: 'sc-1',
+          componentType: 'bracket',
+          drawId: 'd-1',
+          durationSeconds: 30,
+          candidateIds: ['c1', 'c2'],
+          slot: { matchId: 'm-1', field: 'f-1', extra: 'drop' },
+          untrusted: 'ignored',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'audience_interaction_draw_start',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      sceneId: 'sc-1',
+      componentType: 'bracket',
+      drawId: 'd-1',
+      durationSeconds: 30,
+      candidateIds: ['c1', 'c2'],
+      slot: { matchId: 'm-1', field: 'f-1' },
+    });
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'audience_interaction_draw_start',
+          programId: 'harbor-light-tv',
+          version: 1,
+          sceneId: 'sc-1',
+          componentType: 'bracket',
+          drawId: 'd-1',
+          durationSeconds: 30,
+          candidateIds: ['c1', 'c2'],
+          slot: 'not-an-object',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'audience_interaction_draw_start',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      sceneId: 'sc-1',
+      componentType: 'bracket',
+      drawId: 'd-1',
+      durationSeconds: 30,
+      candidateIds: ['c1', 'c2'],
+    });
+
+    // 8. audience_interaction_draw_end
+    expect(
+      projectProgramTemplateSignal(
+        {
+          type: 'audience_interaction_draw_end',
+          programId: 'harbor-light-tv',
+          version: 1,
+          sceneId: 'sc-1',
+          componentType: 'bracket',
+          drawId: 'd-1',
+          selectedId: 'c1',
+          untrusted: 'ignored',
+        },
+        v2Manifest,
+      ),
+    ).toEqual({
+      type: 'audience_interaction_draw_end',
+      programId: 'harbor-light-tv',
+      schemaVersion: 1,
+      version: 1,
+      sceneId: 'sc-1',
+      componentType: 'bracket',
+      drawId: 'd-1',
+      selectedId: 'c1',
     });
   });
 });
@@ -910,6 +1388,39 @@ describe('ProgramTemplateService.inspect', () => {
       await expect(service.inspect(url)).resolves.toMatchObject({
         templateUrl: url,
       });
+
+      // Test with custom fictional origin listed in PROGRAM_TEMPLATE_ORIGINS
+      process.env.PROGRAM_TEMPLATE_ORIGINS =
+        'https://template.harborlight.test';
+      const fictionalUrl = 'https://template.harborlight.test/m.json';
+      service.fetchManifest.mockResolvedValue(json(baseV2Manifest()));
+      await expect(service.inspect(fictionalUrl)).resolves.toMatchObject({
+        templateUrl: fictionalUrl,
+        templateManifest: expect.objectContaining({ contractVersion: 2 }),
+      });
+
+      // Same fictional URL rejected when PROGRAM_TEMPLATE_ORIGINS is emptied
+      delete process.env.PROGRAM_TEMPLATE_ORIGINS;
+      expect(await rejection(service, fictionalUrl)).toBe(
+        'Template URL origin is not an approved program-template publisher',
+      );
+    });
+
+    it('getApprovedTemplateOrigins returns defaults and configured origins', () => {
+      expect(getApprovedTemplateOrigins({})).toEqual(
+        new Set(DEFAULT_PRODUCTION_TEMPLATE_ORIGINS),
+      );
+      expect(
+        getApprovedTemplateOrigins({
+          PROGRAM_TEMPLATE_ORIGINS: ' https://a.test , https://b.test ',
+        }),
+      ).toEqual(
+        new Set([
+          ...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+          'https://a.test',
+          'https://b.test',
+        ]),
+      );
     });
 
     it('fails when the host cannot be resolved', async () => {

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "alcantara.program-template.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "contractVersion", "id", "name", "package", "bundleVersion", "schemaVersion", "entrypoint", "capabilities", "control"],
+  "properties": {
+    "kind": { "const": "alcantara.program-template" },
+    "contractVersion": { "const": 2 },
+    "schemaVersion": { "const": 2 },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$" },
+    "name": { "type": "string", "minLength": 1 },
+    "package": { "type": "string", "minLength": 1 },
+    "bundleVersion": { "type": "string", "minLength": 1 },
+    "entrypoint": { "type": "string", "minLength": 1, "not": { "pattern": "(^/|\\.\\.|^[a-zA-Z][a-zA-Z0-9+.-]*:)" } },
+    "capabilities": {
+      "type": "array", "uniqueItems": true, "maxItems": 64,
+      "items": { "enum": [
+        "audio.playback", "media.groups", "scene.configuration", "stinger.transitions",
+        "audience.interaction", "data.chart-provider", "source.external-video", "source.webrtc-guest",
+        "sequence.song", "sequence.chyron", "media.slideshow",
+        "display.clock", "display.ticker", "display.scoreboard"
+      ] }
+    },
+    "control": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol", "transport", "snapshotPath", "eventsPath", "runtimeParameters", "signals"],
+      "properties": {
+        "protocol": { "const": "alcantara.program.v2" },
+        "transport": { "const": "server-sent-events" },
+        "snapshotPath": { "const": "state" },
+        "eventsPath": { "const": "events" },
+        "runtimeParameters": {
+          "type": "object", "additionalProperties": false, "required": ["programId", "apiBaseUrl"],
+          "properties": {
+            "programId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+            "apiBaseUrl": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" }
+          }
+        },
+        "signals": {
+          "type": "array", "uniqueItems": true, "maxItems": 64,
+          "contains": { "const": "program_state_snapshot" },
+          "items": { "enum": [
+            "audio_bus_update", "broadcast_settings_update", "heartbeat", "instant_play", "instant_stop_all",
+            "program_media_groups_changed", "program_reload", "program_scenes_changed", "program_state_snapshot",
+            "program_stingers_changed", "scene_change", "scene_cleared", "scene_instant_state", "scene_instant_stop",
+            "scene_instant_take", "scene_staged", "scene_update", "song_off_air",
+            "chyron_update", "fade_to_black", "song_playback_active", "song_playback_update", "song_queue_update",
+            "audio_levels", "audience_interaction_draw_start", "audience_interaction_draw_end"
+          ] }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["key", "bytes", "contentType", "sha256"],
+        "properties": {
+          "key": { "type": "string" }, "bytes": { "type": "integer", "minimum": 0 },
+          "contentType": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}
