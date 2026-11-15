@@ -23,6 +23,7 @@ import { ExternalSourcesModule } from './external-sources/external-sources.modul
 import { RecordingModule } from './recording/recording.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
 import { MediaAssetsModule } from './media-assets/media-assets.module';
+import { AsRunModule } from './as-run/as-run.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { MediaAssetsModule } from './media-assets/media-assets.module';
     RecordingModule,
     DatabaseBackupModule,
     MediaAssetsModule,
+    AsRunModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],
