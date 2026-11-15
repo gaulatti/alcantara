@@ -264,6 +264,10 @@ export function Slideshow({
         // An image that stops being active keeps the same animation until its fade-out ends. Dropping it at the
         // switch snapped the image back to its unscaled size while it was still visible.
         const motionSerial = isActive ? frame.serial : index === frame.leaving ? frame.leavingSerial : null;
+        // When images fill the frame, the outgoing one stays fully opaque underneath while the next fades in over it.
+        // Fading both at once let the black background show through halfway, a visible dip between photos.
+        // Images that do not fill the frame still cross-fade, or the old one would show around the new one.
+        const holdsUnderneath = imageFit === 'cover' && index === frame.leaving && !isActive;
         return (
           <img
             key={url}
@@ -279,7 +283,7 @@ export function Slideshow({
               width: '100%',
               height: '100%',
               objectFit: imageFit,
-              opacity: isActive ? 1 : 0,
+              opacity: isActive || holdsUnderneath ? 1 : 0,
               zIndex: isActive ? 2 : 1,
               transition: started ? `opacity ${fadeMs}ms ease-in-out` : 'none',
               willChange: 'opacity, transform',

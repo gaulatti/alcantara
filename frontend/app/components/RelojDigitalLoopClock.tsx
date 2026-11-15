@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
-import { activateScene } from '../services/program';
+import { completeSceneCountdown } from '../services/program';
 import { GiorgiaMark } from './giorgiaBroadcast';
 import './RelojDigitalLoopClock.css';
 
@@ -189,7 +189,11 @@ export default function RelojDigitalLoopClock({
       if (countdownRunning && remaining <= 0 && !countdownFiredRef.current) {
         countdownFiredRef.current = true;
         if (allowProgramActivation && programId && countdownTargetSceneId) {
-          activateScene(programId, countdownTargetSceneId, countdownTransitionId);
+          // The on-air page is not signed in, so it cannot take a scene itself. The API takes the target
+          // from the scene's own settings.
+          completeSceneCountdown(programId).catch((error) => {
+            console.error('The countdown reached zero but the scene did not switch:', error);
+          });
         }
         return;
       }
