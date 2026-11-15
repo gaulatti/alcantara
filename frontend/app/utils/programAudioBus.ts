@@ -42,6 +42,8 @@ interface ProgramAudioBusState {
   endedToken: string;
   isPlaying: boolean;
   transitionVersion: number;
+  /** Token of the track a fade is currently switching to, or '' when no switch is in flight. */
+  transitionTargetToken: string;
   listeners: Set<Listener>;
   meterContext: AudioContext | null;
   meterSource: AudioNode | null;
@@ -75,6 +77,7 @@ function createProgramAudioBusState(): ProgramAudioBusState {
     endedToken: '',
     isPlaying: false,
     transitionVersion: 0,
+    transitionTargetToken: '',
     listeners: new Set<Listener>(),
     meterContext: null,
     meterSource: null,
@@ -545,6 +548,7 @@ function replaceTrack(state: ProgramAudioBusState, track: ProgramAudioBusTrack):
 async function transitionToTrackWithFade(state: ProgramAudioBusState, track: ProgramAudioBusTrack): Promise<void> {
   state.transitionVersion += 1;
   const version = state.transitionVersion;
+  state.transitionTargetToken = track.token;
   const outgoingAudio = state.activeAudio;
 
   if (outgoingAudio && !outgoingAudio.ended) {
@@ -565,6 +569,7 @@ async function transitionToTrackWithFade(state: ProgramAudioBusState, track: Pro
   }
 
   state.activeTrack = track;
+  state.transitionTargetToken = '';
   state.progress = 0;
   state.endedToken = '';
   state.isPlaying = false;
@@ -636,6 +641,13 @@ export function ensureProgramAudioBusTrack(programId: string, track: ProgramAudi
     return;
   }
 
+  // A switch to this track is already fading the current one out. Callers ask again on every state
+  // update; restarting the fade each time cancelled the switch before it could finish, so the new song
+  // never started unless the current one was stopped first.
+  if (state.transitionTargetToken === normalizedTrack.token) {
+    return;
+  }
+
   const hasRunningTrack = state.activeTrack && state.activeAudio && !state.activeAudio.ended && !state.activeAudio.paused;
   if (hasRunningTrack) {
     void transitionToTrackWithFade(state, normalizedTrack);
@@ -643,6 +655,7 @@ export function ensureProgramAudioBusTrack(programId: string, track: ProgramAudi
   }
 
   state.transitionVersion += 1;
+  state.transitionTargetToken = '';
   replaceTrack(state, normalizedTrack);
 }
 
@@ -653,6 +666,7 @@ export function stopProgramAudioBus(programId: string): void {
   }
 
   state.transitionVersion += 1;
+  state.transitionTargetToken = '';
 
   if (state.activeAudio) {
     releaseAudioMeter(state);
