@@ -629,3 +629,19 @@ model MediaAssetAnalysis {
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
 }
+
+/// As-run record of track playback events on a radio program.
+/// Records reference songs and assets by scalar id with no foreign key relation,
+/// so deleting a song or asset preserves historical playback audit trails.
+model AsRunRecord {
+  id        Int      @id @default(autoincrement())
+  programId String
+  songId    Int?
+  assetId   String?
+  state     String
+  at        DateTime
+  createdAt DateTime @default(now())
+
+  @@index([programId, at])
+}
+
