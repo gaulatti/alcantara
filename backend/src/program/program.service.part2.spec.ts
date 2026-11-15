@@ -516,7 +516,10 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         });
         const args = prisma.programState.update.mock.calls[0][0];
         expect('songQueue' in args.data).toBe(false);
-        expect(args.data.songSequence).toEqual(sequence(1));
+        // The song sequence read earlier is not written back: here the song
+        // ended in between, and the result reports what the database holds.
+        expect('songSequence' in args.data).toBe(false);
+        expect(result.songSequence).toBeNull();
         expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
         expect(result.mixerSettings.songMasterVolume).toBe(0.5);
         expect(radio.updateMixer).toHaveBeenCalledTimes(forwards ? 1 : 0);
