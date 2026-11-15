@@ -14,9 +14,12 @@ model Layout {
   name          String   @unique
   componentType String
   settings      String // JSON stringified
+  teamId        Int?
   scenes        Scene[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([teamId])
 }
 
 model Scene {
@@ -26,6 +29,7 @@ model Scene {
   layout        Layout         @relation(fields: [layoutId], references: [id])
   chyronText    String?
   metadata      String? // JSON stringified
+  teamId        Int?
   programStates ProgramState[]
   programScenes ProgramScene[]
   createdAt     DateTime       @default(now())
@@ -33,6 +37,7 @@ model Scene {
   externalSourceId String?
   externalSource ExternalSource? @relation(fields: [externalSourceId], references: [id], onDelete: SetNull)
 
+  @@index([teamId])
   @@index([externalSourceId])
 }
 
@@ -79,6 +84,7 @@ model ProgramState {
 
 model BroadcastDestination {
   id              String   @id
+  teamId          Int?
   displayName     String
   secretId        String
   secretVersionId String
@@ -87,6 +93,7 @@ model BroadcastDestination {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  @@index([teamId])
   @@index([retiredAt, position])
 }
 
@@ -263,6 +270,7 @@ model ProgramScene {
 
 model BroadcastSettings {
   id                    Int       @id
+  teamId                Int?
   timeOverrideEnabled   Boolean   @default(false)
   timeOverrideStartTime String?
   timeOverrideStartedAt DateTime?
@@ -278,6 +286,8 @@ model BroadcastSettings {
   instantSolo           Boolean   @default(false)
   streamSolo            Boolean   @default(false)
   updatedAt             DateTime  @updatedAt
+
+  @@index([teamId])
 }
 
 enum MediaAssetKind {
@@ -295,6 +305,7 @@ enum MediaAssetType {
 
 model MediaAsset {
   id              String                     @id
+  teamId          Int?
   kind            MediaAssetKind?
   mediaType       MediaAssetType?
   name            String
@@ -311,6 +322,7 @@ model MediaAsset {
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
 
+  @@index([teamId])
   @@index([kind, updatedAt])
   @@index([mediaType, updatedAt])
 }
@@ -326,10 +338,13 @@ model BackgroundAudioCapability {
 model MediaLabel {
   id          String            @id @default(uuid())
   name        String            @unique
+  teamId      Int?
   description String?
   assets      MediaAssetLabel[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  @@index([teamId])
 }
 
 model MediaAssetLabel {
@@ -350,6 +365,7 @@ model Instant {
   assetId   String?  @unique
   asset     MediaAsset? @relation("AudioClipMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name      String
+  teamId    Int?
   audioUrl  String
   volume    Float    @default(1)
   enabled   Boolean  @default(true)
@@ -357,6 +373,8 @@ model Instant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   songIntro SongIntro?
+
+  @@index([teamId])
 }
 
 model Song {
@@ -367,6 +385,7 @@ model Song {
   coverAsset   MediaAsset? @relation("SongCoverMediaAsset", fields: [coverAssetId], references: [id], onDelete: SetNull)
   artist       String
   title        String
+  teamId       Int?
   audioUrl     String
   coverUrl     String?
   durationMs   Int?
@@ -380,6 +399,7 @@ model Song {
   embeddings   SongEmbedding[]
   chartIdentity SongChartIdentity?
 
+  @@index([teamId])
   @@index([coverAssetId])
 }
 
@@ -451,20 +471,26 @@ model Media {
   assetId    String?          @unique
   asset      MediaAsset?      @relation("ImageMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name       String
+  teamId     Int?
   imageUrl   String
   groupItems MediaGroupItem[]
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+
+  @@index([teamId])
 }
 
 model MediaGroup {
   id                 Int                 @id @default(autoincrement())
   name               String              @unique
+  teamId             Int?
   description        String?
   mediaItems         MediaGroupItem[]
   programMediaGroups ProgramMediaGroup[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+
+  @@index([teamId])
 }
 
 model MediaGroupItem {
@@ -496,12 +522,15 @@ model Stinger {
   assetId         String?          @unique
   asset           MediaAsset?      @relation("TransitionMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name            String
+  teamId          Int?
   videoUrl        String
   cutPointMs      Int              @default(1000)
   enabled         Boolean          @default(true)
   programStingers ProgramStinger[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+
+  @@index([teamId])
 }
 
 model ProgramStinger {
