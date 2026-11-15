@@ -9,7 +9,13 @@ import { LogIn } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { signInWithRedirect } from 'aws-amplify/auth';
+import { useDispatch } from 'react-redux';
+import type { Dispatch } from 'redux';
 import { useAuthStatus } from '../hooks/useAuth';
+import { clearAppSession } from '../services/session';
+import { checkAppSession } from '../services/sessionCheck';
+import { login } from '../state/dispatchers/auth';
+import type { ReduxAction } from '../state/dispatchers/base';
 
 export type LoginFixtureState =
   | 'authenticated'
@@ -27,6 +33,7 @@ const fixtureStates = new Set<LoginFixtureState>([
 ]);
 
 const loginError = 'Sign-in could not begin. Please retry or contact your administrator.';
+const unavailableError = 'Alcántara is not reachable right now. Wait a moment and try again.';
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -38,6 +45,7 @@ export default function Login() {
       ? (requestedFixture as LoginFixtureState)
       : undefined;
   const auth = useAuthStatus();
+  const dispatch = useDispatch<Dispatch<ReduxAction>>();
   const isAuthenticated = fixtureState === 'authenticated' || auth.isAuthenticated;
   const isLoaded = fixtureState ? fixtureState !== 'loading' : auth.isLoaded;
   const [isSigningIn, setIsSigningIn] = useState(fixtureState === 'submitting');
@@ -53,7 +61,30 @@ export default function Login() {
     setErrorMessage(null);
     try {
       await signInWithRedirect({ provider: 'Google' });
-    } catch {
+    } catch (error) {
+      // The provider refuses a new sign-in while it still holds one. That happens when the app dropped
+      // its session without the provider doing so, and it used to leave no way in short of clearing the
+      // browser's storage. Use the session that is already there, or drop it if the API rejects it.
+      if ((error as { name?: string } | null)?.name === 'UserAlreadyAuthenticatedException') {
+        const result = await checkAppSession(true);
+        if (result.status === 'signed-in') {
+          dispatch(login(result.user));
+          return;
+        }
+        if (result.status === 'unauthorized') {
+          try {
+            // Clears the provider session; with hosted sign-in this leaves the page and returns to /logout.
+            await clearAppSession();
+            return;
+          } catch {
+            // Fall through to the generic message.
+          }
+        }
+        signInPending.current = false;
+        setIsSigningIn(false);
+        setErrorMessage(result.status === 'unavailable' ? unavailableError : loginError);
+        return;
+      }
       signInPending.current = false;
       setIsSigningIn(false);
       setErrorMessage(loginError);
