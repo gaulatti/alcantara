@@ -88,4 +88,11 @@ describe('Slideshow broadcast loading', () => {
     act(() => vi.advanceTimersByTime(1000));
     expect(second.style.animation).toContain('slideshowKenBurns1');
   });
+
+  it('keeps its images in their own layer so components placed over it stay on top', () => {
+    const { container } = render(<Slideshow images={['/a.avif']} kenBurns={false} />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.style.isolation).toBe('isolate');
+    expect(root.style.zIndex).toBe('');
+  });
 });

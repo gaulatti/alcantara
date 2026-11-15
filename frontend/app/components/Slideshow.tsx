@@ -242,7 +242,10 @@ export function Slideshow({
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: '#000'
+        backgroundColor: '#000',
+        // Keep the images' own stacking order inside the slideshow. Without this their z-index competed with
+        // the components layered over the slideshow and hid any that set none, such as the countdown clock.
+        isolation: 'isolate'
       }}
     >
       <style>{`
