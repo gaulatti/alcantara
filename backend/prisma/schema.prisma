@@ -266,6 +266,7 @@ model MediaAsset {
   song            Song?                      @relation("SongMediaAsset")
   songCovers      Song[]                     @relation("SongCoverMediaAsset")
   transition      Stinger?                   @relation("TransitionMediaAsset")
+  analysis        MediaAssetAnalysis?
   labels          MediaAssetLabel[]
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
@@ -475,6 +476,7 @@ model RadioSettings {
   fillerSongIds    Int[]        @default([])
   fillerVersion    String?
   enabled          Boolean      @default(false)
+  segueMode        String       @default("off")
   similarityMode          String @default("off")
   similarityThreshold     Float  @default(0.8)
   similarityWindowSeconds Int    @default(30)
@@ -584,6 +586,8 @@ model GuestCommand {
   @@index([invitationId, createdAt])
 }
 
+
+
 model GuestEvent {
   id           String          @id @default(uuid())
   invitationId String
@@ -593,4 +597,22 @@ model GuestEvent {
   createdAt    DateTime        @default(now())
 
   @@index([invitationId, createdAt])
+}
+
+model MediaAssetAnalysis {
+  assetId                String     @id
+  asset                  MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  status                 String     @default("pending")
+  cueInSeconds           Float?
+  cueOutSeconds          Float?
+  fadeInSeconds          Float?
+  fadeOutSeconds         Float?
+  overlapSeconds         Float?
+  integratedLufs         Float?
+  truePeakDbtp           Float?
+  isrc                   String?
+  musicbrainzRecordingId String?
+  error                  String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 }
