@@ -1,11 +1,14 @@
 import {
+  Inject,
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { PrismaService } from '../prisma.service';
 
 export interface ChartEntry {
   normalizedKey: string;
@@ -110,7 +113,10 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     entries: [],
   };
 
-  constructor(@Optional() private readonly metrics?: ManagedMetricsService) {}
+  constructor(
+    @Optional() private readonly metrics?: ManagedMetricsService,
+    @Optional() private readonly prisma?: PrismaService,
+  ) {}
 
   onModuleInit() {
     void this.refreshCache();
@@ -125,12 +131,38 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async getSanremoRealtime() {
+  async getSanremoRealtime(programId?: string) {
+    if (await this.isGenericBrandFieldsEnabled(programId)) {
+      throw new NotFoundException('Sanremo realtime chart proxy is retired');
+    }
+
     if (this.cache.entries.length === 0) {
       await this.refreshCache();
     }
 
     return this.cache;
+  }
+
+  private async isGenericBrandFieldsEnabled(
+    programId?: string,
+  ): Promise<boolean> {
+    if (!this.prisma?.programState) {
+      return false;
+    }
+    if (programId && typeof programId === 'string' && programId.trim()) {
+      const state = await this.prisma.programState.findUnique({
+        where: { programId: programId.trim() },
+        select: { genericBrandFields: true },
+      });
+      if (state) {
+        return Boolean(state.genericBrandFields);
+      }
+    }
+    const enabledState = await this.prisma.programState.findFirst({
+      where: { genericBrandFields: true },
+      select: { id: true },
+    });
+    return Boolean(enabledState);
   }
 
   private async refreshCache() {

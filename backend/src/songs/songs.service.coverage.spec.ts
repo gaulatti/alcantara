@@ -493,3 +493,314 @@ describe('SongsService.remove', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('SongsService generic chart fields and identity', () => {
+  it('formats genericChartFields in findAll and findOne when genericBrandFields is on', async () => {
+    const { service, prisma } = build();
+    prisma.programState = {
+      findUnique: jest.fn().mockResolvedValue({ genericBrandFields: true }),
+    };
+    prisma.song.findMany.mockResolvedValue([
+      {
+        ...base,
+        earoneSongId: '101',
+        earoneRank: '3',
+        earoneSpins: '45',
+        intro: null,
+      },
+    ]);
+    prisma.song.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    prisma.song.aggregate.mockResolvedValue({
+      _sum: { durationMs: 120000 },
+      _count: { durationMs: 1 },
+    });
+
+    const listResult = await service.findAll({
+      page: 1,
+      limit: 10,
+      programId: 'custom',
+    });
+    expect(listResult.data[0]).toMatchObject({
+      earoneSongId: '101',
+      earoneRank: '3',
+      earoneSpins: '45',
+      externalChartId: '101',
+      externalChartSongId: '101',
+      externalChartRank: '3',
+      externalChartSpins: '45',
+    });
+
+    prisma.song.findUnique.mockResolvedValue({
+      ...base,
+      earoneSongId: '101',
+      earoneRank: '3',
+      earoneSpins: '45',
+      intro: null,
+    });
+    const itemResult = await service.findOne(7, 'custom');
+    expect(itemResult).toMatchObject({
+      earoneSongId: '101',
+      earoneRank: '3',
+      earoneSpins: '45',
+      externalChartId: '101',
+      externalChartSongId: '101',
+      externalChartRank: '3',
+      externalChartSpins: '45',
+    });
+  });
+
+  it('creates song with externalChart fields and upserts SongChartIdentity', async () => {
+    const { service, prisma, tx } = build();
+    prisma.programState = {
+      findUnique: jest.fn().mockResolvedValue({ genericBrandFields: true }),
+    };
+    (tx as any).songChartIdentity = { upsert: jest.fn() };
+    tx.song.create.mockResolvedValue({
+      ...base,
+      id: 99,
+      earoneSongId: '202',
+      earoneRank: '1',
+      earoneSpins: '90',
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValue({
+      ...base,
+      id: 99,
+      earoneSongId: '202',
+      earoneRank: '1',
+      earoneSpins: '90',
+      intro: null,
+    });
+
+    const result = await service.create({
+      artist: 'Artist',
+      title: 'Track',
+      audioUrl: 'https://test/audio.mp3',
+      externalChartId: '202',
+      externalChartRank: '1',
+      externalChartSpins: '90',
+      externalChartProvider: 'billboard',
+      programId: 'main',
+    });
+
+    expect(tx.song.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          earoneSongId: '202',
+          earoneRank: '1',
+          earoneSpins: '90',
+        }),
+      }),
+    );
+    expect((tx as any).songChartIdentity.upsert).toHaveBeenCalledWith({
+      where: { songId: 99 },
+      create: {
+        songId: 99,
+        provider: 'billboard',
+        externalId: '202',
+        rank: '1',
+        spins: '90',
+      },
+      update: {
+        provider: 'billboard',
+        externalId: '202',
+        rank: '1',
+        spins: '90',
+      },
+    });
+    expect(result).toMatchObject({
+      externalChartId: '202',
+      externalChartSongId: '202',
+      externalChartRank: '1',
+      externalChartSpins: '90',
+      earoneSongId: '202',
+    });
+  });
+
+  it('updates song with externalChartSongId and default provider', async () => {
+    const { service, prisma, tx } = build();
+    prisma.programState = {
+      findUnique: jest.fn().mockResolvedValue({ genericBrandFields: true }),
+    };
+    prisma.song.findUnique.mockResolvedValue(base);
+    (tx as any).songChartIdentity = { upsert: jest.fn() };
+    tx.song.update.mockResolvedValue({
+      ...base,
+      earoneSongId: '303',
+      earoneRank: '5',
+      earoneSpins: '12',
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValue({
+      ...base,
+      earoneSongId: '303',
+      earoneRank: '5',
+      earoneSpins: '12',
+      intro: null,
+    });
+
+    const result = await service.update(7, {
+      externalChartSongId: '303',
+      externalChartRank: '5',
+      externalChartSpins: '12',
+      programId: 'main',
+    });
+
+    expect(tx.song.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          earoneSongId: '303',
+          earoneRank: '5',
+          earoneSpins: '12',
+        }),
+      }),
+    );
+    expect((tx as any).songChartIdentity.upsert).toHaveBeenCalledWith({
+      where: { songId: 7 },
+      create: {
+        songId: 7,
+        provider: 'earone',
+        externalId: '303',
+        rank: '5',
+        spins: '12',
+      },
+      update: {
+        provider: 'earone',
+        externalId: '303',
+        rank: '5',
+        spins: '12',
+      },
+    });
+    expect(result).toMatchObject({
+      externalChartId: '303',
+      externalChartSongId: '303',
+      externalChartRank: '5',
+      externalChartSpins: '12',
+    });
+
+    // Test update with externalChartId and externalChartProvider
+    await service.update(7, {
+      externalChartId: '404',
+      externalChartProvider: 'custom-provider',
+      programId: 'main',
+    });
+    expect((tx as any).songChartIdentity.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ provider: 'custom-provider' }),
+      }),
+    );
+
+    // Test update with only rank
+    tx.song.update.mockResolvedValueOnce({
+      ...base,
+      earoneSongId: null,
+      earoneRank: '2',
+      earoneSpins: null,
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+      ...base,
+      earoneSongId: null,
+      earoneRank: '2',
+      earoneSpins: null,
+      intro: null,
+    });
+    await service.update(7, {
+      externalChartRank: '2',
+      programId: 'main',
+    });
+
+    // Test update with only spins
+    tx.song.update.mockResolvedValueOnce({
+      ...base,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: '50',
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+      ...base,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: '50',
+      intro: null,
+    });
+    await service.update(7, {
+      externalChartSpins: '50',
+      programId: 'main',
+    });
+
+    // Test create with only rank
+    tx.song.create.mockResolvedValueOnce({
+      ...base,
+      id: 104,
+      earoneSongId: null,
+      earoneRank: '1',
+      earoneSpins: null,
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+      ...base,
+      id: 104,
+      earoneSongId: null,
+      earoneRank: '1',
+      earoneSpins: null,
+      intro: null,
+    });
+    await service.create({
+      artist: 'RankOnly',
+      title: 'Track',
+      audioUrl: 'https://test/rankonly.mp3',
+      externalChartRank: '1',
+      programId: 'main',
+    });
+
+    // Test create with only spins
+    tx.song.create.mockResolvedValueOnce({
+      ...base,
+      id: 106,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: '25',
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+      ...base,
+      id: 106,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: '25',
+      intro: null,
+    });
+    await service.create({
+      artist: 'SpinsOnly',
+      title: 'Track',
+      audioUrl: 'https://test/spinsonly.mp3',
+      externalChartSpins: '25',
+      programId: 'main',
+    });
+
+    // Test create with no chart fields at all
+    tx.song.create.mockResolvedValueOnce({
+      ...base,
+      id: 105,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+    });
+    tx.song.findUniqueOrThrow.mockResolvedValueOnce({
+      ...base,
+      id: 105,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+      intro: null,
+    });
+    (tx as any).songChartIdentity.upsert.mockClear();
+    const createdNoChart = await service.create({
+      artist: 'NoChart',
+      title: 'Track',
+      audioUrl: 'https://test/nochart.mp3',
+      programId: 'main',
+    });
+    expect((tx as any).songChartIdentity.upsert).not.toHaveBeenCalled();
+    expect(createdNoChart.externalChartId).toBeNull();
+  });
+});

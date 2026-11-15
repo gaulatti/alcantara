@@ -105,11 +105,12 @@ export class ScenesService {
   }
 
   async drawModoItalianoBracket(id: number, data: { componentType?: string; seed?: number }) {
-    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
     const scene = await this.findOne(id);
     if (!scene) {
       throw new BadRequestException('Scene not found');
     }
+    const isGeneric = await this.isGenericBrandFieldsActive(id, scene);
+    const componentType = this.resolveBracketComponentType(data.componentType, isGeneric, scene);
 
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
@@ -148,22 +149,33 @@ export class ScenesService {
         durationSeconds,
         songIds: shuffledSongIds,
       });
+      if (isGeneric) {
+        this.programService.broadcastUpdate(programId, {
+          type: 'audience_interaction_draw_start',
+          sceneId: id,
+          componentType,
+          drawId: now,
+          durationSeconds,
+          songIds: shuffledSongIds,
+        });
+      }
     }
 
     const timer = setTimeout(() => {
-      void this.completeModoItalianoBracketDraw(id, componentType, now, shuffledSongIds[0]);
+      void this.completeModoItalianoBracketDraw(id, componentType, now, shuffledSongIds[0], isGeneric);
     }, durationSeconds * 1000);
     this.modoItalianoBracketDraws.set(id, { timer, drawId: now });
     return { drawId: now, durationSeconds, sceneId: id };
   }
 
   async voteModoItalianoBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }) {
-    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
     const matchId = Number(data.matchId);
     const voterId = typeof data.voterId === 'string' ? data.voterId.trim() : '';
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId) throw new BadRequestException('Invalid vote');
     const scene = await this.findOne(id);
     if (!scene) throw new BadRequestException('Scene not found');
+    const isGeneric = await this.isGenericBrandFieldsActive(id, scene);
+    const componentType = this.resolveBracketComponentType(data.componentType, isGeneric, scene);
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
     const voters = Array.isArray(bracket.voters) ? bracket.voters.filter((voter): voter is { id: string; name: string } => Boolean(voter && typeof voter === 'object' && typeof (voter as any).id === 'string' && typeof (voter as any).name === 'string')) : [];
@@ -193,11 +205,12 @@ export class ScenesService {
   }
 
   async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }) {
-    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
     const matchId = Number(data.matchId);
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');
     const scene = await this.findOne(id);
     if (!scene) throw new BadRequestException('Scene not found');
+    const isGeneric = await this.isGenericBrandFieldsActive(id, scene);
+    const componentType = this.resolveBracketComponentType(data.componentType, isGeneric, scene);
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
     const match = this.normalizeBracketMatches(bracket.matches)[matchId - 1];
@@ -213,12 +226,22 @@ export class ScenesService {
     });
   }
 
-  private async completeModoItalianoBracketDraw(sceneId: number, componentType: string, drawId: number, selectedSongId: number) {
+  private async completeModoItalianoBracketDraw(
+    sceneId: number,
+    componentType: string,
+    drawId: number,
+    selectedSongId: number,
+    isGenericOverride?: boolean,
+  ) {
     const activeDraw = this.modoItalianoBracketDraws.get(sceneId);
     if (!activeDraw || activeDraw.drawId !== drawId) return;
     this.modoItalianoBracketDraws.delete(sceneId);
     const scene = await this.findOne(sceneId);
     if (!scene) return;
+    const isGeneric =
+      isGenericOverride !== undefined
+        ? isGenericOverride
+        : await this.isGenericBrandFieldsActive(sceneId, scene);
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
     const matches = this.normalizeBracketMatches(bracket.matches);
@@ -234,7 +257,74 @@ export class ScenesService {
     const programIds = await this.programService.getProgramIdsByAssignedScene(sceneId);
     for (const programId of programIds) {
       this.programService.broadcastUpdate(programId, { type: 'modoitaliano_bracket_draw_end', sceneId, componentType, drawId });
+      if (isGeneric) {
+        this.programService.broadcastUpdate(programId, {
+          type: 'audience_interaction_draw_end',
+          sceneId,
+          componentType,
+          drawId,
+        });
+      }
     }
+  }
+
+  private resolveBracketComponentType(
+    requestedType: string | undefined,
+    isGeneric: boolean,
+    scene?: { layout?: { componentType?: string } } | null,
+  ): string {
+    if (!isGeneric) {
+      return requestedType === 'modoitaliano-bracket'
+        ? requestedType
+        : 'modoitaliano-bracket';
+    }
+    const type =
+      requestedType ??
+      (this.isAudienceInteractionComponent(scene?.layout?.componentType)
+        ? scene!.layout!.componentType
+        : 'modoitaliano-bracket');
+    if (!this.isAudienceInteractionComponent(type)) {
+      throw new BadRequestException(
+        'Component type does not support audience interaction',
+      );
+    }
+    return type;
+  }
+
+  private isAudienceInteractionComponent(
+    type?: string | null,
+  ): type is string {
+    if (typeof type !== 'string' || !type.trim()) return false;
+    const normalized = type.trim().toLowerCase();
+    return (
+      normalized.includes('bracket') ||
+      normalized.includes('audience.interaction')
+    );
+  }
+
+  private async isGenericBrandFieldsActive(
+    sceneId: number,
+    scene?: { layout?: { componentType?: string } } | null,
+  ): Promise<boolean> {
+    if (!this.prisma.programState?.findMany) {
+      return false;
+    }
+    const programIds =
+      await this.programService.getProgramIdsByAssignedScene(sceneId);
+    if (programIds.length > 0) {
+      const states = await this.prisma.programState.findMany({
+        where: { programId: { in: programIds } },
+        select: { genericBrandFields: true },
+      });
+      if (states.some((s) => Boolean(s.genericBrandFields))) {
+        return true;
+      }
+    }
+    const activeStates = await this.prisma.programState.findMany({
+      where: { activeSceneId: sceneId },
+      select: { genericBrandFields: true },
+    });
+    return activeStates.some((s) => Boolean(s.genericBrandFields));
   }
 
   private cancelModoItalianoBracketDraw(sceneId: number) {

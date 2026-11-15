@@ -10,6 +10,9 @@ describe('ChartsController', () => {
     const controller = new ChartsController(service as never);
     await expect(controller.getSanremoRealtime()).resolves.toBe(snapshot);
     expect(service.getSanremoRealtime).toHaveBeenCalledTimes(1);
+
+    await expect(controller.getSanremoRealtime('custom')).resolves.toBe(snapshot);
+    expect(service.getSanremoRealtime).toHaveBeenCalledWith('custom');
   });
 
   it('is marked public', () => {

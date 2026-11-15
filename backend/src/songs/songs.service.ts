@@ -20,6 +20,11 @@ interface SongInput {
   earoneSongId?: string | number | null;
   earoneRank?: string | number | null;
   earoneSpins?: string | number | null;
+  externalChartId?: string | number | null;
+  externalChartSongId?: string | number | null;
+  externalChartRank?: string | number | null;
+  externalChartSpins?: string | number | null;
+  externalChartProvider?: string | null;
   enabled?: boolean;
   programId?: string;
   introInstantId?: number | null;
@@ -102,8 +107,15 @@ export class SongsService {
         }),
       ]);
 
+    const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
+    const formattedData = isGeneric
+      ? data.map((song) =>
+          this.withGenericChartFields(this.scopeIntro(song, programId)),
+        )
+      : data.map((song) => this.scopeIntro(song, programId));
+
     return {
-      data: data.map((song) => this.scopeIntro(song, programId)),
+      data: formattedData,
       meta: {
         total,
         page,
@@ -126,7 +138,9 @@ export class SongsService {
     if (!song) {
       throw new NotFoundException('Song not found');
     }
-    return this.scopeIntro(song, programId);
+    const scoped = this.scopeIntro(song, programId);
+    const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
+    return isGeneric ? this.withGenericChartFields(scoped) : scoped;
   }
 
   async create(data: SongInput) {
@@ -138,6 +152,16 @@ export class SongsService {
       throw new BadRequestException('artist or title is required');
     }
 
+    const earoneSongId = this.toOptionalStringValue(
+      data.earoneSongId ?? data.externalChartId ?? data.externalChartSongId,
+    );
+    const earoneRank = this.toOptionalStringValue(
+      data.earoneRank ?? data.externalChartRank,
+    );
+    const earoneSpins = this.toOptionalStringValue(
+      data.earoneSpins ?? data.externalChartSpins,
+    );
+
     try {
       return await this.prisma.$transaction(async (tx) => {
         const song = await tx.song.create({
@@ -147,13 +171,37 @@ export class SongsService {
             audioUrl,
             coverUrl: this.toOptionalTrimmedString(data.coverUrl),
             durationMs: this.toDurationMs(data.durationMs),
-            earoneSongId: this.toOptionalStringValue(data.earoneSongId),
-            earoneRank: this.toOptionalStringValue(data.earoneRank),
-            earoneSpins: this.toOptionalStringValue(data.earoneSpins),
+            earoneSongId,
+            earoneRank,
+            earoneSpins,
             enabled: data.enabled === undefined ? true : Boolean(data.enabled),
           },
         });
         await syncSongAsset(tx, song);
+        if (
+          tx.songChartIdentity &&
+          (earoneSongId !== null ||
+            earoneRank !== null ||
+            earoneSpins !== null)
+        ) {
+          const provider = this.resolveChartProvider(data.externalChartProvider);
+          await tx.songChartIdentity.upsert({
+            where: { songId: song.id },
+            create: {
+              songId: song.id,
+              provider,
+              externalId: earoneSongId,
+              rank: earoneRank,
+              spins: earoneSpins,
+            },
+            update: {
+              provider,
+              externalId: earoneSongId,
+              rank: earoneRank,
+              spins: earoneSpins,
+            },
+          });
+        }
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, song.id, data.programId, data.introInstantId);
         }
@@ -161,7 +209,10 @@ export class SongsService {
           where: { id: song.id },
           include: { intro: { include: { instant: true } } },
         });
-        return this.scopeIntro(saved, this.normalizeProgramId(data.programId));
+        const programId = this.normalizeProgramId(data.programId);
+        const scoped = this.scopeIntro(saved, programId);
+        const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
+        return isGeneric ? this.withGenericChartFields(scoped) : scoped;
       });
     } catch (error) {
       this.rethrowIntroConflict(error);
@@ -206,16 +257,26 @@ export class SongsService {
       updateData.durationMs = this.toDurationMs(data.durationMs);
     }
 
-    if (data.earoneSongId !== undefined) {
-      updateData.earoneSongId = this.toOptionalStringValue(data.earoneSongId);
+    if (
+      data.earoneSongId !== undefined ||
+      data.externalChartId !== undefined ||
+      data.externalChartSongId !== undefined
+    ) {
+      updateData.earoneSongId = this.toOptionalStringValue(
+        data.earoneSongId ?? data.externalChartId ?? data.externalChartSongId,
+      );
     }
 
-    if (data.earoneRank !== undefined) {
-      updateData.earoneRank = this.toOptionalStringValue(data.earoneRank);
+    if (data.earoneRank !== undefined || data.externalChartRank !== undefined) {
+      updateData.earoneRank = this.toOptionalStringValue(
+        data.earoneRank ?? data.externalChartRank,
+      );
     }
 
-    if (data.earoneSpins !== undefined) {
-      updateData.earoneSpins = this.toOptionalStringValue(data.earoneSpins);
+    if (data.earoneSpins !== undefined || data.externalChartSpins !== undefined) {
+      updateData.earoneSpins = this.toOptionalStringValue(
+        data.earoneSpins ?? data.externalChartSpins,
+      );
     }
 
     if (data.enabled !== undefined) {
@@ -226,6 +287,30 @@ export class SongsService {
       return await this.prisma.$transaction(async (tx) => {
         const song = await tx.song.update({ where: { id }, data: updateData });
         await syncSongAsset(tx, song);
+        if (
+          tx.songChartIdentity &&
+          (song.earoneSongId !== null ||
+            song.earoneRank !== null ||
+            song.earoneSpins !== null)
+        ) {
+          const provider = this.resolveChartProvider(data.externalChartProvider);
+          await tx.songChartIdentity.upsert({
+            where: { songId: song.id },
+            create: {
+              songId: song.id,
+              provider,
+              externalId: song.earoneSongId,
+              rank: song.earoneRank,
+              spins: song.earoneSpins,
+            },
+            update: {
+              provider,
+              externalId: song.earoneSongId,
+              rank: song.earoneRank,
+              spins: song.earoneSpins,
+            },
+          });
+        }
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, id, data.programId, data.introInstantId);
         }
@@ -233,7 +318,10 @@ export class SongsService {
           where: { id },
           include: { intro: { include: { instant: true } } },
         });
-        return this.scopeIntro(saved, this.normalizeProgramId(data.programId));
+        const programId = this.normalizeProgramId(data.programId);
+        const scoped = this.scopeIntro(saved, programId);
+        const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
+        return isGeneric ? this.withGenericChartFields(scoped) : scoped;
       });
     } catch (error) {
       this.rethrowIntroConflict(error);
@@ -388,5 +476,48 @@ export class SongsService {
     }
 
     return Math.max(1, Math.round(numeric));
+  }
+
+  private resolveChartProvider(provider?: string | null): string {
+    if (typeof provider === 'string' && provider.trim()) {
+      return provider.trim();
+    }
+    return 'earone';
+  }
+
+  private async isGenericBrandFieldsEnabled(
+    programId: string,
+  ): Promise<boolean> {
+    if (!this.prisma.programState?.findUnique) {
+      return false;
+    }
+    const program = await this.prisma.programState.findUnique({
+      where: { programId },
+      select: { genericBrandFields: true },
+    });
+    return Boolean(program?.genericBrandFields);
+  }
+
+  private withGenericChartFields<
+    T extends {
+      earoneSongId: string | null;
+      earoneRank: string | null;
+      earoneSpins: string | null;
+    },
+  >(
+    song: T,
+  ): T & {
+    externalChartId: string | null;
+    externalChartSongId: string | null;
+    externalChartRank: string | null;
+    externalChartSpins: string | null;
+  } {
+    return {
+      ...song,
+      externalChartId: song.earoneSongId,
+      externalChartSongId: song.earoneSongId,
+      externalChartRank: song.earoneRank,
+      externalChartSpins: song.earoneSpins,
+    };
   }
 }

@@ -840,3 +840,188 @@ describe('ScenesService bracket normalization', () => {
     expect(lastMetadata(prisma)[TYPE].activeVotingMatchId).toBe(5);
   });
 });
+
+describe('ScenesService generic audience interaction bracket draws and voting', () => {
+  const GENERIC_TYPE = 'harbor-light-bracket';
+
+  function quarter(extra: Record<string, unknown> = {}) {
+    return {
+      startRound: 'quarterfinals',
+      drawDurationSeconds: 1,
+      drawSeed: 10,
+      randomSongPoolIds: [10, 20, 30],
+      matches: [
+        match(9, null, null),
+        match(10, null, null),
+        match(11, null, null),
+        match(12, null, null),
+      ],
+      ...extra,
+    };
+  }
+
+  it('draws and completes for componentType harbor-light-bracket emitting both signals', async () => {
+    jest.useFakeTimers();
+    const { service, prisma, program } = build();
+    (prisma as any).programState = {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { programId?: unknown; activeSceneId?: unknown } }) => {
+        if (where.programId) return [{ genericBrandFields: true }];
+        return [];
+      }),
+    };
+    program.getProgramIdsByAssignedScene.mockResolvedValue(['main']);
+    prisma.scene.findUnique.mockResolvedValue({
+      id: 1,
+      layoutId: 2,
+      metadata: JSON.stringify({ [GENERIC_TYPE]: quarter() }),
+      layout: { componentType: GENERIC_TYPE },
+    });
+
+    const drawPromise = service.drawModoItalianoBracket(1, {
+      componentType: GENERIC_TYPE,
+      seed: 42,
+    });
+    const result = await drawPromise;
+    expect(result).toMatchObject({
+      sceneId: 1,
+      durationSeconds: 1,
+    });
+
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
+      type: 'modoitaliano_bracket_draw_start',
+      sceneId: 1,
+      componentType: GENERIC_TYPE,
+      drawId: result.drawId,
+      durationSeconds: 1,
+      songIds: expect.any(Array),
+    });
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
+      type: 'audience_interaction_draw_start',
+      sceneId: 1,
+      componentType: GENERIC_TYPE,
+      drawId: result.drawId,
+      durationSeconds: 1,
+      songIds: expect.any(Array),
+    });
+
+    await jest.advanceTimersByTimeAsync(1000);
+
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
+      type: 'modoitaliano_bracket_draw_end',
+      sceneId: 1,
+      componentType: GENERIC_TYPE,
+      drawId: result.drawId,
+    });
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', {
+      type: 'audience_interaction_draw_end',
+      sceneId: 1,
+      componentType: GENERIC_TYPE,
+      drawId: result.drawId,
+    });
+  });
+
+  it('rejects unsupported componentType when genericBrandFields is on', async () => {
+    const { service, prisma } = build();
+    (prisma as any).programState = {
+      findMany: jest.fn().mockResolvedValue([{ genericBrandFields: true }]),
+    };
+    prisma.scene.findUnique.mockResolvedValue({
+      id: 1,
+      layoutId: 2,
+      metadata: JSON.stringify({}),
+      layout: { componentType: 'unsupported-component' },
+    });
+
+    await expect(
+      service.drawModoItalianoBracket(1, { componentType: 'invalid-component' }),
+    ).rejects.toThrow('Component type does not support audience interaction');
+  });
+
+  it('falls back to layout componentType or default when not specified', async () => {
+    const { service, prisma, program } = build();
+    (prisma as any).programState = {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { activeSceneId?: unknown } }) => {
+        if (where.activeSceneId) return [{ genericBrandFields: true }];
+        return [];
+      }),
+    };
+    program.getProgramIdsByAssignedScene.mockResolvedValue([]);
+    prisma.scene.findUnique.mockResolvedValue({
+      id: 1,
+      layoutId: 2,
+      metadata: JSON.stringify({ [GENERIC_TYPE]: quarter() }),
+      layout: { componentType: GENERIC_TYPE },
+    });
+
+    const result = await service.drawModoItalianoBracket(1, {});
+    expect(result.sceneId).toBe(1);
+
+    prisma.scene.findUnique.mockResolvedValue({
+      id: 1,
+      layoutId: 2,
+      metadata: JSON.stringify({ [TYPE]: quarter() }),
+      layout: { componentType: 'unknown' },
+    });
+    const fallbackResult = await service.drawModoItalianoBracket(1, {});
+    expect(fallbackResult.sceneId).toBe(1);
+  });
+
+  it('votes and opens voting on harbor-light-bracket when genericBrandFields is on', async () => {
+    const { service, prisma, program } = build();
+    (prisma as any).programState = {
+      findMany: jest.fn().mockResolvedValue([{ genericBrandFields: true }]),
+    };
+    program.getProgramIdsByAssignedScene.mockResolvedValue(['p1']);
+    prisma.scene.findUnique.mockResolvedValue({
+      id: 1,
+      layoutId: 2,
+      metadata: JSON.stringify({
+        [GENERIC_TYPE]: {
+          voters: [{ id: 'v1', name: 'V1' }],
+          matches: [match(1, 10, 20)],
+        },
+      }),
+      layout: { componentType: GENERIC_TYPE },
+    });
+
+    await service.openModoItalianoBracketVoting(1, {
+      componentType: GENERIC_TYPE,
+      matchId: 1,
+    });
+    const openMetadata = lastMetadata(prisma)[GENERIC_TYPE];
+    expect(openMetadata.activeVotingMatchId).toBe(1);
+
+    await service.voteModoItalianoBracket(1, {
+      componentType: GENERIC_TYPE,
+      matchId: 1,
+      voterId: 'v1',
+      songId: 10,
+    });
+    const votedMetadata = lastMetadata(prisma)[GENERIC_TYPE];
+    expect(votedMetadata.matches[0].winnerId).toBe(10);
+    expect(votedMetadata.votingWinnerId).toBe(10);
+
+    // Test audience.interaction componentType format
+    prisma.scene.findUnique.mockResolvedValueOnce({
+      id: 1,
+      layoutId: 2,
+      metadata: JSON.stringify({
+        'poll.audience.interaction': {
+          voters: [{ id: 'v1', name: 'V1' }],
+          matches: [match(1, 10, 20)],
+        },
+      }),
+      layout: { componentType: 'poll.audience.interaction' },
+    });
+    await service.openModoItalianoBracketVoting(1, {
+      componentType: 'poll.audience.interaction',
+      matchId: 1,
+    });
+    expect(lastMetadata(prisma)['poll.audience.interaction'].activeVotingMatchId).toBe(1);
+
+    // Test empty or whitespace componentType
+    expect((service as any).isAudienceInteractionComponent('')).toBe(false);
+    expect((service as any).isAudienceInteractionComponent('   ')).toBe(false);
+    expect((service as any).isAudienceInteractionComponent(undefined)).toBe(false);
+  });
+});
