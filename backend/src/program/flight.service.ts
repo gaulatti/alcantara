@@ -142,8 +142,11 @@ function normalizeFlightCue(value: unknown): FlightCue | null {
     ) {
       change.channelId = channelId;
     }
-    const volume = normalizeOptionalNumber(value.mixerChange.volume);
-    if (volume !== undefined) {
+    // A fader position, usually between 0 and 1. It must not go through
+    // normalizeOptionalNumber, which rounds to an integer for ids and
+    // durations: that turned every partial level into fully up or fully down.
+    const volume = value.mixerChange.volume;
+    if (typeof volume === 'number' && Number.isFinite(volume)) {
       change.volume = volume;
     }
     if (typeof value.mixerChange.muted === 'boolean') {
