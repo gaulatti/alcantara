@@ -18,7 +18,11 @@ export const GIORGIA = {
   ruleWidth: 10,
   labelSize: 31,
   displayShadow: '0 8px 34px rgba(0,0,0,0.66)',
-  labelShadow: '0 3px 16px rgba(0,0,0,0.65)'
+  labelShadow: '0 3px 16px rgba(0,0,0,0.65)',
+  /** Opaque navy of the key-safe plates: the colour the grade reaches at its densest. */
+  plate: '#070d2b',
+  /** Navy kept clear around type on a key-safe plate. */
+  platePadding: 44
 } as const;
 
 /** Uppercase eyebrow style shared by the clock, the on-air label and the chyron call to action. */
@@ -73,14 +77,14 @@ export function useElementHeight<T extends HTMLElement>(): [(node: T | null) => 
 }
 
 /** The ModoItaliano circle, square and triangle mark, in white. */
-export function GiorgiaMark({ width = 172 }: { width?: number }) {
+export function GiorgiaMark({ width = 172, keySafe = false }: { width?: number; keySafe?: boolean }) {
   return (
     <svg
       aria-label='ModoItaliano'
       role='img'
       viewBox='0 0 595.27 206.59'
       width={width}
-      style={{ display: 'block', flexShrink: 0, overflow: 'visible', filter: 'drop-shadow(0 6px 24px rgba(0,0,0,0.6))' }}
+      style={{ display: 'block', flexShrink: 0, overflow: 'visible', filter: keySafe ? undefined : 'drop-shadow(0 6px 24px rgba(0,0,0,0.6))' }}
     >
       <path fill='#fff' d='M160.26 103.3c0 44.25-35.88 80.13-80.12 80.13S0 147.55 0 103.3s35.87-80.14 80.14-80.14c44.25 0 80.12 35.88 80.12 80.14Z' />
       <rect fill='#fff' x='211.95' y='23.16' width='160.26' height='160.27' />
@@ -90,7 +94,7 @@ export function GiorgiaMark({ width = 172 }: { width?: number }) {
 }
 
 /** The magenta signal rule that every Giorgia text block hangs from. */
-export function GiorgiaRule({ left = 0 }: { left?: number }) {
+export function GiorgiaRule({ left = 0, keySafe = false }: { left?: number; keySafe?: boolean }) {
   return (
     <div
       aria-hidden='true'
@@ -102,7 +106,7 @@ export function GiorgiaRule({ left = 0 }: { left?: number }) {
         left: `${left}px`,
         width: `${GIORGIA.ruleWidth}px`,
         background: GIORGIA.signal,
-        boxShadow: '0 0 30px rgba(237,0,118,0.3)'
+        boxShadow: keySafe ? undefined : '0 0 30px rgba(237,0,118,0.3)'
       }}
     />
   );
@@ -116,8 +120,15 @@ export function GiorgiaRule({ left = 0 }: { left?: number }) {
  * element the grade sits in must not create a stacking context of its own when
  * inline: no transform, opacity or filter on it. Animate an inner wrapper and
  * pass the grade its own fade through `style`.
+ *
+ * Key-safe, for scenes shot over a chroma key, the grade is a solid navy band
+ * with a hard top edge instead of a gradient. Anything partly transparent over
+ * the key colour, and any type whose edges blend into it, comes out of the
+ * keyer as a dirty fringe; magenta on green is the worst case. On an opaque
+ * band the type only ever blends into navy. The band also appears and
+ * disappears with a cut, since a fade is partly transparent while it runs.
  */
-export function GiorgiaGrade({ style }: { style?: React.CSSProperties }) {
+export function GiorgiaGrade({ style, keySafe = false }: { style?: React.CSSProperties; keySafe?: boolean }) {
   return (
     <div
       aria-hidden='true'
@@ -131,7 +142,8 @@ export function GiorgiaGrade({ style }: { style?: React.CSSProperties }) {
         bottom: '-400px',
         background: 'linear-gradient(0deg, rgba(7,13,43,0.94) 0%, rgba(7,13,43,0.9) 55%, rgba(7,13,43,0.5) 82%, rgba(7,13,43,0) 100%)',
         pointerEvents: 'none',
-        ...style
+        ...style,
+        ...(keySafe ? { top: `-${GIORGIA.platePadding}px`, background: GIORGIA.plate, transition: 'none' } : null)
       }}
     />
   );
