@@ -494,6 +494,12 @@ export function ComponentPropsFields({
               />
               Show Playback Progress
             </label>
+            {componentType === 'modoitaliano-giorgia-clock' ? (
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Checkbox checked={toBoolean(props.keySafe, false)} onChange={(e) => updateProp(componentType, 'keySafe', e.target.checked)} />
+                Key-safe (for chroma key scenes)
+              </label>
+            ) : null}
           </div>
         </div>
       );

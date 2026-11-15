@@ -52,10 +52,12 @@ export const ModoItalianoProgramRow: React.FC<ModoItalianoProgramRowProps> = ({ 
   };
 
   if (plan.clockType === 'modoitaliano-giorgia-clock') {
+    // One switch for the pair: set on either component, it applies to both.
+    const keySafe = toBoolean(clockProps.keySafe, false) || toBoolean(chyronProps.keySafe, false);
     return (
       <>
         {/* The Giorgia clock is a top-left header, separate from the row; only its on-air block sits in the row. */}
-        <ModoItalianoGiorgiaClock {...clockCommonProps} part='header' />
+        <ModoItalianoGiorgiaClock {...clockCommonProps} part='header' keySafe={keySafe} />
         <div
           data-program-row='giorgia'
           className='absolute z-[950] flex items-end gap-12'
@@ -66,10 +68,10 @@ export const ModoItalianoProgramRow: React.FC<ModoItalianoProgramRowProps> = ({ 
             While the chyron is hidden the slot is empty and removed, and the on-air block takes the left edge.
           */}
           <div data-program-row-slot='chyron' className='flex-1 min-w-[50%] empty:hidden'>
-            <ModoItalianoGiorgiaChyron show={showChyron} textSequence={chyronProps.textSequence} ctaSequence={chyronProps.ctaSequence} inline />
+            <ModoItalianoGiorgiaChyron show={showChyron} textSequence={chyronProps.textSequence} ctaSequence={chyronProps.ctaSequence} inline keySafe={keySafe} />
           </div>
           <div data-program-row-slot='clock' className='min-w-0'>
-            <ModoItalianoGiorgiaClock {...clockCommonProps} part='onAir' inline />
+            <ModoItalianoGiorgiaClock {...clockCommonProps} part='onAir' inline keySafe={keySafe} />
           </div>
         </div>
       </>

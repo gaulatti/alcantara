@@ -54,6 +54,48 @@ describe('ModoItalianoProgramRow: Giorgia', () => {
     expect(container.querySelector('.modoitaliano-giorgia-clock-progress')).toBeNull();
   });
 
+  it('by default sets type on the soft grade, with shadows', () => {
+    const container = renderRow(layout, metadata);
+    for (const grade of container.querySelectorAll<HTMLElement>('[data-giorgia-grade]')) expect(grade.style.background).toContain('linear-gradient');
+    expect(container.querySelector<HTMLElement>('.modoitaliano-giorgia-chyron-headline')?.style.textShadow).not.toBe('none');
+    expect(container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-header')?.style.background).toBe('');
+  });
+
+  it.each([['modoitaliano-giorgia-clock'], ['modoitaliano-giorgia-chyron']])(
+    'key-safe set on %s puts the whole pair on solid navy with nothing soft over the key colour',
+    (flagged) => {
+      const container = renderRow(layout, { ...metadata, [flagged]: { ...(metadata as Record<string, object>)[flagged], keySafe: true } });
+      const everything = [...container.querySelectorAll<HTMLElement | SVGElement>('*')];
+
+      // No gradient, shadow, glow or blur anywhere: each is partly transparent over the key colour.
+      for (const element of everything) {
+        expect(element.style.background).not.toContain('gradient');
+        expect(['', 'none']).toContain(element.style.textShadow);
+        expect(element.style.boxShadow).toBe('');
+        expect(element.style.filter).toBe('');
+      }
+      // Every piece of type has its shadow switched off, not just left unset.
+      for (const selector of ['.modoitaliano-giorgia-chyron-headline', '.modoitaliano-giorgia-clock-hero']) {
+        expect(container.querySelector<HTMLElement>(selector)?.style.textShadow).toBe('none');
+      }
+
+      // The bands are opaque navy with a hard top edge, and cut rather than fade.
+      const grades = [...container.querySelectorAll<HTMLElement>('[data-giorgia-grade]')];
+      expect(grades).toHaveLength(2);
+      for (const grade of grades) {
+        expect(grade.style.background).toBe('rgb(7, 13, 43)');
+        expect(grade.style.top).toBe('-44px');
+        expect(grade.style.transition).toBe('none');
+      }
+
+      // The header sits on its own plate, flush with the top-left corner, with the mark where it always is.
+      const header = container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-header');
+      expect(header?.style.background).toBe('rgb(7, 13, 43)');
+      expect(header?.style.padding).toBe('68px 44px 44px 82px');
+      expect(header?.style.margin).toBe('-68px 0px 0px -82px');
+    }
+  );
+
   it('never renders legacy components', () => {
     const container = renderRow(layout, metadata);
     expect(container.querySelector('[data-program-row="legacy"]')).toBeNull();
