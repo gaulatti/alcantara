@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BellRing } from 'lucide-react';
-import { GIORGIA, GiorgiaGrade, GiorgiaMark, GiorgiaRule, fitGiorgiaText, giorgiaLabelStyle } from './giorgiaBroadcast';
+import { GIORGIA, GiorgiaGrade, GiorgiaMark, GiorgiaRule, fitGiorgiaText, giorgiaLabelStyle, useElementHeight } from './giorgiaBroadcast';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence } from '../utils/programSequence';
@@ -192,6 +192,8 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   const hasSong = songGateEnabled && Boolean(artist || title) && (!liveSong || audioBus.endedToken !== liveSong.token);
   const progress = Math.max(0, Math.min(1, liveSong ? audioBus.progress : 0));
 
+  const [textColumnRef, textColumnHeight] = useElementHeight<HTMLDivElement>();
+  const coverSize = Math.max(COVER_PX, textColumnHeight);
   // The on-air block eases in and out instead of cutting: while it leaves, it keeps showing the song that just ended.
   const [shownSong, setShownSong] = useState({ artist, title, coverUrl });
   const [onAirMounted, setOnAirMounted] = useState(hasSong);
@@ -256,23 +258,35 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
         className='modoitaliano-giorgia-clock-on-air'
         aria-label='Modo Italiano Giorgia now playing'
         style={{
-          display: 'flex',
-          alignItems: 'stretch',
-          opacity: onAirVisible ? 1 : 0,
-          transform: onAirVisible ? 'translateY(0px)' : 'translateY(18px)',
-          transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease, transform ${ON_AIR_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`,
+          // No opacity or transform here: either would trap the grade in this block's own layer, where it
+          // would paint over the headline beside it. The content wrapper below carries the motion.
           ...(inline
             ? { position: 'relative' }
             : { position: 'absolute', left: `${GIORGIA.safeX}px`, bottom: `${GIORGIA.safeBottom}px`, zIndex: 950 })
         }}
       >
-        <GiorgiaGrade />
+        <GiorgiaGrade style={{ opacity: onAirVisible ? 1 : 0, transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease` }} />
+        <div
+          className='modoitaliano-giorgia-clock-on-air-content'
+          style={{
+            display: 'flex',
+            // Not stretched: the text column keeps its own height, which is what the cover is sized from.
+            alignItems: 'flex-end',
+            opacity: onAirVisible ? 1 : 0,
+            transform: onAirVisible ? 'translateY(0px)' : 'translateY(18px)',
+            transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease, transform ${ON_AIR_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
+          }}
+        >
         <img
           src={shownSong.coverUrl || '/cover.jpg'}
           alt=''
-          style={{ width: `${COVER_PX}px`, height: `${COVER_PX}px`, objectFit: 'cover', display: 'block', flexShrink: 0, alignSelf: 'flex-end' }}
+          // The cover is a square exactly as tall as the text beside it, so it and the magenta rule always
+          // start and end together. A fixed size left the rule standing taller than the cover whenever the
+          // text was taller.
+          style={{ width: `${coverSize}px`, height: `${coverSize}px`, objectFit: 'cover', display: 'block', flexShrink: 0 }}
         />
         <div
+          ref={textColumnRef}
           style={{
             position: 'relative',
             width: `${ON_AIR_TEXT_WIDTH_PX + GIORGIA.ruleWidth + 28}px`,
@@ -337,6 +351,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
               />
             </div>
           ) : null}
+        </div>
         </div>
       </div>
     );

@@ -96,6 +96,31 @@ describe('ModoItalianoGiorgiaClock', () => {
     }
   });
 
+  it('keeps the cover a square the size of the text column, never smaller than its base size', () => {
+    const { container } = render(<ModoItalianoGiorgiaClock programId='giorgia-test' {...song} />);
+    const cover = container.querySelector<HTMLImageElement>('.modoitaliano-giorgia-clock-on-air img');
+    // jsdom measures no layout, so the column reports 0 and the base size applies.
+    expect(cover?.style.width).toBe('168px');
+    expect(cover?.style.height).toBe('168px');
+    expect(container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air-content')?.style.alignItems).toBe('flex-end');
+  });
+
+  it('keeps the on-air block itself free of opacity and transform, so its grade cannot cover the headline', () => {
+    const { container } = render(<ModoItalianoGiorgiaClock programId='giorgia-test' {...song} part='onAir' inline />);
+    const block = container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air');
+    expect(block?.style.opacity).toBe('');
+    expect(block?.style.transform).toBe('');
+    expect(block?.style.zIndex).toBe('');
+    const grade = block?.querySelector<HTMLElement>('[data-giorgia-grade]');
+    expect(grade?.parentElement).toBe(block);
+    expect(grade?.style.zIndex).toBe('-1');
+    expect(grade?.style.transform).toBe('');
+    // The motion lives on the content wrapper, which does not contain the grade.
+    const content = block?.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air-content');
+    expect(content?.style.transform).toBe('translateY(0px)');
+    expect(content?.contains(grade ?? null)).toBe(false);
+  });
+
   it('renders each part on its own for the scene row', () => {
     const header = render(<ModoItalianoGiorgiaClock programId='giorgia-test' {...song} part='header' />).container;
     expect(header.querySelector('.modoitaliano-giorgia-clock-header')).not.toBeNull();
@@ -111,7 +136,7 @@ describe('ModoItalianoGiorgiaClock', () => {
     vi.useFakeTimers();
     try {
       const { container, rerender } = render(<ModoItalianoGiorgiaClock programId='giorgia-test' {...song} />);
-      const onAir = () => container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air');
+      const onAir = () => container.querySelector<HTMLElement>('.modoitaliano-giorgia-clock-on-air-content');
       expect(onAir()?.style.opacity).toBe('1');
       expect(onAir()?.style.transition).toContain('opacity 450ms');
 

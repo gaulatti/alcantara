@@ -55,6 +55,23 @@ export function useElementWidth<T extends HTMLElement>(): [(node: T | null) => v
   return [setNode, width];
 }
 
+/** Tracks an element's rendered height; reports 0 until it is measured. */
+export function useElementHeight<T extends HTMLElement>(): [(node: T | null) => void, number] {
+  const [node, setNode] = useState<T | null>(null);
+  const [height, setHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!node) return;
+    setHeight(node.clientHeight);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setHeight(node.clientHeight));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
+
+  return [setNode, height];
+}
+
 /** The ModoItaliano circle, square and triangle mark, in white. */
 export function GiorgiaMark({ width = 172 }: { width?: number }) {
   return (
@@ -95,12 +112,16 @@ export function GiorgiaRule({ left = 0 }: { left?: number }) {
  * Full-bleed navy grade behind a text block, so type sits on the picture
  * rather than in a box. It paints behind everything in the nearest stacking
  * context: the block itself when standalone, the shared row when inline, so
- * one block's grade never covers a neighbour's text.
+ * one block's grade never covers a neighbour's text. For that to hold, the
+ * element the grade sits in must not create a stacking context of its own when
+ * inline: no transform, opacity or filter on it. Animate an inner wrapper and
+ * pass the grade its own fade through `style`.
  */
-export function GiorgiaGrade() {
+export function GiorgiaGrade({ style }: { style?: React.CSSProperties }) {
   return (
     <div
       aria-hidden='true'
+      data-giorgia-grade
       style={{
         position: 'absolute',
         zIndex: -1,
@@ -109,7 +130,8 @@ export function GiorgiaGrade() {
         top: '-150px',
         bottom: '-400px',
         background: 'linear-gradient(0deg, rgba(7,13,43,0.94) 0%, rgba(7,13,43,0.9) 55%, rgba(7,13,43,0.5) 82%, rgba(7,13,43,0) 100%)',
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        ...style
       }}
     />
   );
