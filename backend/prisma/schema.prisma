@@ -36,6 +36,16 @@ model Scene {
   @@index([externalSourceId])
 }
 
+model Program {
+  programId String   @id
+  teamId    Int?
+  channelId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+}
+
 model ProgramState {
   id                     Int                  @id @default(autoincrement())
   programId              String               @unique
