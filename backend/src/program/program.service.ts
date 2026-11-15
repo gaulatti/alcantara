@@ -2746,6 +2746,55 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  /**
+   * Called by the on-air page when the countdown clock of the scene on air
+   * reaches zero. That page is not signed in, so it cannot name a scene to
+   * take: the target and the transition are read from the scene's own
+   * settings, and nothing happens unless the scene on air has a countdown.
+   */
+  async completeSceneCountdown(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const state = await this.getProgramStateWithScenes(programId);
+    const target = this.parseSceneCountdownTarget(state.activeScene?.metadata);
+    if (!target) {
+      throw new BadRequestException(
+        'The scene on air has no countdown that switches scenes',
+      );
+    }
+    return this.activateScene(target.sceneId, programId, target.transitionId);
+  }
+
+  private parseSceneCountdownTarget(
+    sceneMetadata: unknown,
+  ): { sceneId: number; transitionId: string } | null {
+    let parsed: unknown = sceneMetadata;
+    if (typeof sceneMetadata === 'string') {
+      try {
+        parsed = JSON.parse(sceneMetadata);
+      } catch {
+        return null;
+      }
+    }
+    const clock = (parsed as Record<string, unknown> | null | undefined)?.[
+      'reloj-digital-loop-clock'
+    ] as Record<string, unknown> | undefined;
+    if (
+      !clock ||
+      clock.mode !== 'countdown' ||
+      !Number.isInteger(clock.countdownTargetSceneId)
+    ) {
+      return null;
+    }
+    return {
+      sceneId: clock.countdownTargetSceneId as number,
+      transitionId:
+        typeof clock.countdownTransitionId === 'string'
+          ? clock.countdownTransitionId
+          : 'cut',
+    };
+  }
+
   async activateScene(
     sceneId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
