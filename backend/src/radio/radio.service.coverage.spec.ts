@@ -19,7 +19,14 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
       upsert: jest.fn().mockImplementation(async (arg) => arg),
       update: jest.fn().mockResolvedValue({}),
     },
-    song: { findMany: jest.fn().mockResolvedValue([]) },
+    song: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    mediaAssetAnalysis: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   };
   const palazzo: any = {
     getAutomation: jest.fn().mockResolvedValue({ lastSequence: 4 }),
@@ -469,6 +476,7 @@ describe('RadioService coverage', () => {
           bumperInstantIds: [],
           bumperMode: 'sequential',
           enabled: false,
+          segueMode: 'off',
         },
       });
       expect(metrics.recordListenerConfiguration).not.toHaveBeenCalled();
@@ -484,6 +492,7 @@ describe('RadioService coverage', () => {
         bumperInstantIds: [3, 3, 5],
         bumperMode: 'random',
         enabled: true,
+        segueMode: 'on',
       });
       expect(palazzo.validateBaseUrl).toHaveBeenCalledWith('http://new');
       const arg = prisma.radioSettings.upsert.mock.calls[0][0];
@@ -495,6 +504,7 @@ describe('RadioService coverage', () => {
         bumperInstantIds: [3, 5],
         bumperMode: 'random',
         enabled: true,
+        segueMode: 'on',
       });
       expect(arg.create).toEqual({
         programStateId: 10,
@@ -505,6 +515,7 @@ describe('RadioService coverage', () => {
         bumperInstantIds: [3, 5],
         bumperMode: 'random',
         enabled: true,
+        segueMode: 'on',
       });
       expect(metrics.recordListenerConfiguration).toHaveBeenCalledWith(
         'success',
@@ -617,6 +628,11 @@ describe('RadioService coverage', () => {
           'unknown bumperMode',
           { bumperMode: 'shuffle' },
           'bumperMode must be sequential or random',
+        ],
+        [
+          'unknown segueMode',
+          { segueMode: 'shuffle' },
+          'segueMode must be off or on',
         ],
       ];
       it.each(cases)('rejects %s', async (_n, payload, message) => {
@@ -738,6 +754,185 @@ describe('RadioService coverage', () => {
       expect(palazzo.playSong.mock.calls[0][2].playbackId).toMatch(
         /^[0-9a-f-]{36}$/,
       );
+    });
+
+    it('ignores analysis when segueMode is off', async () => {
+      const { service, prisma, palazzo } = build({
+        ...defaultSettings(),
+        segueMode: 'off',
+      });
+      palazzo.playSong.mockResolvedValue({ playbackRequestId: 'song-1' });
+      prisma.song.findUnique.mockResolvedValue({
+        id: 101,
+        assetId: 'asset-1',
+        durationMs: 200000,
+      });
+      prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({
+        status: 'success',
+        cueInSeconds: 0.5,
+        cueOutSeconds: 199.0,
+        fadeInSeconds: 0.1,
+        fadeOutSeconds: 1.5,
+        overlapSeconds: 2.0,
+        integratedLufs: -14.0,
+        truePeakDbtp: -1.0,
+      });
+
+      await service.playSong(
+        'p',
+        'u',
+        'title',
+        'artist',
+        'song-1',
+        undefined,
+        undefined,
+        101,
+      );
+
+      expect(palazzo.playSong).toHaveBeenCalledWith(
+        'http://palazzo:3100',
+        'p',
+        {
+          playbackId: 'song-1',
+          url: 'u',
+          title: 'title',
+          artist: 'artist',
+        },
+      );
+    });
+
+    it('attaches segue and loudness when segueMode is on and analysis succeeds', async () => {
+      const { service, prisma, palazzo } = build({
+        ...defaultSettings(),
+        segueMode: 'on',
+      });
+      palazzo.playSong.mockResolvedValue({ playbackRequestId: 'song-1' });
+      prisma.song.findUnique.mockResolvedValue({
+        id: 101,
+        assetId: 'asset-1',
+        durationMs: 200000,
+      });
+      prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({
+        status: 'success',
+        cueInSeconds: 0.5,
+        cueOutSeconds: 199.0,
+        fadeInSeconds: 0.1,
+        fadeOutSeconds: 1.5,
+        overlapSeconds: 2.0,
+        integratedLufs: -14.0,
+        truePeakDbtp: -1.0,
+      });
+
+      await service.playSong(
+        'p',
+        'u',
+        'title',
+        'artist',
+        'song-1',
+        undefined,
+        undefined,
+        101,
+        200,
+      );
+
+      expect(palazzo.playSong).toHaveBeenCalledWith(
+        'http://palazzo:3100',
+        'p',
+        {
+          playbackId: 'song-1',
+          url: 'u',
+          title: 'title',
+          artist: 'artist',
+          duration: 200,
+          segue: {
+            cueInSeconds: 0.5,
+            cueOutSeconds: 199.0,
+            fadeInSeconds: 0.1,
+            fadeOutSeconds: 1.5,
+            overlapSeconds: 2.0,
+          },
+          loudness: {
+            integratedLufs: -14.0,
+            truePeakDbtp: -1.0,
+          },
+        },
+      );
+    });
+
+    it('resolves analysis via audioUrl fallback when songId is omitted', async () => {
+      const { service, prisma, palazzo } = build({
+        ...defaultSettings(),
+        segueMode: 'on',
+      });
+      palazzo.playSong.mockResolvedValue({ playbackRequestId: 'song-1' });
+      prisma.song.findFirst.mockResolvedValue({
+        id: 202,
+        assetId: 'asset-2',
+        durationMs: 180000,
+      });
+      prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({
+        status: 'success',
+        cueInSeconds: 1.0,
+        cueOutSeconds: 175.0,
+        fadeInSeconds: null,
+        fadeOutSeconds: null,
+        overlapSeconds: null,
+        integratedLufs: null,
+        truePeakDbtp: null,
+      });
+
+      await service.playSong('p', 'https://media.example/song.mp3');
+
+      expect(palazzo.playSong).toHaveBeenCalledWith(
+        'http://palazzo:3100',
+        'p',
+        expect.objectContaining({
+          segue: {
+            cueInSeconds: 1.0,
+            cueOutSeconds: 175.0,
+            fadeInSeconds: 0,
+            fadeOutSeconds: 0,
+            overlapSeconds: 0,
+          },
+        }),
+      );
+    });
+
+    it('does not block playback when analysis row is missing or failed or throws', async () => {
+      const { service, prisma, palazzo } = build({
+        ...defaultSettings(),
+        segueMode: 'on',
+      });
+      palazzo.playSong.mockResolvedValue({ playbackRequestId: 'song-1' });
+
+      // Case 1: no song found
+      prisma.song.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        service.playSong('p', 'u', undefined, undefined, 'req-1', undefined, undefined, 999),
+      ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
+
+      // Case 2: song has no assetId
+      prisma.song.findUnique.mockResolvedValueOnce({ id: 101, assetId: null });
+      await expect(
+        service.playSong('p', 'u', undefined, undefined, 'req-2', undefined, undefined, 101),
+      ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
+
+      // Case 3: analysis row is failed
+      prisma.song.findUnique.mockResolvedValueOnce({ id: 101, assetId: 'asset-failed' });
+      prisma.mediaAssetAnalysis.findUnique.mockResolvedValueOnce({
+        status: 'failed',
+        error: 'corrupt file',
+      });
+      await expect(
+        service.playSong('p', 'u', undefined, undefined, 'req-3', undefined, undefined, 101),
+      ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
+
+      // Case 4: analysis query throws
+      prisma.song.findUnique.mockResolvedValueOnce({ id: 101, assetId: 'asset-err' });
+      prisma.mediaAssetAnalysis.findUnique.mockRejectedValueOnce(new Error('db connection lost'));
+      await expect(
+        service.playSong('p', 'u', undefined, undefined, 'req-4', undefined, undefined, 101),
+      ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
     });
   });
 
