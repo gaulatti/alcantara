@@ -38,6 +38,8 @@ interface ModoItalianoGiorgiaClockProps {
    * on-air block bottom-left; a scene row places the two separately.
    */
   part?: 'all' | 'header' | 'onAir';
+  /** For scenes shot over a chroma key: solid navy plates, no soft edges. See `GiorgiaGrade`. */
+  keySafe?: boolean;
 }
 
 const ON_AIR_TEXT_WIDTH_PX = 560;
@@ -123,7 +125,8 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   songTitle = '',
   songCoverUrl = '',
   inline = false,
-  part = 'all'
+  part = 'all',
+  keySafe = false
 }) => {
   const [now, setNow] = useState(() => new Date());
   const [cityPool, setCityPool] = useState(() => (shuffleCities ? shuffleArray(CITIES) : [...CITIES]));
@@ -217,6 +220,9 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
 
   if (!showWorldClocks && !showBellIcon && !showLogo) return null;
 
+  // Key-safe, type carries no shadow: a soft shadow is partly transparent and keys as a dirty edge.
+  const noShadow = keySafe ? { textShadow: 'none' } : null;
+
   const header =
     part === 'onAir' ? null : (
       <div
@@ -229,12 +235,21 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
           zIndex: 950,
           display: 'flex',
           alignItems: 'center',
-          gap: '30px'
+          gap: '30px',
+          // Key-safe, the header sits on its own navy plate that runs off the top-left corner, so the mark
+          // and the time never touch the key colour. The margin keeps them where they are without it.
+          ...(keySafe
+            ? {
+                background: GIORGIA.plate,
+                padding: `${GIORGIA.safeTop}px ${GIORGIA.platePadding}px ${GIORGIA.platePadding}px ${GIORGIA.safeX}px`,
+                margin: `-${GIORGIA.safeTop}px 0 0 -${GIORGIA.safeX}px`
+              }
+            : null)
         }}
       >
-        {showLogo ? <GiorgiaMark /> : null}
+        {showLogo ? <GiorgiaMark keySafe={keySafe} /> : null}
         {showWorldClocks ? (
-          <span style={{ ...giorgiaLabelStyle, color: 'rgba(255,255,255,0.86)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ ...giorgiaLabelStyle, color: 'rgba(255,255,255,0.86)', fontVariantNumeric: 'tabular-nums', ...noShadow }}>
             {timeText} {city.city.toUpperCase()}
           </span>
         ) : null}
@@ -265,7 +280,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
             : { position: 'absolute', left: `${GIORGIA.safeX}px`, bottom: `${GIORGIA.safeBottom}px`, zIndex: 950 })
         }}
       >
-        <GiorgiaGrade style={{ opacity: onAirVisible ? 1 : 0, transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease` }} />
+        <GiorgiaGrade keySafe={keySafe} style={{ opacity: onAirVisible ? 1 : 0, transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease` }} />
         <div
           className='modoitaliano-giorgia-clock-on-air-content'
           style={{
@@ -298,8 +313,8 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
             color: '#ffffff'
           }}
         >
-          <GiorgiaRule />
-          <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal }}>{listeningLabel}</div>
+          <GiorgiaRule keySafe={keySafe} />
+          <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal, ...noShadow }}>{listeningLabel}</div>
           <div
             className='modoitaliano-giorgia-clock-hero'
             style={{
@@ -309,7 +324,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
               fontWeight: 800,
               lineHeight: 0.86,
               letterSpacing: '-0.035em',
-              textShadow: GIORGIA.displayShadow,
+              textShadow: keySafe ? 'none' : GIORGIA.displayShadow,
               // Too long for one line at the smallest size: wrap, never clamp or clip.
               ...(heroWraps ? { textWrap: 'balance', overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
             }}
@@ -326,7 +341,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
                 lineHeight: 1.1,
                 letterSpacing: '0.18em',
                 color: 'rgba(255,255,255,0.78)',
-                textShadow: GIORGIA.labelShadow,
+                textShadow: keySafe ? 'none' : GIORGIA.labelShadow,
                 ...(supportWraps ? { overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
               }}
             >

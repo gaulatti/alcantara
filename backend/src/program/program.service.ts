@@ -1600,9 +1600,12 @@ export class ProgramService implements OnModuleInit {
     const updatedState = await this.prisma.programState.update({
       where: { programId: normalizedProgramId },
       data: {
-        songSequence: nextSongSequence as any,
+        // A mixer-only change must not write the song sequence back. It was
+        // read a moment earlier, so writing it could undo a song that ended in
+        // between and put it back on air in the now-playing display.
         ...(hasSongSequenceUpdate
           ? {
+              songSequence: nextSongSequence as any,
               songQueue: nextSongQueue as unknown as Prisma.InputJsonValue,
             }
           : {}),
