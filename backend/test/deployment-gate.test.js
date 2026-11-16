@@ -91,6 +91,10 @@ test('keeps the backend private to nginx and preserves realtime proxy behavior',
   assert.match(nginx, /proxy_read_timeout 24h/);
 });
 
+test('serves the API over HTTP/2 so long-lived streams cannot starve other requests', () => {
+  assert.match(nginx, /^\s*http2 on;$/m);
+});
+
 test('allows song upload bodies through nginx while retaining the application file limit', () => {
   assert.match(nginx, /client_max_body_size 210m;/);
   assert.match(backendMain, /fileSize: 200 \* 1024 \* 1024/);

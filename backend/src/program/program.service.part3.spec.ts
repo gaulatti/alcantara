@@ -723,6 +723,62 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
     });
   });
 
+  describe('completeSceneCountdown', () => {
+    const onAir = (metadata: unknown) =>
+      makeState({
+        scenes: [{ sceneId: 5 }],
+        activeScene: { id: 11, metadata },
+      });
+    const countdown = (extra: Record<string, unknown> = {}) => ({
+      'reloj-digital-loop-clock': {
+        mode: 'countdown',
+        countdownTargetSceneId: 5,
+        ...extra,
+      },
+    });
+
+    it('takes the scene the countdown on air points to, with its transition', async () => {
+      const { service } = build({
+        state: onAir(
+          JSON.stringify(countdown({ countdownTransitionId: 'hit-parade' })),
+        ),
+      });
+      const activate = jest
+        .spyOn(service, 'activateScene')
+        .mockResolvedValue('taken' as any);
+      await expect(service.completeSceneCountdown('main')).resolves.toBe(
+        'taken',
+      );
+      expect(activate).toHaveBeenCalledWith(5, 'main', 'hit-parade');
+    });
+
+    it('cuts when the countdown names no transition, on the default program', async () => {
+      const { service } = build({ state: onAir(countdown()) });
+      const activate = jest
+        .spyOn(service, 'activateScene')
+        .mockResolvedValue('taken' as any);
+      await service.completeSceneCountdown();
+      expect(activate).toHaveBeenCalledWith(5, 'main', 'cut');
+    });
+
+    it.each([
+      ['no scene is on air', null],
+      ['the settings cannot be read', '{not json'],
+      ['the scene has no countdown clock', { slideshow: {} }],
+      ['the clock is not counting down', countdown({ mode: 'clock' })],
+      ['the countdown has no target', countdown({ countdownTargetSceneId: null })],
+    ])('refuses when %s', async (_name, metadata) => {
+      const { service } = build({
+        state: metadata === null ? makeState() : onAir(metadata),
+      });
+      const activate = jest.spyOn(service, 'activateScene');
+      await expect(service.completeSceneCountdown('main')).rejects.toThrow(
+        'The scene on air has no countdown that switches scenes',
+      );
+      expect(activate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setFadeToBlack', () => {
     it('throws for a missing program', async () => {
       const { service, prisma } = build();

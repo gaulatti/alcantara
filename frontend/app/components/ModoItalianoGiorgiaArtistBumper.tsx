@@ -35,10 +35,22 @@ export function normalizeArtistBumperLabelId(labelId: unknown): string | null {
   return typeof labelId === 'string' && labelId.trim() ? labelId.trim() : null;
 }
 
-/** The first four different images of a label, in its saved order, or null when it has fewer. */
+/**
+ * The four images a label gives the bumper, or null when the label has no images.
+ *
+ * It takes the label's first four different images in its saved order. A label
+ * with one to three images still plays: its images repeat to fill the four
+ * cuts. Giorgia requires four distinct URLs, so a repeated image carries a URL
+ * fragment, which names the same file.
+ */
 export function pickArtistBumperLabelImages(urls: readonly unknown[]): readonly [string, string, string, string] | null {
-  const distinct = [...new Set(urls.map(text).filter(Boolean))];
-  return distinct.length < 4 ? null : [distinct[0], distinct[1], distinct[2], distinct[3]];
+  const distinct = [...new Set(urls.map(text).filter(Boolean))].slice(0, 4);
+  if (!distinct.length) return null;
+  const cut = (index: number) => {
+    const url = distinct[index % distinct.length];
+    return index < distinct.length ? url : `${url}#repeat-${Math.floor(index / distinct.length) + 1}`;
+  };
+  return [cut(0), cut(1), cut(2), cut(3)];
 }
 
 /** Why a bumper cannot play yet, for the editor; null when it can. `labelImageUrls` are the selected label's images. */
@@ -49,7 +61,7 @@ export function describeArtistBumperProblem(
   if (!text(props.artist)) return 'Add the artist.';
   if (!text(props.songTitle)) return 'Add the song title.';
   if (normalizeArtistBumperLabelId(props.labelId)) {
-    return pickArtistBumperLabelImages(labelImageUrls) ? null : 'The label needs at least four different images.';
+    return pickArtistBumperLabelImages(labelImageUrls) ? null : 'The label has no images.';
   }
   if (!resolveArtistBumperImages(props.images)) return 'Add four different images.';
   return null;

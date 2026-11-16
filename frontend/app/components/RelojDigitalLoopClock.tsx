@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
-import { activateScene } from '../services/program';
+import { completeSceneCountdown } from '../services/program';
+import { GiorgiaMark } from './giorgiaBroadcast';
 import './RelojDigitalLoopClock.css';
 
 interface RelojDigitalLoopClockProps {
@@ -188,7 +189,11 @@ export default function RelojDigitalLoopClock({
       if (countdownRunning && remaining <= 0 && !countdownFiredRef.current) {
         countdownFiredRef.current = true;
         if (allowProgramActivation && programId && countdownTargetSceneId) {
-          activateScene(programId, countdownTargetSceneId, countdownTransitionId);
+          // The on-air page is not signed in, so it cannot take a scene itself. The API takes the target
+          // from the scene's own settings.
+          completeSceneCountdown(programId).catch((error) => {
+            console.error('The countdown reached zero but the scene did not switch:', error);
+          });
         }
         return;
       }
@@ -286,10 +291,10 @@ export default function RelojDigitalLoopClock({
 
   return (
     <div className='reloj-digital-loop-root'>
+      <div id='reloj-mark'>
+        <GiorgiaMark width={172} />
+      </div>
       <div id='clock-block' className={clockOut && mode === 'clock' ? 'clock-out' : ''}>
-        <div id='logo-above'>
-          <img src='/mi.svg' alt='Modo Italiano' />
-        </div>
         <div id='clock-row'>
           <div id='clock-bg'>
             <div id='clock' ref={clockRef}>
@@ -311,7 +316,6 @@ export default function RelojDigitalLoopClock({
               {ctaText}
             </div>
           )}
-          {titleText !== '' && ctaText !== '' && <div id='pipe'>|</div>}
           {titleText !== '' && (
             <div id='show-title'>
               <FlightBoardText targetText={titleText} />

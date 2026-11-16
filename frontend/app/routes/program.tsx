@@ -1617,6 +1617,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           stopProgramAudioBus(programId);
         }
       } else if (data.type === 'song_playback_update') {
+        // The console's Preview and Program monitors are pictures only. Without this, each monitor
+        // started the song on its own audio bus at full volume, so the console played it twice with
+        // no way to turn it off.
+        if (confidenceMode) return;
         const playback = data?.playback;
         if (playback && playback.audioUrl && playback.isPlaying) {
           const audioUrl = String(playback.audioUrl).trim();
@@ -1895,11 +1899,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   }, [programId, shouldApplyProgramUpdatePayload]);
 
   useEffect(() => {
-    if (confidenceMode) {
-      return;
-    }
+    // Also applied in a console monitor, where the resolved volume is 0, so a monitor's bus can
+    // never be audible even if something starts a track on it.
     setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
-  }, [confidenceMode, programId, resolvedSongMasterVolume]);
+  }, [programId, resolvedSongMasterVolume]);
 
   useEffect(() => {
     if (confidenceMode) {
@@ -2474,6 +2477,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     showBellIcon={false}
                     songSequence={audioBusSettings?.songSequence}
                     language='es'
+                    keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
               case 'modoitaliano-giorgia-chyron':
@@ -2486,6 +2490,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     show={typeof props.show === 'boolean' ? props.show : true}
                     textSequence={props.textSequence}
                     ctaSequence={props.ctaSequence}
+                    keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
               case 'modoitaliano-disclaimer':

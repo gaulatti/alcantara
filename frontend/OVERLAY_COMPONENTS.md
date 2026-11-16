@@ -123,13 +123,25 @@ Use the component type `modoitaliano-giorgia-artist-bumper`.
 |--------------|----------|---------|
 | `show` | no | Hides the bumper when `false` (default `true`) |
 | `artist`, `songTitle` | yes | Text of the identity and on-air cards |
-| `labelId` | one of the two | Media label to take the images from, as the slideshow does: the first four different images of the label, in its saved order |
+| `labelId` | one of the two | Media label to take the images from, as the slideshow does: the first four different images of the label, in its saved order. A label with one to three images still plays, repeating its images to fill the four cuts |
 | `images` | one of the two | Exactly four different 16:9 image URLs, in playback order; used only when no label is set |
 | `contentType`, `creditLines` | no | Left blank, Giorgia's default content type ("Singolo") applies and the credits stay empty |
 
 The eyebrow ("ModoItaliano presenta") and the site address (`modoitaliano.fm`) are Giorgia's own defaults and cannot be changed here, and the bumper carries no audio.
 
 Giorgia's composition throws unless it receives exactly four distinct images, so the component renders nothing until the artist, the song title and four images are available (from the label once it has loaded, or set by hand); the editor says which is missing. The Remotion player and Giorgia's video entry load only when a bumper is shown.
+
+### Key-safe mode (chroma key scenes)
+
+Set `keySafe: true` on `modoitaliano-giorgia-clock` or `modoitaliano-giorgia-chyron` (the editor has a checkbox on the clock) when the scene is shot over a chroma key. Set on either one, it applies to the whole pair.
+
+Anything partly transparent over the key colour comes out of the keyer as a dirty fringe: the grade's gradient, text shadows, the rule's glow, and the edges of type that blend into the green. Magenta on green is the worst case. Key-safe mode removes all of it:
+
+- The grade becomes an opaque navy band (`#070d2b`) across the full width with a hard top edge 44px above the tallest block. It appears and disappears with a cut, not a fade.
+- The header (mark and time) sits on its own opaque navy plate that runs off the top-left corner.
+- Type, the mark and the rule carry no shadow or glow.
+
+The only edges left over the key colour are the straight sides of the navy shapes. Type positions and sizes are unchanged.
 
 Shared tokens and helpers for both (`GIORGIA`, `GiorgiaMark`, `GiorgiaRule`, `GiorgiaGrade`, `fitGiorgiaText`) live in `app/components/giorgiaBroadcast.tsx`.
 
@@ -156,8 +168,8 @@ The components are available as named component types in the dynamic program ren
 | `toni-chyron` | `text`, `useMarquee` |
 | `toni-clock` | — |
 | `toni-logo` | `callsign`, `subtitle` (used for image alt text only) |
-| `modoitaliano-giorgia-clock` | `showWorldClocks`, `showLogo`, `showPlaybackProgress` |
-| `modoitaliano-giorgia-chyron` | `show`, `textSequence`, `ctaSequence` |
+| `modoitaliano-giorgia-clock` | `showWorldClocks`, `showLogo`, `showPlaybackProgress`, `keySafe` |
+| `modoitaliano-giorgia-chyron` | `show`, `textSequence`, `ctaSequence`, `keySafe` |
 | `modoitaliano-giorgia-artist-bumper` | `show`, `artist`, `songTitle`, `labelId`, `images`, `contentType`, `creditLines` |
 
 Example scene metadata:

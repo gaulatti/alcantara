@@ -117,7 +117,7 @@ describe('FlightService cue normalization through the list boundary', () => {
             instantId: 6,
             mixerChange: {
               channelId: 'sceneInstant',
-              volume: 3.4,
+              volume: 0.2141,
               muted: true,
               solo: false,
             },
@@ -146,7 +146,7 @@ describe('FlightService cue normalization through the list boundary', () => {
             },
           },
           { kind: 'mixer', durationMs: 25, mixerChange: { channelId: 'main' } },
-          { kind: 'mixer', mixerChange: { channelId: 'song' } },
+          { kind: 'mixer', mixerChange: { channelId: 'song', volume: NaN } },
           { kind: 'mixer', mixerChange: { channelId: 'instants' } },
           { kind: 'mixer', mixerChange: { channelId: 'stream' } },
           { kind: 'mixer', mixerChange: [] },
@@ -195,9 +195,10 @@ describe('FlightService cue normalization through the list boundary', () => {
       durationMs: 0,
       metadataPatch: { a: 1 },
       instantId: 6,
+      // A partial fader level survives as written; it is not rounded to 0 or 1.
       mixerChange: {
         channelId: 'sceneInstant',
-        volume: 3,
+        volume: 0.2141,
         muted: true,
         solo: false,
       },

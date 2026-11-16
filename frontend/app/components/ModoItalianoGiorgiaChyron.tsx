@@ -7,6 +7,8 @@ interface ModoItalianoGiorgiaChyronProps {
   textSequence?: unknown;
   ctaSequence?: unknown;
   inline?: boolean;
+  /** For scenes shot over a chroma key: a solid navy band, no soft edges. See `GiorgiaGrade`. */
+  keySafe?: boolean;
 }
 
 const HEADLINE_MAX_PX = 120;
@@ -27,7 +29,8 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
   show = true,
   textSequence,
   ctaSequence,
-  inline = false
+  inline = false,
+  keySafe = false
 }) => {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [blockRef, blockWidth] = useElementWidth<HTMLDivElement>();
@@ -77,7 +80,8 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
     fontFamily: GIORGIA.display,
     fontWeight: 800,
     letterSpacing: '-0.03em',
-    textShadow: GIORGIA.displayShadow
+    // Key-safe, type carries no shadow: a soft shadow is partly transparent and keys as a dirty edge.
+    textShadow: keySafe ? 'none' : GIORGIA.displayShadow
   };
 
   return (
@@ -102,10 +106,18 @@ export const ModoItalianoGiorgiaChyron: React.FC<ModoItalianoGiorgiaChyronProps>
           .modoitaliano-giorgia-chyron-headline { transition: none !important; }
         }
       `}</style>
-      <GiorgiaGrade />
-      <GiorgiaRule />
+      <GiorgiaGrade keySafe={keySafe} />
+      <GiorgiaRule keySafe={keySafe} />
       {cta ? (
-        <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal, marginBottom: '16px', whiteSpace: 'normal', lineHeight: 1.15, overflowWrap: 'anywhere' }}>{cta}</div>
+        <div style={{
+            ...giorgiaLabelStyle,
+            color: GIORGIA.signal,
+            marginBottom: '16px',
+            whiteSpace: 'normal',
+            lineHeight: 1.15,
+            overflowWrap: 'anywhere',
+            ...(keySafe ? { textShadow: 'none' } : null)
+          }}>{cta}</div>
       ) : null}
       {useMarquee ? (
         <div style={{ ...headlineStyle, fontSize: `${MARQUEE_PX}px`, lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
