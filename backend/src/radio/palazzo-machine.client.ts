@@ -22,6 +22,19 @@ export class PalazzoMachineError extends Error {
   }
 }
 
+export interface PalazzoSongSegue {
+  cueInSeconds: number;
+  cueOutSeconds: number;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
+  overlapSeconds: number;
+}
+
+export interface PalazzoSongLoudness {
+  integratedLufs: number;
+  truePeakDbtp: number;
+}
+
 export interface PalazzoSongCommand {
   playbackId: string;
   url: string;
@@ -29,6 +42,9 @@ export interface PalazzoSongCommand {
   artist?: string;
   coverUrl?: string;
   intro?: PalazzoIntroCommand;
+  duration?: number;
+  segue?: PalazzoSongSegue;
+  loudness?: PalazzoSongLoudness;
 }
 
 export interface PalazzoIntroCommand {
@@ -113,6 +129,18 @@ export class PalazzoMachineClient {
     duplicate: boolean;
     introPlaybackId?: string | null;
   }> {
+    try {
+      if (command.segue !== undefined) {
+        validateSongSegue(command.segue, command.duration);
+      }
+      if (command.loudness !== undefined) {
+        validateSongLoudness(command.loudness);
+      }
+    } catch {
+      this.metrics.recordMachineRequest('song-play', 'rejected');
+      throw new PalazzoMachineError('rejected');
+    }
+
     const response = await this.request(
       palazzoUrl,
       programId,
@@ -130,6 +158,8 @@ export class PalazzoMachineClient {
             title: command.title,
             artist: command.artist,
             coverUrl: command.coverUrl,
+            ...(command.segue && { segue: command.segue }),
+            ...(command.loudness && { loudness: command.loudness }),
           },
           ...(command.intro && {
             intro: {
@@ -567,4 +597,82 @@ function validateProgramId(value: string): string {
     throw new PalazzoMachineError('rejected');
   }
   return normalized;
+}
+
+export function validateSongSegue(
+  segue: unknown,
+  duration?: number,
+): asserts segue is PalazzoSongSegue {
+  if (!segue || typeof segue !== 'object') {
+    throw new PalazzoMachineError('rejected');
+  }
+  const s = segue as Record<string, unknown>;
+  const {
+    cueInSeconds,
+    cueOutSeconds,
+    fadeInSeconds,
+    fadeOutSeconds,
+    overlapSeconds,
+  } = s;
+
+  if (
+    typeof cueInSeconds !== 'number' ||
+    !Number.isFinite(cueInSeconds) ||
+    typeof cueOutSeconds !== 'number' ||
+    !Number.isFinite(cueOutSeconds) ||
+    typeof fadeInSeconds !== 'number' ||
+    !Number.isFinite(fadeInSeconds) ||
+    typeof fadeOutSeconds !== 'number' ||
+    !Number.isFinite(fadeOutSeconds) ||
+    typeof overlapSeconds !== 'number' ||
+    !Number.isFinite(overlapSeconds)
+  ) {
+    throw new PalazzoMachineError('rejected');
+  }
+
+  if (cueInSeconds < 0 || cueInSeconds >= cueOutSeconds) {
+    throw new PalazzoMachineError('rejected');
+  }
+
+  if (
+    duration !== undefined &&
+    (!Number.isFinite(duration) || cueOutSeconds > duration)
+  ) {
+    throw new PalazzoMachineError('rejected');
+  }
+
+  if (fadeInSeconds < 0 || fadeOutSeconds < 0) {
+    throw new PalazzoMachineError('rejected');
+  }
+
+  if (overlapSeconds < 0 || overlapSeconds > cueOutSeconds - cueInSeconds) {
+    throw new PalazzoMachineError('rejected');
+  }
+}
+
+export function validateSongLoudness(
+  loudness: unknown,
+): asserts loudness is PalazzoSongLoudness {
+  if (!loudness || typeof loudness !== 'object') {
+    throw new PalazzoMachineError('rejected');
+  }
+  const l = loudness as Record<string, unknown>;
+  const { integratedLufs, truePeakDbtp } = l;
+
+  if (
+    typeof integratedLufs !== 'number' ||
+    !Number.isFinite(integratedLufs) ||
+    typeof truePeakDbtp !== 'number' ||
+    !Number.isFinite(truePeakDbtp)
+  ) {
+    throw new PalazzoMachineError('rejected');
+  }
+
+  if (integratedLufs < -70 || integratedLufs > 0) {
+    throw new PalazzoMachineError('rejected');
+  }
+
+  if (truePeakDbtp > 6) {
+    throw new PalazzoMachineError('rejected');
+  }
 }

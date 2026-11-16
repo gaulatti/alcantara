@@ -13,6 +13,8 @@ import {
   PalazzoMachineClient,
   PalazzoMachineError,
   type PalazzoIntroCommand,
+  type PalazzoSongSegue,
+  type PalazzoSongLoudness,
 } from './palazzo-machine.client';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
@@ -30,6 +32,7 @@ export interface RadioSettingsPayload {
   bumperInstantIds?: number[];
   bumperMode?: 'sequential' | 'random';
   enabled?: boolean;
+  segueMode?: string;
   similarityMode?: string;
   similarityThreshold?: number;
   similarityWindowSeconds?: number;
@@ -268,6 +271,7 @@ export class RadioService {
     );
     const bumperMode = this.normalizeBumperMode(data.bumperMode);
     const listenerUrl = this.normalizeListenerUrl(data.listenerUrl);
+    const segueMode = this.normalizeSegueMode(data.segueMode);
     const similarity = this.normalizeSimilarityPayload(data);
     const result = await this.prisma.radioSettings.upsert({
       where: { programStateId: state.id },
@@ -281,6 +285,7 @@ export class RadioService {
         ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
         ...(data.bumperMode !== undefined && { bumperMode }),
         ...(data.enabled !== undefined && { enabled: data.enabled }),
+        ...(segueMode !== undefined && { segueMode }),
         ...similarity,
       },
       create: {
@@ -292,10 +297,19 @@ export class RadioService {
         bumperInstantIds: bumperInstantIds ?? [],
         bumperMode: bumperMode ?? 'sequential',
         enabled: data.enabled ?? false,
+        segueMode: segueMode ?? 'off',
         ...similarity,
       },
     });
     return result;
+  }
+
+  private normalizeSegueMode(value?: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (value !== 'off' && value !== 'on') {
+      throw new BadRequestException('segueMode must be off or on');
+    }
+    return value;
   }
 
   /** Rejects invalid similarity fields explicitly; absent fields stay untouched. */
@@ -435,6 +449,10 @@ export class RadioService {
     playbackRequestId?: string,
     coverUrl?: string,
     intro?: PalazzoIntroCommand,
+    songId?: number,
+    duration?: number,
+    segue?: PalazzoSongSegue,
+    loudness?: PalazzoSongLoudness,
   ): Promise<{
     ok: boolean;
     playbackRequestId?: string;
@@ -443,6 +461,58 @@ export class RadioService {
     const settings = await this.getRadioSettings(programId);
     if (!settings) return { ok: false };
     const requestId = playbackRequestId?.trim() || randomUUID();
+
+    let resolvedSegue = segue;
+    let resolvedLoudness = loudness;
+    if (settings.segueMode === 'on') {
+      if (!resolvedSegue && !resolvedLoudness) {
+        try {
+          const song = songId
+            ? await this.prisma.song.findUnique({
+                where: { id: songId },
+                select: { assetId: true, durationMs: true },
+              })
+            : await this.prisma.song.findFirst({
+                where: { audioUrl },
+                select: { assetId: true, durationMs: true },
+              });
+          if (song?.assetId) {
+            const analysis = await this.prisma.mediaAssetAnalysis.findUnique({
+              where: { assetId: song.assetId },
+            });
+            if (analysis && analysis.status === 'success') {
+              if (
+                analysis.cueInSeconds !== null &&
+                analysis.cueOutSeconds !== null
+              ) {
+                resolvedSegue = {
+                  cueInSeconds: analysis.cueInSeconds,
+                  cueOutSeconds: analysis.cueOutSeconds,
+                  fadeInSeconds: analysis.fadeInSeconds ?? 0,
+                  fadeOutSeconds: analysis.fadeOutSeconds ?? 0,
+                  overlapSeconds: analysis.overlapSeconds ?? 0,
+                };
+              }
+              if (
+                analysis.integratedLufs !== null &&
+                analysis.truePeakDbtp !== null
+              ) {
+                resolvedLoudness = {
+                  integratedLufs: analysis.integratedLufs,
+                  truePeakDbtp: analysis.truePeakDbtp,
+                };
+              }
+            }
+          }
+        } catch {
+          // Acceptance criterion: A failed analysis row never blocks playback
+        }
+      }
+    } else {
+      resolvedSegue = undefined;
+      resolvedLoudness = undefined;
+    }
+
     try {
       const result = await this.palazzo.playSong(
         this.palazzoUrl(settings),
@@ -454,6 +524,9 @@ export class RadioService {
           artist,
           coverUrl,
           intro,
+          ...(duration !== undefined && { duration }),
+          ...(resolvedSegue && { segue: resolvedSegue }),
+          ...(resolvedLoudness && { loudness: resolvedLoudness }),
         },
       );
       return {
