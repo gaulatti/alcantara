@@ -367,6 +367,12 @@ export class ProgramController {
     );
   }
 
+  @Post(':programId/countdown/complete')
+  @Public()
+  async completeSceneCountdownById(@Param('programId') programId: string) {
+    return this.programService.completeSceneCountdown(programId);
+  }
+
   @Get(':programId/stage')
   @RequirePermission(ALCANTARA_PERMISSIONS.program.read)
   async getStagedSceneById(@Param('programId') programId: string) {

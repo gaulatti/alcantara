@@ -2477,6 +2477,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     showBellIcon={false}
                     songSequence={audioBusSettings?.songSequence}
                     language='es'
+                    keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
               case 'modoitaliano-giorgia-chyron':
@@ -2489,6 +2490,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     show={typeof props.show === 'boolean' ? props.show : true}
                     textSequence={props.textSequence}
                     ctaSequence={props.ctaSequence}
+                    keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
               case 'modoitaliano-disclaimer':

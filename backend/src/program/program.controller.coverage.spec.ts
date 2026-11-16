@@ -36,6 +36,7 @@ function build() {
     'addStingerToProgram',
     'removeStingerFromProgram',
     'activateScene',
+    'completeSceneCountdown',
     'getStagedScene',
     'stageScene',
     'setFadeToBlack',
@@ -180,6 +181,8 @@ describe('ProgramController delegation', () => {
   it('delegates activation, off-air and reload for a program and for the default program', async () => {
     const { controller, program } = build();
     await controller.activateSceneById('p', { sceneId: 3, transitionId: 'tr' });
+    await controller.completeSceneCountdownById('p');
+    expect(program.completeSceneCountdown).toHaveBeenCalledWith('p');
     await controller.activateScene({ sceneId: 3, transitionId: 'tr' });
     await controller.activateScene({ sceneId: 4 });
     expect(program.activateScene).toHaveBeenNthCalledWith(1, 3, 'p', 'tr');

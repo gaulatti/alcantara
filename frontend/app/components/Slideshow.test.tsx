@@ -27,8 +27,37 @@ describe('Slideshow broadcast loading', () => {
 
     fireEvent.load(frames[1]);
     act(() => vi.advanceTimersByTime(1000));
+    expect(frames[1]).toHaveStyle({ opacity: '1' });
+    act(() => vi.advanceTimersByTime(900));
     expect(frames[0]).toHaveStyle({ opacity: '0' });
     expect(frames[1]).toHaveStyle({ opacity: '1' });
+  });
+
+  it('never dips to black between photos: the outgoing image stays opaque under the incoming one', () => {
+    vi.useFakeTimers();
+    render(<Slideshow images={['/a.avif', '/b.avif']} intervalMs={1000} transitionMs={400} kenBurns={false} />);
+    const [first, second] = screen.getAllByRole('img');
+    fireEvent.load(first);
+    fireEvent.load(second);
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(second).toHaveStyle({ opacity: '1', zIndex: '2' });
+    expect(first).toHaveStyle({ opacity: '1', zIndex: '1' });
+
+    // Once the incoming image covers it, the outgoing one is dropped.
+    act(() => vi.advanceTimersByTime(400));
+    expect(first).toHaveStyle({ opacity: '0' });
+  });
+
+  it('still cross-fades images that do not fill the frame', () => {
+    vi.useFakeTimers();
+    render(<Slideshow images={['/a.avif', '/b.avif']} intervalMs={1000} transitionMs={400} kenBurns={false} fitMode='contain' />);
+    const [first, second] = screen.getAllByRole('img');
+    fireEvent.load(first);
+    fireEvent.load(second);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(second).toHaveStyle({ opacity: '1' });
+    expect(first).toHaveStyle({ opacity: '0' });
   });
 
   it('shows the first image at once, without fading up from black, then fades between images', () => {
@@ -61,7 +90,7 @@ describe('Slideshow broadcast loading', () => {
     // The switch: the second image starts its own motion, the first keeps the one it had.
     act(() => vi.advanceTimersByTime(950));
     expect(second).toHaveStyle({ opacity: '1' });
-    expect(first).toHaveStyle({ opacity: '0' });
+    expect(first).toHaveStyle({ opacity: '1' });
     expect(second.style.animation).toContain('slideshowKenBurns1');
     expect(first.style.animation).toBe(firstMotion);
 

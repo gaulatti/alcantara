@@ -1,8 +1,16 @@
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const { completeSceneCountdown } = vi.hoisted(() => ({ completeSceneCountdown: vi.fn() }));
+vi.mock('../services/program', () => ({ completeSceneCountdown }));
+
 import RelojDigitalLoopClock from './RelojDigitalLoopClock';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  completeSceneCountdown.mockReset();
+});
 
 const text = (value: string) => ({ mode: 'manual', items: [{ id: 'a', kind: 'preset', text: value }], activeItemId: 'a' });
 
@@ -17,6 +25,47 @@ describe('RelojDigitalLoopClock', () => {
     expect(mark).not.toBeNull();
     expect(container.querySelector('#clock-block')?.contains(mark)).toBe(false);
     expect(container.querySelector('#logo-above')).toBeNull();
+  });
+
+  it('asks the API to switch scenes when the countdown reaches zero, once, without needing a sign-in', async () => {
+    vi.useFakeTimers();
+    completeSceneCountdown.mockRejectedValue(new Error('refused'));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const clock = (command: number, allow = true) => (
+      <RelojDigitalLoopClock
+        mode='countdown'
+        countdownDuration={2}
+        countdownTargetSceneId={75}
+        countdownTransitionId='hit-parade'
+        countdownCommand={command}
+        programId='reloj-test'
+        allowProgramActivation={allow}
+      />
+    );
+    const { container, rerender } = render(clock(0));
+    rerender(clock(1));
+    expect(container.querySelector('#city-name')?.textContent).toBe('COUNTDOWN');
+    await act(() => vi.advanceTimersByTimeAsync(1500));
+    expect(completeSceneCountdown).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(completeSceneCountdown).toHaveBeenCalledTimes(1);
+    expect(completeSceneCountdown).toHaveBeenCalledWith('reloj-test');
+    // A refusal is reported, not thrown away.
+    expect(logged).toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(completeSceneCountdown).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
+  it('does not switch scenes from a monitor', async () => {
+    vi.useFakeTimers();
+    const clock = (command: number) => (
+      <RelojDigitalLoopClock mode='countdown' countdownDuration={1} countdownTargetSceneId={75} countdownCommand={command} programId='reloj-test' allowProgramActivation={false} />
+    );
+    const { rerender } = render(clock(0));
+    rerender(clock(1));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(completeSceneCountdown).not.toHaveBeenCalled();
   });
 
   it('renders the lower third only when there is text, without the old separator', () => {
