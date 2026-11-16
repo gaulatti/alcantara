@@ -1743,14 +1743,14 @@ describe('SongExecutionEngine track events', () => {
     });
   });
 
-  it('emits track events the engine ignores as mismatched or duplicate, once each', async () => {
-    const { engine, requestId } = await startedEngine();
+  it('emits a duplicate track.ended for the same request exactly once in total', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
     const events: SongEngineTrackEvent[] = [];
     engine.trackEvents$.subscribe((event) => events.push(event));
 
     engine.handlePalazzoEvent('radio-1', {
       type: 'track.started',
-      data: { playbackRequestId: 'foreign-request' },
+      data: { playbackRequestId: requestId },
     });
     engine.handlePalazzoEvent('radio-1', {
       type: 'track.ended',
@@ -1761,13 +1761,106 @@ describe('SongExecutionEngine track events', () => {
       data: { playbackRequestId: requestId },
     });
 
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-duplicate',
+    );
     expect(
       events.map((event) => [event.type, event.playbackRequestId]),
     ).toEqual([
-      ['track.started', 'foreign-request'],
-      ['track.ended', requestId],
+      ['track.started', requestId],
       ['track.ended', requestId],
     ]);
+  });
+
+  it('emits a started that confirms a pending command the engine has not activated', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
+    // A manual song takes over before Palazzo confirms the first command.
+    engine.handleManualSong(
+      'radio-1',
+      'https://example.test/manual.mp3',
+      'Manual',
+      'Artist',
+      120_000,
+    );
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith('adopted');
+    expect(events.map((event) => event.playbackRequestId)).toEqual([requestId]);
+  });
+
+  it('emits nothing for transitions the engine ignores', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    // Mismatched start.
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: 'foreign-request' },
+    });
+    // End without a request id.
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: '' },
+    });
+    // End for a request that is not the active song.
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'foreign-request' },
+    });
+    // End while frozen.
+    engine.handlePalazzoStatus('radio-1', {
+      programId: 'radio-1',
+      programType: 'radio',
+      palazzoUrl: 'http://palazzo:3100',
+      instanceId: 'palazzo-a',
+      connection: 'unavailable',
+      lastEventAt: null,
+      lastSnapshotAt: null,
+      degraded: true,
+      detail: 'sse and state endpoint unreachable',
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+
+    for (const outcome of [
+      'ignored-mismatch',
+      'ignored-no-active',
+      'ignored-frozen',
+    ]) {
+      expect(metrics.recordTrackTransition).toHaveBeenCalledWith(outcome);
+    }
+    expect(events).toEqual([]);
+  });
+
+  it('emits nothing for a track.ended when no song is active', async () => {
+    const { engine, metrics } = createEngine({ reconciled: true, radio: true });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'some-request' },
+    });
+
+    expect(engine.getPlaybackState('radio-1')).toBeNull();
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-no-active',
+    );
+    expect(events).toEqual([]);
   });
 
   it('emits nothing for playback.position, audio levels, intro events or unhandled programs', async () => {

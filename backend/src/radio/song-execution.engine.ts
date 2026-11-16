@@ -161,7 +161,7 @@ const MAX_ENDED_REQUEST_IDS = 128;
 const RADIO_PROGRAM_TYPES = new Set(['radio', 'both']);
 
 /**
- * A Palazzo track start or end the engine has handled. `at` is the time the
+ * A Palazzo track start or end the engine accepted. `at` is the time the
  * engine handled the event, not a Palazzo timestamp.
  */
 export type SongEngineTrackEvent = {
@@ -194,9 +194,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   // Plain Subject: no replay buffer, so late subscribers see only new events.
   private readonly trackEventsSubject = new Subject<SongEngineTrackEvent>();
   /**
-   * Palazzo `track.started` and `track.ended` events, emitted after the engine
-   * has handled each one. Subscribers run synchronously but are never awaited,
-   * and a subscriber error never reaches the engine.
+   * Palazzo `track.started` and `track.ended` events the engine accepted (an
+   * adopted start or an advancing end), emitted after the existing handling.
+   * Ignored transitions (mismatched, duplicate, frozen, no active song) emit
+   * nothing. Subscribers run synchronously but are never awaited, and a
+   * subscriber error never reaches the engine.
    */
   readonly trackEvents$: Observable<SongEngineTrackEvent> =
     this.trackEventsSubject.asObservable();
@@ -966,21 +968,25 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           activeSong.authoritativeStartedAt,
         );
         this.emitPlaybackUpdate(programId, activeSong);
+        this.emitTrackEvent(programId, event.type, requestId, event.data);
       } else if (state.pendingRequestIds.has(requestId)) {
         // A command is confirmed before the engine optimistically activated it.
         this.metrics.recordTrackTransition('adopted');
+        this.emitTrackEvent(programId, event.type, requestId, event.data);
       } else {
         this.metrics.recordTrackTransition('ignored-mismatch');
       }
-      this.emitTrackEvent(programId, event.type, requestId, event.data);
       return;
     }
 
     // track.ended: every other event type returned above, but TypeScript does
     // not narrow `event.data` through the intro branch.
     const ended = event as Extract<typeof event, { type: 'track.ended' }>;
-    this.handleAuthoritativeTrackEnded(programId, state, requestId);
-    this.emitTrackEvent(programId, ended.type, requestId, ended.data);
+    // Only an accepted end is emitted; ignored ends (duplicate, mismatched,
+    // frozen, no active song) must not count as a play downstream.
+    if (this.handleAuthoritativeTrackEnded(programId, state, requestId)) {
+      this.emitTrackEvent(programId, ended.type, requestId, ended.data);
+    }
   }
 
   private emitTrackEvent(
@@ -1149,18 +1155,19 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.maybeStartSequence(programId);
   }
 
+  /** Returns true only when the end was accepted and the engine advanced. */
   private handleAuthoritativeTrackEnded(
     programId: string,
     state: SongEngineState,
     requestId: string,
-  ): void {
+  ): boolean {
     if (!requestId) {
       this.metrics.recordTrackTransition('ignored-mismatch');
-      return;
+      return false;
     }
     if (state.endedRequestIds.includes(requestId)) {
       this.metrics.recordTrackTransition('ignored-duplicate');
-      return;
+      return false;
     }
     state.endedRequestIds.push(requestId);
     if (state.endedRequestIds.length > MAX_ENDED_REQUEST_IDS) {
@@ -1170,7 +1177,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.frozen) {
       // Palazzo is unavailable; never advance on a stale event.
       this.metrics.recordTrackTransition('ignored-frozen');
-      return;
+      return false;
     }
 
     if (!state.activeSong || state.activeSong.playbackRequestId !== requestId) {
@@ -1182,7 +1189,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           `Foreign track ended on ${programId}; awaiting an authoritative idle snapshot`,
         );
       }
-      return;
+      return false;
     }
 
     this.metrics.recordTrackTransition('advanced');
@@ -1219,6 +1226,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       nextSequence,
       hasSuccessor,
     );
+    return true;
   }
 
   private async continueAfterAuthoritativeEnd(
