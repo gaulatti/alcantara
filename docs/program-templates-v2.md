@@ -28,7 +28,9 @@ A contract v2 manifest declares:
 - Relative snapshot path `state` and events path `events`;
 - Runtime query parameter names for `programId` and `apiBaseUrl`;
 - Supported signal types matching the allowed signal catalog;
-- Optional release files with key, byte count, MIME content type, and SHA-256 digest.
+- Optional release files with key, byte count, MIME content type, and SHA-256 digest. As the schema allows, a file entry may carry additional properties; they are accepted and not stored.
+
+A v2 registration receives state `schemaVersion: 2` on the `program_state_snapshot` event, on every projected state (`GET /program/:programId/state` and state-bearing signals) and on every projected signal. A v1 registration continues to receive `schemaVersion: 1`.
 
 ## Signals and event projection
 
@@ -51,10 +53,11 @@ Existing v1 registrations remain supported and unchanged. v2-only signals are pr
 
 Template registration fetches the declared manifest over HTTPS and enforces strict network boundaries:
 
-1. **Approved publisher origins**: In production, manifests must originate from an approved publisher origin. The deployment's runtime secret contract allowlists additional approved publisher origins via `programTemplateOrigins`. The list is empty by default.
-2. **CORS configuration**: Origins listed in `programTemplateOrigins` are permitted by the API CORS policy.
-3. **SSRF protection**: Manifest destinations must resolve only to public network IP addresses. Loopback, private (RFC 1918), link-local, documentation, and multicast ranges are rejected.
-4. **Request limits**: Redirects are followed up to three hops, checking each destination. Responses are capped at 256 KiB and must return a JSON content type.
+1. **Approved publisher origins**: In production, manifests must originate from an approved publisher origin. The deployment's runtime secret contract allowlists additional approved publisher origins via `programTemplateOrigins`, a comma-separated list of HTTPS origins. The list is empty by default. In production the secret is the only source: when it omits `programTemplateOrigins`, a `PROGRAM_TEMPLATE_ORIGINS` value left in the container environment is discarded and no additional origin is approved. Outside production, `PROGRAM_TEMPLATE_ORIGINS` in the local environment is used as before.
+2. **Origin normalization**: Each configured origin is normalized before it is compared, so `https://Templates.Example.test/`, `https://templates.example.test:443` and `https://templates.example.test` are the same origin. Scheme and host must still match: a different host is refused.
+3. **CORS configuration**: The normalized origins in `programTemplateOrigins` are permitted by the API CORS policy.
+4. **SSRF protection**: Manifest destinations must resolve only to public network IP addresses. Loopback, private (RFC 1918), link-local, documentation, and multicast ranges are rejected.
+5. **Request limits**: Redirects are followed up to three hops, checking each destination. Responses are capped at 256 KiB and must return a JSON content type.
 
 ## Rollback
 

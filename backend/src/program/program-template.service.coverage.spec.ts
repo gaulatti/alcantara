@@ -333,6 +333,24 @@ describe('validateProgramTemplateManifest rejections', () => {
       );
     });
 
+    it('accepts a file entry with an extra property the committed schema allows', () => {
+      const valid = validate({
+        ...baseV2Manifest(),
+        files: [{ ...baseV2Manifest().files[0], role: 'entry' }],
+      });
+      expect(valid.files).toEqual([baseV2Manifest().files[0]]);
+    });
+
+    it('rejects a file entry the committed schema forbids', () => {
+      const { sha256: _omitted, ...withoutDigest } = baseV2Manifest().files[0];
+      expect(() =>
+        validate({
+          ...baseV2Manifest(),
+          files: [{ ...withoutDigest, role: 'entry' }],
+        }),
+      ).toThrow('Template manifest file at index 0 sha256 is invalid');
+    });
+
     it('validates v2 files array structure and fields', () => {
       expect(() =>
         validate({ ...baseV2Manifest(), files: 'not-array' }),
@@ -340,14 +358,6 @@ describe('validateProgramTemplateManifest rejections', () => {
       expect(() =>
         validate({ ...baseV2Manifest(), files: ['not-an-object'] }),
       ).toThrow('Template manifest file at index 0 must be an object');
-      expect(() =>
-        validate({
-          ...baseV2Manifest(),
-          files: [{ ...baseV2Manifest().files[0], extraProperty: 123 }],
-        }),
-      ).toThrow(
-        'Template manifest file at index 0 contains unrecognized property extraProperty',
-      );
       expect(() =>
         validate({
           ...baseV2Manifest(),
@@ -514,16 +524,19 @@ describe('program template projections', () => {
 
   it('projects state with defaults for absent scenes and fade flag', () => {
     expect(
-      projectProgramTemplateState({
-        id: 1,
-        programId: 'p',
-        activeScene: 'oops',
-        stagedScene: { id: 3, layout: 'oops' },
-        fadeToBlack: 'yes',
-        updatedAt: 'now',
-        version: 4,
-        operator: 'drop',
-      }),
+      projectProgramTemplateState(
+        {
+          id: 1,
+          programId: 'p',
+          activeScene: 'oops',
+          stagedScene: { id: 3, layout: 'oops' },
+          fadeToBlack: 'yes',
+          updatedAt: 'now',
+          version: 4,
+          operator: 'drop',
+        },
+        manifest,
+      ),
     ).toEqual({
       schemaVersion: 1,
       id: 1,
@@ -539,15 +552,18 @@ describe('program template projections', () => {
   });
 
   it('projects scenes with null defaults and the fade flag when true', () => {
-    const state = projectProgramTemplateState({
-      id: 1,
-      programId: 'p',
-      activeSceneId: 5,
-      activeScene: { ...scene, chyronText: undefined, metadata: undefined },
-      stagedSceneId: 6,
-      stagedScene: scene,
-      fadeToBlack: true,
-    });
+    const state = projectProgramTemplateState(
+      {
+        id: 1,
+        programId: 'p',
+        activeSceneId: 5,
+        activeScene: { ...scene, chyronText: undefined, metadata: undefined },
+        stagedSceneId: 6,
+        stagedScene: scene,
+        fadeToBlack: true,
+      },
+      manifest,
+    );
     expect(state).toMatchObject({
       activeSceneId: 5,
       activeScene: { ...projectedScene, chyronText: null, metadata: null },
@@ -742,7 +758,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'chyron_update',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       sceneId: 'scene-1',
       chyronText: 'Breaking News',
@@ -763,7 +779,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'fade_to_black',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       active: true,
     });
@@ -791,7 +807,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'song_playback_active',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       songId: 's-1',
       title: 'Song Title',
@@ -821,7 +837,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'song_playback_update',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       songId: 's-1',
       positionMs: 5000,
@@ -847,7 +863,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'song_queue_update',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       items: [
         { songId: 's-1', title: 'T1', artist: 'A1' },
@@ -867,7 +883,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'song_queue_update',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
     });
 
@@ -887,7 +903,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'audio_levels',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       rms: -14.2,
       peak: -1.0,
@@ -913,7 +929,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'audience_interaction_draw_start',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       sceneId: 'sc-1',
       componentType: 'bracket',
@@ -940,7 +956,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'audience_interaction_draw_start',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       sceneId: 'sc-1',
       componentType: 'bracket',
@@ -967,7 +983,7 @@ describe('program template projections', () => {
     ).toEqual({
       type: 'audience_interaction_draw_end',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 1,
       sceneId: 'sc-1',
       componentType: 'bracket',
@@ -1403,6 +1419,36 @@ describe('ProgramTemplateService.inspect', () => {
       delete process.env.PROGRAM_TEMPLATE_ORIGINS;
       expect(await rejection(service, fictionalUrl)).toBe(
         'Template URL origin is not an approved program-template publisher',
+      );
+    });
+
+    describe('configured origin forms', () => {
+      afterEach(() => {
+        delete process.env.PROGRAM_TEMPLATE_ORIGINS;
+      });
+
+      it.each([
+        ['a trailing slash', 'https://template.harborlight.test/'],
+        ['an uppercase host', 'https://TEMPLATE.HarborLight.TEST'],
+        ['an explicit :443', 'https://template.harborlight.test:443'],
+      ])(
+        'accepts a template from the matching origin when configured with %s',
+        async (_label, configured) => {
+          process.env.NODE_ENV = 'production';
+          process.env.PROGRAM_TEMPLATE_ORIGINS = configured;
+          const { service } = build();
+          service.fetchManifest.mockResolvedValue(json(baseV2Manifest()));
+          const target = 'https://template.harborlight.test/m.json';
+          await expect(service.inspect(target)).resolves.toMatchObject({
+            templateUrl: target,
+            templateManifest: expect.objectContaining({ contractVersion: 2 }),
+          });
+          expect(
+            await rejection(service, 'https://other.harborlight.test/m.json'),
+          ).toBe(
+            'Template URL origin is not an approved program-template publisher',
+          );
+        },
       );
     });
 

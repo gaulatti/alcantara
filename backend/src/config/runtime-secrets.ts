@@ -117,18 +117,11 @@ export async function loadRuntimeSecrets(
   environment.EXTERNAL_SOURCE_CONFIG_KEYS = selected.externalSourceConfigKeys;
   if (selected.programTemplateOrigins !== undefined) {
     environment.PROGRAM_TEMPLATE_ORIGINS = selected.programTemplateOrigins;
+  } else {
+    // The secret is authoritative: a container leftover must not configure origins.
+    delete environment.PROGRAM_TEMPLATE_ORIGINS;
   }
   validateRuntimeConfiguration(environment);
-}
-
-export function getProgramTemplateOrigins(
-  environment: RuntimeEnvironment = process.env,
-): string[] {
-  const raw = environment.PROGRAM_TEMPLATE_ORIGINS ?? '';
-  return raw
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
 }
 
 export function validateExternalSourceEncryption(

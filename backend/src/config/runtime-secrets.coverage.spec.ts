@@ -4,7 +4,10 @@ import {
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import {
-  getProgramTemplateOrigins,
+  DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+  getApprovedTemplateOrigins,
+} from '../program/program-template.service';
+import {
   loadRuntimeSecrets,
   normalizePalazzoBaseUrl,
   normalizePrivateServiceUrl,
@@ -286,26 +289,38 @@ describe('runtime-secrets coverage', () => {
     });
   });
 
-  describe('getProgramTemplateOrigins', () => {
-    it('returns empty array when undefined or empty', () => {
-      expect(getProgramTemplateOrigins({})).toEqual([]);
-      expect(
-        getProgramTemplateOrigins({ PROGRAM_TEMPLATE_ORIGINS: '' }),
-      ).toEqual([]);
+  describe('template origins: the secret is authoritative in production', () => {
+    it('drops a leftover PROGRAM_TEMPLATE_ORIGINS when the production secret omits the key', async () => {
+      const environment: Record<string, string> = {
+        NODE_ENV: 'production',
+        ALCANTARA_CONFIG_SECRET_ID: 'id',
+        AWS_REGION: 'us-east-1',
+        PROGRAM_TEMPLATE_ORIGINS: 'https://leftover.harborlight.test',
+      };
+      await loadRuntimeSecrets(environment, {
+        send: jest.fn().mockResolvedValue({ SecretString: secretString() }),
+      });
+      expect(environment.PROGRAM_TEMPLATE_ORIGINS).toBeUndefined();
+      expect(getApprovedTemplateOrigins(environment)).toEqual(
+        new Set(DEFAULT_PRODUCTION_TEMPLATE_ORIGINS),
+      );
     });
 
-    it('splits and trims origins', () => {
-      expect(
-        getProgramTemplateOrigins({
-          PROGRAM_TEMPLATE_ORIGINS: ' https://a.test , https://b.test ',
-        }),
-      ).toEqual(['https://a.test', 'https://b.test']);
-    });
-
-    it('defaults to process.env', () => {
-      process.env.PROGRAM_TEMPLATE_ORIGINS = 'https://default.test';
-      expect(getProgramTemplateOrigins()).toEqual(['https://default.test']);
-      delete process.env.PROGRAM_TEMPLATE_ORIGINS;
+    it('keeps the local environment value outside production', async () => {
+      const environment: Record<string, string> = {
+        NODE_ENV: 'development',
+        PROGRAM_TEMPLATE_ORIGINS: 'https://local.harborlight.test',
+      };
+      await loadRuntimeSecrets(environment);
+      expect(environment.PROGRAM_TEMPLATE_ORIGINS).toBe(
+        'https://local.harborlight.test',
+      );
+      expect(getApprovedTemplateOrigins(environment)).toEqual(
+        new Set([
+          ...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+          'https://local.harborlight.test',
+        ]),
+      );
     });
   });
 

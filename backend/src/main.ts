@@ -9,6 +9,7 @@ import {
 import { AppModule } from './app.module';
 import { ProgramRealtimeService } from './program/program.realtime.service';
 import { loadRuntimeSecrets } from './config/runtime-secrets';
+import { validateProgramTemplateOrigins } from './config/runtime-secret-contract';
 import { assertTestAuthSafety } from './auth/test-auth.service';
 import { loadDatabaseSecret } from './config/database-secrets';
 
@@ -22,10 +23,9 @@ function getAllowedOrigins(): Set<string> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const templateOrigins = (process.env.PROGRAM_TEMPLATE_ORIGINS ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const templateOrigins = validateProgramTemplateOrigins(
+    process.env.PROGRAM_TEMPLATE_ORIGINS ?? '',
+  );
 
   return new Set<string>([
     'https://alcantara.gaulatti.com',

@@ -102,6 +102,7 @@ describe('main bootstrap', () => {
     delete process.env.HTTP_PORT;
     delete process.env.ALLOWED_ORIGINS;
     delete process.env.FRONTEND_ORIGIN;
+    delete process.env.PROGRAM_TEMPLATE_ORIGINS;
   });
 
   afterEach(() => {
@@ -227,6 +228,25 @@ describe('main bootstrap', () => {
       expect(check('https://a.example')).toHaveBeenCalledWith(null, true);
       expect(check('https://b.example')).toHaveBeenCalledWith(null, true);
       expect(check('https://ignored.example').mock.calls[0][1]).toBe(false);
+    });
+
+    it('allows a configured template origin, as typed, and refuses an unconfigured one', async () => {
+      process.env.PROGRAM_TEMPLATE_ORIGINS =
+        'https://Template.HarborLight.test:443/';
+      const h = await runMain({
+        fastifyInstance: { server: { on: jest.fn() } },
+      });
+      const check = corsOrigin(h);
+      expect(check('https://template.harborlight.test')).toHaveBeenCalledWith(
+        null,
+        true,
+      );
+      const refused = check('https://other.harborlight.test');
+      const [error, allow] = refused.mock.calls[0] as [Error, boolean];
+      expect(error.message).toBe(
+        'Origin https://other.harborlight.test not allowed by CORS',
+      );
+      expect(allow).toBe(false);
     });
 
     it('uses FRONTEND_ORIGIN when ALLOWED_ORIGINS is unset', async () => {

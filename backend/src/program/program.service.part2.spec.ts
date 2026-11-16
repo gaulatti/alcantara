@@ -339,6 +339,15 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect('secret' in projected).toBe(false);
     });
 
+    it('projects schemaVersion 2 for a v2 registration', async () => {
+      const { service, put } = build();
+      put('v2', {
+        templateManifest: { ...manifest, contractVersion: 2, schemaVersion: 2 },
+      });
+      const projected = (await service.getPublicState('v2')) as Row;
+      expect(projected.schemaVersion).toBe(2);
+    });
+
     it('returns the staged scene or null placeholders (default and explicit)', async () => {
       const { service, put } = build();
       put('main', {

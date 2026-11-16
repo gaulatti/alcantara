@@ -186,33 +186,36 @@ describe('ProgramTemplateService', () => {
       manifest,
       new URL('https://cdn.fifthbell.com/template/manifest.json'),
     );
-    const state = projectProgramTemplateState({
-      id: 7,
-      programId: 'fifthbell',
-      activeSceneId: 34,
-      activeScene: {
-        id: 34,
-        name: 'Live',
-        layoutId: 4,
-        layout: {
-          id: 4,
-          name: 'Fifthbell',
-          componentType: 'fifthbell',
-          settings: '{}',
+    const state = projectProgramTemplateState(
+      {
+        id: 7,
+        programId: 'fifthbell',
+        activeSceneId: 34,
+        activeScene: {
+          id: 34,
+          name: 'Live',
+          layoutId: 4,
+          layout: {
+            id: 4,
+            name: 'Fifthbell',
+            componentType: 'fifthbell',
+            settings: '{}',
+            internalOnly: 'hidden',
+          },
+          chyronText: null,
+          metadata: '{}',
           internalOnly: 'hidden',
         },
-        chyronText: null,
-        metadata: '{}',
-        internalOnly: 'hidden',
+        stagedSceneId: null,
+        stagedScene: null,
+        fadeToBlack: false,
+        updatedAt: '2026-09-08T18:00:00.000Z',
+        version: 8,
+        songSequence: { privateQueue: true },
+        templateManifest: validated,
       },
-      stagedSceneId: null,
-      stagedScene: null,
-      fadeToBlack: false,
-      updatedAt: '2026-09-08T18:00:00.000Z',
-      version: 8,
-      songSequence: { privateQueue: true },
-      templateManifest: validated,
-    });
+      validated,
+    );
 
     expect(state).not.toHaveProperty('songSequence');
     expect(state).not.toHaveProperty('templateManifest');
@@ -487,7 +490,7 @@ describe('ProgramTemplateService', () => {
     expect(projectedChyron).toEqual({
       type: 'chyron_update',
       programId: 'harbor-light-tv',
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 3,
       sceneId: 'sc-1',
       chyronText: 'Headline',

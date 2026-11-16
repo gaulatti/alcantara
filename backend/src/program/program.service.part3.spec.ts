@@ -766,7 +766,10 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       ['the settings cannot be read', '{not json'],
       ['the scene has no countdown clock', { slideshow: {} }],
       ['the clock is not counting down', countdown({ mode: 'clock' })],
-      ['the countdown has no target', countdown({ countdownTargetSceneId: null })],
+      [
+        'the countdown has no target',
+        countdown({ countdownTargetSceneId: null }),
+      ],
     ])('refuses when %s', async (_name, metadata) => {
       const { service } = build({
         state: metadata === null ? makeState() : onAir(metadata),
@@ -1623,6 +1626,49 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       sub.unsubscribe();
       await jest.advanceTimersByTimeAsync(30_000);
       expect(out).toHaveLength(2);
+    });
+
+    it('emits schemaVersion 2 on the snapshot, state and signals of a v2 registration', async () => {
+      jest.useFakeTimers();
+      const { service } = build();
+      jest.spyOn(service, 'getState').mockResolvedValue(
+        stateOf({
+          templateManifest: {
+            ...templateManifest,
+            contractVersion: 2,
+            schemaVersion: 2,
+            control: { signals: ['scene_change', 'chyron_update'] },
+          },
+        }),
+      );
+      const out: any[] = [];
+      const sub = service
+        .getEventStream('main')
+        .subscribe((m) => out.push(JSON.parse(m.data)));
+      await flush();
+      expect(out[0]).toMatchObject({
+        type: 'program_state_snapshot',
+        schemaVersion: 2,
+        state: { schemaVersion: 2 },
+      });
+      service.broadcastUpdate('main', {
+        type: 'chyron_update',
+        programId: 'main',
+        sceneId: 1,
+        chyronText: 'Headline',
+      });
+      service.broadcastUpdate('main', {
+        type: 'scene_change',
+        programId: 'main',
+        state: { id: 1, programId: 'main' },
+      });
+      expect(out[1]).toMatchObject({ type: 'chyron_update', schemaVersion: 2 });
+      expect(out[2]).toMatchObject({
+        type: 'scene_change',
+        schemaVersion: 2,
+        state: { schemaVersion: 2 },
+      });
+      sub.unsubscribe();
     });
 
     it('does not start a heartbeat when the manifest lacks the signal', async () => {

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { validateProgramTemplateOrigins } from '../config/runtime-secret-contract';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 export const PROGRAM_TEMPLATE_KIND = 'alcantara.program-template';
@@ -111,11 +112,21 @@ export interface ProgramTemplateManifest {
 export function getApprovedTemplateOrigins(
   environment: Record<string, string | undefined> = process.env,
 ): Set<string> {
-  const extra = (environment.PROGRAM_TEMPLATE_ORIGINS ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-  return new Set([...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS, ...extra]);
+  return new Set([
+    ...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+    ...validateProgramTemplateOrigins(
+      environment.PROGRAM_TEMPLATE_ORIGINS ?? '',
+    ),
+  ]);
+}
+
+/** Program state schema version emitted to a registration: 2 for contract v2, else 1. */
+export function programTemplateSchemaVersion(
+  manifest: Pick<ProgramTemplateManifest, 'contractVersion'>,
+): 1 | 2 {
+  return manifest.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2
+    ? 2
+    : 1;
 }
 
 export interface ProgramTemplateRegistration {
@@ -374,20 +385,6 @@ export function validateProgramTemplateManifest(
             `Template manifest file at index ${index} must be an object`,
           );
         }
-        const allowedFileKeys = new Set([
-          'key',
-          'bytes',
-          'contentType',
-          'sha256',
-        ]);
-        const extraFileKey = Object.keys(fileEntry).find(
-          (k) => !allowedFileKeys.has(k),
-        );
-        if (extraFileKey) {
-          throw new BadRequestException(
-            `Template manifest file at index ${index} contains unrecognized property ${extraFileKey}`,
-          );
-        }
         const key = requiredString(fileEntry.key, `files[${index}].key`);
         if (
           typeof fileEntry.bytes !== 'number' ||
@@ -533,9 +530,10 @@ function projectScene(value: unknown): Record<string, unknown> | null {
 
 export function projectProgramTemplateState(
   value: Record<string, unknown>,
+  manifest: Pick<ProgramTemplateManifest, 'contractVersion'>,
 ): Record<string, unknown> {
   return {
-    schemaVersion: 1,
+    schemaVersion: programTemplateSchemaVersion(manifest),
     id: value.id,
     programId: value.programId,
     activeSceneId: value.activeSceneId ?? null,
@@ -572,7 +570,7 @@ export function projectProgramTemplateSignal(
   const common = {
     type: value.type,
     programId: value.programId,
-    schemaVersion: 1,
+    schemaVersion: programTemplateSchemaVersion(manifest),
     version: value.version,
   };
   if (
@@ -585,10 +583,10 @@ export function projectProgramTemplateSignal(
     return {
       ...common,
       ...copyFields(value, ['transitionId']),
-      state: projectProgramTemplateState({
-        ...value.state,
-        version: value.version,
-      }),
+      state: projectProgramTemplateState(
+        { ...value.state, version: value.version },
+        manifest,
+      ),
     };
   }
 
@@ -766,10 +764,9 @@ export class ProgramTemplateService {
         'Template URL must use HTTPS outside local development',
       );
     }
-    const approvedOrigins = getApprovedTemplateOrigins();
     if (
       process.env.NODE_ENV === 'production' &&
-      !approvedOrigins.has(parsed.origin)
+      !getApprovedTemplateOrigins().has(parsed.origin)
     ) {
       throw new BadRequestException(
         'Template URL origin is not an approved program-template publisher',

@@ -35,6 +35,7 @@ import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
   projectProgramTemplateSignal,
   projectProgramTemplateState,
+  programTemplateSchemaVersion,
   readProgramTemplateManifest,
   type ProgramTemplateManifest,
   type ProgramTemplateRegistration,
@@ -1483,7 +1484,7 @@ export class ProgramService implements OnModuleInit {
     const state = await this.getState(programId);
     const manifest = readProgramTemplateManifest(state.templateManifest);
     return manifest
-      ? projectProgramTemplateState(state as Record<string, unknown>)
+      ? projectProgramTemplateState(state as Record<string, unknown>, manifest)
       : state;
   }
 
@@ -3652,13 +3653,19 @@ export class ProgramService implements OnModuleInit {
           const publicState = templateManifest
             ? projectProgramTemplateState(
                 state as unknown as Record<string, unknown>,
+                templateManifest,
               )
             : state;
           subscriber.next(
             serialize({
               type: 'program_state_snapshot',
               programId: normalizedProgramId,
-              ...(templateManifest ? { schemaVersion: 1 } : {}),
+              ...(templateManifest
+                ? {
+                    schemaVersion:
+                      programTemplateSchemaVersion(templateManifest),
+                  }
+                : {}),
               state: publicState,
               version: state.version,
             }),
