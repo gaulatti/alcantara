@@ -48,6 +48,7 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
   const metrics: any = {
     recordRecoveryPreparation: jest.fn(),
     recordListenerConfiguration: jest.fn(),
+    recordAnalysisDrop: jest.fn(),
   };
   const service = new RadioService(prisma, palazzo, config, metrics);
   jest.spyOn(service['logger'], 'error').mockImplementation();
@@ -865,11 +866,9 @@ describe('RadioService coverage', () => {
         segueMode: 'on',
       });
       palazzo.playSong.mockResolvedValue({ playbackRequestId: 'song-1' });
-      prisma.song.findFirst.mockResolvedValue({
-        id: 202,
-        assetId: 'asset-2',
-        durationMs: 180000,
-      });
+      prisma.song.findMany.mockResolvedValue([
+        { assetId: 'asset-2', durationMs: 180000 },
+      ]);
       prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({
         status: 'success',
         cueInSeconds: 1.0,
@@ -933,6 +932,111 @@ describe('RadioService coverage', () => {
       await expect(
         service.playSong('p', 'u', undefined, undefined, 'req-4', undefined, undefined, 101),
       ).resolves.toEqual({ ok: true, playbackRequestId: 'song-1' });
+    });
+  });
+
+  describe('playSong analysis validation (segueMode on)', () => {
+    const OFF_COMMAND = { playbackId: 'req', url: 'u', title: undefined, artist: undefined, coverUrl: undefined, intro: undefined };
+    const VALID_SEGUE = { cueInSeconds: 1, cueOutSeconds: 170, fadeInSeconds: 0.5, fadeOutSeconds: 2, overlapSeconds: 3 };
+    const VALID_LOUDNESS = { integratedLufs: -14, truePeakDbtp: -1 };
+    const NO_SEGUE = { cueInSeconds: null, cueOutSeconds: null, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null };
+    const NO_LOUDNESS = { integratedLufs: null, truePeakDbtp: null };
+
+    function onWithAnalysis(analysis: Record<string, unknown>, durationMs: number | null = 180000) {
+      const built = build({ ...defaultSettings(), segueMode: 'on' });
+      built.palazzo.playSong.mockResolvedValue({ playbackRequestId: 'req' });
+      built.prisma.song.findUnique.mockResolvedValue({ assetId: 'asset-1', durationMs });
+      built.prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({ status: 'success', ...analysis });
+      jest.spyOn(built.service['logger'], 'warn').mockImplementation();
+      return built;
+    }
+    const sent = (palazzo: any) => palazzo.playSong.mock.calls.at(-1)[2];
+    const play = (service: any) => service.playSong('p', 'u', undefined, undefined, 'req', undefined, undefined, 7);
+
+    it.each([
+      ['loudness below -70 LUFS', { ...NO_SEGUE, integratedLufs: -71, truePeakDbtp: -1 }, 'loudness-invalid'],
+      ['true peak above +6 dBTP', { ...NO_SEGUE, integratedLufs: -14, truePeakDbtp: 6.5 }, 'loudness-invalid'],
+      ['cue-in not before cue-out', { ...NO_LOUDNESS, ...VALID_SEGUE, cueInSeconds: 170, cueOutSeconds: 170 }, 'segue-invalid'],
+      ['overlap longer than the cue span', { ...NO_LOUDNESS, ...VALID_SEGUE, cueInSeconds: 10, cueOutSeconds: 20, overlapSeconds: 11 }, 'segue-invalid'],
+    ])('drops %s and sends the segueMode-off command, so the song plays', async (_name, analysis, reason) => {
+      const { service, palazzo, metrics } = onWithAnalysis(analysis);
+      await expect(play(service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      expect(sent(palazzo)).toEqual(OFF_COMMAND);
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith(reason);
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops invalid cue points but keeps valid loudness', async () => {
+      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds: -1, ...VALID_LOUDNESS });
+      await play(service);
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-invalid');
+    });
+
+    it('drops invalid loudness but keeps valid cue points', async () => {
+      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, integratedLufs: Number.NaN, truePeakDbtp: -1 });
+      await play(service);
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('loudness-invalid');
+    });
+
+    it('checks cue-out against the song duration and drops segue beyond it', async () => {
+      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS }, 150000);
+      await play(service);
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-beyond-duration');
+      // Within the duration the same segue is kept, and a song with no stored duration is not bounded.
+      const within = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, 170000);
+      await play(within.service);
+      expect(sent(within.palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
+      const unknown = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, null);
+      await play(unknown.service);
+      expect(sent(unknown.palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
+      expect(unknown.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+    });
+
+    it('applies no analysis when more than one song shares the audio URL', async () => {
+      const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      prisma.song.findMany.mockResolvedValue([
+        { assetId: 'asset-1', durationMs: 180000 },
+        { assetId: 'asset-2', durationMs: 180000 },
+      ]);
+      await expect(service.playSong('p', 'u', undefined, undefined, 'req')).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      expect(prisma.song.findMany).toHaveBeenCalledWith({ where: { audioUrl: 'u' }, select: { assetId: true, durationMs: true }, take: 2 });
+      expect(prisma.mediaAssetAnalysis.findUnique).not.toHaveBeenCalled();
+      expect(sent(palazzo)).toEqual(OFF_COMMAND);
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('ambiguous-match');
+    });
+
+    it('also validates segue and loudness the caller supplies', async () => {
+      const { service, prisma, palazzo, metrics } = onWithAnalysis({});
+      await service.playSong('p', 'u', undefined, undefined, 'req', undefined, undefined, undefined, 100, { ...VALID_SEGUE, cueOutSeconds: 120 }, { integratedLufs: -80, truePeakDbtp: 0 });
+      expect(prisma.song.findUnique).not.toHaveBeenCalled();
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 100 });
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-beyond-duration'], ['loudness-invalid']]);
+    });
+
+    it('counts every drop and logs once per song with the reasons and no audio URL', async () => {
+      const { service, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds: 200, integratedLufs: 1, truePeakDbtp: 0 });
+      await play(service);
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-invalid'], ['loudness-invalid']]);
+      expect(service['logger'].warn).toHaveBeenCalledTimes(1);
+      expect(service['logger'].warn).toHaveBeenCalledWith({
+        event: 'radio.song_analysis_dropped',
+        programId: 'p',
+        playbackRequestId: 'req',
+        songId: 7,
+        reasons: ['segue-invalid', 'loudness-invalid'],
+      });
+      expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('"u"');
+    });
+
+    it('logs nothing and counts nothing when the analysis is valid', async () => {
+      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      await play(service);
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE, loudness: VALID_LOUDNESS });
+      expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+      expect(service['logger'].warn).not.toHaveBeenCalled();
     });
   });
 

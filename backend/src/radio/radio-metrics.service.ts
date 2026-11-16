@@ -68,6 +68,13 @@ export type HighRotationActionResult =
   | 'quota-unmet'
   | 'history-persistence-failed';
 
+// Why analysis-derived segue or loudness was left off a song command (the song still plays without it).
+export type AnalysisDropResult =
+  | 'segue-invalid'
+  | 'segue-beyond-duration'
+  | 'loudness-invalid'
+  | 'ambiguous-match';
+
 export type SimilarityActionResult =
   | 'selected'
   | 'fallback-no-candidate'
@@ -93,6 +100,7 @@ export interface RadioMetricsSnapshot {
   songQueueDepth: number;
   highRotationActions: Record<string, number>;
   similarityActions: Record<string, number>;
+  analysisDrops: Record<string, number>;
   highRotationFavorites: number;
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
@@ -210,6 +218,13 @@ const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
   'persistence-failed',
 ];
 
+const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
+  'segue-invalid',
+  'segue-beyond-duration',
+  'loudness-invalid',
+  'ambiguous-match',
+];
+
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
   'fallback-no-candidate',
@@ -264,6 +279,7 @@ export class RadioMetricsService {
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
+  private readonly analysisDrops = new Map<string, number>();
   private highRotationFavorites = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
@@ -352,6 +368,11 @@ export class RadioMetricsService {
     );
   }
 
+  recordAnalysisDrop(result: AnalysisDropResult): void {
+    if (!ANALYSIS_DROP_RESULTS.includes(result)) return;
+    this.analysisDrops.set(result, (this.analysisDrops.get(result) ?? 0) + 1);
+  }
+
   recordHighRotationFavorites(count: number): void {
     this.highRotationFavorites = Math.max(0, Math.floor(count));
   }
@@ -425,6 +446,7 @@ export class RadioMetricsService {
       songQueueDepth: this.songQueueDepth,
       highRotationActions: Object.fromEntries(this.highRotationActions),
       similarityActions: Object.fromEntries(this.similarityActions),
+      analysisDrops: Object.fromEntries(this.analysisDrops),
       highRotationFavorites: this.highRotationFavorites,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
@@ -524,6 +546,15 @@ export class RadioMetricsService {
     for (const result of SIMILARITY_ACTION_RESULTS) {
       lines.push(
         `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_analysis_dropped_total Analysis-derived segue or loudness left off a song command, by bounded reason.',
+      '# TYPE alcantara_radio_analysis_dropped_total counter',
+    );
+    for (const result of ANALYSIS_DROP_RESULTS) {
+      lines.push(
+        `alcantara_radio_analysis_dropped_total{result="${result}"} ${this.analysisDrops.get(result) ?? 0}`,
       );
     }
     lines.push(

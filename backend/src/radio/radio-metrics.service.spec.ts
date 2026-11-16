@@ -1,6 +1,24 @@
 import { RadioMetricsService } from './radio-metrics.service';
 
 describe('RadioMetricsService', () => {
+  it('counts analysis drops by bounded reason only and ignores unknown reasons', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordAnalysisDrop('segue-invalid');
+    metrics.recordAnalysisDrop('segue-invalid');
+    metrics.recordAnalysisDrop('loudness-invalid');
+    metrics.recordAnalysisDrop('https://media.example/song.mp3' as never);
+
+    const rendered = metrics.render();
+    expect(rendered).toContain('# TYPE alcantara_radio_analysis_dropped_total counter');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-invalid"} 2');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="loudness-invalid"} 1');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-beyond-duration"} 0');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="ambiguous-match"} 0');
+    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(4);
+    expect(rendered).not.toContain('media.example');
+    expect(metrics.snapshot().analysisDrops).toEqual({ 'segue-invalid': 2, 'loudness-invalid': 1 });
+  });
+
   it('renders bounded-cardinality Prometheus output', () => {
     const metrics = new RadioMetricsService();
     metrics.recordConnectionState('connected', 1);

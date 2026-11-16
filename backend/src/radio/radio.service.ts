@@ -7,7 +7,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import { RadioMetricsService } from './radio-metrics.service';
+import { RadioMetricsService, type AnalysisDropResult } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
 import {
   PalazzoMachineClient,
@@ -15,6 +15,8 @@ import {
   type PalazzoIntroCommand,
   type PalazzoSongSegue,
   type PalazzoSongLoudness,
+  validateSongLoudness,
+  validateSongSegue,
 } from './palazzo-machine.client';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
@@ -462,56 +464,10 @@ export class RadioService {
     if (!settings) return { ok: false };
     const requestId = playbackRequestId?.trim() || randomUUID();
 
-    let resolvedSegue = segue;
-    let resolvedLoudness = loudness;
-    if (settings.segueMode === 'on') {
-      if (!resolvedSegue && !resolvedLoudness) {
-        try {
-          const song = songId
-            ? await this.prisma.song.findUnique({
-                where: { id: songId },
-                select: { assetId: true, durationMs: true },
-              })
-            : await this.prisma.song.findFirst({
-                where: { audioUrl },
-                select: { assetId: true, durationMs: true },
-              });
-          if (song?.assetId) {
-            const analysis = await this.prisma.mediaAssetAnalysis.findUnique({
-              where: { assetId: song.assetId },
-            });
-            if (analysis && analysis.status === 'success') {
-              if (
-                analysis.cueInSeconds !== null &&
-                analysis.cueOutSeconds !== null
-              ) {
-                resolvedSegue = {
-                  cueInSeconds: analysis.cueInSeconds,
-                  cueOutSeconds: analysis.cueOutSeconds,
-                  fadeInSeconds: analysis.fadeInSeconds ?? 0,
-                  fadeOutSeconds: analysis.fadeOutSeconds ?? 0,
-                  overlapSeconds: analysis.overlapSeconds ?? 0,
-                };
-              }
-              if (
-                analysis.integratedLufs !== null &&
-                analysis.truePeakDbtp !== null
-              ) {
-                resolvedLoudness = {
-                  integratedLufs: analysis.integratedLufs,
-                  truePeakDbtp: analysis.truePeakDbtp,
-                };
-              }
-            }
-          }
-        } catch {
-          // Acceptance criterion: A failed analysis row never blocks playback
-        }
-      }
-    } else {
-      resolvedSegue = undefined;
-      resolvedLoudness = undefined;
-    }
+    const { segue: resolvedSegue, loudness: resolvedLoudness } =
+      settings.segueMode === 'on'
+        ? await this.resolveSongAnalysis(programId, requestId, audioUrl, songId, duration, segue, loudness)
+        : { segue: undefined, loudness: undefined };
 
     try {
       const result = await this.palazzo.playSong(
@@ -538,6 +494,111 @@ export class RadioService {
       this.logMachineFailure('playSong', programId, error);
       return { ok: false, playbackRequestId: requestId };
     }
+  }
+
+  // Segue and loudness for a song command when segueMode is on: the caller's values, else the song's stored analysis.
+  // Each field group is checked with the bounds Palazzo's client enforces (validateSongSegue, validateSongLoudness)
+  // plus cue-out within the song's duration, and an invalid group is dropped so the song still plays without it.
+  // Analysis is never applied from an audio URL that more than one song shares. Every drop is counted and logged
+  // once per song, without the audio URL.
+  private async resolveSongAnalysis(
+    programId: string,
+    playbackRequestId: string,
+    audioUrl: string,
+    songId: number | undefined,
+    duration: number | undefined,
+    segue: PalazzoSongSegue | undefined,
+    loudness: PalazzoSongLoudness | undefined,
+  ): Promise<{ segue?: PalazzoSongSegue; loudness?: PalazzoSongLoudness }> {
+    const drops: AnalysisDropResult[] = [];
+    let durationSeconds = duration;
+    if (!segue && !loudness) {
+      try {
+        const song = await this.findSongForAnalysis(audioUrl, songId, drops);
+        if (song?.assetId) {
+          if (durationSeconds === undefined && typeof song.durationMs === 'number') {
+            durationSeconds = song.durationMs / 1000;
+          }
+          const analysis = await this.prisma.mediaAssetAnalysis.findUnique({
+            where: { assetId: song.assetId },
+          });
+          if (analysis && analysis.status === 'success') {
+            if (analysis.cueInSeconds !== null && analysis.cueOutSeconds !== null) {
+              segue = {
+                cueInSeconds: analysis.cueInSeconds,
+                cueOutSeconds: analysis.cueOutSeconds,
+                fadeInSeconds: analysis.fadeInSeconds ?? 0,
+                fadeOutSeconds: analysis.fadeOutSeconds ?? 0,
+                overlapSeconds: analysis.overlapSeconds ?? 0,
+              };
+            }
+            if (analysis.integratedLufs !== null && analysis.truePeakDbtp !== null) {
+              loudness = {
+                integratedLufs: analysis.integratedLufs,
+                truePeakDbtp: analysis.truePeakDbtp,
+              };
+            }
+          }
+        }
+      } catch {
+        // A failed analysis lookup never blocks playback: the song plays without segue and loudness.
+      }
+    }
+    if (segue) {
+      try {
+        validateSongSegue(segue);
+        if (durationSeconds !== undefined && segue.cueOutSeconds > durationSeconds) {
+          segue = undefined;
+          drops.push('segue-beyond-duration');
+        }
+      } catch {
+        segue = undefined;
+        drops.push('segue-invalid');
+      }
+    }
+    if (loudness) {
+      try {
+        validateSongLoudness(loudness);
+      } catch {
+        loudness = undefined;
+        drops.push('loudness-invalid');
+      }
+    }
+    for (const drop of drops) this.metrics.recordAnalysisDrop(drop);
+    if (drops.length) {
+      this.logger.warn({
+        event: 'radio.song_analysis_dropped',
+        programId,
+        playbackRequestId,
+        ...(songId !== undefined && { songId }),
+        reasons: drops,
+      });
+    }
+    return { ...(segue && { segue }), ...(loudness && { loudness }) };
+  }
+
+  // The song whose analysis applies: by id when given, else by audio URL only when exactly one song has it.
+  private async findSongForAnalysis(
+    audioUrl: string,
+    songId: number | undefined,
+    drops: AnalysisDropResult[],
+  ): Promise<{ assetId: string | null; durationMs: number | null } | null> {
+    if (songId) {
+      return this.prisma.song.findUnique({
+        where: { id: songId },
+        select: { assetId: true, durationMs: true },
+      });
+    }
+    const songs = await this.prisma.song.findMany({
+      where: { audioUrl },
+      select: { assetId: true, durationMs: true },
+      take: 2,
+    });
+    if (songs.length > 1) {
+      drops.push('ambiguous-match');
+      return null;
+    }
+    return songs[0] ?? null;
   }
 
   async stopSong(programId: string): Promise<void> {
