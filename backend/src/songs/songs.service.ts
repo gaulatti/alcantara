@@ -430,13 +430,6 @@ export class SongsService {
     return Math.max(1, Math.round(numeric));
   }
 
-  private resolveChartProvider(provider?: string | null): string {
-    if (typeof provider === 'string' && provider.trim()) {
-      return provider.trim();
-    }
-    return 'earone';
-  }
-
   // The song's SongChartIdentity follows its chart values: written while any is set, removed once all are cleared.
   // An update without a provider keeps the stored one; a new row without one is 'earone', the only provider today.
   private async syncChartIdentity(
