@@ -477,10 +477,25 @@ describe('RadioService coverage', () => {
           bumperInstantIds: [],
           bumperMode: 'sequential',
           enabled: false,
-          segueMode: 'off',
+          segueMode: 'on',
         },
       });
       expect(metrics.recordListenerConfiguration).not.toHaveBeenCalled();
+    });
+
+    it('creates a new program with segue on but keeps an explicit off', async () => {
+      const created = build();
+      await created.service.updateRadioSettings('p', { enabled: true });
+      const createdArg = created.prisma.radioSettings.upsert.mock.calls[0][0];
+      expect(createdArg.create.segueMode).toBe('on');
+      // An update that does not name segueMode never touches the stored choice.
+      expect(createdArg.update).not.toHaveProperty('segueMode');
+
+      const optedOut = build();
+      await optedOut.service.updateRadioSettings('p', { segueMode: 'off' });
+      const optedOutArg = optedOut.prisma.radioSettings.upsert.mock.calls[0][0];
+      expect(optedOutArg.create.segueMode).toBe('off');
+      expect(optedOutArg.update.segueMode).toBe('off');
     });
 
     it('applies every supplied field to update and create and records success', async () => {
@@ -1038,6 +1053,28 @@ describe('RadioService coverage', () => {
         reasons: ['segue-invalid', 'loudness-invalid'],
       });
       expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('"u"');
+    });
+
+    it.each([
+      ['the song has no asset', () => ({ songRow: { assetId: null, durationMs: 180000 }, analysisRow: null })],
+      ['the asset has no analysis row', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: null })],
+      ['the analysis is still pending', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'pending', ...NO_SEGUE, ...NO_LOUDNESS } })],
+      ['the analysis has no measurements', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'success', ...NO_SEGUE, ...NO_LOUDNESS } })],
+    ])('plays a song whose %s with the same command segue off sends', async (_name, fixture) => {
+      const { songRow, analysisRow } = fixture();
+      const on = build({ ...defaultSettings(), segueMode: 'on' });
+      const off = build({ ...defaultSettings(), segueMode: 'off' });
+      for (const built of [on, off]) {
+        built.palazzo.playSong.mockResolvedValue({ playbackRequestId: 'req' });
+        built.prisma.song.findUnique.mockResolvedValue(songRow);
+        built.prisma.mediaAssetAnalysis.findUnique.mockResolvedValue(analysisRow);
+        jest.spyOn(built.service['logger'], 'warn').mockImplementation();
+        await expect(play(built.service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      }
+      expect(JSON.stringify(on.palazzo.playSong.mock.calls)).toBe(JSON.stringify(off.palazzo.playSong.mock.calls));
+      expect(sent(on.palazzo)).toEqual(OFF_COMMAND);
+      expect(on.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+      expect(on.service['logger'].warn).not.toHaveBeenCalled();
     });
 
     it('logs nothing and counts nothing when the analysis is valid', async () => {

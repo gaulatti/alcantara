@@ -489,7 +489,7 @@ model RadioSettings {
   fillerSongIds    Int[]        @default([])
   fillerVersion    String?
   enabled          Boolean      @default(false)
-  segueMode        String       @default("off")
+  segueMode        String       @default("on")
   similarityMode          String @default("off")
   similarityThreshold     Float  @default(0.8)
   similarityWindowSeconds Int    @default(30)

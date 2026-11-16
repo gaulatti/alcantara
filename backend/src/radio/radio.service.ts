@@ -299,7 +299,7 @@ export class RadioService {
         bumperInstantIds: bumperInstantIds ?? [],
         bumperMode: bumperMode ?? 'sequential',
         enabled: data.enabled ?? false,
-        segueMode: segueMode ?? 'off',
+        segueMode: segueMode ?? 'on',
         ...similarity,
       },
     });

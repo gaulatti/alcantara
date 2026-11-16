@@ -286,3 +286,7 @@ an already-playing queue head and resume without losing or duplicating it.
 ## Song similarity metric
 
 `alcantara_radio_similarity_total{result}` counts similarity picker outcomes with the bounded results `selected`, `fallback-no-candidate`, `fallback-no-embedding`, `shadow-recorded` and `decision-persistence-failed`. It is silent while every station is `off`. Labels never include songs, artists, URLs or program IDs. See [song-similarity.md](song-similarity.md).
+
+## Song analysis drop metric
+
+`alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command, with `segueMode` on, because Palazzo would reject it. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value) or `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied). Every result is exported at 0 from start-up. A song with no analysis is not a drop and is not counted. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).

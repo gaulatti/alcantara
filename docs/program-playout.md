@@ -7,6 +7,14 @@ This document specifies the playout commands sent to Palazzo's private API endpo
 
 Playout commands support optional segue points and loudness measurements derived from media analysis. When absent or when `segueMode` is `off`, the command structure remains identical to the baseline playout payload.
 
+### `segueMode` is a per-program setting, on by default
+
+`RadioSettings.segueMode` accepts `on` or `off` (anything else is rejected with 400). A radio settings row created without a `segueMode` gets `on`: both the column default (migration `20261117000000_radio_segue_mode_default_on`) and the radio service's create path use `on`. An operator can still set `off` for a program, and an update that does not name `segueMode` leaves the stored value alone.
+
+That migration changes only the column default. It does not rewrite existing rows, so a program whose settings row existed before it keeps its stored value; rows created by the earlier `20261115000000_radio_segue_mode` migration were stored as `off`.
+
+With `segueMode` on, a song that has no analysis (no media asset, no analysis row, an analysis that is not `success`, or one without measurements) gets exactly the command it would get with `segueMode` off, so it plays as before.
+
 ### Pinned JSON Payload Shape
 
 ```json
