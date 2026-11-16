@@ -5,15 +5,20 @@ import { ManagedMetricsService } from '../observability/managed-metrics.service'
 
 export const PROGRAM_TEMPLATE_KIND = 'alcantara.program-template';
 export const PROGRAM_TEMPLATE_CONTRACT_VERSION = 1;
+export const PROGRAM_TEMPLATE_CONTRACT_VERSION_V2 = 2;
 export const PROGRAM_TEMPLATE_PROTOCOL = 'alcantara.program.v1';
+export const PROGRAM_TEMPLATE_PROTOCOL_V2 = 'alcantara.program.v2';
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_REDIRECTS = 3;
 const MANIFEST_TIMEOUT_MS = 5_000;
-const PRODUCTION_TEMPLATE_ORIGINS = new Set(['https://cdn.fifthbell.com']);
+export const DEFAULT_PRODUCTION_TEMPLATE_ORIGINS = Object.freeze([
+  'https://cdn.fifthbell.com',
+]);
 const TOKEN_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 const PARAMETER_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
 const SIGNAL_PATTERN = /^[a-z][a-z0-9_]*$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export const PROGRAM_TEMPLATE_SIGNALS = new Set([
   'audio_bus_update',
@@ -36,9 +41,49 @@ export const PROGRAM_TEMPLATE_SIGNALS = new Set([
   'song_off_air',
 ]);
 
+export const V2_ONLY_SIGNALS = new Set([
+  'chyron_update',
+  'fade_to_black',
+  'song_playback_active',
+  'song_playback_update',
+  'song_queue_update',
+  'audio_levels',
+  'audience_interaction_draw_start',
+  'audience_interaction_draw_end',
+]);
+
+export const PROGRAM_TEMPLATE_V2_SIGNALS = new Set([
+  ...PROGRAM_TEMPLATE_SIGNALS,
+  ...V2_ONLY_SIGNALS,
+]);
+
+export const PROGRAM_TEMPLATE_V2_CAPABILITIES = new Set([
+  'audio.playback',
+  'media.groups',
+  'scene.configuration',
+  'stinger.transitions',
+  'audience.interaction',
+  'data.chart-provider',
+  'source.external-video',
+  'source.webrtc-guest',
+  'sequence.song',
+  'sequence.chyron',
+  'media.slideshow',
+  'display.clock',
+  'display.ticker',
+  'display.scoreboard',
+]);
+
+export interface ProgramTemplateManifestFile {
+  key: string;
+  bytes: number;
+  contentType: string;
+  sha256: string;
+}
+
 export interface ProgramTemplateManifest {
   kind: typeof PROGRAM_TEMPLATE_KIND;
-  contractVersion: typeof PROGRAM_TEMPLATE_CONTRACT_VERSION;
+  contractVersion: 1 | 2;
   id: string;
   name: string;
   package: string;
@@ -48,7 +93,9 @@ export interface ProgramTemplateManifest {
   entrypointUrl: string;
   capabilities: string[];
   control: {
-    protocol: typeof PROGRAM_TEMPLATE_PROTOCOL;
+    protocol:
+      | typeof PROGRAM_TEMPLATE_PROTOCOL
+      | typeof PROGRAM_TEMPLATE_PROTOCOL_V2;
     transport: 'server-sent-events';
     snapshotPath: string;
     eventsPath: string;
@@ -58,6 +105,17 @@ export interface ProgramTemplateManifest {
     };
     signals: string[];
   };
+  files?: ProgramTemplateManifestFile[];
+}
+
+export function getApprovedTemplateOrigins(
+  environment: Record<string, string | undefined> = process.env,
+): Set<string> {
+  const extra = (environment.PROGRAM_TEMPLATE_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return new Set([...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS, ...extra]);
 }
 
 export interface ProgramTemplateRegistration {
@@ -158,12 +216,17 @@ export function validateProgramTemplateManifest(
       `Template manifest kind must be ${PROGRAM_TEMPLATE_KIND}`,
     );
   }
-  if (value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION) {
+  if (
+    value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION &&
+    value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION_V2
+  ) {
     throw new BadRequestException(
       `Unsupported template contract version ${String(value.contractVersion)}`,
     );
   }
-  if (value.schemaVersion !== 1) {
+  const isV2 = value.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2;
+  const expectedSchemaVersion = isV2 ? 2 : 1;
+  if (value.schemaVersion !== expectedSchemaVersion) {
     throw new BadRequestException(
       `Unsupported program state schema version ${String(value.schemaVersion)}`,
     );
@@ -182,13 +245,26 @@ export function validateProgramTemplateManifest(
     TOKEN_PATTERN,
     64,
   );
+  if (isV2) {
+    const unsupportedCapability = capabilities.find(
+      (capability) => !PROGRAM_TEMPLATE_V2_CAPABILITIES.has(capability),
+    );
+    if (unsupportedCapability) {
+      throw new BadRequestException(
+        `Template manifest requests unsupported capability ${unsupportedCapability}`,
+      );
+    }
+  }
 
   if (!isRecord(value.control)) {
     throw new BadRequestException('Template manifest control is required');
   }
-  if (value.control.protocol !== PROGRAM_TEMPLATE_PROTOCOL) {
+  const expectedProtocol = isV2
+    ? PROGRAM_TEMPLATE_PROTOCOL_V2
+    : PROGRAM_TEMPLATE_PROTOCOL;
+  if (value.control.protocol !== expectedProtocol) {
     throw new BadRequestException(
-      `Template manifest control protocol must be ${PROGRAM_TEMPLATE_PROTOCOL}`,
+      `Template manifest control protocol must be ${expectedProtocol}`,
     );
   }
   if (value.control.transport !== 'server-sent-events') {
@@ -220,8 +296,11 @@ export function validateProgramTemplateManifest(
     SIGNAL_PATTERN,
     64,
   );
+  const allowedSignals = isV2
+    ? PROGRAM_TEMPLATE_V2_SIGNALS
+    : PROGRAM_TEMPLATE_SIGNALS;
   const unsupportedSignal = signals.find(
-    (signal) => !PROGRAM_TEMPLATE_SIGNALS.has(signal),
+    (signal) => !allowedSignals.has(signal),
   );
   if (unsupportedSignal) {
     throw new BadRequestException(
@@ -234,19 +313,126 @@ export function validateProgramTemplateManifest(
     );
   }
 
-  return {
+  let files: ProgramTemplateManifestFile[] | undefined;
+  if (isV2) {
+    const allowedTopLevel = new Set([
+      'kind',
+      'contractVersion',
+      'schemaVersion',
+      'id',
+      'name',
+      'package',
+      'bundleVersion',
+      'entrypoint',
+      'capabilities',
+      'control',
+      'files',
+    ]);
+    const extraKey = Object.keys(value).find(
+      (key) => !allowedTopLevel.has(key),
+    );
+    if (extraKey) {
+      throw new BadRequestException(
+        `Template manifest contains unrecognized property ${extraKey}`,
+      );
+    }
+    const allowedControl = new Set([
+      'protocol',
+      'transport',
+      'snapshotPath',
+      'eventsPath',
+      'runtimeParameters',
+      'signals',
+    ]);
+    const extraControlKey = Object.keys(value.control).find(
+      (key) => !allowedControl.has(key),
+    );
+    if (extraControlKey) {
+      throw new BadRequestException(
+        `Template manifest control contains unrecognized property ${extraControlKey}`,
+      );
+    }
+    const allowedRuntime = new Set(['programId', 'apiBaseUrl']);
+    const extraRuntimeKey = Object.keys(value.control.runtimeParameters).find(
+      (key) => !allowedRuntime.has(key),
+    );
+    if (extraRuntimeKey) {
+      throw new BadRequestException(
+        `Template manifest control.runtimeParameters contains unrecognized property ${extraRuntimeKey}`,
+      );
+    }
+
+    if (value.files !== undefined) {
+      if (!Array.isArray(value.files)) {
+        throw new BadRequestException(
+          'Template manifest files must be an array',
+        );
+      }
+      files = value.files.map((fileEntry, index) => {
+        if (!isRecord(fileEntry)) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} must be an object`,
+          );
+        }
+        const allowedFileKeys = new Set([
+          'key',
+          'bytes',
+          'contentType',
+          'sha256',
+        ]);
+        const extraFileKey = Object.keys(fileEntry).find(
+          (k) => !allowedFileKeys.has(k),
+        );
+        if (extraFileKey) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} contains unrecognized property ${extraFileKey}`,
+          );
+        }
+        const key = requiredString(fileEntry.key, `files[${index}].key`);
+        if (
+          typeof fileEntry.bytes !== 'number' ||
+          !Number.isInteger(fileEntry.bytes) ||
+          fileEntry.bytes < 0
+        ) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} bytes is invalid`,
+          );
+        }
+        const contentType = requiredString(
+          fileEntry.contentType,
+          `files[${index}].contentType`,
+        );
+        if (
+          typeof fileEntry.sha256 !== 'string' ||
+          !SHA256_PATTERN.test(fileEntry.sha256)
+        ) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} sha256 is invalid`,
+          );
+        }
+        return {
+          key,
+          bytes: fileEntry.bytes,
+          contentType,
+          sha256: fileEntry.sha256,
+        };
+      });
+    }
+  }
+
+  const manifest: ProgramTemplateManifest = {
     kind: PROGRAM_TEMPLATE_KIND,
-    contractVersion: PROGRAM_TEMPLATE_CONTRACT_VERSION,
+    contractVersion: isV2 ? 2 : 1,
     id: requiredString(value.id, 'id', TOKEN_PATTERN),
     name: requiredString(value.name, 'name'),
     package: requiredString(value.package, 'package'),
     bundleVersion: requiredString(value.bundleVersion, 'bundleVersion'),
-    schemaVersion: 1,
+    schemaVersion: expectedSchemaVersion,
     entrypoint,
     entrypointUrl: entrypointUrl.toString(),
     capabilities,
     control: {
-      protocol: PROGRAM_TEMPLATE_PROTOCOL,
+      protocol: expectedProtocol,
       transport: 'server-sent-events',
       snapshotPath,
       eventsPath,
@@ -265,6 +451,10 @@ export function validateProgramTemplateManifest(
       signals,
     },
   };
+  if (files !== undefined) {
+    manifest.files = files;
+  }
+  return manifest;
 }
 
 function isBlockedIpv4(address: string): boolean {
@@ -312,7 +502,8 @@ export function readProgramTemplateManifest(
   if (
     !isRecord(value) ||
     value.kind !== PROGRAM_TEMPLATE_KIND ||
-    value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION ||
+    (value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION &&
+      value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION_V2) ||
     typeof value.entrypointUrl !== 'string' ||
     !Array.isArray(value.capabilities) ||
     !isRecord(value.control) ||
@@ -374,6 +565,9 @@ export function projectProgramTemplateSignal(
 ): Record<string, unknown> | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null;
   if (!manifest.control.signals.includes(value.type)) return null;
+  if (V2_ONLY_SIGNALS.has(value.type) && manifest.contractVersion !== 2) {
+    return null;
+  }
 
   const common = {
     type: value.type,
@@ -412,6 +606,34 @@ export function projectProgramTemplateSignal(
     scene_staged: ['stagedSceneId', 'updatedAt'],
     scene_update: ['updatedAt'],
     song_off_air: ['triggeredAt'],
+    chyron_update: ['sceneId', 'chyronText'],
+    fade_to_black: ['active'],
+    song_playback_active: [
+      'songId',
+      'title',
+      'artist',
+      'coverUrl',
+      'durationMs',
+      'startedAt',
+      'externalChartProvider',
+      'externalChartRank',
+      'externalChartSpins',
+    ],
+    song_playback_update: ['songId', 'positionMs', 'durationMs'],
+    audio_levels: ['rms', 'peak'],
+    audience_interaction_draw_start: [
+      'sceneId',
+      'componentType',
+      'drawId',
+      'durationSeconds',
+      'candidateIds',
+    ],
+    audience_interaction_draw_end: [
+      'sceneId',
+      'componentType',
+      'drawId',
+      'selectedId',
+    ],
   };
   const projected: Record<string, unknown> = {
     ...common,
@@ -419,6 +641,16 @@ export function projectProgramTemplateSignal(
   };
   if (value.type === 'scene_staged' || value.type === 'scene_update') {
     projected.scene = projectScene(value.scene);
+  } else if (value.type === 'song_queue_update') {
+    if (Array.isArray(value.items)) {
+      projected.items = value.items
+        .filter(isRecord)
+        .map((item) => copyFields(item, ['songId', 'title', 'artist']));
+    }
+  } else if (value.type === 'audience_interaction_draw_start') {
+    if (isRecord(value.slot)) {
+      projected.slot = copyFields(value.slot, ['matchId', 'field']);
+    }
   }
   return projected;
 }
@@ -534,9 +766,10 @@ export class ProgramTemplateService {
         'Template URL must use HTTPS outside local development',
       );
     }
+    const approvedOrigins = getApprovedTemplateOrigins();
     if (
       process.env.NODE_ENV === 'production' &&
-      !PRODUCTION_TEMPLATE_ORIGINS.has(parsed.origin)
+      !approvedOrigins.has(parsed.origin)
     ) {
       throw new BadRequestException(
         'Template URL origin is not an approved program-template publisher',

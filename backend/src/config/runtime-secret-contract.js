@@ -7,7 +7,13 @@ const RUNTIME_SECRET_KEYS = Object.freeze([
   'externalSourceConfigCurrentVersion',
   'externalSourceConfigKeys',
 ]);
-const allowedSecretFields = new Set(RUNTIME_SECRET_KEYS);
+const ALLOWLISTED_OPTIONAL_SECRET_KEYS = Object.freeze([
+  'programTemplateOrigins',
+]);
+const allowedSecretFields = new Set([
+  ...RUNTIME_SECRET_KEYS,
+  ...ALLOWLISTED_OPTIONAL_SECRET_KEYS,
+]);
 const alanaTokenPattern = /^[a-f0-9]{64}$/;
 
 function isValidAlanaControlToken(value) {
@@ -84,6 +90,37 @@ function normalizeAlanaControlUrl(value) {
   return normalized;
 }
 
+function normalizeTemplateOrigin(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== '/' && parsed.pathname !== '')
+  ) {
+    throw new Error('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
+  }
+  return parsed.origin;
+}
+
+function validateProgramTemplateOrigins(originsString) {
+  if (typeof originsString !== 'string') {
+    throw new Error('PROGRAM_TEMPLATE_ORIGINS is malformed');
+  }
+  return originsString
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map(normalizeTemplateOrigin);
+}
+
 function validateExternalSourceEncryption(currentVersion, encodedKeys) {
   const current = Number(currentVersion);
   let parsed;
@@ -132,7 +169,12 @@ function parseRuntimeSecretPayload(secretString) {
   const selected = {};
   for (const [key, value] of Object.entries(payload)) {
     if (!allowedSecretFields.has(key)) continue;
-    if (typeof value !== 'string' || !value.trim()) {
+    if (typeof value !== 'string') {
+      throw new Error(
+        `Alcantara runtime configuration field ${key} is malformed`,
+      );
+    }
+    if (key !== 'programTemplateOrigins' && !value.trim()) {
       throw new Error(
         `Alcantara runtime configuration field ${key} is malformed`,
       );
@@ -147,6 +189,9 @@ function parseRuntimeSecretPayload(secretString) {
     throw new Error(
       `Alcantara runtime configuration is incomplete; missing keys: ${missingKeys.join(', ')}`,
     );
+  }
+  if (selected.programTemplateOrigins !== undefined) {
+    validateProgramTemplateOrigins(selected.programTemplateOrigins);
   }
   const palazzoUrls = selected.palazzoAllowedUrls
     .split(',')
@@ -194,12 +239,15 @@ async function main() {
 }
 
 module.exports = {
+  ALLOWLISTED_OPTIONAL_SECRET_KEYS,
   RUNTIME_SECRET_KEYS,
   isPrivateServiceHostname,
   isValidAlanaControlToken,
   main,
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
+  normalizeTemplateOrigin,
   parseRuntimeSecretPayload,
   validateExternalSourceEncryption,
+  validateProgramTemplateOrigins,
 };

@@ -22,6 +22,11 @@ function getAllowedOrigins(): Set<string> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  const templateOrigins = (process.env.PROGRAM_TEMPLATE_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   return new Set<string>([
     'https://alcantara.gaulatti.com',
     'https://alcantara.dev',
@@ -29,6 +34,7 @@ function getAllowedOrigins(): Set<string> {
     'https://fifthbell.com',
     'https://cdn.fifthbell.com',
     ...configuredOrigins,
+    ...templateOrigins,
   ]);
 }
 

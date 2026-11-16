@@ -4,6 +4,7 @@ import {
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import {
+  getProgramTemplateOrigins,
   loadRuntimeSecrets,
   normalizePalazzoBaseUrl,
   normalizePrivateServiceUrl,
@@ -261,6 +262,69 @@ describe('runtime-secrets coverage', () => {
           send: jest.fn().mockResolvedValue({}),
         }),
       ).rejects.toThrow('runtime configuration is malformed');
+
+      const envWithOrigins: Record<string, string> = {
+        NODE_ENV: 'production',
+        ALCANTARA_CONFIG_SECRET_ID: 'id',
+        AWS_REGION: 'us-east-1',
+      };
+      await loadRuntimeSecrets(envWithOrigins, {
+        send: jest.fn().mockResolvedValue({
+          SecretString: JSON.stringify({
+            palazzoAllowedUrls: 'http://palazzo:3100',
+            alanaControlToken: TOKEN,
+            alanaControlUrl: 'http://alana:8080',
+            externalSourceConfigCurrentVersion: '1',
+            externalSourceConfigKeys: KEYS,
+            programTemplateOrigins: 'https://template.harborlight.test',
+          }),
+        }),
+      });
+      expect(envWithOrigins.PROGRAM_TEMPLATE_ORIGINS).toBe(
+        'https://template.harborlight.test',
+      );
+    });
+  });
+
+  describe('getProgramTemplateOrigins', () => {
+    it('returns empty array when undefined or empty', () => {
+      expect(getProgramTemplateOrigins({})).toEqual([]);
+      expect(
+        getProgramTemplateOrigins({ PROGRAM_TEMPLATE_ORIGINS: '' }),
+      ).toEqual([]);
+    });
+
+    it('splits and trims origins', () => {
+      expect(
+        getProgramTemplateOrigins({
+          PROGRAM_TEMPLATE_ORIGINS: ' https://a.test , https://b.test ',
+        }),
+      ).toEqual(['https://a.test', 'https://b.test']);
+    });
+
+    it('defaults to process.env', () => {
+      process.env.PROGRAM_TEMPLATE_ORIGINS = 'https://default.test';
+      expect(getProgramTemplateOrigins()).toEqual(['https://default.test']);
+      delete process.env.PROGRAM_TEMPLATE_ORIGINS;
+    });
+  });
+
+  describe('validateRuntimeConfiguration with template origins', () => {
+    it('validates PROGRAM_TEMPLATE_ORIGINS when present', () => {
+      expect(() =>
+        validateRuntimeConfiguration(
+          validEnvironment({
+            PROGRAM_TEMPLATE_ORIGINS: 'https://valid.test',
+          }),
+        ),
+      ).not.toThrow();
+      expect(() =>
+        validateRuntimeConfiguration(
+          validEnvironment({
+            PROGRAM_TEMPLATE_ORIGINS: 'http://insecure.test',
+          }),
+        ),
+      ).toThrow('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
     });
   });
 });

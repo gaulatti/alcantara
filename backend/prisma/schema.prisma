@@ -338,8 +338,21 @@ model Song {
   updatedAt    DateTime @updatedAt
   intro        SongIntro?
   embeddings   SongEmbedding[]
+  chartIdentity SongChartIdentity?
 
   @@index([coverAssetId])
+}
+
+model SongChartIdentity {
+  id         Int      @id @default(autoincrement())
+  songId     Int      @unique
+  song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  provider   String
+  externalId String?
+  rank       String?
+  spins      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 /// Audio embedding of a song's opening or closing window. The vector column is

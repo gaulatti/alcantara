@@ -9,6 +9,7 @@ import {
   normalizePrivateServiceUrl,
   parseRuntimeSecretPayload,
   validateExternalSourceEncryption as validateExternalSourceEncryptionValues,
+  validateProgramTemplateOrigins,
 } from './runtime-secret-contract';
 
 interface SecretClient {
@@ -26,6 +27,7 @@ interface RuntimeEnvironment {
   ALANA_CONTROL_URL?: string;
   EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION?: string;
   EXTERNAL_SOURCE_CONFIG_KEYS?: string;
+  PROGRAM_TEMPLATE_ORIGINS?: string;
   [key: string]: string | undefined;
 }
 
@@ -65,6 +67,9 @@ export function validateRuntimeConfiguration(
   validatePalazzoRuntimeConfiguration(environment);
   validateAlanaRuntimeConfiguration(environment);
   validateExternalSourceEncryption(environment);
+  if (environment.PROGRAM_TEMPLATE_ORIGINS) {
+    validateProgramTemplateOrigins(environment.PROGRAM_TEMPLATE_ORIGINS);
+  }
 }
 
 /** Load production private-service configuration before constructing clients. */
@@ -110,7 +115,20 @@ export async function loadRuntimeSecrets(
   environment.EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION =
     selected.externalSourceConfigCurrentVersion;
   environment.EXTERNAL_SOURCE_CONFIG_KEYS = selected.externalSourceConfigKeys;
+  if (selected.programTemplateOrigins !== undefined) {
+    environment.PROGRAM_TEMPLATE_ORIGINS = selected.programTemplateOrigins;
+  }
   validateRuntimeConfiguration(environment);
+}
+
+export function getProgramTemplateOrigins(
+  environment: RuntimeEnvironment = process.env,
+): string[] {
+  const raw = environment.PROGRAM_TEMPLATE_ORIGINS ?? '';
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 export function validateExternalSourceEncryption(

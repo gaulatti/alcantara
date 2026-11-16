@@ -6,12 +6,17 @@ export const RUNTIME_SECRET_KEYS: readonly [
   'externalSourceConfigKeys',
 ];
 
+export const ALLOWLISTED_OPTIONAL_SECRET_KEYS: readonly [
+  'programTemplateOrigins',
+];
+
 export type RuntimeSecretPayload = {
   palazzoAllowedUrls: string;
   alanaControlToken: string;
   alanaControlUrl: string;
   externalSourceConfigCurrentVersion: string;
   externalSourceConfigKeys: string;
+  programTemplateOrigins?: string;
 };
 
 export function isPrivateServiceHostname(hostname: string): boolean;
@@ -22,6 +27,7 @@ export function normalizePrivateServiceUrl(
   value: string,
   fieldName: string,
 ): string;
+export function normalizeTemplateOrigin(value: string): string;
 export function parseRuntimeSecretPayload(
   secretString: string | undefined,
 ): RuntimeSecretPayload;
@@ -29,3 +35,6 @@ export function validateExternalSourceEncryption(
   currentVersion: string | undefined,
   encodedKeys: string | undefined,
 ): void;
+export function validateProgramTemplateOrigins(
+  originsString: string | undefined,
+): string[];
