@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { CachedChartsResponse, ChartsService } from './charts.service';
 import { Public } from '../auth/public.decorator';
 
@@ -8,9 +8,7 @@ export class ChartsController {
   constructor(private readonly chartsService: ChartsService) {}
 
   @Get('sanremo-realtime')
-  async getSanremoRealtime(
-    @Query('programId') programId?: string,
-  ): Promise<CachedChartsResponse> {
-    return this.chartsService.getSanremoRealtime(programId);
+  async getSanremoRealtime(): Promise<CachedChartsResponse> {
+    return this.chartsService.getSanremoRealtime();
   }
 }

@@ -461,7 +461,9 @@ describe('ScenesService.drawModoItalianoBracket', () => {
       durationSeconds: 2,
     });
     expect([...start.songIds].sort()).toEqual([10, 11, 12]);
-    expect(program.broadcastUpdate).toHaveBeenCalledTimes(2);
+    // Each of the two programs gets the legacy and the generic start signal.
+    expect(program.broadcastUpdate).toHaveBeenCalledTimes(4);
+    expect(program.broadcastUpdate.mock.calls[1][1]).toEqual({ ...start, type: 'audience_interaction_draw_start' });
 
     // the same seed yields the same order
     program.broadcastUpdate.mockClear();
@@ -860,15 +862,9 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
     };
   }
 
-  it('draws and completes for componentType harbor-light-bracket emitting both signals', async () => {
+  it('draws and completes for componentType harbor-light-bracket emitting both signals, for every program', async () => {
     jest.useFakeTimers();
     const { service, prisma, program } = build();
-    (prisma as any).programState = {
-      findMany: jest.fn().mockImplementation(({ where }: { where: { programId?: unknown; activeSceneId?: unknown } }) => {
-        if (where.programId) return [{ genericBrandFields: true }];
-        return [];
-      }),
-    };
     program.getProgramIdsByAssignedScene.mockResolvedValue(['main']);
     prisma.scene.findUnique.mockResolvedValue({
       id: 1,
@@ -920,31 +916,24 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
     });
   });
 
-  it('rejects unsupported componentType when genericBrandFields is on', async () => {
-    const { service, prisma } = build();
-    (prisma as any).programState = {
-      findMany: jest.fn().mockResolvedValue([{ genericBrandFields: true }]),
-    };
+  it('falls back to the legacy bracket for an unrecognized component type, as before', async () => {
+    const { service, prisma, program } = build();
+    program.getProgramIdsByAssignedScene.mockResolvedValue(['main']);
     prisma.scene.findUnique.mockResolvedValue({
       id: 1,
       layoutId: 2,
-      metadata: JSON.stringify({}),
+      metadata: JSON.stringify({ [TYPE]: quarter() }),
       layout: { componentType: 'unsupported-component' },
     });
 
-    await expect(
-      service.drawModoItalianoBracket(1, { componentType: 'invalid-component' }),
-    ).rejects.toThrow('Component type does not support audience interaction');
+    await service.drawModoItalianoBracket(1, { componentType: 'invalid-component', seed: 1 });
+    expect(program.broadcastUpdate).toHaveBeenCalledWith('main', expect.objectContaining({
+      type: 'audience_interaction_draw_start', componentType: TYPE,
+    }));
   });
 
   it('falls back to layout componentType or default when not specified', async () => {
     const { service, prisma, program } = build();
-    (prisma as any).programState = {
-      findMany: jest.fn().mockImplementation(({ where }: { where: { activeSceneId?: unknown } }) => {
-        if (where.activeSceneId) return [{ genericBrandFields: true }];
-        return [];
-      }),
-    };
     program.getProgramIdsByAssignedScene.mockResolvedValue([]);
     prisma.scene.findUnique.mockResolvedValue({
       id: 1,
@@ -966,11 +955,8 @@ describe('ScenesService generic audience interaction bracket draws and voting', 
     expect(fallbackResult.sceneId).toBe(1);
   });
 
-  it('votes and opens voting on harbor-light-bracket when genericBrandFields is on', async () => {
+  it('votes and opens voting on harbor-light-bracket', async () => {
     const { service, prisma, program } = build();
-    (prisma as any).programState = {
-      findMany: jest.fn().mockResolvedValue([{ genericBrandFields: true }]),
-    };
     program.getProgramIdsByAssignedScene.mockResolvedValue(['p1']);
     prisma.scene.findUnique.mockResolvedValue({
       id: 1,

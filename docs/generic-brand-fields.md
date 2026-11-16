@@ -1,51 +1,41 @@
 # Generic Audience Interaction and Chart Identity
 
-This document covers the generic brand decoupling for audience interaction brackets and song chart identity in Alcantara, controlled by the per-program `genericBrandFields` setting.
+Alcantara carries audience interaction and song chart data under generic names, next to the existing branded ones. This is live for every program: there is no setting to turn it on or off. The branded names stay, so existing clients keep working unchanged.
 
-## Configuration
+## Generic audience interaction brackets
 
-The flag is stored as a nullable boolean column on `ProgramState`:
+### Component support
+Bracket draws and votes run for the scene's audience-interaction component. The component type is chosen in this order:
 
-```prisma
-model ProgramState {
-  // ...
-  genericBrandFields Boolean? @default(false)
-}
-```
+1. The requested `componentType`, when it is an audience-interaction component (its name contains `bracket` or `audience.interaction`, for example `harbor-light-bracket` or `poll.audience.interaction`).
+2. Otherwise the scene layout's `componentType`, when it is one.
+3. Otherwise `modoitaliano-bracket`, which is what every request used before. An unrecognized type still falls back to it instead of being refused.
 
-- **Default (Off / `false` / `null`)**: Alcantara operates in backward-compatible mode. API payloads and event broadcasts remain byte-identical to legacy behavior.
-- **Enabled (`true`)**: Decouples customer/branded identifiers, emits generic audience interaction events, exposes generic chart identity fields, and retires branded chart proxies.
-- **Rollback**: Set `genericBrandFields` to `false` or `null`.
+The bracket state is read from and written to the scene metadata under that component type's key.
 
-## Generic Audience Interaction Brackets
+### Realtime broadcast signals
+During a bracket draw (`drawModoItalianoBracket`) the server broadcasts both the generic and the legacy events to every program the scene is assigned to:
 
-### Component Support
-When `genericBrandFields` is enabled, scenes whose layout `componentType` matches any bracket or audience interaction component (such as `harbor-light-bracket` or `*.audience.interaction`) are accepted for draw and voting lifecycles.
-
-When the setting is disabled, bracket draw and voting fallback strictly to `modoitaliano-bracket`.
-
-### Realtime Broadcast Signals
-During bracket draws (`drawModoItalianoBracket`), when `genericBrandFields` is enabled, the server broadcasts both:
-- Generic events:
-  - `audience_interaction_draw_start`: Emitted with `sceneId`, `componentType`, `drawId`, `durationSeconds`, and shuffled `songIds`.
-  - `audience_interaction_draw_end`: Emitted upon timer completion alongside `scene_update`.
-- Legacy events:
+- Generic:
+  - `audience_interaction_draw_start`, with `sceneId`, `componentType`, `drawId`, `durationSeconds` and the shuffled `songIds`.
+  - `audience_interaction_draw_end`, when the draw timer completes, alongside `scene_update`.
+- Legacy, unchanged:
   - `modoitaliano_bracket_draw_start`
   - `modoitaliano_bracket_draw_end`
 
-Downstream consumers can migrate to the generic event names while existing clients continue to receive legacy event payloads.
+Consumers can move to the generic events at their own pace.
 
-## Song Chart Identity
+## Song chart identity
 
 ### Persistence (`SongChartIdentity`)
-An additive table `SongChartIdentity` links 1:1 with `Song` to decouple third-party chart providers:
+An additive table, one row per song, holds a song's chart identity independently of any one provider:
 
 ```prisma
 model SongChartIdentity {
   id         Int      @id @default(autoincrement())
   songId     Int      @unique
   song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
-  provider   String   @default("earone")
+  provider   String
   externalId String?
   rank       String?
   spins      String?
@@ -54,16 +44,18 @@ model SongChartIdentity {
 }
 ```
 
-### Generic Song Response Fields
-When `genericBrandFields` is enabled for the program or environment:
-- Song payloads carry both `earone*` (`earoneSongId`, `earoneRank`, `earoneSpins`) and generic `externalChart*` (`externalChartSongId`, `externalChartRank`, `externalChartSpins`) fields with equal values.
-- Creating or updating songs with `externalChart*` fields synchronizes both the legacy song columns and the `SongChartIdentity` record.
+`provider` has no database default. The service writes it as follows:
 
-When disabled:
-- Song responses emit only the legacy `earone*` fields, preserving exact byte-identical API outputs.
+- When a song is created or updated with any chart value, the row is written with the song's `earone*` values.
+- A new row takes the request's `externalChartProvider`, or `earone` when none is sent (the only provider today).
+- An update without `externalChartProvider` keeps the stored provider. Only an update that sends a non-blank provider changes it.
+- When an update clears every chart value (`earoneSongId`, `earoneRank` and `earoneSpins` all null), the row is deleted, so no stale rank or spins remain.
 
-## Retirement of Branded Chart Proxy
+The migration adds this table only: no `DROP`, no type change, no `NOT NULL` on an existing table. Rollback: `DROP TABLE "SongChartIdentity";`.
 
-`GET /charts/sanremo-realtime` previously proxied third-party endpoints. Under `genericBrandFields`:
-- When `genericBrandFields` is enabled: Responds with `404 Not Found` (`Sanremo realtime chart proxy is retired`).
-- When `genericBrandFields` is disabled: Maintains proxy functionality for legacy clients.
+### Song response fields
+Every song payload (list, detail, create and update) carries both the legacy `earone*` fields (`earoneSongId`, `earoneRank`, `earoneSpins`) and the generic `externalChartId`, `externalChartSongId`, `externalChartRank` and `externalChartSpins`, with equal values. Requests may send either set. Sending `externalChart*` writes the same `earone*` columns.
+
+## Branded chart proxy
+
+`GET /charts/sanremo-realtime` is unchanged and keeps serving. The program page's realtime chart (`frontend/app/utils/earoneRealtime.ts`) still reads it. Retiring it needs that frontend change first, and is a separate follow-up.

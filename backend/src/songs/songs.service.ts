@@ -107,15 +107,10 @@ export class SongsService {
         }),
       ]);
 
-    const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
-    const formattedData = isGeneric
-      ? data.map((song) =>
-          this.withGenericChartFields(this.scopeIntro(song, programId)),
-        )
-      : data.map((song) => this.scopeIntro(song, programId));
-
     return {
-      data: formattedData,
+      data: data.map((song) =>
+        this.withGenericChartFields(this.scopeIntro(song, programId)),
+      ),
       meta: {
         total,
         page,
@@ -138,9 +133,7 @@ export class SongsService {
     if (!song) {
       throw new NotFoundException('Song not found');
     }
-    const scoped = this.scopeIntro(song, programId);
-    const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
-    return isGeneric ? this.withGenericChartFields(scoped) : scoped;
+    return this.withGenericChartFields(this.scopeIntro(song, programId));
   }
 
   async create(data: SongInput) {
@@ -180,27 +173,9 @@ export class SongsService {
         await syncSongAsset(tx, song);
         if (
           tx.songChartIdentity &&
-          (earoneSongId !== null ||
-            earoneRank !== null ||
-            earoneSpins !== null)
+          (earoneSongId !== null || earoneRank !== null || earoneSpins !== null)
         ) {
-          const provider = this.resolveChartProvider(data.externalChartProvider);
-          await tx.songChartIdentity.upsert({
-            where: { songId: song.id },
-            create: {
-              songId: song.id,
-              provider,
-              externalId: earoneSongId,
-              rank: earoneRank,
-              spins: earoneSpins,
-            },
-            update: {
-              provider,
-              externalId: earoneSongId,
-              rank: earoneRank,
-              spins: earoneSpins,
-            },
-          });
+          await this.syncChartIdentity(tx, song, data.externalChartProvider);
         }
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, song.id, data.programId, data.introInstantId);
@@ -209,10 +184,9 @@ export class SongsService {
           where: { id: song.id },
           include: { intro: { include: { instant: true } } },
         });
-        const programId = this.normalizeProgramId(data.programId);
-        const scoped = this.scopeIntro(saved, programId);
-        const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
-        return isGeneric ? this.withGenericChartFields(scoped) : scoped;
+        return this.withGenericChartFields(
+          this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
+        );
       });
     } catch (error) {
       this.rethrowIntroConflict(error);
@@ -287,29 +261,8 @@ export class SongsService {
       return await this.prisma.$transaction(async (tx) => {
         const song = await tx.song.update({ where: { id }, data: updateData });
         await syncSongAsset(tx, song);
-        if (
-          tx.songChartIdentity &&
-          (song.earoneSongId !== null ||
-            song.earoneRank !== null ||
-            song.earoneSpins !== null)
-        ) {
-          const provider = this.resolveChartProvider(data.externalChartProvider);
-          await tx.songChartIdentity.upsert({
-            where: { songId: song.id },
-            create: {
-              songId: song.id,
-              provider,
-              externalId: song.earoneSongId,
-              rank: song.earoneRank,
-              spins: song.earoneSpins,
-            },
-            update: {
-              provider,
-              externalId: song.earoneSongId,
-              rank: song.earoneRank,
-              spins: song.earoneSpins,
-            },
-          });
+        if (tx.songChartIdentity) {
+          await this.syncChartIdentity(tx, song, data.externalChartProvider);
         }
         if (data.introInstantId !== undefined) {
           await this.setIntro(tx, id, data.programId, data.introInstantId);
@@ -318,10 +271,9 @@ export class SongsService {
           where: { id },
           include: { intro: { include: { instant: true } } },
         });
-        const programId = this.normalizeProgramId(data.programId);
-        const scoped = this.scopeIntro(saved, programId);
-        const isGeneric = await this.isGenericBrandFieldsEnabled(programId);
-        return isGeneric ? this.withGenericChartFields(scoped) : scoped;
+        return this.withGenericChartFields(
+          this.scopeIntro(saved, this.normalizeProgramId(data.programId)),
+        );
       });
     } catch (error) {
       this.rethrowIntroConflict(error);
@@ -485,17 +437,24 @@ export class SongsService {
     return 'earone';
   }
 
-  private async isGenericBrandFieldsEnabled(
-    programId: string,
-  ): Promise<boolean> {
-    if (!this.prisma.programState?.findUnique) {
-      return false;
+  // The song's SongChartIdentity follows its chart values: written while any is set, removed once all are cleared.
+  // An update without a provider keeps the stored one; a new row without one is 'earone', the only provider today.
+  private async syncChartIdentity(
+    tx: Prisma.TransactionClient,
+    song: { id: number; earoneSongId: string | null; earoneRank: string | null; earoneSpins: string | null },
+    requestedProvider?: string | null,
+  ) {
+    if (song.earoneSongId === null && song.earoneRank === null && song.earoneSpins === null) {
+      await tx.songChartIdentity.deleteMany({ where: { songId: song.id } });
+      return;
     }
-    const program = await this.prisma.programState.findUnique({
-      where: { programId },
-      select: { genericBrandFields: true },
+    const values = { externalId: song.earoneSongId, rank: song.earoneRank, spins: song.earoneSpins };
+    const provider = typeof requestedProvider === 'string' && requestedProvider.trim() ? requestedProvider.trim() : undefined;
+    await tx.songChartIdentity.upsert({
+      where: { songId: song.id },
+      create: { songId: song.id, provider: provider ?? 'earone', ...values },
+      update: { ...values, ...(provider !== undefined && { provider }) },
     });
-    return Boolean(program?.genericBrandFields);
   }
 
   private withGenericChartFields<

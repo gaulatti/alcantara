@@ -54,7 +54,6 @@ model ProgramState {
   shuffleOrder           Json?
   audioMixer             Json?
   activeFlightSequenceId Int?
-  genericBrandFields     Boolean?             @default(false)
   flightSequences        FlightSequence[]
   scenes                 ProgramScene[]
   mediaGroups            ProgramMediaGroup[]

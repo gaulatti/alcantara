@@ -1,7 +1,5 @@
--- Additive. Introduces generic brand fields per program and generic chart identity table.
--- Rollback: DROP TABLE "SongChartIdentity"; ALTER TABLE "ProgramState" DROP COLUMN "genericBrandFields";
-
-ALTER TABLE "ProgramState" ADD COLUMN "genericBrandFields" BOOLEAN DEFAULT false;
+-- Additive. Introduces the generic chart identity table, one row per song.
+-- Rollback: DROP TABLE "SongChartIdentity";
 
 CREATE TABLE "SongChartIdentity" (
   "id" SERIAL NOT NULL,
