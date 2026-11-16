@@ -14,15 +14,16 @@ import {
 describe('Brand-literal ratchet invariant', () => {
   const repoRoot = findRepoRoot();
 
-  it('verifies that current repository counts equal baselines at merge time', () => {
-    const result = checkBrandBaselines();
+  it('keeps every current repository count at or below its baseline', () => {
+    // A count below its baseline is a retirement: it passes and the result carries a reminder to lower that baseline.
+    const result = checkBrandBaselines({ logger: jest.fn() });
 
     expect(result.failures).toEqual([]);
     expect(result.passed).toBe(true);
 
     for (const tree of ['backend', 'frontend']) {
       for (const word of BRAND_WORDS) {
-        expect(result.counts[tree][word]).toBe(result.baselines[tree][word]);
+        expect(result.counts[tree][word]).toBeLessThanOrEqual(result.baselines[tree][word]);
       }
     }
   });
@@ -130,10 +131,47 @@ describe('Brand-literal ratchet invariant', () => {
     }
   });
 
+  it('prints the reminder through console.log when no logger is given', () => {
+    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brand-console-'));
+    const treeDir = path.join(baseDir, 'tree');
+    const baselineDir = path.join(baseDir, 'baselines');
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.mkdirSync(path.join(baselineDir, 'test-tree'), { recursive: true });
+    fs.writeFileSync(path.join(baselineDir, 'test-tree/fifthbell.json'), JSON.stringify({ count: 1 }));
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const check = checkBrandBaselines({ repoRoot, baselineDir, trees: { 'test-tree': treeDir }, words: ['fifthbell'] });
+      expect(check.passed).toBe(true);
+      expect(log).toHaveBeenCalledWith('[brand-ratchet] Reminder: lower baseline for test-tree/fifthbell from 1 to 0');
+    } finally {
+      log.mockRestore();
+      fs.rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
   describe('helper unit coverage', () => {
-    it('findRepoRoot falls back when no pnpm-workspace.yaml is found', () => {
-      const rootFallback = findRepoRoot('/');
-      expect(rootFallback).toBeDefined();
+    it('findRepoRoot returns the nearest ancestor holding pnpm-workspace.yaml', () => {
+      const tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'brand-root-')));
+      const nested = path.join(tmpDir, 'backend', 'src', 'invariants');
+      fs.mkdirSync(nested, { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'pnpm-workspace.yaml'), 'packages: []\n');
+      try {
+        expect(findRepoRoot(nested)).toBe(tmpDir);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('findRepoRoot falls back to three levels above the start when no workspace file exists', () => {
+      const tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'brand-noroot-')));
+      const nested = path.join(tmpDir, 'a', 'b', 'c', 'd');
+      fs.mkdirSync(nested, { recursive: true });
+      try {
+        // No pnpm-workspace.yaml above a fresh temp directory, so the fallback decides: d -> c -> b -> a.
+        expect(findRepoRoot(nested)).toBe(path.join(tmpDir, 'a'));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it('walkDirectory returns empty array for non-existent directory', () => {
@@ -149,9 +187,14 @@ describe('Brand-literal ratchet invariant', () => {
       fs.writeFileSync(path.join(excluded, 'file1.ts'), '1');
       fs.writeFileSync(path.join(included, 'file2.ts'), '2');
 
+      // A nested folder of the excluded name is still scanned: only the tree root's own entry is skipped.
+      const nestedSameName = path.join(included, 'invariants');
+      fs.mkdirSync(nestedSameName, { recursive: true });
+      fs.writeFileSync(path.join(nestedSameName, 'file3.ts'), '3');
+
       try {
-        const files = walkDirectory(tmpDir, ['invariants']);
-        expect(files).toEqual([path.join(included, 'file2.ts')]);
+        const files = walkDirectory(tmpDir, ['invariants']).sort();
+        expect(files).toEqual([path.join(included, 'file2.ts'), path.join(nestedSameName, 'file3.ts')].sort());
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }

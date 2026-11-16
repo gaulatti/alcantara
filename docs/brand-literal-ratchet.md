@@ -10,6 +10,9 @@ The brand-literal ratchet invariant prevents new customer-branded code or files 
   - `frontend/app` (tree key: `frontend`)
 - **Baseline Storage**: `scripts/brand-baselines/<tree>/<word>.json`
   - Each JSON file stores `{ "count": N }`, representing the maximum allowable number of matching files for that brand word in that tree.
+  - The baselines equal the counts at the commit that introduced the ratchet. The spec requires every count to stay at or below its baseline, never to equal it, so a retirement passes.
+- **Excluded**: only the tree root's own `invariants` folder, which holds the ratchet and its spec. A nested folder or file named `invariants` elsewhere is scanned like any other.
+- **Matching is a case-insensitive substring**, so a short brand word can also match an ordinary word that contains it. Such a match counts toward the baseline like any other.
 
 ## Ratchet Rules
 

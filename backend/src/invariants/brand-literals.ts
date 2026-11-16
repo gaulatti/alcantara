@@ -44,6 +44,8 @@ export function findRepoRoot(startDir: string = __dirname): string {
   return path.resolve(startDir, '../../..');
 }
 
+// Lists every file under `dir`. `excludeNames` names entries directly under `dir` only (the tree root), so the
+// ratchet's own `invariants` folder is skipped but a nested folder or file of the same name is still scanned.
 export function walkDirectory(
   dir: string,
   excludeNames: string[] = ['invariants'],
@@ -57,7 +59,7 @@ export function walkDirectory(
     }
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(...walkDirectory(fullPath, excludeNames));
+      results.push(...walkDirectory(fullPath, []));
     } else {
       results.push(fullPath);
     }
