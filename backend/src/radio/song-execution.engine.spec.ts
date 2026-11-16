@@ -1,4 +1,8 @@
-import { SongExecutionEngine } from './song-execution.engine';
+import { config as rxjsConfig } from 'rxjs';
+import {
+  SongExecutionEngine,
+  type SongEngineTrackEvent,
+} from './song-execution.engine';
 import type { RadioService } from './radio.service';
 import type { FlightService } from '../program/flight.service';
 import type { PrismaService } from '../prisma.service';
@@ -1667,5 +1671,234 @@ describe('similarity picker in the engine', () => {
 
   it('records the model identity the vectors are matched against', () => {
     expect(SIMILARITY_MODEL.name).toBe('discogs-effnet-bs64-1');
+  });
+});
+
+describe('SongExecutionEngine track events', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function startedEngine() {
+    const harness = createEngine({ reconciled: true, radio: true });
+    harness.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    harness.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const firstCall = harness.radioService.playSong.mock.calls[0] as Parameters<
+      RadioService['playSong']
+    >;
+    const requestId = firstCall[4] as string;
+    return { ...harness, requestId };
+  }
+
+  it('emits exactly one event for each track.started and track.ended, with the pinned fields', async () => {
+    const { engine, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    jest.setSystemTime(new Date('2026-11-16T10:00:00.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: {
+        playbackRequestId: requestId,
+        title: 'Song one',
+        artist: 'Artist one',
+        coverUrl: 'https://example.test/song-1.jpg',
+        url: 'https://example.test/song-1.mp3',
+      },
+    });
+    expect(events).toEqual([
+      {
+        programId: 'radio-1',
+        type: 'track.started',
+        playbackRequestId: requestId,
+        title: 'Song one',
+        artist: 'Artist one',
+        url: 'https://example.test/song-1.mp3',
+        at: new Date('2026-11-16T10:00:00.000Z'),
+      },
+    ]);
+
+    jest.setSystemTime(new Date('2026-11-16T10:03:00.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId, title: null },
+    });
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({
+      programId: 'radio-1',
+      type: 'track.ended',
+      playbackRequestId: requestId,
+      title: null,
+      artist: null,
+      url: null,
+      at: new Date('2026-11-16T10:03:00.000Z'),
+    });
+  });
+
+  it('emits track events the engine ignores as mismatched or duplicate, once each', async () => {
+    const { engine, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: 'foreign-request' },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+
+    expect(
+      events.map((event) => [event.type, event.playbackRequestId]),
+    ).toEqual([
+      ['track.started', 'foreign-request'],
+      ['track.ended', requestId],
+      ['track.ended', requestId],
+    ]);
+  });
+
+  it('emits nothing for playback.position, audio levels, intro events or unhandled programs', async () => {
+    const { engine, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'playback.position',
+      data: { playbackRequestId: requestId, positionSeconds: 5 },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'audio.levels',
+      data: {
+        song: { rms: 0, peak: 0 },
+        instant: { rms: 0, peak: 0 },
+        output: { rms: 0, peak: 0 },
+      },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'intro.started',
+      data: {
+        programId: 'radio-1',
+        playbackId: `${requestId}:intro`,
+        parentPlaybackId: requestId,
+      },
+    });
+    // Not a registered radio program, and a radio program with no state yet.
+    engine.handlePalazzoEvent('tv-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    engine.registerRadioProgram('radio-2');
+    engine.handlePalazzoEvent('radio-2', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+
+    expect(events).toEqual([]);
+  });
+
+  it('keeps handling this event and the next one when a subscriber throws', async () => {
+    const previous = rxjsConfig.onUnhandledError;
+    const unhandled = jest.fn();
+    rxjsConfig.onUnhandledError = unhandled;
+    try {
+      const { engine, radioService, flightService, metrics, requestId } =
+        await startedEngine();
+      const received: SongEngineTrackEvent[] = [];
+      engine.trackEvents$.subscribe(() => {
+        throw new Error('subscriber failed');
+      });
+      engine.trackEvents$.subscribe((event) => received.push(event));
+
+      expect(() =>
+        engine.handlePalazzoEvent('radio-1', {
+          type: 'track.started',
+          data: { playbackRequestId: requestId },
+        }),
+      ).not.toThrow();
+      expect(engine.getPlaybackState('radio-1')).toMatchObject({
+        isPlaying: true,
+        audioUrl: 'https://example.test/song-1.mp3',
+      });
+
+      expect(() =>
+        engine.handlePalazzoEvent('radio-1', {
+          type: 'track.ended',
+          data: { playbackRequestId: requestId },
+        }),
+      ).not.toThrow();
+      expect(metrics.recordTrackTransition).toHaveBeenCalledWith('adopted');
+      expect(metrics.recordTrackTransition).toHaveBeenCalledWith('advanced');
+      await flush(12);
+      expect(flightService.handleSongEnded).toHaveBeenCalledTimes(1);
+      expect(radioService.playSong).toHaveBeenCalledTimes(2);
+      expect(received.map((event) => event.type)).toEqual([
+        'track.started',
+        'track.ended',
+      ]);
+      jest.runOnlyPendingTimers();
+      expect(unhandled).toHaveBeenCalledWith(new Error('subscriber failed'));
+    } finally {
+      rxjsConfig.onUnhandledError = previous;
+    }
+  });
+
+  it('catches a subscriber error that RxJS rethrows synchronously', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    rxjsConfig.useDeprecatedSynchronousErrorHandling = true;
+    try {
+      const { engine, requestId } = await startedEngine();
+      engine.trackEvents$.subscribe(() => {
+        throw new Error('subscriber failed');
+      });
+
+      expect(() =>
+        engine.handlePalazzoEvent('radio-1', {
+          type: 'track.started',
+          data: { playbackRequestId: requestId },
+        }),
+      ).not.toThrow();
+      expect(engine.getPlaybackState('radio-1')).toMatchObject({
+        isPlaying: true,
+        audioUrl: 'https://example.test/song-1.mp3',
+      });
+    } finally {
+      rxjsConfig.useDeprecatedSynchronousErrorHandling = false;
+      warn.mockRestore();
+    }
+  });
+
+  it('adds no awaited work: handling returns before a subscriber settles', async () => {
+    const { engine, requestId } = await startedEngine();
+    let settled = false;
+    const pending = new Promise<void>(() => {});
+    engine.trackEvents$.subscribe(() => {
+      void pending.then(() => {
+        settled = true;
+      });
+    });
+
+    const result = engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    }) as unknown;
+    expect(result).toBeUndefined();
+    await Promise.resolve(result);
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      isPlaying: true,
+    });
+    expect(settled).toBe(false);
   });
 });

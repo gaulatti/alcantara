@@ -10,6 +10,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { Subject, type Observable } from 'rxjs';
 import type { Prisma } from '@prisma/client';
 import { RadioService } from './radio.service';
 import { FlightService } from '../program/flight.service';
@@ -160,6 +161,20 @@ const MAX_ENDED_REQUEST_IDS = 128;
 const RADIO_PROGRAM_TYPES = new Set(['radio', 'both']);
 
 /**
+ * A Palazzo track start or end the engine has handled. `at` is the time the
+ * engine handled the event, not a Palazzo timestamp.
+ */
+export type SongEngineTrackEvent = {
+  programId: string;
+  type: 'track.started' | 'track.ended';
+  playbackRequestId: string;
+  title: string | null;
+  artist: string | null;
+  url: string | null;
+  at: Date;
+};
+
+/**
  * Drives radio automation from authoritative Palazzo playback state.
  *
  * Song completion is only ever triggered by a Palazzo `track.ended` event (or
@@ -176,6 +191,15 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private readonly radioProgramIds = new Set<string>();
   private readonly queueMutationLocks = new Map<string, Promise<void>>();
   private readonly rotationMutationLocks = new Map<string, Promise<void>>();
+  // Plain Subject: no replay buffer, so late subscribers see only new events.
+  private readonly trackEventsSubject = new Subject<SongEngineTrackEvent>();
+  /**
+   * Palazzo `track.started` and `track.ended` events, emitted after the engine
+   * has handled each one. Subscribers run synchronously but are never awaited,
+   * and a subscriber error never reaches the engine.
+   */
+  readonly trackEvents$: Observable<SongEngineTrackEvent> =
+    this.trackEventsSubject.asObservable();
 
   constructor(
     private readonly radioService: RadioService,
@@ -948,11 +972,38 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       } else {
         this.metrics.recordTrackTransition('ignored-mismatch');
       }
+      this.emitTrackEvent(programId, event.type, requestId, event.data);
       return;
     }
 
-    // track.ended
+    // track.ended: every other event type returned above, but TypeScript does
+    // not narrow `event.data` through the intro branch.
+    const ended = event as Extract<typeof event, { type: 'track.ended' }>;
     this.handleAuthoritativeTrackEnded(programId, state, requestId);
+    this.emitTrackEvent(programId, ended.type, requestId, ended.data);
+  }
+
+  private emitTrackEvent(
+    programId: string,
+    type: SongEngineTrackEvent['type'],
+    playbackRequestId: string,
+    data: { title?: string | null; artist?: string | null; url?: string },
+  ): void {
+    try {
+      this.trackEventsSubject.next({
+        programId,
+        type,
+        playbackRequestId,
+        title: typeof data.title === 'string' ? data.title : null,
+        artist: typeof data.artist === 'string' ? data.artist : null,
+        url: typeof data.url === 'string' ? data.url : null,
+        at: new Date(),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Track event subscriber failed on ${programId}: ${String(error)}`,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------
