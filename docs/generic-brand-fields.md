@@ -58,4 +58,14 @@ Every song payload (list, detail, create and update) carries both the legacy `ea
 
 ## Branded chart proxy
 
-`GET /charts/sanremo-realtime` is unchanged and keeps serving. The program page's realtime chart (`frontend/app/utils/earoneRealtime.ts`) still reads it. Retiring it needs that frontend change first, and is a separate follow-up.
+`GET /charts/sanremo-realtime` is unchanged and keeps serving. The program page still polls it (`frontend/app/utils/earoneRealtime.ts`) while a scene shows the chart component, but uses it only for values the song's generic fields do not supply. Removing that call and the proxy is a separate follow-up (second part of #165).
+
+### Program page chart values
+The program page's chart component takes rank and spins from the active chyron song. Each value is chosen on its own, taking the first one present (`resolveChartDisplay` in `frontend/app/utils/programChartValues.ts`):
+
+1. The scene's explicit `rank` or `spins` prop.
+2. The song's generic `externalChartRank` or `externalChartSpins`.
+3. The realtime proxy entry's rank or spins.
+4. The song's legacy `earoneRank` or `earoneSpins`.
+
+The proxy entry is found by the song's `earoneSongId`, else its `externalChartId`, else its `externalChartSongId`, else by the song text. A song without generic fields therefore shows exactly what it showed before; a song with only one generic value takes the other from the proxy. `externalChartProvider` is not read: the component's label stays the scene's `label` prop, or its default.

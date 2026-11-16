@@ -55,6 +55,7 @@ import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongS
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
 import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
+import { chartLookupId, resolveChartDisplay } from '../utils/programChartValues';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import { getProgramSlideshowLabelIds, getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
 import { sceneInstantBelongsToActiveScene } from '../utils/programSceneInstant';
@@ -2192,10 +2193,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       ...(metadata['fifthbell-chyron'] || {})
     } as Record<string, unknown>;
     const activeToniLeaf = resolveToniChyronLeaf(mergedFifthBellChyronProps);
-    const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
-      earoneSongId: activeToniLeaf?.earoneSongId || null,
-      text: activeToniLeaf?.text || null
-    });
     const firstClockComponentType = components.find(
       (componentType) => componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
     );
@@ -2554,15 +2551,19 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                 );
               case 'toni-logo':
                 return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
-              case 'earone':
-                return (
-                  <Earone
-                    key={componentType}
-                    label={props.label || 'EARONE'}
-                    rank={props.rank || matchedEaroneEntry?.ranking || activeToniLeaf?.earoneRank}
-                    spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
-                  />
-                );
+              case 'earone': {
+                const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
+                  earoneSongId: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf),
+                  text: activeToniLeaf?.text || null
+                });
+                const chartDisplay = resolveChartDisplay({
+                  scene: { rank: props.rank, spins: props.spins },
+                  song: activeToniLeaf,
+                  realtime: matchedEaroneEntry ? { rank: matchedEaroneEntry.ranking, spins: matchedEaroneEntry.radioSpinsToday } : null,
+                  legacy: { rank: activeToniLeaf?.earoneRank, spins: activeToniLeaf?.earoneSpins }
+                });
+                return <Earone key={componentType} label={props.label || 'EARONE'} rank={chartDisplay.rank} spins={chartDisplay.spins} />;
+              }
               case 'fifthbell':
               case 'fifthbell-content':
               case 'fifthbell-marquee':
