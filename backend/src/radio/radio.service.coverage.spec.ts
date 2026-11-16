@@ -1008,6 +1008,15 @@ describe('RadioService coverage', () => {
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('ambiguous-match');
     });
 
+    it('applies no analysis and records no drop when no song has the audio URL', async () => {
+      const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      prisma.song.findMany.mockResolvedValue([]);
+      await expect(service.playSong('p', 'u', undefined, undefined, 'req')).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      expect(prisma.mediaAssetAnalysis.findUnique).not.toHaveBeenCalled();
+      expect(sent(palazzo)).toEqual(OFF_COMMAND);
+      expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+    });
+
     it('also validates segue and loudness the caller supplies', async () => {
       const { service, prisma, palazzo, metrics } = onWithAnalysis({});
       await service.playSong('p', 'u', undefined, undefined, 'req', undefined, undefined, undefined, 100, { ...VALID_SEGUE, cueOutSeconds: 120 }, { integratedLufs: -80, truePeakDbtp: 0 });
