@@ -179,6 +179,10 @@ export default function Control() {
   const instantDurationByUrlRef = useRef<Record<string, number | null>>({});
   const instantPlaybackTimeoutsRef = useRef<Record<number, number>>({});
   const [layouts, setLayouts] = useState<Layout[]>([]);
+  // A scene or layout catalog that failed to load is shown, not hidden behind
+  // an empty list.
+  const [sceneCatalogError, setSceneCatalogError] = useState<string | null>(null);
+  const [layoutCatalogError, setLayoutCatalogError] = useState<string | null>(null);
   const componentTypes = OVERLAY_COMPONENTS.map((c) => ({
     type: c.id,
     name: c.name,
@@ -1015,20 +1019,38 @@ export default function Control() {
   const fetchScenes = async () => {
     try {
       const res = await fetch(apiUrl("/scenes"));
-      const data = await res.json();
-      setScenes(data);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as unknown;
+      if (!Array.isArray(data)) {
+        throw new Error("Scenes answer is not a list");
+      }
+      setScenes(data as Scene[]);
+      setSceneCatalogError(null);
     } catch (err) {
       console.error("Failed to fetch scenes:", err);
+      setScenes([]);
+      setSceneCatalogError("Scenes could not be loaded. Refresh to try again.");
     }
   };
 
   const fetchLayouts = async () => {
     try {
       const res = await fetch(apiUrl("/layouts"));
-      const data = await res.json();
-      setLayouts(data);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as unknown;
+      if (!Array.isArray(data)) {
+        throw new Error("Layouts answer is not a list");
+      }
+      setLayouts(data as Layout[]);
+      setLayoutCatalogError(null);
     } catch (err) {
       console.error("Failed to fetch layouts:", err);
+      setLayouts([]);
+      setLayoutCatalogError("Scene templates could not be loaded. Refresh to try again.");
     }
   };
 
@@ -3433,6 +3455,12 @@ export default function Control() {
       </style>
       {programState?.type === "both" ? (
         <SimulcastStatusRail programId={activeProgramId} />
+      ) : null}
+      {sceneCatalogError || layoutCatalogError ? (
+        <div role="alert" className="mx-4 mt-3 space-y-1 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
+          {sceneCatalogError ? <p>{sceneCatalogError}</p> : null}
+          {layoutCatalogError ? <p>{layoutCatalogError}</p> : null}
+        </div>
       ) : null}
       <BroadcastSwitcherDeck
         programId={activeProgramId}
