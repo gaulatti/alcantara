@@ -27,6 +27,7 @@ export default [
       route('similarity-fixture', 'routes/similarity-fixture.tsx'),
       route('slideshow-fixture', 'routes/slideshow-fixture.tsx'),
       route('recording-fixture', 'routes/recording-fixture.tsx'),
+      route('filler-fixture', 'routes/filler-fixture.tsx'),
       route('flight', 'routes/flight.tsx')
     ]),
     route('overlay', 'routes/overlay.tsx')

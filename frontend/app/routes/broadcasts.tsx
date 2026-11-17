@@ -25,6 +25,7 @@ import { useFeatures } from "../hooks/useFeatures";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import type { Route } from "./+types/broadcasts";
 import { AppPage } from "../components/AppPage";
+import { ProgramFillerPanel } from "../components/ProgramFillerPanel";
 
 const VIEW_PERMISSION = "broadcast.view";
 const OPERATE_PERMISSION = "broadcast.operate";
@@ -642,6 +643,7 @@ export default function Broadcasts() {
           </div>
         </div>
       </Modal>
+      <ProgramFillerPanel programId={programId} canManage={canManage} />
     </AppPage>
   );
 }

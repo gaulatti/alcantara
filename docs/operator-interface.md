@@ -256,6 +256,16 @@ source, then return to TAKE. Collection routes use stacked cards with visible
 actions where a desktop row would otherwise require horizontal navigation or
 hover.
 
+## Program filler
+
+**Broadcast destinations** ends with a **Program filler** section (gaulatti/alcantara#127). It reads `GET /broadcast/programs/:programId/fillers` from #126 (see `docs/program-filler.md` once #126 lands).
+- Each leg the program has (television and/or radio) shows its version **Active this session** and its version **Pending next session**. For each version it shows the id, status (with reason), order and seed, sources (named from the media library when known), a short checksum, and the preparation time.
+- With `broadcast.manage`, an operator can prepare a television filler from one enabled image or video asset, and a radio filler from enabled audio assets, in order or shuffled with a seed.
+- A failed preparation shows the server's message and keeps the selection for a retry.
+- Nothing claims a ready state the backend did not report.
+- Against a backend without the filler API (404), the section renders nothing.
+- No signed URL or credential appears in the UI.
+
 ## Local verification fixtures
 
 Compose seeds three fictional shows: `main` (Simulcast), `tv-demo` (TV), and
@@ -289,6 +299,8 @@ interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
 from the playlist. These fixtures are
 visual verification only; normal authenticated Compose console checks exercise
 the actual backend staging, activation, queue, and mix paths separately.
+
+`/filler-fixture` renders the program filler legs (gaulatti/alcantara#127): a television leg with an active and a pending version, and a radio leg with a pending shuffle and nothing active. It is built from the response pinned in `app/components/fillerFixture.ts`.
 
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not
