@@ -66,6 +66,10 @@ const lk = vi.hoisted(() => {
     disconnect() {
       this.disconnected = true;
     }
+    removeAllListeners() {
+      this.handlers.clear();
+      return this;
+    }
   }
   return { state, Room };
 });
@@ -574,25 +578,29 @@ it("takes no return video when the guest's return is set to none", async () => {
   expect(subscribed).toEqual([false]);
 });
 
-it.each([
-  [
-    () => Response.json({ message: "Invitation expired" }, { status: 410 }),
-    "Invitation expired",
-  ],
-  [() => new Response("not json", { status: 403 }), "not json"],
-  [() => new Response("", { status: 500 }), "Request failed (500)"],
-])("explains a join the studio refused (%#)", async (answer, message) => {
-  joinAnswer = answer;
+// guest.fixes.test.tsx covers each refusal's message and retry; these two add
+// the answers without a JSON body.
+it("names an empty refusal by its status and lets the guest try again", async () => {
+  joinAnswer = () => new Response("", { status: 500 });
   openPage();
   await preflight();
   fireEvent.click(joinButton());
-  expect(await screen.findByRole("alert")).toHaveTextContent(message);
-  // The refused join keeps the guest on the page; the join stays locked until
-  // the page is reloaded into a fresh preflight.
-  expect(joinButton()).toBeDisabled();
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Request failed (500)",
+  );
+  expect(joinButton()).toBeEnabled();
 });
 
-it("explains a join that fails without an error object, for an invitation without a key", async () => {
+it("ends the session on a refused invitation whose answer is plain text", async () => {
+  joinAnswer = () => new Response("not json", { status: 403 });
+  openPage();
+  await preflight();
+  fireEvent.click(joinButton());
+  expect(await screen.findByText("The studio session ended.")).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("not json");
+});
+
+it("explains a join whose room connection fails, for an invitation without a key", async () => {
   const original = lk.Room.prototype.connect;
   lk.Room.prototype.connect = async () => {
     throw "unreachable";
@@ -602,7 +610,7 @@ it("explains a join that fails without an error object, for an invitation withou
     await preflight();
     fireEvent.click(joinButton());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Unable to join the studio.",
+      "Could not connect to the studio. Try again.",
     );
   } finally {
     lk.Room.prototype.connect = original;
@@ -705,11 +713,11 @@ it("follows the director's mute, request, cue, message and return commands", asy
     ).not.toBeInTheDocument(),
   );
   director({ id: "c7", type: "message", text: "You are on in 10" });
-  // A message posts its read receipt at once, and a posted receipt clears the
-  // notice, so the message does not stay on screen.
+  // A message posts its read receipt at once and stays until acknowledged.
   await waitFor(() =>
     expect((acks().at(-1)!.body as { status: string }).status).toBe("read"),
   );
+  fireEvent.click(screen.getByRole("button", { name: /Acknowledge/ }));
   await waitFor(() =>
     expect(screen.queryByText("You are on in 10")).not.toBeInTheDocument(),
   );
@@ -756,7 +764,7 @@ it("toggles media in the room and leaves the studio", async () => {
   expect(room().disconnected).toBe(true);
 });
 
-it("switches devices through the room when it connected but the join then failed", async () => {
+it("lets the guest try again when the camera fails after the room connected", async () => {
   const original = lk.Room.prototype.connect;
   lk.Room.prototype.connect = async function (
     this: InstanceType<typeof lk.Room>,
@@ -770,21 +778,13 @@ it("switches devices through the room when it connected but the join then failed
     openPage();
     await preflight();
     fireEvent.click(joinButton());
-    expect(await screen.findByRole("alert")).toHaveTextContent("Camera busy");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not connect to the studio. Try again.",
+    );
   } finally {
     lk.Room.prototype.connect = original;
   }
-  fireEvent.change(screen.getByDisplayValue("Headset"), {
-    target: { value: "mic-2" },
-  });
-  await waitFor(() =>
-    expect(room().switched).toEqual([["audioinput", "mic-2"]]),
-  );
-  fireEvent.click(screen.getByRole("button", { name: /Mic on/ }));
-  await waitFor(() =>
-    expect(room().calls.at(-1)).toBe("microphone:false:null"),
-  );
-  expect(getUserMedia).toHaveBeenCalledTimes(1);
+  expect(joinButton()).toBeEnabled();
 });
 
 it("waits for both preflight checks before joining", async () => {
