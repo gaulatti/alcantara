@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/prefer-promise-reject-errors, @typescript-eslint/no-redundant-type-constituents -- Jest mocks are intentionally loosely typed. */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/prefer-promise-reject-errors, @typescript-eslint/no-redundant-type-constituents, @typescript-eslint/unbound-method -- Jest mocks are intentionally loosely typed. */
 import { Logger } from '@nestjs/common';
 import { ChartsService } from './charts.service';
 
@@ -18,6 +18,15 @@ function mockFetch(responder: Responder) {
 
 function ok(body: unknown) {
   return { ok: true, status: 200, json: async () => body };
+}
+
+function prismaStub() {
+  return {
+    songChartIdentity: {
+      findMany: jest.fn(async () => []),
+      update: jest.fn(),
+    },
+  } as never;
 }
 
 const originalFetch = global.fetch;
@@ -104,7 +113,7 @@ describe('ChartsService merging', () => {
             { artist: '??', song: '!!' },
           ]),
     );
-    const service = new ChartsService(metrics as never);
+    const service = new ChartsService(prismaStub(), metrics as never);
 
     const result = await service.getSanremoRealtime();
 
@@ -179,7 +188,7 @@ describe('ChartsService merging', () => {
     mockFetch((url) =>
       url.includes(EARONE) ? ok({ result: { modifiedOn: 5 } }) : ok({ a: 1 }),
     );
-    const service = new ChartsService();
+    const service = new ChartsService(prismaStub());
     // entries stay empty, so each call retries the refresh
     const result = await service.getSanremoRealtime();
     expect(result.entries).toEqual([]);
@@ -189,7 +198,7 @@ describe('ChartsService merging', () => {
 
   it('handles an empty earone payload object', async () => {
     mockFetch((url) => (url.includes(EARONE) ? ok(null) : ok([])));
-    const service = new ChartsService();
+    const service = new ChartsService(prismaStub());
     const result = await service.getSanremoRealtime();
     expect(result.entries).toEqual([]);
     expect(result.sources.earoneUpdatedAt).toBeNull();
@@ -205,7 +214,7 @@ describe('ChartsService merging', () => {
           )
         : ok([]),
     );
-    const service = new ChartsService();
+    const service = new ChartsService(prismaStub());
     const first = await service.getSanremoRealtime();
     const second = await service.getSanremoRealtime();
     expect(second).toBe(first);
@@ -222,7 +231,7 @@ describe('ChartsService failures', () => {
         ? ok([])
         : { ok: false, status: 503, json: async () => ({}) },
     );
-    const service = new ChartsService(metrics as never);
+    const service = new ChartsService(prismaStub(), metrics as never);
     const result = await service.getSanremoRealtime();
     expect(result.entries).toEqual([]);
     expect(metrics.recordDependency).toHaveBeenCalledWith(
@@ -246,7 +255,7 @@ describe('ChartsService failures', () => {
       if (url.includes(EARONE)) throw new Error('network down');
       return Promise.reject('plain string');
     });
-    const service = new ChartsService(metrics as never);
+    const service = new ChartsService(prismaStub(), metrics as never);
     await service.getSanremoRealtime();
     const unavailable = metrics.recordDependency.mock.calls.filter(
       (c) => c[2] === 'unavailable',
@@ -268,7 +277,7 @@ describe('ChartsService failures', () => {
           }
         : ok([]),
     );
-    const service = new ChartsService(metrics as never);
+    const service = new ChartsService(prismaStub(), metrics as never);
     await service.getSanremoRealtime();
     expect(metrics.recordDependency).toHaveBeenCalledWith(
       'earone',
@@ -282,7 +291,7 @@ describe('ChartsService failures', () => {
     mockFetch(() => {
       throw new Error('x');
     });
-    const service = new ChartsService();
+    const service = new ChartsService(prismaStub());
     await expect(service.getSanremoRealtime()).resolves.toMatchObject({
       entries: [],
     });
@@ -296,7 +305,7 @@ describe('ChartsService failures', () => {
       await gate;
       return url.includes(EARONE) ? ok(earonePayload([])) : ok([]);
     });
-    const service = new ChartsService();
+    const service = new ChartsService(prismaStub());
     const a = service.getSanremoRealtime();
     const b = service.getSanremoRealtime();
     release();
@@ -311,7 +320,7 @@ describe('ChartsService lifecycle', () => {
     const fetchMock = mockFetch((url) =>
       url.includes(EARONE) ? ok(earonePayload([])) : ok([]),
     );
-    const service = new ChartsService();
+    const service = new ChartsService(prismaStub());
     service.onModuleInit();
     await jest.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -323,6 +332,225 @@ describe('ChartsService lifecycle', () => {
   });
 
   it('destroying before init is a no-op', () => {
-    expect(() => new ChartsService().onModuleDestroy()).not.toThrow();
+    expect(() =>
+      new ChartsService(prismaStub()).onModuleDestroy(),
+    ).not.toThrow();
+  });
+});
+
+const UPSTREAM_EARONE = {
+  result: {
+    modifiedOn: '2026-11-17T08:00:00Z',
+    postTypeData: {
+      songs: [
+        {
+          curPos: 1,
+          spins: 310,
+          song: {
+            earoneSongId: 501,
+            title: 'Cuore',
+            tracks: [{ artists: [{ name: 'Alba' }] }],
+          },
+        },
+        {
+          curPos: 7,
+          spins: 120,
+          song: {
+            earoneSongId: 502,
+            title: 'Notte',
+            tracks: [{ artists: [{ name: 'Bruno' }] }],
+          },
+        },
+        {
+          song: {
+            earoneSongId: 503,
+            title: 'Senza',
+            tracks: [{ artists: [{ name: 'Carla' }] }],
+          },
+        },
+      ],
+    },
+  },
+};
+
+const UPSTREAM_ESCPLUS = [
+  { artist: 'Alba', song: 'Cuore', spotifyplays: 9000 },
+  { artist: 'Dario', song: 'Solo', spotifyplays: 10 },
+];
+
+function upstream(earone: unknown = UPSTREAM_EARONE) {
+  const fetchMock = jest.fn(async (url: string) =>
+    url.includes(EARONE)
+      ? (ok(earone) as Response)
+      : (ok(UPSTREAM_ESCPLUS) as Response),
+  );
+  global.fetch = fetchMock as never;
+  return fetchMock;
+}
+
+function prismaWith(rows: Array<Record<string, unknown>>) {
+  return {
+    songChartIdentity: {
+      findMany: jest.fn(async () => rows),
+      update: jest.fn(async () => ({})),
+    },
+  };
+}
+
+describe('ChartsService rank refresh into SongChartIdentity', () => {
+  it('writes the upstream rank and spins into matching rows after one cycle, with one upstream call each', async () => {
+    const fetchMock = upstream();
+    const prisma = prismaWith([
+      { id: 11, externalId: '501', rank: '4', spins: '200' },
+      { id: 12, externalId: '502', rank: '7', spins: '90' },
+    ]);
+    const metrics = { recordJob: jest.fn(), recordDependency: jest.fn() };
+    const service = new ChartsService(prisma as never, metrics as never);
+
+    await service.getSanremoRealtime();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url.includes(EARONE)),
+    ).toHaveLength(1);
+    expect(prisma.songChartIdentity.findMany).toHaveBeenCalledWith({
+      where: { provider: 'earone', externalId: { in: ['501', '502'] } },
+      select: { id: true, externalId: true, rank: true, spins: true },
+    });
+    expect(prisma.songChartIdentity.update.mock.calls).toEqual([
+      [{ where: { id: 11 }, data: { rank: '1', spins: '310' } }],
+      [{ where: { id: 12 }, data: { spins: '120' } }],
+    ]);
+    expect(metrics.recordDependency).toHaveBeenCalledWith(
+      'postgres',
+      'write',
+      'success',
+      expect.any(Number),
+    );
+  });
+
+  it('leaves a row alone when it already holds the upstream values', async () => {
+    upstream();
+    const prisma = prismaWith([
+      { id: 11, externalId: '501', rank: '1', spins: '310' },
+    ]);
+    await new ChartsService(prisma as never).getSanremoRealtime();
+    expect(prisma.songChartIdentity.update).not.toHaveBeenCalled();
+  });
+
+  it('skips the database when no upstream entry has an id and a value', async () => {
+    upstream({ result: { postTypeData: { songs: [] } } });
+    const prisma = prismaWith([]);
+    await new ChartsService(prisma as never).getSanremoRealtime();
+    expect(prisma.songChartIdentity.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the refreshed cache when storing ranks fails, and counts the failure', async () => {
+    upstream();
+    const prisma = prismaWith([]);
+    prisma.songChartIdentity.findMany.mockRejectedValueOnce(
+      new Error('db down'),
+    );
+    const metrics = { recordJob: jest.fn(), recordDependency: jest.fn() };
+    const service = new ChartsService(prisma as never, metrics as never);
+
+    const feed = await service.getRealtimeFeed();
+
+    expect(feed).toHaveLength(4);
+    expect(metrics.recordJob).toHaveBeenCalledWith('charts-refresh', 'success');
+    expect(metrics.recordDependency).toHaveBeenCalledWith(
+      'postgres',
+      'write',
+      'failure',
+      expect.any(Number),
+    );
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      'Failed to store chart ranks: Error: db down',
+    );
+  });
+
+  it('never clears ranks or feed values when the upstream fails', async () => {
+    jest.useFakeTimers();
+    upstream();
+    const prisma = prismaWith([
+      { id: 11, externalId: '501', rank: '4', spins: '200' },
+    ]);
+    const service = new ChartsService(prisma as never);
+    const first = await service.getRealtimeFeed();
+    expect(prisma.songChartIdentity.update).toHaveBeenCalledTimes(1);
+
+    global.fetch = jest.fn(async () => {
+      throw new Error('upstream down');
+    }) as never;
+    service.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+    service.onModuleDestroy();
+
+    expect(await service.getRealtimeFeed()).toEqual(first);
+    expect(first[0].updatedAt).toEqual(expect.any(String));
+    expect(prisma.songChartIdentity.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChartsService provider-neutral feed', () => {
+  it('returns the same entries as the branded proxy, field for field apart from naming', async () => {
+    upstream();
+    const service = new ChartsService(prismaWith([]) as never);
+
+    const proxy = await service.getSanremoRealtime();
+    const feed = await service.getRealtimeFeed();
+
+    expect(feed).toEqual(
+      proxy.entries.map((entry) => ({
+        provider: entry.sourceKeys.earone ? 'earone' : 'escplus',
+        externalId: entry.earoneSongId,
+        title: entry.title,
+        artist: entry.artist,
+        rank: entry.ranking,
+        spins: entry.radioSpinsToday,
+        updatedAt: proxy.updatedAt,
+      })),
+    );
+    expect(feed).toEqual([
+      {
+        provider: 'earone',
+        externalId: '501',
+        title: 'Cuore',
+        artist: 'Alba',
+        rank: '1',
+        spins: '310',
+        updatedAt: proxy.updatedAt,
+      },
+      {
+        provider: 'earone',
+        externalId: '502',
+        title: 'Notte',
+        artist: 'Bruno',
+        rank: '7',
+        spins: '120',
+        updatedAt: proxy.updatedAt,
+      },
+      {
+        provider: 'earone',
+        externalId: '503',
+        title: 'Senza',
+        artist: 'Carla',
+        rank: null,
+        spins: null,
+        updatedAt: proxy.updatedAt,
+      },
+      {
+        provider: 'escplus',
+        externalId: null,
+        title: 'Solo',
+        artist: 'Dario',
+        rank: null,
+        spins: null,
+        updatedAt: proxy.updatedAt,
+      },
+    ]);
+    expect(JSON.stringify(feed)).not.toMatch(
+      /spotify|youtube|ranking|radioSpins/i,
+    );
   });
 });

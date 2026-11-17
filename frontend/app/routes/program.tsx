@@ -54,7 +54,8 @@ import { faderToGain } from '../utils/audioTaper';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
-import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
+import { fetchEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
+import { loadChartLookup, realtimeChartValues, type ChartSource } from '../utils/chartFeed';
 import { chartLookupId, resolveChartDisplay } from '../utils/programChartValues';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import { getProgramSlideshowLabelIds, getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
@@ -727,7 +728,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   const [slideshowMediaGroupsById, setSlideshowMediaGroupsById] = useState<Record<number, SlideshowMediaGroup>>({});
   const [slideshowMediaLabelsById, setSlideshowMediaLabelsById] = useState<Record<string, SlideshowMediaLabel>>({});
   const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
-  const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
+  const [chartLookup, setChartLookup] = useState<ChartSource<EaroneRealtimeLookup> | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
   const [fadeToBlackAudioGain, setFadeToBlackAudioGain] = useState(1);
   const previousFadeToBlackRef = useRef<boolean | null>(null);
@@ -2126,14 +2127,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
     const loadEarone = async () => {
       try {
-        const res = await fetch(BACKEND_SANREMO_REALTIME_URL);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
+        // The generic chart feed if it answers, else the branded proxy as before.
+        const lookup = await loadChartLookup(() => fetchEaroneRealtimeLookup());
         if (!cancelled) {
-          setEaroneLookup(buildEaroneRealtimeLookup(payload));
+          setChartLookup(lookup);
         }
       } catch (err) {
         console.error('Failed to fetch EarOne realtime data:', err);
@@ -2552,14 +2549,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
               case 'toni-logo':
                 return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
               case 'earone': {
-                const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
-                  earoneSongId: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf),
-                  text: activeToniLeaf?.text || null
-                });
+                const realtimeChart = realtimeChartValues(
+                  chartLookup,
+                  { id: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf), text: activeToniLeaf?.text || null },
+                  (proxyLookup, match) => {
+                    const matchedEaroneEntry = matchEaroneRealtimeEntry(proxyLookup, { earoneSongId: match.id, text: match.text });
+                    return matchedEaroneEntry ? { rank: matchedEaroneEntry.ranking, spins: matchedEaroneEntry.radioSpinsToday } : null;
+                  }
+                );
                 const chartDisplay = resolveChartDisplay({
                   scene: { rank: props.rank, spins: props.spins },
                   song: activeToniLeaf,
-                  realtime: matchedEaroneEntry ? { rank: matchedEaroneEntry.ranking, spins: matchedEaroneEntry.radioSpinsToday } : null,
+                  realtime: realtimeChart,
                   legacy: { rank: activeToniLeaf?.earoneRank, spins: activeToniLeaf?.earoneSpins }
                 });
                 return <Earone key={componentType} label={props.label || 'EARONE'} rank={chartDisplay.rank} spins={chartDisplay.spins} />;

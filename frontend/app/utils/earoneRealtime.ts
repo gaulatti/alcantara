@@ -1,4 +1,5 @@
 import { apiUrl } from './apiBaseUrl';
+import { matchChartEntry, normalizeChartText } from './chartFeed';
 
 export const BACKEND_SANREMO_REALTIME_URL = apiUrl('/charts/sanremo-realtime');
 
@@ -24,19 +25,8 @@ export interface EaroneRealtimeLookup {
   };
 }
 
-function normalizeFragment(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function normalizeEaroneMatchKey(value: string): string {
-  return normalizeFragment(value);
+  return normalizeChartText(value);
 }
 
 export function buildEaroneRealtimeLookup(payload: unknown): EaroneRealtimeLookup {
@@ -78,19 +68,17 @@ export function matchEaroneRealtimeEntry(
     text?: string | null;
   }
 ): EaroneRealtimeEntry | null {
-  if (!lookup) {
-    return null;
-  }
+  return matchChartEntry(lookup ? { byId: lookup.bySongId, byKey: lookup.byNormalizedText } : null, {
+    id: options.earoneSongId,
+    text: options.text
+  });
+}
 
-  const normalizedId = typeof options.earoneSongId === 'string' && options.earoneSongId.trim() ? options.earoneSongId.trim() : null;
-  if (normalizedId && lookup.bySongId[normalizedId]) {
-    return lookup.bySongId[normalizedId];
+/** The branded proxy's lookup; the program page uses it only when the generic feed is unavailable. */
+export async function fetchEaroneRealtimeLookup(fetchImpl: typeof fetch = fetch): Promise<EaroneRealtimeLookup> {
+  const res = await fetchImpl(BACKEND_SANREMO_REALTIME_URL);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
   }
-
-  const normalizedText = typeof options.text === 'string' && options.text.trim() ? normalizeEaroneMatchKey(options.text) : '';
-  if (normalizedText && lookup.byNormalizedText[normalizedText]) {
-    return lookup.byNormalizedText[normalizedText];
-  }
-
-  return null;
+  return buildEaroneRealtimeLookup(await res.json());
 }
