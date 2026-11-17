@@ -5,6 +5,8 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { isProductionEnvironment } from '../config/local-media';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 
@@ -129,9 +131,28 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly metrics?: ManagedMetricsService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
+  /**
+   * Outside production the two third-party chart feeds are never polled
+   * (gaulatti/alcantara#206); the charts stay empty. Production polls as
+   * before.
+   */
+  pollingEnabled(): boolean {
+    if (!this.config) return true;
+    return isProductionEnvironment({
+      NODE_ENV: this.config.get<string>('NODE_ENV'),
+    });
+  }
+
   onModuleInit() {
+    if (!this.pollingEnabled()) {
+      this.logger.warn(
+        'Chart polling is off outside production; no external chart feed is contacted',
+      );
+      return;
+    }
     void this.refreshCache();
     this.refreshTimer = setInterval(() => {
       void this.refreshCache();
@@ -171,6 +192,9 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async refreshCache() {
+    if (!this.pollingEnabled()) {
+      return;
+    }
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
