@@ -53,8 +53,10 @@ export function ToniChyronSequenceEditor({
       return { id: item.id, label: item.text.trim() || 'Sequence', kind: 'sequence', sequence: createToniChyronSequence('manual') };
     }
     const nestedFirstItem = nextItem.sequence.items[0];
+    // Carry every field of the saved chyron (text, marquee and chart values),
+    // keeping the new leaf's own id (gaulatti/alcantara#197).
     const nextLeaf = nestedFirstItem && nestedFirstItem.kind === 'preset'
-      ? { ...nestedFirstItem, text: item.text }
+      ? { ...nestedFirstItem, ...item, id: nestedFirstItem.id }
       : createToniChyronSequenceItem('preset');
     return { ...nextItem, id: item.id, label: item.text.trim() || 'Sequence', sequence: { ...nextItem.sequence, items: [nextLeaf], activeItemId: nextLeaf.id } };
   };
