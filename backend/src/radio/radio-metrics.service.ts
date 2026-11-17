@@ -7,7 +7,19 @@ export type PalazzoEventIgnoreReason =
   | 'sequence-gap'
   | 'cross-program'
   | 'malformed'
-  | 'unknown-type';
+  | 'unknown-type'
+  | 'unsupported-version';
+
+/**
+ * A Palazzo value Alcantara does not know and reads as a safe default instead
+ * of rejecting the whole payload (gaulatti/ariston#217). The label is the
+ * field, never the unknown value.
+ */
+export type PalazzoUnknownField =
+  | 'availability'
+  | 'status'
+  | 'intro-status'
+  | 'withdrawn-reason';
 
 export type PalazzoMachineOperation =
   | 'song-play'
@@ -178,6 +190,14 @@ const IGNORE_REASONS: PalazzoEventIgnoreReason[] = [
   'cross-program',
   'malformed',
   'unknown-type',
+  'unsupported-version',
+];
+
+const UNKNOWN_FIELDS: PalazzoUnknownField[] = [
+  'availability',
+  'status',
+  'intro-status',
+  'withdrawn-reason',
 ];
 
 const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
@@ -308,6 +328,7 @@ export class RadioMetricsService {
   private reconnectFailures = 0;
   private readonly snapshotReconciliation = new Map<string, number>();
   private readonly eventsIgnored = new Map<string, number>();
+  private readonly unknownValues = new Map<string, number>();
   private degradedPrograms = 0;
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
@@ -354,6 +375,10 @@ export class RadioMetricsService {
   recordEventIgnored(reason: PalazzoEventIgnoreReason): void {
     if (!IGNORE_REASONS.includes(reason)) return;
     this.eventsIgnored.set(reason, (this.eventsIgnored.get(reason) ?? 0) + 1);
+  }
+
+  recordUnknownValue(field: PalazzoUnknownField): void {
+    this.unknownValues.set(field, (this.unknownValues.get(field) ?? 0) + 1);
   }
 
   recordDegradedPrograms(count: number): void {
@@ -554,6 +579,15 @@ export class RadioMetricsService {
     for (const reason of IGNORE_REASONS) {
       lines.push(
         `alcantara_palazzo_events_ignored_total{reason="${reason}"} ${this.eventsIgnored.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_palazzo_unknown_values_total Palazzo values Alcantara does not know, read as a safe default.',
+      '# TYPE alcantara_palazzo_unknown_values_total counter',
+    );
+    for (const field of UNKNOWN_FIELDS) {
+      lines.push(
+        `alcantara_palazzo_unknown_values_total{field="${field}"} ${this.unknownValues.get(field) ?? 0}`,
       );
     }
     lines.push(

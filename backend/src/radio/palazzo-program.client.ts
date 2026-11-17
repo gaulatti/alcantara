@@ -8,7 +8,10 @@ import type {
   PalazzoProgramType,
 } from './palazzo-contract';
 import { classifyPalazzoFrame, parsePalazzoState } from './palazzo-contract';
-import type { RadioMetricsService } from './radio-metrics.service';
+import type {
+  PalazzoUnknownField,
+  RadioMetricsService,
+} from './radio-metrics.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 
 export type PalazzoInstanceValidation = 'ok' | 'mismatch' | 'conflict';
@@ -78,6 +81,7 @@ export class PalazzoProgramClient {
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
+  private lastStatus: PalazzoPlaybackState['status'] | null = null;
 
   constructor(private readonly options: PalazzoProgramClientOptions) {
     this.logger = new Logger(`PalazzoClient(${options.programId})`);
@@ -223,9 +227,16 @@ export class PalazzoProgramClient {
       this.options.metrics.recordEventIgnored('malformed');
       throw new Error('malformed Palazzo event');
     }
-    const parsed = classifyPalazzoFrame(decoded);
+    const parsed = classifyPalazzoFrame(decoded, this.recordUnknown);
     if (parsed.kind === 'unknown-type') {
       this.skipUnknownEvent(parsed.envelope);
+      return;
+    }
+    if (parsed.kind === 'unsupported-version') {
+      // Another major version: nothing of the frame is read, and the stream
+      // stays up (gaulatti/ariston#217). A later known event that skips past
+      // its sequence is reconciled as a gap.
+      this.options.metrics.recordEventIgnored('unsupported-version');
       return;
     }
     if (parsed.kind === 'malformed') {
@@ -266,7 +277,10 @@ export class PalazzoProgramClient {
       return;
     }
     if (event.type === 'snapshot') {
-      let state = parsePalazzoState(event.data?.state);
+      let state = parsePalazzoState(event.data?.state, {
+        previousStatus: this.lastStatus ?? undefined,
+        onUnknown: this.recordUnknown,
+      });
       if (!state) {
         // Palazzo's SSE security boundary intentionally strips URL-shaped
         // fields, including track and intro URLs, from snapshots. Hydrate the
@@ -291,7 +305,7 @@ export class PalazzoProgramClient {
       // automation engine permanently "unreconciled" during healthy service
       // and prevents idle startup recovery.
       this.setConnection('connected', null);
-      this.options.callbacks.onSnapshot(this.options.programId, state);
+      this.emitSnapshot(state);
       return;
     }
 
@@ -343,6 +357,7 @@ export class PalazzoProgramClient {
       this.options.palazzoUrl,
       this.options.programId,
       this.abort?.signal,
+      this.lastStatus ?? undefined,
     );
     if (!this.validateInstanceId(state.instanceId)) return;
     if (state.intro && state.intro.programId !== this.options.programId) {
@@ -352,7 +367,7 @@ export class PalazzoProgramClient {
     this.rebaseCursor(state.bootId, state.sequence);
     this.lastSnapshotAt = Date.now();
     this.lastEventAt = Date.now();
-    this.options.callbacks.onSnapshot(this.options.programId, state);
+    this.emitSnapshot(state);
   }
 
   private rebaseCursor(bootId: string, sequence: number): void {
@@ -401,6 +416,16 @@ export class PalazzoProgramClient {
     return true;
   }
 
+  /** Keeps the last accepted status for a later unknown one, then forwards. */
+  private emitSnapshot(state: PalazzoPlaybackState): void {
+    this.lastStatus = state.status;
+    this.options.callbacks.onSnapshot(this.options.programId, state);
+  }
+
+  private readonly recordUnknown = (field: PalazzoUnknownField): void => {
+    this.options.metrics.recordUnknownValue(field);
+  };
+
   private touch(event: Pick<PalazzoPlaybackEvent, 'occurredAt'>): void {
     const occurred = Date.parse(event.occurredAt);
     this.lastEventAt = Number.isFinite(occurred) ? occurred : Date.now();
@@ -446,7 +471,7 @@ export class PalazzoProgramClient {
           'sse unavailable; polling state endpoint',
         );
       }
-      this.options.callbacks.onSnapshot(this.options.programId, state);
+      this.emitSnapshot(state);
     } catch {
       if (this.isTerminalConnection()) {
         this.setConnection('unavailable', 'sse and state endpoint unreachable');
@@ -478,6 +503,7 @@ export class PalazzoProgramClient {
         this.options.palazzoUrl,
         this.options.programId,
         this.abort?.signal,
+        this.lastStatus ?? undefined,
       );
     } catch {
       return null;

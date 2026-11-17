@@ -423,10 +423,15 @@ export class PalazzoMachineClient {
     return parsed;
   }
 
+  /**
+   * Reads the authenticated playback state. `previousStatus` is the status to
+   * keep if Palazzo reports one Alcantara does not know (gaulatti/ariston#217).
+   */
   async getPlaybackState(
     palazzoUrl: string,
     programId: string,
     signal?: AbortSignal,
+    previousStatus?: PalazzoPlaybackState['status'],
   ): Promise<PalazzoPlaybackState> {
     const response = await this.request(
       palazzoUrl,
@@ -436,6 +441,10 @@ export class PalazzoMachineClient {
     );
     const parsed = parsePalazzoState(
       await responseJson(response, 'state-read', this.metrics),
+      {
+        previousStatus,
+        onUnknown: (field) => this.metrics.recordUnknownValue(field),
+      },
     );
     if (!parsed) return this.failMalformed('state-read');
     if (parsed.intro && parsed.intro.programId !== programId) {

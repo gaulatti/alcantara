@@ -96,8 +96,6 @@ describe('parsePalazzoState coverage', () => {
     ['a non-string boot id', mutate((s) => (s.bootId = 1))],
     ['a fractional sequence', mutate((s) => (s.sequence = 1.5))],
     ['a negative sequence', mutate((s) => (s.sequence = -1))],
-    ['an unknown availability', mutate((s) => (s.availability = 'x'))],
-    ['an unknown status', mutate((s) => (s.status = 'x'))],
     ['an invalid track', mutate((s) => (s.track = { bad: true }))],
     ['an undefined track', mutate((s) => delete s.track)],
     ['an invalid intro', mutate((s) => (s.intro = { bad: true }))],
@@ -192,7 +190,6 @@ describe('parsePalazzoIntro (via state) coverage', () => {
     ['a non-string url', withIntro((i) => (i.url = 5))],
     ['a non-string startedAt', withIntro((i) => (i.startedAt = 5))],
     ['an unparsable startedAt', withIntro((i) => (i.startedAt = 'nope'))],
-    ['an unknown status', withIntro((i) => (i.status = 'x'))],
     ['a non-string failure reason', withIntro((i) => (i.failureReason = 5))],
   ])('rejects %s', (_name, value) => {
     expect(parsePalazzoState(value)).toBeNull();
@@ -374,11 +371,106 @@ describe('classifyPalazzoFrame', () => {
     ['an overlong type', frame('x'.repeat(201))],
     ['an unknown type with array data', frame('playout.new_thing', [])],
     [
-      'an unknown type of another schema',
-      { ...frame('new'), schemaVersion: 2 },
+      'a fractional schema version',
+      { ...frame('heartbeat'), schemaVersion: 1.1 },
     ],
+    ['a string schema version', { ...frame('heartbeat'), schemaVersion: '1' }],
     ['a known type missing its fields', frame('track.started')],
   ])('returns %s as malformed', (_name, value) => {
     expect(classifyPalazzoFrame(value)).toEqual({ kind: 'malformed' });
+  });
+});
+
+// gaulatti/ariston#217 slice 3: values Alcantara does not know degrade safely.
+describe('Palazzo unknown values', () => {
+  const collect = () => {
+    const seen: string[] = [];
+    return { seen, onUnknown: (field: string) => seen.push(field) };
+  };
+
+  it('reads an unknown availability as degraded and reports it', () => {
+    const { seen, onUnknown } = collect();
+    const parsed = parsePalazzoState(
+      mutate((s) => (s.availability = 'maintenance')),
+      { onUnknown },
+    );
+    expect(parsed?.availability).toBe('degraded');
+    expect(seen).toEqual(['availability']);
+  });
+
+  it('keeps the previous status for an unknown one, else idle', () => {
+    const { seen, onUnknown } = collect();
+    const unknown = mutate((s) => (s.status = 'buffering'));
+    expect(
+      parsePalazzoState(unknown, { previousStatus: 'playing', onUnknown })
+        ?.status,
+    ).toBe('playing');
+    expect(parsePalazzoState(unknown, { onUnknown })?.status).toBe('idle');
+    expect(seen).toEqual(['status', 'status']);
+  });
+
+  it('reads an intro with an unknown status as no intro and keeps the state', () => {
+    const { seen, onUnknown } = collect();
+    const parsed = parsePalazzoState(
+      mutate((s) => {
+        s.intro = { ...validIntro(), status: 'queued' };
+      }),
+      { onUnknown },
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed?.intro).toBeNull();
+    expect(seen).toEqual(['intro-status']);
+  });
+
+  it('reports nothing for known values', () => {
+    const { seen, onUnknown } = collect();
+    expect(
+      parsePalazzoState(
+        mutate(() => undefined),
+        { onUnknown },
+      ),
+    ).not.toBeNull();
+    expect(seen).toEqual([]);
+  });
+
+  it.each([
+    ['a non-string availability', mutate((s) => (s.availability = 1))],
+    ['an empty availability', mutate((s) => (s.availability = ''))],
+    ['an overlong status', mutate((s) => (s.status = 'x'.repeat(65)))],
+    ['a missing status', mutate((s) => delete s.status)],
+    [
+      'a non-string intro status',
+      mutate((s) => {
+        s.intro = { ...validIntro(), status: 5 };
+      }),
+    ],
+    ['another state schema major', mutate((s) => (s.schemaVersion = 2))],
+  ])('still rejects %s', (_name, value) => {
+    const { seen, onUnknown } = collect();
+    expect(parsePalazzoState(value, { onUnknown })).toBeNull();
+    expect(seen).toEqual([]);
+  });
+
+  it('skips an event of another integer major without reading it', () => {
+    for (const schemaVersion of [0, 2, 3, 100]) {
+      expect(classifyPalazzoFrame({ schemaVersion, type: 'whatever' })).toEqual(
+        { kind: 'unsupported-version' },
+      );
+    }
+  });
+
+  it('rejects a withdrawn event with a non-string reason', () => {
+    expect(
+      classifyPalazzoFrame({
+        schemaVersion: 1,
+        id: 'e',
+        instanceId: 'i',
+        bootId: 'b',
+        sequence: 1,
+        type: 'playout.next_withdrawn',
+        occurredAt: '2026-01-01T00:00:00.000Z',
+        data: { playbackId: 'p', reason: 7 },
+      }),
+    ).toEqual({ kind: 'malformed' });
   });
 });

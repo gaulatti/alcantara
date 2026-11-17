@@ -1,4 +1,18 @@
+import type { PalazzoUnknownField } from './radio-metrics.service';
+
 export type PalazzoProgramType = 'radio' | 'both';
+
+/**
+ * Called once for each value Alcantara does not know and reads as a safe
+ * default (gaulatti/ariston#217). It receives the field, never the value.
+ */
+export type PalazzoUnknownSink = (field: PalazzoUnknownField) => void;
+
+export interface PalazzoStateParseOptions {
+  /** The status to keep when Palazzo reports one Alcantara does not know. */
+  previousStatus?: 'idle' | 'playing';
+  onUnknown?: PalazzoUnknownSink;
+}
 
 export interface PalazzoAudioLevel {
   rms: number;
@@ -85,12 +99,23 @@ export type PalazzoPlaybackEventType =
   | 'audio.levels'
   | 'heartbeat';
 
-/** Why Palazzo dropped an announced next song (contract palazzo#40 §3). */
+/**
+ * Why Palazzo dropped an announced next song (contract palazzo#40 §3). A
+ * reason Alcantara does not know is read as `other`.
+ */
 export type PalazzoNextWithdrawnReason =
   | 'replaced'
   | 'withdrawn'
   | 'flushed'
-  | 'not_ready';
+  | 'not_ready'
+  | 'other';
+
+const NEXT_WITHDRAWN_REASONS: ReadonlySet<string> = new Set([
+  'replaced',
+  'withdrawn',
+  'flushed',
+  'not_ready',
+]);
 
 export interface PalazzoPlaybackEvent {
   schemaVersion: number;
@@ -141,7 +166,18 @@ export interface PalazzoTrackEndedData {
   liquidsoapSequence: number;
 }
 
-export function parsePalazzoState(value: unknown): PalazzoPlaybackState | null {
+/**
+ * Parses a Palazzo playback state. `schemaVersion` is the major version and
+ * stays a strict pin. Within it, an `availability`, `status` or intro `status`
+ * Alcantara does not know does not drop the state (gaulatti/ariston#217):
+ * availability reads as `degraded`, status as the previous status or `idle`,
+ * and the intro as absent, each reported to `onUnknown`. A missing or mistyped
+ * known field still rejects the state.
+ */
+export function parsePalazzoState(
+  value: unknown,
+  options: PalazzoStateParseOptions = {},
+): PalazzoPlaybackState | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   if (record.schemaVersion !== 1) return null;
@@ -149,14 +185,25 @@ export function parsePalazzoState(value: unknown): PalazzoPlaybackState | null {
   if (typeof record.bootId !== 'string') return null;
   if (!Number.isSafeInteger(record.sequence) || (record.sequence as number) < 0)
     return null;
-  if (record.availability !== 'available' && record.availability !== 'degraded')
-    return null;
-  if (record.status !== 'idle' && record.status !== 'playing') return null;
+  if (!boundedString(record.availability, 64)) return null;
+  if (!boundedString(record.status, 64)) return null;
+  let availability: PalazzoPlaybackState['availability'] = 'degraded';
+  if (record.availability === 'available' || record.availability === 'degraded')
+    availability = record.availability;
+  else options.onUnknown?.('availability');
+  let status: PalazzoPlaybackState['status'] = options.previousStatus ?? 'idle';
+  if (record.status === 'idle' || record.status === 'playing')
+    status = record.status;
+  else options.onUnknown?.('status');
   const track = record.track === null ? null : parsePalazzoTrack(record.track);
   if (record.track !== null && !track) return null;
-  const intro = record.intro === null ? null : parsePalazzoIntro(record.intro);
-  if (record.intro !== null && record.intro !== undefined && !intro)
-    return null;
+  const parsedIntro =
+    record.intro === null || record.intro === undefined
+      ? null
+      : parsePalazzoIntro(record.intro);
+  if (parsedIntro === 'malformed') return null;
+  if (parsedIntro === 'unknown-status') options.onUnknown?.('intro-status');
+  const intro = parsedIntro === 'unknown-status' ? null : parsedIntro;
   const levels = parsePalazzoLevels(record.levels);
   if (!levels) return null;
   const liquidsoap = record.liquidsoap as Record<string, unknown> | undefined;
@@ -184,8 +231,8 @@ export function parsePalazzoState(value: unknown): PalazzoPlaybackState | null {
     instanceId: record.instanceId,
     bootId: record.bootId,
     sequence: record.sequence as number,
-    availability: record.availability,
-    status: record.status,
+    availability,
+    status,
     liquidsoap: {
       running: liquidsoap.running,
       connected: liquidsoap.connected,
@@ -221,8 +268,10 @@ function parsePalazzoTrack(value: unknown): PalazzoTrackState | null {
   };
 }
 
-function parsePalazzoIntro(value: unknown): PalazzoIntroState | null {
-  if (!value || typeof value !== 'object') return null;
+function parsePalazzoIntro(
+  value: unknown,
+): PalazzoIntroState | 'malformed' | 'unknown-status' {
+  if (!value || typeof value !== 'object') return 'malformed';
   const record = value as Record<string, unknown>;
   if (
     !boundedString(record.playbackId, 200) ||
@@ -232,11 +281,13 @@ function parsePalazzoIntro(value: unknown): PalazzoIntroState | null {
     typeof record.url !== 'string' ||
     typeof record.startedAt !== 'string' ||
     !Number.isFinite(Date.parse(record.startedAt)) ||
-    (record.status !== 'playing' && record.status !== 'failed') ||
+    !boundedString(record.status, 64) ||
     (record.failureReason !== undefined &&
       typeof record.failureReason !== 'string')
   )
-    return null;
+    return 'malformed';
+  if (record.status !== 'playing' && record.status !== 'failed')
+    return 'unknown-status';
   return record as unknown as PalazzoIntroState;
 }
 
@@ -311,28 +362,43 @@ export interface PalazzoEventEnvelope {
 }
 
 /**
- * What one SSE frame is. A well-formed frame of a type Alcantara does not know
- * is `unknown-type` (gaulatti/ariston#217): the client skips it without
- * dropping the stream, and its envelope still advances the sequence cursor.
+ * What one SSE frame is (gaulatti/ariston#217). The client skips, rather than
+ * drops the stream for:
+ * - `unknown-type`: a well-formed frame of a type Alcantara does not know; its
+ *   envelope still advances the sequence cursor;
+ * - `unsupported-version`: a frame whose integer `schemaVersion` (the major
+ *   version) is not 1. Nothing else of it is read, because another major may
+ *   change what every field means.
  * Anything else that fails the contract is `malformed`.
  */
 export type PalazzoFrame =
   | { kind: 'event'; event: PalazzoPlaybackEvent }
   | { kind: 'unknown-type'; envelope: PalazzoEventEnvelope }
+  | { kind: 'unsupported-version' }
   | { kind: 'malformed' };
 
 /** Parses a known Palazzo event, or null for anything else. */
-export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
-  const frame = classifyPalazzoFrame(value);
+export function parsePalazzoEvent(
+  value: unknown,
+  onUnknown?: PalazzoUnknownSink,
+): PalazzoPlaybackEvent | null {
+  const frame = classifyPalazzoFrame(value, onUnknown);
   return frame.kind === 'event' ? frame.event : null;
 }
 
-export function classifyPalazzoFrame(value: unknown): PalazzoFrame {
+export function classifyPalazzoFrame(
+  value: unknown,
+  onUnknown?: PalazzoUnknownSink,
+): PalazzoFrame {
   const malformed: PalazzoFrame = { kind: 'malformed' };
   if (!value || typeof value !== 'object') return malformed;
   const record = value as Record<string, unknown>;
+  if (record.schemaVersion !== 1) {
+    return Number.isSafeInteger(record.schemaVersion)
+      ? { kind: 'unsupported-version' }
+      : malformed;
+  }
   if (
-    record.schemaVersion !== 1 ||
     !boundedString(record.id, 300) ||
     !boundedString(record.instanceId, 200) ||
     !boundedString(record.bootId, 200) ||
@@ -372,13 +438,13 @@ export function classifyPalazzoFrame(value: unknown): PalazzoFrame {
     !boundedString(data.playbackId, 200)
   )
     return malformed;
-  if (
-    type === 'playout.next_withdrawn' &&
-    !['replaced', 'withdrawn', 'flushed', 'not_ready'].includes(
-      data.reason as string,
-    )
-  )
-    return malformed;
+  if (type === 'playout.next_withdrawn') {
+    if (!boundedString(data.reason, 64)) return malformed;
+    if (!NEXT_WITHDRAWN_REASONS.has(data.reason)) {
+      onUnknown?.('withdrawn-reason');
+      data.reason = 'other';
+    }
+  }
   if (
     (type === 'intro.started' ||
       type === 'intro.ended' ||

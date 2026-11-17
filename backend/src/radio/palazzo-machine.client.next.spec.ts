@@ -244,7 +244,7 @@ describe('Palazzo next-song events', () => {
     }
   });
 
-  it('rejects a missing playback ID or an unknown reason', () => {
+  it('rejects a missing playback ID or reason', () => {
     expect(
       parsePalazzoEvent(
         envelope('playout.next_queued', { programId: PROGRAM_ID }),
@@ -255,9 +255,34 @@ describe('Palazzo next-song events', () => {
         envelope('playout.next_withdrawn', {
           programId: PROGRAM_ID,
           playbackId: 'next-1',
-          reason: 'other',
         }),
       ),
     ).toBeNull();
+  });
+
+  // gaulatti/ariston#217: an unknown reason keeps the event, read as `other`.
+  it('keeps an unknown reason as other and reports it', () => {
+    const seen: string[] = [];
+    const parsed = parsePalazzoEvent(
+      envelope('playout.next_withdrawn', {
+        programId: PROGRAM_ID,
+        playbackId: 'next-1',
+        reason: 'a_reason_from_the_future',
+      }),
+      (field) => seen.push(field),
+    );
+    expect(parsed?.data.reason).toBe('other');
+    expect(seen).toEqual(['withdrawn-reason']);
+    expect(
+      parsePalazzoEvent(
+        envelope('playout.next_withdrawn', {
+          programId: PROGRAM_ID,
+          playbackId: 'next-1',
+          reason: 'flushed',
+        }),
+        (field) => seen.push(field),
+      )?.data.reason,
+    ).toBe('flushed');
+    expect(seen).toEqual(['withdrawn-reason']);
   });
 });

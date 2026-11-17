@@ -41,8 +41,28 @@ root playback routes.
   `alcantara_palazzo_events_ignored_total{reason="unknown-type"}` (the label
   is that fixed reason, never the type), and when it is the next event of the
   accepted boot it advances the cursor so the known event after it is not a
-  gap. A known event missing its required fields, a bad envelope or another
-  `schemaVersion` is still malformed and reconnects the stream.
+  gap. A known event missing its required fields or a bad envelope is still
+  malformed and reconnects the stream.
+- `schemaVersion` is an integer and is the major version of the event and
+  state contracts. Additive changes within major 1 (new fields, event types or
+  enum values) carry no version bump, so they are the "minor" changes and are
+  accepted by the rules here. An event whose `schemaVersion` is any other
+  integer is skipped without reading any other field and counted in
+  `alcantara_palazzo_events_ignored_total{reason="unsupported-version"}`; the
+  stream stays up, and a later known event past its sequence is handled as a
+  gap. A non-integer `schemaVersion` is malformed. A playback state of another
+  major is still rejected.
+- Within major 1, a state value Alcantara does not know degrades safely
+  instead of rejecting the state (gaulatti/ariston#217): an unknown
+  `availability` reads as `degraded`, an unknown `status` keeps the program's
+  last accepted status (or `idle` before one, and on the operator state read),
+  and an intro with an unknown `status` reads as no intro. An unknown
+  `playout.next_withdrawn` reason keeps the event with reason `other` (the
+  engine acts only on `not_ready`). Each is counted in
+  `alcantara_palazzo_unknown_values_total{field}` with `field` one of
+  `availability`, `status`, `intro-status` or `withdrawn-reason`, all exposed
+  from 0; the unknown value is never a label. A missing, empty or mistyped
+  value is still malformed.
 - `track.started` with a matching request ID establishes authoritative start
   time and position.
 - `track.ended` with a matching request ID advances the sequence exactly

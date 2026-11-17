@@ -463,6 +463,7 @@ describe('PalazzoProgramClient coverage', () => {
         URL,
         PROGRAM,
         undefined,
+        undefined,
       );
       expect(callbacks.onSnapshot).toHaveBeenCalledWith(PROGRAM, s);
     });
@@ -645,6 +646,7 @@ describe('PalazzoProgramClient coverage', () => {
         URL,
         PROGRAM,
         abort.signal,
+        undefined,
       );
       expect(callbacks.onSnapshot).not.toHaveBeenCalled();
       expect(client.getStatus().connection).toBe('instance-mismatch');
@@ -887,6 +889,7 @@ describe('PalazzoProgramClient coverage', () => {
         URL,
         PROGRAM,
         client['abort'].signal,
+        undefined,
       );
     });
 
