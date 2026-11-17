@@ -103,15 +103,37 @@ export interface TimezoneOption {
 }
 
 /**
- * Returns the picker options with `value` kept selectable. The options list
- * the zones the browser's Intl reports, which may spell a saved or default
- * zone differently (Chromium lists America/Buenos_Aires, not
- * America/Argentina/Buenos_Aires). A missing value is listed first, unchanged,
- * so the picker shows it and the saved data is never rewritten.
+ * The browser's own id for `timezone`: Intl resolves an alias such as
+ * America/Argentina/Buenos_Aires to the name it lists (America/Buenos_Aires
+ * in Chromium). Used only to compare ids; it is never stored. An id the
+ * browser does not know is returned unchanged.
+ */
+function getBrowserTimezoneId(timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone }).resolvedOptions().timeZone;
+  } catch {
+    return timezone;
+  }
+}
+
+/**
+ * Returns the picker options with `value` kept selectable as exactly one
+ * option. The options list the zones the browser's Intl reports, which may
+ * spell a saved or default zone differently (Chromium lists
+ * America/Buenos_Aires and Asia/Calcutta for the saved
+ * America/Argentina/Buenos_Aires and Asia/Kolkata). The option for the same
+ * zone then carries the saved id, so the picker shows it selected and saving
+ * keeps the stored id. A zone the list lacks entirely is listed first. The
+ * saved id is never rewritten.
  */
 export function withTimezoneOption(options: TimezoneOption[], value: string, date: Date = new Date()): TimezoneOption[] {
   if (!value || options.some((option) => option.value === value)) {
     return options;
+  }
+  const browserId = getBrowserTimezoneId(value);
+  const aliasIndex = options.findIndex((option) => option.value === browserId);
+  if (aliasIndex >= 0) {
+    return options.map((option, index) => (index === aliasIndex ? { ...option, value } : option));
   }
   return [{ value, label: getTimezoneOptionLabel(value, date) }, ...options];
 }
