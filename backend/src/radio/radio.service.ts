@@ -19,6 +19,10 @@ import {
   validateSongLoudness,
   validateSongSegue,
 } from './palazzo-machine.client';
+import {
+  isLocalMediaUrl,
+  localMediaEnvironment,
+} from '../config/local-media';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
   MAX_WINDOW_SECONDS,
@@ -147,15 +151,20 @@ export class RadioService {
       } catch {
         throw new BadRequestException('recovery song has an invalid URL');
       }
-      if (
-        url.protocol !== 'https:' ||
-        ![
+      const isManagedBucketUrl =
+        url.protocol === 'https:' &&
+        [
           `${bucket}.s3.amazonaws.com`,
           `${bucket}.s3.${this.config.get<string>('AWS_REGION')}.amazonaws.com`,
-        ].includes(url.hostname) ||
-        url.username ||
-        url.password ||
-        url.port
+        ].includes(url.hostname) &&
+        !url.username &&
+        !url.password &&
+        !url.port;
+      // Outside production only, the Compose stack's local media store
+      // (gaulatti/alcantara#206).
+      if (
+        !isManagedBucketUrl &&
+        !isLocalMediaUrl(url, localMediaEnvironment(this.config))
       ) {
         throw new BadRequestException(
           'recovery audio must use the managed media bucket',

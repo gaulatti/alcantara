@@ -12,6 +12,7 @@ import { loadRuntimeSecrets } from './config/runtime-secrets';
 import { validateProgramTemplateOrigins } from './config/runtime-secret-contract';
 import { assertTestAuthSafety } from './auth/test-auth.service';
 import { loadDatabaseSecret } from './config/database-secrets';
+import { assertLocalMediaSafety } from './config/local-media';
 
 function getAllowedOrigins(): Set<string> {
   const configuredOrigins = (
@@ -42,6 +43,7 @@ async function bootstrap() {
   assertTestAuthSafety();
   await loadDatabaseSecret();
   await loadRuntimeSecrets();
+  assertLocalMediaSafety();
   const configuredPort = Number.parseInt(
     process.env.PORT ?? process.env.HTTP_PORT ?? '3000',
     10,

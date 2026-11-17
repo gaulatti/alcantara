@@ -8,6 +8,11 @@ import { ConfigService } from '@nestjs/config';
 import { parseBuffer } from 'music-metadata';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
+import {
+  localMediaEnvironment,
+  readLocalMediaPublicBase,
+  readMediaS3Endpoint,
+} from '../config/local-media';
 
 type UploadKind = 'instant' | 'background' | 'artwork' | 'song' | 'stinger';
 
@@ -94,6 +99,7 @@ export class UploadsService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly region: string;
+  private readonly localPublicBase: string | undefined;
 
   constructor(private readonly configService: ConfigService) {
     this.bucket = (
@@ -106,8 +112,12 @@ export class UploadsService {
         'us-east-1'
       ).trim() || 'us-east-1';
 
+    const localMedia = localMediaEnvironment(this.configService);
+    const endpoint = readMediaS3Endpoint(localMedia);
+    this.localPublicBase = readLocalMediaPublicBase(localMedia);
     this.s3 = new S3Client({
       region: this.region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
     });
   }
 
@@ -230,6 +240,10 @@ export class UploadsService {
       .split('/')
       .map((part) => encodeURIComponent(part))
       .join('/');
+
+    if (this.localPublicBase) {
+      return `${this.localPublicBase}/${encodedKey}`;
+    }
 
     if (this.region === 'us-east-1') {
       return `https://${this.bucket}.s3.amazonaws.com/${encodedKey}`;

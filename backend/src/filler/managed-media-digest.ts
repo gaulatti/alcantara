@@ -1,6 +1,7 @@
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { isLocalMediaUrl, localMediaEnvironment } from '../config/local-media';
 
 const MAX_BYTES = 512 * 1024 * 1024;
 
@@ -26,15 +27,20 @@ export async function readManagedMediaDigest(
   } catch {
     throw new BadRequestException(`${label} source has an invalid URL`);
   }
-  if (
-    url.protocol !== 'https:' ||
-    ![
+  const isManagedBucketUrl =
+    url.protocol === 'https:' &&
+    [
       `${bucket}.s3.amazonaws.com`,
       `${bucket}.s3.${config.get<string>('AWS_REGION')}.amazonaws.com`,
-    ].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.port
+    ].includes(url.hostname) &&
+    !url.username &&
+    !url.password &&
+    !url.port;
+  // Outside production only, the Compose stack's local media store
+  // (gaulatti/alcantara#206).
+  if (
+    !isManagedBucketUrl &&
+    !isLocalMediaUrl(url, localMediaEnvironment(config))
   ) {
     throw new BadRequestException(
       `${label} source must use the managed media bucket`,

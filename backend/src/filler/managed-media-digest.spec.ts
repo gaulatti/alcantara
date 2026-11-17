@@ -136,4 +136,46 @@ describe('readManagedMediaDigest', () => {
       new BadGatewayException('radio filler source could not be read'),
     );
   });
+
+  describe('local media store (gaulatti/alcantara#206)', () => {
+    const local = {
+      MEDIA_S3_BUCKET: 'alcantara-local-only',
+      LOCAL_MEDIA_PUBLIC_BASE_URL:
+        'http://localstack.localhost:4566/alcantara-local-only',
+    };
+    const LOCAL_URL =
+      'http://localstack.localhost:4566/alcantara-local-only/slate.png';
+
+    it('reads an object under the local base outside production', async () => {
+      serve(new Response('slate bytes'));
+      await expect(
+        readManagedMediaDigest(
+          LOCAL_URL,
+          config({ ...local, NODE_ENV: 'development' }),
+          'television filler',
+        ),
+      ).resolves.toBe(createHash('sha256').update('slate bytes').digest('hex'));
+    });
+
+    it('refuses the local base in production and keeps only the bucket hosts', async () => {
+      const fetch = serve(new Response('slate bytes'));
+      const production = config({ ...local, NODE_ENV: 'production' });
+      await expect(
+        readManagedMediaDigest(LOCAL_URL, production, 'television filler'),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'television filler source must use the managed media bucket',
+        ),
+      );
+      expect(fetch).not.toHaveBeenCalled();
+      serve(new Response('slate bytes'));
+      await expect(
+        readManagedMediaDigest(
+          'https://alcantara-local-only.s3.amazonaws.com/slate.png',
+          production,
+          'television filler',
+        ),
+      ).resolves.toBe(createHash('sha256').update('slate bytes').digest('hex'));
+    });
+  });
 });
