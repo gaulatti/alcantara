@@ -117,9 +117,7 @@ it("names the staged scene and falls back to the component type without a catalo
   expect(
     screen.queryByText(/FifthBell runtime settings are stored/),
   ).toBeNull();
-  rerender(
-    <SceneAttributesPanel {...props} activeProgramId="fifthbell" />,
-  );
+  rerender(<SceneAttributesPanel {...props} activeProgramId="fifthbell" />);
   expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
     "Prepare · Selected scene",
   );
@@ -139,7 +137,9 @@ it("chooses, takes and stops the scene background audio", () => {
       asset,
       { id: "a2", name: "Retired bed", enabled: false } as any,
     ],
-    sceneEditorProps: { sceneInstant: { assetId: "a0", instantId: 9, volume: 0.4 } },
+    sceneEditorProps: {
+      sceneInstant: { assetId: "a0", instantId: 9, volume: 0.4 },
+    },
     onCommitComponentProps,
     onTakeSceneInstant,
     onStopSceneInstant,
