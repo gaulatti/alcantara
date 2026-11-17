@@ -160,8 +160,8 @@ importers:
   frontend:
     dependencies:
       '@gaulatti/bleecker':
-        specifier: 0.1.44
-        version: 0.1.44(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)
+        specifier: 0.1.45
+        version: 0.1.45(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)
       '@modoitaliano/giorgia':
         specifier: 0.1.106
         version: 0.1.106(@types/react@19.2.13)
@@ -1197,8 +1197,8 @@ packages:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@gaulatti/bleecker@0.1.44':
-    resolution: {integrity: sha512-9IUsyaKhc7+8SSWs1LMFoEb3H0p1noz0miPu8W6LmRCL6gyBqpzZi9Fw7dc1WmRa4kOZjAIgkisEFwo2HHYBJA==}
+  '@gaulatti/bleecker@0.1.45':
+    resolution: {integrity: sha512-8ASQTgX24vBs/MCn/5m4N2jtjQC70C6Iuzeo42Vk+KA4ixGrYTVL2/281rPVpEjtdkqhqRam7oVt5j2lcmI1pg==}
     peerDependencies:
       react: ^18.2.0 || ^19.0.0
       react-dom: ^18.2.0 || ^19.0.0
@@ -8784,7 +8784,7 @@ snapshots:
       - react-is
       - redux
 
-  '@gaulatti/bleecker@0.1.44(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)':
+  '@gaulatti/bleecker@0.1.45(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)':
     dependencies:
       '@radix-ui/react-collapsible': 1.1.20(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.13)(react@19.2.4)
