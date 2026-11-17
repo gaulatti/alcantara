@@ -69,8 +69,11 @@ The private authenticated `/metrics` collector includes:
 
 - `alcantara_dependency_operations_total{dependency="program-template",operation="fetch",result}`;
 - `alcantara_dependency_duration_seconds{dependency="program-template",operation="fetch"}`;
-- `alcantara_program_sse_connections`; and
-- `alcantara_program_sse_snapshots_total{result}`.
+- `alcantara_program_sse_connections`;
+- `alcantara_program_sse_snapshots_total{result}`; and
+- `alcantara_program_template_unknowns_ignored_total{member}` for manifest
+  signals and capabilities left out because Alcantara does not know them (see
+  [program-templates-v2.md](program-templates-v2.md)).
 
 Template URLs and identities never appear in metric labels. A successful
 inspection records `success`; any rejected or failed inspection records the

@@ -2,7 +2,10 @@ import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { validateProgramTemplateOrigins } from '../config/runtime-secret-contract';
-import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import {
+  ManagedMetricsService,
+  type ProgramTemplateUnknownMember,
+} from '../observability/managed-metrics.service';
 
 export const PROGRAM_TEMPLATE_KIND = 'alcantara.program-template';
 export const PROGRAM_TEMPLATE_CONTRACT_VERSION = 1;
@@ -219,6 +222,7 @@ async function readBoundedManifestBody(response: Response): Promise<Buffer> {
 export function validateProgramTemplateManifest(
   value: unknown,
   manifestUrl: URL,
+  onUnknown?: (member: ProgramTemplateUnknownMember) => void,
 ): ProgramTemplateManifest {
   if (!isRecord(value)) {
     throw new BadRequestException('Template manifest must be a JSON object');
@@ -251,22 +255,18 @@ export function validateProgramTemplateManifest(
       'Template manifest entrypoint must remain on the manifest origin',
     );
   }
+  // A v2 capability Alcantara does not offer is simply not provided: it is
+  // left out and counted, not a reason to refuse the template.
   const capabilities = uniqueStringList(
     value.capabilities,
     'capabilities',
     TOKEN_PATTERN,
     64,
-  );
-  if (isV2) {
-    const unsupportedCapability = capabilities.find(
-      (capability) => !PROGRAM_TEMPLATE_V2_CAPABILITIES.has(capability),
-    );
-    if (unsupportedCapability) {
-      throw new BadRequestException(
-        `Template manifest requests unsupported capability ${unsupportedCapability}`,
-      );
-    }
-  }
+  ).filter((capability) => {
+    if (!isV2 || PROGRAM_TEMPLATE_V2_CAPABILITIES.has(capability)) return true;
+    onUnknown?.('capability');
+    return false;
+  });
 
   if (!isRecord(value.control)) {
     throw new BadRequestException('Template manifest control is required');
@@ -302,23 +302,22 @@ export function validateProgramTemplateManifest(
       'Template manifest control paths are unsupported',
     );
   }
+  // The signal list only filters what Alcantara sends, so a signal Alcantara
+  // does not know for this contract version is left out and counted. The
+  // stored subscription holds only signals Alcantara knows.
+  const allowedSignals = isV2
+    ? PROGRAM_TEMPLATE_V2_SIGNALS
+    : PROGRAM_TEMPLATE_SIGNALS;
   const signals = uniqueStringList(
     value.control.signals,
     'control.signals',
     SIGNAL_PATTERN,
     64,
-  );
-  const allowedSignals = isV2
-    ? PROGRAM_TEMPLATE_V2_SIGNALS
-    : PROGRAM_TEMPLATE_SIGNALS;
-  const unsupportedSignal = signals.find(
-    (signal) => !allowedSignals.has(signal),
-  );
-  if (unsupportedSignal) {
-    throw new BadRequestException(
-      `Template manifest requests unsupported signal ${unsupportedSignal}`,
-    );
-  }
+  ).filter((signal) => {
+    if (allowedSignals.has(signal)) return true;
+    onUnknown?.('signal');
+    return false;
+  });
   if (!signals.includes('program_state_snapshot')) {
     throw new BadRequestException(
       'Template manifest must accept program_state_snapshot',
@@ -789,7 +788,11 @@ export class ProgramTemplateService {
     }
     return {
       templateUrl: currentUrl.toString(),
-      templateManifest: validateProgramTemplateManifest(decoded, currentUrl),
+      templateManifest: validateProgramTemplateManifest(
+        decoded,
+        currentUrl,
+        (member) => this.metrics?.recordProgramTemplateUnknown(member),
+      ),
       templateVerifiedAt: new Date(),
     };
   }

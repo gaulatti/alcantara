@@ -54,13 +54,15 @@ describe('ProgramTemplateService', () => {
     });
   });
 
-  it('rejects missing capabilities and server-unknown signals', () => {
+  it('rejects missing capabilities and leaves out server-unknown signals', () => {
     expect(() =>
       validateProgramTemplateManifest(
         { ...manifest, capabilities: [] },
         new URL('https://cdn.example.test/manifest.json'),
       ),
     ).toThrow('capabilities must be a non-empty array');
+    // An unknown signal is left out; without the snapshot signal the
+    // template still cannot run (a required member is missing).
     expect(() =>
       validateProgramTemplateManifest(
         {
@@ -69,7 +71,19 @@ describe('ProgramTemplateService', () => {
         },
         new URL('https://cdn.example.test/manifest.json'),
       ),
-    ).toThrow('requests unsupported signal dump_operator_state');
+    ).toThrow('must accept program_state_snapshot');
+    expect(
+      validateProgramTemplateManifest(
+        {
+          ...manifest,
+          control: {
+            ...manifest.control,
+            signals: ['program_state_snapshot', 'dump_operator_state'],
+          },
+        },
+        new URL('https://cdn.example.test/manifest.json'),
+      ).control.signals,
+    ).toEqual(['program_state_snapshot']);
     expect(() =>
       validateProgramTemplateManifest(
         {
@@ -325,7 +339,7 @@ describe('ProgramTemplateService', () => {
     }
   });
 
-  it('rejects capabilities and signals outside the v2 schema enums while v1 validates as before', () => {
+  it('leaves out capabilities and signals outside the v2 schema enums while v1 validates as before', () => {
     const v2Base = {
       kind: 'alcantara.program-template',
       contractVersion: 2,
@@ -347,14 +361,14 @@ describe('ProgramTemplateService', () => {
     };
     const url = new URL('https://template.harborlight.test/manifest.json');
 
-    expect(() =>
+    expect(
       validateProgramTemplateManifest(
         { ...v2Base, capabilities: ['unsupported.capability'] },
         url,
-      ),
-    ).toThrow('requests unsupported capability unsupported.capability');
+      ).capabilities,
+    ).toEqual([]);
 
-    expect(() =>
+    expect(
       validateProgramTemplateManifest(
         {
           ...v2Base,
@@ -364,8 +378,8 @@ describe('ProgramTemplateService', () => {
           },
         },
         url,
-      ),
-    ).toThrow('requests unsupported signal unsupported_signal');
+      ).control.signals,
+    ).toEqual(['program_state_snapshot']);
 
     // v1 validates as before
     const v1Result = validateProgramTemplateManifest(

@@ -189,9 +189,10 @@ describe('validateProgramTemplateManifest rejections', () => {
     expect(() => validate(withControl({ signals: ['Heart-Beat'] }))).toThrow(
       'Template manifest control.signals is invalid',
     );
-    expect(() =>
-      validate(withControl({ signals: ['program_state_snapshot', 'nope'] })),
-    ).toThrow('Template manifest requests unsupported signal nope');
+    expect(
+      validate(withControl({ signals: ['program_state_snapshot', 'nope'] }))
+        .control.signals,
+    ).toEqual(['program_state_snapshot']);
     expect(() => validate(withControl({ signals: ['heartbeat'] }))).toThrow(
       'Template manifest must accept program_state_snapshot',
     );
@@ -283,26 +284,22 @@ describe('validateProgramTemplateManifest rejections', () => {
       );
     });
 
-    it('rejects capabilities and signals outside v2 enums', () => {
-      expect(() =>
+    it('leaves out capabilities and signals outside v2 enums', () => {
+      expect(
         validate({
           ...baseV2Manifest(),
           capabilities: ['audio.playback', 'unsupported.capability'],
-        }),
-      ).toThrow(
-        'Template manifest requests unsupported capability unsupported.capability',
-      );
-      expect(() =>
+        }).capabilities,
+      ).toEqual(['audio.playback']);
+      expect(
         validate({
           ...baseV2Manifest(),
           control: {
             ...baseV2Manifest().control,
             signals: ['program_state_snapshot', 'unsupported_signal'],
           },
-        }),
-      ).toThrow(
-        'Template manifest requests unsupported signal unsupported_signal',
-      );
+        }).control.signals,
+      ).toEqual(['program_state_snapshot']);
     });
 
     it('rejects unrecognized properties on v2 manifest, control, and runtimeParameters', () => {

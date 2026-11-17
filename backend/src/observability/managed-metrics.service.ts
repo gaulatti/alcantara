@@ -136,6 +136,16 @@ export type FillerStartBindingResult =
   | 'mismatch'
   | 'not-configured'
   | 'legacy-executor';
+/**
+ * A template manifest member Alcantara does not know and leaves out instead of
+ * refusing the template (gaulatti/ariston#217). The label is the member kind,
+ * never the unknown name.
+ */
+export type ProgramTemplateUnknownMember = 'signal' | 'capability';
+
+const PROGRAM_TEMPLATE_UNKNOWN_MEMBERS: readonly ProgramTemplateUnknownMember[] =
+  ['signal', 'capability'];
+
 const FILLER_START_BINDING_RESULTS: readonly FillerStartBindingResult[] = [
   'bound',
   'mismatch',
@@ -205,6 +215,7 @@ export class ManagedMetricsService {
   private readonly playingTrackCoverLookups: Counter<string>;
   private readonly fillerPreparations: Counter<string>;
   private readonly fillerStartBindings: Counter<string>;
+  private readonly programTemplateUnknowns: Counter<string>;
   private readonly recordingCommands: Counter<string>;
   private readonly recordingReconciliations: Counter<string>;
 
@@ -335,6 +346,15 @@ export class ManagedMetricsService {
     }
     for (const result of FILLER_START_BINDING_RESULTS) {
       this.fillerStartBindings.inc({ result }, 0);
+    }
+    this.programTemplateUnknowns = new Counter({
+      name: 'alcantara_program_template_unknowns_ignored_total',
+      help: 'Template manifest members Alcantara does not know and left out, by bounded member kind.',
+      labelNames: ['member'],
+      registers: [this.registry],
+    });
+    for (const member of PROGRAM_TEMPLATE_UNKNOWN_MEMBERS) {
+      this.programTemplateUnknowns.inc({ member }, 0);
     }
     this.playingTrackCoverLookups = new Counter({
       name: 'alcantara_program_playing_track_cover_lookups_total',
@@ -491,6 +511,10 @@ export class ManagedMetricsService {
 
   recordFillerStartBinding(result: FillerStartBindingResult): void {
     this.fillerStartBindings.inc({ result });
+  }
+
+  recordProgramTemplateUnknown(member: ProgramTemplateUnknownMember): void {
+    this.programTemplateUnknowns.inc({ member });
   }
 
   recordPlayingTrackCoverLookup(result: PlayingTrackCoverLookupResult): void {

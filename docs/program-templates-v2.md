@@ -30,6 +30,18 @@ A contract v2 manifest declares:
 - Supported signal types matching the allowed signal catalog;
 - Optional release files with key, byte count, MIME content type, and SHA-256 digest. As the schema allows, a file entry may carry additional properties; they are accepted and not stored.
 
+A capability or signal outside these lists (for example one a newer template
+declares before Alcantara supports it, or a v2-only signal in a v1 manifest)
+does not refuse the registration (gaulatti/ariston#217). Alcantara leaves it
+out of the stored manifest, so a template is only ever sent signals Alcantara
+knows, and counts it in
+`alcantara_program_template_unknowns_ignored_total{member}` with `member`
+`signal` or `capability` (both exposed from 0; the unknown name is never a
+label). A manifest whose remaining signals do not include
+`program_state_snapshot` is still refused, as are an unknown `kind`,
+`contractVersion` or `schemaVersion`, malformed or duplicated names, and every
+path, origin, integrity and size check.
+
 A v2 registration receives state `schemaVersion: 2` on the `program_state_snapshot` event, on every projected state (`GET /program/:programId/state` and state-bearing signals) and on every projected signal. A v1 registration continues to receive `schemaVersion: 1`.
 
 ### Broadcast settings in the projected state
