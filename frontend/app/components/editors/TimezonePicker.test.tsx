@@ -8,6 +8,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { ComponentPropsFields } from "./ComponentPropsFields";
 import { withTimezoneOption } from "../../utils/timezones";
+import { TIMEZONE_LINKS, TZDATA_VERSION } from "../../utils/timezoneAliases";
 
 // The timezone pickers list the zones the browser's Intl reports. Chromium and
 // Node spell Buenos Aires "America/Buenos_Aires" and Kolkata "Asia/Calcutta",
@@ -318,6 +319,59 @@ it.each(WEBKIT_LISTED_AS)(
     );
   },
 );
+
+it("replaces the old spelling, not another place in the same zone (Yangon, not Cocos)", () => {
+  // tzdata links Indian/Cocos to Asia/Yangon too, but zone.tab lists Cocos
+  // as a place of its own; Cocos sorts before Rangoon.
+  const zones = ["Indian/Cocos", "Asia/Rangoon", "Europe/Rome"];
+  stubWebKit(zones);
+  picker("clock-widget", { timezone: "Asia/Yangon" });
+  const zone = zoneSelect();
+  const options = within(zone)
+    .getAllByRole("option")
+    .map((option) => [(option as HTMLOptionElement).value, option.textContent]);
+  expect(zone).toHaveValue("Asia/Yangon");
+  expect(options.map(([value]) => value).sort()).toEqual(
+    ["Asia/Yangon", "Europe/Rome", "Indian/Cocos"].sort(),
+  );
+  expect(options.find(([value]) => value === "Asia/Yangon")![1]).toMatch(
+    /^Yangon \(GMT/,
+  );
+});
+
+it("folds every listed name of the saved zone into the one saved option", () => {
+  stubWebKit([
+    "Europe/Kiev",
+    "Europe/Uzhgorod",
+    "Europe/Zaporozhye",
+    "Europe/Rome",
+  ]);
+  picker("clock-widget", { timezone: "Europe/Kyiv" });
+  const values = within(zoneSelect())
+    .getAllByRole("option")
+    .map((option) => (option as HTMLOptionElement).value);
+  expect(values.sort()).toEqual(["Europe/Kyiv", "Europe/Rome"]);
+});
+
+it("has a link for every Step 0 city pair and none for a place of its own", () => {
+  expect(TZDATA_VERSION).toBe("2026e-rearguard");
+  for (const [saved, listed] of WEBKIT_LISTED_AS) {
+    const linked =
+      TIMEZONE_LINKS[listed] === saved || TIMEZONE_LINKS[saved] === listed;
+    expect(linked, `${saved} / ${listed}`).toBe(true);
+  }
+  // The POSIX ids are zones of their own in this release, not links.
+  for (const posix of ["CST6CDT", "EST5EDT", "MST7MDT", "PST8PDT"]) {
+    expect(TIMEZONE_LINKS[posix]).toBeUndefined();
+  }
+  for (const place of [
+    "Indian/Cocos",
+    "Atlantic/Reykjavik",
+    "America/Atikokan",
+  ]) {
+    expect(TIMEZONE_LINKS[place]).toBeUndefined();
+  }
+});
 
 it("matches through the tz links in either direction and through older link names", () => {
   stubWebKit([]);

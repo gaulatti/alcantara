@@ -105,16 +105,30 @@ export interface TimezoneOption {
 }
 
 /**
- * The browser's own id for `timezone`: Intl resolves an alias such as
- * America/Argentina/Buenos_Aires to the name it lists (America/Buenos_Aires
- * in Chromium). Used only to compare ids; it is never stored. An id the
- * browser does not know is returned unchanged.
+ * Replaces the options at `indexes` (all the same zone) with one option for
+ * the saved id, in the first one's place. A saved id that names a city keeps
+ * its own name (Kyiv, not Kiev); a POSIX id such as EST5EDT keeps the listed
+ * city's label.
  */
+function withSavedOption(options: TimezoneOption[], indexes: number[], value: string, date: Date): TimezoneOption[] {
+  const [first] = indexes;
+  const label = value.includes('/') ? getTimezoneOptionLabel(value, date) : options[first].label;
+  return options.flatMap((option, index) =>
+    index === first ? [{ value, label }] : indexes.includes(index) ? [] : [option]
+  );
+}
+
 /** The tz database zone that `timezone` names, through its links. */
 function getLinkedZone(timezone: string): string {
   return TIMEZONE_LINKS[timezone] ?? timezone;
 }
 
+/**
+ * The browser's own id for `timezone`: Intl resolves an alias such as
+ * America/Argentina/Buenos_Aires to the name it lists (America/Buenos_Aires
+ * in Chromium). Used only to compare ids; it is never stored. An id the
+ * browser does not know is returned unchanged.
+ */
 function getBrowserTimezoneId(timezone: string): string {
   try {
     return new Intl.DateTimeFormat('en-US', { timeZone: timezone }).resolvedOptions().timeZone;
@@ -141,18 +155,17 @@ export function withTimezoneOption(options: TimezoneOption[], value: string, dat
     return options;
   }
   const browserId = getBrowserTimezoneId(value);
-  let aliasIndex = options.findIndex((option) => option.value === browserId);
-  if (aliasIndex < 0) {
-    // Intl linked nothing (WebKit resolves both spellings to themselves):
-    // compare through the tz database's links instead.
-    const zone = getLinkedZone(value);
-    aliasIndex = options.findIndex((option) => getLinkedZone(option.value) === zone);
-  }
+  const aliasIndex = options.findIndex((option) => option.value === browserId);
   if (aliasIndex >= 0) {
-    // A saved id that names a city keeps its own name (Kyiv, not Kiev); a
-    // POSIX id such as EST5EDT keeps the listed city's label.
-    const label = value.includes('/') ? getTimezoneOptionLabel(value, date) : options[aliasIndex].label;
-    return options.map((option, index) => (index === aliasIndex ? { value, label } : option));
+    return withSavedOption(options, [aliasIndex], value, date);
+  }
+  // Intl linked nothing (WebKit resolves both spellings to themselves):
+  // compare through the tz database's links instead. Every listed name of
+  // the saved zone becomes the one saved option.
+  const zone = getLinkedZone(value);
+  const sameZone = options.flatMap((option, index) => (getLinkedZone(option.value) === zone ? [index] : []));
+  if (sameZone.length > 0) {
+    return withSavedOption(options, sameZone, value, date);
   }
   return [{ value, label: getTimezoneOptionLabel(value, date) }, ...options];
 }
