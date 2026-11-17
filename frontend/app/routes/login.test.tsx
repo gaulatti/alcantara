@@ -134,6 +134,17 @@ describe('Login', () => {
       expect(screen.queryByRole('alert')).toBeNull();
     });
 
+    it('shows the generic message when the leftover sign-in cannot be dropped', async () => {
+      signInWithRedirect.mockRejectedValue(alreadySignedIn);
+      checkAppSession.mockResolvedValue({ status: 'unauthorized' });
+      clearAppSession.mockRejectedValue(new Error('provider unreachable'));
+      renderLogin('ready');
+      submit();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in could not begin. Please retry or contact your administrator.');
+      expect(clearAppSession).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
+    });
+
     it('says the service is unreachable, without signing anything out, when the API cannot answer', async () => {
       signInWithRedirect.mockRejectedValue(alreadySignedIn);
       checkAppSession.mockResolvedValue({ status: 'unavailable' });
