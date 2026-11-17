@@ -543,6 +543,13 @@ export function projectProgramTemplateState(
     fadeToBlack: value.fadeToBlack === true,
     updatedAt: value.updatedAt,
     version: value.version,
+    // The program-wide broadcast settings, in the broadcast_settings_update
+    // `settings` shape, so a page loaded mid-override starts with it
+    // (gaulatti/alcantara#177). v2 only, and absent when not supplied.
+    ...(manifest.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2 &&
+    isRecord(value.broadcastSettings)
+      ? { broadcastSettings: value.broadcastSettings }
+      : {}),
   };
 }
 

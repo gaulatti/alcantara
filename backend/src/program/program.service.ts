@@ -576,11 +576,32 @@ export class ProgramService implements OnModuleInit {
   }
 
   async getBroadcastSettings() {
-    const settings = await this.ensureBroadcastSettings();
     return {
-      ...this.withResolvedBroadcastMixerChannels(settings as any),
+      ...(await this.currentBroadcastSettings()),
       version: this.getGlobalBroadcastVersion(),
     };
+  }
+
+  /** The broadcast settings exactly as broadcast_settings_update carries them in `settings`. */
+  private async currentBroadcastSettings(): Promise<Record<string, unknown>> {
+    const settings = await this.ensureBroadcastSettings();
+    return this.withResolvedBroadcastMixerChannels(settings as any);
+  }
+
+  /**
+   * The program state a template sees first. While the broadcast time
+   * override is on, a v2 template also gets the current broadcast settings,
+   * so a page loaded mid-override starts with it (gaulatti/alcantara#177).
+   */
+  private async withTemplateBroadcastSettings(
+    state: Record<string, unknown>,
+    manifest: ProgramTemplateManifest,
+  ): Promise<Record<string, unknown>> {
+    if (manifest.contractVersion !== 2) return state;
+    const settings = await this.currentBroadcastSettings();
+    return isActiveTimeOverride(settings)
+      ? { ...state, broadcastSettings: settings }
+      : state;
   }
 
   private normalizeOverrideTime(startTime: string): string {
@@ -1484,7 +1505,13 @@ export class ProgramService implements OnModuleInit {
     const state = await this.getState(programId);
     const manifest = readProgramTemplateManifest(state.templateManifest);
     return manifest
-      ? projectProgramTemplateState(state as Record<string, unknown>, manifest)
+      ? projectProgramTemplateState(
+          await this.withTemplateBroadcastSettings(
+            state as Record<string, unknown>,
+            manifest,
+          ),
+          manifest,
+        )
       : state;
   }
 
@@ -3660,9 +3687,29 @@ export class ProgramService implements OnModuleInit {
       let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       const pendingEvents: unknown[] = [];
       const serialize = (data: unknown) => ({ data: JSON.stringify(data) });
+      // The latest broadcast settings this v2 stream has seen, carried on its
+      // state-bearing signals too (gaulatti/alcantara#177).
+      let broadcastSettings: Record<string, unknown> | null = null;
+      const withBroadcastSettings = (data: unknown): unknown => {
+        if (templateManifest?.contractVersion !== 2 || !isObjectRecord(data)) {
+          return data;
+        }
+        if (data.type === 'broadcast_settings_update') {
+          broadcastSettings = isActiveTimeOverride(data.settings)
+            ? data.settings
+            : null;
+          return data;
+        }
+        return broadcastSettings && isObjectRecord(data.state)
+          ? { ...data, state: { ...data.state, broadcastSettings } }
+          : data;
+      };
       const sendEvent = (data: unknown) => {
         const projected = templateManifest
-          ? projectProgramTemplateSignal(data, templateManifest)
+          ? projectProgramTemplateSignal(
+              withBroadcastSettings(data),
+              templateManifest,
+            )
           : data;
         if (projected) subscriber.next(serialize(projected));
       };
@@ -3680,17 +3727,24 @@ export class ProgramService implements OnModuleInit {
       });
 
       void this.getState(normalizedProgramId)
-        .then((state) => {
+        .then(async (state) => {
           if (closed) return;
-          templateManifest = readProgramTemplateManifest(
-            state.templateManifest,
-          );
-          const publicState = templateManifest
-            ? projectProgramTemplateState(
+          const manifest = readProgramTemplateManifest(state.templateManifest);
+          const templateState = manifest
+            ? await this.withTemplateBroadcastSettings(
                 state as unknown as Record<string, unknown>,
-                templateManifest,
+                manifest,
               )
-            : state;
+            : null;
+          if (closed) return;
+          templateManifest = manifest;
+          if (isActiveTimeOverride(templateState?.broadcastSettings)) {
+            broadcastSettings = templateState.broadcastSettings;
+          }
+          const publicState =
+            templateManifest && templateState
+              ? projectProgramTemplateState(templateState, templateManifest)
+              : state;
           subscriber.next(
             serialize({
               type: 'program_state_snapshot',
@@ -3739,4 +3793,15 @@ export class ProgramService implements OnModuleInit {
       };
     });
   }
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Broadcast settings whose time override is switched on. */
+function isActiveTimeOverride(
+  settings: unknown,
+): settings is Record<string, unknown> {
+  return isObjectRecord(settings) && settings.timeOverrideEnabled === true;
 }

@@ -81,6 +81,11 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
       findUniqueOrThrow: jest.fn(),
     },
     $transaction: jest.fn(),
+    // A v2 snapshot reads the broadcast settings (gaulatti/alcantara#177).
+    $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+    broadcastSettings: {
+      upsert: jest.fn().mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
+    },
   };
   prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
   const radio: any = {

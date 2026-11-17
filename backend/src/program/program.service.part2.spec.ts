@@ -39,6 +39,11 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       scene: { findUnique: jest.fn().mockResolvedValue({ id: 5 }) },
       mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
       instant: { findUnique: jest.fn().mockResolvedValue(null) },
+      // A v2 state reads the broadcast settings (gaulatti/alcantara#177).
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+      broadcastSettings: {
+        upsert: jest.fn().mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
+      },
     };
     const radio = {
       updateMixer: jest.fn().mockResolvedValue(undefined),

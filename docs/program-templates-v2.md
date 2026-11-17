@@ -32,6 +32,15 @@ A contract v2 manifest declares:
 
 A v2 registration receives state `schemaVersion: 2` on the `program_state_snapshot` event, on every projected state (`GET /program/:programId/state` and state-bearing signals) and on every projected signal. A v1 registration continues to receive `schemaVersion: 1`.
 
+### Broadcast settings in the projected state
+
+While the program-wide broadcast time override is on (`timeOverrideEnabled: true`), a v2 registration's projected state carries an optional `broadcastSettings`, so a page opened mid-override shows the overridden time at once instead of waiting for the next `broadcast_settings_update`:
+
+- It has exactly the shape of that event's `settings` (including `timeOverrideEnabled`, `timeOverrideStartTime`, `timeOverrideStartedAt` and the resolved mixer fields).
+- It appears on the `program_state_snapshot` event, on `GET /program/:programId/state`, and on the state of later state-bearing signals in the same event stream. The stream keeps it in step with the `broadcast_settings_update` events it delivers.
+- While the override is off the field is absent (not `null`). A v1 registration never receives it.
+- The field is additive: a template that does not read it is unaffected. A reader should prefer the latest `broadcast_settings_update` it has received, then `state.broadcastSettings`, then no override.
+
 ## Signals and event projection
 
 For contract v2 registrations, the event stream (`GET /program/:programId/events`) projects signals according to the v2 specification:
