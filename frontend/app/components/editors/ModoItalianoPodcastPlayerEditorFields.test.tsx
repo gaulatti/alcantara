@@ -121,3 +121,102 @@ describe("ModoItalianoPodcastPlayerEditorFields uploads", () => {
     expect(updateProp).not.toHaveBeenCalled();
   });
 });
+
+// gaulatti/alcantara#186: the rest of the podcast editor.
+describe("ModoItalianoPodcastPlayerEditorFields editing", () => {
+  const TYPE = "modoitaliano-podcast-player";
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const fields = (props: Record<string, unknown>, updateProp = vi.fn()) => {
+    render(
+      <ModoItalianoPodcastPlayerEditorFields
+        componentType={TYPE}
+        props={props}
+        updateProp={updateProp}
+        mediaGroups={[]}
+        isLoadingMediaGroups={false}
+      />,
+    );
+    return updateProp;
+  };
+
+  it("edits the episode copy, audio URL and show toggle", () => {
+    const updateProp = fields({ show: false, episodeTitle: "Uno", showName: "Modo", audioUrl: "/a.mp3" });
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(updateProp).toHaveBeenCalledWith(TYPE, "show", true);
+    fireEvent.change(screen.getByDisplayValue("Uno"), { target: { value: "Due" } });
+    expect(updateProp).toHaveBeenCalledWith(TYPE, "episodeTitle", "Due");
+    fireEvent.change(screen.getByDisplayValue("Modo"), { target: { value: "Altro" } });
+    expect(updateProp).toHaveBeenCalledWith(TYPE, "showName", "Altro");
+    fireEvent.change(screen.getByRole("textbox", { name: "Audio URL" }), { target: { value: "/b.mp3" } });
+    expect(updateProp).toHaveBeenCalledWith(TYPE, "audioUrl", "/b.mp3");
+  });
+
+  it("previews and clears the chosen cover, and toggles it off from the results", async () => {
+    let answer!: (response: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise((done) => (answer = done))),
+    );
+    const updateProp = fields({ coverUrl: "https://example.test/covers/one.jpg" });
+    expect(screen.getByAltText("Selected cover")).toHaveAttribute("src", "https://example.test/covers/one.jpg");
+    expect(screen.getByText("one.jpg")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, "coverUrl", "");
+
+    fireEvent.change(screen.getByPlaceholderText(/Search all media/), { target: { value: "cover" } });
+    expect(await screen.findByText("Searching media library…")).toBeInTheDocument();
+    answer({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: 1, name: "Cover one", imageUrl: "https://example.test/covers/one.jpg" },
+          { id: 2, name: "No image", imageUrl: "" },
+        ],
+      }),
+    });
+    const result = await screen.findByAltText("Cover one");
+    expect(screen.queryByAltText("No image")).toBeNull();
+    expect(screen.getByText("✓")).toBeInTheDocument();
+    fireEvent.click(result);
+    expect(updateProp).toHaveBeenLastCalledWith(TYPE, "coverUrl", "");
+    await waitFor(() => expect(screen.queryByText("Searching media library…")).toBeNull());
+  });
+
+  it("says when nothing matches, and clears results when the search is emptied", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [] }) }));
+    fields({});
+    const search = screen.getByPlaceholderText(/Search all media/);
+    fireEvent.change(search, { target: { value: "nothing" } });
+    expect(await screen.findByText(/No images match/)).toHaveTextContent("No images match “nothing”");
+    fireEvent.change(search, { target: { value: "  " } });
+    expect(screen.queryByText(/No images match/)).toBeNull();
+  });
+
+  it("drops a search answer that arrives after the term changed", async () => {
+    let reject!: (error: Error) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, fail) => {
+            reject = fail;
+            init.signal?.addEventListener("abort", () => fail(new Error("aborted")));
+          }),
+      )
+      .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    fields({});
+    const search = screen.getByPlaceholderText(/Search all media/);
+    fireEvent.change(search, { target: { value: "first" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireEvent.change(search, { target: { value: "second" } });
+    expect(await screen.findByText(/No images match “second”/)).toBeInTheDocument();
+    reject(new Error("late"));
+    expect(screen.queryByText("late")).toBeNull();
+    expect(screen.queryByText("aborted")).toBeNull();
+  });
+});

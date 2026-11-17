@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MediaLabel } from '../models/broadcast';
 import {
@@ -247,5 +247,15 @@ describe('ModoItalianoGiorgiaArtistBumperEditorFields', () => {
     editor({ artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: [] }, [], vi.fn(), true);
     expect(screen.queryByRole('status')).toBeNull();
     expect(document.body.textContent).toContain('Loading labels...');
+  });
+
+  // gaulatti/alcantara#186
+  it('says a one-image label repeats it, and shows the saved show setting', () => {
+    const updateProp = editor({ show: false, artist: 'ROB', songTitle: 'Cento ragazze', labelId: 'rob', images: [] }, [label('rob', [IMAGES[0]])]);
+    expect(document.body.textContent).toContain('This label has 1 image, so it repeats to fill the four cuts.');
+    const show = screen.getByRole('checkbox', { name: 'Show bumper' });
+    expect(show).not.toBeChecked();
+    fireEvent.click(show);
+    expect(updateProp).toHaveBeenCalledWith(TYPE, 'show', true);
   });
 });
