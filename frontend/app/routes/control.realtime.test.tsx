@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   controlServer,
   stubConsoleBrowser,
@@ -454,4 +454,124 @@ it("closes a link that opens after the console left", async () => {
   view.unmount();
   act(() => socket.open());
   expect(socket.closed).toBe(true);
+});
+
+describe("while neither the event stream nor the link is up", () => {
+  const stateReads = () => server.requests("GET /program/main/state").length;
+
+  it("reads the show after a moment and then polls it, but not while the page is hidden", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+      shouldAdvanceTime: true,
+    });
+    // No ticket, so no link ever opens.
+    server.answer("POST /auth/realtime-ticket", () => Response.json({}));
+    render(<Control />);
+    await screen.findAllByText("Fictional headlines");
+    const opening = stateReads();
+    await act(() => vi.advanceTimersByTimeAsync(900));
+    await waitFor(() => expect(stateReads()).toBe(opening + 1));
+    expect(
+      server.requests("GET /program/main/audio-bus").length,
+    ).toBeGreaterThan(1);
+
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    await waitFor(() => expect(stateReads()).toBe(opening + 2));
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(5000));
+      expect(stateReads()).toBe(opening + 2);
+    } finally {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+    }
+  });
+
+  it("skips the first read when the link is already open", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+      shouldAdvanceTime: true,
+    });
+    render(<Control />);
+    await screen.findAllByText("Fictional headlines");
+    await waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+    // Open on the wire, but its open event has not been handled yet.
+    FakeSocket.instances[0].readyState = FakeSocket.OPEN;
+    const opening = stateReads();
+    await act(() => vi.advanceTimersByTimeAsync(900));
+    expect(stateReads()).toBe(opening);
+  });
+});
+
+it("applies updates that arrive while the show's state is still loading", async () => {
+  server.answer(
+    "GET /program/main/state",
+    new Response("down", { status: 500 }),
+  );
+  render(<Control />);
+  await waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+  const socket = FakeSocket.instances[0];
+  act(() => socket.open());
+  for (const payload of [
+    { type: "scene_update", programId: "main", scene: headlines },
+    { type: "scene_staged", programId: "main", stagedSceneId: 1 },
+    { type: "scene_cleared", programId: "main" },
+  ])
+    act(() => socket.send(payload));
+  expect(screen.getByText("Loading main control surface…")).toBeVisible();
+});
+
+it("updates a staged scene the show does not list, and reads updates without a show id as another show's", async () => {
+  const guest = scene(9, "Fictional guest");
+  server.answer("GET /program/main/state", () =>
+    Response.json(
+      programState(undefined, { stagedSceneId: 9, stagedScene: guest }),
+    ),
+  );
+  const { socket } = await openLink();
+  act(() =>
+    socket.send({
+      type: "scene_update",
+      programId: "main",
+      scene: { ...guest, name: "Fictional guest, late" },
+    }),
+  );
+  act(() =>
+    socket.send({
+      type: "scene_update",
+      programId: "main",
+      scene: { ...desk, name: "Fictional desk, late" },
+    }),
+  );
+  expect(
+    (await screen.findAllByText("Fictional desk, late")).length,
+  ).toBeGreaterThan(0);
+
+  for (const type of [
+    "program_state_snapshot",
+    "scene_staged",
+    "scene_change",
+    "scene_update",
+    "scene_cleared",
+  ])
+    act(() =>
+      socket.send({ type, stagedSceneId: 2, state: programState([desk]) }),
+    );
+  // A JSON array is read as an update without a topic, and ignored.
+  act(() => socket.send("[1, 2]"));
+  expect(statusOf("Fictional headlines")).toBe("Program");
+});
+
+it("leaves without error when an open link refuses to close", async () => {
+  const { view, socket } = await openLink();
+  socket.close = () => {
+    throw new Error("already closing");
+  };
+  expect(() => view.unmount()).not.toThrow();
 });
