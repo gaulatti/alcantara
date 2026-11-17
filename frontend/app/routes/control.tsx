@@ -78,6 +78,7 @@ import type {
   PaginatedResponse,
   SongCatalogItem,
 } from "../models/broadcast";
+import { songRequestFailureNotice } from "../utils/songRequestFailure";
 import {
   DEFAULT_MIXER_TAKE_APPLYING,
   DEFAULT_MIXER_TAKE_PRESETS_DB,
@@ -2959,7 +2960,13 @@ export default function Control() {
   ]);
 
   const [radioPlayoutError, setRadioPlayoutError] = useState<string | null>(null);
-  useEffect(() => setRadioPlayoutError(null), [activeProgramId]);
+  // The last song Palazzo could not load (#175). It stays after the next song
+  // starts, so the operator still sees which one was skipped.
+  const [radioSongFailure, setRadioSongFailure] = useState<string | null>(null);
+  useEffect(() => {
+    setRadioPlayoutError(null);
+    setRadioSongFailure(null);
+  }, [activeProgramId]);
 
   const handleProgramEvent = useCallback(
     (data: any) => {
@@ -2973,6 +2980,10 @@ export default function Control() {
         return;
       }
 
+      if (data.type === "song_request_failed") {
+        setRadioSongFailure(songRequestFailureNotice(data));
+        return;
+      }
       if (data.type === "radio_rotation_resume_failed") {
         setRadioPlayoutError(
           "The timed block ended, but continuous fillers could not resume. Check the engine before starting the rotation.",
@@ -3351,7 +3362,7 @@ export default function Control() {
     return (
       <RadioPanel
         programId={activeProgramId}
-        playoutError={radioPlayoutError}
+        playoutError={radioPlayoutError ?? radioSongFailure}
         songSequence={programAudioBusSongSequence}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}

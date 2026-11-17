@@ -1365,6 +1365,32 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(prisma.programState.upsert).toHaveBeenCalledTimes(1);
     });
 
+    it('broadcasts a song Palazzo could not load to the control room (#175)', async () => {
+      const { service, engine } = build();
+      await service.onModuleInit();
+      const handler = engine.setBroadcastHandler.mock.calls[0][0];
+      const events: any[] = [];
+      service.addEventListener((e) => events.push(e.data));
+      handler({
+        type: 'song_request_failed',
+        programId: ' main ',
+        playbackRequestId: 'req-9',
+        title: 'Track 01',
+        artist: 'Artist 1',
+        reason: 'timeout',
+        failedAt: '2026-11-17T12:00:00.000Z',
+      });
+      expect(events[0]).toEqual({
+        type: 'song_request_failed',
+        programId: 'main',
+        playbackRequestId: 'req-9',
+        title: 'Track 01',
+        artist: 'Artist 1',
+        reason: 'timeout',
+        failedAt: '2026-11-17T12:00:00.000Z',
+      });
+    });
+
     it.each(['playback_update', 'song_playback_active'])(
       'maps %s to a song_playback_update',
       (type) => {

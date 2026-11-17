@@ -78,6 +78,7 @@ export type PalazzoPlaybackEventType =
   | 'playout.stopped'
   | 'playout.skipped'
   | 'playout.fallback'
+  | 'playout.request_failed'
   | 'playback.position'
   | 'audio.levels'
   | 'heartbeat';
@@ -286,6 +287,7 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
     'playout.stopped',
     'playout.skipped',
     'playout.fallback',
+    'playout.request_failed',
     'playback.position',
     'audio.levels',
     'heartbeat',
@@ -308,7 +310,9 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
   const type = record.type as PalazzoPlaybackEventType;
   const data = record.data as Record<string, unknown>;
   if (
-    (type === 'track.started' || type === 'track.ended') &&
+    (type === 'track.started' ||
+      type === 'track.ended' ||
+      type === 'playout.request_failed') &&
     !boundedString(data.playbackRequestId, 200)
   )
     return null;

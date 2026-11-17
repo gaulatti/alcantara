@@ -240,10 +240,11 @@ function session(options: { durationMs?: (index: number) => number } = {}) {
     playInstant: jest.fn().mockResolvedValue(undefined),
     getRadioSettings: jest.fn().mockResolvedValue(null),
   };
+  const metricFns: Record<string | symbol, jest.Mock> = {};
   const metrics = new Proxy(
     {},
-    { get: () => jest.fn() },
-  ) as unknown as RadioMetricsService;
+    { get: (_target, key) => (metricFns[key] ??= jest.fn()) },
+  ) as unknown as RadioMetricsService & Record<string, jest.Mock>;
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
     {
@@ -309,6 +310,7 @@ function session(options: { durationMs?: (index: number) => number } = {}) {
     store,
     radioService,
     prisma,
+    metrics,
     persistedSequence: () =>
       programState.songSequence as Record<string, unknown>,
     lastCommand,
@@ -1112,5 +1114,107 @@ describe('the playlist after a queued song', () => {
       11,
       ...Array.from({ length: 11 }, (_, i) => i + 1),
     ]);
+  });
+});
+
+// gaulatti/alcantara#175: a song Palazzo could not load (playout.request_failed)
+// is shown to the operator, counted, skipped like a natural end, and never
+// written to the as-run log.
+describe('a song Palazzo could not load', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const requestFailed = (
+    s: ReturnType<typeof session>,
+    playbackRequestId: string,
+    reason: string = 'timeout',
+  ) =>
+    s.engine.handlePalazzoEvent('radio-1', {
+      type: 'playout.request_failed',
+      data: { playbackRequestId, reason },
+    } as never);
+
+  it('advances once to the next song, and a late duplicate does nothing', async () => {
+    const s = session();
+    s.idle();
+    await settle();
+    const failed = s.lastCommand();
+    expect(failed.url).toBe(SONGS[0].audioUrl);
+    const sent = s.radioService.playSong.mock.calls.length;
+    requestFailed(s, failed.requestId);
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent + 1);
+    expect(s.lastCommand().url).toBe(SONGS[1].audioUrl);
+    requestFailed(s, failed.requestId);
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent + 1);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('writes no started or ended as-run row for the failed song', async () => {
+    const s = session();
+    s.idle();
+    await settle();
+    const failed = s.lastCommand();
+    requestFailed(s, failed.requestId, 'other');
+    await settle();
+    // The next song goes on air and ends; only it is recorded.
+    const next = s.lastCommand();
+    s.started(next);
+    await settle();
+    s.ended(next);
+    await settle();
+    expect(
+      s.store.rows.filter((row) => row.playbackRequestId === failed.requestId),
+    ).toEqual([]);
+    expect(s.store.rows.map((row) => row.state)).toEqual(['started', 'ended']);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('tells the operator which song failed and why, and counts it by reason', async () => {
+    const s = session();
+    const events: Array<Record<string, unknown>> = [];
+    s.engine.setBroadcastHandler((event) =>
+      events.push(event as unknown as Record<string, unknown>),
+    );
+    s.idle();
+    await settle();
+    const failed = s.lastCommand();
+    requestFailed(s, failed.requestId, 'timeout');
+    await settle();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'song_request_failed',
+        programId: 'radio-1',
+        title: SONGS[0].title,
+        artist: SONGS[0].artist,
+        reason: 'timeout',
+      }),
+    );
+    expect(s.metrics.recordSongRequestFailure).toHaveBeenCalledWith('timeout');
+    s.asRun.onModuleDestroy();
+  });
+
+  it('ignores an event for an unknown request id, or for a song already on air', async () => {
+    const s = session();
+    s.idle();
+    await settle();
+    const command = s.lastCommand();
+    const sent = s.radioService.playSong.mock.calls.length;
+    requestFailed(s, 'unknown-request');
+    await settle();
+    s.started(command);
+    await settle();
+    requestFailed(s, command.requestId);
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent);
+    expect(s.metrics.recordSongRequestFailure).not.toHaveBeenCalled();
+    s.asRun.onModuleDestroy();
   });
 });

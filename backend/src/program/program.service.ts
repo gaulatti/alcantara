@@ -3549,6 +3549,15 @@ export class ProgramService implements OnModuleInit {
         });
         break;
       }
+      case 'song_request_failed': {
+        // A song Palazzo could not load (#175), for the operator's view.
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          ...event,
+          programId: normalizedProgramId,
+        });
+        break;
+      }
       case 'radio_leg_status': {
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.broadcastUpdate(normalizedProgramId, {

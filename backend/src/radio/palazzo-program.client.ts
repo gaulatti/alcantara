@@ -564,6 +564,7 @@ function isEnginePlaybackEvent(type: PalazzoPlaybackEvent['type']): boolean {
     type === 'intro.ended' ||
     type === 'intro.failed' ||
     type === 'playback.position' ||
-    type === 'audio.levels'
+    type === 'audio.levels' ||
+    type === 'playout.request_failed'
   );
 }

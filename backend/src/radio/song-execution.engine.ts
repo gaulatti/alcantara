@@ -19,6 +19,7 @@ import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import {
   RadioMetricsService,
   type SongQueueActionResult,
+  type SongRequestFailureReason,
 } from './radio-metrics.service';
 import type {
   PalazzoPlaybackState,
@@ -101,6 +102,16 @@ export type SongEngineEvent =
       programId: string;
       levels: PalazzoPlaybackState['levels'];
       sampledAt: string;
+    }
+  | {
+      /** Palazzo could not load the song (#175); the engine moved on. */
+      type: 'song_request_failed';
+      programId: string;
+      playbackRequestId: string;
+      title: string;
+      artist: string;
+      reason: SongRequestFailureReason;
+      failedAt: string;
     };
 
 export type SongEngineBroadcastFn = (event: SongEngineEvent) => void;
@@ -969,6 +980,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           data: PalazzoPlaybackState['levels'];
         }
       | {
+          type: 'playout.request_failed';
+          data: { playbackRequestId: string; reason?: string };
+        }
+      | {
           type: 'intro.started' | 'intro.ended' | 'intro.failed';
           data: {
             programId: string;
@@ -1004,6 +1019,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       event.type === 'intro.failed'
     ) {
       this.handleIntroEvent(programId, state, event);
+      return;
+    }
+    if (event.type === 'playout.request_failed') {
+      this.handleSongRequestFailed(programId, state, event.data);
       return;
     }
 
@@ -1088,6 +1107,46 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         `Track event subscriber failed on ${programId}: ${String(error)}`,
       );
     }
+  }
+
+  /**
+   * Palazzo could not load the song it was sent (palazzo#42), so it never went
+   * on air: it gets no as-run record, the operator is told, and the sequence
+   * moves on as at a natural end. Anything but the active, not yet started
+   * song (an unknown request, a duplicate, a song on air) is ignored.
+   */
+  private handleSongRequestFailed(
+    programId: string,
+    state: SongEngineState,
+    data: { playbackRequestId: string; reason?: string },
+  ): void {
+    const song = state.activeSong;
+    if (
+      !song ||
+      song.playbackRequestId !== data.playbackRequestId ||
+      song.authoritativeStartedAt !== null
+    ) {
+      this.metrics.recordTrackTransition('ignored-mismatch');
+      return;
+    }
+    const reason: SongRequestFailureReason =
+      data.reason === 'timeout' ? 'timeout' : 'other';
+    song.asRunClosed = true;
+    this.metrics.recordSongRequestFailure(reason);
+    this.emit({
+      type: 'song_request_failed',
+      programId,
+      playbackRequestId: song.playbackRequestId,
+      title: song.title,
+      artist: song.artist,
+      reason,
+      failedAt: new Date().toISOString(),
+    });
+    this.handleAuthoritativeTrackEnded(
+      programId,
+      state,
+      song.playbackRequestId,
+    );
   }
 
   /**

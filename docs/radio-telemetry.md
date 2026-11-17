@@ -45,6 +45,12 @@ root playback routes.
   and `intro.failed` events update operator state only; they never advance,
   stop, or replace the parent song. Cross-program and mismatched-parent intro
   events are ignored.
+- `playout.request_failed` (Palazzo 2d16d83 and later) for the active song
+  that has not started marks it failed: it gets no as-run record, the control
+  room's Radio desk shows the song, artist and reason (`timeout` or `other`;
+  any other reason counts as `other`), and the sequence advances exactly once
+  as at a natural end. An unknown request ID, a duplicate or a song already on
+  air is ignored. An older Palazzo never sends the event, so nothing changes.
 - Autoplay and Shuffle advance the in-memory playlist cursor to the next item
   after that authoritative end. Shuffle operates on its persisted randomized
   order, so it does not repeat an item before the current pass is exhausted.
@@ -254,6 +260,8 @@ snapshot reconciliation results, ignored-event reasons, stale-telemetry and
 degraded program gauges, track transition results,
 `alcantara_radio_intro_transitions_total{result}` for submitted, accepted,
 started, ended, failed, and mismatched intro lifecycle events,
+`alcantara_radio_song_request_failures_total{reason}` for songs Palazzo could
+not load (`timeout`, `other`; both exposed from 0),
 `alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
 reorder, consume, cursor persistence, rejection, and persistence failure,
 `alcantara_radio_song_queue_depth` for the total number of queued entries,

@@ -42,6 +42,8 @@ export type TrackTransitionResult =
   | 'command-failed'
   | 'published-stopped';
 
+export type SongRequestFailureReason = 'timeout' | 'other';
+
 export type IntroTransitionResult =
   | 'submitted'
   | 'accepted'
@@ -96,6 +98,7 @@ export interface RadioMetricsSnapshot {
   degradedPrograms: number;
   trackTransitions: Record<string, number>;
   introTransitions: Record<string, number>;
+  songRequestFailures: Record<string, number>;
   songQueueActions: Record<string, number>;
   songQueueDepth: number;
   highRotationActions: Record<string, number>;
@@ -197,6 +200,11 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'published-stopped',
 ];
 
+const SONG_REQUEST_FAILURE_REASONS: SongRequestFailureReason[] = [
+  'timeout',
+  'other',
+];
+
 const INTRO_TRANSITION_RESULTS: IntroTransitionResult[] = [
   'submitted',
   'accepted',
@@ -275,6 +283,7 @@ export class RadioMetricsService {
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
   private readonly introTransitions = new Map<string, number>();
+  private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
@@ -329,6 +338,14 @@ export class RadioMetricsService {
     this.trackTransitions.set(
       result,
       (this.trackTransitions.get(result) ?? 0) + 1,
+    );
+  }
+
+  /** A song Palazzo could not load (`playout.request_failed`), by reason. */
+  recordSongRequestFailure(reason: SongRequestFailureReason): void {
+    this.songRequestFailures.set(
+      reason,
+      (this.songRequestFailures.get(reason) ?? 0) + 1,
     );
   }
 
@@ -442,6 +459,7 @@ export class RadioMetricsService {
       degradedPrograms: this.degradedPrograms,
       trackTransitions: Object.fromEntries(this.trackTransitions),
       introTransitions: Object.fromEntries(this.introTransitions),
+      songRequestFailures: Object.fromEntries(this.songRequestFailures),
       songQueueActions: Object.fromEntries(this.songQueueActions),
       songQueueDepth: this.songQueueDepth,
       highRotationActions: Object.fromEntries(this.highRotationActions),
@@ -514,6 +532,15 @@ export class RadioMetricsService {
     for (const result of INTRO_TRANSITION_RESULTS) {
       lines.push(
         `alcantara_radio_intro_transitions_total{result="${result}"} ${this.introTransitions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_song_request_failures_total Songs Palazzo could not load (playout.request_failed) by bounded reason.',
+      '# TYPE alcantara_radio_song_request_failures_total counter',
+    );
+    for (const reason of SONG_REQUEST_FAILURE_REASONS) {
+      lines.push(
+        `alcantara_radio_song_request_failures_total{reason="${reason}"} ${this.songRequestFailures.get(reason) ?? 0}`,
       );
     }
     lines.push(
