@@ -32,7 +32,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "awslocal s3api head-bucket --bucket alcantara-local-only >/dev/null 2>&1",
+          "awslocal s3api get-bucket-policy --bucket alcantara-local-only >/dev/null 2>&1",
         ]
       interval: 5s
       timeout: 5s
@@ -130,6 +130,14 @@ services:
       AWS_CONTAINER_CREDENTIALS_FULL_URI: ""
       AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: ""
       ARAUCO_SECRET_ID: ""
+      # The local store's S3 endpoint and the base its objects are served
+      # from; both are refused in production.
+      MEDIA_S3_ENDPOINT: http://localstack:4566
+      LOCAL_MEDIA_PUBLIC_BASE_URL: http://localstack.localhost:${LOCALSTACK_PORT:-4566}/alcantara-local-only
+    extra_hosts:
+      # The public media base resolves to the host's published localstack
+      # port, the same address the browser uses.
+      - "localstack.localhost:host-gateway"
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
@@ -185,6 +193,12 @@ services:
       - VITE_AUTH_MODE=test
       - VITE_TEST_AUTH_IDENTITY=${TEST_AUTH_IDENTITY:-operator-a}
       - VITE_API_BASE_URL=http://localhost:${BACKEND_PORT:-3000}
+      # No hosted sign-in values reach a local bundle (gaulatti/alcantara#206);
+      # TEST AUTH needs none of them.
+      - VITE_COGNITO_USER_POOL_ID=
+      - VITE_COGNITO_CLIENT_ID=
+      - VITE_COGNITO_DOMAIN=
+      - VITE_FQDN=
     volumes:
       - ./frontend/app:/app/app
       - ./frontend/vite.config.ts:/app/vite.config.ts
