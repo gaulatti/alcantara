@@ -1669,7 +1669,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   ): ProgramResolvedSongLeaf | null {
     const maxAttempts = collectProgramSongLeaves(sequence).length;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const resolved = resolveProgramSongLeaf(sequence, now);
+      // The engine plays the cursor item by position (#176). Resolving at the
+      // cursor's own stamp keeps the shared clock walk from moving past items
+      // during time the cursor did not own: a queued song, a manual pick, a
+      // pause. The cursor is stamped at every advance, so a natural end gets
+      // the same item as before.
+      const resolved = resolveProgramSongLeaf(sequence, sequence.startedAt);
       if (!resolved) return null;
       if (!resolved.highRotation) return resolved;
 

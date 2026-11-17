@@ -202,7 +202,7 @@ function playingSnapshot(
   };
 }
 
-function session() {
+function session(options: { durationMs?: (index: number) => number } = {}) {
   let programState = {
     programId: 'radio-1',
     type: 'radio',
@@ -210,14 +210,14 @@ function session() {
       mode: 'autoplay',
       loop: false,
       intervalMs: 500,
-      items: SONGS.slice(0, 12).map((song) => ({
+      items: SONGS.slice(0, 12).map((song, index) => ({
         id: `item-${song.id}`,
         kind: 'preset',
         title: song.title,
         artist: song.artist,
         coverUrl: '',
         audioUrl: song.audioUrl,
-        durationMs: 180_000,
+        durationMs: options.durationMs?.(index) ?? 180_000,
         songId: song.id,
       })),
     } as unknown,
@@ -1040,5 +1040,77 @@ describe('as-run start for a song adopted from a snapshot', () => {
       }),
     ]);
     s.asRun.onModuleDestroy();
+  });
+});
+
+// gaulatti/alcantara#176: after a queued (Play Next) song the playlist resumes
+// at its cursor item, by position, whatever the queued song's length.
+describe('the playlist after a queued song', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function playThrough(
+    durationOf: (index: number) => number,
+    queuedIndex: number,
+  ) {
+    const s = session({ durationMs: durationOf });
+    const indexOf = (url: string) =>
+      SONGS.findIndex((song) => song.audioUrl === url);
+    s.idle();
+    await settle();
+    const onAir: number[] = [];
+    let queued = false;
+    for (let guard = 0; guard < 20; guard++) {
+      const command = s.lastCommand();
+      if (onAir.length && indexOf(command.url) === onAir.at(-1) && guard > 0)
+        break;
+      s.started(command);
+      await settle();
+      onAir.push(indexOf(command.url));
+      if (!queued) {
+        // Play Next while the first track is on air.
+        await s.engine.enqueueSong('radio-1', `item-${SONGS[queuedIndex].id}`);
+        queued = true;
+      }
+      advance(durationOf(indexOf(command.url)));
+      const sent = s.radioService.playSong.mock.calls.length;
+      s.ended(command);
+      await settle();
+      if (s.radioService.playSong.mock.calls.length === sent) break;
+    }
+    s.asRun.onModuleDestroy();
+    return { s, onAir };
+  }
+
+  it('plays every playlist item once, in order, around a 6 s queued song', async () => {
+    const { s, onAir } = await playThrough(() => 6_000, 7);
+    // Track 1, the queued track 8, then the playlist from track 2 on.
+    expect(onAir).toEqual([
+      0,
+      7,
+      ...Array.from({ length: 11 }, (_, i) => i + 1),
+    ]);
+    const ended = s.store.rows.filter((row) => row.state === 'ended');
+    expect(ended.map((row) => row.songId)).toEqual(
+      onAir.map((index) => SONGS[index].id),
+    );
+  });
+
+  it('skips nothing after a queued song longer than several items', async () => {
+    const { onAir } = await playThrough(
+      (index) => (index === 11 ? 40_000 : 6_000),
+      11,
+    );
+    expect(onAir).toEqual([
+      0,
+      11,
+      ...Array.from({ length: 11 }, (_, i) => i + 1),
+    ]);
   });
 });
