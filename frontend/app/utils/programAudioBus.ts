@@ -417,8 +417,18 @@ function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: str
   if (!AudioContextCtor) {
     return;
   }
-  const context = state.meterContext ?? new AudioContextCtor();
-  state.meterContext = context;
+  let context = state.meterContext;
+  if (!context) {
+    // setupAudioMeter could not create one either: the browser refused an
+    // AudioContext (NotSupportedError). The envelope is optional; the track
+    // still plays.
+    try {
+      context = new AudioContextCtor();
+    } catch {
+      return;
+    }
+    state.meterContext = context;
+  }
 
   void getMeterEnvelope(normalizedUrl, context).then((envelope) => {
     if (state.meterEnvelopeUrl !== normalizedUrl) {
