@@ -131,10 +131,15 @@ export function RundownEventList({
                         {cue.voiceTrackInstantId && <Mic2 size={12} />}
                       </span>
                       <span className="rundown-event-detail">
-                        {song?.artist ??
-                          (cue.kind === "instant"
+                        {cue.kind === "playSong"
+                          ? song
+                            ? song.artist
+                            : cue.songId == null
+                              ? "No song chosen"
+                              : "Song not in the library"
+                          : cue.kind === "instant"
                             ? "Standalone audio"
-                            : "Intentional silence")}
+                            : "Intentional silence"}
                         {cue.isFiller && cue.kind === "playSong"
                           ? " · Filler"
                           : ""}
