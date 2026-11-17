@@ -33,6 +33,14 @@ async function responseError(response: Response) {
   }
 }
 
+/** A join the studio answered with 401 or 403: this invitation cannot join again. */
+class JoinEnded extends Error {}
+
+const IN_USE_ELSEWHERE = 'This invitation is already in use in another window. Try again in a minute.';
+const STUDIO_NOT_READY = 'The studio is not ready for guests yet. Try again in a minute.';
+const STUDIO_UNREACHABLE = 'The studio could not be reached. Check your connection and try again.';
+const CONNECT_FAILED = 'Could not connect to the studio. Try again.';
+
 export default function GuestRoute() {
   const { invitation = '' } = useParams();
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -101,7 +109,9 @@ export default function GuestRoute() {
         status: commandStatus
       })
     });
-    if (commandStatus !== 'rejected') setNotice(null);
+    // Only the guest's own answer clears the notice; the automatic 'read' receipt
+    // leaves a director message on screen until the guest acknowledges it.
+    if (commandStatus === 'acknowledged' || commandStatus === 'accepted') setNotice(null);
   };
 
   useEffect(() => {
@@ -193,15 +203,29 @@ export default function GuestRoute() {
     if (!speakerChecked || (!headphonesConfirmed && !echoRiskAccepted)) return;
     setStatus('joining');
     setError('');
+    // Where the join stopped decides what the guest is told and whether they can retry.
+    let stage: 'request' | 'connect' = 'request';
     try {
       const storageKey = `alcantara-guest-session:${invitation.split('.')[0] || 'unknown'}`;
       const previousSession = window.sessionStorage.getItem(storageKey);
-      const response = await fetch(apiUrl('/webrtc/join'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitation, sessionToken: previousSession })
-      });
-      if (!response.ok) throw new Error(await responseError(response));
+      let response: Response;
+      try {
+        response = await fetch(apiUrl('/webrtc/join'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invitation, sessionToken: previousSession })
+        });
+      } catch {
+        throw new Error(STUDIO_UNREACHABLE);
+      }
+      if (!response.ok) {
+        // Revoked, expired or invalid: the same end as a refused heartbeat.
+        if (response.status === 401 || response.status === 403) throw new JoinEnded(await responseError(response));
+        if (response.status === 409) throw new Error(IN_USE_ELSEWHERE);
+        if (response.status === 503) throw new Error(STUDIO_NOT_READY);
+        throw new Error(await responseError(response));
+      }
+      stage = 'connect';
       const credentials = (await response.json()) as {
         serverUrl: string;
         token: string;
@@ -302,8 +326,16 @@ export default function GuestRoute() {
       heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to join the studio.');
-      setStatus('error');
+      if (reason instanceof JoinEnded) {
+        stopHeartbeat();
+        roomRef.current?.disconnect();
+        setError(reason.message);
+        setStatus('ended');
+        return;
+      }
+      // Every other refusal can be retried while the preflight checks still hold.
+      setError(stage === 'connect' ? CONNECT_FAILED : reason instanceof Error ? reason.message : 'Unable to join the studio.');
+      setStatus('ready');
     }
   };
 
