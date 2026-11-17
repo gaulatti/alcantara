@@ -109,34 +109,6 @@ export default function ManualRundown() {
     [sequences, activeSequenceId],
   );
 
-  const loadSequences = useCallback(async () => {
-    try {
-      const data = await fetchFlightSequences(activeProgramId);
-      setSequences(data.filter((sequence) => !sequence.scheduledAt));
-    } catch (err) {
-      console.error("Failed to load flight sequences:", err);
-      showAlert("Failed to load rundowns.", "error");
-    }
-  }, [activeProgramId]);
-
-  const loadScenes = useCallback(async () => {
-    try {
-      const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(activeProgramId)}/state`),
-      );
-      if (!res.ok) return;
-      const state = await res.json();
-      const entries = Array.isArray(state?.scenes) ? state.scenes : [];
-      setScenes(
-        entries
-          .map((entry: any) => entry.scene)
-          .filter((scene: unknown): scene is Scene => Boolean(scene)),
-      );
-    } catch (err) {
-      console.error("Failed to load scenes:", err);
-    }
-  }, [activeProgramId]);
-
   const loadSongs = useCallback(async () => {
     try {
       const res = await fetch(apiUrl("/songs?page=1&limit=1000"));
@@ -509,10 +481,7 @@ export default function ManualRundown() {
 
                       <Button
                         type="button"
-                        onClick={() =>
-                          activeSequence &&
-                          handleDeleteSequence(activeSequence.id)
-                        }
+                        onClick={() => handleDeleteSequence(activeSequence.id)}
                         className="flex items-center gap-2 rounded border border-red-900/50 bg-zinc-900 px-3 py-2 text-xs font-semibold text-red-400 hover:bg-red-950/30"
                       >
                         <Trash2 size={14} />
@@ -1309,27 +1278,12 @@ function parsePropValue(raw: string): unknown {
   if (trimmed === "false") return false;
   if (trimmed === "null") return null;
   const num = Number(trimmed);
-  if (!Number.isNaN(num) && trimmed !== "") return num;
+  if (!Number.isNaN(num)) return num;
   try {
     return JSON.parse(trimmed);
   } catch {
     return trimmed;
   }
-}
-
-function deepMerge(
-  target: Record<string, unknown>,
-  source: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...target };
-  for (const [key, value] of Object.entries(source)) {
-    if (isRecord(value) && isRecord(result[key])) {
-      result[key] = deepMerge(result[key] as Record<string, unknown>, value);
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 interface RuntimePanelProps {
