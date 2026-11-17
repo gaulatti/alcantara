@@ -829,6 +829,50 @@ describe('next-song announcement and handoff', () => {
       expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
     });
 
+    it('a snapshot of the announced song is its inferred start when the event is missing', async () => {
+      const h = harness();
+      const store = asRunStore();
+      const asRun = new AsRunService(
+        store.prisma as unknown as PrismaService,
+        h.engine,
+      );
+      asRun.onModuleInit();
+      await onAir(h);
+      const announced = h.palazzo.queued!;
+      // Overlap began, but the start event was lost; the snapshot shows it.
+      h.playing(announced);
+      h.playing(announced);
+      await settle();
+      // The late real start adds nothing.
+      h.palazzo.start(announced);
+      h.palazzo.endCurrent();
+      await settle();
+      asRun.onModuleDestroy();
+
+      expect(
+        store.rows
+          .filter((row) => row.playbackRequestId === announced.id)
+          .map((row) => [row.state, row.inferred]),
+      ).toEqual([['started', true]]);
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    });
+
+    it('a snapshot without a start time infers the start now', async () => {
+      const h = harness();
+      const events: { inferred?: boolean; at: Date }[] = [];
+      const subscription = h.engine.trackEvents$.subscribe((event) =>
+        events.push(event),
+      );
+      await onAir(h);
+      const state = snapshot('boot-1', 99, h.palazzo.queued);
+      state.track!.startedAt = 'not a time';
+      h.engine.handlePalazzoSnapshot(PROGRAM, state);
+      subscription.unsubscribe();
+      expect(events.at(-1)).toEqual(
+        expect.objectContaining({ inferred: true, at: new Date(Date.now()) }),
+      );
+    });
+
     it('an idle snapshot drops an announcement that never started', async () => {
       const h = harness();
       await onAir(h);

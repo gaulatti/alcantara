@@ -199,7 +199,9 @@ same segue and loudness the song command would carry; with segue off, neither.
 - **Events.** Without overlap Palazzo sends the current song's `track.ended`,
   then the next song's `track.started`; with overlap the next song's start
   comes first. The engine accepts the announced song's start while the current
-  song is still active, so every song still has one start and one end.
+  song is still active, so every song still has one start and one end. If its
+  start event is missing but a playing snapshot reports it, that snapshot is its
+  start, recorded as inferred at Palazzo's reported start time, as on adoption.
 - **Metrics.** `alcantara_radio_next_announcements_total{result}` and
   `alcantara_radio_handoffs_total{path}`; see
   [radio-telemetry.md](radio-telemetry.md).

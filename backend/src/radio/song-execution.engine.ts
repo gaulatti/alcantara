@@ -1699,10 +1699,33 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
 
     // The announced song Palazzo started itself is expected, not a takeover.
+    const announcement = state.announcement;
     if (
-      state.announcement?.status === 'accepted' &&
-      state.announcement.playbackId === requestId
+      announcement?.status === 'accepted' &&
+      announcement.playbackId === requestId
     ) {
+      if (announcement.startedAt === null) {
+        // Its start event has not arrived: as on adoption (#174), record one
+        // inferred start at Palazzo's reported start time, else now.
+        // A playing snapshot always reports its track.
+        const reported = Date.parse(snapshot.track!.startedAt);
+        announcement.startedAt = Number.isFinite(reported)
+          ? reported
+          : Date.now();
+        this.emitTrackEvent(
+          programId,
+          'track.started',
+          requestId,
+          {
+            title: announcement.title,
+            artist: announcement.artist,
+            url: announcement.audioUrl,
+          },
+          true,
+          undefined,
+          new Date(announcement.startedAt),
+        );
+      }
       return;
     }
 
