@@ -62,6 +62,8 @@ const DEPENDENCY_OPERATIONS = new Set([
   'reload',
   'start',
   'stop',
+  'profile',
+  'prepare',
   'unknown',
 ]);
 const DEPENDENCY_RESULTS = new Set([
@@ -115,6 +117,31 @@ export type PlayingTrackCoverLookupResult =
   | 'absent'
   | 'rejected'
   | 'error';
+/** How a filler version's preparation ended (gaulatti/alcantara#126). */
+export type FillerPreparationResult =
+  | 'ready'
+  | 'failed'
+  | 'unavailable'
+  | 'profile-unavailable';
+const FILLER_LEGS = ['television', 'radio'] as const;
+const FILLER_PREPARATION_RESULTS: readonly FillerPreparationResult[] = [
+  'ready',
+  'failed',
+  'unavailable',
+  'profile-unavailable',
+];
+/** What a television Start did with the program filler (gaulatti/alcantara#126). */
+export type FillerStartBindingResult =
+  | 'bound'
+  | 'mismatch'
+  | 'not-configured'
+  | 'legacy-executor';
+const FILLER_START_BINDING_RESULTS: readonly FillerStartBindingResult[] = [
+  'bound',
+  'mismatch',
+  'not-configured',
+  'legacy-executor',
+];
 const PLAYING_TRACK_COVER_LOOKUP_RESULTS: readonly PlayingTrackCoverLookupResult[] =
   ['included', 'absent', 'rejected', 'error'];
 const RECORDING_ACTIONS = new Set(['start', 'stop']);
@@ -176,6 +203,8 @@ export class ManagedMetricsService {
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
   private readonly playingTrackCoverLookups: Counter<string>;
+  private readonly fillerPreparations: Counter<string>;
+  private readonly fillerStartBindings: Counter<string>;
   private readonly recordingCommands: Counter<string>;
   private readonly recordingReconciliations: Counter<string>;
 
@@ -287,6 +316,26 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.fillerPreparations = new Counter({
+      name: 'alcantara_filler_preparations_total',
+      help: 'Program filler version preparations by bounded leg and result.',
+      labelNames: ['leg', 'result'],
+      registers: [this.registry],
+    });
+    this.fillerStartBindings = new Counter({
+      name: 'alcantara_filler_start_bindings_total',
+      help: 'Television Start filler bindings by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const leg of FILLER_LEGS) {
+      for (const result of FILLER_PREPARATION_RESULTS) {
+        this.fillerPreparations.inc({ leg, result }, 0);
+      }
+    }
+    for (const result of FILLER_START_BINDING_RESULTS) {
+      this.fillerStartBindings.inc({ result }, 0);
+    }
     this.playingTrackCoverLookups = new Counter({
       name: 'alcantara_program_playing_track_cover_lookups_total',
       help: 'Song-record cover lookups for confirmed playing tracks by bounded result.',
@@ -431,6 +480,17 @@ export class ManagedMetricsService {
     this.programSseSnapshots.inc({
       result: bounded(result, PROGRAM_SSE_SNAPSHOT_RESULTS),
     });
+  }
+
+  recordFillerPreparation(
+    leg: (typeof FILLER_LEGS)[number],
+    result: FillerPreparationResult,
+  ): void {
+    this.fillerPreparations.inc({ leg, result });
+  }
+
+  recordFillerStartBinding(result: FillerStartBindingResult): void {
+    this.fillerStartBindings.inc({ result });
   }
 
   recordPlayingTrackCoverLookup(result: PlayingTrackCoverLookupResult): void {

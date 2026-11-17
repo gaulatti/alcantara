@@ -49,6 +49,9 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
   SongIntro: program,
   GuestInvitation: program,
   AsRunRecord: program,
+  // Program fillers (gaulatti/alcantara#126): a programId, no relation.
+  FillerVersion: program,
+  FillerLeg: program,
 
   // Owned through a parent.
   MediaAssetLabel: childOf('MediaAsset'),

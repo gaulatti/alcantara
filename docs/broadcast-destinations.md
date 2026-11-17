@@ -92,9 +92,13 @@ The private metrics endpoint exposes:
 
 - `alcantara_dependency_operations_total{dependency="alana",operation=...}`
   and `alcantara_dependency_duration_seconds` for bounded `status`, `reload`,
-  `start`, and `stop` dependency operations.
+  `start`, `stop`, and (for program fillers) `profile` and `prepare`
+  dependency operations.
 - `alcantara_broadcast_destination_operations_total{action,result}` for bounded
   reload/Start/Stop outcomes.
 
 Exact destination IDs, selection versions, hashes, references, program IDs, and
 error bodies are deliberately absent from metric labels.
+
+Start also binds the program television filler when one is configured; see
+[`program-filler.md`](program-filler.md).

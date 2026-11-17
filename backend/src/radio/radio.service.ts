@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
 } from '@nestjs/common';
@@ -111,6 +112,14 @@ export class RadioService {
     ) {
       throw new BadRequestException('select 1 to 100 distinct catalog songs');
     }
+    // Once the program radio filler (gaulatti/alcantara#126) is configured,
+    // it alone writes the radio filler; this legacy writer stays as before
+    // for every program without one.
+    if (await this.programRadioFillerVersion(programId)) {
+      throw new ConflictException(
+        'the radio filler is managed by the program filler configuration',
+      );
+    }
     const settings = await this.requireRadioSettings(programId);
     const songs = await this.prisma.song.findMany({
       where: { id: { in: songIds } },
@@ -204,7 +213,10 @@ export class RadioService {
 
   async setRecoveryAutomation(programId: string, action: 'start' | 'stop') {
     const settings = await this.requireRadioSettings(programId);
-    if (action === 'start' && !settings.fillerVersion)
+    // A configured program radio filler is the exact version Start binds to.
+    const programFiller = await this.programRadioFillerVersion(programId);
+    const fillerVersion = programFiller ?? settings.fillerVersion;
+    if (action === 'start' && !fillerVersion)
       throw new BadRequestException('prepare a recovery playlist first');
     let current: Awaited<ReturnType<PalazzoMachineClient['getAutomation']>>;
     try {
@@ -222,14 +234,39 @@ export class RadioService {
         action,
         current.lastSequence + 1,
         randomUUID(),
-        action === 'start' ? settings.fillerVersion! : undefined,
+        action === 'start' ? fillerVersion! : undefined,
       );
     } catch {
       throw new BadGatewayException(
         `Palazzo could not ${action} the recovery session`,
       );
     }
+    if (action === 'start' && programFiller) {
+      // The session's filler is now that version; it stops being pending
+      // only if it still is. Each statement is atomic.
+      const where = { programId, leg: 'radio' };
+      const promoted = await this.prisma.fillerLeg.updateMany({
+        where: { ...where, pendingVersionId: programFiller },
+        data: { activeVersionId: programFiller, pendingVersionId: null },
+      });
+      if (promoted.count === 0) {
+        await this.prisma.fillerLeg.updateMany({
+          where,
+          data: { activeVersionId: programFiller },
+        });
+      }
+    }
     return this.getRecoveryStatus(programId);
+  }
+
+  /** The program radio filler version a Start binds to, if one is configured. */
+  private async programRadioFillerVersion(
+    programId: string,
+  ): Promise<string | null> {
+    const leg = await this.prisma.fillerLeg.findUnique({
+      where: { programId_leg: { programId, leg: 'radio' } },
+    });
+    return leg?.pendingVersionId ?? leg?.activeVersionId ?? null;
   }
 
   async getRadioSettings(programId: string) {
@@ -466,7 +503,15 @@ export class RadioService {
 
     const { segue: resolvedSegue, loudness: resolvedLoudness } =
       settings.segueMode === 'on'
-        ? await this.resolveSongAnalysis(programId, requestId, audioUrl, songId, duration, segue, loudness)
+        ? await this.resolveSongAnalysis(
+            programId,
+            requestId,
+            audioUrl,
+            songId,
+            duration,
+            segue,
+            loudness,
+          )
         : { segue: undefined, loudness: undefined };
 
     try {
@@ -560,7 +605,10 @@ export class RadioService {
     const settings = await this.getRadioSettings(programId);
     if (!settings) return null;
     try {
-      const { withdrawn } = await this.palazzo.withdrawNext(this.palazzoUrl(settings), programId);
+      const { withdrawn } = await this.palazzo.withdrawNext(
+        this.palazzoUrl(settings),
+        programId,
+      );
       this.metrics.recordNextAnnouncement('withdrawn');
       return withdrawn;
     } catch (error) {
@@ -589,14 +637,20 @@ export class RadioService {
       try {
         const song = await this.findSongForAnalysis(audioUrl, songId, drops);
         if (song?.assetId) {
-          if (durationSeconds === undefined && typeof song.durationMs === 'number') {
+          if (
+            durationSeconds === undefined &&
+            typeof song.durationMs === 'number'
+          ) {
             durationSeconds = song.durationMs / 1000;
           }
           const analysis = await this.prisma.mediaAssetAnalysis.findUnique({
             where: { assetId: song.assetId },
           });
           if (analysis && analysis.status === 'success') {
-            if (analysis.cueInSeconds !== null && analysis.cueOutSeconds !== null) {
+            if (
+              analysis.cueInSeconds !== null &&
+              analysis.cueOutSeconds !== null
+            ) {
               segue = {
                 cueInSeconds: analysis.cueInSeconds,
                 cueOutSeconds: analysis.cueOutSeconds,
@@ -605,7 +659,10 @@ export class RadioService {
                 overlapSeconds: analysis.overlapSeconds ?? 0,
               };
             }
-            if (analysis.integratedLufs !== null && analysis.truePeakDbtp !== null) {
+            if (
+              analysis.integratedLufs !== null &&
+              analysis.truePeakDbtp !== null
+            ) {
               loudness = {
                 integratedLufs: analysis.integratedLufs,
                 truePeakDbtp: analysis.truePeakDbtp,
@@ -620,7 +677,10 @@ export class RadioService {
     if (segue) {
       try {
         validateSongSegue(segue);
-        if (durationSeconds !== undefined && segue.cueOutSeconds > durationSeconds) {
+        if (
+          durationSeconds !== undefined &&
+          segue.cueOutSeconds > durationSeconds
+        ) {
           segue = undefined;
           drops.push('segue-beyond-duration');
         }

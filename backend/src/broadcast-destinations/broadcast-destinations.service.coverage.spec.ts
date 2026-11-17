@@ -151,6 +151,8 @@ function harness(programType = 'both') {
     prisma as unknown as PrismaService,
     alana as unknown as AlanaClient,
     metrics as unknown as ManagedMetricsService,
+    // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
+    { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
   );
   return {
     service,

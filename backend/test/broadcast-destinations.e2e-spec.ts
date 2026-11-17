@@ -11,6 +11,7 @@ import { Public } from '../src/auth/public.decorator';
 import { AlanaClient } from '../src/broadcast-destinations/alana.client';
 import { BroadcastDestinationsController } from '../src/broadcast-destinations/broadcast-destinations.controller';
 import { BroadcastDestinationsService } from '../src/broadcast-destinations/broadcast-destinations.service';
+import { FillerBindingService } from '../src/filler/filler-binding.service';
 import { ObservabilityModule } from '../src/observability/observability.module';
 import { PrismaService } from '../src/prisma.service';
 
@@ -30,7 +31,12 @@ class HealthController {
     AuthModule,
   ],
   controllers: [HealthController, BroadcastDestinationsController],
-  providers: [BroadcastDestinationsService, AlanaClient, PrismaService],
+  providers: [
+    BroadcastDestinationsService,
+    AlanaClient,
+    FillerBindingService,
+    PrismaService,
+  ],
 })
 class TestModule {}
 

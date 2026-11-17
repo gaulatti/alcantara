@@ -520,6 +520,9 @@ export class PalazzoMachineClient {
     programId: string,
     version: string,
     assets: Array<{ id: string; sha256: string; downloadUrl: string }>,
+    order: { mode: 'ordered' } | { mode: 'shuffle'; shuffleSeed: string } = {
+      mode: 'ordered',
+    },
   ): Promise<void> {
     const response = await this.request(
       palazzoUrl,
@@ -530,7 +533,7 @@ export class PalazzoMachineClient {
         method: 'PUT',
         idempotencyKey: version,
         retryable: true,
-        body: { commandId: version, mode: 'ordered', assets },
+        body: { commandId: version, ...order, assets },
       },
     );
     const body = await responseJson(response, 'filler-prepare', this.metrics);

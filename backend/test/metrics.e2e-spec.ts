@@ -68,6 +68,9 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     metrics.recordRecordingStatus('active', 'success');
     for (const result of ['included', 'absent', 'rejected', 'error'] as const)
       metrics.recordPlayingTrackCoverLookup(result);
+    metrics.recordFillerPreparation('television', 'ready');
+    metrics.recordFillerPreparation('radio', 'failed');
+    metrics.recordFillerStartBinding('bound');
     const radioMetrics = app.get(RadioMetricsService);
     radioMetrics.recordListenerConfiguration('success');
     radioMetrics.recordListenerConfiguration('failure');
@@ -198,6 +201,39 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       'alcantara_radio_log_transitions_total{result="interrupted"} 1',
     );
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    // The program filler counters (gaulatti/alcantara#126) carry exactly their
+    // bounded labels, every series present from the first scrape.
+    const fillerPreparations = body
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_filler_preparations_total{'),
+      );
+    expect(fillerPreparations.sort()).toEqual(
+      ['radio', 'television']
+        .flatMap((leg) =>
+          ['failed', 'profile-unavailable', 'ready', 'unavailable'].map(
+            (result) =>
+              `alcantara_filler_preparations_total{leg="${leg}",result="${result}"} ${
+                (leg === 'television' && result === 'ready') ||
+                (leg === 'radio' && result === 'failed')
+                  ? 1
+                  : 0
+              }`,
+          ),
+        )
+        .sort(),
+    );
+    const fillerBindings = body
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_filler_start_bindings_total{'),
+      );
+    expect(fillerBindings.sort()).toEqual(
+      ['bound', 'legacy-executor', 'mismatch', 'not-configured'].map(
+        (result) =>
+          `alcantara_filler_start_bindings_total{result="${result}"} ${result === 'bound' ? 1 : 0}`,
+      ),
+    );
     // The playing-track cover lookup counter has exactly its bounded results.
     const coverLookups = body
       .split('\n')

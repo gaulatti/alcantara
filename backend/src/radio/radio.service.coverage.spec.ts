@@ -27,6 +27,8 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     mediaAssetAnalysis: {
       findUnique: jest.fn().mockResolvedValue(null),
     },
+    // No program radio filler configured (gaulatti/alcantara#126).
+    fillerLeg: { findUnique: jest.fn().mockResolvedValue(null) },
   };
   const palazzo: any = {
     getAutomation: jest.fn().mockResolvedValue({ lastSequence: 4 }),

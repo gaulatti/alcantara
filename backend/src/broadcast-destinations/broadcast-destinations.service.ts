@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AlanaClient, AlanaRequestError } from './alana.client';
+import { FillerBindingService } from '../filler/filler-binding.service';
 import {
   canonicalJson,
   DESTINATION_ID_PATTERN,
@@ -47,6 +48,7 @@ export class BroadcastDestinationsService {
     private readonly prisma: PrismaService,
     private readonly alana: AlanaClient,
     private readonly metrics: ManagedMetricsService,
+    private readonly fillers: FillerBindingService,
   ) {}
 
   async listDestinations() {
@@ -268,6 +270,19 @@ export class BroadcastDestinationsService {
     if (command.status === 'succeeded')
       return this.commandResult(command, true);
 
+    // The program television filler (gaulatti/alcantara#126): with one
+    // configured and an Alana that acknowledges profile checksums, Start is
+    // sent only when Alana holds that exact version. Otherwise unchanged.
+    let filler: Awaited<
+      ReturnType<FillerBindingService['televisionStartBinding']>
+    >;
+    try {
+      filler = await this.fillers.televisionStartBinding(programId, status);
+    } catch (error) {
+      await this.failCommand(command.id, error);
+      throw error;
+    }
+
     const selection = selectionPayload(command);
     try {
       if (
@@ -297,6 +312,13 @@ export class BroadcastDestinationsService {
         });
       }
       assertSelectionAcknowledged(downstream.activeDestinations, selection);
+      if (filler) {
+        await this.fillers.confirmTelevisionStart(
+          programId,
+          filler,
+          downstream,
+        );
+      }
       return await this.finishCommand(command, downstream, 'succeeded', {
         requestedState: 'running',
         actualState: 'running',

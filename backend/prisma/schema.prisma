@@ -138,6 +138,36 @@ model BroadcastDestinationRuntime {
   updatedAt          DateTime @updatedAt
 }
 
+/// One immutable filler configuration for one program leg (gaulatti/alcantara#126).
+/// Only safe identity is stored: source asset ids and SHA-256, mode, seed and
+/// the acknowledged profile checksum. Never download URLs or credentials.
+model FillerVersion {
+  id         String    @id
+  programId  String
+  leg        String
+  checksum   String
+  config     Json
+  status     String    @default("preparing")
+  reason     String?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  preparedAt DateTime?
+
+  @@index([programId, leg, createdAt])
+}
+
+/// The prepared next-session (pending) and in-session (active) filler
+/// versions of one program leg.
+model FillerLeg {
+  programId        String
+  leg              String
+  pendingVersionId String?
+  activeVersionId  String?
+  updatedAt        DateTime @updatedAt
+
+  @@id([programId, leg])
+}
+
 model ExternalSource {
   id                        String                  @id @default(uuid())
   teamId                    Int
