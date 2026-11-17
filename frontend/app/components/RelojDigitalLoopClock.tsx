@@ -281,7 +281,7 @@ export default function RelojDigitalLoopClock({
     return () => window.clearInterval(id);
   }, [mode]);
 
-  const active = LOOP_TIMEZONES[activeIndex] || LOOP_TIMEZONES[0];
+  const active = LOOP_TIMEZONES[activeIndex];
 
   const activeTitleItem = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedTextSequence }, nowMs);
   const activeCtaItem = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedCtaSequence }, nowMs);
