@@ -48,8 +48,7 @@ function nextLocalStart(): string {
   return local.toISOString().slice(0, 16);
 }
 
-function formatClock(seconds: number | undefined): string {
-  if (seconds === undefined) return "After previous";
+function formatClock(seconds: number): string {
   return `+${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
