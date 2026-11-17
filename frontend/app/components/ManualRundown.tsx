@@ -23,7 +23,7 @@ import {
   SkipForward,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "../utils/apiBaseUrl";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import { useSSE } from "../hooks/useSSE";
@@ -239,21 +239,68 @@ export default function ManualRundown() {
     enabled: true,
   });
 
+  // Cue edits that are shown but not yet confirmed by the server, per sequence.
+  // Each edit is built on the newest of these items, so a quick second edit (or
+  // the next keystroke of a label) never starts from items an earlier edit
+  // already changed. `confirmed` is the server's last answer, for a rollback.
+  const unsavedItems = useRef(
+    new Map<
+      number,
+      { items: FlightCue[]; edit: number; confirmed: FlightCue[] }
+    >(),
+  );
+  const lastEdit = useRef(0);
+  // Saves run one at a time in edit order, so the server applies them in the
+  // order the operator made them.
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+
+  const latestItems = (sequence: FlightSequence) =>
+    unsavedItems.current.get(sequence.id)?.items ?? sequence.items;
+
   const persistSequenceItems = useCallback(
-    async (sequenceId: number, items: FlightCue[]) => {
-      try {
-        const updated = await updateFlightSequence(
-          activeProgramId,
-          sequenceId,
-          { items },
-        );
+    (sequence: FlightSequence, items: FlightCue[]) => {
+      const edit = ++lastEdit.current;
+      const confirmed =
+        unsavedItems.current.get(sequence.id)?.confirmed ?? sequence.items;
+      unsavedItems.current.set(sequence.id, { items, edit, confirmed });
+      const show = (next: FlightCue[]) =>
         setSequences((prev) =>
-          prev.map((seq) => (seq.id === sequenceId ? updated : seq)),
+          prev.map((seq) =>
+            seq.id === sequence.id ? { ...seq, items: next } : seq,
+          ),
         );
-      } catch (err) {
-        console.error("Failed to save flight sequence:", err);
-        showAlert(extractErrorMessage(err), "error");
-      }
+      show(items);
+      // Only the newest edit's answer replaces what is shown: an older answer
+      // never overwrites a newer local edit, which is still being saved.
+      const isNewest = () =>
+        unsavedItems.current.get(sequence.id)?.edit === edit;
+      const save = saveQueue.current.then(async () => {
+        try {
+          const updated = await updateFlightSequence(
+            activeProgramId,
+            sequence.id,
+            { items },
+          );
+          if (!isNewest()) {
+            unsavedItems.current.get(sequence.id)!.confirmed = updated.items;
+            return;
+          }
+          unsavedItems.current.delete(sequence.id);
+          setSequences((prev) =>
+            prev.map((seq) => (seq.id === sequence.id ? updated : seq)),
+          );
+        } catch (err) {
+          console.error("Failed to save flight sequence:", err);
+          showAlert(extractErrorMessage(err), "error");
+          // A newer edit already includes this one and is still to be saved.
+          if (!isNewest()) return;
+          const { confirmed: last } = unsavedItems.current.get(sequence.id)!;
+          unsavedItems.current.delete(sequence.id);
+          show(last);
+        }
+      });
+      saveQueue.current = save;
+      return save;
     },
     [activeProgramId],
   );
@@ -325,8 +372,13 @@ export default function ManualRundown() {
           loop: !activeSequence.loop,
         },
       );
+      // The loop answer must not undo cue edits that are still being saved.
       setSequences((prev) =>
-        prev.map((seq) => (seq.id === updated.id ? updated : seq)),
+        prev.map((seq) =>
+          seq.id === updated.id
+            ? { ...updated, items: latestItems(updated) }
+            : seq,
+        ),
       );
     } catch (err) {
       showAlert(extractErrorMessage(err), "error");
@@ -337,38 +389,39 @@ export default function ManualRundown() {
     if (!activeSequence) return;
 
     const cue = createFlightCue(kind);
-    const items = [...activeSequence.items, cue];
-    await persistSequenceItems(activeSequence.id, items);
+    const items = [...latestItems(activeSequence), cue];
+    await persistSequenceItems(activeSequence, items);
   };
 
   const handleUpdateCue = async (cueId: string, patch: Partial<FlightCue>) => {
     if (!activeSequence) return;
 
-    const items = activeSequence.items.map((cue) =>
+    const items = latestItems(activeSequence).map((cue) =>
       cue.id === cueId ? ({ ...cue, ...patch } as FlightCue) : cue,
     );
-    await persistSequenceItems(activeSequence.id, items);
+    await persistSequenceItems(activeSequence, items);
   };
 
   const handleDeleteCue = async (cueId: string) => {
     if (!activeSequence) return;
 
-    const items = activeSequence.items.filter((cue) => cue.id !== cueId);
-    await persistSequenceItems(activeSequence.id, items);
+    const items = latestItems(activeSequence).filter((cue) => cue.id !== cueId);
+    await persistSequenceItems(activeSequence, items);
   };
 
   const handleMoveCue = async (cueId: string, direction: "up" | "down") => {
     if (!activeSequence) return;
 
-    const index = activeSequence.items.findIndex((cue) => cue.id === cueId);
+    const current = latestItems(activeSequence);
+    const index = current.findIndex((cue) => cue.id === cueId);
     if (index < 0) return;
 
     const newIndex = direction === "up" ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= activeSequence.items.length) return;
+    if (newIndex < 0 || newIndex >= current.length) return;
 
-    const items = [...activeSequence.items];
+    const items = [...current];
     [items[index], items[newIndex]] = [items[newIndex], items[index]];
-    await persistSequenceItems(activeSequence.id, items);
+    await persistSequenceItems(activeSequence, items);
   };
 
   const sceneOptions = useMemo(
