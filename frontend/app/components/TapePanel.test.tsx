@@ -11,6 +11,7 @@ import type { RecordingState, TapeStatus } from "../models/broadcast";
 import { TapePanel, TapeStatusView } from "./TapePanel";
 import {
   fetchTapeStatus,
+  newTapeCommandKey,
   requestTapeDownloadUrl,
   sendTapeCommand,
   TapeApiError,
@@ -173,5 +174,130 @@ describe("TapePanel", () => {
       ),
     );
     vi.unstubAllGlobals();
+  });
+});
+
+// gaulatti/alcantara#184: the remaining operator states.
+
+describe("TapeStatusView failures", () => {
+  it("says the last tape failed and why, and offers a new tape", () => {
+    const failed = status("failed");
+    failed.recording!.error = "encoder crashed";
+    view(failed);
+    const headline = screen.getByRole("status");
+    expect(headline).toHaveTextContent("The last tape failed");
+    expect(headline.className).toContain("text-terracotta");
+    expect(screen.getByText("Capture error: encoder crashed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tape" })).toBeInTheDocument();
+  });
+
+  it("does not show a capture error for a failure without a reason", () => {
+    view(status("failed"));
+    expect(screen.queryByText(/Capture error/)).toBeNull();
+  });
+
+  it("shows progress labels while a command is pending", () => {
+    view(status("active", { active: true }), { busy: "stop" });
+    expect(screen.getByRole("button", { name: "Finalizing…" })).toBeDisabled();
+    cleanup();
+    view(status("complete"), { busy: "download" });
+    expect(screen.getByRole("button", { name: "Preparing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Tape" })).toBeDisabled();
+  });
+
+  it("offers a status retry when the status is unknown", () => {
+    const onRefresh = vi.fn();
+    view(null, { onRefresh });
+    expect(screen.getByRole("status")).toHaveTextContent("Tape status unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Retry status" }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+  });
+});
+
+describe("TapePanel failures", () => {
+  beforeEach(() => {
+    vi.mocked(fetchTapeStatus).mockReset();
+    vi.mocked(sendTapeCommand).mockReset();
+    vi.mocked(requestTapeDownloadUrl).mockReset();
+    vi.mocked(newTapeCommandKey).mockClear();
+  });
+
+  it("explains an unreadable status and recovers on retry", async () => {
+    vi.mocked(fetchTapeStatus)
+      .mockRejectedValueOnce(new TapeApiError(503, "The recorder is restarting."))
+      .mockResolvedValueOnce(status("idle"));
+    render(<TapePanel programId="main" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The recorder is restarting.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry status" }));
+    expect(await screen.findByRole("button", { name: "Tape" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("uses a generic message for an unexpected failure", async () => {
+    vi.mocked(fetchTapeStatus).mockRejectedValue(new Error("socket hang up"));
+    render(<TapePanel programId="main" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Taping is temporarily unavailable.",
+    );
+  });
+
+  it("retries a start the server could not finish with the same key", async () => {
+    vi.mocked(fetchTapeStatus).mockResolvedValue(status("idle"));
+    vi.mocked(sendTapeCommand)
+      .mockRejectedValueOnce(new TapeApiError(503, "Try again shortly."))
+      .mockResolvedValueOnce(status("active", { active: true }));
+    render(<TapePanel programId="main" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Tape" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Try again shortly.");
+    fireEvent.click(screen.getByRole("button", { name: "Tape" }));
+    expect(await screen.findByText("TAPING")).toBeInTheDocument();
+    expect(newTapeCommandKey).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sendTapeCommand).mock.calls.map((call) => call[2])).toEqual([
+      "tape-start-1",
+      "tape-start-1",
+    ]);
+  });
+
+  it("starts fresh after a refused command, and stops after confirmation", async () => {
+    vi.mocked(fetchTapeStatus).mockResolvedValue(status("idle"));
+    vi.mocked(sendTapeCommand)
+      .mockRejectedValueOnce(new TapeApiError(409, "Busy"))
+      .mockResolvedValueOnce(status("active", { active: true }))
+      .mockResolvedValueOnce(status("finalizing", { active: true }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<TapePanel programId="main" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Tape" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Busy");
+    fireEvent.click(screen.getByRole("button", { name: "Tape" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stop and save" }));
+    expect(await screen.findByText(/not ready yet/)).toBeInTheDocument();
+    expect(newTapeCommandKey).toHaveBeenCalledTimes(3);
+    expect(sendTapeCommand).toHaveBeenLastCalledWith("main", "stop", "tape-stop-1");
+  });
+
+  it("keeps the command error when the status reload after it also fails", async () => {
+    vi.mocked(fetchTapeStatus)
+      .mockResolvedValueOnce(status("idle"))
+      .mockRejectedValue(new Error("offline"));
+    vi.mocked(sendTapeCommand).mockRejectedValue(new Error("network"));
+    render(<TapePanel programId="main" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Tape" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Taping is temporarily unavailable.",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Tape status unavailable");
+  });
+
+  it("reports a download link that could not be issued", async () => {
+    vi.mocked(fetchTapeStatus).mockResolvedValue(status("complete"));
+    vi.mocked(requestTapeDownloadUrl).mockRejectedValue(
+      new TapeApiError(410, "The tape has expired."),
+    );
+    render(<TapePanel programId="main" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Download MP4/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The tape has expired.");
+    expect(screen.getByRole("button", { name: /Download MP4/ })).toBeEnabled();
   });
 });

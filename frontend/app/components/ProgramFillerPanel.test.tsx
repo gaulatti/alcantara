@@ -146,3 +146,50 @@ it('reports a failed state read or media read without inventing a ready state', 
   render(<ProgramFillerPanel programId="both-1" canManage />);
   expect(await screen.findByRole('alert')).toHaveTextContent('Access denied');
 });
+
+// gaulatti/alcantara#184: the remaining states an operator can see.
+
+it('shows why a version failed and that it is not prepared yet', async () => {
+  state.legs.television!.pending = {
+    ...state.legs.television!.pending!,
+    status: 'failed',
+    reason: 'asset unavailable',
+    preparedAt: null,
+  };
+  render(<ProgramFillerPanel programId="both-1" canManage={false} />);
+  const television = await screen.findByLabelText('Television filler');
+  expect(television).toHaveTextContent('failed (asset unavailable)');
+  expect(television).toHaveTextContent('Not prepared');
+});
+
+it('offers only images and videos to a television-only program', async () => {
+  state = { programId: 'tv-1', legs: { television: { pending: null, active: null } } };
+  render(<ProgramFillerPanel programId="tv-1" canManage />);
+  await screen.findByLabelText('Television filler source');
+  await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+  const types = vi
+    .mocked(api.get)
+    .mock.calls.filter(([url]) => url === '/media-assets')
+    .map(([, config]) => (config as any).params.mediaType);
+  expect(types).toEqual(['IMAGE', 'VIDEO']);
+});
+
+it('prepares an ordered radio filler for a radio-only program', async () => {
+  state = { programId: 'radio-1', legs: { radio: { pending: null, active: null } } };
+  const put = vi.spyOn(api, 'put').mockResolvedValue({ data: state });
+  render(<ProgramFillerPanel programId="radio-1" canManage />);
+  fireEvent.click(await screen.findByLabelText('Track one'));
+  expect(screen.queryByLabelText('Television filler source')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Prepare radio filler' }));
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith('/broadcast/programs/radio-1/fillers/radio', {
+      assetIds: ['song:1'],
+      mode: 'ordered',
+    }),
+  );
+  const types = vi
+    .mocked(api.get)
+    .mock.calls.filter(([url]) => url === '/media-assets')
+    .map(([, config]) => (config as any).params.mediaType);
+  expect(types).toEqual(['AUDIO']);
+});

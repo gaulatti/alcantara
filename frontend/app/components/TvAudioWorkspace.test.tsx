@@ -224,3 +224,21 @@ it("shows loading and failed persistence explicitly and reflects acknowledged mu
   ).toHaveTextContent("not applied");
   expect(screen.queryByText("Mix settings saved")).not.toBeInTheDocument();
 });
+
+it("shows a mix being saved and a preset take in progress", () => {
+  const data = props();
+  data.mixer.saving = true;
+  data.mixer.channels[0].taking = true;
+  render(<TvAudioWorkspace {...data} />);
+  expect(
+    within(screen.getByRole("region", { name: "Audio mixer" })).getByRole(
+      "status",
+    ),
+  ).toHaveTextContent("Saving mix…");
+  const takeA = screen.getByRole("button", { name: "Take Music preset A" });
+  expect(takeA).toHaveTextContent("…");
+  expect(takeA).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Take Stream preset A" })).toHaveTextContent(
+    "TAKE A",
+  );
+});
