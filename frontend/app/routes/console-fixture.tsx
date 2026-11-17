@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { TooltipButton } from "../components/BleeckerButtons";
 import { useSearchParams } from "react-router";
+import { songRequestFailureNotice } from "../utils/songRequestFailure";
 import {
   BroadcastSwitcherDeck,
   type ConsoleWorkspace,
@@ -464,6 +465,16 @@ export default function ConsoleFixture() {
               )
             }
             onTakeOffAir={async () => setPlaybackOnAir(false)}
+            playoutError={
+              fixture === "radio-song-failed"
+                ? songRequestFailureNotice({
+                    type: "song_request_failed",
+                    title: "Harbor Light",
+                    artist: "The Lighthouse Keepers",
+                    reason: "timeout",
+                  })
+                : null
+            }
             instants={fixture === "radio-empty" ? [] : consoleInstants}
             instantSearch={cartSearch}
             onInstantSearchChange={setCartSearch}
