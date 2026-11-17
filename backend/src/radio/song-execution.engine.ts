@@ -1307,7 +1307,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     if (!successor) {
       state.announcement = null;
-      if (current && current.status !== 'not-announced') {
+      if (current && (current.status !== 'not-announced' || current.replaces)) {
         await this.radioService.withdrawNext(programId);
       }
       return;
@@ -1331,7 +1331,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       artist: leaf.artist,
       status: 'pending',
       startedAt: null,
-      replaces: current?.status === 'accepted' ? current : null,
+      // A refused announcement may still hold the previous one, on air.
+      replaces:
+        current?.status === 'accepted' ? current : (current?.replaces ?? null),
     };
     state.announcement = announcement;
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
@@ -1355,15 +1357,18 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       state.nextUnsupportedBootId = state.palazzoBootId;
     }
     const replaced = announcement.replaces;
-    // Accepted: Palazzo replaced the previous announcement. Refused: Palazzo
-    // keeps the previous one queued, so withdraw it now rather than let it
-    // play and be preempted audibly at the handoff. One that already started
-    // is on air and stays to be closed at the handoff.
-    if (result === 'accepted' || replaced?.startedAt === null) {
+    // Accepted: Palazzo replaced the previous announcement.
+    if (result === 'accepted') {
       announcement.replaces = null;
+      return;
     }
-    if (result !== 'accepted' && replaced?.startedAt === null) {
-      await this.radioService.withdrawNext(programId);
+    // Refused: Palazzo keeps the previous one, so withdraw it now rather than
+    // let it play and be preempted audibly at the handoff. If it was too late
+    // (its gate already opened, so it is on air) or the outcome is unknown, it
+    // stays known: its start is then recorded and the handoff preempts it.
+    if (replaced?.startedAt === null) {
+      const withdrawn = await this.radioService.withdrawNext(programId);
+      if (withdrawn === true) announcement.replaces = null;
     }
   }
 

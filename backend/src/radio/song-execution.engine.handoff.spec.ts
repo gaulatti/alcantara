@@ -98,6 +98,8 @@ class FakePalazzo {
   heldAnswers: (() => void)[] = [];
   holdAnswers = false;
   settings: Record<string, unknown> = { bumperEnabled: false };
+  /** An announced song whose gate already opened: it can no longer be replaced. */
+  onAirEarly: { id: string; url: string } | null = null;
 
   readonly radioService = {
     getRadioSettings: jest.fn(() => Promise.resolve(this.settings)),
@@ -139,8 +141,10 @@ class FakePalazzo {
     ),
     withdrawNext: jest.fn(() => {
       this.withdrawals += 1;
-      this.queued = null;
-      return Promise.resolve();
+      // Too late to replace: a song whose gate opened is on air.
+      const removed = this.queued !== null && this.queued !== this.onAirEarly;
+      if (removed) this.queued = null;
+      return Promise.resolve(removed);
     }),
   };
 
@@ -1236,6 +1240,66 @@ describe('next-song announcement and handoff', () => {
       h.palazzo.endCurrent();
       await settle();
       expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[1].url]);
+    });
+
+    it('too late to replace: an announced song already on air is recorded as started and preempted', async () => {
+      const h = harness();
+      const store = asRunStore();
+      const asRun = new AsRunService(
+        store.prisma as unknown as PrismaService,
+        h.engine,
+      );
+      asRun.onModuleInit();
+      await onAir(h);
+      const first = h.palazzo.current!;
+      const announced = h.palazzo.queued!;
+      // At the cue-out the announced song's gate opens: Palazzo refuses the
+      // re-announcement (422) and cannot withdraw it.
+      h.palazzo.onAirEarly = announced;
+      h.palazzo.answer = () => 'not_ready';
+      await h.engine.enqueueSong(PROGRAM, SONGS[4].itemId);
+      await settle();
+      expect(h.palazzo.withdrawals).toBe(1);
+      expect(h.palazzo.queued).toEqual(announced);
+      // Its start arrives after the DELETE, then the previous song ends.
+      h.palazzo.endCurrent();
+      await settle();
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[4].url]);
+      expect(h.metrics.snapshot().handoffs).toEqual({ race_replaced: 1 });
+      h.palazzo.start();
+      await settle();
+      asRun.onModuleDestroy();
+
+      expect(
+        store.rows
+          .filter((row) => row.playbackRequestId === announced.id)
+          .map((row) => [row.state, row.endReason]),
+      ).toEqual([
+        ['started', null],
+        ['ended', 'preempted'],
+      ]);
+      expect(
+        store.rows.filter((row) => row.playbackRequestId === first.id),
+      ).toHaveLength(2);
+    });
+
+    it('keeps a not-withdrawn announcement through a further change and withdraws it with the successor', async () => {
+      const h = harness();
+      await onAir(h);
+      h.palazzo.onAirEarly = h.palazzo.queued;
+      h.palazzo.answer = () => 'not_ready';
+      const [entry] = await h.engine.enqueueSong(PROGRAM, SONGS[3].itemId);
+      await settle();
+      await h.engine.removeQueuedSong(PROGRAM, entry.id);
+      await settle();
+      h.engine.handleSequenceUpdated(PROGRAM, {
+        ...h.sequence(),
+        mode: 'manual',
+      });
+      await settle();
+      // Refused re-announcements each tried a withdrawal; the last one goes
+      // with the successor.
+      expect(h.palazzo.withdrawals).toBe(3);
     });
 
     it('withdraws the accepted announcement when the re-announcement fails outright', async () => {

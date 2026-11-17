@@ -189,7 +189,10 @@ same segue and loudness the song command would carry; with segue off, neither.
   a sequence, mode or cursor change. If a re-announcement is refused (422,
   409, 400 or a request failure), Palazzo keeps the previous announcement
   queued, so the engine withdraws it at once rather than let it play and be
-  preempted at the handoff. Once an announced song has started, nothing is
+  preempted at the handoff. If Palazzo answers that it was too late (its gate
+  already opened, `withdrawn: false`), the engine keeps it known: its start is
+  recorded and the handoff commands the selected song and records the
+  announced one as `preempted`. Once an announced song has started, nothing is
   re-announced.
 - **`preempted` in the as-run log** names an announced song Palazzo started
   that the engine replaced at the handoff; it is recorded and never counted in

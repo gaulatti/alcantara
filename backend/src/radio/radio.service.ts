@@ -551,15 +551,21 @@ export class RadioService {
     return result;
   }
 
-  /** Withdraws the announced next song; a failure is logged and ignored. */
-  async withdrawNext(programId: string): Promise<void> {
+  /**
+   * Withdraws the announced next song. Returns whether Palazzo removed one
+   * (false when it was already on air, "too late to replace"), or null when
+   * the request failed; a failure is logged.
+   */
+  async withdrawNext(programId: string): Promise<boolean | null> {
     const settings = await this.getRadioSettings(programId);
-    if (!settings) return;
+    if (!settings) return null;
     try {
-      await this.palazzo.withdrawNext(this.palazzoUrl(settings), programId);
+      const { withdrawn } = await this.palazzo.withdrawNext(this.palazzoUrl(settings), programId);
       this.metrics.recordNextAnnouncement('withdrawn');
+      return withdrawn;
     } catch (error) {
       this.logMachineFailure('withdrawNext', programId, error);
+      return null;
     }
   }
 

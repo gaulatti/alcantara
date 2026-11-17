@@ -146,16 +146,18 @@ describe('RadioService.announceNext', () => {
 });
 
 describe('RadioService.withdrawNext', () => {
-  it('withdraws and counts it', async () => {
+  it('withdraws, counts it and reports whether a song was removed', async () => {
     const { service, palazzo, metrics } = build({
       palazzoUrl: 'http://palazzo:3100',
     });
-    await service.withdrawNext('radio-1');
+    await expect(service.withdrawNext('radio-1')).resolves.toBe(true);
+    palazzo.withdrawNext.mockResolvedValueOnce({ withdrawn: false });
+    await expect(service.withdrawNext('radio-1')).resolves.toBe(false);
     expect(palazzo.withdrawNext).toHaveBeenCalledWith(
       'http://palazzo:3100',
       'radio-1',
     );
-    expect(metrics.snapshot().nextAnnouncements).toEqual({ withdrawn: 1 });
+    expect(metrics.snapshot().nextAnnouncements).toEqual({ withdrawn: 2 });
   });
 
   it('logs a failure and does nothing without settings', async () => {
@@ -163,13 +165,13 @@ describe('RadioService.withdrawNext', () => {
     failing.palazzo.withdrawNext.mockRejectedValue(
       new PalazzoMachineError('unavailable'),
     );
-    await expect(failing.service.withdrawNext('radio-1')).resolves.toBe(
-      undefined,
-    );
+    await expect(failing.service.withdrawNext('radio-1')).resolves.toBeNull();
     expect(failing.metrics.snapshot().nextAnnouncements).toEqual({});
 
     const unconfigured = build(null);
-    await unconfigured.service.withdrawNext('radio-1');
+    await expect(
+      unconfigured.service.withdrawNext('radio-1'),
+    ).resolves.toBeNull();
     expect(unconfigured.palazzo.withdrawNext).not.toHaveBeenCalled();
   });
 });
