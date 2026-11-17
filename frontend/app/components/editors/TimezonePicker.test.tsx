@@ -253,6 +253,106 @@ it.each(POSIX_ZONES)(
   },
 );
 
+// WebKit (Safari 26) lists the old spellings (Asia/Calcutta, Europe/Kiev,
+// ...) and resolves both spellings to themselves, so Intl links nothing; the
+// tz database's links do. Observed with Playwright's WebKit 26.0.
+const WEBKIT_LISTED_AS: [saved: string, listed: string][] = [
+  ["America/Argentina/Buenos_Aires", "America/Buenos_Aires"],
+  ["America/Argentina/Catamarca", "America/Catamarca"],
+  ["America/Argentina/Cordoba", "America/Cordoba"],
+  ["America/Argentina/Jujuy", "America/Jujuy"],
+  ["America/Argentina/Mendoza", "America/Mendoza"],
+  ["America/Indiana/Indianapolis", "America/Indianapolis"],
+  ["America/Kentucky/Louisville", "America/Louisville"],
+  ["America/Nuuk", "America/Godthab"],
+  ["Asia/Ho_Chi_Minh", "Asia/Saigon"],
+  ["Asia/Kathmandu", "Asia/Katmandu"],
+  ["Asia/Kolkata", "Asia/Calcutta"],
+  ["Asia/Yangon", "Asia/Rangoon"],
+  ["Atlantic/Faroe", "Atlantic/Faeroe"],
+  ["Europe/Kyiv", "Europe/Kiev"],
+  ["Pacific/Kanton", "Pacific/Enderbury"],
+];
+
+/** Makes the runtime behave like WebKit: `listed` zones, each resolving to itself. */
+function stubWebKit(listed: string[]) {
+  vi.spyOn(Intl, "supportedValuesOf").mockReturnValue(listed);
+  const RealDateTimeFormat = Intl.DateTimeFormat;
+  vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (
+    locales?: string | string[],
+    options?: Intl.DateTimeFormatOptions,
+  ) {
+    const real = new RealDateTimeFormat(locales, options);
+    const own = options?.timeZone;
+    if (own) {
+      const resolved = real.resolvedOptions();
+      real.resolvedOptions = () => ({ ...resolved, timeZone: own });
+    }
+    return real;
+  } as unknown as typeof Intl.DateTimeFormat);
+}
+
+it.each(WEBKIT_LISTED_AS)(
+  "shows a saved %s once, by its own name, where WebKit lists it as %s",
+  (saved, listed) => {
+    const zones = [listed, "Europe/Rome", "Asia/Tokyo"];
+    stubWebKit(zones);
+    const updateProp = picker("clock-widget", { timezone: saved });
+    const zone = zoneSelect();
+    const values = within(zone)
+      .getAllByRole("option")
+      .map((option) => (option as HTMLOptionElement).value);
+    expect(zone).toHaveValue(saved);
+    expect(values.filter((value) => value === saved)).toHaveLength(1);
+    expect(values).not.toContain(listed);
+    expect(values).toHaveLength(zones.length);
+    expect(
+      within(zone).getByRole("option", { selected: true }).textContent,
+    ).toMatch(new RegExp(`^${cityOf(saved)} \\(GMT`));
+    expect(updateProp).not.toHaveBeenCalled();
+    fireEvent.change(zone, { target: { value: saved } });
+    expect(updateProp).toHaveBeenLastCalledWith(
+      "clock-widget",
+      "timezone",
+      saved,
+    );
+  },
+);
+
+it("matches through the tz links in either direction and through older link names", () => {
+  stubWebKit([]);
+  const date = new Date("2026-01-15T12:00:00Z");
+  const rome = { value: "Europe/Rome", label: "Rome (GMT+1)" };
+  // A saved old spelling, with the new one listed.
+  expect(
+    withTimezoneOption(
+      [rome, { value: "Asia/Kolkata", label: "Kolkata (GMT+5:30)" }],
+      "Asia/Calcutta",
+      date,
+    ).map((option) => [option.value, option.label]),
+  ).toEqual([
+    ["Europe/Rome", "Rome (GMT+1)"],
+    ["Asia/Calcutta", "Calcutta (GMT+5:30)"],
+  ]);
+  // Two link names of the same zone.
+  expect(
+    withTimezoneOption(
+      [rome, { value: "US/Eastern", label: "Eastern (GMT-5)" }],
+      "America/New_York",
+      date,
+    ).map((option) => option.value),
+  ).toEqual(["Europe/Rome", "America/New_York"]);
+  // A POSIX id is its own zone in this tz release: listed first, and the
+  // city keeps its own option.
+  expect(
+    withTimezoneOption(
+      [rome, { value: "America/Chicago", label: "Chicago (GMT-6)" }],
+      "CST6CDT",
+      date,
+    ).map((option) => option.value),
+  ).toEqual(["CST6CDT", "Europe/Rome", "America/Chicago"]);
+});
+
 it("stores the listed id when another zone is picked", () => {
   const updateProp = picker("clock-widget", { timezone: "Asia/Kolkata" });
   fireEvent.change(zoneSelect(), { target: { value: "Asia/Tokyo" } });
