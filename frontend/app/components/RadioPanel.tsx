@@ -473,15 +473,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     <strong>{activeLog.name}</strong>
                     <small className="block">
                       {new Date(activeLog.scheduledAt!).toLocaleString()} ·{" "}
-                      {activeLog.isRunning
-                        ? Date.parse(activeLog.scheduledAt!) > Date.now()
-                          ? "ARMED"
-                          : "ON AIR"
-                        : activeLog.publishedAt
-                          ? activeLog.lastStartedAt
-                            ? "Aired / stopped"
-                            : "Published"
-                          : "Draft"}{" "}
+                      {/* timedBlockOnAir means activeLog is the running log. */}
+                      {Date.parse(activeLog.scheduledAt!) > Date.now()
+                        ? "ARMED"
+                        : "ON AIR"}{" "}
                       · Revision {activeLog.revision}
                     </small>
                   </>
@@ -505,7 +500,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               </div>
               <span className="console-count">
                 {timedBlockOnAir
-                  ? `${activeLog?.items.length ?? 0} events`
+                  ? `${activeLog!.items.length} events`
                   : `${rotation.mode} · ${rotation.loop ? "Loop on" : "Loop off"}`}
               </span>
             </div>
@@ -723,9 +718,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   }
                   onClick={() => {
                     const items = [...activeLog.items];
-                    const insert = activeLog.isRunning
-                      ? currentLogIndex + 1
-                      : items.length;
+                    // The log is running here, so the song goes next.
+                    const insert = currentLogIndex + 1;
                     items.splice(insert, 0, {
                       id: crypto.randomUUID(),
                       kind: "playSong",
@@ -736,7 +730,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   }}
                 >
                   <Plus size={13} />{" "}
-                  {activeLog.isRunning ? "Add next" : "Add event"}
+                  Add next
                 </Button>
                 <Link to="/media" className="ml-auto">
                   Library & tags
@@ -916,24 +910,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           timedBlockOnAir
             ? {
                 isRunning: !!runningLog,
-                canStart:
-                  !!activeLog?.publishedAt &&
-                  !activeLog.lastStartedAt &&
-                  !runningLog,
+                // timedBlockOnAir requires a running log, so nothing is
+                // waiting to start.
+                canStart: false,
                 canAdvance:
                   !!runningLog &&
                   Date.parse(runningLog.scheduledAt!) <= Date.now() &&
                   currentLogIndex < runningLog.items.length - 1,
                 busy: logBusy,
-                label: runningLog
-                  ? Date.parse(runningLog.scheduledAt!) > Date.now()
+                label:
+                  Date.parse(runningLog!.scheduledAt!) > Date.now()
                     ? "Rundown armed for scheduled start"
-                    : "Rundown automation running"
-                  : activeLog?.lastStartedAt
-                    ? "Rundown stopped"
-                    : activeLog?.publishedAt
-                      ? "Waiting for scheduled start"
-                      : "Publish a rundown to start",
+                    : "Rundown automation running",
                 onStart: () => void commandLog("start"),
                 onStop: () => void commandLog("stop"),
                 onAdvance: () => void commandLog("advance"),

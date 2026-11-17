@@ -141,7 +141,7 @@ export function TapeStatusView({
             >
               {busy === "download"
                 ? "Preparing…"
-                : `Download MP4 (${formatBytes(recording?.finalBytes ?? 0)})`}
+                : `Download MP4 (${formatBytes(recording!.finalBytes)})`}
             </Button>
           ) : null}
         </div>
