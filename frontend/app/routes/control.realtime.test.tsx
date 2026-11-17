@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   controlServer,
+  FakeSocket,
   stubConsoleBrowser,
   type ControlServer,
 } from "../../test/controlKit";
@@ -46,37 +47,6 @@ vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
 });
 
 import Control from "./control";
-
-/** A WebSocket stand-in the test opens, feeds and closes. */
-class FakeSocket {
-  static OPEN = 1;
-  static instances: FakeSocket[] = [];
-  readyState = 0;
-  closed = false;
-  listeners = new Map<string, ((event: unknown) => void)[]>();
-  constructor(readonly url: string) {
-    FakeSocket.instances.push(this);
-  }
-  addEventListener(type: string, listener: (event: unknown) => void) {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  }
-  emit(type: string, event: unknown = {}) {
-    for (const listener of this.listeners.get(type) ?? []) listener(event);
-  }
-  open() {
-    this.readyState = FakeSocket.OPEN;
-    this.emit("open");
-  }
-  send(payload: unknown) {
-    this.emit("message", {
-      data: typeof payload === "string" ? payload : JSON.stringify(payload),
-    });
-  }
-  close() {
-    this.closed = true;
-    this.readyState = 3;
-  }
-}
 
 let server: ControlServer;
 
