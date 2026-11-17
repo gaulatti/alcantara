@@ -17,6 +17,28 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Local media store (gaulatti/alcantara#206). The backend's S3 traffic must
+  # never reach a real bucket from a local run.
+  localstack:
+    image: localstack/localstack:4.0.3
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "${LOCALSTACK_PORT:-4566}:4566"
+    volumes:
+      - ./infra/localstack-init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "awslocal s3api head-bucket --bucket alcantara-local-only >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
   livekit:
     image: livekit/livekit-server:v1.13.4
     command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0"]
@@ -90,12 +112,29 @@ services:
       EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION: "1"
       EXTERNAL_SOURCE_CONFIG_KEYS: '{"1":"YWxjYW50YXJhLWxvY2FsLXNvdXJjZS1rZXktMDAwMDA="}'
       EXTERNAL_SOURCE_TEAM_QUOTA: "16"
+      # These override anything backend/.env holds (gaulatti/alcantara#206):
+      # the media bucket is the local one, AWS credentials are local
+      # placeholders, and no AWS profile, session, role or Secrets Manager
+      # secret from the host reaches the container.
+      MEDIA_S3_BUCKET: alcantara-local-only
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local-only-access-key
+      AWS_SECRET_ACCESS_KEY: local-only-secret-key
+      AWS_SESSION_TOKEN: ""
+      AWS_PROFILE: ""
+      AWS_CONFIG_FILE: ""
+      AWS_SHARED_CREDENTIALS_FILE: ""
+      AWS_ROLE_ARN: ""
+      AWS_WEB_IDENTITY_TOKEN_FILE: ""
+      AWS_CONTAINER_CREDENTIALS_FULL_URI: ""
+      AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: ""
+      ARAUCO_SECRET_ID: ""
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       - ./backend/tsconfig.json:/app/tsconfig.json
       - ./backend/nest-cli.json:/app/nest-cli.json
-      - ~/.aws:/root/.aws:ro
     develop:
       watch:
         - action: sync
@@ -111,6 +150,8 @@ services:
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
       livekit:
         condition: service_healthy
