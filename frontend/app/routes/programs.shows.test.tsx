@@ -256,11 +256,12 @@ it("creates a TV show with the scenes and stingers chosen, and selects it", asyn
     "true",
   );
 
-  // An empty id is refused with a message (its wording is reported on
-  // gaulatti/alcantara#187), and typing clears it.
+  // An empty id is refused with a complete message, and typing clears it.
   const message = () => dialog.querySelector("p.text-sm.text-terracotta");
   fireEvent.click(within(dialog).getByRole("button", { name: "Create show" }));
-  await waitFor(() => expect(message()).not.toBeNull());
+  await waitFor(() =>
+    expect(message()).toHaveTextContent(/^Program ID is required\.$/),
+  );
   expect(network.mock.calls.some((call) => call[1]?.method === "POST")).toBe(
     false,
   );
