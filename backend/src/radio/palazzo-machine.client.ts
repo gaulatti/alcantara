@@ -13,6 +13,17 @@ import {
 } from './radio-metrics.service';
 import { normalizePalazzoBaseUrl } from '../config/runtime-secrets';
 
+/**
+ * Palazzo's filler statuses that mean "not ready" (palazzo
+ * src/stream/filler-store.service.ts). With `ready: true` they contradict the
+ * answer, so they stay malformed; any other unknown status is tolerated.
+ */
+const FILLER_NOT_READY_STATUSES: ReadonlySet<string> = new Set([
+  'unprepared',
+  'preparing',
+  'failed',
+]);
+
 export class PalazzoMachineError extends Error {
   constructor(
     readonly reason: PalazzoMachineResult,
@@ -275,10 +286,18 @@ export class PalazzoMachineClient {
     if (
       body.ok !== true ||
       body.playbackRequestId !== command.playbackId ||
-      body.state !== 'queued' ||
+      typeof body.state !== 'string' ||
+      !body.state ||
       (body.duplicate !== undefined && typeof body.duplicate !== 'boolean')
     ) {
       return this.failMalformed('next-announce');
+    }
+    if (body.state !== 'queued') {
+      // A state Alcantara does not know is not a confirmed announcement: it is
+      // read as rejected (the song is not announced), not as a malformed
+      // answer (gaulatti/ariston#217). The playbackRequestId echo stays strict.
+      this.metrics.recordMachineRequest('next-announce', 'unknown-value');
+      return { result: 'rejected' };
     }
     const duplicate = body.duplicate === true;
     this.metrics.recordMachineRequest(
@@ -549,10 +568,18 @@ export class PalazzoMachineClient {
     if (
       body.version !== version ||
       body.ready !== true ||
-      body.status !== 'ready'
+      typeof body.status !== 'string' ||
+      !body.status ||
+      FILLER_NOT_READY_STATUSES.has(body.status)
     )
       return this.failMalformed('filler-prepare');
-    this.metrics.recordMachineRequest('filler-prepare', 'success');
+    // `ready: true` with the exact version echo is the readiness Alcantara
+    // binds to. A `status` other than `ready` is a value Alcantara does not
+    // know; it is counted, not a failed preparation (gaulatti/ariston#217).
+    this.metrics.recordMachineRequest(
+      'filler-prepare',
+      body.status === 'ready' ? 'success' : 'unknown-value',
+    );
   }
 
   async commandAutomation(

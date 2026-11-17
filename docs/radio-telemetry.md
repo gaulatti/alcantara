@@ -300,7 +300,15 @@ count across radio-capable programs,
 `alcantara_palazzo_machine_requests_total{operation,result}`, and
 `alcantara_palazzo_machine_retries_total{operation}`. The operation/result
 sets are closed enums covering success, deduplication, authentication,
-rejection, unavailability, malformed responses, and cross-program rejection.
+rejection, unavailability, malformed responses, cross-program rejection, and
+`unknown-value` (gaulatti/ariston#217): Palazzo answered with a value
+Alcantara does not know and the answer was read safely. For `next-announce`
+an unknown `state` (with the exact `playbackRequestId` echo) is read as
+`rejected`, so the song is not announced and the engine treats it like any
+refusal; for `filler-prepare` an unknown `status` with `ready: true` and the
+exact version echo counts as a prepared filler. Palazzo's not-ready filler
+statuses (`unprepared`, `preparing`, `failed`) next to `ready: true`, and a
+missing or mistyped state or status, stay malformed.
 Program IDs, playback
 request IDs, URLs, consumer names, song titles, artists, tokens, raw errors,
 and other external identifiers are never used as label values.

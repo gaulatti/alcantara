@@ -61,7 +61,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 | `alcantara_filler_start_bindings_total{result}` | `bound`, `mismatch`, `not-configured` or `legacy-executor` |
 | `alcantara_dependency_operations_total{dependency="alana",...}` | gains the `profile` and `prepare` operations |
 
-Every series is exposed at zero from the first scrape. Palazzo's `filler-prepare` machine metrics are unchanged. No program, version, asset or URL appears in a label.
+Every series is exposed at zero from the first scrape. Palazzo's `filler-prepare` machine metrics count an answer with an unknown `status` (still `ready: true` with the exact version echo) as `result="unknown-value"` instead of failing the preparation (see [radio-telemetry.md](radio-telemetry.md)). No program, version, asset or URL appears in a label.
 
 ## Migration and rollback
 

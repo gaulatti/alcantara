@@ -138,7 +138,8 @@ describe('PalazzoMachineClient next-song announcement', () => {
   it('rejects a malformed answer', async () => {
     for (const body of [
       { ok: true, playbackRequestId: 'other', state: 'queued' },
-      { ok: true, playbackRequestId: 'next-1', state: 'playing' },
+      { ok: true, playbackRequestId: 'next-1' },
+      { ok: true, playbackRequestId: 'next-1', state: 7 },
       {
         ok: true,
         playbackRequestId: 'next-1',
@@ -284,5 +285,45 @@ describe('Palazzo next-song events', () => {
       )?.data.reason,
     ).toBe('flushed');
     expect(seen).toEqual(['withdrawn-reason']);
+  });
+});
+
+// gaulatti/ariston#217: an answer state Alcantara does not know is read as
+// rejected (not announced) and counted, instead of a malformed failure.
+describe('PalazzoMachineClient next-song announcement: unknown state', () => {
+  const series = (metrics: RadioMetricsService, result: string) =>
+    Number(
+      metrics
+        .render()
+        .split('\n')
+        .find((line) =>
+          line.startsWith(
+            `alcantara_palazzo_machine_requests_total{operation="next-announce",result="${result}"} `,
+          ),
+        )
+        ?.split(' ')
+        .pop(),
+    );
+
+  it('returns rejected for an unknown state and counts it as unknown-value', async () => {
+    const { client, metrics } = setup(
+      json(200, { ok: true, playbackRequestId: 'next-1', state: 'held' }),
+    );
+    await expect(
+      client.announceNext(BASE_URL, PROGRAM_ID, SONG),
+    ).resolves.toEqual({ result: 'rejected' });
+    expect(series(metrics, 'unknown-value')).toBe(1);
+    expect(series(metrics, 'malformed')).toBe(0);
+    expect(metrics.render()).not.toContain('held');
+  });
+
+  it('still rejects a mismatched playback ID echo as malformed', async () => {
+    const { client, metrics } = setup(
+      json(200, { ok: true, playbackRequestId: 'other', state: 'held' }),
+    );
+    await expect(
+      client.announceNext(BASE_URL, PROGRAM_ID, SONG),
+    ).rejects.toEqual(new PalazzoMachineError('malformed'));
+    expect(series(metrics, 'unknown-value')).toBe(0);
   });
 });

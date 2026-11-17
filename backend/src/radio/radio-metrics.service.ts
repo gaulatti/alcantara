@@ -45,7 +45,12 @@ export type PalazzoMachineResult =
   | 'rejected'
   | 'unavailable'
   | 'malformed'
-  | 'cross-program';
+  | 'cross-program'
+  /**
+   * Palazzo answered with a value Alcantara does not know and the request was
+   * read safely instead of failing (gaulatti/ariston#217).
+   */
+  | 'unknown-value';
 
 export type TrackTransitionResult =
   | 'advanced'
@@ -226,6 +231,7 @@ const MACHINE_RESULTS: PalazzoMachineResult[] = [
   'unavailable',
   'malformed',
   'cross-program',
+  'unknown-value',
 ];
 
 const TRANSITION_RESULTS: TrackTransitionResult[] = [
