@@ -263,24 +263,36 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
   /**
    * The cover the song record stores for this audio URL, when it is a public
    * https URL (gaulatti/alcantara#179). A miss, a failed lookup or an unsafe
-   * value leaves the track without a cover.
+   * value leaves the track without a cover. Each lookup records its result in
+   * alcantara_program_playing_track_cover_lookups_total.
    */
   private async storedCoverUrl(
     audioUrl: string | null,
   ): Promise<string | undefined> {
     if (!audioUrl) return undefined;
+    let stored: unknown;
     try {
       const song = await this.prisma.song.findFirst({
         where: { audioUrl },
         select: { coverUrl: true },
       });
-      return publicCoverUrl(song?.coverUrl);
+      stored = song?.coverUrl;
     } catch (error) {
+      this.metrics?.recordPlayingTrackCoverLookup('error');
       console.warn(
         `[ProgramService] Cover lookup failed for a playing track: ${String(error)}`,
       );
       return undefined;
     }
+    if (stored === undefined || stored === null || stored === '') {
+      this.metrics?.recordPlayingTrackCoverLookup('absent');
+      return undefined;
+    }
+    const coverUrl = publicCoverUrl(stored);
+    this.metrics?.recordPlayingTrackCoverLookup(
+      coverUrl ? 'included' : 'rejected',
+    );
+    return coverUrl;
   }
 
   /** A v2 template's state with the confirmed playing track, when there is one. */

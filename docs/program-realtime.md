@@ -46,3 +46,14 @@ The private Prometheus endpoint exposes:
 - `alcantara_program_sse_connections`: currently open program SSE subscribers.
 - `alcantara_program_sse_snapshots_total{result}`: initial snapshot outcomes;
   `result` is bounded to `success`, `failure`, or `unknown`.
+- `alcantara_program_playing_track_cover_lookups_total{result}`: song-record
+  cover lookups for a confirmed playing track (gaulatti/alcantara#179), one per
+  accepted start that carries an audio URL. `result` is exactly one of:
+  - `included`: the stored cover is a public https URL and rides `playingTrack.coverUrl`;
+  - `absent`: no song record matches, or the record stores no cover;
+  - `rejected`: a stored value was refused, for example http, malformed, a non-public address or a bare hostname;
+  - `error`: the database lookup failed.
+
+  All four series are exposed at zero from the first scrape. A rising `error`
+  rate means covers are being dropped because the database read fails, and
+  `rejected` points at catalogue entries with an unusable cover URL.

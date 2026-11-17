@@ -67,6 +67,7 @@ A v2 registration's projected state carries an optional `playingTrack`: the song
   - It is omitted (absent, not `null`) when there is no matching song record, the record stores no cover, the stored value is anything else (such as `http`, malformed, loopback, private, link-local or otherwise reserved addresses, or a bare hostname), or the lookup fails.
   - The field never carries an internal or private address.
 - Manual picks of songs outside the catalogue get no `coverUrl`: there is no song record to read one from.
+- Each lookup is counted in `alcantara_program_playing_track_cover_lookups_total{result}`, where `result` is `included`, `absent`, `rejected` or `error` (see `docs/program-realtime.md`).
 - This differs from the now-playing publisher's order, which prefers the cover supplied with the playback and falls back to the song record. The playing track uses only the stored song record because it is the one authoritative public value. A supplied or Palazzo-reported cover is not used.
 
 ## Signals and event projection

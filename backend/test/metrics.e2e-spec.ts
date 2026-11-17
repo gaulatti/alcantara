@@ -66,6 +66,8 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     ]);
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingStatus('active', 'success');
+    for (const result of ['included', 'absent', 'rejected', 'error'] as const)
+      metrics.recordPlayingTrackCoverLookup(result);
     const radioMetrics = app.get(RadioMetricsService);
     radioMetrics.recordListenerConfiguration('success');
     radioMetrics.recordListenerConfiguration('failure');
@@ -196,6 +198,18 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       'alcantara_radio_log_transitions_total{result="interrupted"} 1',
     );
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    // The playing-track cover lookup counter has exactly its bounded results.
+    const coverLookups = body
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_program_playing_track_cover_lookups_total{'),
+      );
+    expect(coverLookups.sort()).toEqual(
+      ['absent', 'error', 'included', 'rejected'].map(
+        (result) =>
+          `alcantara_program_playing_track_cover_lookups_total{result="${result}"} 1`,
+      ),
+    );
     expect(body).toContain(
       'alcantara_media_analyses_total{result="success"} 1',
     );

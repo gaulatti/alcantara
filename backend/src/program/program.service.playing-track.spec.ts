@@ -15,6 +15,7 @@ import {
   type SongEngineTrackEvent,
 } from '../radio/song-execution.engine';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 const PROGRAM = 'radio1';
 const NOW = new Date('2026-11-17T12:00:00.000Z');
@@ -206,7 +207,8 @@ function harness(templateManifest: Record<string, unknown> = v2Manifest) {
   engine.setPalazzoTelemetry({ isReconciled: () => true });
   engine.registerRadioProgram(PROGRAM);
   engine.handleSequenceUpdated(PROGRAM, programState.songSequence);
-  const service = new ProgramService(prisma, {} as never, engine, undefined, {
+  const metrics = new ManagedMetricsService();
+  const service = new ProgramService(prisma, {} as never, engine, metrics, {
     observe: jest.fn(),
   } as never);
   const signals: any[] = [];
@@ -242,7 +244,16 @@ function harness(templateManifest: Record<string, unknown> = v2Manifest) {
   const playingTrack = async () =>
     ((await service.getPublicState(PROGRAM)) as Record<string, unknown>)
       .playingTrack;
-  return { service, engine, palazzo, signals, idle, playingTrack, prisma };
+  return {
+    service,
+    engine,
+    palazzo,
+    signals,
+    idle,
+    playingTrack,
+    prisma,
+    metrics,
+  };
 }
 
 async function settle(): Promise<void> {
@@ -751,5 +762,83 @@ describe('playing track cover', () => {
       null,
     ]);
     expect(await h.playingTrack()).toBeUndefined();
+  });
+});
+
+// gaulatti/alcantara#179: each cover lookup is counted by its bounded result,
+// read from the rendered Prometheus exposition.
+describe('playing track cover lookup metric', () => {
+  const NAME = 'alcantara_program_playing_track_cover_lookups_total';
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  /** The counter's samples in the exposition, by result label. */
+  async function samples(metrics: ManagedMetricsService) {
+    const exposition = await metrics.render('');
+    return Object.fromEntries(
+      exposition
+        .split('\n')
+        .filter((line) => line.startsWith(`${NAME}{`))
+        .map((line) => {
+          const match = /^\S+\{result="([^"]*)"\} (\d+)$/.exec(line);
+          if (!match) throw new Error(`unexpected sample: ${line}`);
+          return [match[1], Number(match[2])];
+        }),
+    );
+  }
+
+  async function lookupWith(found: () => Promise<unknown>) {
+    const h = harness();
+    h.prisma.song.findFirst.mockImplementation(found);
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await firstSong(h);
+    return samples(h.metrics);
+  }
+
+  it('exposes exactly the four results from the first scrape', async () => {
+    expect(await samples(new ManagedMetricsService())).toEqual({
+      included: 0,
+      absent: 0,
+      rejected: 0,
+      error: 0,
+    });
+  });
+
+  it.each([
+    [
+      'included',
+      () => Promise.resolve({ coverUrl: 'https://cdn.example.test/c.jpg' }),
+    ],
+    ['absent', () => Promise.resolve(null)],
+    ['absent', () => Promise.resolve({ coverUrl: null })],
+    ['absent', () => Promise.resolve({ coverUrl: '' })],
+    [
+      'rejected',
+      () => Promise.resolve({ coverUrl: 'http://cdn.example.test/c.jpg' }),
+    ],
+    ['rejected', () => Promise.resolve({ coverUrl: 'https://10.0.0.8/c.jpg' })],
+    ['error', () => Promise.reject(new Error('database unavailable'))],
+  ] as const)('counts a lookup that ends %s', async (result, found) => {
+    const counts = await lookupWith(found);
+    expect(Object.keys(counts).sort()).toEqual([
+      'absent',
+      'error',
+      'included',
+      'rejected',
+    ]);
+    expect(counts).toEqual({
+      included: 0,
+      absent: 0,
+      rejected: 0,
+      error: 0,
+      [result]: 1,
+    });
   });
 });

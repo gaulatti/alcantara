@@ -109,6 +109,14 @@ const SOURCE_ACTIONS = new Set([
 ]);
 const SOURCE_RESULTS = new Set(['success', 'rejected', 'not-found', 'failure']);
 const PROGRAM_SSE_SNAPSHOT_RESULTS = new Set(['success', 'failure']);
+/** How a confirmed playing track's cover lookup ended (gaulatti/alcantara#179). */
+export type PlayingTrackCoverLookupResult =
+  | 'included'
+  | 'absent'
+  | 'rejected'
+  | 'error';
+const PLAYING_TRACK_COVER_LOOKUP_RESULTS: readonly PlayingTrackCoverLookupResult[] =
+  ['included', 'absent', 'rejected', 'error'];
 const RECORDING_ACTIONS = new Set(['start', 'stop']);
 const RECORDING_STATES = new Set([
   'disabled',
@@ -167,6 +175,7 @@ export class ManagedMetricsService {
   private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
+  private readonly playingTrackCoverLookups: Counter<string>;
   private readonly recordingCommands: Counter<string>;
   private readonly recordingReconciliations: Counter<string>;
 
@@ -278,6 +287,16 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.playingTrackCoverLookups = new Counter({
+      name: 'alcantara_program_playing_track_cover_lookups_total',
+      help: 'Song-record cover lookups for confirmed playing tracks by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    // Expose the whole bounded label set from the first scrape.
+    for (const result of PLAYING_TRACK_COVER_LOOKUP_RESULTS) {
+      this.playingTrackCoverLookups.inc({ result }, 0);
+    }
     this.recordingCommands = new Counter({
       name: 'alcantara_recording_commands_total',
       help: 'Recording control commands by bounded action and result.',
@@ -412,6 +431,10 @@ export class ManagedMetricsService {
     this.programSseSnapshots.inc({
       result: bounded(result, PROGRAM_SSE_SNAPSHOT_RESULTS),
     });
+  }
+
+  recordPlayingTrackCoverLookup(result: PlayingTrackCoverLookupResult): void {
+    this.playingTrackCoverLookups.inc({ result });
   }
 
   recordRecordingCommand(action: string, result: string): void {
