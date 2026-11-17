@@ -53,8 +53,8 @@ export function ProgramTextSequenceEditor({
     applySequence({ ...sequence, items: sequence.items.map((item, i) => (i === index ? nextItem : item)) });
   };
 
-  const toSequenceItem = (item: ProgramTextSequenceItem): ProgramTextSequenceItem => {
-    if (item.kind === 'sequence') return item;
+  // Only called for top-level text items (see the items map below).
+  const toSequenceItem = (item: Extract<ProgramTextSequenceItem, { kind: 'preset' }>): ProgramTextSequenceItem => {
     const nextItem = createProgramTextSequenceItem('sequence', { includeMarquee });
     if (nextItem.kind !== 'sequence') {
       return { id: item.id, label: item.text.trim() || 'Sequence', kind: 'sequence', sequence: createProgramTextSequence('manual', { includeMarquee }) };

@@ -46,8 +46,8 @@ export function ToniChyronSequenceEditor({
     applySequence({ ...sequence, items: sequence.items.map((item, i) => i === index ? nextItem : item) });
   };
 
-  const toSequenceItem = (item: ToniChyronSequenceItem): ToniChyronSequenceItem => {
-    if (item.kind === 'sequence') return item;
+  // Only called for top-level chyron items (see the items map below).
+  const toSequenceItem = (item: Extract<ToniChyronSequenceItem, { kind: 'preset' }>): ToniChyronSequenceItem => {
     const nextItem = createToniChyronSequenceItem('sequence');
     if (nextItem.kind !== 'sequence') {
       return { id: item.id, label: item.text.trim() || 'Sequence', kind: 'sequence', sequence: createToniChyronSequence('manual') };
