@@ -6,7 +6,8 @@ export type PalazzoEventIgnoreReason =
   | 'superseded-boot'
   | 'sequence-gap'
   | 'cross-program'
-  | 'malformed';
+  | 'malformed'
+  | 'unknown-type';
 
 export type PalazzoMachineOperation =
   | 'song-play'
@@ -176,6 +177,7 @@ const IGNORE_REASONS: PalazzoEventIgnoreReason[] = [
   'sequence-gap',
   'cross-program',
   'malformed',
+  'unknown-type',
 ];
 
 const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [

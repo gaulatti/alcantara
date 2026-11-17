@@ -276,33 +276,61 @@ export function parsePalazzoMixerState(
   return record as unknown as PalazzoMixerState;
 }
 
+const EVENT_TYPES: ReadonlySet<string> = new Set<PalazzoPlaybackEventType>([
+  'snapshot',
+  'telemetry.connected',
+  'telemetry.disconnected',
+  'track.started',
+  'track.ended',
+  'intro.started',
+  'intro.ended',
+  'intro.failed',
+  'playout.queued',
+  'preflight.ready',
+  'preflight.failed',
+  'playout.started',
+  'playout.transitioned',
+  'playout.stopped',
+  'playout.skipped',
+  'playout.fallback',
+  'playout.request_failed',
+  'playout.next_queued',
+  'playout.next_withdrawn',
+  'playback.position',
+  'audio.levels',
+  'heartbeat',
+]);
+
+/** The correlation fields every Palazzo event carries, whatever its type. */
+export interface PalazzoEventEnvelope {
+  id: string;
+  instanceId: string;
+  bootId: string;
+  sequence: number;
+  occurredAt: string;
+}
+
+/**
+ * What one SSE frame is. A well-formed frame of a type Alcantara does not know
+ * is `unknown-type` (gaulatti/ariston#217): the client skips it without
+ * dropping the stream, and its envelope still advances the sequence cursor.
+ * Anything else that fails the contract is `malformed`.
+ */
+export type PalazzoFrame =
+  | { kind: 'event'; event: PalazzoPlaybackEvent }
+  | { kind: 'unknown-type'; envelope: PalazzoEventEnvelope }
+  | { kind: 'malformed' };
+
+/** Parses a known Palazzo event, or null for anything else. */
 export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
-  if (!value || typeof value !== 'object') return null;
+  const frame = classifyPalazzoFrame(value);
+  return frame.kind === 'event' ? frame.event : null;
+}
+
+export function classifyPalazzoFrame(value: unknown): PalazzoFrame {
+  const malformed: PalazzoFrame = { kind: 'malformed' };
+  if (!value || typeof value !== 'object') return malformed;
   const record = value as Record<string, unknown>;
-  const types: PalazzoPlaybackEventType[] = [
-    'snapshot',
-    'telemetry.connected',
-    'telemetry.disconnected',
-    'track.started',
-    'track.ended',
-    'intro.started',
-    'intro.ended',
-    'intro.failed',
-    'playout.queued',
-    'preflight.ready',
-    'preflight.failed',
-    'playout.started',
-    'playout.transitioned',
-    'playout.stopped',
-    'playout.skipped',
-    'playout.fallback',
-    'playout.request_failed',
-    'playout.next_queued',
-    'playout.next_withdrawn',
-    'playback.position',
-    'audio.levels',
-    'heartbeat',
-  ];
   if (
     record.schemaVersion !== 1 ||
     !boundedString(record.id, 300) ||
@@ -310,14 +338,26 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
     !boundedString(record.bootId, 200) ||
     !Number.isSafeInteger(record.sequence) ||
     (record.sequence as number) < 0 ||
-    !types.includes(record.type as PalazzoPlaybackEventType) ||
+    !boundedString(record.type, 200) ||
     typeof record.occurredAt !== 'string' ||
     !Number.isFinite(Date.parse(record.occurredAt)) ||
     !record.data ||
     typeof record.data !== 'object' ||
     Array.isArray(record.data)
   )
-    return null;
+    return malformed;
+  if (!EVENT_TYPES.has(record.type)) {
+    return {
+      kind: 'unknown-type',
+      envelope: {
+        id: record.id,
+        instanceId: record.instanceId,
+        bootId: record.bootId,
+        sequence: record.sequence as number,
+        occurredAt: record.occurredAt,
+      },
+    };
+  }
   const type = record.type as PalazzoPlaybackEventType;
   const data = record.data as Record<string, unknown>;
   if (
@@ -326,19 +366,19 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
       type === 'playout.request_failed') &&
     !boundedString(data.playbackRequestId, 200)
   )
-    return null;
+    return malformed;
   if (
     (type === 'playout.next_queued' || type === 'playout.next_withdrawn') &&
     !boundedString(data.playbackId, 200)
   )
-    return null;
+    return malformed;
   if (
     type === 'playout.next_withdrawn' &&
     !['replaced', 'withdrawn', 'flushed', 'not_ready'].includes(
       data.reason as string,
     )
   )
-    return null;
+    return malformed;
   if (
     (type === 'intro.started' ||
       type === 'intro.ended' ||
@@ -347,8 +387,8 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
       !boundedString(data.playbackId, 200) ||
       !boundedString(data.parentPlaybackId, 200))
   )
-    return null;
-  return record as unknown as PalazzoPlaybackEvent;
+    return malformed;
+  return { kind: 'event', event: record as unknown as PalazzoPlaybackEvent };
 }
 
 function stringOrNull(value: unknown): string | null {

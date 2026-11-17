@@ -1,4 +1,5 @@
 import {
+  classifyPalazzoFrame,
   parsePalazzoEvent,
   parsePalazzoMixerState,
   parsePalazzoState,
@@ -329,5 +330,55 @@ describe('parsePalazzoEvent coverage', () => {
     ],
   ])('rejects %s', (_name, value) => {
     expect(parsePalazzoEvent(value)).toBeNull();
+  });
+});
+
+// gaulatti/ariston#217: an unknown event type is its own frame kind, so the
+// client can skip it without dropping the stream.
+describe('classifyPalazzoFrame', () => {
+  const frame = (type: unknown, data: unknown = {}) => ({
+    schemaVersion: 1,
+    id: 'evt-1',
+    instanceId: 'inst',
+    bootId: 'boot',
+    sequence: 5,
+    type,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    data,
+  });
+
+  it('returns a known event as an event', () => {
+    expect(classifyPalazzoFrame(frame('heartbeat'))).toEqual({
+      kind: 'event',
+      event: frame('heartbeat'),
+    });
+  });
+
+  it('returns a well-formed unknown type with its envelope only', () => {
+    expect(classifyPalazzoFrame(frame('playout.new_thing', { x: 1 }))).toEqual({
+      kind: 'unknown-type',
+      envelope: {
+        id: 'evt-1',
+        instanceId: 'inst',
+        bootId: 'boot',
+        sequence: 5,
+        occurredAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    expect(parsePalazzoEvent(frame('playout.new_thing'))).toBeNull();
+  });
+
+  it.each([
+    ['a non-string type', frame(5)],
+    ['an empty type', frame('')],
+    ['an overlong type', frame('x'.repeat(201))],
+    ['an unknown type with array data', frame('playout.new_thing', [])],
+    [
+      'an unknown type of another schema',
+      { ...frame('new'), schemaVersion: 2 },
+    ],
+    ['a known type missing its fields', frame('track.started')],
+  ])('returns %s as malformed', (_name, value) => {
+    expect(classifyPalazzoFrame(value)).toEqual({ kind: 'malformed' });
   });
 });

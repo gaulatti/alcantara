@@ -35,6 +35,14 @@ root playback routes.
 - A cursor gap aborts that SSE stream and reconciles the authenticated state
   snapshot before another lifecycle event can mutate the engine. Malformed and
   explicitly cross-program state/events are rejected.
+- An event whose `type` Alcantara does not know (gaulatti/ariston#217) is
+  skipped, never a reason to drop the stream: a well-formed frame of a new
+  type is counted in
+  `alcantara_palazzo_events_ignored_total{reason="unknown-type"}` (the label
+  is that fixed reason, never the type), and when it is the next event of the
+  accepted boot it advances the cursor so the known event after it is not a
+  gap. A known event missing its required fields, a bad envelope or another
+  `schemaVersion` is still malformed and reconnects the stream.
 - `track.started` with a matching request ID establishes authoritative start
   time and position.
 - `track.ended` with a matching request ID advances the sequence exactly

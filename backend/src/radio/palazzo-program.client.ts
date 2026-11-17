@@ -1,12 +1,13 @@
 import { Logger } from '@nestjs/common';
 import type {
   PalazzoConnectionState,
+  PalazzoEventEnvelope,
   PalazzoPlaybackEvent,
   PalazzoPlaybackState,
   PalazzoProgramStatus,
   PalazzoProgramType,
 } from './palazzo-contract';
-import { parsePalazzoEvent, parsePalazzoState } from './palazzo-contract';
+import { classifyPalazzoFrame, parsePalazzoState } from './palazzo-contract';
 import type { RadioMetricsService } from './radio-metrics.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 
@@ -222,13 +223,37 @@ export class PalazzoProgramClient {
       this.options.metrics.recordEventIgnored('malformed');
       throw new Error('malformed Palazzo event');
     }
-    const event = parsePalazzoEvent(decoded);
-    if (!event) {
+    const parsed = classifyPalazzoFrame(decoded);
+    if (parsed.kind === 'unknown-type') {
+      this.skipUnknownEvent(parsed.envelope);
+      return;
+    }
+    if (parsed.kind === 'malformed') {
       this.options.metrics.recordEventIgnored('malformed');
       throw new Error('malformed Palazzo event');
     }
+    const event = parsed.event;
     if (frame.id) event.id = frame.id;
     await this.acceptEvent(event);
+  }
+
+  /**
+   * A well-formed event of a type Alcantara does not know is skipped and
+   * counted, never a reason to drop the stream (gaulatti/ariston#217). When it
+   * is the next event of the accepted boot it still advances the cursor, so the
+   * known event after it is not mistaken for a gap.
+   */
+  private skipUnknownEvent(envelope: PalazzoEventEnvelope): void {
+    this.options.metrics.recordEventIgnored('unknown-type');
+    if (
+      this.currentBootId === null ||
+      envelope.bootId !== this.currentBootId ||
+      (this.instanceId !== null && envelope.instanceId !== this.instanceId) ||
+      envelope.sequence <= this.lastSequence
+    )
+      return;
+    this.lastSequence = envelope.sequence;
+    this.touch(envelope);
   }
 
   private async acceptEvent(event: PalazzoPlaybackEvent): Promise<void> {
@@ -376,7 +401,7 @@ export class PalazzoProgramClient {
     return true;
   }
 
-  private touch(event: PalazzoPlaybackEvent): void {
+  private touch(event: Pick<PalazzoPlaybackEvent, 'occurredAt'>): void {
     const occurred = Date.parse(event.occurredAt);
     this.lastEventAt = Number.isFinite(occurred) ? occurred : Date.now();
   }
