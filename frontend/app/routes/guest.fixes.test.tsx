@@ -45,6 +45,12 @@ const lk = vi.hoisted(() => {
     }
     disconnect() {
       this.disconnected = true;
+      // A real room reports its own disconnect to whoever still listens.
+      this.emit("connectionStateChanged", "disconnected");
+    }
+    removeAllListeners() {
+      this.handlers.clear();
+      return this;
     }
   }
   return { state, Room };
@@ -252,7 +258,7 @@ it.each([
   expect(await live()).toBeVisible();
 });
 
-it("can retry after the room connection fails", async () => {
+it("releases the half-joined room and can retry after the room connection fails", async () => {
   lk.state.connectError = new Error("could not establish signal connection");
   openPage();
   await preflight();
@@ -260,8 +266,28 @@ it("can retry after the room connection fails", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Could not connect to the studio. Try again.",
   );
+  // The failed room is closed without its disconnect ending the session.
+  expect(lk.state.rooms[0].disconnected).toBe(true);
+  expect(
+    screen.queryByText("The studio session ended."),
+  ).not.toBeInTheDocument();
   expect(joinButton()).toBeEnabled();
   lk.state.connectError = null;
+  fireEvent.click(joinButton());
+  expect(await live()).toBeVisible();
+  expect(lk.state.rooms).toHaveLength(2);
+  expect(lk.state.rooms[1].disconnected).toBe(false);
+});
+
+it("can retry when the studio's join answer cannot be read", async () => {
+  joinAnswers = [() => new Response("not json", { status: 200 })];
+  openPage();
+  await preflight();
+  fireEvent.click(joinButton());
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Could not connect to the studio. Try again.",
+  );
+  expect(lk.state.rooms).toHaveLength(0);
   fireEvent.click(joinButton());
   expect(await live()).toBeVisible();
 });

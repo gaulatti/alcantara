@@ -33,9 +33,6 @@ async function responseError(response: Response) {
   }
 }
 
-/** A join the studio answered with 401 or 403: this invitation cannot join again. */
-class JoinEnded extends Error {}
-
 const IN_USE_ELSEWHERE = 'This invitation is already in use in another window. Try again in a minute.';
 const STUDIO_NOT_READY = 'The studio is not ready for guests yet. Try again in a minute.';
 const STUDIO_UNREACHABLE = 'The studio could not be reached. Check your connection and try again.';
@@ -203,29 +200,33 @@ export default function GuestRoute() {
     if (!speakerChecked || (!headphonesConfirmed && !echoRiskAccepted)) return;
     setStatus('joining');
     setError('');
-    // Where the join stopped decides what the guest is told and whether they can retry.
-    let stage: 'request' | 'connect' = 'request';
+    const storageKey = `alcantara-guest-session:${invitation.split('.')[0] || 'unknown'}`;
+    const previousSession = window.sessionStorage.getItem(storageKey);
+    let response: Response;
     try {
-      const storageKey = `alcantara-guest-session:${invitation.split('.')[0] || 'unknown'}`;
-      const previousSession = window.sessionStorage.getItem(storageKey);
-      let response: Response;
-      try {
-        response = await fetch(apiUrl('/webrtc/join'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ invitation, sessionToken: previousSession })
-        });
-      } catch {
-        throw new Error(STUDIO_UNREACHABLE);
+      response = await fetch(apiUrl('/webrtc/join'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invitation, sessionToken: previousSession })
+      });
+    } catch {
+      setError(STUDIO_UNREACHABLE);
+      setStatus('ready');
+      return;
+    }
+    if (!response.ok) {
+      // Revoked, expired or invalid: the same end as a refused heartbeat.
+      if (response.status === 401 || response.status === 403) {
+        setError(await responseError(response));
+        setStatus('ended');
+        return;
       }
-      if (!response.ok) {
-        // Revoked, expired or invalid: the same end as a refused heartbeat.
-        if (response.status === 401 || response.status === 403) throw new JoinEnded(await responseError(response));
-        if (response.status === 409) throw new Error(IN_USE_ELSEWHERE);
-        if (response.status === 503) throw new Error(STUDIO_NOT_READY);
-        throw new Error(await responseError(response));
-      }
-      stage = 'connect';
+      // Any other refusal can be retried while the preflight checks still hold.
+      setError(response.status === 409 ? IN_USE_ELSEWHERE : response.status === 503 ? STUDIO_NOT_READY : await responseError(response));
+      setStatus('ready');
+      return;
+    }
+    try {
       const credentials = (await response.json()) as {
         serverUrl: string;
         token: string;
@@ -325,16 +326,14 @@ export default function GuestRoute() {
       stopHeartbeat();
       heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();
-    } catch (reason) {
-      if (reason instanceof JoinEnded) {
-        stopHeartbeat();
-        roomRef.current?.disconnect();
-        setError(reason.message);
-        setStatus('ended');
-        return;
-      }
-      // Every other refusal can be retried while the preflight checks still hold.
-      setError(stage === 'connect' ? CONNECT_FAILED : reason instanceof Error ? reason.message : 'Unable to join the studio.');
+    } catch {
+      // Release the half-joined room, without its listeners reporting the
+      // disconnect as an ended session, so a retry starts from a clean room.
+      const failedRoom = roomRef.current;
+      roomRef.current = null;
+      failedRoom?.removeAllListeners();
+      failedRoom?.disconnect();
+      setError(CONNECT_FAILED);
       setStatus('ready');
     }
   };
