@@ -41,6 +41,26 @@ While the program-wide broadcast time override is on (`timeOverrideEnabled: true
 - While the override is off the field is absent (not `null`). A v1 registration never receives it.
 - The field is additive: a template that does not read it is unaffected. A reader should prefer the latest `broadcast_settings_update` it has received, then `state.broadcastSettings`, then no override.
 
+### Playing track in the projected state
+
+A v2 registration's projected state carries an optional `playingTrack`: the song the radio engine has confirmed on air. Show it when it is present, and otherwise show the sequence as before.
+
+```json
+"playingTrack": {
+  "playbackId": "0f9c3b4e-…",
+  "title": "Track title",
+  "artist": "Artist name",
+  "startedAt": "2026-11-17T12:00:00.000Z"
+}
+```
+
+- `playbackId` is the engine's playback request id for this play. `title` and `artist` are the values the as-run log records, so either can be `null` when Palazzo reported none. `startedAt` is when the engine accepted the start. For a play adopted after a reconnect it is Palazzo's reported start time.
+- The source is the engine's accepted `track.started` and `track.ended` events, the same events that feed the as-run log. Sending a song command does not put the song on air; Palazzo's accepted start does. An announced next song (gaulatti/palazzo#40) appears only once its own start is accepted. That includes the overlap case, where it starts under the song it follows; the earlier song's later end then changes nothing.
+- The field is absent (not `null`) when nothing confirmed is playing: before the first start, and after a natural end, an operator stop, a manual cut (`replaced`) or a preempted announced song, until the next accepted start. A song Palazzo could not load never appears.
+- It appears on the `program_state_snapshot` event, on `GET /program/:programId/state`, and on the state of later state-bearing signals in the same event stream, so a page loaded mid-song starts with it.
+- Each change is also sent as a `playing_track_update` signal, which carries `playingTrack` while a track is on air and omits it once the track has ended. The signal is v2-only and is delivered only to manifests that list `playing_track_update` in `control.signals`.
+- The field is additive. A template that does not read it is unaffected, and a v1 registration never receives it.
+
 ## Signals and event projection
 
 For contract v2 registrations, the event stream (`GET /program/:programId/events`) projects signals according to the v2 specification:
@@ -53,6 +73,7 @@ For contract v2 registrations, the event stream (`GET /program/:programId/events
 | `song_playback_update` | `songId`, `positionMs`, `durationMs` |
 | `song_queue_update` | `items: [{songId, title, artist}]` |
 | `audio_levels` | `rms`, `peak` |
+| `playing_track_update` | `playingTrack` (absent when nothing confirmed is playing), `updatedAt` |
 | `audience_interaction_draw_start` | `sceneId`, `componentType`, `drawId`, `durationSeconds`, `candidateIds`, `slot: {matchId, field}` |
 | `audience_interaction_draw_end` | `sceneId`, `componentType`, `drawId`, `selectedId` |
 

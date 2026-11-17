@@ -51,6 +51,7 @@ export const V2_ONLY_SIGNALS = new Set([
   'audio_levels',
   'audience_interaction_draw_start',
   'audience_interaction_draw_end',
+  'playing_track_update',
 ]);
 
 export const PROGRAM_TEMPLATE_V2_SIGNALS = new Set([
@@ -550,6 +551,12 @@ export function projectProgramTemplateState(
     isRecord(value.broadcastSettings)
       ? { broadcastSettings: value.broadcastSettings }
       : {}),
+    // The track the song engine confirmed on air (gaulatti/alcantara#178).
+    // v2 only, and absent when nothing confirmed is playing.
+    ...(manifest.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2 &&
+    isRecord(value.playingTrack)
+      ? { playingTrack: value.playingTrack }
+      : {}),
   };
 }
 
@@ -625,6 +632,7 @@ export function projectProgramTemplateSignal(
       'externalChartSpins',
     ],
     song_playback_update: ['songId', 'positionMs', 'durationMs'],
+    playing_track_update: ['playingTrack', 'updatedAt'],
     audio_levels: ['rms', 'peak'],
     audience_interaction_draw_start: [
       'sceneId',

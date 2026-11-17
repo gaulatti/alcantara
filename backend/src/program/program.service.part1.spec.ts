@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- the spec drives private members of ProgramService. */
 import { BadRequestException } from '@nestjs/common';
+import { EMPTY } from 'rxjs';
 import { ProgramService } from './program.service';
 
 type AnyRecord = Record<string, any>;
@@ -47,7 +48,7 @@ describe('ProgramService part 1 (settings, versions, state lookup)', () => {
       },
       broadcastSettings: { upsert: jest.fn() },
     };
-    const engine = { setBroadcastHandler: jest.fn() };
+    const engine = { setBroadcastHandler: jest.fn(), trackEvents$: EMPTY };
     const outputConfidence = { observe: jest.fn() };
     const service = new ProgramService(
       prisma as never,

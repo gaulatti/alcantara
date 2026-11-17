@@ -46,7 +46,7 @@
             "program_stingers_changed", "scene_change", "scene_cleared", "scene_instant_state", "scene_instant_stop",
             "scene_instant_take", "scene_staged", "scene_update", "song_off_air",
             "chyron_update", "fade_to_black", "song_playback_active", "song_playback_update", "song_queue_update",
-            "audio_levels", "audience_interaction_draw_start", "audience_interaction_draw_end"
+            "audio_levels", "audience_interaction_draw_start", "audience_interaction_draw_end", "playing_track_update"
           ] }
         }
       }

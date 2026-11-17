@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { MediaAssetKind } from '@prisma/client';
+import { EMPTY } from 'rxjs';
 import { ProgramService } from './program.service';
 import {
   deleteMediaAsset,
@@ -99,6 +100,7 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
     handleSequenceUpdated: jest.fn(),
     handleStopSong: jest.fn(),
     setBroadcastHandler: jest.fn(),
+    trackEvents$: EMPTY,
   };
   const metrics: any = {
     recordSceneHandoff: jest.fn(),

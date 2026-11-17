@@ -6,10 +6,11 @@ import {
   Injectable,
   Optional,
   OnModuleInit,
+  OnModuleDestroy,
   NotFoundException,
 } from '@nestjs/common';
 import { MediaAssetKind, type Prisma } from '@prisma/client';
-import { Subject, Observable } from 'rxjs';
+import { Subject, Observable, type Subscription } from 'rxjs';
 import { PrismaService } from '../prisma.service';
 import {
   deleteMediaAsset,
@@ -22,6 +23,7 @@ import { toRadioMixerPayload } from '../radio/radio-mixer.utils';
 import {
   SongExecutionEngine,
   type SongEngineEvent,
+  type SongEngineTrackEvent,
 } from '../radio/song-execution.engine';
 import {
   filterProgramSongQueueForSequence,
@@ -105,8 +107,19 @@ type ProgramUpdateTopic =
   | 'sceneInstant'
   | 'flight';
 
+/**
+ * The track the song engine confirmed on air: an accepted `track.started` of
+ * its own song, as the as-run log records it (gaulatti/alcantara#178).
+ */
+export interface ProgramPlayingTrack {
+  playbackId: string;
+  title: string | null;
+  artist: string | null;
+  startedAt: string;
+}
+
 @Injectable()
-export class ProgramService implements OnModuleInit {
+export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
   private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
@@ -152,6 +165,12 @@ export class ProgramService implements OnModuleInit {
       queueEntryId?: string | null;
     }
   >();
+  /** Confirmed playing track per program; absent when none is on air. */
+  private readonly playingTrackByProgramId = new Map<
+    string,
+    ProgramPlayingTrack
+  >();
+  private trackEventsSubscription: Subscription | null = null;
   private eventListeners:
     | Set<
         (event: {
@@ -179,7 +198,62 @@ export class ProgramService implements OnModuleInit {
     this.songExecutionEngine.setBroadcastHandler((event: SongEngineEvent) => {
       this.handleEngineEvent(event);
     });
+    this.trackEventsSubscription =
+      this.songExecutionEngine.trackEvents$.subscribe((event) =>
+        this.handleTrackEvent(event),
+      );
     await this.ensureDefaultProgramState();
+  }
+
+  onModuleDestroy(): void {
+    this.trackEventsSubscription?.unsubscribe();
+    this.trackEventsSubscription = null;
+  }
+
+  /**
+   * Follows the engine's accepted starts and ends, the as-run log's source:
+   * a start puts its song on air (an announced song only once its start is
+   * accepted, even under the song it follows), and an end clears it only when
+   * it ends the song on air. Each change is one `playing_track_update`.
+   */
+  private handleTrackEvent(event: SongEngineTrackEvent): void {
+    const programId = this.normalizeProgramId(event.programId);
+    if (event.type === 'track.started') {
+      this.playingTrackByProgramId.set(programId, {
+        playbackId: event.playbackRequestId,
+        title: event.title,
+        artist: event.artist,
+        startedAt: event.at.toISOString(),
+      });
+    } else if (
+      this.playingTrackByProgramId.get(programId)?.playbackId ===
+      event.playbackRequestId
+    ) {
+      this.playingTrackByProgramId.delete(programId);
+    } else {
+      return;
+    }
+    const playingTrack = this.playingTrackByProgramId.get(programId);
+    this.broadcastUpdate(programId, {
+      type: 'playing_track_update',
+      programId,
+      ...(playingTrack ? { playingTrack } : {}),
+      updatedAt: event.at.toISOString(),
+    });
+  }
+
+  /** A v2 template's state with the confirmed playing track, when there is one. */
+  private withTemplatePlayingTrack(
+    state: Record<string, unknown>,
+    manifest: ProgramTemplateManifest | null,
+    programId: string,
+  ): Record<string, unknown> {
+    const playingTrack = this.playingTrackByProgramId.get(
+      this.normalizeProgramId(programId),
+    );
+    return manifest?.contractVersion === 2 && playingTrack
+      ? { ...state, playingTrack }
+      : state;
   }
 
   private async ensureDefaultProgramState(): Promise<void> {
@@ -1506,9 +1580,13 @@ export class ProgramService implements OnModuleInit {
     const manifest = readProgramTemplateManifest(state.templateManifest);
     return manifest
       ? projectProgramTemplateState(
-          await this.withTemplateBroadcastSettings(
-            state as Record<string, unknown>,
+          this.withTemplatePlayingTrack(
+            await this.withTemplateBroadcastSettings(
+              state as Record<string, unknown>,
+              manifest,
+            ),
             manifest,
+            programId,
           ),
           manifest,
         )
@@ -3688,9 +3766,10 @@ export class ProgramService implements OnModuleInit {
       const pendingEvents: unknown[] = [];
       const serialize = (data: unknown) => ({ data: JSON.stringify(data) });
       // The latest broadcast settings this v2 stream has seen, carried on its
-      // state-bearing signals too (gaulatti/alcantara#177).
+      // state-bearing signals too (gaulatti/alcantara#177), with the playing
+      // track confirmed at the time of sending (gaulatti/alcantara#178).
       let broadcastSettings: Record<string, unknown> | null = null;
-      const withBroadcastSettings = (data: unknown): unknown => {
+      const withLiveState = (data: unknown): unknown => {
         if (templateManifest?.contractVersion !== 2 || !isObjectRecord(data)) {
           return data;
         }
@@ -3700,16 +3779,17 @@ export class ProgramService implements OnModuleInit {
             : null;
           return data;
         }
-        return broadcastSettings && isObjectRecord(data.state)
-          ? { ...data, state: { ...data.state, broadcastSettings } }
-          : data;
+        if (!isObjectRecord(data.state)) return data;
+        const state = this.withTemplatePlayingTrack(
+          broadcastSettings ? { ...data.state, broadcastSettings } : data.state,
+          templateManifest,
+          normalizedProgramId,
+        );
+        return { ...data, state };
       };
       const sendEvent = (data: unknown) => {
         const projected = templateManifest
-          ? projectProgramTemplateSignal(
-              withBroadcastSettings(data),
-              templateManifest,
-            )
+          ? projectProgramTemplateSignal(withLiveState(data), templateManifest)
           : data;
         if (projected) subscriber.next(serialize(projected));
       };
@@ -3731,9 +3811,13 @@ export class ProgramService implements OnModuleInit {
           if (closed) return;
           const manifest = readProgramTemplateManifest(state.templateManifest);
           const templateState = manifest
-            ? await this.withTemplateBroadcastSettings(
-                state as unknown as Record<string, unknown>,
+            ? this.withTemplatePlayingTrack(
+                await this.withTemplateBroadcastSettings(
+                  state as unknown as Record<string, unknown>,
+                  manifest,
+                ),
                 manifest,
+                normalizedProgramId,
               )
             : null;
           if (closed) return;
