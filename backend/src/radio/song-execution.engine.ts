@@ -824,11 +824,45 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     void this.flightService.handleSongEnded(programId);
   }
 
-  handleStopSong(programId: string): void {
+  /**
+   * Operator Stop (gaulatti/alcantara#173): the sequence halts until the
+   * operator acts. An automatic sequence turns manual, cued past the stopped
+   * song, and is persisted, so idle snapshots and a restart start nothing.
+   * A timed block passes `keepSequence` and resumes the rotation itself.
+   */
+  handleStopSong(
+    programId: string,
+    options: { keepSequence?: boolean } = {},
+  ): void {
     const state = this.states.get(programId);
     if (!state) {
       void this.nowPlayingPublisherService.publishStopped(programId);
       return;
+    }
+    if (
+      !options.keepSequence &&
+      (state.sequence?.mode === 'autoplay' ||
+        state.sequence?.mode === 'shuffle')
+    ) {
+      const halted = normalizeProgramSongSequence(state.sequence)!;
+      halted.mode = 'manual';
+      const stopped = state.activeSong;
+      // Queue entries and songs picked from outside the playlist never moved
+      // the cursor, which already points at the successor.
+      if (
+        stopped &&
+        !stopped.queueEntryId &&
+        !stopped.itemId.startsWith(CATALOG_ITEM_PREFIX)
+      ) {
+        advanceProgramSongSequence(halted, stopped.itemId);
+      }
+      state.sequence = halted;
+      void this.persistPlaylistCursorForQueue(programId, halted).catch(
+        (error) =>
+          this.logger.error(
+            `Could not persist the stopped sequence on ${programId}: ${String(error)}`,
+          ),
+      );
     }
     const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     if (state.activeSong) {

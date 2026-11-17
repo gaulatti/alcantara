@@ -694,7 +694,8 @@ describe('SongExecutionEngine progress and queue application', () => {
     ctx.engine.handlePalazzoSnapshot('radio-1', idle());
     await flush(40);
     const first = ctx.radioService.playSong.mock.calls.length;
-    ctx.engine.handleStopSong('radio-1');
+    // A stop that keeps the rotation (#173: an operator Stop halts it).
+    ctx.engine.handleStopSong('radio-1', { keepSequence: true });
     await flush(10);
     await ctx.engine.enqueueSong('radio-1', 'song-b');
     await flush(80);

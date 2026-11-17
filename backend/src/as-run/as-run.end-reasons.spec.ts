@@ -307,6 +307,10 @@ function session() {
     engine,
     asRun,
     store,
+    radioService,
+    prisma,
+    persistedSequence: () =>
+      programState.songSequence as Record<string, unknown>,
     lastCommand,
     started,
     ended,
@@ -456,6 +460,12 @@ describe('as-run records for plays the engine ends itself', () => {
     s.engine.handleStopSong('radio-1');
     s.idle();
     await settle();
+    // Stop halts the sequence (#173); the operator presses play.
+    s.engine.handleSequenceUpdated('radio-1', {
+      ...s.persistedSequence(),
+      mode: 'autoplay',
+    });
+    await settle();
     const replacedBeforeStart = s.lastCommand();
     s.manual();
     await settle();
@@ -502,11 +512,17 @@ describe('as-run records for plays the engine ends itself', () => {
       const n = onAirUrls.length;
 
       if (n === 3) {
-        // Operator Stop; automation resumes at the next idle snapshot.
+        // Operator Stop halts the sequence; the operator then presses play
+        // (gaulatti/alcantara#173), and the next track goes on air.
         s.engine.handleStopSong('radio-1');
         await settle();
         s.ended(command);
         s.idle();
+        await settle();
+        s.engine.handleSequenceUpdated('radio-1', {
+          ...s.persistedSequence(),
+          mode: 'autoplay',
+        });
         await settle();
       } else if (n === 6) {
         // A manual pick cuts the playing song; the manual song is on air.
@@ -544,6 +560,8 @@ describe('as-run records for plays the engine ends itself', () => {
       ),
     );
 
+    // Each track is on air, and in the as-run log, exactly once (#173).
+    expect(new Set(onAirUrls).size).toBe(12);
     const counts = new Map<string, number>();
     for (const url of onAirUrls) counts.set(url, (counts.get(url) ?? 0) + 1);
     const expected = [...counts.entries()].map(([url, count]) => {
@@ -744,5 +762,164 @@ describe('as-run export of each end reason', () => {
       ['started', null, null],
       ['ended', null, null],
     ]);
+  });
+});
+
+// gaulatti/alcantara#173: an operator Stop halts the sequence until the
+// operator acts; idle snapshots and a restart start nothing by themselves.
+describe('operator Stop halts the radio sequence', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function stoppedOnTrackOne(s: ReturnType<typeof session>) {
+    s.idle();
+    await settle();
+    const command = s.lastCommand();
+    s.started(command);
+    await settle();
+    advance(60_000);
+    s.engine.handleStopSong('radio-1');
+    await settle();
+    s.ended(command);
+    await settle();
+    return command;
+  }
+
+  it('sends no song command on three idle snapshots after a Stop', async () => {
+    const s = session();
+    const command = await stoppedOnTrackOne(s);
+    expect(command.url).toBe(SONGS[0].audioUrl);
+    const sent = s.radioService.playSong.mock.calls.length;
+    for (let i = 0; i < 3; i++) {
+      s.idle();
+      await settle();
+    }
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('keeps the halt across a restart: the persisted sequence is manual, cued at the next track', async () => {
+    const s = session();
+    await stoppedOnTrackOne(s);
+    expect(s.persistedSequence()).toMatchObject({
+      mode: 'manual',
+      activeItemId: `item-${SONGS[1].id}`,
+    });
+    s.asRun.onModuleDestroy();
+  });
+
+  it('resumes on the operator play with exactly one command, for the next track', async () => {
+    const s = session();
+    await stoppedOnTrackOne(s);
+    const sent = s.radioService.playSong.mock.calls.length;
+    s.idle();
+    await settle();
+    s.engine.handleSequenceUpdated('radio-1', {
+      ...s.persistedSequence(),
+      mode: 'autoplay',
+    });
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent + 1);
+    expect(s.lastCommand().url).toBe(SONGS[1].audioUrl);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('resumes on an operator manual pick with exactly one command, for that song', async () => {
+    const s = session();
+    await stoppedOnTrackOne(s);
+    const sent = s.radioService.playSong.mock.calls.length;
+    s.idle();
+    await settle();
+    s.manual();
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent + 1);
+    expect(s.lastCommand().url).toBe(MANUAL.audioUrl);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('does not move the cursor when the stopped song was a manual pick', async () => {
+    const s = session();
+    s.idle();
+    await settle();
+    s.manual();
+    await settle();
+    const command = s.lastCommand();
+    s.started(command);
+    await settle();
+    s.engine.handleStopSong('radio-1');
+    await settle();
+    expect(s.persistedSequence()).toMatchObject({ mode: 'manual' });
+    s.asRun.onModuleDestroy();
+  });
+
+  it('halts a shuffle rotation too, even with no song on air', async () => {
+    const s = session();
+    s.engine.handleSequenceUpdated('radio-1', {
+      ...s.persistedSequence(),
+      mode: 'shuffle',
+    });
+    s.engine.handleStopSong('radio-1');
+    await settle();
+    // Nothing was on air, so the cursor stays where it was.
+    expect(s.persistedSequence()).toMatchObject({
+      mode: 'manual',
+      activeItemId: `item-${SONGS[0].id}`,
+    });
+    s.idle();
+    await settle();
+    expect(s.radioService.playSong).not.toHaveBeenCalled();
+    s.asRun.onModuleDestroy();
+  });
+
+  it('stays halted and logs when the stopped rotation cannot be persisted', async () => {
+    const s = session();
+    await stoppedOnTrackOne(s);
+    s.prisma.programState.update.mockRejectedValueOnce(new Error('db down'));
+    const logged = jest
+      .spyOn(
+        (s.engine as unknown as { logger: { error: (m: string) => void } })
+          .logger,
+        'error',
+      )
+      .mockImplementation(() => undefined);
+    s.engine.handleSequenceUpdated('radio-1', {
+      ...s.persistedSequence(),
+      mode: 'autoplay',
+    });
+    await settle();
+    const command = s.lastCommand();
+    s.started(command);
+    await settle();
+    s.engine.handleStopSong('radio-1');
+    await settle();
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Could not persist the stopped sequence on radio-1',
+      ),
+    );
+    const sent = s.radioService.playSong.mock.calls.length;
+    s.ended(command);
+    s.idle();
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('keeps the rotation when a timed block stops the song', async () => {
+    const s = session();
+    s.idle();
+    await settle();
+    s.started(s.lastCommand());
+    await settle();
+    s.engine.handleStopSong('radio-1', { keepSequence: true });
+    await settle();
+    expect(s.persistedSequence()).toMatchObject({ mode: 'autoplay' });
+    s.asRun.onModuleDestroy();
   });
 });

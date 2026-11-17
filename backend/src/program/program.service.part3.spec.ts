@@ -937,7 +937,9 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(prisma.programState.update).not.toHaveBeenCalled();
       expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
       expect(radio.stopSong).not.toHaveBeenCalled();
-      expect(engine.handleStopSong).toHaveBeenCalledWith('main');
+      expect(engine.handleStopSong).toHaveBeenCalledWith('main', {
+        keepSequence: true,
+      });
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('forwardStopSongToRadio skipped'),
       );

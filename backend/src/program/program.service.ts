@@ -3071,7 +3071,12 @@ export class ProgramService implements OnModuleInit {
     console.log(
       `[ProgramService] takeProgramSongOffAir → forwarded stop to radio for ${normalizedProgramId}`,
     );
-    this.songExecutionEngine.handleStopSong(normalizedProgramId);
+    // A timed block keeps the rotation and resumes it itself (#173).
+    if (preserveRotation)
+      this.songExecutionEngine.handleStopSong(normalizedProgramId, {
+        keepSequence: true,
+      });
+    else this.songExecutionEngine.handleStopSong(normalizedProgramId);
 
     return { ok: true, programId: normalizedProgramId };
   }
