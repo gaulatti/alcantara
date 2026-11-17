@@ -12,8 +12,8 @@ import {
   type ControlServer,
 } from "../../test/controlKit";
 
-// A scene or layout catalog the backend refuses must not take the console
-// down, and the operator must see that it did not load.
+// A scene catalog the backend refuses must not take the console down, and
+// the operator must see that it did not load.
 
 vi.mock("../hooks/useSSE", () => ({ useSSE: () => ({ isConnected: false }) }));
 vi.mock("../utils/globalProgram", () => ({
@@ -55,7 +55,6 @@ beforeEach(() => {
   const headlines = scene(1, "Fictional headlines");
   server = controlServer({
     "GET /scenes": Response.json([headlines]),
-    "GET /layouts": Response.json([]),
     "GET /program/main/state": () =>
       Response.json({
         id: 1,
@@ -91,64 +90,48 @@ const reasons: Array<[string, () => Response]> = [
   ["a body that is not a list", () => Response.json({ data: [] })],
 ];
 
-it.each(
-  reasons.flatMap(([reason, answer]) => [
-    ["GET /scenes", reason, answer, "Scenes could not be loaded."] as const,
-    [
-      "GET /layouts",
-      reason,
-      answer,
-      "Scene templates could not be loaded.",
-    ] as const,
-  ]),
-)(
-  "keeps the console open and says so when %s answers %s",
-  async (request, _reason, answer, message) => {
-    server.answer(request, answer);
+it.each(reasons)(
+  "keeps the console open and says so when GET /scenes answers %s",
+  async (_reason, answer) => {
+    server.answer("GET /scenes", answer);
     render(<Control />);
     expect(
       (await screen.findAllByText("Fictional headlines")).length,
     ).toBeGreaterThan(0);
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      `${message} The list may be out of date.`,
+      "Scenes could not be loaded. The list may be out of date.",
     );
   },
 );
 
-it("keeps the last good scene list when a reload fails, and retries both catalogs", async () => {
-  server.answer("GET /layouts", refused);
+it("retries the scene list until it loads", async () => {
+  server.answer("GET /scenes", refused);
   render(<Control />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Scenes could not be loaded.",
+  );
+  // Without a scene list the preparation panel cannot name the staged scene.
+  expect(
+    screen.getByRole("heading", { name: "Prepare · Selected scene" }),
+  ).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(server.requests("GET /scenes")).toHaveLength(2));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Scenes could not be loaded.",
+  );
+
+  server.answer(
+    "GET /scenes",
+    Response.json([scene(1, "Fictional headlines")]),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(
     await screen.findByRole("heading", {
       name: "Prepare · Fictional headlines",
     }),
   ).toBeVisible();
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Scene templates could not be loaded.",
-  );
-
-  // The scene list is the one that fails this time; the console keeps the last
-  // good list and says it may be out of date.
-  server.answer("GET /scenes", refused);
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await waitFor(() => expect(server.requests("GET /scenes")).toHaveLength(2));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Scenes could not be loaded. The list may be out of date.",
-  );
-  expect(
-    screen.getByRole("heading", { name: "Prepare · Fictional headlines" }),
-  ).toBeVisible();
-
-  // Both answer again: the message goes.
-  server.answer(
-    "GET /scenes",
-    Response.json([scene(1, "Fictional headlines")]),
-  );
-  server.answer("GET /layouts", Response.json([]));
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await waitFor(() =>
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
-  );
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 it("lets the operator dismiss the message", async () => {
@@ -159,9 +142,10 @@ it("lets the operator dismiss the message", async () => {
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-it("shows no catalog message when both load", async () => {
+it("shows no message when the scene list loads, and no longer asks for scene templates", async () => {
   render(<Control />);
   await screen.findAllByText("Fictional headlines");
-  await waitFor(() => expect(server.requests("GET /layouts")).toHaveLength(1));
+  await waitFor(() => expect(server.requests("GET /scenes")).toHaveLength(1));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(server.requests("GET /layouts")).toEqual([]);
 });

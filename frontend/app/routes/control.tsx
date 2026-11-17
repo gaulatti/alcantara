@@ -57,7 +57,6 @@ import type {
   ComponentPropsMap,
   InstantItem,
   InstantPlaybackState,
-  Layout,
   MediaGroup,
   MediaLabel,
   MixerTakeApplyingMap,
@@ -178,11 +177,9 @@ export default function Control() {
   >({});
   const instantDurationByUrlRef = useRef<Record<string, number | null>>({});
   const instantPlaybackTimeoutsRef = useRef<Record<number, number>>({});
-  const [layouts, setLayouts] = useState<Layout[]>([]);
-  // A scene or layout catalog that failed to load is shown, not hidden behind
-  // an empty list.
+  // A scene catalog that failed to load is shown, not hidden behind an empty
+  // list.
   const [sceneCatalogError, setSceneCatalogError] = useState<string | null>(null);
-  const [layoutCatalogError, setLayoutCatalogError] = useState<string | null>(null);
   const componentTypes = OVERLAY_COMPONENTS.map((c) => ({
     type: c.id,
     name: c.name,
@@ -444,7 +441,6 @@ export default function Control() {
 
   useEffect(() => {
     fetchScenes();
-    fetchLayouts();
     fetchComponentTypes();
     fetchSongCatalog();
   }, []);
@@ -1018,25 +1014,6 @@ export default function Control() {
       // Keep the last good list; the message says it may be out of date.
       console.error("Failed to fetch scenes:", err);
       setSceneCatalogError("Scenes could not be loaded. The list may be out of date.");
-    }
-  };
-
-  const fetchLayouts = async () => {
-    try {
-      const res = await fetch(apiUrl("/layouts"));
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as unknown;
-      if (!Array.isArray(data)) {
-        throw new Error("Layouts answer is not a list");
-      }
-      setLayouts(data as Layout[]);
-      setLayoutCatalogError(null);
-    } catch (err) {
-      // Keep the last good list; the message says it may be out of date.
-      console.error("Failed to fetch layouts:", err);
-      setLayoutCatalogError("Scene templates could not be loaded. The list may be out of date.");
     }
   };
 
@@ -3294,18 +3271,16 @@ export default function Control() {
       {programState?.type === "both" ? (
         <SimulcastStatusRail programId={activeProgramId} />
       ) : null}
-      {sceneCatalogError || layoutCatalogError ? (
+      {sceneCatalogError ? (
         <div role="alert" className="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
           <div className="min-w-0 flex-1 space-y-1">
-            {sceneCatalogError ? <p>{sceneCatalogError}</p> : null}
-            {layoutCatalogError ? <p>{layoutCatalogError}</p> : null}
+            <p>{sceneCatalogError}</p>
           </div>
           <Button
             size="sm"
             variant="secondary"
             onClick={() => {
               void fetchScenes();
-              void fetchLayouts();
             }}
           >
             Retry
@@ -3315,7 +3290,6 @@ export default function Control() {
             variant="ghost"
             onClick={() => {
               setSceneCatalogError(null);
-              setLayoutCatalogError(null);
             }}
           >
             Dismiss

@@ -52,7 +52,6 @@ beforeEach(() => {
   stateReads = 0;
   server = controlServer({
     "GET /scenes": Response.json([headlines, guestDesk]),
-    "GET /layouts": Response.json([]),
     // The first read opens the console; later reads fail, so the staged
     // scene the show does not list stays staged until TAKE.
     "GET /program/main/state": () => {
