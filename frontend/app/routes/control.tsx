@@ -1940,9 +1940,13 @@ export default function Control() {
       (programScene) => programScene.sceneId === sceneId,
     );
 
+  // TAKE adds a scene the show does not list yet. A refused or failed add
+  // stops the TAKE with the reason, instead of taking a scene the show never
+  // accepted; the show's state is reloaded either way.
   const assignSceneToProgram = async (sceneId: number) => {
+    let response: Response;
     try {
-      await fetch(
+      response = await fetch(
         apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scenes`),
         {
           method: "POST",
@@ -1950,11 +1954,22 @@ export default function Control() {
           body: JSON.stringify({ sceneId }),
         },
       );
-      if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
-      }
     } catch (err) {
       console.error("Failed to assign scene to program:", err);
+      throw new Error("The scene could not be added to this show. Check the connection and try again.");
+    }
+    if (!isProgramRealtimeConnected) {
+      await fetchProgramState(activeProgramId);
+    }
+    if (!response.ok) {
+      let reason = "";
+      try {
+        const body = (await response.json()) as { message?: unknown };
+        if (typeof body.message === "string") reason = body.message.trim();
+      } catch {
+        // No readable reason in the answer.
+      }
+      throw new Error(reason ? `The scene could not be added to this show: ${reason}` : "The scene could not be added to this show.");
     }
   };
 
