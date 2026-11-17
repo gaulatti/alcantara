@@ -239,7 +239,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     };
   }, [showWorldClocks, cityPool, rotationIntervalMs, transitionDurationMs, shuffleCities]);
 
-  const currentCity = cityPool[cityIndex] ?? resolvedCities[0];
+  const currentCity = cityPool[cityIndex];
   const timeText = formatClockValue(currentCity.timezone, now, timeOverride);
   const normalizedSongSequence = useMemo(() => normalizeProgramSongSequence(songSequence), [songSequence]);
   const [sequenceNowMs, setSequenceNowMs] = useState(() => Date.now());
