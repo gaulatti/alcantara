@@ -36,11 +36,16 @@ does not refuse the registration (gaulatti/ariston#217). Alcantara leaves it
 out of the stored manifest, so a template is only ever sent signals Alcantara
 knows, and counts it in
 `alcantara_program_template_unknowns_ignored_total{member}` with `member`
-`signal` or `capability` (both exposed from 0; the unknown name is never a
-label). A manifest whose remaining signals do not include
-`program_state_snapshot` is still refused, as are an unknown `kind`,
-`contractVersion` or `schemaVersion`, malformed or duplicated names, and every
-path, origin, integrity and size check.
+`signal` or `capability`. In the same way, a v2 manifest property Alcantara
+does not know, at the top level, in `control` or in
+`control.runtimeParameters`, is not read, not stored and not passed to the
+template (only `programId` and `apiBaseUrl` ever are); it counts once per key
+as `property`, `control-property` or `runtime-parameter`. All five series are
+exposed from 0 and the unknown name is never a label. A manifest whose
+remaining signals do not include `program_state_snapshot` is still refused, as
+are a missing or invalid known member, an unknown `kind`, `contractVersion` or
+`schemaVersion`, malformed or duplicated names, and every path, origin,
+integrity and size check.
 
 A v2 registration receives state `schemaVersion: 2` on the `program_state_snapshot` event, on every projected state (`GET /program/:programId/state` and state-bearing signals) and on every projected signal. A v1 registration continues to receive `schemaVersion: 1`.
 

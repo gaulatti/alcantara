@@ -72,7 +72,8 @@ The private authenticated `/metrics` collector includes:
 - `alcantara_program_sse_connections`;
 - `alcantara_program_sse_snapshots_total{result}`; and
 - `alcantara_program_template_unknowns_ignored_total{member}` for manifest
-  signals and capabilities left out because Alcantara does not know them (see
+  signals, capabilities and properties left out because Alcantara does not
+  know them (see
   [program-templates-v2.md](program-templates-v2.md)).
 
 Template URLs and identities never appear in metric labels. A successful

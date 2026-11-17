@@ -302,32 +302,33 @@ describe('validateProgramTemplateManifest rejections', () => {
       ).toEqual(['program_state_snapshot']);
     });
 
-    it('rejects unrecognized properties on v2 manifest, control, and runtimeParameters', () => {
-      expect(() =>
-        validate({ ...baseV2Manifest(), extraField: 'bad' }),
-      ).toThrow('Template manifest contains unrecognized property extraField');
-      expect(() =>
-        validate({
+    it('leaves out unrecognized properties on v2 manifest, control, and runtimeParameters', () => {
+      const seen: string[] = [];
+      const valid = validateProgramTemplateManifest(
+        {
           ...baseV2Manifest(),
-          control: { ...baseV2Manifest().control, extraField: 'bad' },
-        }),
-      ).toThrow(
-        'Template manifest control contains unrecognized property extraField',
-      );
-      expect(() =>
-        validate({
-          ...baseV2Manifest(),
+          extraField: 'x',
           control: {
             ...baseV2Manifest().control,
+            extraField: 'x',
             runtimeParameters: {
               ...baseV2Manifest().control.runtimeParameters,
-              extraField: 'bad',
+              extraField: 'x',
+              anotherField: 'y',
             },
           },
-        }),
-      ).toThrow(
-        'Template manifest control.runtimeParameters contains unrecognized property extraField',
+        },
+        manifestUrl,
+        (member) => seen.push(member),
       );
+      expect(seen).toEqual([
+        'property',
+        'control-property',
+        'runtime-parameter',
+        'runtime-parameter',
+      ]);
+      expect(valid).toEqual(validate(baseV2Manifest()));
+      expect(JSON.stringify(valid)).not.toContain('extraField');
     });
 
     it('accepts a file entry with an extra property the committed schema allows', () => {

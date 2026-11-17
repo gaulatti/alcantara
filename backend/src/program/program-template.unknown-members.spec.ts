@@ -84,18 +84,91 @@ describe('ProgramTemplateService: unknown manifest members', () => {
     expect(await unknownSeries(metrics)).toEqual([
       'alcantara_program_template_unknowns_ignored_total{member="signal"} 2',
       'alcantara_program_template_unknowns_ignored_total{member="capability"} 1',
+      'alcantara_program_template_unknowns_ignored_total{member="property"} 0',
+      'alcantara_program_template_unknowns_ignored_total{member="control-property"} 0',
+      'alcantara_program_template_unknowns_ignored_total{member="runtime-parameter"} 0',
     ]);
     const text = await metrics.registry.metrics();
     expect(text).not.toContain('secret_future_signal');
     expect(text).not.toContain('telepathy.secret-capability');
   });
 
-  it('exposes both member series from 0 before any manifest is read', async () => {
+  it('exposes every member series from 0 before any manifest is read', async () => {
     expect(await unknownSeries(new ManagedMetricsService())).toEqual([
       'alcantara_program_template_unknowns_ignored_total{member="signal"} 0',
       'alcantara_program_template_unknowns_ignored_total{member="capability"} 0',
+      'alcantara_program_template_unknowns_ignored_total{member="property"} 0',
+      'alcantara_program_template_unknowns_ignored_total{member="control-property"} 0',
+      'alcantara_program_template_unknowns_ignored_total{member="runtime-parameter"} 0',
     ]);
   });
+
+  // Slice 4a: unknown top-level, control and runtime parameter members.
+  it('registers a manifest with unknown members, stores none of them and counts each', async () => {
+    const body = {
+      ...v2Manifest(),
+      secretTopLevel: { nested: true },
+      control: {
+        ...v2Manifest().control,
+        secretControl: 'x',
+        runtimeParameters: {
+          ...v2Manifest().control.runtimeParameters,
+          secretParameter: 'theme',
+        },
+      },
+    };
+    const { service, metrics } = serviceReturning(body);
+
+    const registration = await service.inspect(url);
+
+    const stored = JSON.stringify(registration.templateManifest);
+    expect(stored).not.toMatch(/secret/);
+    expect(registration.templateManifest.control.runtimeParameters).toEqual({
+      programId: 'programId',
+      apiBaseUrl: 'apiBaseUrl',
+    });
+    expect(await unknownSeries(metrics)).toEqual([
+      'alcantara_program_template_unknowns_ignored_total{member="signal"} 2',
+      'alcantara_program_template_unknowns_ignored_total{member="capability"} 1',
+      'alcantara_program_template_unknowns_ignored_total{member="property"} 1',
+      'alcantara_program_template_unknowns_ignored_total{member="control-property"} 1',
+      'alcantara_program_template_unknowns_ignored_total{member="runtime-parameter"} 1',
+    ]);
+    expect(await metrics.registry.metrics()).not.toMatch(/secret/);
+  });
+
+  it.each([
+    [
+      'a missing runtime parameter',
+      {
+        ...v2Manifest(),
+        control: {
+          ...v2Manifest().control,
+          runtimeParameters: { programId: 'programId', theme: 'x' },
+        },
+      },
+      'control.runtimeParameters.apiBaseUrl',
+    ],
+    [
+      'a missing control member',
+      {
+        ...v2Manifest(),
+        control: { ...v2Manifest().control, eventsPath: undefined, extra: 1 },
+      },
+      'control.eventsPath',
+    ],
+    [
+      'a missing top-level member',
+      { ...v2Manifest(), entrypoint: undefined, extra: 1 },
+      'entrypoint',
+    ],
+  ])(
+    'still refuses %s alongside unknown members',
+    async (_name, body, message) => {
+      const { service } = serviceReturning(body);
+      await expect(service.inspect(url)).rejects.toThrow(message);
+    },
+  );
 
   it('drops a v2-only signal from a v1 manifest', () => {
     const v1 = {

@@ -141,10 +141,15 @@ export type FillerStartBindingResult =
  * refusing the template (gaulatti/ariston#217). The label is the member kind,
  * never the unknown name.
  */
-export type ProgramTemplateUnknownMember = 'signal' | 'capability';
+export type ProgramTemplateUnknownMember =
+  | 'signal'
+  | 'capability'
+  | 'property'
+  | 'control-property'
+  | 'runtime-parameter';
 
 const PROGRAM_TEMPLATE_UNKNOWN_MEMBERS: readonly ProgramTemplateUnknownMember[] =
-  ['signal', 'capability'];
+  ['signal', 'capability', 'property', 'control-property', 'runtime-parameter'];
 
 const FILLER_START_BINDING_RESULTS: readonly FillerStartBindingResult[] = [
   'bound',

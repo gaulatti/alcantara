@@ -339,14 +339,10 @@ export function validateProgramTemplateManifest(
       'control',
       'files',
     ]);
-    const extraKey = Object.keys(value).find(
-      (key) => !allowedTopLevel.has(key),
-    );
-    if (extraKey) {
-      throw new BadRequestException(
-        `Template manifest contains unrecognized property ${extraKey}`,
-      );
-    }
+    // A member Alcantara does not know is not read and not stored (the
+    // manifest below is built from known fields only), so it is counted and
+    // left out rather than refusing the template (gaulatti/ariston#217).
+    countUnknownKeys(value, allowedTopLevel, 'property', onUnknown);
     const allowedControl = new Set([
       'protocol',
       'transport',
@@ -355,23 +351,20 @@ export function validateProgramTemplateManifest(
       'runtimeParameters',
       'signals',
     ]);
-    const extraControlKey = Object.keys(value.control).find(
-      (key) => !allowedControl.has(key),
+    countUnknownKeys(
+      value.control,
+      allowedControl,
+      'control-property',
+      onUnknown,
     );
-    if (extraControlKey) {
-      throw new BadRequestException(
-        `Template manifest control contains unrecognized property ${extraControlKey}`,
-      );
-    }
     const allowedRuntime = new Set(['programId', 'apiBaseUrl']);
-    const extraRuntimeKey = Object.keys(value.control.runtimeParameters).find(
-      (key) => !allowedRuntime.has(key),
+    // Only programId and apiBaseUrl are ever passed to the template.
+    countUnknownKeys(
+      value.control.runtimeParameters,
+      allowedRuntime,
+      'runtime-parameter',
+      onUnknown,
     );
-    if (extraRuntimeKey) {
-      throw new BadRequestException(
-        `Template manifest control.runtimeParameters contains unrecognized property ${extraRuntimeKey}`,
-      );
-    }
 
     if (value.files !== undefined) {
       if (!Array.isArray(value.files)) {
@@ -452,6 +445,17 @@ export function validateProgramTemplateManifest(
     manifest.files = files;
   }
   return manifest;
+}
+
+function countUnknownKeys(
+  record: Record<string, unknown>,
+  known: ReadonlySet<string>,
+  member: ProgramTemplateUnknownMember,
+  onUnknown?: (member: ProgramTemplateUnknownMember) => void,
+): void {
+  for (const key of Object.keys(record)) {
+    if (!known.has(key)) onUnknown?.(member);
+  }
 }
 
 function isBlockedIpv4(address: string): boolean {
