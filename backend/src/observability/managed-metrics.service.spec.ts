@@ -68,3 +68,27 @@ describe('ManagedMetricsService program SSE metrics', () => {
     expect(output).not.toContain('private-result');
   });
 });
+
+describe('ManagedMetricsService outbound fetch metrics', () => {
+  it('counts each caller and result from the closed sets only, starting at zero', async () => {
+    const metrics = new ManagedMetricsService();
+    metrics.recordOutboundFetch('program_audio', 'address');
+    metrics.recordOutboundFetch('program_audio', 'address');
+    metrics.recordOutboundFetch('now_playing', 'legacy_http');
+    metrics.recordOutboundFetch('https://fictional.example/x', 'ok');
+    metrics.recordOutboundFetch('program_audio', 'unlisted');
+    const text = await metrics.registry.metrics();
+    const samples = text
+      .split('\n')
+      .filter((line) => line.startsWith('alcantara_outbound_fetch_total{'));
+    expect(samples).toHaveLength(24);
+    expect(samples).toContain(
+      'alcantara_outbound_fetch_total{path="program_audio",result="address"} 2',
+    );
+    expect(samples).toContain(
+      'alcantara_outbound_fetch_total{path="now_playing",result="legacy_http"} 1',
+    );
+    expect(text).not.toContain('fictional.example');
+    expect(text).not.toContain('unlisted');
+  });
+});

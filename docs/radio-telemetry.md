@@ -272,6 +272,7 @@ credential as a build argument or ordinary environment value.
 | `alcantara_jobs_total`                         | `job`, `result`                     | Background chart refresh outcomes              |
 | `alcantara_job_last_success_timestamp_seconds` | `job`                               | Last successful chart refresh                  |
 | `alcantara_media_analyses_total`               | `result`                            | Audio asset analysis runs                      |
+| `alcantara_outbound_fetch_total`               | `path`, `result`                    | Fetches of supplied URLs under the outbound-request policy ([outbound-requests.md](outbound-requests.md)) |
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
 | `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
 

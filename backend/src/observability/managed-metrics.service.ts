@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+  OUTBOUND_FETCH_PATHS,
+  OUTBOUND_FETCH_RESULTS,
+} from '../outbound/safe-fetch';
+import {
   collectDefaultMetrics,
   Counter,
   Gauge,
@@ -214,6 +218,7 @@ export class ManagedMetricsService {
   private readonly preferenceOperations: Counter<string>;
   private readonly broadcastDestinationOperations: Counter<string>;
   private readonly sourceOperations: Counter<string>;
+  private readonly outboundFetches: Counter<string>;
   private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
@@ -310,6 +315,15 @@ export class ManagedMetricsService {
       labelNames: ['action', 'result'],
       registers: [this.registry],
     });
+    this.outboundFetches = new Counter({
+      name: 'alcantara_outbound_fetch_total',
+      help: 'Fetches of a supplied URL under the outbound-request policy, by caller and bounded result; never the URL.',
+      labelNames: ['path', 'result'],
+      registers: [this.registry],
+    });
+    for (const path of OUTBOUND_FETCH_PATHS)
+      for (const result of OUTBOUND_FETCH_RESULTS)
+        this.outboundFetches.labels(path, result).inc(0);
     this.sourceOperations = new Counter({
       name: 'alcantara_external_source_operations_total',
       help: 'External source registry operations by bounded action and result.',
@@ -465,6 +479,15 @@ export class ManagedMetricsService {
       action: bounded(action, actions),
       result: bounded(result, results),
     });
+  }
+
+  recordOutboundFetch(path: string, result: string): void {
+    if (
+      !(OUTBOUND_FETCH_PATHS as readonly string[]).includes(path) ||
+      !(OUTBOUND_FETCH_RESULTS as readonly string[]).includes(result)
+    )
+      return;
+    this.outboundFetches.inc({ path, result });
   }
 
   recordExternalSource(action: string, result: string): void {

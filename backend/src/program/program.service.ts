@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   BadGatewayException,
+  GatewayTimeoutException,
   forwardRef,
   Inject,
   Injectable,
@@ -12,6 +13,13 @@ import {
 import { MediaAssetKind, type Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
 import { PrismaService } from '../prisma.service';
+import {
+  OUTBOUND_REFUSAL_MESSAGES,
+  OutboundRefusal,
+  safeFetch,
+  type SafeFetchDeps,
+} from '../outbound/safe-fetch';
+import { isAudioMediaType } from '../outbound/media-types';
 import {
   deleteMediaAsset,
   syncAudioClipAsset,
@@ -2424,52 +2432,53 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * A remote audio file for the program page (the loudness envelope), under
+   * the outbound-request policy: https to a public address only, GET with no
+   * caller headers or cookies, audio types only, at most 100 MiB within 60 s.
+   * A refusal is a 400 (the address is not allowed), 502 (the remote failed)
+   * or 504 (it did not answer in time), with a plain message, never the URL.
+   */
   async proxyAudio(
     url: unknown,
   ): Promise<{ buffer: Buffer; contentType: string }> {
     if (typeof url !== 'string' || !url.trim()) {
       throw new BadRequestException('url is required');
     }
-
-    let normalizedUrl: URL;
     try {
-      normalizedUrl = new URL(url.trim());
-    } catch {
-      throw new BadRequestException('url must be an absolute URL');
-    }
-
-    if (
-      normalizedUrl.protocol !== 'http:' &&
-      normalizedUrl.protocol !== 'https:'
-    ) {
-      throw new BadRequestException('url must use http or https');
-    }
-
-    let response: globalThis.Response;
-    try {
-      response = await fetch(normalizedUrl.toString());
-    } catch {
-      throw new BadGatewayException('failed to fetch remote audio');
-    }
-
-    if (!response.ok) {
-      throw new BadGatewayException(
-        `remote audio returned HTTP ${response.status}`,
+      const response = await safeFetch(
+        url.trim(),
+        {
+          path: 'program_audio',
+          method: 'GET',
+          maxBytes: ProgramService.PROXY_AUDIO_MAX_BYTES,
+          timeoutMs: ProgramService.PROXY_AUDIO_TIMEOUT_MS,
+          maxRedirects: 3,
+          allowContentType: isAudioMediaType,
+        },
+        {
+          ...this.outboundDeps,
+          record: (path, result) =>
+            this.metrics?.recordOutboundFetch(path, result),
+        },
       );
+      return { buffer: response.body, contentType: response.contentType };
+    } catch (error) {
+      // safeFetch only ever throws an OutboundRefusal.
+      const { reason } = error as OutboundRefusal;
+      const message = OUTBOUND_REFUSAL_MESSAGES[reason];
+      if (reason === 'timeout') throw new GatewayTimeoutException(message);
+      if (reason === 'http_status' || reason === 'network')
+        throw new BadGatewayException(message);
+      throw new BadRequestException(message);
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const maxBytes = 100 * 1024 * 1024;
-    if (arrayBuffer.byteLength > maxBytes) {
-      throw new BadRequestException('audio file is too large to proxy');
-    }
-
-    return {
-      buffer: Buffer.from(arrayBuffer),
-      contentType:
-        response.headers.get('content-type') || 'application/octet-stream',
-    };
   }
+
+  // Test seam: the resolver and transport the policy uses (real by default).
+  outboundDeps: Omit<SafeFetchDeps, 'record'> = {};
+
+  private static readonly PROXY_AUDIO_MAX_BYTES = 100 * 1024 * 1024;
+  private static readonly PROXY_AUDIO_TIMEOUT_MS = 60_000;
 
   async addSceneToProgram(
     sceneId: number,

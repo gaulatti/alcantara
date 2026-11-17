@@ -264,8 +264,11 @@ export class ProgramController {
   @Public()
   async proxyAudio(@Query('url') url: string): Promise<StreamableFile> {
     const proxied = await this.programService.proxyAudio(url);
+    // Only the type and length of the remote file are passed on; no other
+    // upstream header reaches the client.
     return new StreamableFile(proxied.buffer, {
       type: proxied.contentType,
+      length: proxied.buffer.byteLength,
       disposition: 'inline',
     });
   }

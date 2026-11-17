@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- Test doubles and private-state inspection are intentionally loosely typed. */
+import { scriptedTransport } from '../outbound/safe-fetch.testing';
 import {
   BadGatewayException,
   BadRequestException,
@@ -42,7 +43,9 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       // A v2 state reads the broadcast settings (gaulatti/alcantara#177).
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
       broadcastSettings: {
-        upsert: jest.fn().mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
+        upsert: jest
+          .fn()
+          .mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
       },
     };
     const radio = {
@@ -1236,76 +1239,85 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
   });
 
   describe('proxyAudio', () => {
-    const response = (init: Partial<Record<string, unknown>> = {}) =>
-      ({
-        ok: true,
-        status: 200,
-        arrayBuffer: jest.fn().mockResolvedValue(new Uint8Array([1, 2]).buffer),
-        headers: { get: jest.fn().mockReturnValue('audio/mpeg') },
-        ...init,
-      }) as never;
+    // The remote audio fetch goes through the outbound-request policy; the
+    // policy's own refusals are covered in src/outbound.
+    const withTransport = (
+      script: Parameters<typeof scriptedTransport>[1],
+      names: Record<string, string[]> = {
+        'media.example.com': ['93.184.216.34'],
+      },
+    ) => {
+      const built = build();
+      const transport = scriptedTransport(names, script);
+      built.service.outboundDeps = transport;
+      return { ...built, transport };
+    };
 
-    afterEach(() => jest.restoreAllMocks());
-
-    it('validates the url', async () => {
+    it('requires a url', async () => {
       const { service } = build();
       for (const bad of [undefined, 5, '', '   ']) {
         await expect(service.proxyAudio(bad)).rejects.toThrow(
           'url is required',
         );
       }
-      await expect(service.proxyAudio('nope')).rejects.toThrow(
-        'url must be an absolute URL',
-      );
-      await expect(service.proxyAudio('ftp://x/y')).rejects.toThrow(
-        'url must use http or https',
-      );
     });
 
-    it('maps fetch failures and upstream errors to bad gateway', async () => {
-      const { service } = build();
-      const fetchSpy = jest
-        .spyOn(globalThis, 'fetch')
-        .mockRejectedValueOnce(new Error('down'));
-      await expect(service.proxyAudio('http://x/a.mp3')).rejects.toThrow(
-        'failed to fetch remote audio',
-      );
-      fetchSpy.mockResolvedValueOnce(response({ ok: false, status: 503 }));
-      await expect(service.proxyAudio('http://x/a.mp3')).rejects.toThrow(
-        'remote audio returned HTTP 503',
-      );
-    });
-
-    it('rejects oversized audio', async () => {
-      const { service } = build();
-      jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-        response({
-          arrayBuffer: jest
-            .fn()
-            .mockResolvedValue({ byteLength: 100 * 1024 * 1024 + 1 }),
-        }),
-      );
-      await expect(service.proxyAudio('https://x/a.mp3')).rejects.toThrow(
-        'audio file is too large to proxy',
-      );
-    });
-
-    it('returns the buffer with the upstream or default content type', async () => {
-      const { service } = build();
-      const fetchSpy = jest
-        .spyOn(globalThis, 'fetch')
-        .mockResolvedValueOnce(response());
-      const ok = await service.proxyAudio(' http://x/a.mp3 ');
-      expect(fetchSpy).toHaveBeenCalledWith('http://x/a.mp3');
+    it('returns a public audio file with its type', async () => {
+      const { service } = withTransport({
+        'media.example.com/a.mp3': {
+          status: 200,
+          headers: { 'content-type': 'audio/mpeg' },
+          body: Buffer.from([1, 2]),
+        },
+      });
+      const ok = await service.proxyAudio(' https://media.example.com/a.mp3 ');
       expect(ok.buffer).toEqual(Buffer.from([1, 2]));
       expect(ok.contentType).toBe('audio/mpeg');
-      fetchSpy.mockResolvedValueOnce(
-        response({ headers: { get: jest.fn().mockReturnValue(null) } }),
-      );
-      expect((await service.proxyAudio('http://x/b')).contentType).toBe(
-        'application/octet-stream',
-      );
     });
+
+    it.each([
+      ['http://media.example.com/a.mp3', 400, 'The address must use https.'],
+      [
+        'https://10.0.0.1/a.mp3',
+        400,
+        'The address points at a private, local or reserved network, which the server never fetches.',
+      ],
+      [
+        'https://media.example.com/page',
+        400,
+        'The response is not a type the server accepts here.',
+      ],
+      [
+        'https://media.example.com/gone',
+        502,
+        'The address answered with an error status.',
+      ],
+      [
+        'https://media.example.com/none',
+        502,
+        'The address could not be reached.',
+      ],
+      [
+        'https://media.example.com/idle',
+        504,
+        'The address did not answer in time.',
+      ],
+    ])(
+      'refuses %s with %s and a plain message',
+      async (url, status, message) => {
+        const { service } = withTransport({
+          'media.example.com/page': {
+            status: 200,
+            headers: { 'content-type': 'text/html' },
+            body: Buffer.from('<html>'),
+          },
+          'media.example.com/gone': { status: 503 },
+          'media.example.com/idle': { status: 200, socketTimeout: true },
+        });
+        const error = await service.proxyAudio(url).catch((e: unknown) => e);
+        expect(error).toMatchObject({ status, message });
+      },
+    );
   });
 
   describe('program scenes', () => {
