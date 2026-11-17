@@ -177,8 +177,10 @@ same segue and loudness the song command would carry; with segue off, neither.
   If the results differ, the successor depends on the clock (selection by
   elapsed time from a playlist start time, a timed nested sequence, high
   rotation becoming due) and nothing is announced: the end goes by today's
-  command. A song after a queued song is the common case, because a queued
-  song never moves the cursor.
+  command. Since #176 the playlist resumes at its cursor item by position, so
+  the song after a queued song is order-determined and announced; a high
+  rotation favorite coming due before the end is the usual clock-dependent
+  case.
 - **Not announced** when a bumper is due after the song, a clocked flight log
   runs, the successor has an intro, there is no successor, or Palazzo answered
   404 (an older Palazzo; nothing more is announced to it until its boot

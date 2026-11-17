@@ -1132,10 +1132,11 @@ describe('next-song announcement and handoff', () => {
       expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
     });
 
-    it('does not announce when the successor depends on when the end happens', async () => {
+    it('announces the cursor item after a queued song, even on an epoch-anchored playlist (#176)', async () => {
       const h = harness();
-      // An epoch-anchored playlist: after a queued song (which never moves
-      // the cursor) the next playlist song is chosen by elapsed time.
+      // Before #176 the song after a queued one was chosen by elapsed time
+      // from the playlist stamp and was not announced. It is now the cursor
+      // item by position, so it is order-determined and announced.
       withDurations(h, 0);
       await onAir(h);
       await h.engine.enqueueSong(PROGRAM, SONGS[5].itemId);
@@ -1143,18 +1144,41 @@ describe('next-song announcement and handoff', () => {
       h.palazzo.endCurrent();
       await settle();
       expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[5].url);
-      const announcedWhileQueued = h.palazzo.announced.length;
-
-      // The queued song plays: its successor is clock-dependent.
-      h.engine.handleSequenceUpdated(PROGRAM, {
-        ...h.sequence(),
-        startedAt: 0,
-      });
-      await settle();
-      expect(h.palazzo.announced).toHaveLength(announcedWhileQueued);
+      expect(h.palazzo.announced.at(-1)?.url).toBe(SONGS[1].url);
       jest.setSystemTime(Date.now() + 6000);
       h.palazzo.endCurrent();
       await settle();
+      expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 2 });
+    });
+
+    it('does not announce when a high rotation favorite comes due before the end', async () => {
+      const h = harness();
+      const items = (h.sequence().items as Record<string, unknown>[]).map(
+        (entry, i) => ({ ...entry, durationMs: 6000, highRotation: i === 0 }),
+      );
+      h.engine.handleSequenceUpdated(PROGRAM, {
+        ...h.sequence(),
+        startedAt: Date.now(),
+        items,
+      });
+      // The favorite plays first and is recorded at its start.
+      await onAir(h);
+      const favoritePlayedAt = Date.now();
+      expect(h.palazzo.current?.url).toBe(SONGS[0].url);
+      // The next song starts 20 s before the favorite is due again (30 min):
+      // it is not due if that song ends on time, but is a minute later.
+      jest.setSystemTime(favoritePlayedAt + 30 * 60_000 - 20_000);
+      h.palazzo.endCurrent();
+      await settle();
+      const announcedBefore = h.palazzo.announced.length;
+      expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+      // Its successor depends on when it ends: nothing is announced.
+      expect(h.palazzo.announced).toHaveLength(announcedBefore);
+      h.palazzo.endCurrent();
+      await settle();
+      // Ending on time, the cursor item is commanded as today.
+      expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
       expect(h.metrics.snapshot().handoffs).toEqual({
         preloaded: 1,
         command: 1,
