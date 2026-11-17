@@ -769,7 +769,8 @@ it("shows an empty manual playlist when the sequence from the API is malformed",
 // gaulatti/alcantara#189: control-room help is Bleecker's tooltip, not a native
 // title (BleeckerButtons moves `title` into the tooltip). Keyboard focus opens
 // it at once, as hover does after its delay. The tooltip carries the loop
-// state, and its text uses the readable dark-console colour.
+// state, and its text uses the readable dark-console colour that Bleecker
+// 0.1.42 and later give it (gaulatti/alcantara#191 removed #189's local class).
 it("shows the loop help in a readable tooltip when the loop toggle is focused", () => {
   // jsdom has no ResizeObserver; Radix measures the open tooltip with one.
   vi.stubGlobal(
