@@ -66,9 +66,42 @@ it("starts the song without a meter when the AudioContext cannot be created", ()
     isPlaying: true,
     track: { token: "manual:one" },
   });
-  // Without a meter the console shows the post-fader level.
+  // Without a meter the bus reports the post-fader level.
   expect(getProgramAudioBusSignalSnapshot(programId)).toEqual({
     rms: 1,
     peak: 1,
   });
+});
+
+// gaulatti/alcantara#202: the skipped loudness envelope is logged once per
+// page, with a fixed message and no track URL. A fresh module stands for a
+// fresh page.
+it("logs the skipped level envelope once, without the track's URL", async () => {
+  vi.resetModules();
+  const bus = await import("./programAudioBus");
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.stubGlobal("Audio", PlayingAudio);
+  vi.stubGlobal(
+    "AudioContext",
+    class {
+      constructor() {
+        throw new DOMException("No audio output", "NotSupportedError");
+      }
+    },
+  );
+  const page = `bus-page-${Math.random()}`;
+  for (const name of ["two", "three"]) {
+    bus.stopProgramAudioBus(page);
+    bus.ensureProgramAudioBusTrack(page, {
+      token: `manual:${name}`,
+      audioUrl: `https://audio.test/private-${name}.mp3`,
+    });
+  }
+  bus.stopProgramAudioBus(page);
+  expect(warn).toHaveBeenCalledTimes(1);
+  expect(warn).toHaveBeenCalledWith(
+    "Program audio level envelope skipped: the browser refused an AudioContext.",
+  );
+  expect(JSON.stringify(warn.mock.calls)).not.toContain("audio.test");
+  warn.mockRestore();
 });

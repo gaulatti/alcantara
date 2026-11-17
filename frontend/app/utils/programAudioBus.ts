@@ -405,6 +405,21 @@ function resolveEnvelopeFetchUrl(audioUrl: string): string {
   }
 }
 
+let envelopeSkipWarned = false;
+
+/**
+ * Logs, once per page, that the loudness envelope was skipped because the
+ * browser refused an AudioContext. The message is fixed and carries no track
+ * URL. Only the bus's level snapshot is affected; the song plays as usual.
+ */
+function warnEnvelopeSkippedOnce(): void {
+  if (envelopeSkipWarned) {
+    return;
+  }
+  envelopeSkipWarned = true;
+  console.warn('Program audio level envelope skipped: the browser refused an AudioContext.');
+}
+
 function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: string): void {
   const normalizedUrl = typeof trackAudioUrl === 'string' ? trackAudioUrl.trim() : '';
   state.meterEnvelopeUrl = normalizedUrl;
@@ -425,6 +440,7 @@ function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: str
     try {
       context = new AudioContextCtor();
     } catch {
+      warnEnvelopeSkippedOnce();
       return;
     }
     state.meterContext = context;
