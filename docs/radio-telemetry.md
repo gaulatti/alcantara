@@ -239,10 +239,13 @@ credential as a build argument or ordinary environment value.
 | `alcantara_job_last_success_timestamp_seconds` | `job`                               | Last successful chart refresh                  |
 | `alcantara_media_analyses_total`               | `result`                            | Audio asset analysis runs                      |
 | `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
+| `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
 
 `alcantara_media_analyses_total{result}` counts audio asset analysis runs:
 `success` (measurements stored), `retry` (failed and scheduled again) and
-`failure` (failed for good). All three are exported from startup at zero. See
+`failure` (failed for good). All three are exported from startup at zero.
+`alcantara_media_analysis_backlog_assets` shows how many audio assets still
+wait for analysis and reaches zero when the backfill is done. See
 [media-library-architecture.md](media-library-architecture.md#audio-analysis).
 
 The existing radio families remain unchanged:

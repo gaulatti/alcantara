@@ -333,13 +333,16 @@ describe('FfmpegAudioAnalyzer', () => {
     const ok = runner({
       ffprobe: { stdout: 'ffprobe version', stderr: '' },
       ffmpeg: { stdout: 'ffmpeg version', stderr: '' },
+      nice: { stdout: 'ffprobe version', stderr: '' },
     });
-    await expect(new FfmpegAudioAnalyzer(ok).available(1_000)).resolves.toBe(
-      true,
-    );
+    const analyzer = new FfmpegAudioAnalyzer(ok);
+    expect(analyzer.lowPriority).toBe(false);
+    await expect(analyzer.available(1_000)).resolves.toBe(true);
+    expect(analyzer.lowPriority).toBe(true);
     expect(ok.mock.calls.map(([command, args]) => [command, args])).toEqual([
       ['ffprobe', ['-hide_banner', '-version']],
       ['ffmpeg', ['-hide_banner', '-version']],
+      ['nice', ['-n', '19', 'ffprobe', '-hide_banner', '-version']],
     ]);
 
     const missing = runner({
@@ -349,6 +352,54 @@ describe('FfmpegAudioAnalyzer', () => {
     await expect(
       new FfmpegAudioAnalyzer(missing).available(1_000),
     ).resolves.toBe(false);
+  });
+
+  it('runs both tools through nice at the lowest priority when nice starts', async () => {
+    const run = runner({
+      nice: { stdout: '', stderr: '' },
+      ffprobe: { stdout: 'version', stderr: '' },
+      ffmpeg: { stdout: 'version', stderr: '' },
+    });
+    const analyzer = new FfmpegAudioAnalyzer(run);
+    await analyzer.available(1_000);
+    run.mockClear();
+    run
+      .mockResolvedValueOnce({ stdout: PROBE, stderr: '' })
+      .mockResolvedValueOnce({
+        stdout: MEASURE_STDOUT,
+        stderr: MEASURE_STDERR,
+      });
+
+    await analyzer.analyze('https://x/a.mp3', 1_000);
+
+    expect(
+      run.mock.calls.map(([command, args]) => [command, args.slice(0, 3)]),
+    ).toEqual([
+      ['nice', ['-n', '19', 'ffprobe']],
+      ['nice', ['-n', '19', 'ffmpeg']],
+    ]);
+    expect(run.mock.calls[1][1].slice(3)).toEqual(
+      measureArguments('https://x/a.mp3'),
+    );
+  });
+
+  it('runs the tools directly when nice is not installed', async () => {
+    const run = runner({
+      nice: new ProcessRunError('spawn'),
+      ffprobe: { stdout: PROBE, stderr: '' },
+      ffmpeg: { stdout: MEASURE_STDOUT, stderr: MEASURE_STDERR },
+    });
+    const analyzer = new FfmpegAudioAnalyzer(run);
+    await expect(analyzer.available(1_000)).resolves.toBe(true);
+    expect(analyzer.lowPriority).toBe(false);
+    run.mockClear();
+
+    await analyzer.analyze('https://x/a.mp3', 1_000);
+
+    expect(run.mock.calls.map(([command]) => command)).toEqual([
+      'ffprobe',
+      'ffmpeg',
+    ]);
   });
 
   it('uses the real process runner by default', () => {

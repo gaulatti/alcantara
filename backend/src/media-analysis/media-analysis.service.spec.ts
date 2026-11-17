@@ -6,7 +6,10 @@ import {
 } from './ffmpeg-audio.analyzer';
 import {
   ANALYSIS_TIMEOUT_MS,
-  BUSY_GAP_MS,
+  dutyCycleWaitMs,
+  DUTY_CYCLE_MULTIPLE,
+  MAX_WAIT_MS,
+  MIN_WAIT_MS,
   IDLE_POLL_MS,
   LEASE_MS,
   MediaAnalysisService,
@@ -46,6 +49,7 @@ function candidate(overrides: Record<string, unknown> = {}) {
     analysisUpdatedAt: null,
     attempts: null,
     sourceChanged: false,
+    remaining: BigInt(1),
     ...overrides,
   };
 }
@@ -59,9 +63,10 @@ function setup(rows: unknown[][] = [[candidate()]]) {
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
   };
-  const metrics = { record: jest.fn() };
+  const metrics = { record: jest.fn(), setBacklog: jest.fn() };
   const analyzer = {
     available: jest.fn(async () => true),
+    lowPriority: true,
     analyze: jest.fn(async () => ANALYSIS),
   };
   const service = new MediaAnalysisService(
@@ -98,6 +103,7 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(query.sql).toContain('m."nextAttemptAt" <= CAST(');
     expect(query.sql).toContain('ORDER BY a."createdAt" DESC');
     expect(query.sql).toContain('LIMIT 1');
+    expect(query.sql).toContain('COUNT(*) OVER () AS "remaining"');
     expect(query.values).toEqual([NOW.toISOString()]);
     expect(analyzer.analyze).not.toHaveBeenCalled();
     expect(prisma.mediaAssetAnalysis.create).not.toHaveBeenCalled();
@@ -422,9 +428,11 @@ describe('MediaAnalysisService schedule', () => {
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(1);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-    await jest.advanceTimersByTimeAsync(BUSY_GAP_MS);
+    await jest.advanceTimersByTimeAsync(MIN_WAIT_MS - 1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
-    await jest.advanceTimersByTimeAsync(BUSY_GAP_MS);
+    await jest.advanceTimersByTimeAsync(MIN_WAIT_MS);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
     await jest.advanceTimersByTimeAsync(IDLE_POLL_MS - 1);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
@@ -434,6 +442,51 @@ describe('MediaAnalysisService schedule', () => {
     service.onModuleDestroy();
     await jest.advanceTimersByTimeAsync(IDLE_POLL_MS * 2);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(4);
+  });
+
+  it('starts no earlier than five minutes after boot and says whether it runs niced', async () => {
+    jest.useFakeTimers();
+    expect(START_DELAY_MS).toBe(5 * 60_000);
+    const niced = setup();
+    await niced.service.onApplicationBootstrap();
+    expect(Logger.prototype.log).toHaveBeenCalledWith(
+      'Media analysis is scheduled at lowered priority',
+    );
+    niced.service.onModuleDestroy();
+
+    const plain = setup();
+    plain.analyzer.lowPriority = false;
+    await plain.service.onApplicationBootstrap();
+    expect(Logger.prototype.log).toHaveBeenCalledWith(
+      'Media analysis is scheduled; nice is not installed, so it runs at normal priority',
+    );
+    plain.service.onModuleDestroy();
+  });
+
+  it('waits the duty-cycle multiple of a run that failed, as of one that succeeded', async () => {
+    jest.useFakeTimers();
+    const { service, prisma, analyzer } = setup([
+      [candidate()],
+      [candidate({ assetId: 'song:2' })],
+    ]);
+    analyzer.analyze.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+      throw new AudioAnalysisError('decode-failed');
+    });
+
+    await service.onApplicationBootstrap();
+    await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'failed' }),
+      }),
+    );
+    await jest.advanceTimersByTimeAsync(30_000 - 1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    service.onModuleDestroy();
   });
 
   it('keeps polling after a run fails before analysing', async () => {
@@ -467,5 +520,36 @@ describe('MediaAnalysisService schedule', () => {
     release(ANALYSIS);
     await jest.advanceTimersByTimeAsync(IDLE_POLL_MS * 2);
     expect(busy.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('dutyCycleWaitMs', () => {
+  it('waits three times as long as the run, so the job is busy about a quarter of the time', () => {
+    expect(DUTY_CYCLE_MULTIPLE).toBe(3);
+    expect(dutyCycleWaitMs(4_000)).toBe(12_000);
+    expect(dutyCycleWaitMs(60_000)).toBe(180_000);
+  });
+
+  it('never waits less than the minimum or more than the maximum', () => {
+    expect(MIN_WAIT_MS).toBe(5_000);
+    expect(MAX_WAIT_MS).toBe(10 * 60_000);
+    expect(dutyCycleWaitMs(0)).toBe(MIN_WAIT_MS);
+    expect(dutyCycleWaitMs(-50)).toBe(MIN_WAIT_MS);
+    expect(dutyCycleWaitMs(1_000)).toBe(MIN_WAIT_MS);
+    expect(dutyCycleWaitMs(200_000)).toBe(200_000 * 3);
+    expect(dutyCycleWaitMs(400_000)).toBe(MAX_WAIT_MS);
+  });
+});
+
+describe('MediaAnalysisService backlog', () => {
+  it('publishes how many assets still wait, and zero when none do', async () => {
+    const { service, metrics } = setup([
+      [candidate({ remaining: BigInt(4321) })],
+      [],
+    ]);
+    await service.runOnce(NOW);
+    expect(metrics.setBacklog).toHaveBeenLastCalledWith(4321);
+    await service.runOnce(NOW);
+    expect(metrics.setBacklog).toHaveBeenLastCalledWith(0);
   });
 });

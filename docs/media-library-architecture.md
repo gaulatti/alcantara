@@ -114,15 +114,32 @@ capabilities are never written by the job, so an analysis failure cannot block
 or undo an upload: the asset stays playable and the radio service keeps its
 no-analysis path.
 
-**How it runs.** Thirty seconds after startup the job picks the newest audio
-asset that has no row, whose row describes another `sourceUrl` (the file was
-replaced), or whose retry time has come. It analyses one file at a time
-(concurrency 1), with one second between files while there is work and a one
-minute poll when there is none. A newly uploaded asset is therefore picked up
-within about a minute, and the existing library is backfilled newest first.
+**How it runs.** Five minutes after startup, so a deploy's own startup never
+competes with it, the job picks the newest audio asset that has no row, whose
+row describes another `sourceUrl` (the file was replaced), or whose retry time
+has come. It analyses one file at a time (concurrency 1) and polls once a
+minute when there is nothing to do. A newly uploaded asset is therefore picked
+up within about a minute, and the existing library is backfilled newest first.
 Before scheduling anything the job checks that `ffmpeg` and `ffprobe` start; if
-either is missing (for example in the development image, which does not install
-them) it logs `Media analysis is not scheduled` and does nothing else.
+either is missing it logs `Media analysis is not scheduled` and does nothing
+else.
+
+**Throttle.** The radio backend runs around the clock, so the job keeps to a
+fraction of one core:
+
+- **Lowered priority.** At startup the job checks that `nice` can start the
+  tools and then runs every `ffprobe` and `ffmpeg` as `nice -n 19`. The
+  production and development images are `node:22-alpine`, whose busybox
+  normally includes `nice`. The startup log says which applies: `Media
+  analysis is scheduled at lowered priority`, or that `nice` is not installed
+  and the job runs at normal priority.
+- **Duty cycle.** After each run, whether it succeeded or failed, the job waits
+  three times as long as the run took (the run includes the download), so it
+  is busy at most one part in four: about a quarter of one core. The wait is
+  never shorter than 5 seconds or longer than 10 minutes. These are fixed
+  constants in `media-analysis.service.ts` (`DUTY_CYCLE_MULTIPLE`,
+  `MIN_WAIT_MS`, `MAX_WAIT_MS`, `START_DELAY_MS`), not settings.
+- **One thread.** `ffmpeg` runs with `-threads 1`.
 
 **What it measures.** `ffprobe` reads the first audio stream's tags, and one
 `ffmpeg` pass (`-threads 1`) runs `silencedetect` and `ebur128` with true peak:
@@ -165,13 +182,18 @@ asset ID, result and code.
 
 **Cost.** On the fixture used for the ticket (a 4 minute, 320 kbps stereo MP3
 read from local disk, Apple M-series), one analysis takes about 1.5 s wall and
-1.65 s CPU, with about 22 MB resident. A 5,000-track library at concurrency 1
-takes about 5,000 × (1.5 s + 1 s gap) ≈ 3.5 hours plus download time; on a
-slower production CPU expect a few times that.
+1.65 s CPU, with about 22 MB resident. With the duty cycle each track then
+takes about 1.5 s plus the 5 s minimum wait, so a 5,000-track library takes
+about 9 hours. If a production run takes 4 s including the download, each
+track takes 4 s + 12 s and the backfill about 22 hours. Either way the job is
+busy at most a quarter of the time.
 
 **Metrics.** `alcantara_media_analyses_total{result}` and
 `alcantara_media_analysis_duration_seconds{result}`, where `result` is
 `success`, `retry` (failed, scheduled again) or `failure` (failed for good).
+`alcantara_media_analysis_backlog_assets` (no labels) is the number of audio
+assets still waiting at the last poll: unanalysed, stale, or due a retry. It
+falls to zero when the backfill is done.
 
 **Rollback.** A forward fix. The job only writes `MediaAssetAnalysis`, which
 playback reads only for programs with `segueMode` `on`.

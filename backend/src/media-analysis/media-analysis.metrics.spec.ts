@@ -44,6 +44,18 @@ describe('MediaAnalysisMetrics', () => {
       })),
     );
 
+    expect(
+      samples(
+        await controller.getMetrics(),
+        'alcantara_media_analysis_backlog_assets',
+      ),
+    ).toEqual([
+      { name: 'alcantara_media_analysis_backlog_assets', labels: {}, value: 0 },
+    ]);
+    metrics.setBacklog(4321);
+    metrics.setBacklog(-3);
+    metrics.setBacklog(4320);
+
     metrics.record('success', 3.2);
     metrics.record('success', 2.8);
     metrics.record('retry', 180);
@@ -73,6 +85,13 @@ describe('MediaAnalysisMetrics', () => {
         if (family.endsWith('_bucket')) expect(le).toBeDefined();
       }
     }
+    expect(samples(text, 'alcantara_media_analysis_backlog_assets')).toEqual([
+      {
+        name: 'alcantara_media_analysis_backlog_assets',
+        labels: {},
+        value: 4320,
+      },
+    ]);
     const sums = samples(text, 'alcantara_media_analysis_duration_seconds_sum');
     expect(
       Object.fromEntries(sums.map((s) => [s.labels.result, s.value])),

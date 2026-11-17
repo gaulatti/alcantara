@@ -271,22 +271,44 @@ export function assertPlayable(analysis: AudioAnalysis): void {
   }
 }
 
+/** Scheduling priority for the tools when `nice` is installed (19 is lowest). */
+export const NICE_LEVEL = '19';
+
 export class FfmpegAudioAnalyzer {
+  private niced = false;
+
   constructor(private readonly run: ProcessRunner = createProcessRunner()) {}
 
-  /** True when both tools start; checked once before the job is scheduled. */
+  /** Whether the tools run at lowered priority; known after available(). */
+  get lowPriority(): boolean {
+    return this.niced;
+  }
+
+  /**
+   * True when both tools start; checked once before the job is scheduled.
+   * It also checks whether `nice` can start them, and from then on runs every
+   * tool through it so analysis yields the CPU to the radio.
+   */
   async available(timeoutMs: number): Promise<boolean> {
+    const options = { timeoutMs, maxOutputBytes: MAX_OUTPUT_BYTES };
     try {
       for (const tool of ['ffprobe', 'ffmpeg']) {
-        await this.run(tool, ['-hide_banner', '-version'], {
-          timeoutMs,
-          maxOutputBytes: MAX_OUTPUT_BYTES,
-        });
+        await this.run(tool, ['-hide_banner', '-version'], options);
       }
-      return true;
     } catch {
       return false;
     }
+    try {
+      await this.run(
+        'nice',
+        ['-n', NICE_LEVEL, 'ffprobe', '-hide_banner', '-version'],
+        options,
+      );
+      this.niced = true;
+    } catch {
+      this.niced = false;
+    }
+    return true;
   }
 
   async analyze(input: string, timeoutMs: number): Promise<AudioAnalysis> {
@@ -324,7 +346,10 @@ export class FfmpegAudioAnalyzer {
     const timeoutMs = deadline - Date.now();
     if (timeoutMs <= 0) throw new AudioAnalysisError('timeout');
     try {
-      return await this.run(command, args, {
+      const [program, programArgs] = this.niced
+        ? ['nice', ['-n', NICE_LEVEL, command, ...args]]
+        : [command, args];
+      return await this.run(program, programArgs, {
         timeoutMs,
         maxOutputBytes: MAX_OUTPUT_BYTES,
       });

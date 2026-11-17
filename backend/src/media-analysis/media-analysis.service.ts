@@ -19,10 +19,16 @@ import {
 
 export const MEDIA_AUDIO_ANALYZER = Symbol('MEDIA_AUDIO_ANALYZER');
 
-/** Waits this long after startup before the first run. */
-export const START_DELAY_MS = 30_000;
-/** Gap between runs while there is work, so one run never follows another without a pause. */
-export const BUSY_GAP_MS = 1_000;
+/** Waits this long after startup before the first run, so a deploy's own startup never competes with it. */
+export const START_DELAY_MS = 5 * 60_000;
+/**
+ * Duty cycle while there is work: after each run the job waits this many
+ * times as long as the run took, so it is busy at most 1 part in 4 (about a
+ * quarter of one core). The wait is bounded below and above.
+ */
+export const DUTY_CYCLE_MULTIPLE = 3;
+export const MIN_WAIT_MS = 5_000;
+export const MAX_WAIT_MS = 10 * 60_000;
 /** Wait when no asset needs analysis. */
 export const IDLE_POLL_MS = 60_000;
 /** Deadline for one file, covering the probe and the measurement. */
@@ -46,6 +52,13 @@ interface Candidate {
   analysisUpdatedAt: Date | null;
   attempts: number | null;
   sourceChanged: boolean;
+  remaining: bigint | number;
+}
+
+/** The wait after a run that took `elapsedMs`, whatever its outcome. */
+export function dutyCycleWaitMs(elapsedMs: number): number {
+  const wait = Math.max(0, elapsedMs) * DUTY_CYCLE_MULTIPLE;
+  return Math.min(MAX_WAIT_MS, Math.max(MIN_WAIT_MS, wait));
 }
 
 const EMPTY_MEASUREMENT = {
@@ -97,7 +110,11 @@ export class MediaAnalysisService
       );
       return;
     }
-    this.logger.log('Media analysis is scheduled');
+    this.logger.log(
+      this.analyzer.lowPriority
+        ? 'Media analysis is scheduled at lowered priority'
+        : 'Media analysis is scheduled; nice is not installed, so it runs at normal priority',
+    );
     this.schedule(START_DELAY_MS);
   }
 
@@ -113,14 +130,18 @@ export class MediaAnalysisService
     this.timer.unref();
   }
 
+  // Any run that handled an asset, failed or not, is followed by the duty-cycle wait.
   private async tick(): Promise<void> {
+    const startedAt = Date.now();
     let worked = false;
     try {
       worked = await this.runOnce();
     } catch {
       this.logger.error('Media analysis run failed before analysing a file');
     }
-    this.schedule(worked ? BUSY_GAP_MS : IDLE_POLL_MS);
+    this.schedule(
+      worked ? dutyCycleWaitMs(Date.now() - startedAt) : IDLE_POLL_MS,
+    );
   }
 
   /** Analyses at most one asset. Returns whether an asset was handled. */
@@ -129,6 +150,7 @@ export class MediaAnalysisService
     this.running = true;
     try {
       const candidate = await this.nextCandidate(now);
+      this.metrics.setBacklog(candidate ? Number(candidate.remaining) : 0);
       if (!candidate) return false;
       await this.handle(candidate, now);
       return true;
@@ -138,14 +160,15 @@ export class MediaAnalysisService
   }
 
   // The newest audio asset that has no analysis, whose analysis describes another
-  // source URL, or whose retry or lease time has come.
+  // source URL, or whose retry or lease time has come, with how many such assets remain.
   private async nextCandidate(now: Date): Promise<Candidate | null> {
     const rows = await this.prisma.$queryRaw<Candidate[]>(Prisma.sql`
       SELECT a."id" AS "assetId",
              a."sourceUrl" AS "sourceUrl",
              m."updatedAt" AS "analysisUpdatedAt",
              m."attempts" AS "attempts",
-             (m."assetId" IS NOT NULL AND m."sourceUrl" IS DISTINCT FROM a."sourceUrl") AS "sourceChanged"
+             (m."assetId" IS NOT NULL AND m."sourceUrl" IS DISTINCT FROM a."sourceUrl") AS "sourceChanged",
+             COUNT(*) OVER () AS "remaining"
       FROM "MediaAsset" a
       LEFT JOIN "MediaAssetAnalysis" m ON m."assetId" = a."id"
       WHERE a."mediaType" = 'AUDIO'

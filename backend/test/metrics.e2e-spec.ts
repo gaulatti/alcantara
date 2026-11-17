@@ -94,6 +94,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     const analysisMetrics = app.get(MediaAnalysisMetrics);
     analysisMetrics.record('success', 1.5);
     analysisMetrics.record('retry', 180);
+    analysisMetrics.setBacklog(4321);
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -205,6 +206,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     expect(body).toContain(
       'alcantara_media_analysis_duration_seconds_count{result="retry"} 1',
     );
+    expect(body).toContain('alcantara_media_analysis_backlog_assets 4321');
     expect(body).toContain(
       'alcantara_radio_log_transitions_total{result="completed"} 1',
     );
