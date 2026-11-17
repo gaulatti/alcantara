@@ -79,6 +79,11 @@ export function isBrandMatch(
   return content.toLowerCase().includes(lowerWord);
 }
 
+// Test files are named *.test.* or *.spec.* (Vitest frontend, Jest backend).
+export function isTestFile(relativePath: string): boolean {
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(relativePath);
+}
+
 export function scanTree(
   treeDir: string,
   treeName: string,
@@ -93,6 +98,9 @@ export function scanTree(
 
   for (const filePath of allFiles) {
     const rel = path.relative(treeDir, filePath);
+    // A test names the branded component it covers, so it adds no product coupling of its own: only
+    // runtime sources count toward the ratchet.
+    if (isTestFile(rel)) continue;
     let content = '';
     try {
       content = fs.readFileSync(filePath, 'utf8');
@@ -125,7 +133,9 @@ export function loadBaseline(
   const raw = fs.readFileSync(baselinePath, 'utf8');
   const parsed = JSON.parse(raw);
   if (typeof parsed.count !== 'number') {
-    throw new Error(`Invalid baseline format at ${baselinePath}: missing count`);
+    throw new Error(
+      `Invalid baseline format at ${baselinePath}: missing count`,
+    );
   }
   return parsed.count;
 }

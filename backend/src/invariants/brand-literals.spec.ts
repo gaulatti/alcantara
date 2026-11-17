@@ -6,6 +6,7 @@ import {
   checkBrandBaselines,
   findRepoRoot,
   isBrandMatch,
+  isTestFile,
   loadBaseline,
   scanTree,
   walkDirectory,
@@ -23,7 +24,9 @@ describe('Brand-literal ratchet invariant', () => {
 
     for (const tree of ['backend', 'frontend']) {
       for (const word of BRAND_WORDS) {
-        expect(result.counts[tree][word]).toBeLessThanOrEqual(result.baselines[tree][word]);
+        expect(result.counts[tree][word]).toBeLessThanOrEqual(
+          result.baselines[tree][word],
+        );
       }
     }
   });
@@ -39,7 +42,9 @@ describe('Brand-literal ratchet invariant', () => {
 
     try {
       const scan = scanTree(treeDir, 'test-tree', ['fifthbell'], []);
-      expect(scan.matchesByWord['fifthbell']).toEqual(['fifthbell-sub/clean-file.ts']);
+      expect(scan.matchesByWord['fifthbell']).toEqual([
+        'fifthbell-sub/clean-file.ts',
+      ]);
 
       fs.mkdirSync(path.join(baselineDir, 'test-tree'), { recursive: true });
       fs.writeFileSync(
@@ -57,7 +62,9 @@ describe('Brand-literal ratchet invariant', () => {
 
       expect(check.passed).toBe(false);
       expect(check.failures.length).toBe(1);
-      expect(check.failures[0]).toContain('[brand-ratchet] test-tree/fifthbell');
+      expect(check.failures[0]).toContain(
+        '[brand-ratchet] test-tree/fifthbell',
+      );
     } finally {
       fs.rmSync(baseDir, { recursive: true, force: true });
     }
@@ -137,12 +144,22 @@ describe('Brand-literal ratchet invariant', () => {
     const baselineDir = path.join(baseDir, 'baselines');
     fs.mkdirSync(treeDir, { recursive: true });
     fs.mkdirSync(path.join(baselineDir, 'test-tree'), { recursive: true });
-    fs.writeFileSync(path.join(baselineDir, 'test-tree/fifthbell.json'), JSON.stringify({ count: 1 }));
+    fs.writeFileSync(
+      path.join(baselineDir, 'test-tree/fifthbell.json'),
+      JSON.stringify({ count: 1 }),
+    );
     const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      const check = checkBrandBaselines({ repoRoot, baselineDir, trees: { 'test-tree': treeDir }, words: ['fifthbell'] });
+      const check = checkBrandBaselines({
+        repoRoot,
+        baselineDir,
+        trees: { 'test-tree': treeDir },
+        words: ['fifthbell'],
+      });
       expect(check.passed).toBe(true);
-      expect(log).toHaveBeenCalledWith('[brand-ratchet] Reminder: lower baseline for test-tree/fifthbell from 1 to 0');
+      expect(log).toHaveBeenCalledWith(
+        '[brand-ratchet] Reminder: lower baseline for test-tree/fifthbell from 1 to 0',
+      );
     } finally {
       log.mockRestore();
       fs.rmSync(baseDir, { recursive: true, force: true });
@@ -151,10 +168,15 @@ describe('Brand-literal ratchet invariant', () => {
 
   describe('helper unit coverage', () => {
     it('findRepoRoot returns the nearest ancestor holding pnpm-workspace.yaml', () => {
-      const tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'brand-root-')));
+      const tmpDir = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'brand-root-')),
+      );
       const nested = path.join(tmpDir, 'backend', 'src', 'invariants');
       fs.mkdirSync(nested, { recursive: true });
-      fs.writeFileSync(path.join(tmpDir, 'pnpm-workspace.yaml'), 'packages: []\n');
+      fs.writeFileSync(
+        path.join(tmpDir, 'pnpm-workspace.yaml'),
+        'packages: []\n',
+      );
       try {
         expect(findRepoRoot(nested)).toBe(tmpDir);
       } finally {
@@ -163,7 +185,9 @@ describe('Brand-literal ratchet invariant', () => {
     });
 
     it('findRepoRoot falls back to three levels above the start when no workspace file exists', () => {
-      const tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'brand-noroot-')));
+      const tmpDir = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'brand-noroot-')),
+      );
       const nested = path.join(tmpDir, 'a', 'b', 'c', 'd');
       fs.mkdirSync(nested, { recursive: true });
       try {
@@ -194,16 +218,35 @@ describe('Brand-literal ratchet invariant', () => {
 
       try {
         const files = walkDirectory(tmpDir, ['invariants']).sort();
-        expect(files).toEqual([path.join(included, 'file2.ts'), path.join(nestedSameName, 'file3.ts')].sort());
+        expect(files).toEqual(
+          [
+            path.join(included, 'file2.ts'),
+            path.join(nestedSameName, 'file3.ts'),
+          ].sort(),
+        );
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
 
     it('isBrandMatch checks path and content correctly', () => {
-      expect(isBrandMatch('programs/modoitaliano/view.tsx', 'clean code', 'modoitaliano')).toBe(true);
-      expect(isBrandMatch('programs/view.tsx', 'const x = "MODOITALIANO";', 'modoitaliano')).toBe(true);
-      expect(isBrandMatch('programs/view.tsx', 'clean code', 'modoitaliano')).toBe(false);
+      expect(
+        isBrandMatch(
+          'programs/modoitaliano/view.tsx',
+          'clean code',
+          'modoitaliano',
+        ),
+      ).toBe(true);
+      expect(
+        isBrandMatch(
+          'programs/view.tsx',
+          'const x = "MODOITALIANO";',
+          'modoitaliano',
+        ),
+      ).toBe(true);
+      expect(
+        isBrandMatch('programs/view.tsx', 'clean code', 'modoitaliano'),
+      ).toBe(false);
     });
 
     it('scanTree handles unreadable files gracefully', () => {
@@ -222,6 +265,38 @@ describe('Brand-literal ratchet invariant', () => {
       }
     });
 
+    it('scanTree counts runtime sources only, not the tests that cover them', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brand-tests-'));
+      try {
+        fs.writeFileSync(
+          path.join(tmpDir, 'ModoItalianoClock.tsx'),
+          'export {}',
+        );
+        fs.writeFileSync(
+          path.join(tmpDir, 'ModoItalianoClock.test.tsx'),
+          'modoitaliano',
+        );
+        fs.writeFileSync(
+          path.join(tmpDir, 'modoitaliano.service.spec.ts'),
+          'modoitaliano',
+        );
+        const scan = scanTree(tmpDir, 'test-tree', ['modoitaliano']);
+        expect(scan.matchesByWord['modoitaliano']).toEqual([
+          'ModoItalianoClock.tsx',
+        ]);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('isTestFile recognises Vitest and Jest test names only', () => {
+      expect(isTestFile('components/Clock.test.tsx')).toBe(true);
+      expect(isTestFile('program/program.service.spec.ts')).toBe(true);
+      expect(isTestFile('utils/x.test.mjs')).toBe(true);
+      expect(isTestFile('components/Clock.tsx')).toBe(false);
+      expect(isTestFile('components/test.helpers.ts')).toBe(false);
+    });
+
     it('loadBaseline throws when baseline file is missing', () => {
       expect(() => loadBaseline('/non/existent', 'backend', 'unknown')).toThrow(
         /Missing baseline file at/,
@@ -232,7 +307,10 @@ describe('Brand-literal ratchet invariant', () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brand-bad-'));
       const treeDir = path.join(tmpDir, 'backend');
       fs.mkdirSync(treeDir, { recursive: true });
-      fs.writeFileSync(path.join(treeDir, 'bad.json'), JSON.stringify({ count: 'not-a-number' }));
+      fs.writeFileSync(
+        path.join(treeDir, 'bad.json'),
+        JSON.stringify({ count: 'not-a-number' }),
+      );
 
       try {
         expect(() => loadBaseline(tmpDir, 'backend', 'bad')).toThrow(
