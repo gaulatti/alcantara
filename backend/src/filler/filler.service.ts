@@ -301,10 +301,12 @@ export class FillerService {
     });
     if (status !== 'ready') return;
     const where = { programId: version.programId, leg: version.leg };
-    await this.prisma.fillerLeg.upsert({
-      where: { programId_leg: where },
-      create: where,
-      update: {},
+    // INSERT … ON CONFLICT DO NOTHING: concurrent first preparations of the
+    // same program leg cannot race on creating its row (Prisma's upsert is a
+    // read then an insert, and two inserts collide on the primary key).
+    await this.prisma.fillerLeg.createMany({
+      data: [where],
+      skipDuplicates: true,
     });
     // One conditional statement, so concurrent preparations cannot race: the
     // pointer moves only from nothing or from a version created no later

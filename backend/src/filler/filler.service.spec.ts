@@ -268,17 +268,20 @@ function store(programs: Record<string, string>) {
           ) ?? null,
         ),
       ),
-      upsert: jest.fn(({ where, create, update }: any) => {
-        const id = key(where.programId_leg.programId, where.programId_leg.leg);
-        legs.set(id, {
-          ...(legs.get(id) ?? {
+      createMany: jest.fn(({ data, skipDuplicates }: any) => {
+        expect(skipDuplicates).toBe(true);
+        let count = 0;
+        for (const row of data) {
+          const id = key(row.programId, row.leg);
+          if (legs.has(id)) continue;
+          legs.set(id, {
             activeVersionId: null,
             pendingVersionId: null,
-            ...create,
-          }),
-          ...update,
-        });
-        return Promise.resolve(legs.get(id));
+            ...row,
+          });
+          count += 1;
+        }
+        return Promise.resolve({ count });
       }),
       updateMany: jest.fn(({ where, data }: any) => {
         const leg = legs.get(key(where.programId, where.leg));
