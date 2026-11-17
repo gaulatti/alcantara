@@ -16,5 +16,17 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['app/**/*.test.tsx'],
     setupFiles: ['./test/setup.ts'],
+    // Coverage (gaulatti/alcantara#181), on with `pnpm run test:coverage`: native V8 counts over every
+    // runtime source under app/, including files no test imports, reported as Istanbul JSON at
+    // coverage/coverage-final.json plus a text summary. Only tests and declarations are left out. There
+    // is no threshold yet; #83 adds the gate.
+    coverage: {
+      provider: 'v8',
+      all: true,
+      include: ['app/**/*.{ts,tsx}'],
+      exclude: ['app/**/*.test.{ts,tsx}', 'app/**/*.d.ts'],
+      reporter: ['json', 'text-summary'],
+      reportsDirectory: 'coverage',
+    },
   },
 });
