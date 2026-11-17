@@ -271,6 +271,32 @@ configurable via `.env`:
 
 Source directories are mounted so changes are reflected immediately.
 
+The local stack never reaches real AWS or another real outside service
+(gaulatti/alcantara#206):
+
+- **Media store.** Uploads, song and artwork playback, radio recovery audio and
+  filler digests use a localstack S3 (`localstack/localstack:4.0.3`, port
+  `LOCALSTACK_PORT`, default 4566) with the bucket `alcantara-local-only`,
+  created by `infra/localstack-init/01-bucket.sh`. Objects are served at
+  `http://localstack.localhost:4566/alcantara-local-only/…`, which the browser
+  and the backend both resolve to the host's published port.
+- **Credentials.** Compose overrides every AWS name `backend/.env` could hold
+  with local placeholders or empty values, does not mount `~/.aws`, and empties
+  `ARAUCO_SECRET_ID`, so no Secrets Manager secret is read. The frontend gets
+  empty `VITE_COGNITO_*` and `VITE_FQDN`; TEST AUTH needs none of them.
+- **Start-up refusal.** Outside production the backend refuses to start when
+  `MEDIA_S3_BUCKET` is set without `MEDIA_S3_ENDPOINT`, or when
+  `MEDIA_S3_ENDPOINT` or `LOCAL_MEDIA_PUBLIC_BASE_URL` points anywhere but a
+  local host (loopback, `*.localhost` or a Compose service name). Production
+  refuses to start with either of those two variables set. Each error names the
+  variable, never its value.
+- **Now-playing and charts.** Outside production no now-playing consumer is
+  contacted (Radio settings says so, and the backend logs how many were
+  skipped), and the two third-party chart feeds are not polled.
+- **Check.** `scripts/check-compose-local.sh` confirms from
+  `docker compose config` that every one of these names resolves to its local
+  value, without printing any value.
+
 Local browser authentication is visibly marked `TEST AUTH`. It uses short-lived
 tokens with a local-only issuer and these deterministic identities:
 
