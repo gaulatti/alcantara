@@ -214,7 +214,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
     const timer = window.setTimeout(() => setOnAirMounted(false), ON_AIR_TRANSITION_MS);
     return () => window.clearTimeout(timer);
   }, [hasSong]);
-  const city = cityPool[cityIndex] ?? CITIES[0];
+  const city = cityPool[cityIndex];
   const timeText = formatClockValue(city.timezone, now, timeOverride);
   const listeningLabel = language === 'it' ? 'In onda ora' : language === 'en' ? 'On air now' : 'Estás escuchando';
 
