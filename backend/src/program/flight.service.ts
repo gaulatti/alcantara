@@ -1560,7 +1560,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordRadioLogResult('completed');
     } catch {
       this.metrics.recordRadioLogResult('resume-failed');
-      await this.stop(runtime.programId);
+      await this.stop(runtime.programId, { flightDriven: true });
       this.programService.broadcastUpdate(runtime.programId, {
         type: 'radio_rotation_resume_failed',
         sequenceId: runtime.sequenceId,

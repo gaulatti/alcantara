@@ -687,7 +687,8 @@ describe('FlightService automatic advance and block completion', () => {
     const stop = jest.spyOn(h.service, 'stop').mockResolvedValue({ ok: true });
     await h.internals.finishBlock(runtimeState({ scheduledAtMs: 1 }));
     expect(h.recorded).toHaveBeenCalledWith('resume-failed');
-    expect(stop).toHaveBeenCalledWith('radio-1');
+    // An automated stop: it keeps the rotation's mode (#173).
+    expect(stop).toHaveBeenCalledWith('radio-1', { flightDriven: true });
     expect(h.program.broadcastUpdate).toHaveBeenCalledWith('radio-1', {
       type: 'radio_rotation_resume_failed',
       sequenceId: 7,
