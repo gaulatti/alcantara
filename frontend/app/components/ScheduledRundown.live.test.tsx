@@ -495,6 +495,42 @@ it("publishes the block, saving unsaved edits first", async () => {
   expect(screen.getByText(/PUBLISHED · Revision 5/)).toBeVisible();
 });
 
+it("keeps the ready-for-air confirmation after publishing moves the block to a new revision", async () => {
+  stubLibrary();
+  vi.mocked(updateFlightSequence).mockImplementation(
+    async (_program, id, body) => block({ id, revision: 4, items: body.items }),
+  );
+  vi.mocked(publishFlightSequence).mockImplementation(async (_program, id) =>
+    block({ id, revision: 5, publishedAt: "2026-11-17T09:00:00Z" }),
+  );
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  expect(await screen.findByText(/PUBLISHED · Revision 5/)).toBeVisible();
+  expect(screen.getByText("Audio checked · ready for air")).toBeVisible();
+});
+
+it("keeps a passing check after saving unsaved edits first, and drops it once the block changes", async () => {
+  stubLibrary();
+  vi.mocked(updateFlightSequence).mockImplementation(
+    async (_program, id, body) => block({ id, revision: 4, items: body.items }),
+  );
+  vi.mocked(preflightFlightSequence).mockResolvedValue({
+    ready: true,
+    issues: [],
+  });
+  renderRundown();
+  await openBlock();
+  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Check" }));
+  expect(
+    await screen.findByText("Audio checked · ready for air"),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+  expect(screen.queryByText("Audio checked · ready for air")).toBeNull();
+});
+
 it("publishes a saved block directly and reports a refusal", async () => {
   stubLibrary();
   vi.mocked(publishFlightSequence).mockRejectedValue(new Error("Not ready"));
