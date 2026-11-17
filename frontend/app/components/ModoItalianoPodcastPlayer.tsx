@@ -197,7 +197,7 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
     if (!audio) return;
 
     const onTimeUpdate = () => { currentTimeRef.current = audio.currentTime; setCurrentTime(audio.currentTime); };
-    const onDurationChange = () => { durationRef.current = audio.duration ?? 0; setDuration(audio.duration ?? 0); };
+    const onDurationChange = () => { durationRef.current = audio.duration; setDuration(audio.duration); };
     const onPlay = () => { isPlayingRef.current = true; setIsPlaying(true); setAutoplayBlocked(false); };
     const onPause = () => { isPlayingRef.current = false; setIsPlaying(false); };
     const onEnded = () => { isPlayingRef.current = false; setIsPlaying(false); };
@@ -264,27 +264,6 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
       void audioCtxRef.current?.close();
     };
   }, []);
-
-  const handlePlayPause = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    initAnalyser();
-    if (audioCtxRef.current?.state === 'suspended') void audioCtxRef.current.resume();
-    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
-  };
-
-  const handleSkip = (delta: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + delta));
-  };
-
-  const handleSeek = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const audio = audioRef.current;
-    if (!audio || !durationRef.current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    audio.currentTime = Math.max(0, Math.min(durationRef.current, (e.clientX - rect.left) / rect.width * durationRef.current));
-  };
 
   if (!show) return null;
 

@@ -40,11 +40,7 @@ function normalizeGain(value: unknown, fallback: number): number {
 }
 
 function isLikelyHlsSource(url: string): boolean {
-  const normalizedUrl = url.trim().toLowerCase();
-  if (!normalizedUrl) {
-    return false;
-  }
-  return normalizedUrl.includes('.m3u8');
+  return url.trim().toLowerCase().includes('.m3u8');
 }
 
 function isNonFatalPlayError(error: unknown): boolean {
