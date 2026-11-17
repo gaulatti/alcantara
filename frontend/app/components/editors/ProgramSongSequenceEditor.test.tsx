@@ -1,5 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProgramSongSequenceEditor } from "./ProgramSongSequenceEditor";
 
@@ -233,7 +240,14 @@ describe("ProgramSongSequenceEditor queue", () => {
       sequence: {
         mode: "manual",
         activeItemId: "outer",
-        items: [{ id: "outer", kind: "sequence", label: "Old block", sequence: { items: [] } }],
+        items: [
+          {
+            id: "outer",
+            kind: "sequence",
+            label: "Old block",
+            sequence: { items: [] },
+          },
+        ],
       },
       view: "queue",
     });
@@ -241,22 +255,36 @@ describe("ProgramSongSequenceEditor queue", () => {
   });
 
   it("shows an empty playlist, or an empty filler rotation, with its own hint", () => {
-    for (const sequence of [null, { items: [] }, { activeItemId: null, items: [] }]) {
+    for (const sequence of [
+      null,
+      { items: [] },
+      { activeItemId: null, items: [] },
+    ]) {
       editor({ sequence, view: "queue" });
       expect(screen.getByText("Playlist is empty")).toBeInTheDocument();
-      expect(screen.getByText("Search and add songs from the catalog panel.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Search and add songs from the catalog panel."),
+      ).toBeInTheDocument();
       // A plain playlist in the queue view has no heading.
       expect(screen.queryByText("0 songs")).toBeNull();
       cleanup();
     }
-    editor({ sequence: { items: [] }, view: "queue", rotationLabel: "Fillers" });
+    editor({
+      sequence: { items: [] },
+      view: "queue",
+      rotationLabel: "Fillers",
+    });
     expect(screen.getByText("Fillers is empty")).toBeInTheDocument();
-    expect(screen.getByText("Use Add fillers to choose Library songs.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Use Add fillers to choose Library songs."),
+    ).toBeInTheDocument();
     expect(screen.getByText("0 songs")).toBeInTheDocument();
   });
 
   it("heads the queue with the song count in the full view", () => {
-    const { rerender, onChange } = editor({ sequence: { items: [preset("a")] } });
+    const { rerender, onChange } = editor({
+      sequence: { items: [preset("a")] },
+    });
     expect(screen.getByText("1 song")).toBeInTheDocument();
     rerender(
       <ProgramSongSequenceEditor
@@ -274,7 +302,10 @@ describe("ProgramSongSequenceEditor queue", () => {
         mode: "manual",
         activeItemId: null,
         items: [
-          preset("a", { coverUrl: " https://example.test/a.jpg ", durationMs: 185000 }),
+          preset("a", {
+            coverUrl: " https://example.test/a.jpg ",
+            durationMs: 185000,
+          }),
           preset("b", { title: "  ", artist: "", durationMs: 0 }),
           preset("c", { title: "zebra", durationMs: 59600 }),
           preset("d", { durationMs: Number.NaN }),
@@ -283,12 +314,20 @@ describe("ProgramSongSequenceEditor queue", () => {
       view: "queue",
     });
     const [a, b, c, d] = rows();
-    expect(within(a).getByRole("img")).toHaveAttribute("src", "https://example.test/a.jpg");
-    expect(within(a).getByRole("img")).toHaveAttribute("alt", "Artist a - Title a");
+    expect(within(a).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.test/a.jpg",
+    );
+    expect(within(a).getByRole("img")).toHaveAttribute(
+      "alt",
+      "Artist a - Title a",
+    );
     expect(a).toHaveTextContent("3:05");
     expect(b).toHaveTextContent("?");
     expect(b).toHaveTextContent("—");
-    expect(within(b).getByLabelText("Add song to high rotation")).toBeInTheDocument();
+    expect(
+      within(b).getByLabelText("Add song to high rotation"),
+    ).toBeInTheDocument();
     expect(c).toHaveTextContent("Z");
     expect(c).toHaveTextContent("1:00");
     expect(d).toHaveTextContent("—");
@@ -299,7 +338,11 @@ describe("ProgramSongSequenceEditor queue", () => {
     const sequence = {
       mode: "manual",
       activeItemId: "a",
-      items: [preset("a"), preset("b"), preset("c", { audioUrl: "https://example.test/b.mp3" })],
+      items: [
+        preset("a"),
+        preset("b"),
+        preset("c", { audioUrl: "https://example.test/b.mp3" }),
+      ],
     };
     const { rerender, onChange } = editor({
       sequence,
@@ -319,7 +362,11 @@ describe("ProgramSongSequenceEditor queue", () => {
     show({ isPlaying: true, audioUrl: "https://example.test/a.mp3" });
     expect(activeRow()).toBe(0);
     // Two rows share the playing audio: neither is marked.
-    show({ isPlaying: true, token: "zzz:1", audioUrl: "https://example.test/b.mp3" });
+    show({
+      isPlaying: true,
+      token: "zzz:1",
+      audioUrl: "https://example.test/b.mp3",
+    });
     expect(activeRow()).toBe(-1);
     show({ isPlaying: false, token: "b:1" });
     expect(activeRow()).toBe(0);
@@ -328,20 +375,32 @@ describe("ProgramSongSequenceEditor queue", () => {
   it("takes a row on air through onTakeSelection, or as a plain change without it", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000);
     const onTakeSelection = vi.fn();
-    const sequence = { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b")] };
+    const sequence = {
+      mode: "manual",
+      activeItemId: "a",
+      items: [preset("a"), preset("b")],
+    };
     const { onChange } = editor({ sequence, view: "queue", onTakeSelection });
     fireEvent.click(within(rows()[1]).getByLabelText("Take on air"));
-    expect(onTakeSelection).toHaveBeenCalledWith(expect.objectContaining({ activeItemId: "b", startedAt: 1_000 }));
+    expect(onTakeSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ activeItemId: "b", startedAt: 1_000 }),
+    );
     expect(onChange).not.toHaveBeenCalled();
     cleanup();
     const plain = editor({ sequence, view: "queue" });
     fireEvent.click(within(rows()[1]).getByLabelText("Take on air"));
-    expect(plain.onChange).toHaveBeenCalledWith(expect.objectContaining({ activeItemId: "b", startedAt: 1_000 }));
+    expect(plain.onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ activeItemId: "b", startedAt: 1_000 }),
+    );
   });
 
   it("names an untitled row generically in its Play next action", () => {
     const onQueueItem = vi.fn();
-    editor({ sequence: { items: [preset("a", { title: "" })] }, view: "queue", onQueueItem });
+    editor({
+      sequence: { items: [preset("a", { title: "" })] },
+      view: "queue",
+      onQueueItem,
+    });
     fireEvent.click(screen.getByLabelText("Play song next"));
     expect(onQueueItem).toHaveBeenCalledWith("a");
   });
@@ -354,13 +413,19 @@ describe("ProgramSongSequenceEditor queue", () => {
     expect(screen.getByText("Title · High rotation 1/12")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Remove Title a from high rotation"));
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ items: [expect.objectContaining({ id: "a", highRotation: false })] }),
+      expect.objectContaining({
+        items: [expect.objectContaining({ id: "a", highRotation: false })],
+      }),
     );
   });
 
   it("reorders by dragging a row's handle onto another row", () => {
     const { onChange } = editor({
-      sequence: { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b"), preset("c")] },
+      sequence: {
+        mode: "manual",
+        activeItemId: "a",
+        items: [preset("a"), preset("b"), preset("c")],
+      },
       view: "queue",
     });
     const targets = rows().map((row) => row.parentElement as HTMLElement);
@@ -373,7 +438,13 @@ describe("ProgramSongSequenceEditor queue", () => {
     fireEvent.dragStart(within(rows()[0]).getByLabelText("Drag to reorder"));
     fireEvent.drop(targets[2]);
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ items: [expect.objectContaining({ id: "b" }), expect.objectContaining({ id: "c" }), expect.objectContaining({ id: "a" })] }),
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({ id: "b" }),
+          expect.objectContaining({ id: "c" }),
+          expect.objectContaining({ id: "a" }),
+        ],
+      }),
     );
     fireEvent.dragStart(within(rows()[1]).getByLabelText("Drag to reorder"));
     fireEvent.dragEnd(within(rows()[1]).getByLabelText("Drag to reorder"));
@@ -388,7 +459,11 @@ describe("ProgramSongSequenceEditor remove", () => {
   it("moves the active song to the next one when the active row is removed", () => {
     vi.spyOn(Date, "now").mockReturnValue(5_000);
     const { onChange } = editor({
-      sequence: { mode: "manual", activeItemId: "c", items: [preset("a"), preset("b"), preset("c")] },
+      sequence: {
+        mode: "manual",
+        activeItemId: "c",
+        items: [preset("a"), preset("b"), preset("c")],
+      },
       view: "queue",
     });
     fireEvent.click(within(rows()[2]).getByLabelText("Remove"));
@@ -400,28 +475,45 @@ describe("ProgramSongSequenceEditor remove", () => {
 
   it("keeps the active song when another row is removed, and clears it with the last song", () => {
     const { onChange, rerender } = editor({
-      sequence: { mode: "manual", activeItemId: "b", items: [preset("a"), preset("b")] },
+      sequence: {
+        mode: "manual",
+        activeItemId: "b",
+        items: [preset("a"), preset("b")],
+      },
       view: "queue",
     });
     fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
     expect(onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "b" });
     rerender(
       <ProgramSongSequenceEditor
-        sequence={{ mode: "manual", activeItemId: "a", items: [preset("a")] } as any}
+        sequence={
+          { mode: "manual", activeItemId: "a", items: [preset("a")] } as any
+        }
         view="queue"
         onChange={onChange}
       />,
     );
     fireEvent.click(screen.getByLabelText("Remove"));
-    expect(onChange.mock.lastCall![0]).toMatchObject({ items: [], activeItemId: null });
+    expect(onChange.mock.lastCall![0]).toMatchObject({
+      items: [],
+      activeItemId: null,
+    });
   });
 
   it("falls back to the first song when nothing is active and another row is removed", () => {
     // A playing song that matches no row leaves no active song.
     const { onChange } = editor({
-      sequence: { mode: "manual", activeItemId: "a", items: [preset("a"), preset("b"), preset("c")] },
+      sequence: {
+        mode: "manual",
+        activeItemId: "a",
+        items: [preset("a"), preset("b"), preset("c")],
+      },
       view: "queue",
-      programSongPlayback: { isPlaying: true, token: "x:1", audioUrl: "https://elsewhere.test/x.mp3" },
+      programSongPlayback: {
+        isPlaying: true,
+        token: "x:1",
+        audioUrl: "https://elsewhere.test/x.mp3",
+      },
     });
     fireEvent.click(within(rows()[1]).getByLabelText("Remove"));
     expect(onChange.mock.lastCall![0]).toMatchObject({ activeItemId: "a" });
@@ -429,28 +521,65 @@ describe("ProgramSongSequenceEditor remove", () => {
 
   it("keeps an autoplay clock in step with what Program is playing when another row is removed", () => {
     vi.spyOn(Date, "now").mockReturnValue(100_000);
-    const sequence = { mode: "autoplay", activeItemId: "b", items: [preset("a"), preset("b"), preset("c")] };
+    const sequence = {
+      mode: "autoplay",
+      activeItemId: "b",
+      items: [preset("a"), preset("b"), preset("c")],
+    };
     const removeFirst = (programSongPlayback: any, seq: any = sequence) => {
-      const { onChange } = editor({ sequence: seq, view: "queue", programSongPlayback });
+      const { onChange } = editor({
+        sequence: seq,
+        view: "queue",
+        programSongPlayback,
+      });
       fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
       const next = onChange.mock.lastCall![0];
       cleanup();
       return next;
     };
     // Playing b by its audio, 30.4 seconds in: the clock starts that far back.
-    expect(removeFirst({ isPlaying: true, audioUrl: " https://example.test/b.mp3 ", currentTimeMs: 30_400.4 }).startedAt).toBe(69_600);
+    expect(
+      removeFirst({
+        isPlaying: true,
+        audioUrl: " https://example.test/b.mp3 ",
+        currentTimeMs: 30_400.4,
+      }).startedAt,
+    ).toBe(69_600);
     // Matched by its token, with a negative position clamped to zero.
-    expect(removeFirst({ isPlaying: false, token: "b:9", currentTimeMs: -5 }).startedAt).toBe(100_000);
+    expect(
+      removeFirst({ isPlaying: false, token: "b:9", currentTimeMs: -5 })
+        .startedAt,
+    ).toBe(100_000);
     // No playback state, or playback of another song, restarts the clock now.
     expect(removeFirst(null).startedAt).toBe(100_000);
-    expect(removeFirst({ isPlaying: false, audioUrl: "https://example.test/c.mp3", currentTimeMs: 9_000 }).startedAt).toBe(100_000);
+    expect(
+      removeFirst({
+        isPlaying: false,
+        audioUrl: "https://example.test/c.mp3",
+        currentTimeMs: 9_000,
+      }).startedAt,
+    ).toBe(100_000);
     // The active song has no audio and Program plays nothing it can match.
     expect(
-      removeFirst({ isPlaying: false, token: "", currentTimeMs: 9_000 }, { mode: "autoplay", activeItemId: "b", items: [preset("a"), preset("b", { audioUrl: "" })] }).startedAt,
+      removeFirst(
+        { isPlaying: false, token: "", currentTimeMs: 9_000 },
+        {
+          mode: "autoplay",
+          activeItemId: "b",
+          items: [preset("a"), preset("b", { audioUrl: "" })],
+        },
+      ).startedAt,
     ).toBe(100_000);
     // Shuffle with no active song and nothing playing.
     expect(
-      removeFirst({ isPlaying: false, currentTimeMs: 9_000 }, { mode: "shuffle", activeItemId: null, items: [preset("a"), preset("b")] }).startedAt,
+      removeFirst(
+        { isPlaying: false, currentTimeMs: 9_000 },
+        {
+          mode: "shuffle",
+          activeItemId: null,
+          items: [preset("a"), preset("b")],
+        },
+      ).startedAt,
     ).toBe(100_000);
   });
 });
@@ -458,17 +587,26 @@ describe("ProgramSongSequenceEditor remove", () => {
 describe("ProgramSongSequenceEditor local preview", () => {
   it("plays a song locally, stops it on a second press, and stops it on unmount", async () => {
     stubAudio();
-    const { unmount } = editor({ sequence: { items: [preset("a"), preset("b", { audioUrl: "  " })] }, view: "queue" });
+    const { unmount } = editor({
+      sequence: { items: [preset("a"), preset("b", { audioUrl: "  " })] },
+      view: "queue",
+    });
     expect(within(rows()[1]).getByLabelText("Preview locally")).toBeDisabled();
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
     const [first] = FakeAudio.instances;
     expect(first.src).toBe("https://example.test/a.mp3");
     expect(first.play).toHaveBeenCalledTimes(1);
-    await act(async () => fireEvent.click(screen.getByLabelText("Stop local preview")));
+    await act(async () =>
+      fireEvent.click(screen.getByLabelText("Stop local preview")),
+    );
     expect(first.pause).toHaveBeenCalled();
     expect(screen.queryByLabelText("Stop local preview")).toBeNull();
 
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
     const second = FakeAudio.instances[1];
     unmount();
     expect(second.pause).toHaveBeenCalled();
@@ -477,19 +615,29 @@ describe("ProgramSongSequenceEditor local preview", () => {
   it("switches the preview to another song and clears it when the song ends or fails", async () => {
     stubAudio();
     editor({ sequence: { items: [preset("a"), preset("b")] }, view: "queue" });
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
-    await act(async () => fireEvent.click(within(rows()[1]).getByLabelText("Preview locally")));
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
+    await act(async () =>
+      fireEvent.click(within(rows()[1]).getByLabelText("Preview locally")),
+    );
     const [a, b] = FakeAudio.instances;
     expect(a.pause).toHaveBeenCalled();
-    expect(within(rows()[1]).getByLabelText("Stop local preview")).toBeInTheDocument();
+    expect(
+      within(rows()[1]).getByLabelText("Stop local preview"),
+    ).toBeInTheDocument();
     // The replaced audio ending or failing does not touch the current preview.
     act(() => a.onended?.());
     act(() => a.onerror?.());
-    expect(within(rows()[1]).getByLabelText("Stop local preview")).toBeInTheDocument();
+    expect(
+      within(rows()[1]).getByLabelText("Stop local preview"),
+    ).toBeInTheDocument();
     act(() => b.onended?.());
     expect(screen.queryByLabelText("Stop local preview")).toBeNull();
 
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
     act(() => FakeAudio.instances[2].onerror?.());
     expect(screen.queryByLabelText("Stop local preview")).toBeNull();
   });
@@ -499,46 +647,106 @@ describe("ProgramSongSequenceEditor local preview", () => {
     const refusal = new Error("NotAllowedError");
     stubAudio(() => Promise.reject(refusal));
     editor({ sequence: { items: [preset("a"), preset("b")] }, view: "queue" });
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
-    expect(errors).toHaveBeenCalledWith("Failed to play local song preview:", refusal);
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
+    expect(errors).toHaveBeenCalledWith(
+      "Failed to play local song preview:",
+      refusal,
+    );
     expect(screen.queryByLabelText("Stop local preview")).toBeNull();
 
     // a's play settles only after b's preview has replaced it.
     let settleA: (() => void) | null = null;
     let rejectA: ((error: Error) => void) | null = null;
-    FakeAudio.playResult = () => new Promise<void>((resolve, reject) => { settleA = resolve; rejectA = reject; });
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
+    FakeAudio.playResult = () =>
+      new Promise<void>((resolve, reject) => {
+        settleA = resolve;
+        rejectA = reject;
+      });
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
     const settleFirst = settleA!;
-    FakeAudio.playResult = () => new Promise<void>((_resolve, reject) => { rejectA = reject; });
-    await act(async () => fireEvent.click(within(rows()[1]).getByLabelText("Preview locally")));
+    FakeAudio.playResult = () =>
+      new Promise<void>((_resolve, reject) => {
+        rejectA = reject;
+      });
+    await act(async () =>
+      fireEvent.click(within(rows()[1]).getByLabelText("Preview locally")),
+    );
     const rejectSecond = rejectA!;
     await act(async () => settleFirst());
     expect(screen.queryByLabelText("Stop local preview")).toBeNull();
     // b is replaced by a fresh preview of a, then b's play is refused late.
     FakeAudio.playResult = () => Promise.resolve();
-    await act(async () => fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")));
+    await act(async () =>
+      fireEvent.click(within(rows()[0]).getByLabelText("Preview locally")),
+    );
     await act(async () => rejectSecond(refusal));
-    expect(within(rows()[0]).getByLabelText("Stop local preview")).toBeInTheDocument();
+    expect(
+      within(rows()[0]).getByLabelText("Stop local preview"),
+    ).toBeInTheDocument();
   });
 });
 
 describe("ProgramSongSequenceEditor catalog", () => {
   const catalog: Song[] = [
-    { id: 3, enabled: true, artist: "Zeta", title: "Last", audioUrl: "https://example.test/3.mp3", coverUrl: "https://example.test/3.jpg", durationMs: 200_400, earoneSongId: "e3", earoneRank: "1", earoneSpins: "99" },
-    { id: 1, enabled: true, artist: "Alpha", title: "", audioUrl: "https://example.test/1.mp3" },
-    { id: 2, enabled: true, title: "Beta tune", audioUrl: "https://example.test/2.mp3", durationMs: -1 },
-    { id: 4, enabled: false, artist: "Off", title: "Disabled", audioUrl: "https://example.test/4.mp3" },
+    {
+      id: 3,
+      enabled: true,
+      artist: "Zeta",
+      title: "Last",
+      audioUrl: "https://example.test/3.mp3",
+      coverUrl: "https://example.test/3.jpg",
+      durationMs: 200_400,
+      earoneSongId: "e3",
+      earoneRank: "1",
+      earoneSpins: "99",
+    },
+    {
+      id: 1,
+      enabled: true,
+      artist: "Alpha",
+      title: "",
+      audioUrl: "https://example.test/1.mp3",
+    },
+    {
+      id: 2,
+      enabled: true,
+      title: "Beta tune",
+      audioUrl: "https://example.test/2.mp3",
+      durationMs: -1,
+    },
+    {
+      id: 4,
+      enabled: false,
+      artist: "Off",
+      title: "Disabled",
+      audioUrl: "https://example.test/4.mp3",
+    },
     { id: 5, enabled: true, artist: "No", title: "Audio", audioUrl: "   " },
     { id: 6, enabled: true, audioUrl: "https://example.test/6.mp3" },
   ];
-  const catalogRows = () => screen.getAllByLabelText("Add to queue").map((button) => button.parentElement as HTMLElement);
+  const catalogRows = () =>
+    screen
+      .getAllByLabelText("Add to queue")
+      .map((button) => button.parentElement as HTMLElement);
 
   it("lists only enabled songs with audio, sorted by artist and title, and searches them", () => {
     editor({ sequence: { items: [] }, songCatalog: catalog, view: "catalog" });
     expect(screen.queryByText("Playlist is empty")).toBeNull();
     const listed = catalogRows();
-    expect(listed.map((row) => row.textContent)).toEqual(["", "Alpha", "BBeta tune", "LastZeta"]);
-    expect(listed[3].querySelector("img")).toHaveAttribute("src", "https://example.test/3.jpg");
+    expect(listed.map((row) => row.textContent)).toEqual([
+      "",
+      "Alpha",
+      "BBeta tune",
+      "LastZeta",
+    ]);
+    expect(listed[3].querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.test/3.jpg",
+    );
     const search = screen.getByPlaceholderText("Search catalog to add...");
     fireEvent.change(search, { target: { value: "ALP" } });
     expect(catalogRows()).toHaveLength(1);
@@ -555,25 +763,53 @@ describe("ProgramSongSequenceEditor catalog", () => {
   it("adds a catalog song with its details, keeping the active song", () => {
     vi.spyOn(Date, "now").mockReturnValue(10);
     const add = (sequence: any, title: string) => {
-      const { onChange } = editor({ sequence, songCatalog: catalog, view: "full" });
-      fireEvent.click(within(catalogRows().find((row) => row.textContent?.includes(title))!).getByLabelText("Add to queue"));
+      const { onChange } = editor({
+        sequence,
+        songCatalog: catalog,
+        view: "full",
+      });
+      fireEvent.click(
+        within(
+          catalogRows().find((row) => row.textContent?.includes(title))!,
+        ).getByLabelText("Add to queue"),
+      );
       const next = onChange.mock.lastCall![0];
       cleanup();
       return next;
     };
-    let next = add({ mode: "manual", activeItemId: "a", items: [preset("a")] }, "Last");
+    let next = add(
+      { mode: "manual", activeItemId: "a", items: [preset("a")] },
+      "Last",
+    );
     expect(next.activeItemId).toBe("a");
     expect(next.items[1]).toMatchObject({
-      kind: "preset", songId: 3, artist: "Zeta", title: "Last", coverUrl: "https://example.test/3.jpg",
-      audioUrl: "https://example.test/3.mp3", durationMs: 200_400, earoneSongId: "e3", earoneRank: "1", earoneSpins: "99",
+      kind: "preset",
+      songId: 3,
+      artist: "Zeta",
+      title: "Last",
+      coverUrl: "https://example.test/3.jpg",
+      audioUrl: "https://example.test/3.mp3",
+      durationMs: 200_400,
+      earoneSongId: "e3",
+      earoneRank: "1",
+      earoneSpins: "99",
     });
     next = add({ mode: "manual", activeItemId: null, items: [] }, "Beta tune");
     expect(next.activeItemId).toBeNull();
-    expect(next.items[0]).toMatchObject({ songId: 2, artist: "", title: "Beta tune", coverUrl: "", durationMs: undefined });
+    expect(next.items[0]).toMatchObject({
+      songId: 2,
+      artist: "",
+      title: "Beta tune",
+      coverUrl: "",
+      durationMs: undefined,
+    });
     // An automatic playlist with nothing active starts on the added song.
     next = add({ mode: "autoplay", activeItemId: null, items: [] }, "Alpha");
     expect(next.activeItemId).toBe(next.items[0].id);
-    next = add({ mode: "shuffle", activeItemId: "a", items: [preset("a")] }, "Alpha");
+    next = add(
+      { mode: "shuffle", activeItemId: "a", items: [preset("a")] },
+      "Alpha",
+    );
     expect(next.activeItemId).toBe("a");
   });
 
@@ -583,9 +819,20 @@ describe("ProgramSongSequenceEditor catalog", () => {
         mode: "manual",
         activeItemId: "a",
         items: [
-          preset("a", { songId: 3, durationMs: 1000, earoneSongId: "old", earoneRank: "9", earoneSpins: "1" }),
+          preset("a", {
+            songId: 3,
+            durationMs: 1000,
+            earoneSongId: "old",
+            earoneRank: "9",
+            earoneSpins: "1",
+          }),
           preset("b", { audioUrl: "https://example.test/1.mp3" }),
-          preset("c", { artist: "", title: "Beta tune", coverUrl: "", audioUrl: "" }),
+          preset("c", {
+            artist: "",
+            title: "Beta tune",
+            coverUrl: "",
+            audioUrl: "",
+          }),
           preset("d", { audioUrl: "" }),
         ],
       },
@@ -604,26 +851,45 @@ describe("ProgramSongSequenceEditor catalog", () => {
     expect(swapOf(2)).toHaveValue("2");
     const swap = swapOf(3);
     expect(swap).toHaveValue("");
-    expect(within(swap).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Swap song...", "Song #6", "Alpha", "Beta tune", "Zeta - Last",
-    ]);
+    expect(
+      within(swap)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Swap song...", "Song #6", "Alpha", "Beta tune", "Zeta - Last"]);
     fireEvent.change(swap, { target: { value: "2" } });
     expect(onChange.mock.lastCall![0].items[3]).toMatchObject({
-      id: "d", songId: 2, artist: "Artist d", title: "Beta tune", coverUrl: "", audioUrl: "https://example.test/2.mp3",
+      id: "d",
+      songId: 2,
+      artist: "Artist d",
+      title: "Beta tune",
+      coverUrl: "",
+      audioUrl: "https://example.test/2.mp3",
     });
     expect(screen.queryByLabelText("Swap song...")).toBeNull();
     fireEvent.change(swapOf(0), { target: { value: "1" } });
     expect(onChange.mock.lastCall![0].items[0]).toMatchObject({
-      songId: 1, artist: "Alpha", title: "Title a", durationMs: 1000, earoneSongId: "old", earoneRank: "9", earoneSpins: "1",
+      songId: 1,
+      artist: "Alpha",
+      title: "Title a",
+      durationMs: 1000,
+      earoneSongId: "old",
+      earoneRank: "9",
+      earoneSpins: "1",
     });
     fireEvent.change(swapOf(0), { target: { value: "3" } });
-    expect(onChange.mock.lastCall![0].items[0]).toMatchObject({ songId: 3, durationMs: 200_400, earoneSongId: "e3" });
+    expect(onChange.mock.lastCall![0].items[0]).toMatchObject({
+      songId: 3,
+      durationMs: 200_400,
+      earoneSongId: "e3",
+    });
 
     // An open editor closes when its row leaves the playlist.
     swapOf(1);
     rerender(
       <ProgramSongSequenceEditor
-        sequence={{ mode: "manual", activeItemId: "a", items: [preset("a")] } as any}
+        sequence={
+          { mode: "manual", activeItemId: "a", items: [preset("a")] } as any
+        }
         songCatalog={catalog as any}
         view="queue"
         onChange={onChange}
