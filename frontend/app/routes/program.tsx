@@ -704,6 +704,35 @@ function buildSceneInstantPlaybackToken(
   return `${sceneId ?? 'none'}|${mediaAssetId ?? instantId ?? 'none'}|${audioUrl.trim()}|${timestamp || 'none'}`;
 }
 
+
+/**
+ * The on-air page reads each program snapshot with this (gaulatti/alcantara#201).
+ * An error answer is refused before it can replace what is on air: the page
+ * keeps its last good value, and the console gets one fixed line per source
+ * with at most the HTTP status, never the answer's body.
+ */
+class SnapshotRefused extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+  }
+}
+
+function readSnapshot(res: Response): Promise<unknown> {
+  if (!res.ok) throw new SnapshotRefused(res.status);
+  return res.json();
+}
+
+function keepLastGood(source: string) {
+  return (err: unknown) =>
+    console.error(
+      `[program] ${source} could not be read; keeping the last good value.`,
+      err instanceof SnapshotRefused ? `HTTP ${err.status}` : 'unreadable answer',
+    );
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
 export default function Program() {
   useTransparentDocument();
   const { id } = useParams();
@@ -1667,12 +1696,13 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           programStingersRef.current = stingers;
         } else {
           fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
-            .then((res) => res.json())
+            .then(readSnapshot)
             .then((stingers) => {
+              if (!Array.isArray(stingers)) throw new Error('not a list');
               setProgramStingers(stingers);
               programStingersRef.current = stingers;
             })
-            .catch(() => {});
+            .catch(keepLastGood('Program stingers reload'));
         }
       }
     },
@@ -1775,34 +1805,34 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       }
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
-          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'state')) {
-            setState(data);
+          if (!cancelled && isRecord(data) && shouldApplyProgramUpdatePayload(data, 'state')) {
+            setState(data as unknown as ProgramState);
           }
         })
-        .catch((err) => console.error('Failed to fetch initial state:', err));
+        .catch(keepLastGood('Initial program state'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'audioBus')) {
             setAudioBusSettings(normalizeProgramAudioBusSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to fetch audio bus settings:', err));
+        .catch(keepLastGood('Initial audio bus'));
 
       fetch(apiUrl('/program/broadcast-settings'))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'broadcastSettings')) {
             setBroadcastSettings(normalizeBroadcastSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to fetch broadcast settings:', err));
+        .catch(keepLastGood('Initial broadcast settings'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((playback) => {
           if (!cancelled) {
             const sceneInstantVersion =
@@ -1815,17 +1845,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             });
           }
         })
-        .catch((err) => console.error('Failed to fetch scene instant playback:', err));
+        .catch(keepLastGood('Initial scene clip playback'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((stingers) => {
+          if (!Array.isArray(stingers)) throw new Error('not a list');
           if (!cancelled) {
             setProgramStingers(stingers);
             programStingersRef.current = stingers;
           }
         })
-        .catch((err) => console.error('Failed to fetch program stingers:', err));
+        .catch(keepLastGood('Initial program stingers'));
     }, 900);
 
     return () => {
@@ -1839,34 +1870,34 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
     const pollSnapshots = () => {
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
-          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'state')) {
-            setState(data);
+          if (!cancelled && isRecord(data) && shouldApplyProgramUpdatePayload(data, 'state')) {
+            setState(data as unknown as ProgramState);
           }
         })
-        .catch((err) => console.error('Failed to poll program state snapshot:', err));
+        .catch(keepLastGood('Program state poll'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'audioBus')) {
             setAudioBusSettings(normalizeProgramAudioBusSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to poll audio bus snapshot:', err));
+        .catch(keepLastGood('Audio bus poll'));
 
       fetch(apiUrl('/program/broadcast-settings'))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'broadcastSettings')) {
             setBroadcastSettings(normalizeBroadcastSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to poll broadcast settings snapshot:', err));
+        .catch(keepLastGood('Broadcast settings poll'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((playback) => {
           if (!cancelled) {
             const sceneInstantVersion =
@@ -1879,17 +1910,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             });
           }
         })
-        .catch((err) => console.error('Failed to poll scene instant snapshot:', err));
+        .catch(keepLastGood('Scene clip playback poll'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((stingers) => {
+          if (!Array.isArray(stingers)) throw new Error('not a list');
           if (!cancelled) {
             setProgramStingers(stingers);
             programStingersRef.current = stingers;
           }
         })
-        .catch((err) => console.error('Failed to poll program stingers:', err));
+        .catch(keepLastGood('Program stingers poll'));
     };
 
     const pollTimer = window.setInterval(() => {
