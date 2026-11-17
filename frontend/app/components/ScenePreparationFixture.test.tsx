@@ -64,3 +64,13 @@ it("keeps save errors visible and disables Save while a request is pending", () 
   rerender(<ScenePreparationFixture clock saving />);
   expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
 });
+
+// gaulatti/alcantara#198: the browser lists Asia/Kolkata as Asia/Calcutta;
+// the picker still shows the saved zone, by its own name.
+it("shows a clock widget saved as Asia/Kolkata in its timezone picker", () => {
+  render(<ScenePreparationFixture timezone />);
+  const panel = screen.getByRole("tabpanel", { name: "Clock Widget" });
+  expect(within(panel).getByRole("combobox")).toHaveTextContent(
+    /^Kolkata \(GMT\+5:30\)$/,
+  );
+});

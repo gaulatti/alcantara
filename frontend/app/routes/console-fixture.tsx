@@ -309,6 +309,7 @@ export default function ConsoleFixture() {
   if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
+  if (fixture === "prepare-timezone") return <ScenePreparationFixture timezone />;
   if (fixture.startsWith("prepare-")) return (
     <ScenePreparationFixture clock error={fixture === "prepare-error"} saving={fixture === "prepare-saving"} />
   );
