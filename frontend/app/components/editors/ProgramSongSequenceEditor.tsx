@@ -7,12 +7,16 @@ import {
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
   type ProgramSongSequence,
-  type ProgramSongSequenceItem
+  type ProgramSongSequenceItem,
+  type ProgramSongSequenceLeafItem
 } from '../../utils/programSequence';
 import type { SongCatalogItem, ProgramSongPlaybackState } from '../../models/broadcast';
 
-function flattenProgramSongItems(items: ProgramSongSequenceItem[]): Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] {
-  const flat: Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] = [];
+/** A song sequence flattened to its songs: legacy nested blocks are inlined. */
+type ProgramSongPlaylist = Omit<ProgramSongSequence, 'items'> & { items: ProgramSongSequenceLeafItem[] };
+
+function flattenProgramSongItems(items: ProgramSongSequenceItem[]): ProgramSongSequenceLeafItem[] {
+  const flat: ProgramSongSequenceLeafItem[] = [];
   for (const item of items) {
     if (item.kind === 'preset') {
       flat.push(item);
@@ -23,7 +27,7 @@ function flattenProgramSongItems(items: ProgramSongSequenceItem[]): Extract<Prog
   return flat;
 }
 
-function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSongSequence {
+function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSongPlaylist {
   const playlistItems = flattenProgramSongItems(sequence.items);
   return {
     ...sequence,
@@ -58,10 +62,11 @@ export function ProgramSongSequenceEditor({
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
 }) {
-  const sequence = useMemo(() => {
-    const n = normalizeProgramSongSequence(_sequence);
-    return n ? normalizeProgramSongPlaylist(n) : { ...createProgramSongSequence('manual'), activeItemId: null };
-  }, [_sequence]);
+  // Every item the editor shows is a song: the playlist type proves it.
+  const sequence = useMemo(
+    () => normalizeProgramSongPlaylist(normalizeProgramSongSequence(_sequence) ?? { ...createProgramSongSequence('manual'), activeItemId: null }),
+    [_sequence]
+  );
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
@@ -74,7 +79,7 @@ export function ProgramSongSequenceEditor({
   const showQueueHeading = view === 'full' || rotationLabel !== 'Playlist';
   const isAutomatic = sequence.mode === 'autoplay' || sequence.mode === 'shuffle';
   const highRotationCount = useMemo(
-    () => sequence.items.filter((item) => item.kind === 'preset' && item.highRotation).length,
+    () => sequence.items.filter((item) => item.highRotation).length,
     [sequence.items]
   );
 
@@ -82,7 +87,7 @@ export function ProgramSongSequenceEditor({
     if (programSongPlayback?.isPlaying) {
       const playbackItem = sequence.items.find((item) => programSongPlayback.token?.startsWith(`${item.id}:`));
       if (playbackItem) return playbackItem.id;
-      const byUrl = sequence.items.filter((item) => item.kind === 'preset' && item.audioUrl === programSongPlayback.audioUrl);
+      const byUrl = sequence.items.filter((item) => item.audioUrl === programSongPlayback.audioUrl);
       return byUrl.length === 1 ? byUrl[0].id : null;
     }
     return sequence.activeItemId ?? (isAutomatic ? getProgramSongSequenceSelectedItemId(sequence, Date.now()) : null) ?? null;
@@ -119,7 +124,7 @@ export function ProgramSongSequenceEditor({
     [onChange]
   );
 
-  const previewItem = useCallback(async (item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>) => {
+  const previewItem = useCallback(async (item: ProgramSongSequenceLeafItem) => {
     const audioUrl = item.audioUrl?.trim() ?? '';
     if (!audioUrl) return;
 
@@ -164,7 +169,7 @@ export function ProgramSongSequenceEditor({
     const targetId = editorActiveItemId ?? sequence.activeItemId;
     if (!targetId) return now;
     const target = sequence.items.find((i) => i.id === targetId);
-    if (!target || target.kind !== 'preset') return now;
+    if (!target) return now;
     const itemUrl = target.audioUrl?.trim() || '';
     const pbUrl = programSongPlayback.audioUrl?.trim() || '';
     const pbToken = programSongPlayback.token || '';
@@ -172,13 +177,6 @@ export function ProgramSongSequenceEditor({
     if (!matches) return now;
     return now - Math.max(0, Math.round(programSongPlayback.currentTimeMs));
   }, [editorActiveItemId, programSongPlayback, sequence.activeItemId, sequence.items]);
-
-  const addItem = useCallback(() => {
-    const nextItem = createProgramSongSequenceItem('preset');
-    if (nextItem.kind !== 'preset') return;
-    const anchor = isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? nextItem.id) : (editorActiveItemId ?? nextItem.id);
-    applySequence({ ...sequence, items: [...sequence.items, nextItem], activeItemId: anchor, startedAt: isAutomatic ? resolveAutoplayStartedAt() : Date.now() });
-  }, [applySequence, editorActiveItemId, isAutomatic, resolveAutoplayStartedAt, sequence]);
 
   const addItemFromCatalog = useCallback(
     (songId: number) => {
@@ -232,7 +230,7 @@ export function ProgramSongSequenceEditor({
   );
 
   const updateItem = useCallback(
-    (index: number, updatedItem: ProgramSongSequenceItem) => {
+    (index: number, updatedItem: ProgramSongSequenceLeafItem) => {
       const nextItems = sequence.items.map((item, i) => (i === index ? updatedItem : item));
       applySequence({ ...sequence, items: nextItems });
     },
@@ -240,7 +238,7 @@ export function ProgramSongSequenceEditor({
   );
 
   const toggleHighRotation = useCallback(
-    (index: number, item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>) => {
+    (index: number, item: ProgramSongSequenceLeafItem) => {
       if (!item.highRotation && highRotationCount >= 12) return;
       updateItem(index, { ...item, highRotation: !item.highRotation });
     },
@@ -259,7 +257,7 @@ export function ProgramSongSequenceEditor({
   );
 
   const applyCatalogSongToItem = useCallback(
-    (index: number, item: Extract<ProgramSongSequenceItem, { kind: 'preset' }>, song: SongCatalogItem) => {
+    (index: number, item: ProgramSongSequenceLeafItem, song: SongCatalogItem) => {
       updateItem(index, {
         ...item,
         songId: song.id,
@@ -322,24 +320,21 @@ export function ProgramSongSequenceEditor({
                     {sequence.items.map((item, index) => {
                       const displayItem = item;
                       const isActive = displayItem.id === editorActiveItemId;
-                      const isExpanded = displayItem.kind === 'preset' && expandedItemId === displayItem.id;
-                      const selectedCatalogSong =
-                        displayItem.kind === 'preset'
-                          ? availableSongCatalog.find((song) => {
-                              if (displayItem.songId === song.id) return true;
-                              if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) return true;
-                              return (
-                                (song.artist || '').trim() === displayItem.artist.trim() &&
-                                (song.title || '').trim() === displayItem.title.trim() &&
-                                (song.coverUrl || '').trim() === displayItem.coverUrl.trim()
-                              );
-                            })
-                          : null;
+                      const isExpanded = expandedItemId === displayItem.id;
+                      const selectedCatalogSong = availableSongCatalog.find((song) => {
+                        if (displayItem.songId === song.id) return true;
+                        if (displayItem.audioUrl && song.audioUrl === displayItem.audioUrl) return true;
+                        return (
+                          (song.artist || '').trim() === displayItem.artist.trim() &&
+                          (song.title || '').trim() === displayItem.title.trim() &&
+                          (song.coverUrl || '').trim() === displayItem.coverUrl.trim()
+                        );
+                      });
                       const selectedCatalogSongValue = selectedCatalogSong ? String(selectedCatalogSong.id) : '';
-                      const titleText = displayItem.kind === 'preset' ? displayItem.title.trim() : displayItem.label.trim();
-                      const artistText = displayItem.kind === 'preset' ? displayItem.artist.trim() : '';
-                      const rowDuration = displayItem.kind === 'preset' ? formatDurationFromMs(displayItem.durationMs) : '—';
-                      const coverUrl = displayItem.kind === 'preset' ? displayItem.coverUrl.trim() : '';
+                      const titleText = displayItem.title.trim();
+                      const artistText = displayItem.artist.trim();
+                      const rowDuration = formatDurationFromMs(displayItem.durationMs);
+                      const coverUrl = displayItem.coverUrl.trim();
 
                       return (
                         <div
@@ -398,40 +393,32 @@ export function ProgramSongSequenceEditor({
                                 <PlayIcon />
                               </span>
                             </Button>
-                            {displayItem.kind === 'preset' ? (
-                              <Button
-                                type='button'
-                                onClick={() => void previewItem(displayItem)}
-                                disabled={!displayItem.audioUrl?.trim()}
-                                className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? 'text-sea' : 'text-text-secondary hover:text-text-primary'}`}
-                                title={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
-                                aria-label={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
-                              >
-                                <Headphones size={13} />
-                              </Button>
-                            ) : (
-                              <span />
-                            )}
-                            {displayItem.kind === 'preset' ? (
-                              <Button
-                                type='button'
-                                onClick={() => toggleHighRotation(index, displayItem)}
-                                disabled={!displayItem.highRotation && highRotationCount >= 12}
-                                className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
-                                title={
-                                  displayItem.highRotation
-                                    ? 'Remove from high rotation'
-                                    : highRotationCount >= 12
-                                      ? 'High rotation is limited to 12 songs'
-                                      : 'Add to high rotation'
-                                }
-                                aria-label={`${displayItem.highRotation ? 'Remove' : 'Add'} ${titleText || 'song'} ${displayItem.highRotation ? 'from' : 'to'} high rotation`}
-                              >
-                                <Star size={13} fill={displayItem.highRotation ? 'currentColor' : 'none'} />
-                              </Button>
-                            ) : (
-                              <span />
-                            )}
+                            <Button
+                              type='button'
+                              onClick={() => void previewItem(displayItem)}
+                              disabled={!displayItem.audioUrl?.trim()}
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none hover:translate-y-0 hover:scale-100 hover:bg-transparent ${previewingItemId === displayItem.id ? 'text-sea' : 'text-text-secondary hover:text-text-primary'}`}
+                              title={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
+                              aria-label={previewingItemId === displayItem.id ? 'Stop local preview' : 'Preview locally'}
+                            >
+                              <Headphones size={13} />
+                            </Button>
+                            <Button
+                              type='button'
+                              onClick={() => toggleHighRotation(index, displayItem)}
+                              disabled={!displayItem.highRotation && highRotationCount >= 12}
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:bg-transparent ${displayItem.highRotation ? 'text-amber-300' : 'text-text-secondary opacity-0 group-hover:opacity-100'} disabled:cursor-not-allowed disabled:opacity-30`}
+                              title={
+                                displayItem.highRotation
+                                  ? 'Remove from high rotation'
+                                  : highRotationCount >= 12
+                                    ? 'High rotation is limited to 12 songs'
+                                    : 'Add to high rotation'
+                              }
+                              aria-label={`${displayItem.highRotation ? 'Remove' : 'Add'} ${titleText || 'song'} ${displayItem.highRotation ? 'from' : 'to'} high rotation`}
+                            >
+                              <Star size={13} fill={displayItem.highRotation ? 'currentColor' : 'none'} />
+                            </Button>
                             <div className='flex min-w-0 items-center gap-2.5 pl-1'>
                               {coverUrl ? (
                                 <img src={coverUrl} alt={`${artistText} - ${titleText}`} className='h-9 w-9 shrink-0 rounded-sm object-cover shadow-md' />
@@ -449,7 +436,7 @@ export function ProgramSongSequenceEditor({
                             </div>
                             <span className={`text-right pr-3 text-xs tabular-nums ${isActive ? 'text-sea' : 'text-text-secondary'}`}>{rowDuration}</span>
                             <div className='playlist-row-actions flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100'>
-                              {displayItem.kind === 'preset' && onQueueItem ? (
+                              {onQueueItem ? (
                                 <Button
                                   type='button'
                                   onClick={() => void onQueueItem(displayItem.id)}
@@ -460,29 +447,27 @@ export function ProgramSongSequenceEditor({
                                   <ListPlus size={13} />
                                 </Button>
                               ) : null}
-                              {displayItem.kind === 'preset' ? (
-                                <Button
-                                  type='button'
-                                  onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
-                                  className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
-                                  title='Edit song'
-                                  aria-label='Edit song'
+                              <Button
+                                type='button'
+                                onClick={() => setExpandedItemId((prev) => (prev === displayItem.id ? null : displayItem.id))}
+                                className='flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 text-text-secondary shadow-none transition-colors hover:translate-y-0 hover:scale-100 hover:text-text-primary'
+                                title='Edit song'
+                                aria-label='Edit song'
+                              >
+                                <svg
+                                  width='13'
+                                  height='13'
+                                  viewBox='0 0 24 24'
+                                  fill='none'
+                                  stroke='currentColor'
+                                  strokeWidth='2'
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
                                 >
-                                  <svg
-                                    width='13'
-                                    height='13'
-                                    viewBox='0 0 24 24'
-                                    fill='none'
-                                    stroke='currentColor'
-                                    strokeWidth='2'
-                                    strokeLinecap='round'
-                                    strokeLinejoin='round'
-                                  >
-                                    <path d='M12 20h9' />
-                                    <path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
-                                  </svg>
-                                </Button>
-                              ) : null}
+                                  <path d='M12 20h9' />
+                                  <path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
+                                </svg>
+                              </Button>
                               <Button
                                 type='button'
                                 onClick={() => removeItem(index)}
@@ -509,7 +494,7 @@ export function ProgramSongSequenceEditor({
                               </Button>
                             </div>
                           </div>
-                          {displayItem.kind === 'preset' && isExpanded ? (
+                          {isExpanded ? (
                             <div className='border-t border-sand/30 bg-dark-sand/60 px-3 py-2'>
                               <div className='flex items-center rounded'>
                                 <Select
@@ -528,26 +513,6 @@ export function ProgramSongSequenceEditor({
                                   }}
                                 />
                               </div>
-                            </div>
-                          ) : null}
-                          {displayItem.kind === 'sequence' ? (
-                            <div className='border-t border-sand/30 bg-dark-sand/70 px-4 py-3'>
-                              <p className='mb-2 text-xs text-text-secondary'>Legacy nested sequence. Flatten if possible.</p>
-                              <ProgramSongSequenceEditor
-                                sequence={displayItem.sequence}
-                                songCatalog={songCatalog}
-                                depth={depth + 1}
-                                onChange={(nextNested) => updateItem(index, { ...displayItem, sequence: nextNested })}
-                                onTakeSelection={async (nextNested) => {
-                                  const next = {
-                                    ...sequence,
-                                    items: sequence.items.map((e, i) => (i === index ? { ...displayItem, sequence: nextNested } : e))
-                                  };
-                                  applySequence(next);
-                                  if (onTakeSelection) await onTakeSelection(next);
-                                }}
-                                onQueueItem={onQueueItem}
-                              />
                             </div>
                           ) : null}
                         </div>
