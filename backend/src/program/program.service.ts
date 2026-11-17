@@ -2978,15 +2978,31 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
-  takeProgramSongOffAir(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
-    return this.stopProgramSong(programId, false);
+  /**
+   * `flightDriven`: a stop the flight itself makes (a manual flight ending, a
+   * failed timed cue, a rundown stopSong cue) stops the song but keeps the
+   * rotation's mode; only operator stops halt it (#173).
+   */
+  takeProgramSongOffAir(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    options: { flightDriven?: boolean } = {},
+  ) {
+    return this.stopProgramSong(
+      programId,
+      false,
+      options.flightDriven === true,
+    );
   }
 
   stopProgramSongForTimedBlock(programId: string) {
     return this.stopProgramSong(programId, true);
   }
 
-  private async stopProgramSong(programId: string, preserveRotation: boolean) {
+  private async stopProgramSong(
+    programId: string,
+    preserveRotation: boolean,
+    flightDriven = false,
+  ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
 
@@ -3003,6 +3019,7 @@ export class ProgramService implements OnModuleInit {
 
     if (
       !preserveRotation &&
+      !flightDriven &&
       currentState.songSequence &&
       typeof currentState.songSequence === 'object' &&
       !Array.isArray(currentState.songSequence)
@@ -3029,7 +3046,7 @@ export class ProgramService implements OnModuleInit {
       });
     }
 
-    if (!preserveRotation) {
+    if (!preserveRotation && !flightDriven) {
       const stoppedSequence = normalizeProgramSongSequence(
         currentState.songSequence,
       );
@@ -3075,6 +3092,10 @@ export class ProgramService implements OnModuleInit {
     if (preserveRotation)
       this.songExecutionEngine.handleStopSong(normalizedProgramId, {
         keepSequence: true,
+      });
+    else if (flightDriven)
+      this.songExecutionEngine.handleStopSong(normalizedProgramId, {
+        keepMode: true,
       });
     else this.songExecutionEngine.handleStopSong(normalizedProgramId);
 

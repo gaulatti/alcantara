@@ -911,6 +911,28 @@ describe('operator Stop halts the radio sequence', () => {
     s.asRun.onModuleDestroy();
   });
 
+  it('keeps the mode on a flight-driven stop and moves on: the next track plays once, no replay', async () => {
+    const s = session();
+    s.idle();
+    await settle();
+    const command = s.lastCommand();
+    s.started(command);
+    await settle();
+    s.engine.handleStopSong('radio-1', { keepMode: true });
+    await settle();
+    expect(s.persistedSequence()).toMatchObject({
+      mode: 'autoplay',
+      activeItemId: `item-${SONGS[1].id}`,
+    });
+    const sent = s.radioService.playSong.mock.calls.length;
+    s.ended(command);
+    s.idle();
+    await settle();
+    expect(s.radioService.playSong.mock.calls.length).toBe(sent + 1);
+    expect(s.lastCommand().url).toBe(SONGS[1].audioUrl);
+    s.asRun.onModuleDestroy();
+  });
+
   it('keeps the rotation when a timed block stops the song', async () => {
     const s = session();
     s.idle();

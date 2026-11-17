@@ -654,7 +654,9 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     });
     if (!sequence) throw new NotFoundException('flight sequence not found');
     if (!sequence.scheduledAt || sequence.scheduledAt.getTime() <= Date.now())
-      throw new BadRequestException('the scheduled start must be in the future');
+      throw new BadRequestException(
+        'the scheduled start must be in the future',
+      );
     if (sequence.loop)
       throw new BadRequestException('a clocked log cannot loop');
     if (sequence.revision !== revision)
@@ -1143,13 +1145,19 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
     return { ok: true };
   }
 
-  stop(programId: string): Promise<{ ok: boolean }> {
-    return this.stopRuntime(programId, false);
+  /** `flightDriven`: the flight itself stops (not an operator), keeping the rotation's mode (#173). */
+  stop(
+    programId: string,
+    options: { flightDriven?: boolean } = {},
+  ): Promise<{ ok: boolean }> {
+    return this.stopRuntime(programId, false, options.flightDriven === true);
   }
 
+  /** `flightDriven`: the flight itself stops the song, keeping the rotation's mode (#173). */
   private async stopRuntime(
     programId: string,
     preserveRotation: boolean,
+    flightDriven = false,
   ): Promise<{ ok: boolean }> {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const runtime = this.runtimes.get(normalizedProgramId);
@@ -1172,6 +1180,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
           await this.programService.stopProgramSongForTimedBlock(
             normalizedProgramId,
           );
+        else if (flightDriven)
+          await this.programService.takeProgramSongOffAir(normalizedProgramId, {
+            flightDriven: true,
+          });
         else
           await this.programService.takeProgramSongOffAir(normalizedProgramId);
       } catch (error) {
@@ -1371,7 +1383,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       console.error(`Flight cue execution failed (${cue.kind})`, err);
       if (runtime.scheduledAtMs !== null) {
         this.metrics.recordRadioLogResult('cue-failed');
-        await this.stop(programId);
+        await this.stop(programId, { flightDriven: true });
         this.programService.broadcastUpdate(programId, {
           type: 'radio_log_cue_failed',
           sequenceId: runtime.sequenceId,
@@ -1534,7 +1546,7 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
 
   private async finishBlock(runtime: FlightRuntimeState): Promise<void> {
     if (runtime.scheduledAtMs === null) {
-      await this.stop(runtime.programId);
+      await this.stop(runtime.programId, { flightDriven: true });
       return;
     }
     try {
@@ -1578,7 +1590,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
       case 'stopSong':
         if (this.isClockedLogRunning(programId))
           await this.programService.stopProgramSongForTimedBlock(programId);
-        else await this.programService.takeProgramSongOffAir(programId);
+        else
+          await this.programService.takeProgramSongOffAir(programId, {
+            flightDriven: true,
+          });
         break;
 
       case 'sceneUpdate':

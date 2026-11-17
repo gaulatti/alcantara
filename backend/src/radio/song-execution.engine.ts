@@ -828,11 +828,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * Operator Stop (gaulatti/alcantara#173): the sequence halts until the
    * operator acts. An automatic sequence turns manual, cued past the stopped
    * song, and is persisted, so idle snapshots and a restart start nothing.
-   * A timed block passes `keepSequence` and resumes the rotation itself.
+   * A timed block passes `keepSequence` and resumes the rotation itself. A
+   * stop the flight itself drives passes `keepMode`: the rotation keeps its
+   * mode and is cued past the stopped song, so it neither halts nor replays.
    */
   handleStopSong(
     programId: string,
-    options: { keepSequence?: boolean } = {},
+    options: { keepSequence?: boolean; keepMode?: boolean } = {},
   ): void {
     const state = this.states.get(programId);
     if (!state) {
@@ -845,7 +847,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         state.sequence?.mode === 'shuffle')
     ) {
       const halted = normalizeProgramSongSequence(state.sequence)!;
-      halted.mode = 'manual';
+      if (!options.keepMode) halted.mode = 'manual';
       const stopped = state.activeSong;
       // Queue entries and songs picked from outside the playlist never moved
       // the cursor, which already points at the successor.
