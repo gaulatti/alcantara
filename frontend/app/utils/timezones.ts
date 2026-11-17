@@ -96,3 +96,22 @@ export function getTimezonesSortedByOffset(date: Date = new Date()): string[] {
 
   return withMeta.map((item) => item.timezone);
 }
+
+export interface TimezoneOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Returns the picker options with `value` kept selectable. The options list
+ * the zones the browser's Intl reports, which may spell a saved or default
+ * zone differently (Chromium lists America/Buenos_Aires, not
+ * America/Argentina/Buenos_Aires). A missing value is listed first, unchanged,
+ * so the picker shows it and the saved data is never rewritten.
+ */
+export function withTimezoneOption(options: TimezoneOption[], value: string, date: Date = new Date()): TimezoneOption[] {
+  if (!value || options.some((option) => option.value === value)) {
+    return options;
+  }
+  return [{ value, label: getTimezoneOptionLabel(value, date) }, ...options];
+}

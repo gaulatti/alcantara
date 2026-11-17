@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Field, Checkbox, Input, Select, Textarea } from '@gaulatti/bleecker';
-import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../../utils/timezones';
+import { getTimezonesSortedByOffset, getTimezoneOptionLabel, withTimezoneOption } from '../../utils/timezones';
 import { SlideshowEditorFields } from './SlideshowEditorFields';
 import { ToniChyronEditorFields } from './ToniChyronEditorFields';
 import { RelojDigitalEditorFields } from './RelojDigitalEditorFields';
@@ -412,7 +412,7 @@ export function ComponentPropsFields({
             <Select
               value={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
               onChange={(v) => updateProp(componentType, 'clockTimezone', v)}
-              options={timezoneOptions}
+              options={withTimezoneOption(timezoneOptions, props.clockTimezone || 'America/Argentina/Buenos_Aires')}
             />
           </div>
         </div>
@@ -423,7 +423,7 @@ export function ComponentPropsFields({
           <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
             onChange={(v) => updateProp(componentType, 'timezone', v)}
-            options={timezoneOptions}
+            options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
           />
         </Field>
       );
@@ -433,7 +433,7 @@ export function ComponentPropsFields({
           <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
             onChange={(v) => updateProp(componentType, 'timezone', v)}
-            options={timezoneOptions}
+            options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
           />
         </Field>
       );
@@ -444,7 +444,7 @@ export function ComponentPropsFields({
             <Select
               value={props.timezone || 'Europe/Madrid'}
               onChange={(v) => updateProp(componentType, 'timezone', v)}
-              options={timezoneOptions}
+              options={withTimezoneOption(timezoneOptions, props.timezone || 'Europe/Madrid')}
             />
           </Field>
           <p className='text-xs text-text-secondary'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>

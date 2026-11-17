@@ -5,6 +5,7 @@ import { normalizeProgramTextSequence, createProgramTextSequence, type ProgramTe
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 import { SearchableSelect } from './SearchableSelect';
 import { SCENE_TRANSITIONS } from '../../utils/sceneTransitions';
+import { withTimezoneOption } from '../../utils/timezones';
 import type { Scene } from '../../models/broadcast';
 
 export function RelojDigitalEditorFields({
@@ -96,7 +97,7 @@ export function RelojDigitalEditorFields({
       {!isCountdown && (
         <Field label='Starting Timezone'>
           <Select value={props.timezone || 'America/New_York'} onChange={v => updateProp(componentType, 'timezone', v)}
-            options={timezoneOptions} />
+            options={withTimezoneOption(timezoneOptions, props.timezone || 'America/New_York')} />
         </Field>
       )}
 
