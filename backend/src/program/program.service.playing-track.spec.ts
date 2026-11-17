@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- test doubles and parsed SSE frames are untyped */
+/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- test doubles and parsed SSE frames are untyped */
 // gaulatti/alcantara#178: a v2 template's state carries the track the song
 // engine confirmed on air (an accepted track.started of its own song, the
 // as-run log's source), and each change is one playing_track_update signal.
@@ -173,6 +173,7 @@ function harness(templateManifest: Record<string, unknown> = v2Manifest) {
   const prisma: any = {
     $executeRawUnsafe: jest.fn().mockResolvedValue(0),
     songIntro: { findUnique: jest.fn().mockResolvedValue(null) },
+    song: { findFirst: jest.fn().mockResolvedValue(null) },
     broadcastSettings: {
       upsert: jest
         .fn()
@@ -241,7 +242,7 @@ function harness(templateManifest: Record<string, unknown> = v2Manifest) {
   const playingTrack = async () =>
     ((await service.getPublicState(PROGRAM)) as Record<string, unknown>)
       .playingTrack;
-  return { service, engine, palazzo, signals, idle, playingTrack };
+  return { service, engine, palazzo, signals, idle, playingTrack, prisma };
 }
 
 async function settle(): Promise<void> {
@@ -580,10 +581,175 @@ describe('playing track in the v2 template state', () => {
       at: NOW,
     };
     trackEvents$.next(started);
-    expect(seen).toHaveLength(1);
+    await settle();
+    // A start without an audio URL has no song record to read a cover from.
+    expect(seen).toEqual([
+      expect.objectContaining({
+        playingTrack: {
+          playbackId: 'p1',
+          title: null,
+          artist: null,
+          startedAt: NOW.toISOString(),
+        },
+      }),
+    ]);
     service.onModuleDestroy();
     service.onModuleDestroy();
     trackEvents$.next({ ...started, type: 'track.ended' });
+    await settle();
     expect(seen).toHaveLength(1);
+  });
+});
+
+// gaulatti/alcantara#179: the playing track carries the song record's stored
+// cover, only when it is a public https URL.
+describe('playing track cover', () => {
+  const COVER = 'https://cdn.example.test/covers/track-1.jpg';
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  /** Starts the first song with the song record returning `coverUrl`. */
+  async function startWithCover(coverUrl: unknown) {
+    const h = harness();
+    h.prisma.song.findFirst.mockResolvedValue({ coverUrl });
+    const first = await firstSong(h);
+    return { h, ...first };
+  }
+
+  it('carries a valid stored cover on the snapshot, the state and playing_track_update', async () => {
+    const { h, song, onAir } = await startWithCover(COVER);
+    const expected = { ...onAir, coverUrl: COVER };
+    expect(h.prisma.song.findFirst).toHaveBeenCalledWith({
+      where: { audioUrl: song.url },
+      select: { coverUrl: true },
+    });
+    expect(await h.playingTrack()).toEqual(expected);
+    expect(h.signals).toEqual([
+      {
+        type: 'playing_track_update',
+        programId: PROGRAM,
+        playingTrack: expected,
+        updatedAt: onAir!.startedAt,
+      },
+    ]);
+    const out: any[] = [];
+    const sub = h.service
+      .getEventStream(PROGRAM)
+      .subscribe((m) => out.push(JSON.parse(m.data)));
+    await settle();
+    expect(out[0].state.playingTrack).toEqual(expected);
+    h.service.broadcastUpdate(PROGRAM, {
+      type: 'scene_change',
+      programId: PROGRAM,
+      state: { id: 7, programId: PROGRAM },
+    });
+    expect(out.at(-1).state.playingTrack).toEqual(expected);
+    sub.unsubscribe();
+  });
+
+  it.each([
+    ['plain http', 'http://cdn.example.test/c.jpg'],
+    ['malformed', 'not a url'],
+    ['empty', ''],
+    ['padded', ` ${COVER}`],
+    ['not a string', 42],
+    ['credentials', 'https://user:secret@cdn.example.test/c.jpg'],
+    ['IPv4 loopback', 'https://127.0.0.1/c.jpg'],
+    ['IPv6 loopback', 'https://[::1]/c.jpg'],
+    ['localhost name', 'https://cover.localhost/c.jpg'],
+    ['private 10/8', 'https://10.0.0.8/c.jpg'],
+    ['private 172.16/12', 'https://172.16.4.2/c.jpg'],
+    ['private 192.168/16', 'https://192.168.1.20/c.jpg'],
+    ['IPv6 unique local', 'https://[fd00::5]/c.jpg'],
+    ['IPv4-mapped private', 'https://[::ffff:10.0.0.8]/c.jpg'],
+    ['IPv4 link-local', 'https://169.254.169.254/c.jpg'],
+    ['IPv6 link-local', 'https://[fe80::1]/c.jpg'],
+    ['bare hostname', 'https://media/c.jpg'],
+    ['bare hostname with a trailing dot', 'https://media./c.jpg'],
+  ])('omits a %s cover', async (_name, coverUrl) => {
+    const { h, onAir } = await startWithCover(coverUrl);
+    expect(await h.playingTrack()).toEqual(onAir);
+    expect(h.signals[0].playingTrack).not.toHaveProperty('coverUrl');
+  });
+
+  it.each([
+    ['a public IPv4 address', 'https://93.184.216.34/c.jpg'],
+    ['a fully qualified name', 'https://cdn.example.test./c.jpg'],
+  ])('keeps a cover on %s exactly as stored', async (_name, coverUrl) => {
+    const { h } = await startWithCover(coverUrl);
+    expect(await h.playingTrack()).toMatchObject({ coverUrl });
+  });
+
+  it('omits the cover when the song record is missing or the lookup fails', async () => {
+    // No song record has the accepted audio URL.
+    const miss = harness();
+    const missed = await firstSong(miss);
+    expect(miss.prisma.song.findFirst).toHaveBeenCalledTimes(1);
+    expect(await miss.playingTrack()).toEqual(missed.onAir);
+    // The record exists but stores no cover.
+    const empty = await startWithCover(null);
+    expect(await empty.h.playingTrack()).toEqual(empty.onAir);
+
+    const h = harness();
+    const warn = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    h.prisma.song.findFirst.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+    const { onAir } = await firstSong(h);
+    expect(await h.playingTrack()).toEqual(onAir);
+    expect(warn).toHaveBeenCalledWith(
+      '[ProgramService] Cover lookup failed for a playing track: Error: database unavailable',
+    );
+  });
+
+  it('shows no cover for an announced song until its start is accepted', async () => {
+    const { h, song, onAir } = await startWithCover(COVER);
+    const announced = h.palazzo.queued!;
+    expect(await h.playingTrack()).toEqual({ ...onAir, coverUrl: COVER });
+    expect(
+      h.prisma.song.findFirst.mock.calls.map(
+        ([args]: any[]) => args.where.audioUrl,
+      ),
+    ).toEqual([song.url]);
+    expect(h.signals).toHaveLength(1);
+
+    h.prisma.song.findFirst.mockResolvedValue({
+      coverUrl: 'https://cdn.example.test/covers/track-2.jpg',
+    });
+    const at = new Date().toISOString();
+    h.palazzo.endCurrent({ overlap: true });
+    await settle();
+    expect(await h.playingTrack()).toEqual({
+      ...track(announced, at),
+      coverUrl: 'https://cdn.example.test/covers/track-2.jpg',
+    });
+  });
+
+  it('applies an end that arrives during the cover lookup after the start', async () => {
+    const h = harness();
+    let release!: (value: unknown) => void;
+    h.prisma.song.findFirst.mockReturnValue(
+      new Promise((resolve) => (release = resolve)),
+    );
+    const { song } = await firstSong(h, false);
+    h.palazzo.start(song);
+    h.engine.handleStopSong(PROGRAM);
+    expect(h.signals).toEqual([]);
+    release({ coverUrl: COVER });
+    await settle();
+    expect(h.signals.map((s) => s.playingTrack?.coverUrl ?? null)).toEqual([
+      COVER,
+      null,
+    ]);
+    expect(await h.playingTrack()).toBeUndefined();
   });
 });

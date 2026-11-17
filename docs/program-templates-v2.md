@@ -50,7 +50,8 @@ A v2 registration's projected state carries an optional `playingTrack`: the song
   "playbackId": "0f9c3b4e-…",
   "title": "Track title",
   "artist": "Artist name",
-  "startedAt": "2026-11-17T12:00:00.000Z"
+  "startedAt": "2026-11-17T12:00:00.000Z",
+  "coverUrl": "https://cdn.example.test/covers/track.jpg"
 }
 ```
 
@@ -60,6 +61,13 @@ A v2 registration's projected state carries an optional `playingTrack`: the song
 - It appears on the `program_state_snapshot` event, on `GET /program/:programId/state`, and on the state of later state-bearing signals in the same event stream, so a page loaded mid-song starts with it.
 - Each change is also sent as a `playing_track_update` signal, which carries `playingTrack` while a track is on air and omits it once the track has ended. The signal is v2-only and is delivered only to manifests that list `playing_track_update` in `control.signals`.
 - The field is additive. A template that does not read it is unaffected, and a v1 registration never receives it.
+- `coverUrl` is optional (gaulatti/alcantara#179).
+  - When a start is accepted, Alcantara looks up the catalogue song whose audio URL matches the accepted track and takes the cover URL stored on that song record, unchanged.
+  - It is included only when it is a well-formed `https` URL without credentials and with a public host: a public IP address, or a dotted name that is not under `.localhost`.
+  - It is omitted (absent, not `null`) when there is no matching song record, the record stores no cover, the stored value is anything else (such as `http`, malformed, loopback, private, link-local or otherwise reserved addresses, or a bare hostname), or the lookup fails.
+  - The field never carries an internal or private address.
+- Manual picks of songs outside the catalogue get no `coverUrl`: there is no song record to read one from.
+- This differs from the now-playing publisher's order, which prefers the cover supplied with the playback and falls back to the song record. The playing track uses only the stored song record because it is the one authoritative public value. A supplied or Palazzo-reported cover is not used.
 
 ## Signals and event projection
 

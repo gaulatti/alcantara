@@ -494,6 +494,31 @@ export function isPublicNetworkAddress(address: string): boolean {
   );
 }
 
+/**
+ * A stored cover URL a v2 template may load (gaulatti/alcantara#179): a
+ * well-formed https URL whose host is a public address or a dotted public
+ * name. Loopback, private, link-local and other reserved addresses, bare
+ * hostnames and anything else return undefined. The URL is returned exactly
+ * as stored.
+ */
+export function publicCoverUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value !== value.trim() || !value) {
+    return undefined;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    return undefined;
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (isIP(host)) return isPublicNetworkAddress(host) ? value : undefined;
+  return host.includes('.') && !host.endsWith('.localhost') ? value : undefined;
+}
+
 export function readProgramTemplateManifest(
   value: unknown,
 ): ProgramTemplateManifest | null {

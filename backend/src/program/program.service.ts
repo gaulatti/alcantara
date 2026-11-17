@@ -38,6 +38,7 @@ import {
   projectProgramTemplateSignal,
   projectProgramTemplateState,
   programTemplateSchemaVersion,
+  publicCoverUrl,
   readProgramTemplateManifest,
   type ProgramTemplateManifest,
   type ProgramTemplateRegistration,
@@ -116,6 +117,8 @@ export interface ProgramPlayingTrack {
   title: string | null;
   artist: string | null;
   startedAt: string;
+  /** The song record's stored public https cover (gaulatti/alcantara#179). */
+  coverUrl?: string;
 }
 
 @Injectable()
@@ -171,6 +174,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     ProgramPlayingTrack
   >();
   private trackEventsSubscription: Subscription | null = null;
+  /** Applies each program's track events in order across cover lookups. */
+  private readonly trackEventChains = new Map<string, Promise<void>>();
   private eventListeners:
     | Set<
         (event: {
@@ -218,12 +223,25 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
    */
   private handleTrackEvent(event: SongEngineTrackEvent): void {
     const programId = this.normalizeProgramId(event.programId);
+    const previous = this.trackEventChains.get(programId) ?? Promise.resolve();
+    this.trackEventChains.set(
+      programId,
+      previous.then(() => this.applyTrackEvent(programId, event)),
+    );
+  }
+
+  private async applyTrackEvent(
+    programId: string,
+    event: SongEngineTrackEvent,
+  ): Promise<void> {
     if (event.type === 'track.started') {
+      const coverUrl = await this.storedCoverUrl(event.url);
       this.playingTrackByProgramId.set(programId, {
         playbackId: event.playbackRequestId,
         title: event.title,
         artist: event.artist,
         startedAt: event.at.toISOString(),
+        ...(coverUrl ? { coverUrl } : {}),
       });
     } else if (
       this.playingTrackByProgramId.get(programId)?.playbackId ===
@@ -240,6 +258,29 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       ...(playingTrack ? { playingTrack } : {}),
       updatedAt: event.at.toISOString(),
     });
+  }
+
+  /**
+   * The cover the song record stores for this audio URL, when it is a public
+   * https URL (gaulatti/alcantara#179). A miss, a failed lookup or an unsafe
+   * value leaves the track without a cover.
+   */
+  private async storedCoverUrl(
+    audioUrl: string | null,
+  ): Promise<string | undefined> {
+    if (!audioUrl) return undefined;
+    try {
+      const song = await this.prisma.song.findFirst({
+        where: { audioUrl },
+        select: { coverUrl: true },
+      });
+      return publicCoverUrl(song?.coverUrl);
+    } catch (error) {
+      console.warn(
+        `[ProgramService] Cover lookup failed for a playing track: ${String(error)}`,
+      );
+      return undefined;
+    }
   }
 
   /** A v2 template's state with the confirmed playing track, when there is one. */
