@@ -13,6 +13,12 @@ Playout commands support optional segue points and loudness measurements derived
 
 That migration changes only the column default. It does not rewrite existing rows, so a program whose settings row existed before it keeps its stored value; rows created by the earlier `20261115000000_radio_segue_mode` migration were stored as `off`.
 
+Migration `20261120000000_radio_segue_mode_on_for_existing` (gaulatti/alcantara#180) then turns it on for existing radio programs. For every radio program (`ProgramState.type` `radio` or `both`), a `RadioSettings` row whose `segueMode` is not `on` keeps its previous value in the nullable column `segueModeBeforeDefaultOn` and is set to `on`; a row already `on` keeps a null there. TV programs, and programs without radio settings, are not touched. The migration is additive and repeatable: a row that already recorded a previous value is never rewritten. The stored data could not tell an operator's `off` from the old default, because no operator screen sets `segueMode`, so every `off` row was turned on. `GET /radio/:programId/settings` returns the new column with the rest of the row.
+
+To put the previous values back, ship a forward migration with `UPDATE "RadioSettings" SET "segueMode" = "segueModeBeforeDefaultOn" WHERE "segueModeBeforeDefaultOn" IS NOT NULL AND "segueMode" = 'on';`. The `"segueMode" = 'on'` condition leaves alone any program an operator has turned off since.
+
+**Operator note:** to turn segue, loudness and gapless handoff off for one program, send `PUT /radio/:programId/settings` with `{"segueMode": "off"}`.
+
 With `segueMode` on, a song that has no analysis (no media asset, no analysis row, an analysis that is not `success`, or one without measurements) gets exactly the command it would get with `segueMode` off, so it plays as before.
 
 ### Pinned JSON Payload Shape

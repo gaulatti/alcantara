@@ -490,6 +490,8 @@ model RadioSettings {
   fillerVersion    String?
   enabled          Boolean      @default(false)
   segueMode        String       @default("on")
+  /// segueMode before #180 turned it on for existing programs; null when it was already on. Kept for a put-back.
+  segueModeBeforeDefaultOn String?
   similarityMode          String @default("off")
   similarityThreshold     Float  @default(0.8)
   similarityWindowSeconds Int    @default(30)
