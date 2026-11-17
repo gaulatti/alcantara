@@ -26,7 +26,7 @@ By default the continuous rotation follows its saved order. A station can opt in
 
 ## Playout segues and loudness normalization
 
-Radio settings created from now on have segue-aware and loudness-normalized playout on (`segueMode: 'on'`). A station can turn it off by setting `segueMode` to `'off'` in `RadioSettings`, which sends unchanged payloads to Palazzo. Settings saved before this default changed keep their stored value (`'off'` unless an operator chose `'on'`). When on and media asset analysis is present, Alcantara embeds measured `segue` (cue-in, cue-out, fade, overlap) and `loudness` (integrated LUFS, true peak) into the playout song command according to the specification in [program-playout.md](program-playout.md). If analysis is absent or marked failed, song playback continues uninterrupted with default parameters.
+Radio settings created from now on have segue-aware and loudness-normalized playout on (`segueMode: 'on'`). A station can turn it off by setting `segueMode` to `'off'` in `RadioSettings`, which sends unchanged payloads to Palazzo. Settings saved before this default changed keep their stored value (`'off'` unless an operator chose `'on'`). When on and media asset analysis is present, Alcantara embeds measured `segue` (cue-in, cue-out, fade, overlap) and `loudness` (integrated LUFS, true peak) into the playout song command according to the specification in [program-playout.md](program-playout.md). If analysis is absent or marked failed, song playback continues uninterrupted with default parameters. The analysis is written by the media analysis job described in [media-library-architecture.md](media-library-architecture.md#audio-analysis).
 
 ## Voice tracks
 

@@ -104,6 +104,78 @@ replacements (`success`) and failed replacement transactions (`failure`). The
 only other possible result is `unknown` for unrecognized instrumentation input;
 no asset or label identifier appears in this metric.
 
+## Audio analysis
+
+Every `AUDIO` asset (songs and audio clips) is measured once per source URL by
+the media analysis job in `backend/src/media-analysis/`, and the result is
+stored in `MediaAssetAnalysis`, one row per asset. The job runs in the backend
+process from startup; it needs no setting. Uploads, the asset record and its
+capabilities are never written by the job, so an analysis failure cannot block
+or undo an upload: the asset stays playable and the radio service keeps its
+no-analysis path.
+
+**How it runs.** Thirty seconds after startup the job picks the newest audio
+asset that has no row, whose row describes another `sourceUrl` (the file was
+replaced), or whose retry time has come. It analyses one file at a time
+(concurrency 1), with one second between files while there is work and a one
+minute poll when there is none. A newly uploaded asset is therefore picked up
+within about a minute, and the existing library is backfilled newest first.
+Before scheduling anything the job checks that `ffmpeg` and `ffprobe` start; if
+either is missing (for example in the development image, which does not install
+them) it logs `Media analysis is not scheduled` and does nothing else.
+
+**What it measures.** `ffprobe` reads the first audio stream's tags, and one
+`ffmpeg` pass (`-threads 1`) runs `silencedetect` and `ebur128` with true peak:
+
+| Column | Source |
+| --- | --- |
+| `integratedLufs` | ebur128 integrated loudness |
+| `truePeakDbtp` | ebur128 true peak |
+| `cueInSeconds` | end of a silence that starts the file, else null |
+| `cueOutSeconds` | start of a silence that ends the file, else null |
+| `isrc` | `ISRC` or `TSRC` tag, normalized (`USRC17607839`), else null |
+| `musicbrainzRecordingId` | `MUSICBRAINZ_TRACKID` / `MusicBrainz Track Id` tag, else null |
+| `fadeInSeconds`, `fadeOutSeconds`, `overlapSeconds` | not measured, always null |
+
+Silence is below −50 dBFS for at least 0.5 s; a silence within 0.05 s of an
+edge touches it. Continuous audio gets no cue points. A stored success always
+passes the bounds the Palazzo client enforces on a song command
+(`validateSongSegue` and `validateSongLoudness`), with a missing cue checked as
+the file's own edge; anything else is recorded as a failure.
+
+**States.** `pending` while a run holds the row (a ten minute lease), `success`
+with the measurements, `failed` with no measurements and a bounded `error` code:
+`timeout`, `unavailable`, `output-limit`, `probe-failed`, `decode-failed`,
+`no-audio`, `silent`, `invalid-measurement`, `unsupported-source` (not an http
+or https URL) or `interrupted` (the last run's lease ran out). Each source gets
+at most three runs; a failure that can change is retried after 5 and then 30
+minutes (`nextAttemptAt`), while `no-audio`, `silent`, `invalid-measurement`
+and `unsupported-source` are final at once. `attempts` counts runs for the
+current source, and a new `sourceUrl` starts the count again. Runs are claimed
+with an optimistic check on the row, so two backend instances never analyse the
+same file. Re-running the job is idempotent: the same file produces the same
+row.
+
+**Limits.** Each file has 180 seconds for the probe and the measurement
+together, a network read may stall for 30 seconds, and a tool that writes more
+than 4 MiB of output is stopped. Only `http`, `https` and their transport
+protocols are allowed when reading a source. Neither the source URL nor tool
+output is logged or stored; a failure logs `media_analysis.failed` with the
+asset ID, result and code.
+
+**Cost.** On the fixture used for the ticket (a 4 minute, 320 kbps stereo MP3
+read from local disk, Apple M-series), one analysis takes about 1.5 s wall and
+1.65 s CPU, with about 22 MB resident. A 5,000-track library at concurrency 1
+takes about 5,000 × (1.5 s + 1 s gap) ≈ 3.5 hours plus download time; on a
+slower production CPU expect a few times that.
+
+**Metrics.** `alcantara_media_analyses_total{result}` and
+`alcantara_media_analysis_duration_seconds{result}`, where `result` is
+`success`, `retry` (failed, scheduled again) or `failure` (failed for good).
+
+**Rollback.** A forward fix. The job only writes `MediaAssetAnalysis`, which
+playback reads only for programs with `segueMode` `on`.
+
 ## Authorization and public rendering
 
 The unified catalog filters each result through the existing per-capability

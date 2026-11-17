@@ -24,6 +24,7 @@ import { RecordingModule } from './recording/recording.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
 import { MediaAssetsModule } from './media-assets/media-assets.module';
 import { AsRunModule } from './as-run/as-run.module';
+import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AsRunModule } from './as-run/as-run.module';
     DatabaseBackupModule,
     MediaAssetsModule,
     AsRunModule,
+    MediaAnalysisModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],

@@ -626,6 +626,12 @@ model MediaAssetAnalysis {
   isrc                   String?
   musicbrainzRecordingId String?
   error                  String?
+  /// Analysis runs claimed for the current source, bounded by the analysis job.
+  attempts               Int        @default(0)
+  /// When a claimed run's lease ends or a failed run may be retried; null when settled.
+  nextAttemptAt          DateTime?
+  /// The source URL the row describes; a different MediaAsset.sourceUrl means the row is stale.
+  sourceUrl              String?
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
 }

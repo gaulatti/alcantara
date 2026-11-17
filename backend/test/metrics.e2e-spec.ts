@@ -11,6 +11,7 @@ import { MetricsController } from '../src/metrics.controller';
 import { ObservabilityModule } from '../src/observability/observability.module';
 import { ManagedMetricsService } from '../src/observability/managed-metrics.service';
 import { RadioMetricsService } from '../src/radio/radio-metrics.service';
+import { MediaAnalysisMetrics } from '../src/media-analysis/media-analysis.metrics';
 
 describe('private Prometheus scrape boundary (e2e)', () => {
   let app: NestFastifyApplication;
@@ -28,7 +29,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true }), ObservabilityModule],
       controllers: [MetricsController],
-      providers: [RadioMetricsService],
+      providers: [RadioMetricsService, MediaAnalysisMetrics],
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
@@ -90,6 +91,9 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     radioMetrics.recordRadioLogResult('generation-failed');
     radioMetrics.recordRadioLogResult('private-tag-id');
     radioMetrics.recordEventIgnored('sequence-gap');
+    const analysisMetrics = app.get(MediaAnalysisMetrics);
+    analysisMetrics.record('success', 1.5);
+    analysisMetrics.record('retry', 180);
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -191,6 +195,16 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       'alcantara_radio_log_transitions_total{result="interrupted"} 1',
     );
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    expect(body).toContain(
+      'alcantara_media_analyses_total{result="success"} 1',
+    );
+    expect(body).toContain('alcantara_media_analyses_total{result="retry"} 1');
+    expect(body).toContain(
+      'alcantara_media_analyses_total{result="failure"} 0',
+    );
+    expect(body).toContain(
+      'alcantara_media_analysis_duration_seconds_count{result="retry"} 1',
+    );
     expect(body).toContain(
       'alcantara_radio_log_transitions_total{result="completed"} 1',
     );
