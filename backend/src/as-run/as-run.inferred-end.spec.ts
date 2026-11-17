@@ -360,7 +360,8 @@ describe('AsRunService inferred ends', () => {
     );
   });
 
-  it('ignores the inferred marker on a start', async () => {
+  // #174: a start the engine adopted from a snapshot is stored inferred.
+  it('keeps the inferred marker on a start', async () => {
     await service.handleTrackEvent(
       event(
         'track.started',
@@ -373,7 +374,7 @@ describe('AsRunService inferred ends', () => {
     expect(store.rows).toEqual([
       expect.objectContaining({
         state: 'started',
-        inferred: false,
+        inferred: true,
         reviewFlag: null,
       }),
     ]);

@@ -945,3 +945,100 @@ describe('operator Stop halts the radio sequence', () => {
     s.asRun.onModuleDestroy();
   });
 });
+
+// gaulatti/alcantara#174: a song the engine adopts from a Palazzo snapshot
+// (for example after a restart mid-song) gets one inferred start.
+describe('as-run start for a song adopted from a snapshot', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const PALAZZO_START = '2026-11-17T11:58:30.000Z';
+  const adopt = (
+    s: ReturnType<typeof session>,
+    startedAt: string | null,
+    requestId = 'adopted-1',
+  ) =>
+    s.engine.handlePalazzoSnapshot('radio-1', {
+      ...playingSnapshot(50, requestId, SONGS[0].audioUrl),
+      track: {
+        playbackRequestId: requestId,
+        title: null,
+        artist: null,
+        coverUrl: null,
+        url: SONGS[0].audioUrl,
+        startedAt,
+      },
+      positionSeconds: 90,
+    } as PalazzoPlaybackState);
+  const startedRows = (s: ReturnType<typeof session>) =>
+    s.store.rows.filter((row) => row.state === 'started');
+
+  it("writes one inferred start at Palazzo's reported start time", async () => {
+    const s = session();
+    adopt(s, PALAZZO_START);
+    await settle();
+    expect(startedRows(s)).toEqual([
+      expect.objectContaining({
+        playbackRequestId: 'adopted-1',
+        songId: SONGS[0].id,
+        inferred: true,
+        reviewFlag: null,
+        at: new Date(PALAZZO_START),
+      }),
+    ]);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('uses the snapshot time when Palazzo reports no start time', async () => {
+    const s = session();
+    adopt(s, null);
+    await settle();
+    expect(startedRows(s)).toEqual([
+      expect.objectContaining({
+        inferred: true,
+        at: new Date('2026-11-17T12:00:00.000Z'),
+      }),
+    ]);
+    s.asRun.onModuleDestroy();
+  });
+
+  it('keeps one start when the real track.started also arrives, after or before', async () => {
+    const after = session();
+    adopt(after, PALAZZO_START);
+    await settle();
+    after.started({ requestId: 'adopted-1', url: SONGS[0].audioUrl });
+    await settle();
+    expect(startedRows(after)).toHaveLength(1);
+    after.asRun.onModuleDestroy();
+
+    const before = session();
+    before.started({ requestId: 'adopted-2', url: SONGS[0].audioUrl });
+    await settle();
+    adopt(before, PALAZZO_START, 'adopted-2');
+    await settle();
+    expect(startedRows(before)).toHaveLength(1);
+    before.asRun.onModuleDestroy();
+  });
+
+  it('no longer flags the end of an adopted play no-start', async () => {
+    const s = session();
+    adopt(s, PALAZZO_START);
+    await settle();
+    s.idle();
+    await settle();
+    expect(s.store.rows.filter((row) => row.state === 'ended')).toEqual([
+      expect.objectContaining({
+        playbackRequestId: 'adopted-1',
+        inferred: true,
+        reviewFlag: null,
+      }),
+    ]);
+    s.asRun.onModuleDestroy();
+  });
+});

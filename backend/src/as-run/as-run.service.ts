@@ -121,7 +121,9 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     }
 
     const { songId, assetId } = await this.resolveSongAndAsset(event);
-    const inferred = state === 'ended' && event.inferred === true;
+    // A start is inferred only when the engine adopted the play from a
+    // snapshot (#174); an end when the engine inferred it.
+    const inferred = event.inferred === true;
     const endReason =
       state === 'ended' &&
       typeof event.endReason === 'string' &&
@@ -130,7 +132,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
         : null;
     // Inferred ends and ends the engine caused are flagged, never dropped.
     const reviewFlag =
-      inferred || endReason
+      state === 'ended' && (inferred || endReason)
         ? await this.inferredReviewFlag(event.programId, playbackRequestId, at)
         : null;
 

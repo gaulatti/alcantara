@@ -104,6 +104,14 @@ advanced. The record stores `inferred = true`. If it closes a play shorter than
 a royalty rule: a play that brief behind a dropped connection is more likely a
 stale reconnect or an immediate skip, so an operator should look at it.
 
+**Starts adopted from a snapshot.** When the engine adopts a song from a
+playing snapshot without having seen its start (for example after a backend
+restart mid-song), it emits one `track.started` with `inferred: true`, at
+Palazzo's reported start time (`track.startedAt`), or at the snapshot time when
+the snapshot carries none. The `started` row stores `inferred = true` and no
+`reviewFlag`; the play's end is then no longer flagged `no-start`. If the real
+`track.started` also arrives, the unique key keeps one row.
+
 **Ends the engine causes.** When the engine itself ends a song that had
 started (Palazzo had confirmed it), it closes the play at that moment with an
 `endReason`, taken from what the engine did and never from Palazzo's

@@ -1069,6 +1069,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     data: { title?: string | null; artist?: string | null; url?: string },
     inferred = false,
     endReason?: SongEngineEndReason,
+    at = new Date(),
   ): void {
     try {
       this.trackEventsSubject.next({
@@ -1078,7 +1079,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         title: typeof data.title === 'string' ? data.title : null,
         artist: typeof data.artist === 'string' ? data.artist : null,
         url: typeof data.url === 'string' ? data.url : null,
-        at: new Date(),
+        at,
         ...(inferred ? { inferred: true as const } : {}),
         ...(endReason ? { endReason } : {}),
       });
@@ -1214,6 +1215,23 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         state,
         state.activeSong,
         authoritativeStartedAt,
+      );
+      // The play gets its as-run start once (#174), inferred: at Palazzo's
+      // reported start time, or the snapshot time when it reports none.
+      this.emitTrackEvent(
+        programId,
+        'track.started',
+        requestId,
+        {
+          title: state.activeSong.title,
+          artist: state.activeSong.artist,
+          url: state.activeSong.audioUrl,
+        },
+        true,
+        undefined,
+        new Date(
+          Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now(),
+        ),
       );
       this.emitPlaybackActive(programId, state.activeSong);
       void this.publishNowPlaying(programId, state.activeSong);
