@@ -136,7 +136,7 @@ export function PlaybackBar({
       const matches = sequence.items.filter(
         (i) => i.kind === "preset" && (i.audioUrl || "").trim() === url,
       );
-      if (matches.length === 1) return matches[0]?.id ?? null;
+      if (matches.length === 1) return matches[0].id;
       if (matches.length > 1) {
         if (
           sequence.activeItemId &&
