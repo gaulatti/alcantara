@@ -1029,9 +1029,9 @@ export default function Control() {
       setScenes(data as Scene[]);
       setSceneCatalogError(null);
     } catch (err) {
+      // Keep the last good list; the message says it may be out of date.
       console.error("Failed to fetch scenes:", err);
-      setScenes([]);
-      setSceneCatalogError("Scenes could not be loaded. Refresh to try again.");
+      setSceneCatalogError("Scenes could not be loaded. The list may be out of date.");
     }
   };
 
@@ -1048,9 +1048,9 @@ export default function Control() {
       setLayouts(data as Layout[]);
       setLayoutCatalogError(null);
     } catch (err) {
+      // Keep the last good list; the message says it may be out of date.
       console.error("Failed to fetch layouts:", err);
-      setLayouts([]);
-      setLayoutCatalogError("Scene templates could not be loaded. Refresh to try again.");
+      setLayoutCatalogError("Scene templates could not be loaded. The list may be out of date.");
     }
   };
 
@@ -3457,9 +3457,31 @@ export default function Control() {
         <SimulcastStatusRail programId={activeProgramId} />
       ) : null}
       {sceneCatalogError || layoutCatalogError ? (
-        <div role="alert" className="mx-4 mt-3 space-y-1 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
-          {sceneCatalogError ? <p>{sceneCatalogError}</p> : null}
-          {layoutCatalogError ? <p>{layoutCatalogError}</p> : null}
+        <div role="alert" className="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
+          <div className="min-w-0 flex-1 space-y-1">
+            {sceneCatalogError ? <p>{sceneCatalogError}</p> : null}
+            {layoutCatalogError ? <p>{layoutCatalogError}</p> : null}
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void fetchScenes();
+              void fetchLayouts();
+            }}
+          >
+            Retry
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSceneCatalogError(null);
+              setLayoutCatalogError(null);
+            }}
+          >
+            Dismiss
+          </Button>
         </div>
       ) : null}
       <BroadcastSwitcherDeck
