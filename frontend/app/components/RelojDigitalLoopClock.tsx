@@ -288,6 +288,7 @@ export default function RelojDigitalLoopClock({
 
   const titleText = activeTitleItem?.text?.trim() || '';
   const ctaText = activeCtaItem?.text?.trim() || '';
+  // A resolved text leaf carries no in/out mode, so the CTA never takes the in-anim or out class.
 
   return (
     <div className='reloj-digital-loop-root'>
@@ -312,7 +313,7 @@ export default function RelojDigitalLoopClock({
       {(titleText !== '' || ctaText !== '') && (
         <div id='lower-third'>
           {ctaText !== '' && (
-            <div id='cta' className={activeCtaItem?.mode === 'in' ? 'in-anim' : activeCtaItem?.mode === 'out' ? 'out' : ''}>
+            <div id='cta' className=''>
               {ctaText}
             </div>
           )}

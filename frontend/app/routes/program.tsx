@@ -39,7 +39,7 @@ import { resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
-import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
+import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import {
@@ -180,7 +180,7 @@ interface InstantAudioRuntimeState {
   baseVolume: number;
   meterSource: AudioNode | null;
   meterAnalyser: AnalyserNode | null;
-  meterBuffer: Float32Array | null;
+  meterBuffer: Float32Array<ArrayBuffer> | null;
   meterUsesMediaElementFallback: boolean;
 }
 
@@ -942,7 +942,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     try {
       const attachFromStream = (): boolean => {
         const stream =
-          audio.captureStream?.() ||
+          (
+            audio as HTMLAudioElement & {
+              captureStream?: () => MediaStream;
+            }
+          ).captureStream?.() ||
           (
             audio as HTMLAudioElement & {
               mozCaptureStream?: () => MediaStream;

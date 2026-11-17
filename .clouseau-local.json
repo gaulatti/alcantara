@@ -17,6 +17,13 @@
       "backend",
       "run",
       "test:coverage"
+    ],
+    [
+      "pnpm",
+      "--dir",
+      "frontend",
+      "run",
+      "typecheck"
     ]
   ],
   "coverage": {

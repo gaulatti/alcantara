@@ -48,7 +48,7 @@ interface ProgramAudioBusState {
   meterContext: AudioContext | null;
   meterSource: AudioNode | null;
   meterAnalyser: AnalyserNode | null;
-  meterBuffer: Float32Array | null;
+  meterBuffer: Float32Array<ArrayBuffer> | null;
   lastSignalLevel: number;
   meterUsesMediaElementFallback: boolean;
   meterEnvelopeUrl: string;
@@ -218,7 +218,7 @@ function setupAudioMeter(state: ProgramAudioBusState, audio: HTMLAudioElement): 
     state.meterContext = context;
     const attachFromStream = (): boolean => {
       const stream =
-        audio.captureStream?.() ||
+        (audio as HTMLAudioElement & { captureStream?: () => MediaStream }).captureStream?.() ||
         (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.();
       if (!stream) {
         return false;

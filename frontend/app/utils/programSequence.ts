@@ -396,7 +396,7 @@ function getSelectedSongItem(
   if (sequence.loop !== false) {
     const hasUnknownDuration = itemDurations.some((durationMs) => durationMs === null);
     if (!hasUnknownDuration) {
-      const cycleDurationMs = itemDurations.reduce((sum, durationMs) => sum + (durationMs ?? 0), 0);
+      const cycleDurationMs = itemDurations.reduce<number>((sum, durationMs) => sum + (durationMs ?? 0), 0);
       if (cycleDurationMs <= 0) {
         return sequence.items[baseIndex] ?? null;
       }
