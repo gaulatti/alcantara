@@ -1,4 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { isProductionEnvironment } from '../config/local-media';
 import { PrismaService } from '../prisma.service';
 import type { SongPlaybackData } from './song-execution.engine';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -38,7 +40,22 @@ export class NowPlayingPublisherService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly metrics?: ManagedMetricsService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * Outside production no now-playing update leaves the machine
+   * (gaulatti/alcantara#206): a consumer an operator enters on a local stack
+   * may be a real endpoint. Production always publishes.
+   */
+  outboundPublishing(): 'enabled' | 'blocked-local' {
+    if (!this.config) return 'enabled';
+    return isProductionEnvironment({
+      NODE_ENV: this.config.get<string>('NODE_ENV'),
+    })
+      ? 'enabled'
+      : 'blocked-local';
+  }
 
   async listConsumers(programId: string) {
     return this.prisma.nowPlayingConsumer.findMany({
@@ -203,6 +220,16 @@ export class NowPlayingPublisherService {
     consumers: NowPlayingConsumerConfig[],
     payload: NowPlayingPublisherPayload,
   ): Promise<void> {
+    if (this.outboundPublishing() === 'blocked-local') {
+      const started = process.hrtime.bigint();
+      for (let i = 0; i < consumers.length; i++) {
+        this.recordPublishMetric('skipped', started);
+      }
+      this.logger.warn(
+        `Now-playing publish blocked for ${programId}: outbound publishing is off outside production (${consumers.length} consumer(s) not contacted)`,
+      );
+      return;
+    }
     await Promise.all(
       consumers.map((consumer) =>
         this.postNowPlaying(programId, consumer, payload),
@@ -260,7 +287,7 @@ export class NowPlayingPublisherService {
   }
 
   private recordPublishMetric(
-    result: 'success' | 'http-error' | 'unavailable',
+    result: 'success' | 'http-error' | 'unavailable' | 'skipped',
     started: bigint,
   ): void {
     this.metrics?.recordDependency(

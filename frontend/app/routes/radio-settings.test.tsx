@@ -45,6 +45,7 @@ type Settings = {
 let settings: Settings;
 let consumers: unknown;
 let instants: unknown;
+let publishing: unknown = { publishing: "enabled" };
 
 function serve(overrides: Partial<Record<string, () => Response>> = {}) {
   const { fetchMock, calls } = routeFetch((url, init) => {
@@ -57,6 +58,8 @@ function serve(overrides: Partial<Record<string, () => Response>> = {}) {
     if (key === "GET /radio/night radio/now-playing-consumers")
       return Response.json(consumers);
     if (key === "GET /instants") return Response.json(instants);
+    if (key === "GET /radio/night radio/now-playing-publishing")
+      return Response.json(publishing);
     if (key === "PUT /radio/night radio/settings") {
       settings = JSON.parse(String(init!.body));
       return Response.json(settings);
@@ -92,6 +95,7 @@ const bodyOf = (
   );
 
 beforeEach(() => {
+  publishing = { publishing: "enabled" };
   settings = {
     palazzoUrl: "http://palazzo:3100",
     bumperEnabled: true,
@@ -165,6 +169,10 @@ it.each([
     "Now-playing delivery failed (500)",
   ],
   ["GET /instants", "Audio clips failed (500)"],
+  [
+    "GET /radio/night radio/now-playing-publishing",
+    "Now-playing publishing state failed (500)",
+  ],
 ])(
   "explains a configuration that cannot be read (%s) and retries",
   async (route, message) => {
@@ -357,4 +365,24 @@ it("reports a consumer save that fails without an error object", async () => {
   await screen.findByDisplayValue("Website");
   fireEvent.click(screen.getByRole("button", { name: /Save consumers/ }));
   await toast("Now-playing delivery was not saved.");
+});
+
+it("says no now-playing consumer is contacted on a local stack (gaulatti/alcantara#206)", async () => {
+  publishing = { publishing: "blocked-local" };
+  serve();
+  render(<RadioSettingsRoute />);
+  expect(
+    await screen.findByText(
+      "Publishing is off on this local stack: no consumer is contacted outside production.",
+    ),
+  ).toBeVisible();
+});
+
+it("shows no local-stack notice where publishing is enabled", async () => {
+  serve();
+  render(<RadioSettingsRoute />);
+  expect(await screen.findByText("Now-playing consumers")).toBeVisible();
+  expect(
+    screen.queryByText(/Publishing is off on this local stack/),
+  ).not.toBeInTheDocument();
 });

@@ -146,6 +146,11 @@ export class RadioController {
     return this.nowPlayingPublisherService.listConsumers(programId);
   }
 
+  @Get(':programId/now-playing-publishing')
+  nowPlayingPublishing() {
+    return { publishing: this.nowPlayingPublisherService.outboundPublishing() };
+  }
+
   @Put(':programId/now-playing-consumers')
   @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
   async replaceNowPlayingConsumers(

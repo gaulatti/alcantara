@@ -8,6 +8,7 @@ jest.mock('../prisma.service', () => ({ PrismaService: undefined }));
 jest.mock('../observability/managed-metrics.service', () => ({
   ManagedMetricsService: undefined,
 }));
+jest.mock('@nestjs/config', () => ({ ConfigService: undefined }));
 
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 
@@ -15,6 +16,6 @@ describe('NowPlayingPublisherService constructor metadata', () => {
   it('falls back to Object parameter types when dependencies are unresolved', () => {
     expect(
       Reflect.getMetadata('design:paramtypes', NowPlayingPublisherService),
-    ).toEqual([Object, Object]);
+    ).toEqual([Object, Object, Object]);
   });
 });
