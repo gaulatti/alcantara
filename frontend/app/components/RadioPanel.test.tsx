@@ -20,6 +20,28 @@ vi.mock("../services/flight", () => ({
   goFlight: vi.fn(),
 }));
 
+// Radix positioning runs continuously in jsdom; keep Bleecker's string
+// callback contract with a native select, as RadioLogGenerator's test does.
+vi.mock("@gaulatti/bleecker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
+  return {
+    ...actual,
+    Select: ({ options, onChange, value, ...rest }: any) => (
+      <select
+        {...rest}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option: any) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
+  };
+});
+
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
@@ -437,4 +459,625 @@ it("monitors listener audio inline without changing the on-air transport or mix"
   expect(
     within(screen.getByLabelText("On-air player")).getByText("City lights"),
   ).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// gaulatti/alcantara#184: the rest of the radio desk, through its props and
+// the radio API it polls.
+
+/** The running log of the default fixture. */
+const onAirLog = (p: ReturnType<typeof props>) => p.fixtureData!.logs[0];
+
+function liveProps(): ComponentProps<typeof RadioPanel> {
+  const p = props();
+  delete p.fixtureData;
+  return p;
+}
+
+type Answer = Response | Error | undefined;
+/** A fetch stub that answers the radio status endpoints by path. */
+function radioApi(answers: Partial<Record<string, Answer | (() => Answer)>>) {
+  const transport = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const key = Object.keys(answers).find((path) => url.includes(path));
+    const answer = key ? answers[key] : undefined;
+    const value = typeof answer === "function" ? answer() : answer;
+    if (value instanceof Error) throw value;
+    return value ?? new Response("null", { status: 404 });
+  });
+  vi.spyOn(globalThis, "fetch").mockImplementation(transport as typeof fetch);
+  return transport;
+}
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status });
+
+it("polls the live radio API when no fixture is supplied", async () => {
+  const now = new Date().toISOString();
+  radioApi({
+    "/status": json({ running: true, uptime: 3_725_000 }),
+    "/palazzo-status": json({
+      ...props().fixtureData!.palazzo,
+      degraded: true,
+      detail: "Reconnecting to engine",
+    }),
+    "/output-confidence": json({
+      state: "silent",
+      expectedAudio: true,
+      outputRms: 0,
+      lastSampleAt: now,
+      quietForMs: 4000,
+    }),
+    "/recovery": json({
+      preparedVersion: "v3",
+      automation: null,
+      connection: "connected",
+    }),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([
+    { ...onAirLog(props()), isRunning: false, scheduledAt: null },
+  ]);
+  mount(liveProps());
+  expect(await screen.findByText("Stream connected")).toBeVisible();
+  expect(await screen.findByText("Engine degraded")).toBeVisible();
+  expect(await screen.findByText("Expected audio is silent")).toBeVisible();
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(screen.getByText("Up 1h 2m")).toBeVisible();
+  // An unscheduled rundown is not part of the air plan.
+  expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
+  // The live monitor asks the API for a grant instead of a fixture URL.
+  expect(
+    vi
+      .mocked(fetch)
+      .mock.calls.some(([url]) => String(url).includes("/monitor-ticket")),
+  ).toBe(true);
+});
+
+it("treats every unreachable or refused status endpoint as unverified", async () => {
+  radioApi({
+    "/status": new Error("offline"),
+    "/palazzo-status": new Error("offline"),
+    "/output-confidence": new Error("offline"),
+    "/recovery": new Error("offline"),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockRejectedValue(
+    new Error("Rundowns are being rebuilt"),
+  );
+  const view = mount(liveProps());
+  expect(await screen.findByText("Rundowns are being rebuilt")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+  expect(screen.getByText("Stream unverified")).toBeVisible();
+  expect(screen.getByText("Engine unavailable")).toBeVisible();
+  expect(screen.getByText("Output unverified")).toBeVisible();
+  expect(screen.getByText("No level sample")).toBeVisible();
+  expect(screen.getByText("No prepared recovery playlist")).toBeInTheDocument();
+  view.unmount();
+
+  radioApi({
+    "/status": json({}, 503),
+    "/palazzo-status": json({}, 503),
+    "/output-confidence": json({}, 503),
+    "/recovery": json({}, 503),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockRejectedValue("busy");
+  const refused = mount(liveProps());
+  expect(await screen.findByText("Rundowns unavailable")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+  expect(screen.getByText("Stream unverified")).toBeVisible();
+  refused.unmount();
+
+  // A Palazzo answer with no body is not a status either.
+  radioApi({ "/palazzo-status": new Response("null", { status: 200 }) });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(([url]) => String(url).includes("/palazzo-status")),
+    ).toBe(true),
+  );
+  expect(screen.getByText("Engine unavailable")).toBeVisible();
+});
+
+it("names every output confidence state", () => {
+  const cases: [string, string][] = [
+    ["idle", "Output idle"],
+    ["checking", "Checking output"],
+    ["unknown", "Output unverified"],
+    ["silent", "Expected audio is silent"],
+  ];
+  for (const [state, label] of cases) {
+    const p = props();
+    p.fixtureData!.output.state = state as never;
+    const view = mount(p);
+    expect(screen.getByText(label)).toBeVisible();
+    view.unmount();
+  }
+});
+
+it("shows uptime in seconds, minutes and days", () => {
+  for (const [uptime, label] of [
+    [42_000, "Up 42s"],
+    [5 * 60_000, "Up 5m"],
+    [(2 * 24 + 3) * 3_600_000, "Up 2d 3h"],
+  ] as const) {
+    const p = props();
+    p.fixtureData!.stream.uptime = uptime;
+    const view = mount(p);
+    expect(screen.getByText(label)).toBeVisible();
+    view.unmount();
+  }
+  const p = props();
+  p.fixtureData!.stream.uptime = null;
+  mount(p);
+  expect(screen.queryByText(/^Up /)).toBeNull();
+});
+
+it("describes each event of the on-air rundown and its timing", () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.scheduledAt = new Date(Date.now() - 60_000).toISOString();
+  log.activeItemId = "cue-2";
+  log.items = [
+    { id: "cue-1", kind: "playSong", songId: 1, clockOffsetSeconds: 0 },
+    { id: "cue-2", kind: "playSong", songId: 1, isFiller: true },
+    { id: "cue-3", kind: "instant", instantId: 1, voiceTrackInstantId: 9 },
+    { id: "cue-4", kind: "stopSong" },
+    { id: "cue-5", kind: "playSong", songId: 404 },
+    { id: "cue-6", kind: "instant", instantId: 404 },
+  ];
+  p.songCatalog = [
+    {
+      id: 1,
+      artist: "Catalog artist",
+      title: "Catalog song",
+      audioUrl: "https://example.test/catalog.mp3",
+      coverUrl: null,
+      durationMs: 185_000,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+      enabled: true,
+    },
+  ];
+  mount(p);
+  const rows = within(
+    screen.getByRole("list", { name: "On-air rundown" }),
+  ).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("PLAYED");
+  expect(rows[0]).toHaveTextContent("03:05");
+  expect(rows[1]).toHaveTextContent("NOW");
+  expect(rows[1]).toHaveTextContent("Catalog artist · Filler");
+  expect(rows[1]).toHaveTextContent("Follows");
+  expect(rows[2]).toHaveTextContent("NEXT");
+  expect(rows[2]).toHaveTextContent("News opener");
+  expect(rows[2]).toHaveTextContent("Audio clip · Voice track");
+  expect(rows[3]).toHaveTextContent("Stop audio");
+  expect(rows[3]).toHaveTextContent("Transport command");
+  expect(rows[3]).toHaveTextContent("04");
+  expect(rows[4]).toHaveTextContent("Unavailable audio");
+  expect(rows[5]).toHaveTextContent("Unavailable audio");
+  expect(screen.getByText("6 events")).toBeVisible();
+  expect(screen.getByText(/ON AIR · Revision 1/)).toBeVisible();
+});
+
+it("reorders and removes events in the persisted log, and reloads it after a refused change", async () => {
+  const p = props();
+  const log = onAirLog(p);
+  vi.mocked(flight.updateFlightSequence)
+    .mockImplementationOnce(async (_program, _id, data) => ({
+      ...log,
+      items: data.items!,
+      revision: 2,
+    }))
+    .mockRejectedValueOnce(new Error("Revision conflict"))
+    .mockRejectedValueOnce("conflict");
+  mount(p);
+  expect(screen.getByRole("button", { name: "Move event 2 up" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Move event 6 down" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Move event 4 up" }));
+  await waitFor(() =>
+    expect(flight.updateFlightSequence).toHaveBeenLastCalledWith(
+      "radio-demo",
+      1,
+      {
+        revision: 1,
+        items: [log.items[0], log.items[1], log.items[3], log.items[2], ...log.items.slice(4)],
+      },
+    ),
+  );
+  expect(await screen.findByText(/Revision 2/)).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "Move event 4 down" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Revision conflict");
+  fireEvent.click(screen.getByRole("button", { name: "Remove event 5" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The log was not changed",
+  );
+  // With fixture data the log is not reloaded from the API.
+  expect(flight.fetchFlightSequences).not.toHaveBeenCalled();
+});
+
+it("reloads the log from the API after a command when it is live", async () => {
+  const now = new Date(Date.now() - 1000).toISOString();
+  const log = { ...onAirLog(props()), scheduledAt: now };
+  radioApi({});
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([log]);
+  vi.mocked(flight.updateFlightSequence).mockRejectedValue(new Error("Stale"));
+  vi.mocked(flight.stopFlight).mockResolvedValue(undefined as never);
+  mount(liveProps());
+  fireEvent.click(await screen.findByRole("button", { name: "Remove event 3" }));
+  expect(await screen.findByText("Stale")).toHaveAttribute("role", "alert");
+  const loads = vi.mocked(flight.fetchFlightSequences).mock.calls.length;
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stop rundown / Take Off Air" }),
+  );
+  await waitFor(() => expect(flight.stopFlight).toHaveBeenCalledWith("radio-demo"));
+  await waitFor(() =>
+    expect(vi.mocked(flight.fetchFlightSequences).mock.calls.length).toBeGreaterThan(
+      loads,
+    ),
+  );
+});
+
+it("reports an unnamed log command failure", async () => {
+  vi.mocked(flight.stopFlight).mockRejectedValue("engine gone");
+  mount();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stop rundown / Take Off Air" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Log command failed");
+});
+
+it("adds a Library song next in the running rundown, as its first timed event when empty", async () => {
+  const p = props();
+  const log = onAirLog(p);
+  log.items = [];
+  log.activeItemId = null;
+  p.songCatalog = [
+    {
+      id: 5,
+      artist: "Enabled artist",
+      title: "Enabled song",
+      audioUrl: "https://example.test/5.mp3",
+      coverUrl: null,
+      durationMs: null,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+      enabled: true,
+    },
+    {
+      id: 6,
+      artist: "Hidden artist",
+      title: "Disabled song",
+      audioUrl: "https://example.test/6.mp3",
+      coverUrl: null,
+      durationMs: null,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+      enabled: false,
+    },
+  ];
+  vi.mocked(flight.updateFlightSequence).mockImplementation(
+    async (_program, _id, data) => ({ ...log, items: data.items!, revision: 2 }),
+  );
+  vi.spyOn(crypto, "randomUUID").mockReturnValue(
+    "00000000-0000-4000-8000-000000000001",
+  );
+  mount(p);
+  const add = screen.getByRole("button", { name: "Add next" });
+  expect(add).toBeDisabled();
+  const picker = screen.getByRole("combobox", { name: "Song to add to log" });
+  expect(within(picker).queryByRole("option", { name: /Disabled song/ })).toBeNull();
+  fireEvent.change(picker, { target: { value: "5" } });
+  fireEvent.click(add);
+  await waitFor(() =>
+    expect(flight.updateFlightSequence).toHaveBeenCalledWith("radio-demo", 1, {
+      revision: 1,
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          kind: "playSong",
+          songId: 5,
+          clockOffsetSeconds: 0,
+        },
+      ],
+    }),
+  );
+  expect(screen.getByRole("link", { name: "Library & tags" })).toHaveAttribute(
+    "href",
+    "/media",
+  );
+});
+
+it("inserts a Library song right after the current event", async () => {
+  const p = props();
+  const log = onAirLog(p);
+  p.songCatalog = [
+    {
+      id: 5,
+      artist: "A",
+      title: "Five",
+      audioUrl: "https://example.test/5.mp3",
+      coverUrl: null,
+      durationMs: null,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+      enabled: true,
+    },
+  ];
+  vi.mocked(flight.updateFlightSequence).mockImplementation(
+    async (_program, _id, data) => ({ ...log, items: data.items!, revision: 2 }),
+  );
+  vi.spyOn(crypto, "randomUUID").mockReturnValue(
+    "00000000-0000-4000-8000-000000000002",
+  );
+  mount(p);
+  fireEvent.change(screen.getByRole("combobox", { name: "Song to add to log" }), {
+    target: { value: "5" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add next" }));
+  await waitFor(() =>
+    expect(
+      vi.mocked(flight.updateFlightSequence).mock.calls[0][2].items!.map(
+        (item) => item.id,
+      ),
+    ).toEqual([
+      "cue-1",
+      "00000000-0000-4000-8000-000000000002",
+      "cue-2",
+      "cue-3",
+      "cue-4",
+      "cue-5",
+      "cue-6",
+    ]),
+  );
+});
+
+it("shows the filler rotation with its Play Next queue, shuffle note and next timed block", () => {
+  const p = props();
+  const later = new Date(Date.now() + 3_600_000).toISOString();
+  const evenLater = new Date(Date.now() + 7_200_000).toISOString();
+  p.fixtureData!.logs = [
+    { ...onAirLog(p), id: 2, name: "Second block", isRunning: false, lastStartedAt: null, scheduledAt: evenLater },
+    { ...onAirLog(p), id: 3, name: "First block", isRunning: false, lastStartedAt: null, scheduledAt: later },
+    { ...onAirLog(p), id: 4, name: "Draft block", isRunning: false, lastStartedAt: null, publishedAt: null, scheduledAt: later },
+  ];
+  p.songSequence = { ...p.songSequence, mode: "shuffle", loop: true };
+  p.songQueue = [{ id: "queue-1", itemId: "song-1", enqueuedAt: 1 }];
+  p.programSongPlayback = { ...p.programSongPlayback!, queueEntryId: "queue-1" };
+  mount(p);
+  expect(
+    screen.getByText(/Shuffle pool; row order is not the next-song order/),
+  ).toBeVisible();
+  expect(screen.getByText(/Next timed block: First block/)).toBeVisible();
+  expect(screen.getByText("shuffle · Loop on")).toBeVisible();
+  const queue = screen.getByRole("region", { name: "Play Next queue" });
+  expect(within(queue).getByText("Playing")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Add fillers" }));
+  expect(screen.getByRole("button", { name: "Done adding" })).toBeVisible();
+});
+
+it("falls back to an empty rotation when the saved one is malformed", () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.songSequence = null;
+  mount(p);
+  expect(screen.getByText(/No hourly log required · 0 songs/)).toBeVisible();
+  expect(screen.getByText("manual · Loop on")).toBeVisible();
+});
+
+it("shows the last aired block when nothing runs and nothing is next", () => {
+  const p = props();
+  const log = onAirLog(p);
+  p.fixtureData!.logs = [
+    { ...log, id: 7, name: "Older", isRunning: false, scheduledAt: new Date(Date.now() - 7_200_000).toISOString() },
+    { ...log, id: 8, name: "Newer", isRunning: false, scheduledAt: new Date(Date.now() - 3_600_000).toISOString() },
+  ];
+  mount(p);
+  // A stopped block is not on air: the fillers carry the station.
+  expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
+  expect(screen.queryByText(/Next timed block/)).toBeNull();
+});
+
+it("keeps rotation and off-air failures visible", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.songSequence = { ...p.songSequence, loop: true };
+  p.onSaveSongSequence = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Rotation locked"))
+    .mockRejectedValueOnce("nope");
+  p.onTakeOffAir = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Engine refused off air"))
+    .mockRejectedValueOnce("refused");
+  p.onTakeSelection = vi.fn().mockRejectedValueOnce(new Error("Take refused"));
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Loop playlist: on" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Rotation locked");
+  fireEvent.click(screen.getByRole("button", { name: "Loop playlist: on" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Rotation was not changed",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Engine refused off air",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Rotation command failed",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Advance" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Take refused");
+});
+
+it("shows the mixer's saving and error states, mute state and silent faders", () => {
+  const p = props();
+  p.mixer = {
+    ...p.mixer,
+    song: { volume: 0, peak: 2, muted: true },
+    saving: true,
+  };
+  const view = mount(p);
+  const music = screen.getByLabelText("Music mixer channel");
+  expect(music).toHaveTextContent("-∞ dB");
+  expect(within(music).getByRole("button", { name: "MUTED" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(within(music).getByRole("meter")).toHaveAttribute("aria-valuenow", "100");
+  expect(screen.getByText("Applying mix…")).toHaveAttribute("role", "status");
+  expect(
+    within(screen.getByLabelText("Output mixer channel")).getByText("Master"),
+  ).toBeVisible();
+  fireEvent.change(screen.getByRole("slider", { name: "Output level" }), {
+    target: { value: "0.5" },
+  });
+  expect(p.onMainVolumeChange).toHaveBeenCalledWith(0.5);
+  fireEvent.change(screen.getByRole("slider", { name: "Cartwall level" }), {
+    target: { value: "0.3" },
+  });
+  expect(p.onInstantVolumeChange).toHaveBeenCalledWith(0.3);
+  fireEvent.click(within(music).getByRole("button", { name: "MUTED" }));
+  expect(p.onToggleSongMuted).toHaveBeenCalledOnce();
+  view.unmount();
+
+  const failed = props();
+  failed.mixer = { ...failed.mixer, error: "Mixer rejected the level" };
+  mount(failed);
+  expect(screen.getByText("Mixer rejected the level")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+});
+
+it("starts and stops the recovery session through Palazzo", async () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: null,
+    connection: "connected",
+  };
+  const transport = radioApi({
+    "/recovery/start": json({
+      preparedVersion: "v4",
+      automation: { actualState: "running", filler: { activeVersion: "v4", ready: true } },
+      connection: "connected",
+    }),
+    "/recovery/stop": json({
+      preparedVersion: "v4",
+      automation: null,
+      connection: "connected",
+    }),
+  });
+  mount(p);
+  const start = screen.getByRole("button", { name: "Start with fallback" });
+  const stop = screen.getByRole("button", { name: "Stop session" });
+  expect(stop).toBeDisabled();
+  fireEvent.click(start);
+  expect(await screen.findByText("Recovery playlist active")).toBeInTheDocument();
+  expect(start).toBeDisabled();
+  expect(transport).toHaveBeenCalledWith(
+    expect.stringContaining("/radio/radio-demo/recovery/start"),
+    { method: "POST" },
+  );
+  fireEvent.click(stop);
+  expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Configure" })).toHaveAttribute(
+    "href",
+    "/radio-settings",
+  );
+});
+
+it("reports recovery commands Palazzo refused or could not receive", async () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: null,
+    connection: "connected",
+  };
+  let attempt = 0;
+  radioApi({
+    "/recovery/start": () =>
+      ++attempt === 1 ? json({}, 409) : (("lost" as unknown) as Error),
+  });
+  vi.mocked(fetch).mockImplementationOnce(async () => json({}, 409));
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Start with fallback" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Palazzo could not start recovery (409).",
+  );
+  vi.mocked(fetch).mockImplementationOnce(() => Promise.reject("lost"));
+  fireEvent.click(screen.getByRole("button", { name: "Start with fallback" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Recovery command failed.",
+  );
+});
+
+it("only offers recovery when a playlist is prepared and the engine is reachable", () => {
+  const p = props();
+  p.fixtureData!.recovery = {
+    preparedVersion: "v4",
+    automation: null,
+    connection: "unavailable",
+  };
+  mount(p);
+  expect(screen.getByText("Engine unavailable", { selector: "strong" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Start with fallback" })).toBeDisabled();
+});
+
+it("keeps a failed filler rotation edit visible", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.onSaveSongSequence = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Rotation is read-only"))
+    .mockRejectedValueOnce("nope");
+  mount(p);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Add City lights to high rotation" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Rotation is read-only",
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Add City lights to high rotation" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Rotation was not changed",
+  );
+});
+
+it("updates only the edited rundown among the scheduled ones", async () => {
+  const p = props();
+  const log = onAirLog(p);
+  const later = {
+    ...log,
+    id: 2,
+    name: "Later block",
+    isRunning: false,
+    lastStartedAt: null,
+    scheduledAt: new Date(Date.now() + 3_600_000).toISOString(),
+  };
+  p.fixtureData!.logs = [log, later];
+  vi.mocked(flight.updateFlightSequence).mockImplementation(
+    async (_program, _id, data) => ({ ...log, items: data.items!, revision: 5 }),
+  );
+  mount(p);
+  fireEvent.click(screen.getByRole("button", { name: "Remove event 6" }));
+  expect(await screen.findByText(/Revision 5/)).toBeVisible();
+  expect(
+    within(screen.getByRole("list", { name: "On-air rundown" })).getAllByRole(
+      "listitem",
+    ),
+  ).toHaveLength(5);
 });

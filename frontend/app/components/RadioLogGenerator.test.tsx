@@ -10,6 +10,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { RadioLogGenerator } from "./RadioLogGenerator";
 import type { FlightSequence } from "../models/broadcast";
 import { generateTaggedLog } from "../services/flight";
+import { fetchAllMediaLabels } from "../services/mediaLabels";
 // Radix positioning runs continuously in jsdom; preserve Bleecker's string callback contract.
 vi.mock("@gaulatti/bleecker", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
@@ -55,6 +56,7 @@ it("does not apply a late generation after leaving its inspector tab", async () 
   expect(onGenerated).not.toHaveBeenCalled();
 });
 vi.mock("../services/flight", () => ({ generateTaggedLog: vi.fn() }));
+vi.mock("../services/mediaLabels", () => ({ fetchAllMediaLabels: vi.fn() }));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -172,4 +174,168 @@ it("does not apply an in-flight preview to a different hour", async () => {
     ).toBeEnabled(),
   );
   expect(onGenerated).not.toHaveBeenCalled();
+});
+
+it("loads the Library tags itself when none are supplied", async () => {
+  vi.mocked(fetchAllMediaLabels).mockResolvedValue([
+    { id: "jazz", name: "Jazz" },
+  ]);
+  render(<RadioLogGenerator programId="radio-demo" log={log} onGenerated={vi.fn()} />);
+  expect(
+    screen.getByText("Create tags and label songs in the Library first."),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByRole("option", { name: "Jazz" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("Create tags and label songs in the Library first."),
+  ).toBeNull();
+});
+
+it("reports a tag load failure, with a fallback for an unnamed one", async () => {
+  vi.mocked(fetchAllMediaLabels).mockRejectedValueOnce(
+    new Error("Failed to load labels: HTTP 503"),
+  );
+  const first = render(
+    <RadioLogGenerator programId="radio-demo" log={log} onGenerated={vi.fn()} />,
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Failed to load labels: HTTP 503",
+  );
+  expect(
+    screen.queryByText("Create tags and label songs in the Library first."),
+  ).toBeNull();
+  first.unmount();
+
+  vi.mocked(fetchAllMediaLabels).mockRejectedValueOnce("offline");
+  render(<RadioLogGenerator programId="radio-demo" log={log} onGenerated={vi.fn()} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Tags unavailable");
+});
+
+it("drops a tag load that finishes after the generator closed", async () => {
+  let resolve!: (labels: { id: string; name: string }[]) => void;
+  let reject!: (cause: Error) => void;
+  vi.mocked(fetchAllMediaLabels)
+    .mockReturnValueOnce(new Promise((done) => (resolve = done)))
+    .mockReturnValueOnce(new Promise((_done, fail) => (reject = fail)));
+  const errors = vi.spyOn(console, "error");
+  render(<RadioLogGenerator programId="radio-demo" log={log} onGenerated={vi.fn()} />).unmount();
+  render(<RadioLogGenerator programId="radio-demo" log={log} onGenerated={vi.fn()} />).unmount();
+  await act(async () => {
+    resolve([{ id: "late", name: "Late" }]);
+    reject(new Error("late failure"));
+  });
+  expect(errors).not.toHaveBeenCalled();
+});
+
+it("arranges several blocks with their own tags, counts and fixed starts", async () => {
+  vi.mocked(generateTaggedLog).mockResolvedValue({ items: [] });
+  render(
+    <RadioLogGenerator
+      programId="radio-demo"
+      log={log}
+      onGenerated={vi.fn()}
+      fixtureLabels={[
+        { id: "music", name: "Music" },
+        { id: "ballads", name: "Ballads" },
+      ]}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "Remove block 1" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Music block" }));
+  fireEvent.click(screen.getByRole("button", { name: "Music block" }));
+  expect(
+    screen.getByRole("spinbutton", { name: "Fixed start for block 1" }),
+  ).toBeDisabled();
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 1" }), {
+    target: { value: "music" },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 2" }), {
+    target: { value: "ballads" },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 3" }), {
+    target: { value: "music" },
+  });
+  const second = screen.getByRole("spinbutton", {
+    name: "Fixed start for block 2",
+  });
+  expect(second).toHaveAttribute("placeholder", "Follows");
+  fireEvent.change(second, { target: { value: "900" } });
+  fireEvent.change(
+    screen.getByRole("spinbutton", { name: "Fixed start for block 3" }),
+    { target: { value: "1200" } },
+  );
+  fireEvent.change(
+    screen.getByRole("spinbutton", { name: "Fixed start for block 3" }),
+    { target: { value: "" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Remove block 2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate draft" }));
+  await waitFor(() =>
+    expect(generateTaggedLog).toHaveBeenCalledWith("radio-demo", 7, 2, {
+      slots: [
+        { labelId: "music", count: 1, clockOffsetSeconds: 0 },
+        { labelId: "music", count: 1, clockOffsetSeconds: undefined },
+      ],
+      artistSeparation: 2,
+    }),
+  );
+});
+
+it("offers to replace an existing draft and needs a tag on every block", async () => {
+  vi.mocked(generateTaggedLog).mockRejectedValueOnce("no reason");
+  render(
+    <RadioLogGenerator
+      programId="radio-demo"
+      log={{ ...log, items: [{ id: "cue", kind: "playSong", songId: 1 }] }}
+      onGenerated={vi.fn()}
+      fixtureLabels={[{ id: "music", name: "Music" }]}
+    />,
+  );
+  const replace = screen.getByRole("button", {
+    name: "Replace draft from tags",
+  });
+  expect(replace).toBeDisabled();
+  fireEvent.change(screen.getByRole("combobox", { name: "Tag for block 1" }), {
+    target: { value: "music" },
+  });
+  fireEvent.click(replace);
+  expect(screen.getByRole("button", { name: "Generating…" })).toBeInTheDocument();
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Generation failed",
+  );
+});
+
+it("locks the generator without a draft, and for a running or aired one", () => {
+  const { rerender } = render(
+    <RadioLogGenerator
+      programId="radio-demo"
+      log={null}
+      onGenerated={vi.fn()}
+      fixtureLabels={[{ id: "music", name: "Music" }]}
+    />,
+  );
+  expect(
+    screen.getByText("Choose an unaired draft to generate."),
+  ).toBeInTheDocument();
+  for (const locked of [
+    { ...log, isRunning: true },
+    { ...log, lastStartedAt: "2026-10-04T12:00:00Z" },
+  ]) {
+    rerender(
+      <RadioLogGenerator
+        programId="radio-demo"
+        log={locked}
+        onGenerated={vi.fn()}
+        fixtureLabels={[{ id: "music", name: "Music" }]}
+      />,
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Tag for block 1" }),
+    ).toBeDisabled();
+  }
+  expect(screen.getByRole("link", { name: "Manage Library tags" })).toHaveAttribute(
+    "href",
+    "/media",
+  );
 });
