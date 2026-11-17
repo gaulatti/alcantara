@@ -47,6 +47,8 @@ For contract v2 registrations, the event stream (`GET /program/:programId/events
 | `audience_interaction_draw_start` | `sceneId`, `componentType`, `drawId`, `durationSeconds`, `candidateIds`, `slot: {matchId, field}` |
 | `audience_interaction_draw_end` | `sceneId`, `componentType`, `drawId`, `selectedId` |
 
+`candidateIds` is always present on `audience_interaction_draw_start`: it lists the draw's candidate song IDs in the order drawn (the scenes service broadcasts them as `songIds`), and is an empty list when a draw carries none.
+
 Existing v1 registrations remain supported and unchanged. v2-only signals are projected only for manifests with `contractVersion: 2`.
 
 ## Publisher origins and security

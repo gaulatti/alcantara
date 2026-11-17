@@ -646,6 +646,12 @@ export function projectProgramTemplateSignal(
         .map((item) => copyFields(item, ['songId', 'title', 'artist']));
     }
   } else if (value.type === 'audience_interaction_draw_start') {
+    // The contract names the draw's candidates `candidateIds`; the scenes service broadcasts them as `songIds`.
+    projected.candidateIds = Array.isArray(value.candidateIds)
+      ? value.candidateIds
+      : Array.isArray(value.songIds)
+        ? value.songIds
+        : [];
     if (isRecord(value.slot)) {
       projected.slot = copyFields(value.slot, ['matchId', 'field']);
     }
