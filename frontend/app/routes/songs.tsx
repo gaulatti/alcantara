@@ -325,16 +325,14 @@ export default function SongsCatalog() {
     }
   };
 
-  const uploadSongFile = async () => {
-    if (!songFile) {
-      return;
-    }
-
+  // Takes the file just picked: the songFile state is not updated yet when the
+  // picker's change handler calls this.
+  const uploadSongFile = async (file: File) => {
     setIsUploadingSong(true);
     setError('');
     try {
-      const upload = await uploadFileToMediaBucket('song', songFile);
-      const fallbackDurationMs = await readAudioDurationFromFile(songFile);
+      const upload = await uploadFileToMediaBucket('song', file);
+      const fallbackDurationMs = await readAudioDurationFromFile(file);
       setAudioUrlInput(upload.url);
       if (typeof upload.metadata?.artist === 'string' && upload.metadata.artist.trim()) {
         setArtistInput(upload.metadata.artist.trim());
@@ -723,7 +721,7 @@ export default function SongsCatalog() {
                     event.target.value = '';
                     if (file) {
                       setSongFile(file);
-                      void uploadSongFile();
+                      void uploadSongFile(file);
                     }
                   }}
                 />
