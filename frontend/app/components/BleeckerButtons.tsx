@@ -59,6 +59,14 @@ function helpStyle(
   return disabled ? { ...style, pointerEvents: "auto" } : style;
 }
 
+// Stopgap for gaulatti/alcantara#189. Bleecker 0.1.41 colours dark-mode
+// tooltip text `dark:text-deep-sea` on `dark:bg-sand`, and its dark theme makes
+// sand navy too, so the text cannot be read. Bleecker a860590 (released in
+// 0.1.42) switches it to `dark:text-text-primary`; Bleecker merges classes with
+// tailwind-merge, so this one replaces its dark text colour. Remove it when
+// Alcantara takes Bleecker 0.1.42 or later.
+const TOOLTIP_TEXT = "dark:text-text-primary";
+
 export const Button = forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
   ButtonProps
@@ -73,7 +81,7 @@ export const Button = forwardRef<
       style={helpStyle(props.style, props.disabled || props.loading)}
     />
   );
-  return content ? <Tooltip content={content}>{button}</Tooltip> : button;
+  return content ? <Tooltip content={content} className={TOOLTIP_TEXT}>{button}</Tooltip> : button;
 });
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -88,7 +96,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         style={helpStyle(props.style, props.disabled)}
       />
     );
-    return content ? <Tooltip content={content}>{button}</Tooltip> : button;
+    return content ? <Tooltip content={content} className={TOOLTIP_TEXT}>{button}</Tooltip> : button;
   },
 );
 
@@ -107,5 +115,5 @@ export const TooltipButton = forwardRef<
       style={helpStyle(props.style, props.disabled)}
     />
   );
-  return content ? <Tooltip content={content}>{button}</Tooltip> : button;
+  return content ? <Tooltip content={content} className={TOOLTIP_TEXT}>{button}</Tooltip> : button;
 });

@@ -87,3 +87,16 @@ it("keeps disabled controls inert while passing their explanation and allowing p
   fireEvent.click(button);
   expect(onClick).not.toHaveBeenCalled();
 });
+it("colours the tooltip text for the dark console on every control (gaulatti/alcantara#189)", () => {
+  const darkText = () => vi.mocked(Tooltip).mock.calls.at(-1)?.[0].className;
+  const { rerender } = render(<Button title="Save scene">Save</Button>);
+  expect(darkText()).toBe("dark:text-text-primary");
+  rerender(
+    <IconButton title="Refresh program state">
+      <svg aria-hidden="true" />
+    </IconButton>,
+  );
+  expect(darkText()).toBe("dark:text-text-primary");
+  rerender(<TooltipButton title="Stage a scene before TAKE">TAKE</TooltipButton>);
+  expect(darkText()).toBe("dark:text-text-primary");
+});
