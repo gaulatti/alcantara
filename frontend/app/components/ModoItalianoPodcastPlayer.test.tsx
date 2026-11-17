@@ -253,3 +253,62 @@ it('closes cleanly when it never started audio', () => {
   render(<ModoItalianoPodcastPlayer />).unmount();
   expect(audioContexts).toHaveLength(0);
 });
+
+// gaulatti/alcantara#192: program.tsx keys the player by component type, so a
+// scene whose player starts hidden keeps the same instance when it is shown.
+// Its effects used to run once, on the hidden mount, with no elements to bind.
+it('starts, animates and follows its clock when it is shown after mounting hidden', async () => {
+  vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new Error('NotAllowedError'));
+  const { container, rerender } = render(
+    <ModoItalianoPodcastPlayer show={false} audioUrl='/episode.mp3' masterGain={0.4} />,
+  );
+  expect(container).toBeEmptyDOMElement();
+  expect(frames).toHaveLength(0);
+
+  rerender(<ModoItalianoPodcastPlayer show audioUrl='/episode.mp3' masterGain={0.4} />);
+  const audio = container.querySelector('audio')!;
+  expect(audio.getAttribute('src')).toBe('/episode.mp3');
+  expect(audio.load).toHaveBeenCalled();
+  expect(audio.volume).toBe(0.4);
+  // Both canvases animate.
+  expect(frames).toHaveLength(2);
+
+  await act(async () => {
+    fireEvent.canPlay(audio);
+  });
+  expect(audioContexts).toHaveLength(1);
+  expect(audio.play).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('Waiting for interaction to start playback')).toBeInTheDocument();
+  fireEvent.play(audio);
+  expect(screen.queryByText('Waiting for interaction to start playback')).toBeNull();
+
+  Object.defineProperty(audio, 'duration', { configurable: true, value: 125 });
+  fireEvent.durationChange(audio);
+  Object.defineProperty(audio, 'currentTime', { configurable: true, writable: true, value: 65 });
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText('1:05')).toBeInTheDocument();
+  expect(screen.getByText('2:05')).toBeInTheDocument();
+});
+
+it('stops when hidden and builds a fresh audio graph for the element shown again', () => {
+  const { container, rerender } = render(<ModoItalianoPodcastPlayer audioUrl='/episode.mp3' />);
+  fireEvent.canPlay(container.querySelector('audio')!);
+  expect(audioContexts).toHaveLength(1);
+
+  rerender(<ModoItalianoPodcastPlayer show={false} audioUrl='/episode.mp3' />);
+  expect(container).toBeEmptyDOMElement();
+  expect(cancelled.length).toBeGreaterThanOrEqual(2);
+  expect(audioContexts[0].close).toHaveBeenCalledTimes(1);
+
+  frames.length = 0;
+  rerender(<ModoItalianoPodcastPlayer show audioUrl='/episode.mp3' />);
+  const shownAgain = container.querySelector('audio')!;
+  expect(frames).toHaveLength(2);
+  fireEvent.canPlay(shownAgain);
+  expect(audioContexts).toHaveLength(2);
+  fireEvent.play(shownAgain);
+  frames.splice(0).forEach((frame) => frame(1000));
+  // The new graph feeds the spectrum: the loud bins draw mirrored bars.
+  const visualizer = container.querySelectorAll('canvas')[1];
+  expect(contexts.get(visualizer)!.calls.filter((call) => call === 'fill').length).toBeGreaterThan(1);
+});
