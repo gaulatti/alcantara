@@ -417,7 +417,7 @@ export default function ProgramsAdmin() {
   const saveProgram = async () => {
     const nextProgramId = programIdInput.trim();
     if (!nextProgramId) {
-      setError('Program ID is ');
+      setError('Program ID is required.');
       return;
     }
 
