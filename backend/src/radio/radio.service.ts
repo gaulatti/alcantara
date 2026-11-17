@@ -496,6 +496,73 @@ export class RadioService {
     }
   }
 
+  /**
+   * Announces the next song to Palazzo while the current one plays (contract
+   * palazzo#40 §1). Segue and loudness are resolved exactly as for the song
+   * command the engine would otherwise send, and only when segueMode is on.
+   * Returns `accepted`, `not_ready`, `rejected` (not announced) or
+   * `unsupported` (an older Palazzo); any other failure is `rejected`.
+   */
+  async announceNext(
+    programId: string,
+    song: {
+      playbackId: string;
+      url: string;
+      title?: string;
+      artist?: string;
+      coverUrl?: string;
+    },
+  ): Promise<'accepted' | 'not_ready' | 'rejected' | 'unsupported'> {
+    const settings = await this.getRadioSettings(programId);
+    if (!settings) {
+      this.metrics.recordNextAnnouncement('rejected');
+      return 'rejected';
+    }
+    const { segue, loudness } =
+      settings.segueMode === 'on'
+        ? await this.resolveSongAnalysis(
+            programId,
+            song.playbackId,
+            song.url,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+          )
+        : { segue: undefined, loudness: undefined };
+    let result: 'accepted' | 'not_ready' | 'rejected' | 'unsupported';
+    try {
+      result = (
+        await this.palazzo.announceNext(this.palazzoUrl(settings), programId, {
+          playbackId: song.playbackId,
+          url: song.url,
+          title: song.title,
+          artist: song.artist,
+          coverUrl: song.coverUrl,
+          ...(segue && { segue }),
+          ...(loudness && { loudness }),
+        })
+      ).result;
+    } catch (error) {
+      this.logMachineFailure('announceNext', programId, error);
+      result = 'rejected';
+    }
+    this.metrics.recordNextAnnouncement(result);
+    return result;
+  }
+
+  /** Withdraws the announced next song; a failure is logged and ignored. */
+  async withdrawNext(programId: string): Promise<void> {
+    const settings = await this.getRadioSettings(programId);
+    if (!settings) return;
+    try {
+      await this.palazzo.withdrawNext(this.palazzoUrl(settings), programId);
+      this.metrics.recordNextAnnouncement('withdrawn');
+    } catch (error) {
+      this.logMachineFailure('withdrawNext', programId, error);
+    }
+  }
+
   // Segue and loudness for a song command when segueMode is on: the caller's values, else the song's stored analysis.
   // Each field group is checked with the bounds Palazzo's client enforces (validateSongSegue, validateSongLoudness)
   // plus cue-out within the song's duration, and an invalid group is dropped so the song still plays without it.

@@ -121,6 +121,10 @@ stop-reason label:
 - `replaced`: a manual pick cut the song; the manual song gets its own record.
 - `superseded`: a playing snapshot reported a different track. The record is
   also `inferred = true`.
+- `preempted`: a song announced to Palazzo as next (see "Gapless handoff"
+  below) that Palazzo started at the handoff although it was no longer the
+  engine's successor, so the engine replaced it at once. It is recorded as
+  started and preempted, and never counted as a performance.
 
 `endReason` is NULL on every other row: Palazzo's own ends, ends inferred from
 an idle snapshot, all `started` rows, and every row written before the column
@@ -144,9 +148,51 @@ as they were.
   last).
 - `format=soundexchange` counts each `ended` record as one performance,
   inferred and flagged ends included, because the track was transmitted.
+  `preempted` ends are the exception: they are left out of every filter.
   `inferred=include` (default) counts all ends, `inferred=only` lists only
   inferred ends (including `superseded`), and `inferred=exclude` lists only
   ends that are not inferred: Palazzo's reported ends, `stopped` and
   `replaced`. The
   two filtered exports add up to the default one. The `inferred` parameter is
   rejected with `format=csv`.
+
+## Gapless handoff: announcing the next song
+
+Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in
+autoplay or shuffle, segue on or off, the engine announces the song it expects
+to play next (`PUT …/playback/next`), so Palazzo fetches and queues it while
+the current song plays and starts it itself at the cue-out (minus the segue's
+`overlapSeconds`, under overlap). With segue on, the announcement carries the
+same segue and loudness the song command would carry; with segue off, neither.
+
+- **What is announced.** The queue head, else the playlist song the engine
+  would select at the end, worked out on a copy without consuming the queue,
+  moving the cursor or recording selection metrics. Selection is unchanged: at
+  the end the engine selects exactly as before and promotes the announced song
+  only if it is the one selected.
+- **Not announced** when a bumper is due after the song, a clocked flight log
+  runs, the successor has an intro, there is no successor, or Palazzo answered
+  404 (an older Palazzo; nothing more is announced to it until its boot
+  changes). A 409, 400 or 422 answer, or a `playout.next_withdrawn` with reason
+  `not_ready` before the end, leaves the next song to today's song command.
+- **Re-announced or withdrawn** (`DELETE …/playback/next`) whenever the
+  successor changes while the song plays: queue enqueue, removal or reorder,
+  a sequence, mode or cursor change.
+- **At the end.** If the announced song was accepted and is still the one
+  selected, it becomes the active song, consuming the queue entry or advancing
+  the cursor as before, and no song command is sent. Otherwise the selected
+  song is commanded at once; an announced song Palazzo may already have started
+  is flushed by that command and recorded as `preempted`. If a `not_ready`
+  withdrawal arrives after promotion and the song never started, it is
+  commanded at once.
+- **Operator commands** (manual pick, Stop, taking another song on air) are
+  today's commands; Palazzo flushes the announced song with them and the engine
+  forgets it. An announced song that had already started under overlap is
+  closed like the current song (`replaced` or `stopped`).
+- **Events.** Without overlap Palazzo sends the current song's `track.ended`,
+  then the next song's `track.started`; with overlap the next song's start
+  comes first. The engine accepts the announced song's start while the current
+  song is still active, so every song still has one start and one end.
+- **Metrics.** `alcantara_radio_next_announcements_total{result}` and
+  `alcantara_radio_handoffs_total{path}`; see
+  [radio-telemetry.md](radio-telemetry.md).

@@ -308,3 +308,24 @@ an already-playing queue head and resume without losing or duplicating it.
 ## Song analysis drop metric
 
 `alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command, with `segueMode` on, because Palazzo would reject it. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value) or `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied). Every result is exported at 0 from start-up. A song with no analysis is not a drop and is not counted. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).
+
+## Next-song announcement metrics
+
+Contract: gaulatti/palazzo#40 §5.
+
+- `alcantara_radio_next_announcements_total{result}` counts what Palazzo
+  answered to each next-song announcement: `accepted` (200), `not_ready` (422),
+  `rejected` (409, 400, or any request failure: not announced) and
+  `unsupported` (404, an older Palazzo). `withdrawn` counts successful
+  `DELETE …/playback/next` calls.
+- `alcantara_radio_handoffs_total{path}` counts each song-to-song handoff at an
+  accepted end: `preloaded` (the announced song was promoted, no command sent),
+  `command` (today's song command) and `race_replaced` (an accepted
+  announcement was no longer the successor, so the selected song was commanded
+  and the announced one preempted).
+- The machine requests `next-announce` and `next-withdraw` appear in
+  `alcantara_palazzo_machine_requests_total` and
+  `alcantara_palazzo_machine_retries_total`.
+
+Every series is exported at 0 from start-up, and no label carries a song, URL,
+program or request ID.

@@ -79,9 +79,18 @@ export type PalazzoPlaybackEventType =
   | 'playout.skipped'
   | 'playout.fallback'
   | 'playout.request_failed'
+  | 'playout.next_queued'
+  | 'playout.next_withdrawn'
   | 'playback.position'
   | 'audio.levels'
   | 'heartbeat';
+
+/** Why Palazzo dropped an announced next song (contract palazzo#40 §3). */
+export type PalazzoNextWithdrawnReason =
+  | 'replaced'
+  | 'withdrawn'
+  | 'flushed'
+  | 'not_ready';
 
 export interface PalazzoPlaybackEvent {
   schemaVersion: number;
@@ -288,6 +297,8 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
     'playout.skipped',
     'playout.fallback',
     'playout.request_failed',
+    'playout.next_queued',
+    'playout.next_withdrawn',
     'playback.position',
     'audio.levels',
     'heartbeat',
@@ -314,6 +325,18 @@ export function parsePalazzoEvent(value: unknown): PalazzoPlaybackEvent | null {
       type === 'track.ended' ||
       type === 'playout.request_failed') &&
     !boundedString(data.playbackRequestId, 200)
+  )
+    return null;
+  if (
+    (type === 'playout.next_queued' || type === 'playout.next_withdrawn') &&
+    !boundedString(data.playbackId, 200)
+  )
+    return null;
+  if (
+    type === 'playout.next_withdrawn' &&
+    !['replaced', 'withdrawn', 'flushed', 'not_ready'].includes(
+      data.reason as string,
+    )
   )
     return null;
   if (

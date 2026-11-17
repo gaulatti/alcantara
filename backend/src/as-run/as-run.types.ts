@@ -14,16 +14,31 @@ export interface AsRunTrackEvent {
 
 /**
  * Why the engine itself ended a started play: an operator Stop, a manual pick
- * that cut it, or a playing snapshot that reported another track (inferred).
- * Stored on the `ended` row; NULL for Palazzo's own and idle-inferred ends.
+ * that cut it, a playing snapshot that reported another track (inferred), or
+ * `preempted`: a song announced as next that Palazzo started at the handoff
+ * although it was no longer the engine's successor, so the engine replaced it
+ * at once (gaulatti/palazzo#40). Stored on the `ended` row; NULL for
+ * Palazzo's own and idle-inferred ends.
  */
-export type AsRunEndReason = 'stopped' | 'replaced' | 'superseded';
+export type AsRunEndReason =
+  | 'stopped'
+  | 'replaced'
+  | 'superseded'
+  | 'preempted';
 
 export const AS_RUN_END_REASONS: readonly string[] = [
   'stopped',
   'replaced',
   'superseded',
+  'preempted',
 ];
+
+/**
+ * End reasons that are recorded but never counted as a performance: a
+ * preempted song was on air for at most the moment the engine took to replace
+ * it at the handoff.
+ */
+export const AS_RUN_UNCOUNTED_END_REASONS: readonly string[] = ['preempted'];
 
 /** Which ends a SoundExchange export counts: all, only inferred, or none inferred. */
 export type AsRunInferredFilter = 'include' | 'only' | 'exclude';

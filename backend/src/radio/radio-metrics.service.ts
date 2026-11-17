@@ -21,7 +21,9 @@ export type PalazzoMachineOperation =
   | 'filler-prepare'
   | 'automation-read'
   | 'automation-start'
-  | 'automation-stop';
+  | 'automation-stop'
+  | 'next-announce'
+  | 'next-withdraw';
 
 export type PalazzoMachineResult =
   | 'success'
@@ -84,6 +86,17 @@ export type SimilarityActionResult =
   | 'shadow-recorded'
   | 'decision-persistence-failed';
 
+/** Outcome of announcing the next song to Palazzo (contract palazzo#40 §5). */
+export type NextAnnouncementResult =
+  | 'accepted'
+  | 'not_ready'
+  | 'rejected'
+  | 'unsupported'
+  | 'withdrawn';
+
+/** How the engine moved from one song to the next at an accepted end. */
+export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
+
 export type SnapshotReconciliationResult =
   | 'accepted'
   | 'instance-mismatch'
@@ -104,6 +117,8 @@ export interface RadioMetricsSnapshot {
   highRotationActions: Record<string, number>;
   similarityActions: Record<string, number>;
   analysisDrops: Record<string, number>;
+  nextAnnouncements: Record<string, number>;
+  handoffs: Record<string, number>;
   highRotationFavorites: number;
   staleTelemetryPrograms: number;
   machineRequests: Record<string, number>;
@@ -177,6 +192,8 @@ const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
   'automation-read',
   'automation-start',
   'automation-stop',
+  'next-announce',
+  'next-withdraw',
 ];
 
 const MACHINE_RESULTS: PalazzoMachineResult[] = [
@@ -232,6 +249,16 @@ const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
   'loudness-invalid',
   'ambiguous-match',
 ];
+
+const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
+  'accepted',
+  'not_ready',
+  'rejected',
+  'unsupported',
+  'withdrawn',
+];
+
+const HANDOFF_PATHS: HandoffPath[] = ['preloaded', 'command', 'race_replaced'];
 
 const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
   'selected',
@@ -289,6 +316,8 @@ export class RadioMetricsService {
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
+  private readonly nextAnnouncements = new Map<string, number>();
+  private readonly handoffs = new Map<string, number>();
   private highRotationFavorites = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
@@ -390,6 +419,19 @@ export class RadioMetricsService {
     this.analysisDrops.set(result, (this.analysisDrops.get(result) ?? 0) + 1);
   }
 
+  recordNextAnnouncement(result: NextAnnouncementResult): void {
+    if (!NEXT_ANNOUNCEMENT_RESULTS.includes(result)) return;
+    this.nextAnnouncements.set(
+      result,
+      (this.nextAnnouncements.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordHandoff(path: HandoffPath): void {
+    if (!HANDOFF_PATHS.includes(path)) return;
+    this.handoffs.set(path, (this.handoffs.get(path) ?? 0) + 1);
+  }
+
   recordHighRotationFavorites(count: number): void {
     this.highRotationFavorites = Math.max(0, Math.floor(count));
   }
@@ -465,6 +507,8 @@ export class RadioMetricsService {
       highRotationActions: Object.fromEntries(this.highRotationActions),
       similarityActions: Object.fromEntries(this.similarityActions),
       analysisDrops: Object.fromEntries(this.analysisDrops),
+      nextAnnouncements: Object.fromEntries(this.nextAnnouncements),
+      handoffs: Object.fromEntries(this.handoffs),
       highRotationFavorites: this.highRotationFavorites,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
       machineRequests: Object.fromEntries(this.machineRequests),
@@ -582,6 +626,24 @@ export class RadioMetricsService {
     for (const result of ANALYSIS_DROP_RESULTS) {
       lines.push(
         `alcantara_radio_analysis_dropped_total{result="${result}"} ${this.analysisDrops.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_next_announcements_total Next-song announcements to Palazzo by bounded result.',
+      '# TYPE alcantara_radio_next_announcements_total counter',
+    );
+    for (const result of NEXT_ANNOUNCEMENT_RESULTS) {
+      lines.push(
+        `alcantara_radio_next_announcements_total{result="${result}"} ${this.nextAnnouncements.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_handoffs_total Song-to-song handoffs at an accepted end, by bounded path.',
+      '# TYPE alcantara_radio_handoffs_total counter',
+    );
+    for (const path of HANDOFF_PATHS) {
+      lines.push(
+        `alcantara_radio_handoffs_total{path="${path}"} ${this.handoffs.get(path) ?? 0}`,
       );
     }
     lines.push(

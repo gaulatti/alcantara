@@ -18,6 +18,7 @@ import { PrismaService } from '../prisma.service';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import {
   RadioMetricsService,
+  type HandoffPath,
   type SongQueueActionResult,
   type SongRequestFailureReason,
 } from './radio-metrics.service';
@@ -144,7 +145,36 @@ interface ActiveSong {
   cycleReset?: boolean;
   /** The engine already closed this play for the as-run log. */
   asRunClosed?: boolean;
+  /** Promoted from an announcement: Palazzo started it, no command was sent. */
+  promoted?: boolean;
 }
+
+/**
+ * The next song announced to Palazzo while the active song plays (contract
+ * gaulatti/palazzo#40). Palazzo starts it itself at the active song's
+ * cue-out; the engine promotes it only if it is still the successor then.
+ */
+interface NextAnnouncement {
+  playbackId: string;
+  /** Request ID of the active song it follows. */
+  forRequestId: string;
+  itemId: string;
+  queueEntryId: string | null;
+  audioUrl: string;
+  title: string;
+  artist: string;
+  /** `pending` until Palazzo answers; only `accepted` can be promoted. */
+  status: 'pending' | 'accepted' | 'not-announced';
+  /** When its `track.started` was accepted before promotion. */
+  startedAt: number | null;
+  /**
+   * The accepted announcement this one replaces while its own PUT is
+   * unanswered: Palazzo may still start it at the handoff.
+   */
+  replaces: NextAnnouncement | null;
+}
+
+const MAX_PREEMPTED_REQUEST_IDS = 32;
 
 interface SongEngineState {
   sequence: ProgramSongSequence | null;
@@ -168,6 +198,15 @@ interface SongEngineState {
   /** Song that most recently finished; the similarity picker's "current". */
   lastEnded: { songId: number | null; artist: string } | null;
   pendingCycleReset: boolean;
+  announcement: NextAnnouncement | null;
+  /** Serialises announcement refreshes per program. */
+  announcementChain: Promise<void>;
+  /** Palazzo boot from the latest snapshot. */
+  palazzoBootId: string | null;
+  /** Boot of a Palazzo without the next route (404); undefined when supported. */
+  nextUnsupportedBootId?: string | null;
+  /** Announced songs replaced at the handoff before their start arrived. */
+  preemptedRequestIds: string[];
 }
 
 const MAX_ENDED_REQUEST_IDS = 128;
@@ -195,15 +234,24 @@ export type SongEngineTrackEvent = {
   /**
    * Present only on a `track.ended` the engine sent itself because it ended a
    * started song: `stopped` (operator Stop), `replaced` (a manual pick cut it)
-   * or `superseded` (a playing snapshot reported another track, also
-   * `inferred`). `at` is then the moment the engine acted. Never derived from
-   * Palazzo's stop-reason label.
+   * `superseded` (a playing snapshot reported another track, also
+   * `inferred`) or `preempted` (an announced song that lost the handoff race).
+   * `at` is then the moment the engine acted. Never derived from Palazzo's
+   * stop-reason label.
    */
   endReason?: SongEngineEndReason;
 };
 
-/** Why the engine itself ended a started song; see SongEngineTrackEvent. */
-export type SongEngineEndReason = 'stopped' | 'replaced' | 'superseded';
+/**
+ * Why the engine itself ended a started song; see SongEngineTrackEvent.
+ * `preempted` is an announced song Palazzo started at the handoff that was no
+ * longer the engine's successor, so the engine replaced it at once.
+ */
+export type SongEngineEndReason =
+  | 'stopped'
+  | 'replaced'
+  | 'superseded'
+  | 'preempted';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -333,6 +381,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         queueBlocked: false,
         lastEnded: null,
         pendingCycleReset: false,
+        announcement: null,
+        announcementChain: Promise.resolve(),
+        palazzoBootId: null,
+        preemptedRequestIds: [],
       };
       this.states.set(programId, s);
     }
@@ -363,6 +415,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       this.maybeStartSequence(programId);
     }
+    this.refreshAnnouncement(programId);
   }
 
   async prepareContinuousRotationResume(programId: string): Promise<void> {
@@ -396,6 +449,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       this.maybeStartSequence(programId);
     }
+    this.refreshAnnouncement(programId);
   }
 
   async enqueueSong(
@@ -597,6 +651,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     ) {
       this.maybeStartSequence(programId);
     }
+    this.refreshAnnouncement(programId);
   }
 
   private async claimQueueHead(
@@ -790,6 +845,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.activeSong) {
       this.closePlayForAsRun(programId, state.activeSong, 'replaced');
     }
+    // Palazzo's song command flushes the announced song as well.
+    this.forgetAnnouncement(programId, state, 'replaced');
     state.activeSong = {
       token: `${Date.now()}:${audioUrl}`,
       playbackRequestId,
@@ -881,6 +938,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.activeSong) {
       this.closePlayForAsRun(programId, state.activeSong, 'stopped');
     }
+    // Palazzo's song stop flushes the announced song as well.
+    this.forgetAnnouncement(programId, state, 'stopped');
     this.clearTimer(programId);
     this.stopProgress(programId);
     state.activeSong = null;
@@ -935,6 +994,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const state = this.ensureState(programId);
     state.reconciled = true;
     state.frozen = false;
+    state.palazzoBootId = snapshot.bootId;
 
     if (snapshot.status === 'playing' && snapshot.track) {
       this.reconcilePlayingSnapshot(programId, state, snapshot);
@@ -992,11 +1052,20 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             failureReason?: string;
             reason?: string;
           };
+        }
+      | {
+          type: 'playout.next_withdrawn';
+          data: { playbackId: string; reason: string };
         },
   ): void {
     if (!this.isRadioCapable(programId)) return;
     const state = this.states.get(programId);
     if (!state) return;
+
+    if (event.type === 'playout.next_withdrawn') {
+      this.handleNextWithdrawn(programId, state, event.data);
+      return;
+    }
 
     if (event.type === 'audio.levels') {
       this.emit({
@@ -1055,6 +1124,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         );
         this.emitPlaybackUpdate(programId, activeSong);
         this.emitTrackEvent(programId, event.type, requestId, event.data);
+        this.refreshAnnouncement(programId);
+      } else if (this.acceptAnnouncedStart(programId, state, requestId)) {
+        // The announced song started, under overlap or at the handoff.
       } else if (state.pendingRequestIds.has(requestId)) {
         // A command is confirmed after another song (for example a manual
         // one) replaced it. It is not the engine's song on air, so nothing is
@@ -1172,6 +1244,414 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   }
 
   // ---------------------------------------------------------------------
+  // Next-song announcement (contract gaulatti/palazzo#40)
+  // ---------------------------------------------------------------------
+
+  /**
+   * Re-evaluates the announced successor of the active song, serialised per
+   * program. Announcing never affects playback: any failure leaves today's
+   * handoff by command.
+   */
+  private refreshAnnouncement(programId: string): void {
+    const state = this.states.get(programId);
+    if (!state || !this.isRadioCapable(programId)) return;
+    state.announcementChain = state.announcementChain
+      .then(() => this.updateAnnouncement(programId, state))
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `Next-song announcement skipped on ${programId}: ${String(error)}`,
+        );
+      });
+  }
+
+  private async updateAnnouncement(
+    programId: string,
+    state: SongEngineState,
+  ): Promise<void> {
+    const song = state.activeSong;
+    // Only while a started song plays; never withdraw during a handoff.
+    if (!song || song.authoritativeStartedAt === null || song.asRunClosed) {
+      return;
+    }
+    const successor = await this.announceableSuccessor(programId, state, song);
+    if (state.activeSong !== song) return;
+    const current =
+      state.announcement?.forRequestId === song.playbackRequestId
+        ? state.announcement
+        : null;
+    if (!successor) {
+      state.announcement = null;
+      if (current && (current.status !== 'not-announced' || current.replaces)) {
+        await this.radioService.withdrawNext(programId);
+      }
+      return;
+    }
+    const { leaf, queueEntryId } = successor;
+    if (
+      current &&
+      current.itemId === leaf.id &&
+      current.queueEntryId === queueEntryId &&
+      current.audioUrl === leaf.audioUrl
+    ) {
+      return;
+    }
+    const announcement: NextAnnouncement = {
+      playbackId: randomUUID(),
+      forRequestId: song.playbackRequestId,
+      itemId: leaf.id,
+      queueEntryId,
+      audioUrl: leaf.audioUrl,
+      title: leaf.title,
+      artist: leaf.artist,
+      status: 'pending',
+      startedAt: null,
+      replaces:
+        current?.status === 'accepted' ? current : (current?.replaces ?? null),
+    };
+    state.announcement = announcement;
+    let result: Awaited<ReturnType<RadioService['announceNext']>>;
+    try {
+      result = await this.radioService.announceNext(programId, {
+        playbackId: announcement.playbackId,
+        url: leaf.audioUrl,
+        title: leaf.title,
+        artist: leaf.artist,
+        coverUrl: leaf.coverUrl,
+      });
+    } catch (error) {
+      announcement.status = 'not-announced';
+      throw error;
+    }
+    if (state.announcement !== announcement) return;
+    announcement.status = result === 'accepted' ? 'accepted' : 'not-announced';
+    // An accepted announcement replaced the previous one in Palazzo.
+    if (result === 'accepted') announcement.replaces = null;
+    if (result === 'unsupported') {
+      state.nextUnsupportedBootId = state.palazzoBootId;
+    }
+  }
+
+  /** The successor to announce, or null in every "do not announce" case. */
+  private async announceableSuccessor(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+  ): Promise<{
+    leaf: ProgramResolvedSongLeaf & { audioUrl: string };
+    queueEntryId: string | null;
+  } | null> {
+    if (
+      state.nextUnsupportedBootId !== undefined &&
+      state.nextUnsupportedBootId === state.palazzoBootId
+    ) {
+      return null;
+    }
+    if (
+      state.sequence?.mode !== 'autoplay' &&
+      state.sequence?.mode !== 'shuffle'
+    ) {
+      return null;
+    }
+    if (this.flightService.isClockedLogRunning(programId)) return null;
+    const successor = this.peekSuccessor(programId, state, song);
+    if (!successor) return null;
+    const settings = await this.radioService.getRadioSettings(programId);
+    if (
+      settings?.bumperEnabled &&
+      settings.bumperInterval &&
+      settings.bumperInstantIds.length &&
+      (state.songCount + 1) % settings.bumperInterval === 0
+    ) {
+      return null;
+    }
+    if (await this.hasIntro(programId, successor.leaf.songId)) return null;
+    return successor;
+  }
+
+  /**
+   * What `playNext` will select when `song` ends, without consuming anything:
+   * the queue head after `song`'s own entry, or the sequence selection run on
+   * a copy of the cursor advanced as the end advances it, with no metrics or
+   * similarity decisions recorded. Selection itself is unchanged; the result
+   * is a prediction that `playNext` checks at the end.
+   */
+  private peekSuccessor(
+    programId: string,
+    state: SongEngineState,
+    song: ActiveSong,
+  ): {
+    leaf: ProgramResolvedSongLeaf & { audioUrl: string };
+    queueEntryId: string | null;
+  } | null {
+    const { next, hasSuccessor } = this.sequenceAfterEnd(state.sequence, song);
+    const head = state.queue.find((entry) => entry.id !== song.queueEntryId);
+    if (head) {
+      if (head.active) return null;
+      const leaf = findUniqueProgramSongLeafById(next, head.itemId);
+      return leaf?.audioUrl
+        ? {
+            leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
+            queueEntryId: head.id,
+          }
+        : null;
+    }
+    if (!hasSuccessor) return null;
+    // Only a started song is announced from (updateAnnouncement).
+    const expectedEnd =
+      (song.authoritativeStartedAt as number) + song.durationMs;
+    const leaf = this.selectionView().resolveNextPlaylistSong(
+      programId,
+      {
+        ...state,
+        sequence: next,
+        lastEnded: { songId: song.songId, artist: song.artist },
+      },
+      Math.max(Date.now(), expectedEnd),
+    );
+    return leaf?.audioUrl
+      ? {
+          leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
+          queueEntryId: null,
+        }
+      : null;
+  }
+
+  /**
+   * This engine's selection code with its metrics and similarity decision
+   * log replaced by no-ops, so a peek runs the exact same selection without
+   * recording anything.
+   */
+  private selectionView(): this {
+    const silentMetrics = new Proxy({}, { get: () => () => undefined });
+    const view = Object.create(this) as this;
+    Object.defineProperty(view, 'metrics', { value: silentMetrics });
+    Object.defineProperty(view, 'similarity', {
+      value:
+        this.similarity &&
+        Object.create(this.similarity, {
+          recordDecision: { value: () => undefined },
+        }),
+    });
+    return view;
+  }
+
+  /** Whether the song command for this song would carry an intro. */
+  private async hasIntro(
+    programId: string,
+    songId: number | undefined,
+  ): Promise<boolean> {
+    if (!Number.isInteger(songId) || (songId as number) <= 0) return false;
+    const assignment = await this.prisma.songIntro.findUnique({
+      where: { songId: songId as number },
+      include: {
+        instant: { select: { audioUrl: true, volume: true, enabled: true } },
+      },
+    });
+    return Boolean(
+      assignment?.programId === programId &&
+      assignment.instant.enabled &&
+      assignment.instant.audioUrl.trim(),
+    );
+  }
+
+  /**
+   * Accepts the announced song's start while the previous song still plays
+   * (overlap) or before promotion, and records it once. A start of an
+   * announced song that already lost the handoff race is recorded as started
+   * and preempted. Returns false for any other request.
+   */
+  private acceptAnnouncedStart(
+    programId: string,
+    state: SongEngineState,
+    requestId: string,
+  ): boolean {
+    const announcement = [
+      state.announcement,
+      state.announcement?.replaces,
+    ].find(
+      (candidate) =>
+        candidate?.status === 'accepted' &&
+        candidate.playbackId === requestId &&
+        candidate.startedAt === null,
+    );
+    if (announcement) {
+      announcement.startedAt = Date.now();
+      this.metrics.recordTrackTransition('adopted');
+      this.emitTrackEvent(programId, 'track.started', requestId, {
+        title: announcement.title,
+        artist: announcement.artist,
+        url: announcement.audioUrl,
+      });
+      return true;
+    }
+    const index = state.preemptedRequestIds.indexOf(requestId);
+    if (index < 0) return false;
+    state.preemptedRequestIds.splice(index, 1);
+    this.emitTrackEvent(programId, 'track.started', requestId, {});
+    this.emitTrackEvent(
+      programId,
+      'track.ended',
+      requestId,
+      {},
+      false,
+      'preempted',
+    );
+    return true;
+  }
+
+  /**
+   * `not_ready` before the handoff is answered like a 422: the next song goes
+   * by command. If the engine already promoted the song and it never started,
+   * the engine sends it now as today's song command. Other reasons follow the
+   * engine's own commands, which already forgot the announcement.
+   */
+  private handleNextWithdrawn(
+    programId: string,
+    state: SongEngineState,
+    data: { playbackId: string; reason: string },
+  ): void {
+    if (data.reason !== 'not_ready') return;
+    const announcement = state.announcement;
+    if (
+      announcement?.playbackId === data.playbackId &&
+      announcement.startedAt === null
+    ) {
+      announcement.status = 'not-announced';
+      return;
+    }
+    const song = state.activeSong;
+    if (
+      !song?.promoted ||
+      song.playbackRequestId !== data.playbackId ||
+      song.authoritativeStartedAt !== null
+    ) {
+      return;
+    }
+    const playbackRequestId = randomUUID();
+    state.pendingRequestIds.delete(song.playbackRequestId);
+    state.pendingRequestIds.add(playbackRequestId);
+    song.playbackRequestId = playbackRequestId;
+    song.promoted = false;
+    this.logger.log(
+      `Announced song was not ready on ${programId}; commanding it (${playbackRequestId})`,
+    );
+    void this.pushCommand(
+      programId,
+      playbackRequestId,
+      song.audioUrl,
+      song.title,
+      song.artist,
+      song.coverUrl,
+      song.songId ?? undefined,
+    );
+  }
+
+  /**
+   * Forgets the announcement after an operator command that Palazzo answers
+   * by flushing it. An announced song that had already started is closed
+   * like the active song.
+   */
+  private forgetAnnouncement(
+    programId: string,
+    state: SongEngineState,
+    endReason: 'stopped' | 'replaced',
+  ): void {
+    const announcement = state.announcement;
+    state.announcement = null;
+    for (const candidate of [announcement, announcement?.replaces]) {
+      if (candidate?.startedAt == null) continue;
+      this.emitTrackEvent(
+        programId,
+        'track.ended',
+        candidate.playbackId,
+        {
+          title: candidate.title,
+          artist: candidate.artist,
+          url: candidate.audioUrl,
+        },
+        false,
+        endReason,
+      );
+    }
+  }
+
+  /**
+   * Preempts the announcement and the one it replaces, unless Palazzo never
+   * queued them. Returns whether an accepted announcement lost the handoff.
+   */
+  private preemptAnnouncedSongs(
+    programId: string,
+    state: SongEngineState,
+    announcement: NextAnnouncement,
+  ): boolean {
+    let raced = false;
+    for (const candidate of [announcement, announcement.replaces]) {
+      if (!candidate || candidate.status === 'not-announced') continue;
+      raced ||= candidate.status === 'accepted';
+      this.preemptAnnouncedSong(programId, state, candidate);
+    }
+    return raced;
+  }
+
+  /**
+   * Records an announced song that lost the handoff: started and preempted,
+   * now if its start arrived, or when it arrives.
+   */
+  private preemptAnnouncedSong(
+    programId: string,
+    state: SongEngineState,
+    announcement: NextAnnouncement,
+  ): void {
+    if (announcement.startedAt !== null) {
+      this.emitTrackEvent(
+        programId,
+        'track.ended',
+        announcement.playbackId,
+        {
+          title: announcement.title,
+          artist: announcement.artist,
+          url: announcement.audioUrl,
+        },
+        false,
+        'preempted',
+      );
+      return;
+    }
+    state.preemptedRequestIds.push(announcement.playbackId);
+    if (state.preemptedRequestIds.length > MAX_PREEMPTED_REQUEST_IDS) {
+      state.preemptedRequestIds.shift();
+    }
+  }
+
+  /** At an end that commands nothing itself, keeps the announced song off air. */
+  private releaseAnnouncementAtEnd(programId: string): void {
+    const state = this.states.get(programId);
+    const announcement = state?.announcement;
+    if (!state || !announcement) return;
+    state.announcement = null;
+    if (announcement.status === 'not-announced' && !announcement.replaces) {
+      return;
+    }
+    this.preemptAnnouncedSongs(programId, state, announcement);
+    void Promise.resolve()
+      .then(() => this.radioService.withdrawNext(programId))
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `Next-song withdrawal failed on ${programId}: ${String(error)}`,
+        );
+      });
+  }
+
+  /** Counts a handoff; a metrics failure never affects playout. */
+  private recordHandoff(path: HandoffPath): void {
+    try {
+      this.metrics.recordHandoff(path);
+    } catch {
+      // Metrics are best-effort.
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------
 
@@ -1197,6 +1677,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       song.authoritativeUpdatedAt = Date.now();
       state.busyWithForeignTrack = false;
       this.emitPlaybackUpdate(programId, song);
+      return;
+    }
+
+    // The announced song Palazzo started itself is expected, not a takeover.
+    if (
+      state.announcement?.status === 'accepted' &&
+      state.announcement.playbackId === requestId
+    ) {
       return;
     }
 
@@ -1314,6 +1802,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     snapshot: PalazzoPlaybackState,
   ): void {
     const requestId = state.activeSong?.playbackRequestId ?? null;
+    // Palazzo is idle: an announced song that has not started is not queued.
+    if (state.announcement?.startedAt === null) state.announcement = null;
 
     if (requestId && state.activeSong) {
       // Authoritative idle state while we believe our song is active: the
@@ -1395,21 +1885,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.pendingRequestIds.clear();
     state.songCount++;
     state.busyWithForeignTrack = false;
-    const nextSequence = state.sequence
-      ? normalizeProgramSongSequence(state.sequence)
-      : null;
-    const isAutomatic =
-      nextSequence?.mode === 'autoplay' || nextSequence?.mode === 'shuffle';
-    // Queue entries and songs picked from outside the playlist never moved
-    // the cursor, which already points at the pending successor.
-    const hasSuccessor =
-      endedSong.queueEntryId || endedSong.itemId.startsWith(CATALOG_ITEM_PREFIX)
-        ? Boolean(isAutomatic && resolveProgramSongLeaf(nextSequence))
-        : Boolean(
-            isAutomatic &&
-            nextSequence &&
-            advanceProgramSongSequence(nextSequence, endedSong.itemId),
-          );
+    const { next: nextSequence, hasSuccessor } = this.sequenceAfterEnd(
+      state.sequence,
+      endedSong,
+    );
     state.transitioning = true;
     this.logger.log(
       `Authoritative end on ${programId}: source=${endedSong.queueEntryId ? 'queue' : 'playlist'} mode=${nextSequence?.mode ?? 'none'} loop=${nextSequence?.loop ?? false} cursor=${nextSequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
@@ -1423,6 +1902,30 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return true;
   }
 
+  /**
+   * The sequence after `endedSong` ends, on a copy, and whether it has a
+   * successor. Shared by the accepted end and by the announcement's peek, so
+   * both see the same cursor.
+   */
+  private sequenceAfterEnd(
+    sequence: ProgramSongSequence | null,
+    endedSong: ActiveSong,
+  ): { next: ProgramSongSequence | null; hasSuccessor: boolean } {
+    const next = sequence ? normalizeProgramSongSequence(sequence) : null;
+    const isAutomatic = next?.mode === 'autoplay' || next?.mode === 'shuffle';
+    // Queue entries and songs picked from outside the playlist never moved
+    // the cursor, which already points at the pending successor.
+    const hasSuccessor =
+      endedSong.queueEntryId || endedSong.itemId.startsWith(CATALOG_ITEM_PREFIX)
+        ? Boolean(isAutomatic && resolveProgramSongLeaf(next))
+        : Boolean(
+            isAutomatic &&
+            next &&
+            advanceProgramSongSequence(next, endedSong.itemId),
+          );
+    return { next, hasSuccessor };
+  }
+
   private async continueAfterAuthoritativeEnd(
     programId: string,
     endedQueueEntryId: string | null,
@@ -1430,6 +1933,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     hasSequenceSuccessor: boolean,
   ): Promise<void> {
     if (this.flightService.isClockedLogRunning(programId)) {
+      // The log decides what plays next; the announced song must not.
+      this.releaseAnnouncementAtEnd(programId);
       try {
         await this.flightService.handleSongEnded(programId);
       } finally {
@@ -1478,7 +1983,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         return;
       }
       state.transitioning = false;
-      if (this.playNext(programId)) return;
+      if (this.playNext(programId, true)) return;
       state.queueBlocked = true;
       this.logger.error(
         `Queued playlist item could not be resolved on ${programId}; stopping without falling through`,
@@ -1496,7 +2001,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // This callback originates from an authoritative Palazzo end event;
       // the general reconciliation/pending guards have already been
       // satisfied above. Dispatch the resolved successor directly.
-      if (this.playNext(programId)) return;
+      if (this.playNext(programId, true)) return;
       this.logger.error(
         `Successor could not be resolved on ${programId}: cursor=${state.sequence.activeItemId ?? 'none'}`,
       );
@@ -1545,6 +2050,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   }
 
   private publishStopped(programId: string): void {
+    // Nothing plays next, so the announced song must not either.
+    this.releaseAnnouncementAtEnd(programId);
     this.metrics.recordTrackTransition('published-stopped');
     void this.nowPlayingPublisherService.publishStopped(programId);
     this.stopProgress(programId);
@@ -1758,7 +2265,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private playNext(programId: string): boolean {
+  /**
+   * Plays the next song. With `handoff` (an accepted end), an accepted
+   * announcement that is the song selected here is promoted: the same queue
+   * entry and cursor are consumed, and no command is sent because Palazzo
+   * already started it.
+   */
+  private playNext(programId: string, handoff = false): boolean {
     // Log ownership also protects against queue claims begun before log start.
     if (this.flightService.isClockedLogRunning(programId)) return true;
     const state = this.states.get(programId);
@@ -1767,7 +2280,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (state.queueBlocked) return false;
     const queueEntry = state.queue[0] ?? null;
     if (queueEntry && !queueEntry.active) {
-      const queuePlaybackRequestId = randomUUID();
+      const announcedEntry =
+        handoff &&
+        state.announcement?.status === 'accepted' &&
+        state.announcement.queueEntryId === queueEntry.id
+          ? state.announcement
+          : null;
+      const queuePlaybackRequestId = announcedEntry?.playbackId ?? randomUUID();
       state.transitioning = true;
       void this.claimQueueHead(programId, queueEntry.id, queuePlaybackRequestId)
         .then((claimed) => {
@@ -1775,7 +2294,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           if (!nextState) return;
           nextState.transitioning = false;
           if (claimed) {
-            if (!this.playNext(programId)) {
+            if (!this.playNext(programId, handoff)) {
               this.logger.error(
                 `Claimed Play Next item could not be resolved on ${programId}; stopping without falling through`,
               );
@@ -1804,8 +2323,31 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       typeof resolved.durationMs === 'number' && resolved.durationMs > 0
         ? resolved.durationMs
         : 300000;
-    const playbackRequestId = queueEntry?.playbackRequestId ?? randomUUID();
-    state.pendingRequestIds.add(playbackRequestId);
+    const announced = handoff ? state.announcement : null;
+    const promote =
+      announced?.status === 'accepted' &&
+      announced.itemId === resolved.id &&
+      announced.audioUrl === resolved.audioUrl &&
+      announced.queueEntryId === (queueEntry?.id ?? null) &&
+      (!queueEntry || queueEntry.playbackRequestId === announced.playbackId);
+    const startedAt = promote ? announced.startedAt : null;
+    const playbackRequestId = promote
+      ? announced.playbackId
+      : (queueEntry?.playbackRequestId ?? randomUUID());
+    if (handoff) {
+      state.announcement = null;
+      if (promote) {
+        this.recordHandoff('preloaded');
+      } else if (announced) {
+        // Palazzo may already have started an announced song; the command
+        // below flushes it.
+        const raced = this.preemptAnnouncedSongs(programId, state, announced);
+        this.recordHandoff(raced ? 'race_replaced' : 'command');
+      } else {
+        this.recordHandoff('command');
+      }
+    }
+    if (startedAt === null) state.pendingRequestIds.add(playbackRequestId);
     state.activeSong = {
       token: `${resolved.id}:${resolved.audioUrl}`,
       playbackRequestId,
@@ -1820,27 +2362,44 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       introPlaybackId: null,
       introStatus: 'none',
       introFailureReason: null,
-      authoritativeStartedAt: null,
-      authoritativePositionMs: null,
-      authoritativeUpdatedAt: null,
+      authoritativeStartedAt: startedAt,
+      authoritativePositionMs: startedAt === null ? null : 0,
+      authoritativeUpdatedAt: startedAt,
       queueEntryId: queueEntry?.id ?? null,
       highRotation: resolved.highRotation === true,
       cycleReset: !queueEntry && state.pendingCycleReset ? true : undefined,
+      ...(promote ? { promoted: true } : {}),
     };
     state.pendingCycleReset = false;
 
-    this.logger.log(
-      `Commanding ${resolved.title} by ${resolved.artist} on ${programId} (${playbackRequestId})`,
-    );
-    void this.pushCommand(
-      programId,
-      playbackRequestId,
-      resolved.audioUrl,
-      resolved.title,
-      resolved.artist,
-      resolved.coverUrl,
-      resolved.songId,
-    );
+    if (promote) {
+      this.logger.log(
+        `Promoting announced ${resolved.title} by ${resolved.artist} on ${programId} (${playbackRequestId})`,
+      );
+      if (startedAt !== null) {
+        // Its start arrived before promotion and was already recorded.
+        this.recordHighRotationStarted(
+          programId,
+          state,
+          state.activeSong,
+          startedAt,
+        );
+        this.refreshAnnouncement(programId);
+      }
+    } else {
+      this.logger.log(
+        `Commanding ${resolved.title} by ${resolved.artist} on ${programId} (${playbackRequestId})`,
+      );
+      void this.pushCommand(
+        programId,
+        playbackRequestId,
+        resolved.audioUrl,
+        resolved.title,
+        resolved.artist,
+        resolved.coverUrl,
+        resolved.songId,
+      );
+    }
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
     this.startProgress(programId);

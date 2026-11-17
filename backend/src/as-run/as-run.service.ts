@@ -13,6 +13,7 @@ import { SongExecutionEngine } from '../radio/song-execution.engine';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
 import {
   AS_RUN_END_REASONS,
+  AS_RUN_UNCOUNTED_END_REASONS,
   AS_RUN_SHORT_INFERRED_PLAY_MS,
   type AsRunExportQuery,
   type AsRunInferredFilter,
@@ -398,15 +399,20 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     // separately from ends that are not inferred (Palazzo's reported ends,
     // operator stops and manual cuts). A superseded end is inferred.
     // In SoundExchange Report of Use, performances are based on completed plays (state = 'ended')
-    const records = await this.prisma.asRunRecord.findMany({
-      where: {
-        programId,
-        state: 'ended',
-        ...(from || to ? { at: atFilter } : {}),
-        ...(inferred === 'include' ? {} : { inferred: inferred === 'only' }),
-      },
-      orderBy: { at: 'asc' },
-    });
+    const records = (
+      await this.prisma.asRunRecord.findMany({
+        where: {
+          programId,
+          state: 'ended',
+          ...(from || to ? { at: atFilter } : {}),
+          ...(inferred === 'include' ? {} : { inferred: inferred === 'only' }),
+        },
+        orderBy: { at: 'asc' },
+      })
+    ).filter(
+      // A preempted announced song is recorded, never counted.
+      (r) => !AS_RUN_UNCOUNTED_END_REASONS.includes(r.endReason ?? ''),
+    );
 
     const songIds = Array.from(
       new Set(

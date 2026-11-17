@@ -47,6 +47,20 @@ export interface PalazzoSongCommand {
   loudness?: PalazzoSongLoudness;
 }
 
+/** The next song announced while the current one plays (contract palazzo#40 §1): a song command without an intro. */
+export type PalazzoNextSongCommand = Omit<PalazzoSongCommand, 'intro'>;
+
+/**
+ * What Palazzo answered to an announcement: `accepted` (200, queued),
+ * `not_ready` (422, nothing queued), `rejected` (409 nothing playing, or 400
+ * invalid: not announced) or `unsupported` (404, an older Palazzo).
+ */
+export type PalazzoNextAnnouncementResult =
+  | { result: 'accepted'; duplicate: boolean }
+  | { result: 'not_ready' }
+  | { result: 'rejected' }
+  | { result: 'unsupported' };
+
 export interface PalazzoIntroCommand {
   playbackId: string;
   url: string;
@@ -64,7 +78,7 @@ export interface PalazzoInstantCommand {
 
 interface RequestOptions {
   operation: PalazzoMachineOperation;
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   idempotencyKey?: string;
   commandSequence?: number;
@@ -204,6 +218,93 @@ export class PalazzoMachineClient {
             : null,
       }),
     };
+  }
+
+  /**
+   * Announces the next song (`PUT …/playback/next`). Maps every status the
+   * contract defines; any other failure is thrown as for the song command.
+   */
+  async announceNext(
+    palazzoUrl: string,
+    programId: string,
+    command: PalazzoNextSongCommand,
+  ): Promise<PalazzoNextAnnouncementResult> {
+    try {
+      if (command.segue !== undefined) {
+        validateSongSegue(command.segue, command.duration);
+      }
+      if (command.loudness !== undefined) {
+        validateSongLoudness(command.loudness);
+      }
+    } catch {
+      this.metrics.recordMachineRequest('next-announce', 'rejected');
+      throw new PalazzoMachineError('rejected');
+    }
+
+    let response: Response;
+    try {
+      response = await this.request(palazzoUrl, programId, '/playback/next', {
+        operation: 'next-announce',
+        method: 'PUT',
+        idempotencyKey: command.playbackId,
+        retryable: true,
+        body: {
+          song: {
+            programId,
+            playbackId: command.playbackId,
+            url: command.url,
+            title: command.title,
+            artist: command.artist,
+            coverUrl: command.coverUrl,
+            ...(command.segue && { segue: command.segue }),
+            ...(command.loudness && { loudness: command.loudness }),
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof PalazzoMachineError) {
+        if (error.status === 404) return { result: 'unsupported' };
+        if (error.status === 422) return { result: 'not_ready' };
+        if (error.status === 409 || error.status === 400) {
+          return { result: 'rejected' };
+        }
+      }
+      throw error;
+    }
+    const body = await responseJson(response, 'next-announce', this.metrics);
+    if (
+      body.ok !== true ||
+      body.playbackRequestId !== command.playbackId ||
+      body.state !== 'queued' ||
+      (body.duplicate !== undefined && typeof body.duplicate !== 'boolean')
+    ) {
+      return this.failMalformed('next-announce');
+    }
+    const duplicate = body.duplicate === true;
+    this.metrics.recordMachineRequest(
+      'next-announce',
+      duplicate ? 'deduplicated' : 'success',
+    );
+    return { result: 'accepted', duplicate };
+  }
+
+  /** Withdraws the announced next song (`DELETE …/playback/next`). */
+  async withdrawNext(
+    palazzoUrl: string,
+    programId: string,
+  ): Promise<{ withdrawn: boolean }> {
+    const response = await this.request(
+      palazzoUrl,
+      programId,
+      '/playback/next',
+      { operation: 'next-withdraw', method: 'DELETE', retryable: true },
+    );
+    const body = await responseJson(response, 'next-withdraw', this.metrics);
+    if (body.ok !== true || typeof body.withdrawn !== 'boolean') {
+      return this.failMalformed('next-withdraw');
+    }
+    this.metrics.recordMachineRequest('next-withdraw', 'success');
+    return { withdrawn: body.withdrawn };
   }
 
   async stopSong(palazzoUrl: string, programId: string): Promise<void> {
