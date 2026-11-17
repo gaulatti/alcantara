@@ -629,48 +629,6 @@ it("describes the on-air track, its intro and its remaining time", () => {
   expect(player).toHaveTextContent("Intro playing");
 });
 
-it("stages a scene from the quick bar and marks the live and staged ones", () => {
-  const onStageScene = vi.fn();
-  render(
-    <PlaybackBar
-      sequence={sequence}
-      programSongPlayback={null}
-      onChange={vi.fn()}
-      onStageScene={onStageScene}
-      sceneQuickActions={[
-        { id: 1, name: "Studio", isActive: true, isStaged: false, shortcutLabel: "F1" },
-        { id: 2, name: "Wide", isActive: false, isStaged: true, shortcutLabel: "F2" },
-        { id: 3, name: "Remote", isActive: false, isStaged: false, shortcutLabel: "F3" },
-      ]}
-    />,
-  );
-  const remote = screen.getByRole("button", { name: "F3 Remote" });
-  expect(remote).toHaveTextContent("F3");
-  fireEvent.click(remote);
-  expect(onStageScene).toHaveBeenCalledWith(3);
-  expect(screen.getByRole("button", { name: "F1 Studio" }).className).toContain(
-    "bg-terracotta/35",
-  );
-  expect(screen.getByRole("button", { name: "F2 Wide" }).className).toContain(
-    "bg-accent-blue/35",
-  );
-});
-
-it("ignores a quick-bar click when there is no stage action", () => {
-  render(
-    <PlaybackBar
-      sequence={sequence}
-      programSongPlayback={null}
-      onChange={vi.fn()}
-      sceneQuickActions={[
-        { id: 1, name: "Studio", isActive: false, isStaged: false, shortcutLabel: "F1" },
-      ]}
-    />,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "F1 Studio" }));
-  expect(screen.getByText("Nothing on air")).toBeInTheDocument();
-});
-
 it("drives a rundown log instead of the playlist when one is attached", () => {
   const logTransport = {
     isRunning: true,

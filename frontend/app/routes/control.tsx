@@ -3581,7 +3581,6 @@ export default function Control() {
           <PlaybackBar
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}
-            sceneQuickActions={[]}
             onChange={(nextSequence) => {
               void saveProgramAudioBusSongSequence(nextSequence);
             }}
@@ -3593,9 +3592,6 @@ export default function Control() {
             }}
             onStopAllInstants={() => {
               void stopAllInstants();
-            }}
-            onStageScene={(sceneId) => {
-              void stageSceneForProgram(sceneId);
             }}
           />
         </div>
