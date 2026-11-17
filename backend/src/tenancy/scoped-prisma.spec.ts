@@ -50,7 +50,24 @@ describe('forTeam against PostgreSQL', () => {
     prisma = new PrismaClient({
       adapter: createPostgresAdapter(testDatabaseUrl()),
     });
-    await prisma.$connect();
+    try {
+      await prisma.$connect();
+      await prisma.$queryRaw`SELECT 1 FROM "ExternalSource" LIMIT 1`;
+    } catch (error) {
+      const target = new URL(testDatabaseUrl());
+      throw new Error(
+        `scoped-prisma.spec.ts needs a migrated local PostgreSQL database "alcantara_ci" at ${target.hostname}:${target.port || '5432'} ` +
+          '(CI starts one; locally, start a disposable one, run `pnpm run db:migrate:deploy` against it and set DATABASE_URL; see backend/README.md "Run tests"). ' +
+          `Underlying error: ${(error as { code?: string }).code ?? ''} ${
+            error instanceof Error
+              ? (error.message
+                  .split('\n')
+                  .find((line) => line.trim().length > 0)
+                  ?.trim() ?? error.name)
+              : String(error)
+          }`,
+      );
+    }
     teamA = forTeam(prisma, TEAM_A);
   });
 

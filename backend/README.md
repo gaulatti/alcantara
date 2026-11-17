@@ -71,6 +71,15 @@ $ pnpm run test:e2e
 $ pnpm run test:cov
 ```
 
+`src/tenancy/scoped-prisma.spec.ts` runs against a real, migrated PostgreSQL
+database named `alcantara_ci` on localhost; it never mocks Prisma. CI starts and
+migrates that database before `test:coverage`, so the spec uses CI's documented
+URL when `DATABASE_URL` is unset. Locally, start a disposable PostgreSQL, run
+`pnpm run db:migrate:deploy` against its `alcantara_ci` database and set
+`DATABASE_URL` to it; without one, this spec fails with a message naming the
+missing database. It refuses any host other than localhost and any database other
+than `alcantara_ci`.
+
 ## Deployment
 
 Production uses committed Prisma migrations. The deployment workflow runs
