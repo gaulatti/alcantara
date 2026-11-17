@@ -122,8 +122,8 @@ function getBrowserTimezoneId(timezone: string): string {
  * spell a saved or default zone differently (Chromium lists
  * America/Buenos_Aires and Asia/Calcutta for the saved
  * America/Argentina/Buenos_Aires and Asia/Kolkata). The option for the same
- * zone then carries the saved id, so the picker shows it selected and saving
- * keeps the stored id. A zone the list lacks entirely is listed first. The
+ * zone then carries the saved id, and its name when the id names a city, so
+ * the picker shows it selected and saving keeps the stored id. A zone the list lacks entirely is listed first. The
  * saved id is never rewritten.
  */
 export function withTimezoneOption(options: TimezoneOption[], value: string, date: Date = new Date()): TimezoneOption[] {
@@ -133,7 +133,10 @@ export function withTimezoneOption(options: TimezoneOption[], value: string, dat
   const browserId = getBrowserTimezoneId(value);
   const aliasIndex = options.findIndex((option) => option.value === browserId);
   if (aliasIndex >= 0) {
-    return options.map((option, index) => (index === aliasIndex ? { ...option, value } : option));
+    // A saved id that names a city keeps its own name (Kyiv, not Kiev); a
+    // POSIX id such as EST5EDT keeps the listed city's label.
+    const label = value.includes('/') ? getTimezoneOptionLabel(value, date) : options[aliasIndex].label;
+    return options.map((option, index) => (index === aliasIndex ? { value, label } : option));
   }
   return [{ value, label: getTimezoneOptionLabel(value, date) }, ...options];
 }

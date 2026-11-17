@@ -168,6 +168,12 @@ it.each(ALIAS_PAIRS)(
     expect(values).not.toContain(listed);
     expect(values).toHaveLength(zones.length);
     expect(updateProp).not.toHaveBeenCalled();
+    const selected = within(zone).getByRole("option", { selected: true });
+    expect(selected.textContent).toMatch(
+      saved.includes("/")
+        ? new RegExp(`^${saved.split("/").pop()!.replace(/_/g, " ")} \\(GMT`)
+        : new RegExp(`^${listed.split("/").pop()!.replace(/_/g, " ")} \\(GMT`),
+    );
 
     // Saving the selection without a change stores the id that was saved.
     fireEvent.change(zone, { target: { value: saved } });
