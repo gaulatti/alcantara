@@ -170,6 +170,15 @@ same segue and loudness the song command would carry; with segue off, neither.
   moving the cursor or recording selection metrics. Selection is unchanged: at
   the end the engine selects exactly as before and promotes the announced song
   only if it is the one selected.
+- **Only an order-determined successor.** A playlist successor is announced
+  only when it is the same whenever the end happens: the selection is worked
+  out as if the song ended now, at its expected end, and one and ten minutes
+  later, each time stamping the advanced cursor with that time as the end does.
+  If the results differ, the successor depends on the clock (selection by
+  elapsed time from a playlist start time, a timed nested sequence, high
+  rotation becoming due) and nothing is announced: the end goes by today's
+  command. A song after a queued song is the common case, because a queued
+  song never moves the cursor.
 - **Not announced** when a bumper is due after the song, a clocked flight log
   runs, the successor has an intro, there is no successor, or Palazzo answered
   404 (an older Palazzo; nothing more is announced to it until its boot

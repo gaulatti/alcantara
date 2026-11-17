@@ -175,6 +175,24 @@ interface NextAnnouncement {
 }
 
 const MAX_PREEMPTED_REQUEST_IDS = 32;
+/** How late after the expected end a successor must still be the same to be announced. */
+const CLOCK_PROBE_LATE_MS = 60_000;
+const CLOCK_PROBE_LATER_MS = 600_000;
+
+/**
+ * Moves every cursor stamp the end's advance wrote (at or after `from`) to
+ * `at`, as if the end had happened then. Older stamps are left alone.
+ */
+function restampSequence(
+  sequence: ProgramSongSequence,
+  from: number,
+  at: number,
+): void {
+  if (sequence.startedAt >= from) sequence.startedAt = at;
+  for (const item of sequence.items) {
+    if (item.kind === 'sequence') restampSequence(item.sequence, from, at);
+  }
+}
 
 interface SongEngineState {
   sequence: ProgramSongSequence | null;
@@ -1414,24 +1432,51 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         : null;
     }
     if (!hasSuccessor) return null;
+    // Only a successor fixed by order is announced: the selection must be the
+    // same whenever the end happens. The end stamps the cursor it advances
+    // with the end time and selects at once, so each probe does the same at
+    // its own time; a selection that still varies is anchored to the clock
+    // (a playlist start time, a timed nested sequence, high rotation) and is
+    // left to today's command at the end.
+    const now = Date.now();
     // Only a started song is announced from (updateAnnouncement).
-    const expectedEnd =
-      (song.authoritativeStartedAt as number) + song.durationMs;
-    const leaf = this.selectionView().resolveNextPlaylistSong(
-      programId,
-      {
-        ...state,
-        sequence: next,
-        lastEnded: { songId: song.songId, artist: song.artist },
-      },
-      Math.max(Date.now(), expectedEnd),
+    const expectedEnd = Math.max(
+      now,
+      (song.authoritativeStartedAt as number) + song.durationMs,
     );
-    return leaf?.audioUrl
-      ? {
-          leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
-          queueEntryId: null,
-        }
-      : null;
+    let chosen: ProgramResolvedSongLeaf | null = null;
+    for (const at of [
+      now,
+      expectedEnd,
+      expectedEnd + CLOCK_PROBE_LATE_MS,
+      expectedEnd + CLOCK_PROBE_LATER_MS,
+    ]) {
+      const stamp = Date.now();
+      const { next: probe } = this.sequenceAfterEnd(state.sequence, song);
+      // hasSuccessor implies a sequence.
+      restampSequence(probe as ProgramSongSequence, stamp, at);
+      const leaf = this.selectionView().resolveNextPlaylistSong(
+        programId,
+        {
+          ...state,
+          sequence: probe,
+          lastEnded: { songId: song.songId, artist: song.artist },
+        },
+        at,
+      );
+      if (!leaf?.audioUrl) return null;
+      if (
+        chosen &&
+        (chosen.id !== leaf.id || chosen.audioUrl !== leaf.audioUrl)
+      ) {
+        return null;
+      }
+      chosen = leaf;
+    }
+    return {
+      leaf: chosen as ProgramResolvedSongLeaf & { audioUrl: string },
+      queueEntryId: null,
+    };
   }
 
   /**

@@ -1051,6 +1051,113 @@ describe('next-song announcement and handoff', () => {
     });
   });
 
+  describe('only an order-determined successor is announced', () => {
+    function withDurations(h: ReturnType<typeof harness>, startedAt: number) {
+      h.engine.handleSequenceUpdated(PROGRAM, {
+        ...h.sequence(),
+        startedAt,
+        items: (h.sequence().items as Record<string, unknown>[]).map(
+          (entry) => ({ ...entry, durationMs: 6000 }),
+        ),
+      });
+    }
+
+    it('announces after a normal operator start, the item the end selects', async () => {
+      const h = harness();
+      withDurations(h, Date.now());
+      await onAir(h);
+      expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    });
+
+    it('announces the item the end selects even when the song outlasts the playlist timing', async () => {
+      const h = harness();
+      withDurations(h, Date.now());
+      h.idle();
+      await settle();
+      // An operator takes a playlist song on air with a longer duration than
+      // the playlist's own items.
+      h.engine.handleManualSong(
+        PROGRAM,
+        SONGS[2].url,
+        SONGS[2].title,
+        SONGS[2].artist,
+        190_000,
+      );
+      await settle();
+      h.palazzo.start();
+      await settle();
+      expect(urls(h.palazzo.announced)).toEqual([SONGS[3].url]);
+      jest.setSystemTime(Date.now() + 190_000);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    });
+
+    it('announces through a nested sequence whose cursor the end advances', async () => {
+      const h = harness();
+      const items = h.sequence().items as Record<string, unknown>[];
+      h.engine.handleSequenceUpdated(PROGRAM, {
+        ...h.sequence(),
+        startedAt: Date.now(),
+        items: [
+          {
+            id: 'block',
+            kind: 'sequence',
+            label: 'Block',
+            sequence: {
+              mode: 'autoplay',
+              loop: false,
+              intervalMs: 500,
+              startedAt: Date.now(),
+              items: items
+                .slice(0, 3)
+                .map((entry) => ({ ...entry, durationMs: 6000 })),
+            },
+          },
+          ...items.slice(3).map((entry) => ({ ...entry, durationMs: 6000 })),
+        ],
+      });
+      await onAir(h);
+      expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    });
+
+    it('does not announce when the successor depends on when the end happens', async () => {
+      const h = harness();
+      // An epoch-anchored playlist: after a queued song (which never moves
+      // the cursor) the next playlist song is chosen by elapsed time.
+      withDurations(h, 0);
+      await onAir(h);
+      await h.engine.enqueueSong(PROGRAM, SONGS[5].itemId);
+      await settle();
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[5].url);
+      const announcedWhileQueued = h.palazzo.announced.length;
+
+      // The queued song plays: its successor is clock-dependent.
+      h.engine.handleSequenceUpdated(PROGRAM, {
+        ...h.sequence(),
+        startedAt: 0,
+      });
+      await settle();
+      expect(h.palazzo.announced).toHaveLength(announcedWhileQueued);
+      jest.setSystemTime(Date.now() + 6000);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.metrics.snapshot().handoffs).toEqual({
+        preloaded: 1,
+        command: 1,
+      });
+    });
+  });
+
   describe('edge cases', () => {
     it('an operator pick during the announcement lookup announces nothing for the replaced song', async () => {
       const h = harness();
