@@ -104,23 +104,41 @@ advanced. The record stores `inferred = true`. If it closes a play shorter than
 a royalty rule: a play that brief behind a dropped connection is more likely a
 stale reconnect or an immediate skip, so an operator should look at it.
 
+**Ends the engine causes.** When the engine itself ends a song that had
+started (Palazzo had confirmed it), it closes the play at that moment with an
+`endReason`, taken from what the engine did and never from Palazzo's
+stop-reason label:
+
+- `stopped`: the operator pressed Stop.
+- `replaced`: a manual pick cut the song; the manual song gets its own record.
+- `superseded`: a playing snapshot reported a different track. The record is
+  also `inferred = true`.
+
+`endReason` is NULL on every other row: Palazzo's own ends, ends inferred from
+an idle snapshot, all `started` rows, and every row written before the column
+existed. A song that never started gets no record however it ends. No play is
+dropped for being short: these ends carry the same `reviewFlag` as inferred
+ends (`short` under 30 seconds after the recorded start, `no-start` without
+one), so the minimum duration is a review threshold only. Whether very short
+plays are reportable is a royalty decision.
+
 **One record per play.** Records carry the engine's `playbackRequestId`, and
 `(programId, playbackRequestId, state)` is unique. A real end that arrives after
 an inferred end, or any repeated event, is dropped, so a play is never counted
-twice. Rows written before this column existed have no request ID and are left
+twice. After a stop or a cut the engine also ignores the song's late end, and
+after a superseding snapshot it does not close the play again. Rows written before this column existed have no request ID and are left
 as they were.
 
 **Export rules.** `GET /program/:programId/as-run` (permission `alcantara:radio:read`):
 
-- `format=csv` (default) lists every record, with `inferred` (`true`/`false`)
-  and `reviewFlag` columns at the end.
+- `format=csv` (default) lists every record, with `inferred` (`true`/`false`),
+  `reviewFlag` and `endReason` columns at the end (`endReason` was appended
+  last).
 - `format=soundexchange` counts each `ended` record as one performance,
   inferred and flagged ends included, because the track was transmitted.
   `inferred=include` (default) counts all ends, `inferred=only` lists only
-  inferred ends, and `inferred=exclude` lists only ends Palazzo reported. The
+  inferred ends (including `superseded`), and `inferred=exclude` lists only
+  ends that are not inferred: Palazzo's reported ends, `stopped` and
+  `replaced`. The
   two filtered exports add up to the default one. The `inferred` parameter is
   rejected with `format=csv`.
-
-Plays are still not recorded when an operator stops a song, when a manual pick
-cuts a song that had already started, or when a playing snapshot reports a
-different track. Those cases under-count and are outside this rule.

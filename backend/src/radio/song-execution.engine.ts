@@ -131,6 +131,8 @@ interface ActiveSong {
   highRotation: boolean;
   /** The similarity picker started a new artist cycle with this song. */
   cycleReset?: boolean;
+  /** The engine already closed this play for the as-run log. */
+  asRunClosed?: boolean;
 }
 
 interface SongEngineState {
@@ -173,12 +175,24 @@ export type SongEngineTrackEvent = {
   url: string | null;
   at: Date;
   /**
-   * Present and true only on a `track.ended` the engine inferred because the
-   * real end event never arrived and an authoritative idle snapshot ended the
-   * song. `at` is then the moment the engine advanced.
+   * Present and true only on a `track.ended` the engine inferred: the real
+   * end event never arrived and an authoritative idle snapshot ended the song
+   * (`at` is the moment the engine advanced), or a playing snapshot reported
+   * another track (`endReason: 'superseded'`).
    */
   inferred?: true;
+  /**
+   * Present only on a `track.ended` the engine sent itself because it ended a
+   * started song: `stopped` (operator Stop), `replaced` (a manual pick cut it)
+   * or `superseded` (a playing snapshot reported another track, also
+   * `inferred`). `at` is then the moment the engine acted. Never derived from
+   * Palazzo's stop-reason label.
+   */
+  endReason?: SongEngineEndReason;
 };
+
+/** Why the engine itself ended a started song; see SongEngineTrackEvent. */
+export type SongEngineEndReason = 'stopped' | 'replaced' | 'superseded';
 
 /**
  * Drives radio automation from authoritative Palazzo playback state.
@@ -205,8 +219,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * after the existing handling. Ignored transitions (mismatched, duplicate,
    * frozen, no active song) and starts confirming a command another song
    * already replaced emit nothing. An end inferred from an authoritative idle
-   * snapshot is emitted with `inferred: true`. Subscribers run synchronously but are never awaited, and a
-   * subscriber error never reaches the engine.
+   * snapshot is emitted with `inferred: true`. A started song the engine
+   * ends itself (Stop, manual cut, superseding snapshot) is closed once with
+   * an `endReason`; a later end for it emits nothing. Subscribers run
+   * synchronously but are never awaited, and a subscriber error never reaches
+   * the engine.
    */
   readonly trackEvents$: Observable<SongEngineTrackEvent> =
     this.trackEventsSubject.asObservable();
@@ -759,6 +776,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       typeof durationMs === 'number' && durationMs > 0 ? durationMs : 300000;
     const playbackRequestId = randomUUID();
     state.pendingRequestIds.add(playbackRequestId);
+    if (state.activeSong) {
+      this.closePlayForAsRun(programId, state.activeSong, 'replaced');
+    }
     state.activeSong = {
       token: `${Date.now()}:${audioUrl}`,
       playbackRequestId,
@@ -811,6 +831,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
+    if (state.activeSong) {
+      this.closePlayForAsRun(programId, state.activeSong, 'stopped');
+    }
     this.clearTimer(programId);
     this.stopProgress(programId);
     state.activeSong = null;
@@ -991,9 +1014,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // track.ended: every other event type returned above, but TypeScript does
     // not narrow `event.data` through the intro branch.
     const ended = event as Extract<typeof event, { type: 'track.ended' }>;
+    // A play the engine already closed (superseded) is not closed again.
+    const closed = state.activeSong?.asRunClosed === true;
     // Only an accepted end is emitted; ignored ends (duplicate, mismatched,
     // frozen, no active song) must not count as a play downstream.
-    if (this.handleAuthoritativeTrackEnded(programId, state, requestId)) {
+    if (
+      this.handleAuthoritativeTrackEnded(programId, state, requestId) &&
+      !closed
+    ) {
       this.emitTrackEvent(programId, ended.type, requestId, ended.data);
     }
   }
@@ -1004,6 +1032,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     playbackRequestId: string,
     data: { title?: string | null; artist?: string | null; url?: string },
     inferred = false,
+    endReason?: SongEngineEndReason,
   ): void {
     try {
       this.trackEventsSubject.next({
@@ -1015,12 +1044,35 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         url: typeof data.url === 'string' ? data.url : null,
         at: new Date(),
         ...(inferred ? { inferred: true as const } : {}),
+        ...(endReason ? { endReason } : {}),
       });
     } catch (error) {
       this.logger.error(
         `Track event subscriber failed on ${programId}: ${String(error)}`,
       );
     }
+  }
+
+  /**
+   * Closes a started song's play for the as-run log when the engine itself
+   * ends it (Stop, manual cut, superseding snapshot), once per play. A song
+   * Palazzo never confirmed was not on air and gets no record.
+   */
+  private closePlayForAsRun(
+    programId: string,
+    song: ActiveSong,
+    endReason: SongEngineEndReason,
+  ): void {
+    if (song.authoritativeStartedAt === null || song.asRunClosed) return;
+    song.asRunClosed = true;
+    this.emitTrackEvent(
+      programId,
+      'track.ended',
+      song.playbackRequestId,
+      { title: song.title, artist: song.artist, url: song.audioUrl },
+      endReason === 'superseded',
+      endReason,
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -1050,6 +1102,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       state.busyWithForeignTrack = false;
       this.emitPlaybackUpdate(programId, song);
       return;
+    }
+
+    // Palazzo is playing another track, so the active song is no longer on air.
+    if (state.activeSong) {
+      this.closePlayForAsRun(programId, state.activeSong, 'superseded');
     }
 
     if (state.pendingRequestIds.has(requestId)) {
@@ -1149,7 +1206,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // Authoritative idle state while we believe our song is active: the
       // song ended without a lifecycle event reaching us (e.g. SSE loss).
       const song = state.activeSong;
-      if (this.handleAuthoritativeTrackEnded(programId, state, requestId)) {
+      if (
+        this.handleAuthoritativeTrackEnded(programId, state, requestId) &&
+        !song.asRunClosed
+      ) {
         // Close the play for the as-run log at the engine's advance time.
         this.emitTrackEvent(
           programId,

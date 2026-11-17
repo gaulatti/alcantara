@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma.service';
 import { SongExecutionEngine } from '../radio/song-execution.engine';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
 import {
+  AS_RUN_END_REASONS,
   AS_RUN_SHORT_INFERRED_PLAY_MS,
   type AsRunExportQuery,
   type AsRunInferredFilter,
@@ -121,9 +122,17 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
 
     const { songId, assetId } = await this.resolveSongAndAsset(event);
     const inferred = state === 'ended' && event.inferred === true;
-    const reviewFlag = inferred
-      ? await this.inferredReviewFlag(event.programId, playbackRequestId, at)
-      : null;
+    const endReason =
+      state === 'ended' &&
+      typeof event.endReason === 'string' &&
+      AS_RUN_END_REASONS.includes(event.endReason)
+        ? event.endReason
+        : null;
+    // Inferred ends and ends the engine caused are flagged, never dropped.
+    const reviewFlag =
+      inferred || endReason
+        ? await this.inferredReviewFlag(event.programId, playbackRequestId, at)
+        : null;
 
     const record = await this.prisma.asRunRecord
       .create({
@@ -136,6 +145,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
           playbackRequestId,
           inferred,
           reviewFlag,
+          // Omitted rather than null when absent: the column defaults to NULL.
+          ...(endReason ? { endReason } : {}),
         },
       })
       .catch((error: unknown) => {
@@ -158,8 +169,9 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Flags an inferred end for review when its start is unknown or it closes a
-   * play shorter than AS_RUN_SHORT_INFERRED_PLAY_MS. The play still counts.
+   * Flags an inferred or engine-caused end for review when its start is
+   * unknown or it closes a play shorter than AS_RUN_SHORT_INFERRED_PLAY_MS.
+   * The play still counts.
    */
   async inferredReviewFlag(
     programId: string,
@@ -339,6 +351,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       'createdAt',
       'inferred',
       'reviewFlag',
+      'endReason',
     ].join(',');
 
     const lines = [header];
@@ -360,6 +373,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
         escapeCsvField(r.createdAt.toISOString()),
         escapeCsvField(r.inferred === true),
         escapeCsvField(r.reviewFlag),
+        escapeCsvField(r.endReason),
       ].join(',');
 
       lines.push(row);
@@ -379,7 +393,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     if (to) atFilter.lte = to;
 
     // Inferred ends count as performances; `only` and `exclude` list them
-    // separately from ends Palazzo reported.
+    // separately from ends that are not inferred (Palazzo's reported ends,
+    // operator stops and manual cuts). A superseded end is inferred.
     // In SoundExchange Report of Use, performances are based on completed plays (state = 'ended')
     const records = await this.prisma.asRunRecord.findMany({
       where: {

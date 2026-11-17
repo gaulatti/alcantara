@@ -8,7 +8,22 @@ export interface AsRunTrackEvent {
   at: Date;
   /** True on an end the engine inferred because the real end never arrived. */
   inferred?: boolean;
+  /** Why the engine itself ended a started play; absent on Palazzo's own ends. */
+  endReason?: AsRunEndReason;
 }
+
+/**
+ * Why the engine itself ended a started play: an operator Stop, a manual pick
+ * that cut it, or a playing snapshot that reported another track (inferred).
+ * Stored on the `ended` row; NULL for Palazzo's own and idle-inferred ends.
+ */
+export type AsRunEndReason = 'stopped' | 'replaced' | 'superseded';
+
+export const AS_RUN_END_REASONS: readonly string[] = [
+  'stopped',
+  'replaced',
+  'superseded',
+];
 
 /** Which ends a SoundExchange export counts: all, only inferred, or none inferred. */
 export type AsRunInferredFilter = 'include' | 'only' | 'exclude';
@@ -17,9 +32,10 @@ export type AsRunInferredFilter = 'include' | 'only' | 'exclude';
 export type AsRunReviewFlag = 'short' | 'no-start';
 
 /**
- * An inferred end less than this long after its start is recorded and counted,
- * but flagged `short` for review: a play that brief through a dropped
- * connection is more likely a stale reconnect or an immediate skip.
+ * An inferred end, or an end the engine caused (see AsRunEndReason), less than
+ * this long after its start is recorded and counted, but flagged `short` for
+ * review: a play that brief is more likely a stale reconnect or an immediate
+ * skip.
  */
 export const AS_RUN_SHORT_INFERRED_PLAY_MS = 30_000;
 
