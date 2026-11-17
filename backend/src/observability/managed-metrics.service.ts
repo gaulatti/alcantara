@@ -220,6 +220,7 @@ export class ManagedMetricsService {
   private readonly playingTrackCoverLookups: Counter<string>;
   private readonly fillerPreparations: Counter<string>;
   private readonly fillerStartBindings: Counter<string>;
+  private readonly alanaLiveProfileUnknownKeys: Counter<string>;
   private readonly programTemplateUnknowns: Counter<string>;
   private readonly recordingCommands: Counter<string>;
   private readonly recordingReconciliations: Counter<string>;
@@ -352,6 +353,12 @@ export class ManagedMetricsService {
     for (const result of FILLER_START_BINDING_RESULTS) {
       this.fillerStartBindings.inc({ result }, 0);
     }
+    this.alanaLiveProfileUnknownKeys = new Counter({
+      name: 'alcantara_alana_live_profile_unknown_keys_total',
+      help: 'Alana live-profile keys Alcantara does not know, accepted and forwarded unread.',
+      registers: [this.registry],
+    });
+    this.alanaLiveProfileUnknownKeys.inc(0);
     this.programTemplateUnknowns = new Counter({
       name: 'alcantara_program_template_unknowns_ignored_total',
       help: 'Template manifest members Alcantara does not know and left out, by bounded member kind.',
@@ -516,6 +523,10 @@ export class ManagedMetricsService {
 
   recordFillerStartBinding(result: FillerStartBindingResult): void {
     this.fillerStartBindings.inc({ result });
+  }
+
+  recordAlanaLiveProfileUnknownKey(): void {
+    this.alanaLiveProfileUnknownKeys.inc();
   }
 
   recordProgramTemplateUnknown(member: ProgramTemplateUnknownMember): void {

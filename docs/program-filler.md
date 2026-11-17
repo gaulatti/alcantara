@@ -36,7 +36,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 **Television preparation:**
 1. Alcantara reads Alana's `GET /v1/programs/:id/live-profile`.
 2. If that returns 404 (an Alana without gaulatti/alana#29), preparation is refused with 503 "television live profile unavailable". Alcantara never guesses a profile.
-3. Otherwise it sends the exact profile in Alana's `PUT /fillers/:version`.
+3. Otherwise it sends the exact profile in Alana's `PUT /fillers/:version`. Every one of the nine known keys must be present and valid, and the checksum must equal the SHA-256 of the canonical JSON of the profile as received. A profile key Alcantara does not know (gaulatti/ariston#217) does not refuse the profile: it is not read, it is forwarded in the `PUT` exactly as received so the acknowledged `profileChecksum` still binds the same profile, and it is counted in `alcantara_alana_live_profile_unknown_keys_total`. Another `contractVersion`, another `programId` or a checksum mismatch is still a 502 "invalid live profile".
 4. The version is ready only when the acknowledgement matches on all of: version, `ready: true`, `status: "ready"`, source id, source SHA-256, and `profileChecksum` equal to the live-profile checksum.
 
 **Radio preparation** uses Palazzo's `PUT /fillers/:version` with the mode and seed, through the existing private Palazzo URL allowlist.
@@ -59,6 +59,7 @@ All routes sit under `/broadcast/programs/:programId/fillers`.
 | --- | --- |
 | `alcantara_filler_preparations_total{leg,result}` | `leg` is `television` or `radio`; `result` is `ready`, `failed`, `unavailable` or `profile-unavailable` |
 | `alcantara_filler_start_bindings_total{result}` | `bound`, `mismatch`, `not-configured` or `legacy-executor` |
+| `alcantara_alana_live_profile_unknown_keys_total` | no labels; one per live-profile key Alcantara does not know (never the key name) |
 | `alcantara_dependency_operations_total{dependency="alana",...}` | gains the `profile` and `prepare` operations |
 
 Every series is exposed at zero from the first scrape. Palazzo's `filler-prepare` machine metrics count an answer with an unknown `status` (still `ready: true` with the exact version echo) as `result="unknown-value"` instead of failing the preparation (see [radio-telemetry.md](radio-telemetry.md)). No program, version, asset or URL appears in a label.

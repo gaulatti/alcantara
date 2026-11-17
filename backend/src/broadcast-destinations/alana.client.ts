@@ -120,10 +120,20 @@ export function liveProfileChecksum(profile: TelevisionLiveProfile): string {
   return createHash('sha256').update(canonicalJson(profile)).digest('hex');
 }
 
-/** A complete, self-consistent live-profile response, or null. */
+/**
+ * A complete, self-consistent live-profile response, or null.
+ *
+ * Every known key must be present and valid. A profile key Alcantara does not
+ * know is not a reason to refuse the profile (gaulatti/ariston#217): the
+ * checksum is computed over the profile exactly as received, so integrity
+ * still holds, and that same profile is what Alcantara forwards to Alana when
+ * it prepares a filler. `onUnknownKey` is called once per such key.
+ * `contractVersion`, `programId` and checksum equality stay strict.
+ */
 export function parseLiveProfile(
   value: unknown,
   programId: string,
+  onUnknownKey?: () => void,
 ): { profile: TelevisionLiveProfile; checksum: string } | null {
   const record = asRecord(value);
   const profile = asRecord(record?.profile);
@@ -133,7 +143,6 @@ export function parseLiveProfile(
     record.contractVersion !== 1 ||
     record.programId !== programId ||
     typeof record.checksum !== 'string' ||
-    Object.keys(profile).sort().join(',') !== PROFILE_KEYS.join(',') ||
     PROFILE_KEYS.some((key) =>
       STRING_PROFILE_KEYS.has(key)
         ? typeof profile[key] !== 'string' ||
@@ -144,9 +153,12 @@ export function parseLiveProfile(
     return null;
   }
   const parsed = profile as unknown as TelevisionLiveProfile;
-  return liveProfileChecksum(parsed) === record.checksum
-    ? { profile: parsed, checksum: record.checksum }
-    : null;
+  if (liveProfileChecksum(parsed) !== record.checksum) return null;
+  const known: ReadonlySet<string> = new Set(PROFILE_KEYS);
+  for (const key of Object.keys(profile)) {
+    if (!known.has(key)) onUnknownKey?.();
+  }
+  return { profile: parsed, checksum: record.checksum };
 }
 
 export function sanitizeAlanaState(value: unknown): SafeAlanaState {
@@ -319,7 +331,9 @@ export class AlanaClient {
         return null;
       throw error;
     }
-    const parsed = parseLiveProfile(payload, programId);
+    const parsed = parseLiveProfile(payload, programId, () =>
+      this.metrics.recordAlanaLiveProfileUnknownKey(),
+    );
     if (!parsed) {
       throw new AlanaRequestError(502, {
         ...sanitizeAlanaState({}),
