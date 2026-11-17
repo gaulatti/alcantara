@@ -9,7 +9,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import StingersAdmin, { meta } from "./stingers";
 import { uploadFileToMediaBucket } from "../services/uploads";
-import { routeFetch, stubDialog } from "../../test/routeKit";
+import { routeFetch } from "../../test/routeKit";
 
 vi.mock("../services/uploads", () => ({ uploadFileToMediaBucket: vi.fn() }));
 
@@ -50,7 +50,9 @@ function serve(overrides: Partial<Record<string, () => Response>> = {}) {
   return calls;
 }
 
-const dialog = () => document.querySelector("dialog") as HTMLElement;
+// Bleecker renders its modal as a div with role="dialog"; a plain selector
+// keeps lookups inside the large template and clip forms fast.
+const dialog = () => document.querySelector('[role="dialog"]') as HTMLElement;
 const dialogButton = (text: string) =>
   within(dialog())
     .getAllByText(text)
@@ -71,7 +73,6 @@ function openCreate() {
 }
 
 beforeEach(() => {
-  stubDialog();
   vi.spyOn(console, "error").mockImplementation(() => {});
   stingers = [
     {

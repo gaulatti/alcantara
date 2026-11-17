@@ -1,16 +1,6 @@
 // Shared helpers for the route specs (gaulatti/alcantara#187). Kept outside
 // app/ so they are not part of the coverage denominator.
 
-/** jsdom has no modal dialog; open and close it as a browser would. */
-export function stubDialog() {
-  HTMLDialogElement.prototype.showModal = function showModal() {
-    this.open = true;
-  };
-  HTMLDialogElement.prototype.close = function close() {
-    this.open = false;
-  };
-}
-
 /** A native select in place of Bleecker's Radix select, which jsdom cannot open. */
 export async function nativeSelect(
   original: () => Promise<typeof import("@gaulatti/bleecker")>,

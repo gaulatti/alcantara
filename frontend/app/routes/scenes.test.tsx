@@ -9,7 +9,7 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ScenesAdmin, { meta } from "./scenes";
-import { routeFetch, stubDialog } from "../../test/routeKit";
+import { routeFetch } from "../../test/routeKit";
 
 vi.mock("@gaulatti/bleecker", async (original) => {
   const kit = await import("../../test/routeKit");
@@ -81,7 +81,6 @@ function renderPage() {
 const dialog = () => screen.getByRole("dialog");
 
 beforeEach(() => {
-  stubDialog();
   vi.spyOn(console, "error").mockImplementation(() => {});
   scenes = [
     { id: 1, name: "Morning headlines", layoutId: 1, layout: LAYOUTS[0] },

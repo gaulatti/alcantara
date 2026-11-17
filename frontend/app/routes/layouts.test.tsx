@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import LayoutsAdmin, { meta } from "./layouts";
-import { routeFetch, stubDialog } from "../../test/routeKit";
+import { routeFetch } from "../../test/routeKit";
 
 // A short component catalog keeps the dialog small; the route lists whatever
 // the catalog holds.
@@ -72,7 +72,9 @@ function serve(overrides: Partial<Record<string, () => Response>> = {}) {
 
 // The template dialog lists every overlay component, so role queries over it
 // are slow; these find its controls by their visible text instead.
-const dialog = () => document.querySelector("dialog") as HTMLElement;
+// Bleecker renders its modal as a div with role="dialog"; a plain selector
+// keeps lookups inside the large template and clip forms fast.
+const dialog = () => document.querySelector('[role="dialog"]') as HTMLElement;
 const dialogButton = (text: string) =>
   within(dialog())
     .getAllByText(text)
@@ -88,7 +90,6 @@ const checkboxOf = (name: string) =>
   componentButton(name).querySelector('input[type="checkbox"]') as HTMLElement;
 
 beforeEach(() => {
-  stubDialog();
   vi.spyOn(console, "error").mockImplementation(() => {});
   layouts = [
     {
