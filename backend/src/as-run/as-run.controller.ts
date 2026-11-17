@@ -21,12 +21,14 @@ export class AsRunController {
     @Query('to') to?: string,
     @Query('format') format?: string,
     @Res({ passthrough: true }) res?: AsRunExportReply,
+    @Query('inferred') inferred?: string,
   ): Promise<string> {
     const rawFormat = format ? format.toLowerCase() : 'csv';
     const result = await this.asRunService.export(programId, {
       from,
       to,
       format,
+      inferred,
     });
 
     if (res && typeof res.header === 'function') {

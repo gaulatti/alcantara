@@ -641,7 +641,14 @@ model AsRunRecord {
   state     String
   at        DateTime
   createdAt DateTime @default(now())
+  /// Engine playback request ID; at most one record per play and state.
+  playbackRequestId String?
+  /// True on an end the engine inferred because the real end never arrived.
+  inferred          Boolean @default(false)
+  /// Review flag on an inferred end: `short` or `no-start`; null otherwise.
+  reviewFlag        String?
 
+  @@unique([programId, playbackRequestId, state])
   @@index([programId, at])
 }
 

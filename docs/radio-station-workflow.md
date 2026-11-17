@@ -85,3 +85,42 @@ No database migration or automatic rewriting of saved data is needed. Existing r
 An explicit operator Stop takes audio off air and sets the base rotation to Manual, preventing an idle telemetry snapshot from starting it again. Internal timed-block cuts preserve the rotation and cursor.
 
 On backend restart, scheduled blocks whose in-memory timers were lost are marked interrupted (`isRunning:false`) without resetting `lastStartedAt` or rewriting the rotation. They are not replayed automatically. The continuous engine retains its normal authoritative Palazzo snapshot reconciliation before sending a new selection. The bounded `interrupted` metric counts startup batches containing such blocks.
+
+## As-run log and royalty export
+
+The as-run store subscribes to the song engine's `trackEvents$` and writes one
+`AsRunRecord` per accepted transition: a `started` row when the engine adopts a
+start of its own active song, and an `ended` row when the engine accepts an end
+and advances. The engine emits nothing for transitions it ignores (mismatched,
+duplicate, frozen, or no active song) or for a start that confirms a command
+another song, such as a manual pick, already replaced.
+
+**Inferred ends.** When the real `track.ended` never reaches the engine (for
+example the event stream dropped) and an authoritative idle snapshot ends the
+song, the engine emits a `track.ended` with `inferred: true` at the moment it
+advanced. The record stores `inferred = true`. If it closes a play shorter than
+30 seconds after its recorded start, or no start was recorded, it also carries a
+`reviewFlag` of `short` or `no-start`. Thirty seconds is a review threshold, not
+a royalty rule: a play that brief behind a dropped connection is more likely a
+stale reconnect or an immediate skip, so an operator should look at it.
+
+**One record per play.** Records carry the engine's `playbackRequestId`, and
+`(programId, playbackRequestId, state)` is unique. A real end that arrives after
+an inferred end, or any repeated event, is dropped, so a play is never counted
+twice. Rows written before this column existed have no request ID and are left
+as they were.
+
+**Export rules.** `GET /program/:programId/as-run` (permission `alcantara:radio:read`):
+
+- `format=csv` (default) lists every record, with `inferred` (`true`/`false`)
+  and `reviewFlag` columns at the end.
+- `format=soundexchange` counts each `ended` record as one performance,
+  inferred and flagged ends included, because the track was transmitted.
+  `inferred=include` (default) counts all ends, `inferred=only` lists only
+  inferred ends, and `inferred=exclude` lists only ends Palazzo reported. The
+  two filtered exports add up to the default one. The `inferred` parameter is
+  rejected with `format=csv`.
+
+Plays are still not recorded when an operator stops a song, when a manual pick
+cuts a song that had already started, or when a playing snapshot reports a
+different track. Those cases under-count and are outside this rule.

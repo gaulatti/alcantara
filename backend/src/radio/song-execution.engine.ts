@@ -172,6 +172,12 @@ export type SongEngineTrackEvent = {
   artist: string | null;
   url: string | null;
   at: Date;
+  /**
+   * Present and true only on a `track.ended` the engine inferred because the
+   * real end event never arrived and an authoritative idle snapshot ended the
+   * song. `at` is then the moment the engine advanced.
+   */
+  inferred?: true;
 };
 
 /**
@@ -195,9 +201,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private readonly trackEventsSubject = new Subject<SongEngineTrackEvent>();
   /**
    * Palazzo `track.started` and `track.ended` events the engine accepted (an
-   * adopted start or an advancing end), emitted after the existing handling.
-   * Ignored transitions (mismatched, duplicate, frozen, no active song) emit
-   * nothing. Subscribers run synchronously but are never awaited, and a
+   * adopted start of the engine's active song, or an advancing end), emitted
+   * after the existing handling. Ignored transitions (mismatched, duplicate,
+   * frozen, no active song) and starts confirming a command another song
+   * already replaced emit nothing. An end inferred from an authoritative idle
+   * snapshot is emitted with `inferred: true`. Subscribers run synchronously but are never awaited, and a
    * subscriber error never reaches the engine.
    */
   readonly trackEvents$: Observable<SongEngineTrackEvent> =
@@ -970,9 +978,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         this.emitPlaybackUpdate(programId, activeSong);
         this.emitTrackEvent(programId, event.type, requestId, event.data);
       } else if (state.pendingRequestIds.has(requestId)) {
-        // A command is confirmed before the engine optimistically activated it.
+        // A command is confirmed after another song (for example a manual
+        // one) replaced it. It is not the engine's song on air, so nothing is
+        // emitted for the as-run log.
         this.metrics.recordTrackTransition('adopted');
-        this.emitTrackEvent(programId, event.type, requestId, event.data);
       } else {
         this.metrics.recordTrackTransition('ignored-mismatch');
       }
@@ -994,6 +1003,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     type: SongEngineTrackEvent['type'],
     playbackRequestId: string,
     data: { title?: string | null; artist?: string | null; url?: string },
+    inferred = false,
   ): void {
     try {
       this.trackEventsSubject.next({
@@ -1004,6 +1014,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         artist: typeof data.artist === 'string' ? data.artist : null,
         url: typeof data.url === 'string' ? data.url : null,
         at: new Date(),
+        ...(inferred ? { inferred: true as const } : {}),
       });
     } catch (error) {
       this.logger.error(
@@ -1137,7 +1148,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (requestId && state.activeSong) {
       // Authoritative idle state while we believe our song is active: the
       // song ended without a lifecycle event reaching us (e.g. SSE loss).
-      this.handleAuthoritativeTrackEnded(programId, state, requestId);
+      const song = state.activeSong;
+      if (this.handleAuthoritativeTrackEnded(programId, state, requestId)) {
+        // Close the play for the as-run log at the engine's advance time.
+        this.emitTrackEvent(
+          programId,
+          'track.ended',
+          requestId,
+          { title: song.title, artist: song.artist, url: song.audioUrl },
+          true,
+        );
+      }
       return;
     }
 

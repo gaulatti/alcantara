@@ -1772,8 +1772,8 @@ describe('SongExecutionEngine track events', () => {
     ]);
   });
 
-  it('emits a started that confirms a pending command the engine has not activated', async () => {
-    const { engine, metrics, requestId } = await startedEngine();
+  it('emits no start for a command a manual song already replaced, and records the manual song as usual', async () => {
+    const { engine, metrics, radioService, requestId } = await startedEngine();
     // A manual song takes over before Palazzo confirms the first command.
     engine.handleManualSong(
       'radio-1',
@@ -1782,6 +1782,11 @@ describe('SongExecutionEngine track events', () => {
       'Artist',
       120_000,
     );
+    await flush();
+    const manualCall = radioService.playSong.mock.calls[1] as Parameters<
+      RadioService['playSong']
+    >;
+    const manualRequestId = manualCall[4] as string;
     const events: SongEngineTrackEvent[] = [];
     engine.trackEvents$.subscribe((event) => events.push(event));
 
@@ -1789,9 +1794,65 @@ describe('SongExecutionEngine track events', () => {
       type: 'track.started',
       data: { playbackRequestId: requestId },
     });
-
     expect(metrics.recordTrackTransition).toHaveBeenCalledWith('adopted');
-    expect(events.map((event) => event.playbackRequestId)).toEqual([requestId]);
+    expect(events).toEqual([]);
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: manualRequestId },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: manualRequestId },
+    });
+    expect(
+      events.map((event) => [event.type, event.playbackRequestId]),
+    ).toEqual([
+      ['track.started', manualRequestId],
+      ['track.ended', manualRequestId],
+    ]);
+  });
+
+  it('emits an inferred end at the advance time when an idle snapshot ends the song, and ignores the late real end', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    jest.setSystemTime(new Date('2026-11-16T10:00:00.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    // The track.ended never arrives; Palazzo later reports idle.
+    jest.setSystemTime(new Date('2026-11-16T10:03:10.000Z'));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 2),
+    );
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith('advanced');
+    expect(events[1]).toEqual({
+      programId: 'radio-1',
+      type: 'track.ended',
+      playbackRequestId: requestId,
+      title: 'Song one',
+      artist: 'Artist one',
+      url: 'https://example.test/song-1.mp3',
+      at: new Date('2026-11-16T10:03:10.000Z'),
+      inferred: true,
+    });
+
+    jest.setSystemTime(new Date('2026-11-16T10:03:20.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-duplicate',
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      'track.started',
+      'track.ended',
+    ]);
   });
 
   it('emits nothing for transitions the engine ignores', async () => {

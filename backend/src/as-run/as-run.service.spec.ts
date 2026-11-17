@@ -14,6 +14,7 @@ describe('AsRunService', () => {
   let prisma: {
     asRunRecord: {
       create: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
     };
     song: {
@@ -40,6 +41,7 @@ describe('AsRunService', () => {
             createdAt: new Date('2026-11-15T00:00:00Z'),
           }),
         ),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
       },
       song: {
@@ -162,6 +164,9 @@ describe('AsRunService', () => {
           assetId: 'asset-101',
           state: 'started',
           at: new Date('2026-11-15T01:00:00Z'),
+          playbackRequestId: 'req-1',
+          inferred: false,
+          reviewFlag: null,
         },
       });
 
@@ -274,6 +279,9 @@ describe('AsRunService', () => {
           assetId: null,
           state: 'ended',
           at: new Date('2026-11-15T01:03:00Z'),
+          playbackRequestId: 'req-end',
+          inferred: false,
+          reviewFlag: null,
         },
       });
       expect(radioMetrics.recordRadioLogResult).toHaveBeenCalledWith(
@@ -503,7 +511,7 @@ describe('AsRunService', () => {
         .mockResolvedValueOnce('sx-data');
       const res = await service.export('p1', { format: 'soundexchange' });
       expect(res).toBe('sx-data');
-      expect(spy).toHaveBeenCalledWith('p1', undefined, undefined);
+      expect(spy).toHaveBeenCalledWith('p1', undefined, undefined, 'include');
     });
   });
 
@@ -571,19 +579,19 @@ describe('AsRunService', () => {
 
       const lines = csv.split('\n');
       expect(lines[0]).toBe(
-        'id,programId,songId,assetId,title,artist,state,at,createdAt',
+        'id,programId,songId,assetId,title,artist,state,at,createdAt,inferred,reviewFlag',
       );
       // Row 1: Song 10 with comma and quote escaping
       expect(lines[1]).toBe(
-        '1,radio-1,10,asset-10,"Hello, World","The ""Artists""",started,2026-11-15T10:00:00.000Z,2026-11-15T10:00:00.000Z',
+        '1,radio-1,10,asset-10,"Hello, World","The ""Artists""",started,2026-11-15T10:00:00.000Z,2026-11-15T10:00:00.000Z,false,',
       );
       // Row 3: Deleted song 999 retains songId scalar, title/artist empty
       expect(lines[3]).toBe(
-        '3,radio-1,999,,,,started,2026-11-15T10:04:00.000Z,2026-11-15T10:04:00.000Z',
+        '3,radio-1,999,,,,started,2026-11-15T10:04:00.000Z,2026-11-15T10:04:00.000Z,false,',
       );
       // Row 4: assetId with comma escaped
       expect(lines[4]).toBe(
-        '4,radio-1,,"ad,1",,,started,2026-11-15T10:05:00.000Z,2026-11-15T10:05:00.000Z',
+        '4,radio-1,,"ad,1",,,started,2026-11-15T10:05:00.000Z,2026-11-15T10:05:00.000Z,false,',
       );
     });
 
@@ -592,7 +600,7 @@ describe('AsRunService', () => {
 
       const csv = await service.exportCsv('radio-empty');
       expect(csv).toBe(
-        'id,programId,songId,assetId,title,artist,state,at,createdAt',
+        'id,programId,songId,assetId,title,artist,state,at,createdAt,inferred,reviewFlag',
       );
       expect(prisma.song.findMany).not.toHaveBeenCalled();
     });

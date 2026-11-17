@@ -6,11 +6,20 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Subscription } from 'rxjs';
 import { PrismaService } from '../prisma.service';
 import { SongExecutionEngine } from '../radio/song-execution.engine';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
-import type { AsRunExportQuery, AsRunTrackEvent } from './as-run.types';
+import {
+  AS_RUN_SHORT_INFERRED_PLAY_MS,
+  type AsRunExportQuery,
+  type AsRunInferredFilter,
+  type AsRunReviewFlag,
+  type AsRunTrackEvent,
+} from './as-run.types';
+
+const INFERRED_FILTERS: readonly string[] = ['include', 'only', 'exclude'];
 
 export function escapeCsvField(
   value: string | number | boolean | Date | null | undefined,
@@ -90,28 +99,82 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    const { songId, assetId } = await this.resolveSongAndAsset(event);
     const state = event.type === 'track.started' ? 'started' : 'ended';
     const at =
       event.at instanceof Date && !Number.isNaN(event.at.getTime())
         ? event.at
         : new Date(event.at);
+    const playbackRequestId =
+      typeof event.playbackRequestId === 'string' && event.playbackRequestId
+        ? event.playbackRequestId
+        : null;
 
-    const record = await this.prisma.asRunRecord.create({
-      data: {
-        programId: event.programId,
-        songId,
-        assetId,
-        state,
-        at,
-      },
-    });
+    // One record per play and state: a late real end after an inferred one
+    // (or any repeated event) must not become a second performance.
+    if (playbackRequestId) {
+      const existing = await this.prisma.asRunRecord.findFirst({
+        where: { programId: event.programId, playbackRequestId, state },
+        select: { id: true },
+      });
+      if (existing) return null;
+    }
+
+    const { songId, assetId } = await this.resolveSongAndAsset(event);
+    const inferred = state === 'ended' && event.inferred === true;
+    const reviewFlag = inferred
+      ? await this.inferredReviewFlag(event.programId, playbackRequestId, at)
+      : null;
+
+    const record = await this.prisma.asRunRecord
+      .create({
+        data: {
+          programId: event.programId,
+          songId,
+          assetId,
+          state,
+          at,
+          playbackRequestId,
+          inferred,
+          reviewFlag,
+        },
+      })
+      .catch((error: unknown) => {
+        // A concurrent write recorded this play and state first.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          return null;
+        }
+        throw error;
+      });
+    if (!record) return null;
 
     if (state === 'ended') {
       this.radioMetrics?.recordRadioLogResult('completed');
     }
 
     return record;
+  }
+
+  /**
+   * Flags an inferred end for review when its start is unknown or it closes a
+   * play shorter than AS_RUN_SHORT_INFERRED_PLAY_MS. The play still counts.
+   */
+  async inferredReviewFlag(
+    programId: string,
+    playbackRequestId: string | null,
+    at: Date,
+  ): Promise<AsRunReviewFlag | null> {
+    if (!playbackRequestId) return 'no-start';
+    const started = await this.prisma.asRunRecord.findFirst({
+      where: { programId, playbackRequestId, state: 'started' },
+      select: { at: true },
+    });
+    if (!started) return 'no-start';
+    return at.getTime() - started.at.getTime() < AS_RUN_SHORT_INFERRED_PLAY_MS
+      ? 'short'
+      : null;
   }
 
   async record(data: {
@@ -211,10 +274,27 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     const { from, to } = this.parseExportDates(query);
 
     if (rawFormat === 'csv') {
+      if (query.inferred !== undefined) {
+        throw new BadRequestException(
+          'inferred applies only to format=soundexchange',
+        );
+      }
       return this.exportCsv(programId, from, to);
     }
 
-    return this.exportSoundExchange(programId, from, to);
+    const inferred = (query.inferred ?? 'include').toLowerCase();
+    if (!INFERRED_FILTERS.includes(inferred)) {
+      throw new BadRequestException(
+        'inferred must be include, only or exclude',
+      );
+    }
+
+    return this.exportSoundExchange(
+      programId,
+      from,
+      to,
+      inferred as AsRunInferredFilter,
+    );
   }
 
   async exportCsv(programId: string, from?: Date, to?: Date): Promise<string> {
@@ -257,6 +337,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       'state',
       'at',
       'createdAt',
+      'inferred',
+      'reviewFlag',
     ].join(',');
 
     const lines = [header];
@@ -276,6 +358,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
         escapeCsvField(r.state),
         escapeCsvField(r.at.toISOString()),
         escapeCsvField(r.createdAt.toISOString()),
+        escapeCsvField(r.inferred === true),
+        escapeCsvField(r.reviewFlag),
       ].join(',');
 
       lines.push(row);
@@ -288,17 +372,21 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     from?: Date,
     to?: Date,
+    inferred: AsRunInferredFilter = 'include',
   ): Promise<string> {
     const atFilter: { gte?: Date; lte?: Date } = {};
     if (from) atFilter.gte = from;
     if (to) atFilter.lte = to;
 
+    // Inferred ends count as performances; `only` and `exclude` list them
+    // separately from ends Palazzo reported.
     // In SoundExchange Report of Use, performances are based on completed plays (state = 'ended')
     const records = await this.prisma.asRunRecord.findMany({
       where: {
         programId,
         state: 'ended',
         ...(from || to ? { at: atFilter } : {}),
+        ...(inferred === 'include' ? {} : { inferred: inferred === 'only' }),
       },
       orderBy: { at: 'asc' },
     });
