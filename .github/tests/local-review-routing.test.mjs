@@ -49,7 +49,11 @@ test('the real action removes provider credentials in receipt-only mode and forb
 test('local agent installation has its own verification recipe and leaves production deployment selection unchanged', () => {
   const recipe = JSON.parse(readFileSync(new URL('../../.clouseau-local.json', import.meta.url)));
   const config = JSON.parse(readFileSync(new URL('../clouseau.json', import.meta.url)));
-  assert.deepEqual(recipe.verification, [['pnpm', '--dir', 'backend', 'run', 'build'], ['pnpm', '--dir', 'backend', 'run', 'test:coverage']]);
+  assert.deepEqual(recipe.verification, [
+    ['pnpm', '--dir', 'backend', 'run', 'build'],
+    ['pnpm', '--dir', 'backend', 'run', 'test:coverage'],
+    ['pnpm', '--dir', 'frontend', 'run', 'typecheck'],
+  ]);
   assert.deepEqual(recipe.coverage, {format: 'istanbul', report: 'backend/coverage/coverage-final.json', source_directory: 'backend/src'});
   assert.ok(!JSON.stringify(recipe).match(/provider|secret|api_key|deepseek|typesafe/i));
   for (const path of ['AGENTS.md', '.clouseau-local.json', '.github/workflows/ci.yml']) {
