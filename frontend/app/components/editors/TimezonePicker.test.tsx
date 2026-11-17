@@ -37,7 +37,10 @@ vi.mock("@gaulatti/bleecker", async (importOriginal) => {
   };
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function picker(componentType: string, props: Record<string, unknown>) {
   const updateProp = vi.fn();
@@ -67,9 +70,6 @@ function zoneSelect() {
 }
 
 it("keeps the Buenos Aires default selected in every picker that defaults to it", () => {
-  expect(Intl.supportedValuesOf("timeZone")).not.toContain(
-    "America/Argentina/Buenos_Aires",
-  );
   for (const type of ["clock-widget", "reloj-clock", "broadcast-layout"]) {
     const updateProp = picker(type, {});
     const zone = zoneSelect();
@@ -120,43 +120,51 @@ it("adds nothing for an empty value", () => {
   expect(withTimezoneOption(options, "")).toBe(options);
 });
 
-// gaulatti/alcantara#198: every IANA id that the engine lists under another
-// name (Step 0, from tzdata against Intl.supportedValuesOf in Node 22 and
-// Chromium). Each saved id must show as the one option for its zone, selected,
-// and saving must store the same id.
-const ALIAS_PAIRS: [saved: string, listed: string][] = [
-  ["America/Argentina/Buenos_Aires", "America/Buenos_Aires"],
-  ["America/Argentina/Catamarca", "America/Catamarca"],
-  ["America/Argentina/Cordoba", "America/Cordoba"],
-  ["America/Argentina/Jujuy", "America/Jujuy"],
-  ["America/Argentina/Mendoza", "America/Mendoza"],
-  ["America/Indiana/Indianapolis", "America/Indianapolis"],
-  ["America/Kentucky/Louisville", "America/Louisville"],
-  ["America/Nuuk", "America/Godthab"],
-  ["Asia/Ho_Chi_Minh", "Asia/Saigon"],
-  ["Asia/Kathmandu", "Asia/Katmandu"],
-  ["Asia/Kolkata", "Asia/Calcutta"],
-  ["Asia/Yangon", "Asia/Rangoon"],
-  ["Atlantic/Faroe", "Atlantic/Faeroe"],
-  ["Europe/Kyiv", "Europe/Kiev"],
-  ["Pacific/Kanton", "Pacific/Enderbury"],
-  ["CST6CDT", "America/Chicago"],
-  ["EST5EDT", "America/New_York"],
-  ["MST7MDT", "America/Denver"],
-  ["PST8PDT", "America/Los_Angeles"],
+// gaulatti/alcantara#198: the IANA ids that Node 22.22 (ICU 77.1) and
+// Chromium 145 list under another name (Step 0). Whether an id is an alias,
+// listed itself, or unknown depends on the runtime's tz database (Node
+// 22.23's ICU resolves the POSIX ids to themselves), so the expected outcome
+// is derived from the same Intl resolution the picker uses. Whatever it is,
+// the saved id shows as one selected option, labelled by its own name when it
+// names a city, and saving stores the same id.
+const STEP0_ALIASES = [
+  "America/Argentina/Buenos_Aires",
+  "America/Argentina/Catamarca",
+  "America/Argentina/Cordoba",
+  "America/Argentina/Jujuy",
+  "America/Argentina/Mendoza",
+  "America/Indiana/Indianapolis",
+  "America/Kentucky/Louisville",
+  "America/Nuuk",
+  "Asia/Ho_Chi_Minh",
+  "Asia/Kathmandu",
+  "Asia/Kolkata",
+  "Asia/Yangon",
+  "Atlantic/Faroe",
+  "Europe/Kyiv",
+  "Pacific/Kanton",
+  "CST6CDT",
+  "EST5EDT",
+  "MST7MDT",
+  "PST8PDT",
 ];
 
-it.each(ALIAS_PAIRS)(
+const cityOf = (id: string) => id.split("/").pop()!.replace(/_/g, " ");
+const resolve = (id: string) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: id }).resolvedOptions().timeZone;
+
+it.each(STEP0_ALIASES)(
   "shows a saved %s as the one selected option for its zone and saves it unchanged",
-  (saved, listed) => {
-    // The engine under test lists the zone only under its alias.
+  (saved) => {
     const zones = Intl.supportedValuesOf("timeZone");
-    expect(zones).toContain(listed);
-    expect(zones).not.toContain(saved);
-    expect(
-      new Intl.DateTimeFormat("en-US", { timeZone: saved }).resolvedOptions()
-        .timeZone,
-    ).toBe(listed);
+    const resolved = resolve(saved);
+    // listed: the runtime lists the saved id itself; alias: only under the
+    // name it resolves to; otherwise the saved id is listed first.
+    const outcome = zones.includes(saved)
+      ? "listed"
+      : resolved !== saved && zones.includes(resolved)
+        ? "alias"
+        : "prepended";
 
     const updateProp = picker("clock-widget", { timezone: saved });
     const zone = zoneSelect();
@@ -165,15 +173,18 @@ it.each(ALIAS_PAIRS)(
       .map((option) => (option as HTMLOptionElement).value);
     expect(zone).toHaveValue(saved);
     expect(values.filter((value) => value === saved)).toHaveLength(1);
-    expect(values).not.toContain(listed);
-    expect(values).toHaveLength(zones.length);
-    expect(updateProp).not.toHaveBeenCalled();
-    const selected = within(zone).getByRole("option", { selected: true });
-    expect(selected.textContent).toMatch(
-      saved.includes("/")
-        ? new RegExp(`^${saved.split("/").pop()!.replace(/_/g, " ")} \\(GMT`)
-        : new RegExp(`^${listed.split("/").pop()!.replace(/_/g, " ")} \\(GMT`),
+    expect(values).toHaveLength(
+      outcome === "prepended" ? zones.length + 1 : zones.length,
     );
+    if (outcome === "alias") expect(values).not.toContain(resolved);
+    expect(updateProp).not.toHaveBeenCalled();
+    const name =
+      outcome === "alias" && !saved.includes("/")
+        ? cityOf(resolved)
+        : cityOf(saved);
+    expect(
+      within(zone).getByRole("option", { selected: true }).textContent,
+    ).toMatch(new RegExp(`^${name} \\(GMT`));
 
     // Saving the selection without a change stores the id that was saved.
     fireEvent.change(zone, { target: { value: saved } });
@@ -182,6 +193,63 @@ it.each(ALIAS_PAIRS)(
       "timezone",
       saved,
     );
+  },
+);
+
+/** Makes Intl resolve each id in `resolutions` to the given name. */
+function stubResolution(resolutions: Record<string, string>) {
+  const RealDateTimeFormat = Intl.DateTimeFormat;
+  vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (
+    locales?: string | string[],
+    options?: Intl.DateTimeFormatOptions,
+  ) {
+    const real = new RealDateTimeFormat(locales, options);
+    const forced = options?.timeZone && resolutions[options.timeZone];
+    if (forced) {
+      const resolved = real.resolvedOptions();
+      real.resolvedOptions = () => ({ ...resolved, timeZone: forced });
+    }
+    return real;
+  } as unknown as typeof Intl.DateTimeFormat);
+}
+
+const POSIX_ZONES: [saved: string, city: string, cityLabel: string][] = [
+  ["CST6CDT", "America/Chicago", "Chicago (GMT-6)"],
+  ["EST5EDT", "America/New_York", "New York (GMT-5)"],
+  ["MST7MDT", "America/Denver", "Denver (GMT-7)"],
+  ["PST8PDT", "America/Los_Angeles", "Los Angeles (GMT-8)"],
+];
+
+it.each(POSIX_ZONES)(
+  "keeps a saved %s whether the runtime resolves it to a city zone or to itself",
+  (saved, city, cityLabel) => {
+    const date = new Date("2026-01-15T12:00:00Z");
+    const cityOption = { value: city, label: cityLabel };
+    const rome = { value: "Europe/Rome", label: "Rome (GMT+1)" };
+
+    // Resolved to the city zone (tz 2024b and later in ICU 77): the city's
+    // option carries the saved id and keeps the city's label.
+    stubResolution({ [saved]: city });
+    expect(withTimezoneOption([rome, cityOption], saved, date)).toEqual([
+      rome,
+      { value: saved, label: cityLabel },
+    ]);
+    vi.restoreAllMocks();
+
+    // Resolved to itself and listed: the list is used as it is.
+    stubResolution({ [saved]: saved });
+    const listed = [rome, { value: saved, label: `${saved} (GMT)` }];
+    expect(withTimezoneOption(listed, saved, date)).toBe(listed);
+
+    // Resolved to itself and not listed: the saved id is listed first, once,
+    // and the city zone keeps its own option.
+    const prepended = withTimezoneOption([rome, cityOption], saved, date);
+    expect(prepended.map((option) => option.value)).toEqual([
+      saved,
+      "Europe/Rome",
+      city,
+    ]);
+    expect(prepended[0].label).toMatch(new RegExp(`^${saved} \\(GMT`));
   },
 );
 
