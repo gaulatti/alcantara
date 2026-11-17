@@ -1279,9 +1279,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       state.announcement?.forRequestId === song.playbackRequestId
         ? state.announcement
         : null;
+    // An announced song Palazzo already started is on air: nothing to change.
+    if (
+      current &&
+      (current.startedAt !== null ||
+        (current.replaces && current.replaces.startedAt !== null))
+    ) {
+      return;
+    }
     if (!successor) {
       state.announcement = null;
-      if (current && (current.status !== 'not-announced' || current.replaces)) {
+      if (current && current.status !== 'not-announced') {
         await this.radioService.withdrawNext(programId);
       }
       return;
@@ -1305,8 +1313,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       artist: leaf.artist,
       status: 'pending',
       startedAt: null,
-      replaces:
-        current?.status === 'accepted' ? current : (current?.replaces ?? null),
+      replaces: current?.status === 'accepted' ? current : null,
     };
     state.announcement = announcement;
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
@@ -1319,15 +1326,26 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         coverUrl: leaf.coverUrl,
       });
     } catch (error) {
-      announcement.status = 'not-announced';
-      throw error;
+      this.logger.warn(
+        `Next-song announcement failed on ${programId}: ${String(error)}`,
+      );
+      result = 'rejected';
     }
     if (state.announcement !== announcement) return;
     announcement.status = result === 'accepted' ? 'accepted' : 'not-announced';
-    // An accepted announcement replaced the previous one in Palazzo.
-    if (result === 'accepted') announcement.replaces = null;
     if (result === 'unsupported') {
       state.nextUnsupportedBootId = state.palazzoBootId;
+    }
+    const replaced = announcement.replaces;
+    // Accepted: Palazzo replaced the previous announcement. Refused: Palazzo
+    // keeps the previous one queued, so withdraw it now rather than let it
+    // play and be preempted audibly at the handoff. One that already started
+    // is on air and stays to be closed at the handoff.
+    if (result === 'accepted' || replaced?.startedAt === null) {
+      announcement.replaces = null;
+    }
+    if (result !== 'accepted' && replaced?.startedAt === null) {
+      await this.radioService.withdrawNext(programId);
     }
   }
 

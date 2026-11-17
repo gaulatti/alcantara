@@ -1034,42 +1034,113 @@ describe('next-song announcement and handoff', () => {
       expect(h.palazzo.announced).toEqual([]);
     });
 
-    it('keeps an accepted announcement through rejected re-announcements and withdraws or preempts it', async () => {
+    it.each(['not_ready', 'rejected'] as const)(
+      'withdraws the accepted announcement at once when a re-announcement is refused (%s)',
+      async (answer) => {
+        const h = harness();
+        const store = asRunStore();
+        const asRun = new AsRunService(
+          store.prisma as unknown as PrismaService,
+          h.engine,
+        );
+        asRun.onModuleInit();
+        await onAir(h);
+        const accepted = h.palazzo.queued!;
+        h.palazzo.answer = () => answer;
+        await h.engine.enqueueSong(PROGRAM, SONGS[3].itemId);
+        await settle();
+
+        // Palazzo kept the accepted one queued after the refused PUT; the
+        // engine withdraws it right away, so it never plays.
+        expect(h.palazzo.withdrawals).toBe(1);
+        expect(h.palazzo.queued).toBeNull();
+        h.palazzo.endCurrent();
+        await settle();
+        asRun.onModuleDestroy();
+
+        expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[3].url]);
+        expect(h.metrics.snapshot().handoffs).toEqual({ command: 1 });
+        expect(
+          store.rows.filter((row) => row.playbackRequestId === accepted.id),
+        ).toEqual([]);
+        // Nothing left to withdraw afterwards.
+        h.palazzo.start();
+        await settle();
+        h.engine.handleSequenceUpdated(PROGRAM, {
+          ...h.sequence(),
+          mode: 'manual',
+        });
+        await settle();
+        expect(h.palazzo.withdrawals).toBe(1);
+      },
+    );
+
+    it('a failed lookup announces nothing and the handoff goes by command', async () => {
       const h = harness();
+      h.palazzo.radioService.getRadioSettings.mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
       await onAir(h);
-      const accepted = h.palazzo.queued!;
-      h.palazzo.answer = () => 'not_ready';
-      const [first] = await h.engine.enqueueSong(PROGRAM, SONGS[3].itemId);
-      await settle();
-      const queue = await h.engine.enqueueSong(PROGRAM, SONGS[4].itemId);
-      await h.engine.reorderSongQueue(PROGRAM, [queue[1].id, first.id]);
-      await settle();
-      expect(urls(h.palazzo.announced)).toEqual([
-        SONGS[1].url,
-        SONGS[3].url,
-        SONGS[4].url,
-      ]);
-      // Palazzo still holds the first announcement and starts it at the end.
-      expect(h.palazzo.queued).toEqual(accepted);
+      expect(h.palazzo.announced).toEqual([]);
       h.palazzo.endCurrent();
       await settle();
-
-      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[4].url]);
-      expect(h.metrics.snapshot().handoffs).toEqual({ race_replaced: 1 });
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[1].url]);
     });
 
-    it('withdraws an accepted announcement kept behind a rejected one when the successor goes away', async () => {
+    it('withdraws the accepted announcement when the re-announcement fails outright', async () => {
       const h = harness();
       await onAir(h);
-      h.palazzo.answer = () => 'not_ready';
+      h.palazzo.radioService.announceNext.mockRejectedValueOnce(
+        new Error('connection refused'),
+      );
       await h.engine.enqueueSong(PROGRAM, SONGS[3].itemId);
       await settle();
-      h.engine.handleSequenceUpdated(PROGRAM, {
-        ...h.sequence(),
-        mode: 'manual',
-      });
-      await settle();
       expect(h.palazzo.withdrawals).toBe(1);
+      expect(h.palazzo.queued).toBeNull();
+    });
+
+    it('keeps an announced song that already started, and closes it at the handoff', async () => {
+      for (const clockedAtEnd of [false, true]) {
+        let clocked = false;
+        const h = harness({ clockedLog: () => clocked });
+        const store = asRunStore();
+        const asRun = new AsRunService(
+          store.prisma as unknown as PrismaService,
+          h.engine,
+        );
+        asRun.onModuleInit();
+        await onAir(h);
+        const accepted = h.palazzo.queued!;
+        // A re-announcement is in flight when the accepted song starts under
+        // overlap; the re-announcement is then refused.
+        h.palazzo.holdAnswers = true;
+        h.palazzo.answer = () => 'not_ready';
+        await h.engine.enqueueSong(PROGRAM, SONGS[3].itemId);
+        await settle();
+        h.palazzo.start(accepted);
+        await settle();
+        h.palazzo.releaseAnswers();
+        await settle();
+        expect(h.palazzo.withdrawals).toBe(0);
+        // Once it started nothing is re-announced.
+        await h.engine.enqueueSong(PROGRAM, SONGS[4].itemId);
+        await settle();
+        expect(h.palazzo.announced).toHaveLength(2);
+
+        clocked = clockedAtEnd;
+        h.palazzo.queued = null;
+        h.palazzo.endCurrent();
+        await settle();
+        asRun.onModuleDestroy();
+        expect(
+          store.rows
+            .filter((row) => row.playbackRequestId === accepted.id)
+            .map((row) => [row.state, row.endReason]),
+        ).toEqual([
+          ['started', null],
+          ['ended', 'preempted'],
+        ]);
+      }
     });
 
     it('an end that commands nothing leaves a not-announced successor alone', async () => {

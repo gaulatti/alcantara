@@ -177,7 +177,14 @@ same segue and loudness the song command would carry; with segue off, neither.
   `not_ready` before the end, leaves the next song to today's song command.
 - **Re-announced or withdrawn** (`DELETE …/playback/next`) whenever the
   successor changes while the song plays: queue enqueue, removal or reorder,
-  a sequence, mode or cursor change.
+  a sequence, mode or cursor change. If a re-announcement is refused (422,
+  409, 400 or a request failure), Palazzo keeps the previous announcement
+  queued, so the engine withdraws it at once rather than let it play and be
+  preempted at the handoff. Once an announced song has started, nothing is
+  re-announced.
+- **`preempted` in the as-run log** names an announced song Palazzo started
+  that the engine replaced at the handoff; it is recorded and never counted in
+  any SoundExchange filter.
 - **At the end.** If the announced song was accepted and is still the one
   selected, it becomes the active song, consuming the queue entry or advancing
   the cursor as before, and no song command is sent. Otherwise the selected
