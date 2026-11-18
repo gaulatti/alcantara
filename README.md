@@ -297,6 +297,9 @@ The local stack never reaches real AWS or another real outside service
   `docker compose config` that every one of these names resolves to its local
   value, without printing any value.
 
+This README is the only description of the local media store; the repository
+wiki has no page for it yet.
+
 Local browser authentication is visibly marked `TEST AUTH`. It uses short-lived
 tokens with a local-only issuer and these deterministic identities:
 
