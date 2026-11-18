@@ -13,6 +13,15 @@ import { REQUIRED_PERMISSION_KEY } from './require-permission.decorator';
 import type { AlcantaraPermission } from './permissions';
 import { TestAuthService } from './test-auth.service';
 
+// Alcantara accepts only interactive session tokens. A personal access token
+// is refused before any authorization call.
+const PERSONAL_ACCESS_TOKEN_PREFIX = 'pmp_pat_';
+
+function isPersonalAccessToken(authorization: string): boolean {
+  const credential = authorization.replace(/^\s*bearer\s+/i, '');
+  return credential.startsWith(PERSONAL_ACCESS_TOKEN_PREFIX);
+}
+
 type AuthorizedRequest = {
   headers: { authorization?: string };
   user?: Record<string, unknown>;
@@ -46,6 +55,12 @@ export class PompeiiAuthorizationGuard {
     const request = context.switchToHttp().getRequest<AuthorizedRequest>();
     const bearerToken = request.headers.authorization;
     if (!bearerToken) throw new UnauthorizedException('Bearer token required');
+    if (isPersonalAccessToken(bearerToken)) {
+      throw new UnauthorizedException({
+        error: 'UNAUTHENTICATED',
+        reason: 'DENY_UNSUPPORTED_CREDENTIAL',
+      });
+    }
 
     const decision = this.testAuth?.isEnabled()
       ? this.testAuth.authorize(bearerToken, permission, this.pompeii.teamId)
