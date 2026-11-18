@@ -3,6 +3,13 @@ import {
   validateSongSegue,
 } from '../radio/palazzo-machine.client';
 import {
+  checkedAddress,
+  OutboundRefusal,
+  type OutboundFetchPath,
+  type OutboundFetchResult,
+  type ResolveAll,
+} from '../outbound/safe-fetch';
+import {
   createProcessRunner,
   ProcessRunError,
   type ProcessRunner,
@@ -26,13 +33,16 @@ export type AnalysisErrorCode =
   | 'decode-failed'
   | 'no-audio'
   | 'silent'
-  | 'invalid-measurement';
+  | 'invalid-measurement'
+  | 'source-refused'
+  | 'source-unresolved';
 
 /** Codes that a second run of the same file cannot change. */
 const PERMANENT_ERRORS = new Set<AnalysisErrorCode>([
   'no-audio',
   'silent',
   'invalid-measurement',
+  'source-refused',
 ]);
 
 export class AudioAnalysisError extends Error {
@@ -72,8 +82,23 @@ function seconds(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
+function isRemote(input: string): boolean {
+  return /^https?:\/\//i.test(input);
+}
+
 function protocolWhitelist(input: string): string {
-  return /^https?:\/\//i.test(input) ? 'http,https,tcp,tls,crypto' : 'file';
+  return isRemote(input) ? 'http,https,tcp,tls,crypto' : 'file';
+}
+
+/** A remote input is read only from the checked URL: no redirect is followed. */
+function redirectArguments(input: string): string[] {
+  return isRemote(input) ? ['-max_redirects', '0'] : [];
+}
+
+/** How a remote input is checked before a tool reads it (real DNS by default). */
+export interface RemoteInputPolicy {
+  resolve?: ResolveAll;
+  record?: (path: OutboundFetchPath, result: OutboundFetchResult) => void;
 }
 
 export function probeArguments(input: string): string[] {
@@ -84,6 +109,7 @@ export function probeArguments(input: string): string[] {
     protocolWhitelist(input),
     '-rw_timeout',
     READ_TIMEOUT_MICROSECONDS,
+    ...redirectArguments(input),
     '-select_streams',
     'a:0',
     '-show_entries',
@@ -107,6 +133,7 @@ export function measureArguments(input: string): string[] {
     protocolWhitelist(input),
     '-rw_timeout',
     READ_TIMEOUT_MICROSECONDS,
+    ...redirectArguments(input),
     '-progress',
     'pipe:1',
     '-i',
@@ -277,7 +304,10 @@ export const NICE_LEVEL = '19';
 export class FfmpegAudioAnalyzer {
   private niced = false;
 
-  constructor(private readonly run: ProcessRunner = createProcessRunner()) {}
+  constructor(
+    private readonly run: ProcessRunner = createProcessRunner(),
+    private readonly policy: RemoteInputPolicy = {},
+  ) {}
 
   /** Whether the tools run at lowered priority; known after available(). */
   get lowPriority(): boolean {
@@ -313,6 +343,7 @@ export class FfmpegAudioAnalyzer {
 
   async analyze(input: string, timeoutMs: number): Promise<AudioAnalysis> {
     const deadline = Date.now() + timeoutMs;
+    if (isRemote(input)) await this.checkRemoteInput(input, deadline);
     const probe = await this.runTool(
       'ffprobe',
       probeArguments(input),
@@ -335,6 +366,52 @@ export class FfmpegAudioAnalyzer {
     };
     assertPlayable(analysis);
     return analysis;
+  }
+
+  /**
+   * The outbound-request policy for a remote input: the URL must parse with
+   * no user name or password, and every address its host resolves to must be
+   * public. ffmpeg then resolves the name again itself and follows no
+   * redirect. A refusal names no URL; it is counted under media_analysis.
+   */
+  private async checkRemoteInput(input: string, deadline: number) {
+    const record = (result: OutboundFetchResult) =>
+      this.policy.record?.('media_analysis', result);
+    let url: URL;
+    try {
+      url = new URL(input);
+    } catch {
+      record('invalid_url');
+      throw new AudioAnalysisError('source-refused');
+    }
+    if (url.username || url.password) {
+      record('invalid_url');
+      throw new AudioAnalysisError('source-refused');
+    }
+    const remaining = deadline - Date.now();
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        checkedAddress(url.hostname, this.policy.resolve),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new OutboundRefusal('timeout')),
+            Math.max(0, remaining),
+          );
+        }),
+      ]);
+    } catch (error) {
+      // checkedAddress only throws an OutboundRefusal (address or dns).
+      const { reason } = error as OutboundRefusal;
+      record(reason);
+      if (reason === 'timeout') throw new AudioAnalysisError('timeout');
+      throw new AudioAnalysisError(
+        reason === 'dns' ? 'source-unresolved' : 'source-refused',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+    record(url.protocol === 'http:' ? 'legacy_http' : 'ok');
   }
 
   private async runTool(

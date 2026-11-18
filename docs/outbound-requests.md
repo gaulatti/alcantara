@@ -10,8 +10,9 @@ outbound-request policy: `backend/src/outbound/safe-fetch.ts`, built on Node's
 - **Scheme:** `https` only, on any port. The URL may not carry a user name or
   password. The one exception is a now-playing consumer stored with a plain
   `http` URL before https was required: it still delivers, under every other
-  rule here, and is counted as `legacy_http`. A redirect is never followed to
-  plain `http`.
+  rule here, and is counted as `legacy_http`. A media analysis input keeps
+  the job's existing `http` or `https` rule (see below). A redirect is never
+  followed to plain `http`.
 - **Addresses:** the host name is resolved and every address it resolves to
   must be public (`backend/src/outbound/address-policy.ts`). Unspecified,
   loopback, private (RFC 1918 and IPv6 ULA), carrier-grade NAT, link-local
@@ -35,6 +36,7 @@ outbound-request policy: `backend/src/outbound/safe-fetch.ts`, built on Node's
 | Caller | Method | Accepts | Limits |
 | --- | --- | --- | --- |
 | Program page remote audio (`ProgramService`) | GET, no request headers | `audio/*`, `application/ogg` | 100 MiB, 60 s, 3 redirects |
+| Media analysis input (`FfmpegAudioAnalyzer`) | Read by `ffprobe` and `ffmpeg`, not by the policy's transport | `http` (counted as `legacy_http`) or `https` | 180 s per file, 30 s read stall, no redirects |
 | Now-playing delivery (`NowPlayingPublisherService`) | The consumer's POST, PUT or PATCH, with `Content-Type: application/json` and the consumer's own headers | Any 2xx; the answer is not read | 10 s, 3 redirects |
 
 The program page calls it only for audio whose origin differs from the page
@@ -71,6 +73,23 @@ the delivery to other consumers. `alcantara_dependency_operations_total{dependen
 keeps its `success`, `http-error` (a non-2xx answer) and `unavailable` (any
 other refusal) results.
 
+## Media analysis inputs
+
+The media analysis job reads a remote `MediaAsset.sourceUrl` with `ffprobe` and
+`ffmpeg`, which keep their scheme rule (`http` or `https`, with the existing
+protocol whitelist and read timeout). Before either tool runs, the URL must
+parse with no user name or password and its host must resolve, every address
+public, within the file's deadline. Both tools then run with
+`-max_redirects 0`, so they never follow a redirect. A refusal fails the
+analysis row with `source-refused` (final) or `source-unresolved` (retried);
+`timeout` if the lookup outlives the deadline. The worker carries on with the
+next asset.
+
+`ffmpeg` resolves the name again itself when it connects, so a short window
+remains between the check and the connection in which a name could resolve
+differently. A follow-up will close it by having the tools read from the
+checked address.
+
 ## What the caller sees on a refusal
 
 The program page's remote audio read answers with a JSON error and a plain message; the URL
@@ -95,6 +114,9 @@ the track itself still plays.
 ## Metric
 
 `alcantara_outbound_fetch_total{path,result}` counts every fetch under the
-policy. `path` is the caller (`program_audio`, `now_playing`); `result` is `ok`,
-`legacy_http` or one of the refusal reasons above. Every series starts at
+policy. `path` is the caller (`program_audio`, `now_playing`,
+`media_analysis`); `result` is `ok`, `legacy_http` or one of the refusal
+reasons above. For `media_analysis` it counts the input check (`ok`,
+`legacy_http`, `invalid_url`, `address`, `dns` or `timeout`), not the read the
+tools make afterwards. Every series starts at
 zero. No URL, host or address appears in a label or a log line.

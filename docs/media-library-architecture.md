@@ -164,10 +164,13 @@ the file's own edge; anything else is recorded as a failure.
 with the measurements, `failed` with no measurements and a bounded `error` code:
 `timeout`, `unavailable`, `output-limit`, `probe-failed`, `decode-failed`,
 `no-audio`, `silent`, `invalid-measurement`, `unsupported-source` (not an http
-or https URL) or `interrupted` (the last run's lease ran out). Each source gets
+or https URL), `source-refused` (the URL carries a user name or password, does
+not parse, or its host is or resolves to a non-public address),
+`source-unresolved` (its host did not resolve) or `interrupted` (the last
+run's lease ran out). Each source gets
 at most three runs; a failure that can change is retried after 5 and then 30
-minutes (`nextAttemptAt`), while `no-audio`, `silent`, `invalid-measurement`
-and `unsupported-source` are final at once. `attempts` counts runs for the
+minutes (`nextAttemptAt`), while `no-audio`, `silent`, `invalid-measurement`,
+`unsupported-source` and `source-refused` are final at once. `attempts` counts runs for the
 current source, and a new `sourceUrl` starts the count again. Runs are claimed
 with an optimistic check on the row, so two backend instances never analyse the
 same file. Re-running the job is idempotent: the same file produces the same
@@ -176,7 +179,11 @@ row.
 **Limits.** Each file has 180 seconds for the probe and the measurement
 together, a network read may stall for 30 seconds, and a tool that writes more
 than 4 MiB of output is stopped. Only `http`, `https` and their transport
-protocols are allowed when reading a source. Neither the source URL nor tool
+protocols are allowed when reading a source, and before either tool runs the
+source is checked against the outbound-request policy
+([outbound-requests.md](outbound-requests.md)): every address its host
+resolves to must be public, and both tools run with `-max_redirects 0`. The
+managed media bucket and its CDN are public, so they pass. Neither the source URL nor tool
 output is logged or stored; a failure logs `media_analysis.failed` with the
 asset ID, result and code.
 

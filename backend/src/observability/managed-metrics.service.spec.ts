@@ -81,7 +81,7 @@ describe('ManagedMetricsService outbound fetch metrics', () => {
     const samples = text
       .split('\n')
       .filter((line) => line.startsWith('alcantara_outbound_fetch_total{'));
-    expect(samples).toHaveLength(24);
+    expect(samples).toHaveLength(36);
     expect(samples).toContain(
       'alcantara_outbound_fetch_total{path="program_audio",result="address"} 2',
     );

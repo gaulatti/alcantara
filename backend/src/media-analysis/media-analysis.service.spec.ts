@@ -2,6 +2,7 @@
 import { Logger } from '@nestjs/common';
 import {
   AudioAnalysisError,
+  FfmpegAudioAnalyzer,
   type AudioAnalysis,
 } from './ffmpeg-audio.analyzer';
 import {
@@ -486,6 +487,85 @@ describe('MediaAnalysisService schedule', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     await jest.advanceTimersByTimeAsync(1);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    service.onModuleDestroy();
+  });
+
+  it('survives a refused remote source: the row fails with a bounded code and the next asset is analysed', async () => {
+    jest.useFakeTimers();
+    const PRIVATE_URL = 'https://inside.example.com/songs/b.mp3';
+    const { prisma, metrics } = setup([
+      [candidate({ assetId: 'song:2', sourceUrl: PRIVATE_URL })],
+      [candidate()],
+    ]);
+    const run = jest.fn(async (command: string, args: string[]) => {
+      if (args.includes('-version')) return { stdout: '', stderr: '' };
+      return command === 'ffprobe' || args.includes('ffprobe')
+        ? { stdout: JSON.stringify({ streams: [{}], format: {} }), stderr: '' }
+        : {
+            stdout: 'out_time_us=200000000\nprogress=end\n',
+            stderr: [
+              '[silencedetect @ 0x2] silence_start: 0',
+              '[silencedetect @ 0x2] silence_end: 1 | silence_duration: 1',
+              '[Parsed_ebur128_1 @ 0x1] Summary:',
+              '',
+              '  Integrated loudness:',
+              '    I:         -14.0 LUFS',
+              '',
+              '  True peak:',
+              '    Peak:       -1.0 dBFS',
+              '',
+            ].join('\n'),
+          };
+    });
+    const recorded: string[] = [];
+    const analyzer = new FfmpegAudioAnalyzer(run, {
+      resolve: async (hostname) => [
+        {
+          address:
+            hostname === 'inside.example.com' ? '10.0.0.8' : '52.216.8.1',
+          family: 4,
+        },
+      ],
+      record: (_path, result) => recorded.push(result),
+    });
+    const service = new MediaAnalysisService(
+      prisma as never,
+      metrics as never,
+      analyzer,
+    );
+
+    await service.onApplicationBootstrap();
+    await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+      where: { assetId: 'song:2', sourceUrl: PRIVATE_URL, status: 'pending' },
+      data: {
+        status: 'failed',
+        ...EMPTY,
+        error: 'source-refused',
+        nextAttemptAt: null,
+      },
+    });
+    expect(metrics.record).toHaveBeenCalledWith('failure', expect.any(Number));
+    const toolRuns = () =>
+      run.mock.calls.filter(([, args]) => !args.includes('-version'));
+    expect(toolRuns()).toEqual([]);
+    expect(Logger.prototype.warn).toHaveBeenCalledWith({
+      event: 'media_analysis.failed',
+      assetId: 'song:2',
+      result: 'failure',
+      error: 'source-refused',
+    });
+
+    await jest.advanceTimersByTimeAsync(MIN_WAIT_MS);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(toolRuns()).toHaveLength(2);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ assetId: 'song:1' }),
+        data: expect.objectContaining({ status: 'success' }),
+      }),
+    );
+    expect(recorded).toEqual(['address', 'ok']);
     service.onModuleDestroy();
   });
 

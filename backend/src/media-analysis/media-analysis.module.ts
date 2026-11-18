@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import { FfmpegAudioAnalyzer } from './ffmpeg-audio.analyzer';
+import { createProcessRunner } from './process-runner';
 import { MediaAnalysisMetrics } from './media-analysis.metrics';
 import {
   MEDIA_AUDIO_ANALYZER,
@@ -14,7 +16,11 @@ import {
     PrismaService,
     {
       provide: MEDIA_AUDIO_ANALYZER,
-      useFactory: () => new FfmpegAudioAnalyzer(),
+      useFactory: (managed: ManagedMetricsService) =>
+        new FfmpegAudioAnalyzer(createProcessRunner(), {
+          record: (path, result) => managed.recordOutboundFetch(path, result),
+        }),
+      inject: [ManagedMetricsService],
     },
   ],
 })

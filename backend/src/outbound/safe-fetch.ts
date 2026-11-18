@@ -24,7 +24,11 @@ import { unsafeAddress } from './address-policy';
  */
 
 /** Every caller of the policy (a bounded metric label). */
-export const OUTBOUND_FETCH_PATHS = ['program_audio', 'now_playing'] as const;
+export const OUTBOUND_FETCH_PATHS = [
+  'program_audio',
+  'now_playing',
+  'media_analysis',
+] as const;
 export type OutboundFetchPath = (typeof OUTBOUND_FETCH_PATHS)[number];
 
 /** The outcome of one fetch (a bounded metric label). */

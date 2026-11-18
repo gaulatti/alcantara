@@ -15,6 +15,11 @@ import {
 } from './ffmpeg-audio.analyzer';
 import { ProcessRunError, type ProcessRunner } from './process-runner';
 
+// Every remote name in these tests resolves to a public address.
+const publicNames = {
+  resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+};
+
 const SUMMARY = `[Parsed_ebur128_1 @ 0x1] Summary:
 
   Integrated loudness:
@@ -74,6 +79,7 @@ describe('ffmpeg audio analyzer parsing', () => {
         'http,https,tcp,tls,crypto',
       ]),
     );
+    expect(probeArguments('/tmp/a.mp3')).not.toContain('-max_redirects');
     expect(measureArguments('/tmp/a.mp3')).toEqual(
       expect.arrayContaining(['-protocol_whitelist', 'file', '-threads', '1']),
     );
@@ -256,7 +262,7 @@ describe('FfmpegAudioAnalyzer', () => {
       ffprobe: { stdout: PROBE, stderr: '' },
       ffmpeg: { stdout: MEASURE_STDOUT, stderr: MEASURE_STDERR },
     });
-    const analyzer = new FfmpegAudioAnalyzer(run);
+    const analyzer = new FfmpegAudioAnalyzer(run, publicNames);
 
     await expect(
       analyzer.analyze('https://cdn.example/a.mp3', 180_000),
@@ -297,7 +303,10 @@ describe('FfmpegAudioAnalyzer', () => {
       });
       await expect(
         analysisError(
-          new FfmpegAudioAnalyzer(run).analyze('https://x/a.mp3', 1_000),
+          new FfmpegAudioAnalyzer(run, publicNames).analyze(
+            'https://x/a.mp3',
+            1_000,
+          ),
         ),
       ).resolves.toBe(code);
     }
@@ -313,7 +322,10 @@ describe('FfmpegAudioAnalyzer', () => {
     });
     await expect(
       analysisError(
-        new FfmpegAudioAnalyzer(run).analyze('https://x/a.mp3', 1_000),
+        new FfmpegAudioAnalyzer(run, publicNames).analyze(
+          'https://x/a.mp3',
+          1_000,
+        ),
       ),
     ).resolves.toBe('invalid-measurement');
   });
@@ -324,7 +336,9 @@ describe('FfmpegAudioAnalyzer', () => {
       ffmpeg: { stdout: MEASURE_STDOUT, stderr: MEASURE_STDERR },
     });
     await expect(
-      analysisError(new FfmpegAudioAnalyzer(run).analyze('https://x/a.mp3', 0)),
+      analysisError(
+        new FfmpegAudioAnalyzer(run, publicNames).analyze('https://x/a.mp3', 0),
+      ),
     ).resolves.toBe('timeout');
     expect(run).not.toHaveBeenCalled();
   });
@@ -360,7 +374,7 @@ describe('FfmpegAudioAnalyzer', () => {
       ffprobe: { stdout: 'version', stderr: '' },
       ffmpeg: { stdout: 'version', stderr: '' },
     });
-    const analyzer = new FfmpegAudioAnalyzer(run);
+    const analyzer = new FfmpegAudioAnalyzer(run, publicNames);
     await analyzer.available(1_000);
     run.mockClear();
     run
@@ -389,7 +403,7 @@ describe('FfmpegAudioAnalyzer', () => {
       ffprobe: { stdout: PROBE, stderr: '' },
       ffmpeg: { stdout: MEASURE_STDOUT, stderr: MEASURE_STDERR },
     });
-    const analyzer = new FfmpegAudioAnalyzer(run);
+    const analyzer = new FfmpegAudioAnalyzer(run, publicNames);
     await expect(analyzer.available(1_000)).resolves.toBe(true);
     expect(analyzer.lowPriority).toBe(false);
     run.mockClear();
