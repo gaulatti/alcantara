@@ -10,6 +10,8 @@ image="$5"
 nginx_config_base64="$6"
 media_bucket="$7"
 docker_config_dir='/tmp/alcantara-docker-config'
+metrics_token_dir='/etc/alcantara'
+metrics_token_file="$metrics_token_dir/metrics-token"
 
 for value in "$broadcast_secret_id" "$database_secret_id" "$media_bucket"; do
   test -n "$value"
@@ -52,6 +54,20 @@ docker run --rm \
   "$image" \
   pnpm run db:migrate:deploy
 
+# Resolve the scrape credential before touching the live backend. A missing or
+# malformed secret field fails the deploy; the token is never printed.
+install -d -m 0755 -o root -g root "$metrics_token_dir"
+(
+  umask 077
+  docker run --rm \
+    -e AWS_REGION=us-east-1 \
+    -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
+    "$image" \
+    node scripts/print-metrics-token.mjs > "$metrics_token_file.new"
+)
+chmod 0400 "$metrics_token_file.new"
+mv -f "$metrics_token_file.new" "$metrics_token_file"
+
 had_previous=false
 if docker inspect alcantara-backend >/dev/null 2>&1; then
   docker stop alcantara-backend
@@ -78,6 +94,8 @@ if ! docker run -d --name alcantara-backend \
   -e ARAUCO_SECRET_ID="$database_secret_id" \
   -e ALCANTARA_BUILD_VERSION="${image##*:}" \
   -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
+  -e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token \
+  -v "$metrics_token_file":/run/secrets/alcantara-metrics-token:ro \
   -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com,https://fifthbell.com,https://cdn.fifthbell.com \
   -e POMPEII_TEAM_ID=1 \
   -e MEDIA_S3_BUCKET="$media_bucket" \

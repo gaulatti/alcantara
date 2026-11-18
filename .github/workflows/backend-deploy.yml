@@ -158,6 +158,21 @@ jobs:
               echo "LiveKit production configuration is absent; guest calls remain disabled"
             fi
 
+            # Resolve the scrape credential before touching the live backend.
+            metrics_token_file="$HOME/.alcantara/metrics-token"
+            mkdir -p "$HOME/.alcantara"
+            (
+              umask 077
+              docker run --rm \
+              -e AWS_REGION="${{ vars.AWS_REGION }}" \
+              -e ALCANTARA_CONFIG_SECRET_ID="${{ env.ALCANTARA_CONFIG_SECRET_ID }}" \
+              -v "$HOME/.aws:/root/.aws:ro" \
+              ghcr.io/${{ github.repository }}:latest \
+              node scripts/print-metrics-token.mjs > "$metrics_token_file.new"
+            )
+            chmod 400 "$metrics_token_file.new"
+            mv -f "$metrics_token_file.new" "$metrics_token_file"
+
             had_previous=0
             docker rm -f alcantara-backend-previous >/dev/null 2>&1 || true
             if docker inspect alcantara-backend >/dev/null 2>&1; then
@@ -211,6 +226,7 @@ jobs:
             --log-opt max-size=10m \
             --log-opt max-file=3 \
             -v ~/.aws:/root/.aws:ro \
+            -v "$metrics_token_file":/run/secrets/alcantara-metrics-token:ro \
             ghcr.io/${{ github.repository }}:latest; then
               echo "Replacement Alcantara backend could not be created"
               rollback_backend || true
