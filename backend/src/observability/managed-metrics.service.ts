@@ -11,6 +11,9 @@ import {
   Registry,
 } from 'prom-client';
 
+/** Why the authorization guard refused a request before any authorization call. */
+export const AUTH_REFUSAL_REASONS = ['unsupported_credential'] as const;
+
 const HTTP_METHODS = new Set([
   'GET',
   'POST',
@@ -219,6 +222,7 @@ export class ManagedMetricsService {
   private readonly broadcastDestinationOperations: Counter<string>;
   private readonly sourceOperations: Counter<string>;
   private readonly outboundFetches: Counter<string>;
+  private readonly authRefusals: Counter<string>;
   private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
@@ -324,6 +328,14 @@ export class ManagedMetricsService {
     for (const path of OUTBOUND_FETCH_PATHS)
       for (const result of OUTBOUND_FETCH_RESULTS)
         this.outboundFetches.labels(path, result).inc(0);
+    this.authRefusals = new Counter({
+      name: 'alcantara_auth_refusals_total',
+      help: 'Requests the authorization guard refused before any authorization call, by bounded reason.',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    for (const reason of AUTH_REFUSAL_REASONS)
+      this.authRefusals.labels(reason).inc(0);
     this.sourceOperations = new Counter({
       name: 'alcantara_external_source_operations_total',
       help: 'External source registry operations by bounded action and result.',
@@ -479,6 +491,11 @@ export class ManagedMetricsService {
       action: bounded(action, actions),
       result: bounded(result, results),
     });
+  }
+
+  recordAuthRefusal(reason: string): void {
+    if (!(AUTH_REFUSAL_REASONS as readonly string[]).includes(reason)) return;
+    this.authRefusals.inc({ reason });
   }
 
   recordOutboundFetch(path: string, result: string): void {

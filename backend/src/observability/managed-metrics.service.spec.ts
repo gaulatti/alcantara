@@ -92,3 +92,24 @@ describe('ManagedMetricsService outbound fetch metrics', () => {
     expect(text).not.toContain('unlisted');
   });
 });
+
+describe('ManagedMetricsService authorization refusal metrics', () => {
+  it('counts refusals by the closed reason set only, starting at zero', async () => {
+    const metrics = new ManagedMetricsService();
+    const before = await metrics.registry.metrics();
+    expect(before).toContain(
+      'alcantara_auth_refusals_total{reason="unsupported_credential"} 0',
+    );
+    metrics.recordAuthRefusal('unsupported_credential');
+    metrics.recordAuthRefusal('unsupported_credential');
+    metrics.recordAuthRefusal('unlisted-reason');
+    const text = await metrics.registry.metrics();
+    const samples = text
+      .split('\n')
+      .filter((line) => line.startsWith('alcantara_auth_refusals_total{'));
+    expect(samples).toEqual([
+      'alcantara_auth_refusals_total{reason="unsupported_credential"} 2',
+    ]);
+    expect(text).not.toContain('unlisted-reason');
+  });
+});

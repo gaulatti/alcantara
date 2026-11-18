@@ -46,6 +46,7 @@ function build(testAuthEnabled = false) {
   const pompeii = {
     teamId: 7,
     authorize: jest.fn().mockResolvedValue(allowed),
+    recordUnsupportedCredential: jest.fn(),
   };
   const testAuth = {
     isEnabled: jest.fn(() => testAuthEnabled),
@@ -89,6 +90,7 @@ describe('PompeiiAuthorizationGuard session tokens', () => {
         });
         expect(pompeii.authorize).not.toHaveBeenCalled();
         expect(testAuth.authorize).not.toHaveBeenCalled();
+        expect(pompeii.recordUnsupportedCredential).toHaveBeenCalledTimes(1);
         expect(request.user).toBeUndefined();
       }
     },

@@ -236,6 +236,11 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Counts a request the guard refused before any authorization call. */
+  recordUnsupportedCredential(): void {
+    this.metrics?.recordAuthRefusal('unsupported_credential');
+  }
+
   private recordMetric(
     operation: 'authorize' | 'connect',
     result: 'success' | 'denied' | 'unavailable',

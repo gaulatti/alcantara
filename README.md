@@ -443,6 +443,13 @@ Pompeii mapping, and audit attribution is never rewritten. See
 [`docs/canonical-principals.md`](docs/canonical-principals.md) for the inventory,
 the dry-run report, and the rollback and reconciliation procedure.
 
+The API accepts only interactive session tokens. The authorization guard
+answers `401` with `{"error":"UNAUTHENTICATED","reason":"DENY_UNSUPPORTED_CREDENTIAL"}`
+for a bearer whose credential starts with `pmp_pat_` (bare or after a `Bearer`
+scheme in any letter case), before any authorization call, and counts it in
+`alcantara_auth_refusals_total{reason="unsupported_credential"}`. Every other
+bearer is handled exactly as before.
+
 ## Architecture
 
 - [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.

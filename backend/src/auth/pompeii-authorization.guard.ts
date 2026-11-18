@@ -56,6 +56,7 @@ export class PompeiiAuthorizationGuard {
     const bearerToken = request.headers.authorization;
     if (!bearerToken) throw new UnauthorizedException('Bearer token required');
     if (isPersonalAccessToken(bearerToken)) {
+      this.pompeii.recordUnsupportedCredential();
       throw new UnauthorizedException({
         error: 'UNAUTHENTICATED',
         reason: 'DENY_UNSUPPORTED_CREDENTIAL',
