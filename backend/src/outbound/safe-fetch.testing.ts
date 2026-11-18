@@ -22,6 +22,8 @@ export interface SentRequest {
   method: string;
   headers: Record<string, unknown>;
   servername?: string;
+  /** The request body as written. */
+  body: string;
   /** The address the pinned lookup handed the socket. */
   connectedTo: string;
 }
@@ -50,12 +52,16 @@ export function scriptedTransport(
     scheme: 'https:' | 'http:',
     options: https.RequestOptions,
   ): http.ClientRequest => {
+    let body = '';
     const req = new EventEmitter() as EventEmitter & {
-      write: () => boolean;
+      write: (chunk: string) => boolean;
       end: () => void;
       destroy: () => void;
     };
-    req.write = () => true;
+    req.write = (chunk) => {
+      body += chunk;
+      return true;
+    };
     req.destroy = () => undefined;
     req.end = () => {
       const hostname = String(options.hostname);
@@ -67,6 +73,7 @@ export function scriptedTransport(
           method: String(options.method),
           headers: { ...(options.headers as Record<string, unknown>) },
           servername: options.servername,
+          body,
           connectedTo,
         });
         const scripted = script[`${hostname}${String(options.path)}`];

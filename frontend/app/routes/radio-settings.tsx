@@ -52,6 +52,16 @@ function draftId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+// A 400 names the consumer and the rule it broke (for example "Consumer 2:
+// the URL must use https."); any other failure reports its status.
+async function consumerSaveRefusal(response: Response): Promise<string> {
+  const fallback = `Now-playing delivery was not saved (${response.status})`;
+  if (response.status !== 400) return fallback;
+  const body = await response.json().catch(() => null);
+  const message = typeof body?.message === 'string' ? body.message.trim() : '';
+  return message ? `Now-playing delivery was not saved: ${message}` : fallback;
+}
+
 function normalizeConsumer(value: any): ConsumerDraft {
   const headers = value?.headers && typeof value.headers === 'object' && !Array.isArray(value.headers) ? (value.headers as Record<string, string>) : {};
   return {
@@ -149,7 +159,7 @@ export default function RadioSettingsRoute() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ consumers: payload })
       });
-      if (!response.ok) throw new Error(`Now-playing delivery was not saved (${response.status})`);
+      if (!response.ok) throw new Error(await consumerSaveRefusal(response));
       const result = await response.json();
       setConsumers(Array.isArray(result) ? result.map(normalizeConsumer) : []);
       showAlert('Now-playing delivery saved.', 'success');
@@ -332,7 +342,7 @@ export default function RadioSettingsRoute() {
                       </Field>
                     </div>
                     <Field label='URL'>
-                      <Input type='url' value={consumer.url} onChange={(event) => updateConsumer(index, { url: event.target.value })} />
+                      <Input type='url' placeholder='https://' value={consumer.url} onChange={(event) => updateConsumer(index, { url: event.target.value })} />
                     </Field>
                     <div className='space-y-2'>
                       <div className='flex items-center justify-between gap-3'>

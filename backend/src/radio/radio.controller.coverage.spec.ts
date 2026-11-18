@@ -179,7 +179,30 @@ describe('RadioController coverage', () => {
       );
       await expect(
         controller.replaceNowPlayingConsumers('p', { consumers: [] }),
-      ).rejects.toThrow(new BadRequestException('Error: Program not found'));
+      ).rejects.toThrow(new BadRequestException('Program not found'));
+    });
+
+    it('answers 400 with the plain refusal for a URL that is not https', async () => {
+      const { controller, nowPlaying } = build();
+      nowPlaying.replaceConsumers.mockRejectedValue(
+        new Error('Consumer 1: the URL must use https.'),
+      );
+      const refusal = await controller
+        .replaceNowPlayingConsumers('p', { consumers: [{ url: 'x' }] })
+        .catch((error: BadRequestException) => error);
+      expect(refusal).toBeInstanceOf(BadRequestException);
+      expect((refusal as BadRequestException).getStatus()).toBe(400);
+      expect((refusal as BadRequestException).getResponse()).toMatchObject({
+        message: 'Consumer 1: the URL must use https.',
+      });
+    });
+
+    it('maps a thrown value that is not an error to bad request', async () => {
+      const { controller, nowPlaying } = build();
+      nowPlaying.replaceConsumers.mockRejectedValue('refused');
+      await expect(
+        controller.replaceNowPlayingConsumers('p', { consumers: [] }),
+      ).rejects.toThrow(new BadRequestException('refused'));
     });
   });
 

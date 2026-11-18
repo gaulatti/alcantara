@@ -197,6 +197,8 @@ history and is moved behind less-recently-played favorites.
 
 Automation settings, Palazzo URL, bumper eligibility, and now-playing consumers
 live at `/radio-settings`; they are deliberately separate from live playout.
+A now-playing consumer URL must use https, and every delivery follows the
+outbound-request policy in [outbound-requests.md](outbound-requests.md).
 For a `both` program, the TV control adds a radio-leg status rail. Scene actions
 remain TV-only while Songs and Audio clips flow through the shared program mix.
 

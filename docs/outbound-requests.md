@@ -8,7 +8,10 @@ outbound-request policy: `backend/src/outbound/safe-fetch.ts`, built on Node's
 ## Policy
 
 - **Scheme:** `https` only, on any port. The URL may not carry a user name or
-  password.
+  password. The one exception is a now-playing consumer stored with a plain
+  `http` URL before https was required: it still delivers, under every other
+  rule here, and is counted as `legacy_http`. A redirect is never followed to
+  plain `http`.
 - **Addresses:** the host name is resolved and every address it resolves to
   must be public (`backend/src/outbound/address-policy.ts`). Unspecified,
   loopback, private (RFC 1918 and IPv6 ULA), carrier-grade NAT, link-local
@@ -32,6 +35,7 @@ outbound-request policy: `backend/src/outbound/safe-fetch.ts`, built on Node's
 | Caller | Method | Accepts | Limits |
 | --- | --- | --- | --- |
 | Program page remote audio (`ProgramService`) | GET, no request headers | `audio/*`, `application/ogg` | 100 MiB, 60 s, 3 redirects |
+| Now-playing delivery (`NowPlayingPublisherService`) | The consumer's POST, PUT or PATCH, with `Content-Type: application/json` and the consumer's own headers | Any 2xx; the answer is not read | 10 s, 3 redirects |
 
 The program page calls it only for audio whose origin differs from the page
 (the loudness envelope of a track). It returns the body with only its
@@ -40,10 +44,37 @@ not send one). Audio in the managed media bucket (`MEDIA_S3_BUCKET`, in
 `AWS_REGION`: `<bucket>.s3.<region>.amazonaws.com` or
 `<bucket>.s3.amazonaws.com`) is public https, so it passes.
 
+## Now-playing consumers
+
+Consumers are saved from Radio settings (`PUT /radio/:programId/now-playing-consumers`).
+A save is refused with a 400 and a plain message naming the consumer by its
+position, never the URL; Radio settings shows that message:
+
+| Case | Message |
+| --- | --- |
+| Not an absolute URL | `Consumer N: the URL is not a valid absolute URL.` |
+| Carries a user name or password | `Consumer N: the URL must not include a user name or password.` |
+| Any scheme but `https` | `Consumer N: the URL must use https.` |
+
+A consumer already stored with a plain `http` URL may be submitted again
+unchanged (so the rest of the list can still be edited); changing that URL
+requires https. Such a consumer keeps delivering to public addresses only, is
+counted as `legacy_http`, and each delivery logs a warning that names the
+consumer (`<program>/<name>`) and asks for its URL to be changed to https.
+
+Every delivery goes through the policy above; outside production none is made
+at all (see the README's local stack notes). The delivery log lines carry the
+program, the consumer name, the method, the answer status or the refusal
+reason; never the URL, the request headers, the payload or the answer body. A
+refused or failed delivery is logged and counted; it never stops playout or
+the delivery to other consumers. `alcantara_dependency_operations_total{dependency="now-playing"}`
+keeps its `success`, `http-error` (a non-2xx answer) and `unavailable` (any
+other refusal) results.
+
 ## What the caller sees on a refusal
 
 The program page's remote audio read answers with a JSON error and a plain message; the URL
-is never echoed:
+is never echoed (a now-playing delivery logs the reason instead):
 
 | Reason | Status | Message |
 | --- | --- | --- |

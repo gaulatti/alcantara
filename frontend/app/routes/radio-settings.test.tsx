@@ -347,6 +347,30 @@ it.each([
     "Now-playing delivery was not saved (422)",
   ],
   [() => Response.json({ not: "a list" }), "Now-playing delivery saved."],
+  [
+    () =>
+      Response.json(
+        {
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Consumer 1: the URL must use https.",
+        },
+        { status: 400 },
+      ),
+    "Now-playing delivery was not saved: Consumer 1: the URL must use https.",
+  ],
+  [
+    () => Response.json({ message: ["not", "a string"] }, { status: 400 }),
+    "Now-playing delivery was not saved (400)",
+  ],
+  [
+    () => Response.json({ message: "   " }, { status: 400 }),
+    "Now-playing delivery was not saved (400)",
+  ],
+  [
+    () => new Response("not json", { status: 400 }),
+    "Now-playing delivery was not saved (400)",
+  ],
 ])("reports the consumer save result (%#)", async (answer, message) => {
   serve({ "PUT /radio/night radio/now-playing-consumers": answer });
   render(<RadioSettingsRoute />);

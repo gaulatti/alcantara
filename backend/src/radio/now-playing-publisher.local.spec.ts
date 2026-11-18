@@ -4,6 +4,7 @@ import { RadioController } from './radio.controller';
 import type { PrismaService } from '../prisma.service';
 import type { ManagedMetricsService } from '../observability/managed-metrics.service';
 import type { SongPlaybackData } from './song-execution.engine';
+import { scriptedTransport } from '../outbound/safe-fetch.testing';
 
 // gaulatti/alcantara#206: outside production a now-playing update never
 // leaves the machine, visibly; production keeps publishing.
@@ -36,28 +37,36 @@ function build(nodeEnv: string | undefined) {
       ]),
     },
   };
-  const metrics = { recordDependency: jest.fn() };
+  const metrics = {
+    recordDependency: jest.fn(),
+    recordOutboundFetch: jest.fn(),
+  };
   const service = new NowPlayingPublisherService(
     prisma as unknown as PrismaService,
     metrics as unknown as ManagedMetricsService,
     new ConfigService(nodeEnv === undefined ? {} : { NODE_ENV: nodeEnv }),
   );
-  return { service, metrics };
+  const transport = scriptedTransport(
+    { 'now-playing.example.test': ['93.184.216.34'] },
+    { 'now-playing.example.test/update': { status: 204 } },
+  );
+  service.outboundDeps = transport;
+  return { service, metrics, transport };
 }
 
 describe('NowPlayingPublisherService outside production', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('contacts no consumer, records a skipped publish and says why', async () => {
-    const { service, metrics } = build('development');
-    const fetchSpy = jest.spyOn(global, 'fetch');
+    const { service, metrics, transport } = build('development');
     const warn = jest.spyOn(service['logger'], 'warn').mockImplementation();
     jest.spyOn(service['logger'], 'log').mockImplementation();
 
     await service.publishPlayback('main', playback);
     await service.publishStopped('main');
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(transport.sent).toEqual([]);
+    expect(metrics.recordOutboundFetch).not.toHaveBeenCalled();
     expect(service.outboundPublishing()).toBe('blocked-local');
     expect(metrics.recordDependency).toHaveBeenCalledWith(
       'now-playing',
@@ -77,20 +86,19 @@ describe('NowPlayingPublisherService outside production', () => {
     expect(build(undefined).service.outboundPublishing()).toBe('blocked-local');
   });
 
-  it('publishes unchanged in production', async () => {
-    const { service, metrics } = build('production');
+  it('publishes in production', async () => {
+    const { service, metrics, transport } = build('production');
     jest.spyOn(service['logger'], 'log').mockImplementation();
-    const fetchSpy = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(null, { status: 204 }));
 
     await service.publishPlayback('main', playback);
 
     expect(service.outboundPublishing()).toBe('enabled');
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0][0]).toBe(
-      'https://now-playing.example.test/update',
-    );
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent[0]).toMatchObject({
+      scheme: 'https:',
+      hostname: 'now-playing.example.test',
+      path: '/update',
+    });
     expect(metrics.recordDependency).toHaveBeenCalledWith(
       'now-playing',
       'publish',

@@ -242,8 +242,13 @@ export async function safeFetch(
       response.resume();
       throw new OutboundRefusal('content_type');
     }
+    // An answer the caller does not read is never measured against the cap.
     const declared = Number(response.headers['content-length']);
-    if (Number.isFinite(declared) && declared > options.maxBytes) {
+    if (
+      options.readBody !== false &&
+      Number.isFinite(declared) &&
+      declared > options.maxBytes
+    ) {
       response.resume();
       throw new OutboundRefusal('too_large');
     }

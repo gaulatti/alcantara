@@ -79,6 +79,7 @@ describe('outbound-request policy', () => {
         method: 'GET',
         headers: { host: 'media.example.com' },
         servername: 'media.example.com',
+        body: '',
         connectedTo: '93.184.216.34',
       },
     ]);
@@ -303,6 +304,22 @@ describe('outbound-request policy, other outcomes', () => {
         host: 'hook.example.com',
       },
     });
+  });
+
+  it('does not measure an answer it does not read against the byte cap', async () => {
+    const transport = scriptedTransport(names, {
+      'hook.example.com/in': {
+        status: 200,
+        headers: { 'content-length': '999999' },
+      },
+    });
+    const response = await safeFetch(
+      'https://hook.example.com/in',
+      { ...base, method: 'POST', body: '{}', maxBytes: 0, readBody: false },
+      transport,
+    );
+    expect(response.status).toBe(200);
+    expect(transport.sent[0].body).toBe('{}');
   });
 
   it('never follows a redirect to plain http, even for a recorded http consumer', async () => {
