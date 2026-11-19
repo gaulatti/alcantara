@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
 import {
   MCP_ACTION_EXECUTOR,
@@ -16,6 +17,7 @@ import {
   type McpToolProviderShape,
   type McpToolSpec,
 } from './contract';
+import { actionShape, describeSpec } from './mcp-action.shape';
 import { MCP_LIMITS } from './mcp.constants';
 
 type ToolResult = {
@@ -66,6 +68,7 @@ export class McpRegistry implements OnModuleInit {
     private readonly discovery: DiscoveryService,
     private readonly reflector: Reflector,
     private readonly programs: ProgramService,
+    private readonly metrics: ManagedMetricsService,
     @Optional()
     @Inject(MCP_ACTION_EXECUTOR)
     private readonly executor?: McpActionExecutor,
@@ -89,6 +92,7 @@ export class McpRegistry implements OnModuleInit {
       names.add(spec.name);
     }
     this.specs = all;
+    this.metrics.registerMcpTools([...names]);
   }
 
   /** Every spec the registry holds (for the integrator's registry test). */
@@ -110,8 +114,8 @@ export class McpRegistry implements OnModuleInit {
         spec.name,
         {
           title: spec.title,
-          description: spec.description,
-          inputSchema: spec.shape,
+          description: describeSpec(spec),
+          inputSchema: actionShape(spec),
           annotations: {
             readOnlyHint: spec.tier === 'R',
             destructiveHint: spec.tier === 'D',
@@ -128,6 +132,9 @@ export class McpRegistry implements OnModuleInit {
     args: Record<string, unknown>,
     ctx: McpContext,
   ): Promise<ToolResult> {
+    // The executor counts the W, A and D calls it takes; everything else is
+    // counted here.
+    let counted = false;
     try {
       if (!ctx.principal.permissions.has(spec.permission))
         throw new McpToolError('forbidden', `requires ${spec.permission}`);
@@ -145,13 +152,22 @@ export class McpRegistry implements OnModuleInit {
             throw new McpToolError('forbidden', `requires ${spec.permission}`);
           actingCtx = { principal: fresh, reauthorize: ctx.reauthorize };
         }
+        counted = true;
         return ok(await this.executor.execute(spec, args, actingCtx));
       }
       const parsed = z.object(spec.shape).strict().safeParse(args);
       if (!parsed.success)
         throw new McpToolError('invalid', parsed.error.issues[0].message);
-      return ok((await spec.run(parsed.data, ctx)).result);
+      const outcome = await spec.run(parsed.data, ctx);
+      this.metrics.recordMcpRequest(spec.name, spec.tier, 'ok');
+      return ok(outcome.result);
     } catch (error) {
+      if (!counted)
+        this.metrics.recordMcpRequest(
+          spec.name,
+          spec.tier,
+          error instanceof McpToolError ? error.code : 'unavailable',
+        );
       return refusal(error);
     }
   }
@@ -242,12 +258,12 @@ export class McpRegistry implements OnModuleInit {
             capabilities: matches.slice(offset, offset + limit).map((spec) => ({
               name: spec.name,
               title: spec.title,
-              description: spec.description,
+              description: describeSpec(spec),
               tier: spec.tier,
               permission: spec.permission,
               supports_dry_run: spec.dryRun !== undefined,
               needs_confirm: spec.confirmTarget !== undefined,
-              input_schema: toJsonSchemaCompat(z.object(spec.shape)),
+              input_schema: toJsonSchemaCompat(z.object(actionShape(spec))),
             })),
           },
           audit: { count: matches.length },

@@ -39,3 +39,23 @@ export const MCP_LIMITS = {
   capabilityPageDefault: 25,
   capabilityPageMax: 100,
 } as const;
+
+/**
+ * Limits of the action framework (gaulatti/alcantara#212). Code-owned: a limit
+ * change is a code change, never configuration.
+ */
+export const MCP_ACTION_LIMITS = {
+  /** Window of the per-identity call limits. */
+  windowMs: 60_000,
+  /** Real runs per identity per window, by tier. Dry runs are not counted. */
+  perWindow: { W: 60, A: 6, D: 3 },
+  /** Least time between two A runs by one identity on one program. */
+  onAirSpacingMs: 10_000,
+  /** How long a key's outcome is replayed. In memory: lost on restart. */
+  idempotencyTtlMs: 10 * 60_000,
+  /** Outcomes held at once; the oldest is evicted first. */
+  idempotencyEntries: 1024,
+  idempotencyKeyMin: 8,
+  idempotencyKeyMax: 128,
+  confirmMax: 2048,
+} as const;

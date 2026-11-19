@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { ProgramService } from '../program/program.service';
 import { McpToolProvider, type McpToolSpec } from './contract';
 import { McpRegistry } from './mcp-registry.service';
@@ -48,6 +49,7 @@ async function registry(providers: unknown[]) {
     providers: [
       McpRegistry,
       { provide: ProgramService, useValue: {} },
+      { provide: ManagedMetricsService, useValue: new ManagedMetricsService() },
       { provide: 'A_PLAIN_VALUE', useValue: 3 },
       ...(providers as never[]),
     ],

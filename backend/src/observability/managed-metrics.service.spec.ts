@@ -173,3 +173,25 @@ describe('ManagedMetricsService authorization refusal metrics', () => {
     expect(text).not.toContain('Bearer something');
   });
 });
+
+describe('MCP request metric', () => {
+  it('counts calls by registered tool, tier and closed result, and bounds everything else', async () => {
+    const metrics = new ManagedMetricsService();
+    metrics.registerMcpTools(['sample_tool']);
+    metrics.recordMcpRequest('sample_tool', 'A', 'ok');
+    metrics.recordMcpRequest('sample_tool', 'A', 'rate_limited');
+    metrics.recordMcpRequest('secret-title-as-tool', 'Q', 'free text error');
+    const text = await metrics.registry.metrics();
+    expect(text).toContain(
+      'alcantara_mcp_requests_total{tool="sample_tool",tier="A",result="ok"} 1',
+    );
+    expect(text).toContain(
+      'alcantara_mcp_requests_total{tool="sample_tool",tier="A",result="rate_limited"} 1',
+    );
+    expect(text).toContain(
+      'alcantara_mcp_requests_total{tool="unknown",tier="unknown",result="unavailable"} 1',
+    );
+    expect(text).not.toContain('secret-title-as-tool');
+    expect(text).not.toContain('free text error');
+  });
+});

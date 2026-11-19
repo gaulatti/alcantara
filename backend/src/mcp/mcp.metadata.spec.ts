@@ -14,6 +14,7 @@ describe('MCP design metadata under unresolved circular imports', () => {
       jest.dontMock('./mcp-registry.service');
       const { McpAuthService } = require('./mcp-auth.service');
       const { McpRegistry } = require('./mcp-registry.service');
+      const { McpActionExecutor } = require('./mcp-action.executor');
       expect(Reflect.getMetadata('design:paramtypes', McpController)).toEqual([
         Object,
         Object,
@@ -28,7 +29,11 @@ describe('MCP design metadata under unresolved circular imports', () => {
         Object,
         Object,
         Object,
+        Object,
       ]);
+      expect(
+        Reflect.getMetadata('design:paramtypes', McpActionExecutor),
+      ).toEqual([Object, Object]);
     });
   });
 });

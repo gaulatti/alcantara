@@ -27,6 +27,25 @@ export const MCP_AUTH_METRIC_RESULTS = [
   'rate_limited',
 ] as const;
 
+/** Results of alcantara_mcp_requests_total (gaulatti/alcantara#212); mirrors MCP_REQUEST_RESULTS. */
+export const MCP_REQUEST_METRIC_RESULTS = [
+  'ok',
+  'dry_run',
+  'forbidden',
+  'invalid',
+  'not_found',
+  'conflict',
+  'stale_target',
+  'confirm_required',
+  'confirm_mismatch',
+  'idempotency_reuse',
+  'rate_limited',
+  'on_air',
+  'palazzo_unavailable',
+  'unavailable',
+] as const;
+const MCP_REQUEST_METRIC_TIERS = new Set(['R', 'W', 'A', 'D']);
+
 const HTTP_METHODS = new Set([
   'GET',
   'POST',
@@ -238,6 +257,8 @@ export class ManagedMetricsService {
   private readonly authRefusals: Counter<string>;
   private readonly pompeiiChannelResets: Counter<string>;
   private readonly mcpAuth: Counter<string>;
+  private readonly mcpRequests: Counter<string>;
+  private mcpToolNames = new Set<string>();
   private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
@@ -367,6 +388,12 @@ export class ManagedMetricsService {
     });
     for (const result of MCP_AUTH_METRIC_RESULTS)
       this.mcpAuth.labels(result).inc(0);
+    this.mcpRequests = new Counter({
+      name: 'alcantara_mcp_requests_total',
+      help: 'MCP tool calls by registered tool, tier and bounded result.',
+      labelNames: ['tool', 'tier', 'result'],
+      registers: [this.registry],
+    });
     this.sourceOperations = new Counter({
       name: 'alcantara_external_source_operations_total',
       help: 'External source registry operations by bounded action and result.',
@@ -543,6 +570,21 @@ export class ManagedMetricsService {
     if (!(MCP_AUTH_METRIC_RESULTS as readonly string[]).includes(result))
       return;
     this.mcpAuth.inc({ result });
+  }
+
+  /** The registered MCP spec names: the only values the tool label may take. */
+  registerMcpTools(names: readonly string[]): void {
+    this.mcpToolNames = new Set(names);
+  }
+
+  recordMcpRequest(tool: string, tier: string, result: string): void {
+    this.mcpRequests.inc({
+      tool: bounded(tool, this.mcpToolNames),
+      tier: bounded(tier, MCP_REQUEST_METRIC_TIERS),
+      result: (MCP_REQUEST_METRIC_RESULTS as readonly string[]).includes(result)
+        ? result
+        : 'unavailable',
+    });
   }
 
   recordOutboundFetch(path: string, result: string): void {

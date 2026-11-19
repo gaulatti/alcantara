@@ -25,6 +25,7 @@ import {
   type McpActionExecutor,
   type McpToolSpec,
 } from './contract';
+import { McpActionExecutor as ActionExecutor } from './mcp-action.executor';
 import { McpAuthService } from './mcp-auth.service';
 import { McpController } from './mcp.controller';
 import { McpOAuthController } from './mcp-oauth.controller';
@@ -37,6 +38,7 @@ import { MCP_LIMITS, MCP_SHARED_CLIENT_ID } from './mcp.constants';
 
 const oauthSession = (fill: string) =>
   `Bearer ${fill.repeat(36)}.${fill.repeat(120)}.${fill.repeat(86)}`;
+const KEY = { idempotency_key: 'key-00000001' };
 const accessToken = `Bearer pmp_pat_${'q'.repeat(43)}`;
 
 type Answer = Record<string, unknown>;
@@ -111,7 +113,11 @@ describe('MCP endpoint', () => {
   let executor: jest.Mocked<McpActionExecutor> | undefined;
 
   async function boot(
-    options: { executor?: boolean; testAuth?: boolean } = {},
+    options: {
+      executor?: boolean;
+      realExecutor?: boolean;
+      testAuth?: boolean;
+    } = {},
   ) {
     logged = [];
     for (const level of ['log', 'warn', 'error', 'debug', 'verbose'] as const)
@@ -191,6 +197,12 @@ describe('MCP endpoint', () => {
         },
         ...(executor
           ? [{ provide: MCP_ACTION_EXECUTOR, useValue: executor }]
+          : []),
+        ...(options.realExecutor
+          ? [
+              ActionExecutor,
+              { provide: MCP_ACTION_EXECUTOR, useExisting: ActionExecutor },
+            ]
           : []),
         PompeiiAuthorizationGuard,
         McpAuthService,
@@ -321,19 +333,47 @@ describe('MCP endpoint', () => {
       'call_capability',
       'sample_write',
     ]);
-    const { body, isError } = await callTool('sample_write', { id: 1 });
+    const { body, isError } = await callTool('sample_write', { id: 1, ...KEY });
     expect(isError).toBe(true);
     expect(body.error).toBe('unavailable');
+  });
+
+  it('runs a write through the real action executor on Fastify: key required, retry replayed', async () => {
+    await boot({ realExecutor: true });
+    answer.effective_permissions = [ALCANTARA_PERMISSIONS.song.manage];
+    const listed = await rpc('tools/list');
+    const write = (
+      listed.body.result.tools as Array<{
+        name: string;
+        inputSchema: { required: string[] };
+        description: string;
+      }>
+    ).find((tool) => tool.name === 'sample_write')!;
+    expect(write.inputSchema.required).toEqual(['id', 'idempotency_key']);
+    const first = await callTool('sample_write', { id: 1, ...KEY });
+    expect(first.body).toEqual({ written: true });
+    expect((await callTool('sample_write', { id: 1, ...KEY })).body).toEqual({
+      written: true,
+    });
+    const reused = await callTool('sample_write', { id: 2, ...KEY });
+    expect(reused.body.error).toBe('idempotency_reuse');
+    const text = await metrics.registry.metrics();
+    expect(text).toContain(
+      'alcantara_mcp_requests_total{tool="sample_write",tier="W",result="ok"} 2',
+    );
+    expect(text).toContain(
+      'alcantara_mcp_requests_total{tool="sample_write",tier="W",result="idempotency_reuse"} 1',
+    );
   });
 
   it('runs writes through the action executor when one is bound', async () => {
     await boot({ executor: true });
     answer.effective_permissions = [ALCANTARA_PERMISSIONS.song.manage];
-    const { body } = await callTool('sample_write', { id: 1 });
+    const { body } = await callTool('sample_write', { id: 1, ...KEY });
     expect(body).toEqual({ executed: true });
     expect(executor!.execute).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'sample_write' }),
-      { id: 1 },
+      { id: 1, ...KEY },
       expect.objectContaining({
         principal: expect.objectContaining({
           subject: 'subject-1',
@@ -653,21 +693,26 @@ describe('MCP endpoint', () => {
       answer.effective_permissions = operator();
       await rpc('tools/list');
       expect(grpcAuthorize).toHaveBeenCalledTimes(1);
-      expect((await callTool('sample_on_air')).body).toEqual({
+      expect((await callTool('sample_on_air', KEY)).body).toEqual({
         executed: true,
       });
       // The request itself uses the cached allow; the action asks once more.
       expect(grpcAuthorize).toHaveBeenCalledTimes(2);
       expect(
-        (await callTool('call_capability', { name: 'sample_delete' })).body,
+        (
+          await callTool('call_capability', {
+            name: 'sample_delete',
+            arguments: KEY,
+          })
+        ).body,
       ).toEqual({ executed: true });
       expect(grpcAuthorize).toHaveBeenCalledTimes(3);
       // A reversible write may use the cached decision.
-      await callTool('sample_write', { id: 1 });
+      await callTool('sample_write', { id: 1, ...KEY });
       expect(grpcAuthorize).toHaveBeenCalledTimes(3);
       expect(executor!.execute).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'sample_on_air' }),
-        {},
+        KEY,
         expect.objectContaining({
           principal: expect.objectContaining({ subject: 'subject-1' }),
         }),
@@ -686,7 +731,10 @@ describe('MCP endpoint', () => {
         };
       };
       // The cached allow would still list tools; the action asks afresh.
-      const call = rpc('tools/call', { name: 'sample_on_air', arguments: {} });
+      const call = rpc('tools/call', {
+        name: 'sample_on_air',
+        arguments: KEY,
+      });
       revoked();
       const refused = await call;
       const body = JSON.parse(refused.body.result.content[0].text);
@@ -704,13 +752,17 @@ describe('MCP endpoint', () => {
       answer.effective_permissions = operator();
       await rpc('tools/list');
       answer.effective_permissions = [ALCANTARA_PERMISSIONS.access];
-      expect((await callTool('sample_on_air')).body).toEqual({
+      expect((await callTool('sample_on_air', KEY)).body).toEqual({
         error: 'forbidden',
         message: `requires ${ALCANTARA_PERMISSIONS.radio.operate}`,
       });
       expect(
-        (await callTool('call_capability', { name: 'sample_delete' })).body
-          .error,
+        (
+          await callTool('call_capability', {
+            name: 'sample_delete',
+            arguments: KEY,
+          })
+        ).body.error,
       ).toBe('forbidden');
       expect(executor!.execute).not.toHaveBeenCalled();
     });
@@ -723,12 +775,12 @@ describe('MCP endpoint', () => {
         (_r: unknown, _o: unknown, callback: (e: Error) => void) =>
           callback(new Error('unavailable')),
       );
-      expect((await callTool('sample_on_air')).body).toEqual({
+      expect((await callTool('sample_on_air', KEY)).body).toEqual({
         error: 'unavailable',
         message: 'Authorization could not be checked; try again shortly.',
         retry_after_seconds: 5,
       });
-      expect((await callTool('sample_on_air')).body).toEqual({
+      expect((await callTool('sample_on_air', KEY)).body).toEqual({
         executed: true,
       });
       expect((await rpc('tools/list')).status).toBe(200);
