@@ -149,3 +149,19 @@ test('reclaims only unused images before pulling and after retiring the rollback
   assert.doesNotMatch(deployScript, /docker system prune/);
   assert.match(deployScript, /trap 'rm -rf "\$docker_config_dir"' EXIT/);
 });
+
+test('a failed start prints a bounded, filtered log tail on stderr', () => {
+  assert.match(deployScript, /print_startup_log\(\) \{/);
+  assert.match(deployScript, /tail -n 35/);
+  assert.match(deployScript, /cut -c1-200 >&2/);
+  assert.match(deployScript, /grep -vE 'Mapped \\\{\|RoutesResolver\|InstanceLoader'/);
+  const failure = deployScript.indexOf(
+    'Alcantara backend failed its local health check; rolling back',
+  );
+  assert.ok(failure > 0);
+  assert.ok(
+    deployScript.indexOf('print_startup_log alcantara-backend', failure) >
+      failure,
+  );
+  assert.doesNotMatch(deployScript, /docker logs --tail 200 alcantara-backend/);
+});

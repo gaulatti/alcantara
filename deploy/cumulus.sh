@@ -52,6 +52,18 @@ docker run --rm \
   "$image" \
   pnpm run db:migrate:deploy
 
+# The last startup and error lines of a container, on stderr: SSM keeps only
+# the first 24,000 characters of stdout, which earlier steps can fill, and its
+# own stderr limit fits this (colour codes, route mapping and module loading
+# lines dropped; at most 35 lines of 200 characters).
+print_startup_log() {
+  docker logs "$1" 2>&1 \
+    | sed -E 's/\x1b\[[0-9;]*m//g' \
+    | grep -vE 'Mapped \{|RoutesResolver|InstanceLoader' \
+    | tail -n 35 \
+    | cut -c1-200 >&2 || true
+}
+
 had_previous=false
 if docker inspect alcantara-backend >/dev/null 2>&1; then
   docker stop alcantara-backend
@@ -101,7 +113,7 @@ for _ in $(seq 1 45); do
 done
 if [ "$deployed_ready" != true ]; then
   echo 'Alcantara backend failed its local health check; rolling back'
-  docker logs --tail 200 alcantara-backend || true
+  print_startup_log alcantara-backend
   rollback_backend
   exit 1
 fi
