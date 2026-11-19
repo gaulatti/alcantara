@@ -165,8 +165,10 @@ with the measurements, `failed` with no measurements and a bounded `error` code:
 `timeout`, `unavailable`, `output-limit`, `probe-failed`, `decode-failed`,
 `no-audio`, `silent`, `invalid-measurement`, `unsupported-source` (not an http
 or https URL), `source-refused` (the URL carries a user name or password, does
-not parse, or its host is or resolves to a non-public address),
-`source-unresolved` (its host did not resolve) or `interrupted` (the last
+not parse, its host is or resolves to a non-public address, it redirects, or
+it answers with another content type or more than 200 MiB),
+`source-unresolved` (its host did not resolve), `source-unavailable` (an error
+status or a failed connection, retried) or `interrupted` (the last
 run's lease ran out). Each source gets
 at most three runs; a failure that can change is retried after 5 and then 30
 minutes (`nextAttemptAt`), while `no-audio`, `silent`, `invalid-measurement`,
@@ -176,16 +178,17 @@ with an optimistic check on the row, so two backend instances never analyse the
 same file. Re-running the job is idempotent: the same file produces the same
 row.
 
-**Limits.** Each file has 180 seconds for the probe and the measurement
-together, a network read may stall for 30 seconds, and a tool that writes more
-than 4 MiB of output is stopped. Only `http`, `https` and their transport
-protocols are allowed when reading a source, and before either tool runs the
-source is checked against the outbound-request policy
+**Limits.** Each file has 180 seconds for the fetch, the probe and the
+measurement together, and a tool that writes more than 4 MiB of output is
+stopped. A remote source is fetched under the outbound-request policy
 ([outbound-requests.md](outbound-requests.md)): every address its host
-resolves to must be public, and both tools run with `-max_redirects 0`. The
-managed media bucket and its CDN are public, so they pass. Neither the source URL nor tool
-output is logged or stored; a failure logs `media_analysis.failed` with the
-asset ID, result and code.
+resolves to must be public, the connection goes to the checked address, no
+redirect is followed, the answer must be audio and at most 200 MiB (the upload
+limit). The body is streamed into a private temporary file that both tools
+read with `-protocol_whitelist file`, and it is removed after every run. The
+managed media bucket and its CDN are public, so they pass. Neither the source
+URL nor tool output is logged or stored; a failure logs
+`media_analysis.failed` with the asset ID, result and code.
 
 **Cost.** On the fixture used for the ticket (a 4 minute, 320 kbps stereo MP3
 read from local disk, Apple M-series), one analysis takes about 1.5 s wall and

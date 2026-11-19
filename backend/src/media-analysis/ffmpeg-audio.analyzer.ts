@@ -1,13 +1,19 @@
+import { createWriteStream } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   validateSongLoudness,
   validateSongSegue,
 } from '../radio/palazzo-machine.client';
+import { isAudioMediaType } from '../outbound/media-types';
 import {
-  checkedAddress,
-  OutboundRefusal,
+  safeFetch,
+  type OutboundRefusal,
   type OutboundFetchPath,
   type OutboundFetchResult,
   type ResolveAll,
+  type SafeFetchDeps,
 } from '../outbound/safe-fetch';
 import {
   createProcessRunner,
@@ -22,8 +28,15 @@ export const SILENCE_MIN_SECONDS = 0.5;
 export const EDGE_TOLERANCE_SECONDS = 0.05;
 /** Output kept from one tool run; anything larger is treated as a failure. */
 export const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
-/** How long one network read may stall, in microseconds (ffmpeg's unit). */
-const READ_TIMEOUT_MICROSECONDS = '30000000';
+/** The largest remote input read: the upload limit (main.ts). */
+export const MAX_INPUT_BYTES = 200 * 1024 * 1024;
+/**
+ * The only request header sent for a remote input. ffmpeg always sent its own
+ * user agent, and some media hosts refuse a request without one.
+ */
+export const INPUT_USER_AGENT = 'alcantara-media-analysis';
+/** Prefix of the private directory that holds one remote input. */
+export const INPUT_DIRECTORY_PREFIX = 'alcantara-analysis-';
 
 export type AnalysisErrorCode =
   | 'unavailable'
@@ -35,7 +48,8 @@ export type AnalysisErrorCode =
   | 'silent'
   | 'invalid-measurement'
   | 'source-refused'
-  | 'source-unresolved';
+  | 'source-unresolved'
+  | 'source-unavailable';
 
 /** Codes that a second run of the same file cannot change. */
 const PERMANENT_ERRORS = new Set<AnalysisErrorCode>([
@@ -86,19 +100,18 @@ function isRemote(input: string): boolean {
   return /^https?:\/\//i.test(input);
 }
 
-function protocolWhitelist(input: string): string {
-  return isRemote(input) ? 'http,https,tcp,tls,crypto' : 'file';
-}
+/** The tools only ever open a local file. */
+const PROTOCOL_WHITELIST = 'file';
 
-/** A remote input is read only from the checked URL: no redirect is followed. */
-function redirectArguments(input: string): string[] {
-  return isRemote(input) ? ['-max_redirects', '0'] : [];
-}
-
-/** How a remote input is checked before a tool reads it (real DNS by default). */
+/**
+ * How a remote input is fetched before a tool reads it: real DNS, the
+ * network and the OS temporary directory by default.
+ */
 export interface RemoteInputPolicy {
   resolve?: ResolveAll;
+  request?: SafeFetchDeps['request'];
   record?: (path: OutboundFetchPath, result: OutboundFetchResult) => void;
+  tempRoot?: string;
 }
 
 export function probeArguments(input: string): string[] {
@@ -106,10 +119,7 @@ export function probeArguments(input: string): string[] {
     '-v',
     'error',
     '-protocol_whitelist',
-    protocolWhitelist(input),
-    '-rw_timeout',
-    READ_TIMEOUT_MICROSECONDS,
-    ...redirectArguments(input),
+    PROTOCOL_WHITELIST,
     '-select_streams',
     'a:0',
     '-show_entries',
@@ -130,10 +140,7 @@ export function measureArguments(input: string): string[] {
     '-threads',
     '1',
     '-protocol_whitelist',
-    protocolWhitelist(input),
-    '-rw_timeout',
-    READ_TIMEOUT_MICROSECONDS,
-    ...redirectArguments(input),
+    PROTOCOL_WHITELIST,
     '-progress',
     'pipe:1',
     '-i',
@@ -298,6 +305,15 @@ export function assertPlayable(analysis: AudioAnalysis): void {
   }
 }
 
+function sourceError(reason: OutboundRefusal['reason']): AudioAnalysisError {
+  if (reason === 'timeout') return new AudioAnalysisError('timeout');
+  if (reason === 'dns') return new AudioAnalysisError('source-unresolved');
+  if (reason === 'network' || reason === 'http_status') {
+    return new AudioAnalysisError('source-unavailable');
+  }
+  return new AudioAnalysisError('source-refused');
+}
+
 /** Scheduling priority for the tools when `nice` is installed (19 is lowest). */
 export const NICE_LEVEL = '19';
 
@@ -341,9 +357,28 @@ export class FfmpegAudioAnalyzer {
     return true;
   }
 
+  /**
+   * A remote input is fetched through the outbound-request policy into a
+   * private temporary file, and the tools read only that file, so the address
+   * that was checked is the address that was read. The file is removed on
+   * every path.
+   */
   async analyze(input: string, timeoutMs: number): Promise<AudioAnalysis> {
     const deadline = Date.now() + timeoutMs;
-    if (isRemote(input)) await this.checkRemoteInput(input, deadline);
+    if (!isRemote(input)) return this.measure(input, deadline);
+    const directory = await mkdtemp(
+      join(this.policy.tempRoot ?? tmpdir(), INPUT_DIRECTORY_PREFIX),
+    );
+    try {
+      const file = join(directory, 'input');
+      await this.download(input, file, deadline);
+      return await this.measure(file, deadline);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  private async measure(input: string, deadline: number) {
     const probe = await this.runTool(
       'ffprobe',
       probeArguments(input),
@@ -369,49 +404,47 @@ export class FfmpegAudioAnalyzer {
   }
 
   /**
-   * The outbound-request policy for a remote input: the URL must parse with
-   * no user name or password, and every address its host resolves to must be
-   * public. ffmpeg then resolves the name again itself and follows no
-   * redirect. A refusal names no URL; it is counted under media_analysis.
+   * The outbound-request policy for a remote input: no user name or
+   * password, every address public, the socket pinned to the checked
+   * address, no redirect, an audio content type, at most MAX_INPUT_BYTES,
+   * all within the file's deadline. A refusal names no URL; it is counted
+   * under media_analysis.
    */
-  private async checkRemoteInput(input: string, deadline: number) {
-    const record = (result: OutboundFetchResult) =>
-      this.policy.record?.('media_analysis', result);
-    let url: URL;
+  private async download(input: string, file: string, deadline: number) {
+    const timeoutMs = deadline - Date.now();
+    if (timeoutMs <= 0) throw new AudioAnalysisError('timeout');
+    const sink = createWriteStream(file, { flags: 'wx', mode: 0o600 });
+    // The file is removed only after the stream has closed it, so a late open
+    // never recreates it.
+    const closed = new Promise<void>((resolve) =>
+      sink.once('close', () => resolve()),
+    );
     try {
-      url = new URL(input);
-    } catch {
-      record('invalid_url');
-      throw new AudioAnalysisError('source-refused');
-    }
-    if (url.username || url.password) {
-      record('invalid_url');
-      throw new AudioAnalysisError('source-refused');
-    }
-    const remaining = deadline - Date.now();
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        checkedAddress(url.hostname, this.policy.resolve),
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new OutboundRefusal('timeout')),
-            Math.max(0, remaining),
-          );
-        }),
-      ]);
-    } catch (error) {
-      // checkedAddress only throws an OutboundRefusal (address or dns).
-      const { reason } = error as OutboundRefusal;
-      record(reason);
-      if (reason === 'timeout') throw new AudioAnalysisError('timeout');
-      throw new AudioAnalysisError(
-        reason === 'dns' ? 'source-unresolved' : 'source-refused',
+      await safeFetch(
+        input,
+        {
+          path: 'media_analysis',
+          headers: { 'user-agent': INPUT_USER_AGENT },
+          maxBytes: MAX_INPUT_BYTES,
+          timeoutMs,
+          maxRedirects: 0,
+          allowContentType: isAudioMediaType,
+          allowLegacyHttp: true,
+          bodySink: sink,
+        },
+        {
+          resolve: this.policy.resolve,
+          request: this.policy.request,
+          record: this.policy.record,
+        },
       );
+    } catch (error) {
+      sink.destroy();
+      // safeFetch only ever throws an OutboundRefusal.
+      throw sourceError((error as OutboundRefusal).reason);
     } finally {
-      clearTimeout(timer);
+      await closed;
     }
-    record(url.protocol === 'http:' ? 'legacy_http' : 'ok');
   }
 
   private async runTool(

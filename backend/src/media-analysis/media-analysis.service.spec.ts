@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method, @typescript-eslint/require-await -- Jest mocks are intentionally loosely typed. */
 import { Logger } from '@nestjs/common';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { scriptedTransport } from '../outbound/safe-fetch.testing';
 import {
   AudioAnalysisError,
   FfmpegAudioAnalyzer,
@@ -518,16 +522,37 @@ describe('MediaAnalysisService schedule', () => {
           };
     });
     const recorded: string[] = [];
-    const analyzer = new FfmpegAudioAnalyzer(run, {
-      resolve: async (hostname) => [
-        {
-          address:
-            hostname === 'inside.example.com' ? '10.0.0.8' : '52.216.8.1',
-          family: 4,
+    const transport = scriptedTransport(
+      {
+        'inside.example.com': ['10.0.0.8'],
+        'bucket.s3.amazonaws.com': ['52.216.8.1'],
+      },
+      {
+        'bucket.s3.amazonaws.com/songs/a.mp3': {
+          status: 200,
+          headers: { 'content-type': 'audio/mpeg' },
+          body: Buffer.from('ID3 placeholder'),
         },
-      ],
+      },
+    );
+    const tempRoot = mkdtempSync(join(tmpdir(), 'analysis-service-spec-'));
+    const analyzer = new FfmpegAudioAnalyzer(run, {
+      resolve: transport.resolve,
+      request: transport.request,
       record: (_path, result) => recorded.push(result),
+      tempRoot,
     });
+    // The fetched input is a real temporary file: let its disk I/O finish
+    // between fake-timer steps.
+    const { setTimeout: realTimeout } =
+      jest.requireActual<typeof import('timers')>('timers');
+    const settle = async (done: () => boolean) => {
+      const started = process.hrtime.bigint();
+      while (!done() && process.hrtime.bigint() - started < 10_000_000_000n) {
+        await jest.advanceTimersByTimeAsync(0);
+        await new Promise((resolve) => realTimeout(resolve, 1));
+      }
+    };
     const service = new MediaAnalysisService(
       prisma as never,
       metrics as never,
@@ -536,6 +561,9 @@ describe('MediaAnalysisService schedule', () => {
 
     await service.onApplicationBootstrap();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+    await settle(
+      () => prisma.mediaAssetAnalysis.updateMany.mock.calls.length > 0,
+    );
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
       where: { assetId: 'song:2', sourceUrl: PRIVATE_URL, status: 'pending' },
       data: {
@@ -558,6 +586,12 @@ describe('MediaAnalysisService schedule', () => {
 
     await jest.advanceTimersByTimeAsync(MIN_WAIT_MS);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    await settle(() => recorded.length === 2 && toolRuns().length === 2);
+    await settle(() =>
+      JSON.stringify(
+        prisma.mediaAssetAnalysis.updateMany.mock.lastCall,
+      ).includes('success'),
+    );
     expect(toolRuns()).toHaveLength(2);
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -566,7 +600,13 @@ describe('MediaAnalysisService schedule', () => {
       }),
     );
     expect(recorded).toEqual(['address', 'ok']);
+    expect(transport.sent.map((request) => request.connectedTo)).toEqual([
+      '52.216.8.1',
+    ]);
     service.onModuleDestroy();
+    await settle(() => readdirSync(tempRoot).length === 0);
+    expect(readdirSync(tempRoot)).toEqual([]);
+    rmSync(tempRoot, { recursive: true, force: true });
   });
 
   it('keeps polling after a run fails before analysing', async () => {

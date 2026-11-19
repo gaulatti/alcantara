@@ -3,6 +3,7 @@ import type { IncomingMessage, OutgoingHttpHeaders } from 'node:http';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
+import type { Writable } from 'node:stream';
 import { unsafeAddress } from './address-policy';
 
 /**
@@ -93,6 +94,13 @@ export interface SafeFetchOptions {
   readBody?: boolean;
   /** A recorded consumer that predates https-only (still address-checked). */
   allowLegacyHttp?: boolean;
+  /**
+   * Stream the body into this writable instead of returning it, under the
+   * same byte cap and deadline. The body in the response is then empty and
+   * contentLength counts the bytes written. The caller owns the writable and
+   * closes it after a refusal.
+   */
+  bodySink?: Writable;
 }
 
 export interface SafeFetchResponse {
@@ -256,15 +264,27 @@ export async function safeFetch(
       response.resume();
       throw new OutboundRefusal('too_large');
     }
-    const body =
-      options.readBody === false
-        ? (response.resume(), Buffer.alloc(0))
-        : await withDeadline(readCapped(response, options.maxBytes), deadline);
+    let body: Buffer = Buffer.alloc(0);
+    let contentLength: number | null = null;
+    if (options.readBody === false) {
+      response.resume();
+    } else if (options.bodySink) {
+      contentLength = await withDeadline(
+        streamCapped(response, options.maxBytes, options.bodySink),
+        deadline,
+      );
+    } else {
+      body = await withDeadline(
+        readCapped(response, options.maxBytes),
+        deadline,
+      );
+      contentLength = body.byteLength;
+    }
     deps.record?.(options.path, legacyHttp ? 'legacy_http' : 'ok');
     return {
       status,
       contentType: contentType ?? '',
-      contentLength: options.readBody === false ? null : body.byteLength,
+      contentLength,
       body,
       legacyHttp,
     };
@@ -358,6 +378,40 @@ function readCapped(response: IncomingMessage, maxBytes: number) {
     });
     response.once('end', () => resolve(Buffer.concat(chunks)));
     response.once('error', () => reject(new OutboundRefusal('network')));
+  });
+}
+
+/**
+ * Writes the body into `sink` with backpressure, refusing it once it passes
+ * `maxBytes`; resolves with the byte count after the sink has flushed.
+ */
+function streamCapped(
+  response: IncomingMessage,
+  maxBytes: number,
+  sink: Writable,
+) {
+  return new Promise<number>((resolve, reject) => {
+    let bytes = 0;
+    // A settled promise ignores a second outcome.
+    const fail = (reason: OutboundRefusalReason) => {
+      response.destroy();
+      reject(new OutboundRefusal(reason));
+    };
+    response.on('data', (chunk: Buffer) => {
+      bytes += chunk.byteLength;
+      if (bytes > maxBytes) return fail('too_large');
+      if (!sink.write(chunk)) {
+        response.pause();
+        sink.once('drain', () => response.resume());
+      }
+    });
+    response.once('end', () =>
+      sink.end((error?: Error | null) =>
+        error ? fail('network') : resolve(bytes),
+      ),
+    );
+    response.once('error', () => fail('network'));
+    sink.once('error', () => fail('network'));
   });
 }
 

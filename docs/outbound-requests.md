@@ -36,7 +36,7 @@ outbound-request policy: `backend/src/outbound/safe-fetch.ts`, built on Node's
 | Caller | Method | Accepts | Limits |
 | --- | --- | --- | --- |
 | Program page remote audio (`ProgramService`) | GET, no request headers | `audio/*`, `application/ogg` | 100 MiB, 60 s, 3 redirects |
-| Media analysis input (`FfmpegAudioAnalyzer`) | Read by `ffprobe` and `ffmpeg`, not by the policy's transport | `http` (counted as `legacy_http`) or `https` | 180 s per file, 30 s read stall, no redirects |
+| Media analysis input (`FfmpegAudioAnalyzer`) | GET with `User-Agent: alcantara-media-analysis` only; `http` is counted as `legacy_http` | `audio/*`, `application/ogg` | 200 MiB (the upload limit), streamed to a temporary file; 180 s per file shared with the tools; no redirects |
 | Now-playing delivery (`NowPlayingPublisherService`) | The consumer's POST, PUT or PATCH, with `Content-Type: application/json` and the consumer's own headers | Any 2xx; the answer is not read | 10 s, 3 redirects |
 
 The program page calls it only for audio whose origin differs from the page
@@ -75,20 +75,22 @@ other refusal) results.
 
 ## Media analysis inputs
 
-The media analysis job reads a remote `MediaAsset.sourceUrl` with `ffprobe` and
-`ffmpeg`, which keep their scheme rule (`http` or `https`, with the existing
-protocol whitelist and read timeout). Before either tool runs, the URL must
-parse with no user name or password and its host must resolve, every address
-public, within the file's deadline. Both tools then run with
-`-max_redirects 0`, so they never follow a redirect. A refusal fails the
-analysis row with `source-refused` (final) or `source-unresolved` (retried);
-`timeout` if the lookup outlives the deadline. The worker carries on with the
-next asset.
+The media analysis job fetches a remote `MediaAsset.sourceUrl` through this
+policy and streams the body into a temporary file (mode 0600, in its own
+directory under the OS temporary directory). `ffprobe` and `ffmpeg` then read
+only that file, with `-protocol_whitelist file`; neither tool is ever given a
+network address, so the address that was checked is the address that was
+read. The fetch follows no redirect, accepts only an audio content type, stops
+at 200 MiB, and shares the file's 180 second deadline with the tools. The
+temporary directory is removed after every run: success, refusal, tool
+failure and timeout.
 
-`ffmpeg` resolves the name again itself when it connects, so a short window
-remains between the check and the connection in which a name could resolve
-differently. A follow-up will close it by having the tools read from the
-checked address.
+A refusal fails the analysis row without running a tool: `source-refused`
+(final) for an invalid URL, a non-public address, a redirect, another content
+type or an oversized body; `source-unresolved` (retried) when the host does
+not resolve; `source-unavailable` (retried) for an error status or a failed
+connection; `timeout` when the deadline passes. The worker carries on with the
+next asset.
 
 ## What the caller sees on a refusal
 
@@ -116,7 +118,6 @@ the track itself still plays.
 `alcantara_outbound_fetch_total{path,result}` counts every fetch under the
 policy. `path` is the caller (`program_audio`, `now_playing`,
 `media_analysis`); `result` is `ok`, `legacy_http` or one of the refusal
-reasons above. For `media_analysis` it counts the input check (`ok`,
-`legacy_http`, `invalid_url`, `address`, `dns` or `timeout`), not the read the
-tools make afterwards. Every series starts at
+reasons above. For `media_analysis` it counts the input fetch, which
+is the only read: the tools open the fetched file. Every series starts at
 zero. No URL, host or address appears in a label or a log line.
