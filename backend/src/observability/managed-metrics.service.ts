@@ -13,6 +13,11 @@ import {
 
 /** Why the authorization guard refused a request before any authorization call. */
 export const AUTH_REFUSAL_REASONS = ['unsupported_credential'] as const;
+/** Mirrors POMPEII_CHANNEL_RESET_REASONS in auth/pompeii.service.ts. */
+export const POMPEII_CHANNEL_RESET_METRIC_REASONS = [
+  'deadline_exceeded',
+  'unavailable',
+] as const;
 /** Results of alcantara_mcp_auth_total (gaulatti/alcantara#211). */
 export const MCP_AUTH_METRIC_RESULTS = [
   'ok',
@@ -231,6 +236,7 @@ export class ManagedMetricsService {
   private readonly sourceOperations: Counter<string>;
   private readonly outboundFetches: Counter<string>;
   private readonly authRefusals: Counter<string>;
+  private readonly pompeiiChannelResets: Counter<string>;
   private readonly mcpAuth: Counter<string>;
   private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
@@ -345,6 +351,14 @@ export class ManagedMetricsService {
     });
     for (const reason of AUTH_REFUSAL_REASONS)
       this.authRefusals.labels(reason).inc(0);
+    this.pompeiiChannelResets = new Counter({
+      name: 'alcantara_pompeii_channel_resets_total',
+      help: 'Pompeii gRPC channels replaced after a timed-out or unavailable call, by bounded reason.',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    for (const reason of POMPEII_CHANNEL_RESET_METRIC_REASONS)
+      this.pompeiiChannelResets.labels(reason).inc(0);
     this.mcpAuth = new Counter({
       name: 'alcantara_mcp_auth_total',
       help: 'MCP endpoint authentications by bounded result.',
@@ -513,6 +527,16 @@ export class ManagedMetricsService {
   recordAuthRefusal(reason: string): void {
     if (!(AUTH_REFUSAL_REASONS as readonly string[]).includes(reason)) return;
     this.authRefusals.inc({ reason });
+  }
+
+  recordPompeiiChannelReset(reason: string): void {
+    if (
+      !(POMPEII_CHANNEL_RESET_METRIC_REASONS as readonly string[]).includes(
+        reason,
+      )
+    )
+      return;
+    this.pompeiiChannelResets.inc({ reason });
   }
 
   recordMcpAuth(result: string): void {

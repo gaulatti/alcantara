@@ -55,7 +55,7 @@ describe('session tokens on the API', () => {
           roles: ['operator'],
         }),
     );
-    (pompeii as unknown as { client: unknown }).client = {
+    (pompeii as unknown as { channel: { client: unknown } }).channel.client = {
       authorize: grpcAuthorize,
       close: jest.fn(),
     };

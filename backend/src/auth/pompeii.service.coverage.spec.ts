@@ -36,6 +36,7 @@ jest.mock('@grpc/grpc-js', () => {
       pompeii: { authorization: { v1: { AuthorizationService: FakeClient } } },
     })),
     waitForClientReady: jest.fn(),
+    status: { DEADLINE_EXCEEDED: 4, UNAVAILABLE: 14 },
   };
 });
 
@@ -377,5 +378,60 @@ describe('PompeiiService', () => {
         Object,
       ]);
     });
+  });
+});
+
+// gaulatti/alcantara#225: a timed-out call still denies, and the next call
+// goes through a new channel.
+describe('PompeiiService channel replacement', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockClients.length = 0;
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('denies with 503, replaces the channel, records the reset, and closes the new one on destroy', async () => {
+    const metrics = {
+      recordDependency: jest.fn(),
+      recordPompeiiChannelReset: jest.fn(),
+    };
+    const { service, client } = make({}, metrics);
+    client.authorize.mockImplementationOnce((_r, _o, cb) =>
+      cb(Object.assign(new Error('Deadline exceeded'), { code: 4 })),
+    );
+    await expect(service.authorize('t', permission)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(mockClients).toHaveLength(2);
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect(metrics.recordPompeiiChannelReset).toHaveBeenCalledWith(
+      'deadline_exceeded',
+    );
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      `Pompeii channel replaced after deadline_exceeded (${LOCAL_POMPEII_GRPC_URL})`,
+    );
+    const replacement = mockClients[1];
+    expect(replacement.address).toBe(LOCAL_POMPEII_GRPC_URL);
+    replacement.authorize.mockImplementationOnce((_r, _o, cb) =>
+      cb(null, { authenticated: true, allowed: true }),
+    );
+    await expect(service.authorize('t', permission)).resolves.toMatchObject({
+      allowed: true,
+    });
+    service.onModuleDestroy();
+    expect(replacement.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces the channel without a metrics service', async () => {
+    const { service, client } = make();
+    client.authorize.mockImplementationOnce((_r, _o, cb) =>
+      cb(Object.assign(new Error('unavailable'), { code: 14 })),
+    );
+    await expect(service.authorize('t', permission)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(mockClients).toHaveLength(2);
   });
 });

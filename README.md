@@ -450,6 +450,20 @@ scheme in any letter case), before any authorization call, and counts it in
 `alcantara_auth_refusals_total{reason="unsupported_credential"}`. Every other
 bearer is handled exactly as before.
 
+Authorization decisions use one long-lived gRPC channel to Pompeii. A Pompeii
+deploy replaces its container, and a connection through the old path can stop
+carrying bytes without an error, so calls on it only time out. When an
+authorization call ends in `DEADLINE_EXCEEDED` or `UNAVAILABLE`, the backend
+replaces the channel (each channel has its own subchannel pool, so the
+replacement dials a new connection) and the next call reaches the live Pompeii.
+The failed call still answers `503` with
+`{"error":"AUTHORIZATION_SERVICE_UNAVAILABLE"}`; nothing is allowed on a
+failure. Replacements happen at most once every 5 seconds, so a Pompeii slower
+than the deadline is not redialled on every request. Each replacement logs
+`Pompeii channel replaced after <reason>` and counts
+`alcantara_pompeii_channel_resets_total{reason="deadline_exceeded"|"unavailable"}`
+(gaulatti/alcantara#225).
+
 ## Architecture
 
 - [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.

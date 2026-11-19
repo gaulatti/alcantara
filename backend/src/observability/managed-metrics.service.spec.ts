@@ -1,4 +1,8 @@
-import { ManagedMetricsService } from './managed-metrics.service';
+import {
+  ManagedMetricsService,
+  POMPEII_CHANNEL_RESET_METRIC_REASONS,
+} from './managed-metrics.service';
+import { POMPEII_CHANNEL_RESET_REASONS } from '../auth/pompeii.service';
 
 describe('ManagedMetricsService program SSE metrics', () => {
   it('renders bounded connection and snapshot results', async () => {
@@ -90,6 +94,40 @@ describe('ManagedMetricsService outbound fetch metrics', () => {
     );
     expect(text).not.toContain('fictional.example');
     expect(text).not.toContain('unlisted');
+  });
+});
+
+describe('ManagedMetricsService Pompeii channel reset metrics', () => {
+  it('counts resets by the closed reason set only, starting at zero', async () => {
+    const metrics = new ManagedMetricsService();
+    const before = await metrics.registry.metrics();
+    expect(before).toContain(
+      'alcantara_pompeii_channel_resets_total{reason="deadline_exceeded"} 0',
+    );
+    expect(before).toContain(
+      'alcantara_pompeii_channel_resets_total{reason="unavailable"} 0',
+    );
+    metrics.recordPompeiiChannelReset('deadline_exceeded');
+    metrics.recordPompeiiChannelReset('unavailable');
+    metrics.recordPompeiiChannelReset('deadline_exceeded');
+    metrics.recordPompeiiChannelReset('api.pompeii.example:443');
+    const text = await metrics.registry.metrics();
+    const samples = text
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_pompeii_channel_resets_total{'),
+      );
+    expect(samples).toEqual([
+      'alcantara_pompeii_channel_resets_total{reason="deadline_exceeded"} 2',
+      'alcantara_pompeii_channel_resets_total{reason="unavailable"} 1',
+    ]);
+    expect(text).not.toContain('api.pompeii.example');
+  });
+
+  it('keeps the metric reasons equal to the channel reasons', () => {
+    expect([...POMPEII_CHANNEL_RESET_METRIC_REASONS]).toEqual([
+      ...POMPEII_CHANNEL_RESET_REASONS,
+    ]);
   });
 });
 

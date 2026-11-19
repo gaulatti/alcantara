@@ -146,7 +146,7 @@ describe('MCP endpoint', () => {
         callback: (error: Error | null, value: unknown) => void,
       ) => callback(null, answer),
     );
-    (pompeii as unknown as { client: unknown }).client = {
+    (pompeii as unknown as { channel: { client: unknown } }).channel.client = {
       authorize: grpcAuthorize,
       close: jest.fn(),
     };
