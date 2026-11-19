@@ -13,6 +13,14 @@ import {
 
 /** Why the authorization guard refused a request before any authorization call. */
 export const AUTH_REFUSAL_REASONS = ['unsupported_credential'] as const;
+/** Results of alcantara_mcp_auth_total (gaulatti/alcantara#211). */
+export const MCP_AUTH_METRIC_RESULTS = [
+  'ok',
+  'unauthenticated',
+  'forbidden',
+  'unavailable',
+  'rate_limited',
+] as const;
 
 const HTTP_METHODS = new Set([
   'GET',
@@ -223,6 +231,7 @@ export class ManagedMetricsService {
   private readonly sourceOperations: Counter<string>;
   private readonly outboundFetches: Counter<string>;
   private readonly authRefusals: Counter<string>;
+  private readonly mcpAuth: Counter<string>;
   private readonly sourceInventory: Gauge<string>;
   private readonly programSseConnections: Gauge<string>;
   private readonly programSseSnapshots: Counter<string>;
@@ -336,6 +345,14 @@ export class ManagedMetricsService {
     });
     for (const reason of AUTH_REFUSAL_REASONS)
       this.authRefusals.labels(reason).inc(0);
+    this.mcpAuth = new Counter({
+      name: 'alcantara_mcp_auth_total',
+      help: 'MCP endpoint authentications by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of MCP_AUTH_METRIC_RESULTS)
+      this.mcpAuth.labels(result).inc(0);
     this.sourceOperations = new Counter({
       name: 'alcantara_external_source_operations_total',
       help: 'External source registry operations by bounded action and result.',
@@ -496,6 +513,12 @@ export class ManagedMetricsService {
   recordAuthRefusal(reason: string): void {
     if (!(AUTH_REFUSAL_REASONS as readonly string[]).includes(reason)) return;
     this.authRefusals.inc({ reason });
+  }
+
+  recordMcpAuth(result: string): void {
+    if (!(MCP_AUTH_METRIC_RESULTS as readonly string[]).includes(result))
+      return;
+    this.mcpAuth.inc({ result });
   }
 
   recordOutboundFetch(path: string, result: string): void {

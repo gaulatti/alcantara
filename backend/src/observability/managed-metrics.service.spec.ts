@@ -112,4 +112,26 @@ describe('ManagedMetricsService authorization refusal metrics', () => {
     ]);
     expect(text).not.toContain('unlisted-reason');
   });
+
+  it('counts MCP authentications by bounded result, every series from zero', async () => {
+    const metrics = new ManagedMetricsService();
+    const before = await metrics.registry.metrics();
+    for (const result of [
+      'ok',
+      'unauthenticated',
+      'forbidden',
+      'unavailable',
+      'rate_limited',
+    ])
+      expect(before).toContain(
+        `alcantara_mcp_auth_total{result="${result}"} 0`,
+      );
+    metrics.recordMcpAuth('ok');
+    metrics.recordMcpAuth('forbidden');
+    metrics.recordMcpAuth('Bearer something');
+    const text = await metrics.registry.metrics();
+    expect(text).toContain('alcantara_mcp_auth_total{result="ok"} 1');
+    expect(text).toContain('alcantara_mcp_auth_total{result="forbidden"} 1');
+    expect(text).not.toContain('Bearer something');
+  });
 });
