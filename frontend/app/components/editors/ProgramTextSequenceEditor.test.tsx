@@ -322,3 +322,42 @@ it("switches an empty autoplay sequence back to manual with nothing selected", (
     items: [],
   });
 });
+
+it("shows the saved autoplay interval rather than the default", () => {
+  // gaulatti/alcantara#186 group (c): a sequence saved with its own interval
+  // opens with that interval on the operator's screen.
+  const { last } = editor(
+    root([leaf("a", "One"), leaf("b", "Two")], {
+      mode: "autoplay",
+      intervalMs: 2500,
+    }),
+  );
+  expect(screen.getByRole("spinbutton")).toHaveValue(2500);
+  expect(last()).toBeUndefined();
+});
+
+it("shows the default interval when the saved autoplay sequence has none", () => {
+  // gaulatti/alcantara#186 group (c): the right-hand arm of the interval field.
+  editor(root([leaf("a", "One"), leaf("b", "Two")], { mode: "autoplay" }));
+  expect(screen.getByRole("spinbutton")).toHaveValue(4000);
+});
+
+it("keeps a marquee on a chyron that is wrapped while marquee is available", () => {
+  // Marquee on: the wrapped item keeps the marquee it had.
+  const { last } = editor(root([leaf("a", "Breaking", true)]), {
+    includeMarquee: true,
+  });
+  fireEvent.change(screen.getByPlaceholderText("Main headline"), {
+    target: { value: "Breaking news" },
+  });
+  expect((last().items[0] as any).sequence.items[0].useMarquee).toBe(true);
+});
+
+it("saves no marquee on a wrapped chyron when marquee is not available", () => {
+  // Marquee off: nothing about marquee is saved on the wrapped item.
+  const { last } = editor(root([leaf("a", "Breaking", true)]));
+  fireEvent.change(screen.getByPlaceholderText("Main headline"), {
+    target: { value: "Breaking news" },
+  });
+  expect((last().items[0] as any).sequence.items[0].useMarquee).toBeUndefined();
+});
