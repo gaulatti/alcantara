@@ -17,8 +17,17 @@ import { TestAuthService } from './test-auth.service';
 // is refused before any authorization call.
 const PERSONAL_ACCESS_TOKEN_PREFIX = 'pmp_pat_';
 
+// Whitespace as Go's unicode.IsSpace counts it (JavaScript's \s plus U+0085),
+// so this reads a header at least as widely as Pompeii's pat.StripBearer:
+// trim, drop one case-insensitive "Bearer" scheme, trim again.
+const LEADING_SPACE = /^[\s\u0085]+/;
+const BEARER_SCHEME = /^bearer[\s\u0085]+/i;
+
 function isPersonalAccessToken(authorization: string): boolean {
-  const credential = authorization.replace(/^\s*bearer\s+/i, '');
+  const credential = authorization
+    .replace(LEADING_SPACE, '')
+    .replace(BEARER_SCHEME, '')
+    .replace(LEADING_SPACE, '');
   return credential.startsWith(PERSONAL_ACCESS_TOKEN_PREFIX);
 }
 

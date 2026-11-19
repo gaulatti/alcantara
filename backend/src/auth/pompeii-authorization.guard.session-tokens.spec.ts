@@ -70,6 +70,12 @@ describe('PompeiiAuthorizationGuard session tokens', () => {
     ['extra whitespace', `  Bearer   ${accessTokenShaped}`],
     ['any length after the prefix', `Bearer pmp_pat_${'b'.repeat(7)}`],
     ['no scheme', accessTokenShaped],
+    // Pompeii's pat.StripBearer trims with Go's unicode.IsSpace, which also
+    // counts U+0085 and U+00A0, before and after one "Bearer" scheme.
+    ['leading U+0085', `\u0085${accessTokenShaped}`],
+    ['U+0085 after the scheme', `Bearer \u0085${accessTokenShaped}`],
+    ['U+00A0 around the scheme', `\u00a0Bearer\u00a0${accessTokenShaped}`],
+    ['a tab after the scheme', `Bearer\t${accessTokenShaped}`],
   ])(
     'refuses an access token (%s) with 401 and makes no authorization call',
     async (_case, authorization) => {
@@ -132,6 +138,8 @@ describe('PompeiiAuthorizationGuard session tokens', () => {
     ['an uppercase prefix', `Bearer PMP_PAT_${'c'.repeat(43)}`],
     ['a different separator', `Bearer pmp-pat-${'c'.repeat(43)}`],
     ['the prefix later in the value', `Bearer x${accessTokenShaped}`],
+    // Pompeii strips one scheme only, so it reads this as a non-token value.
+    ['a repeated scheme', `Bearer Bearer ${accessTokenShaped}`],
   ])('passes %s to Pompeii byte for byte, as before', async (_case, header) => {
     const { guard, pompeii } = build();
     const { context } = contextFor(me, AuthController, header);
