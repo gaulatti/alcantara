@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method -- supertest bodies are untyped JSON and jest mocks are matched by reference. */
 import { Injectable, Logger, Module } from '@nestjs/common';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { ConfigService } from '@nestjs/config';
 import { DiscoveryModule, Reflector } from '@nestjs/core';
 import {
@@ -601,6 +602,23 @@ describe('MCP endpoint', () => {
     expect(failed.status).toBe(500);
     expect(failed.body).toEqual({ error: 'internal' });
     expect(logged.join('\n')).toContain('MCP request failed: TypeError');
+  });
+
+  it('leaves a response the transport already started alone, and names a non-Error failure as unknown', async () => {
+    await boot();
+    jest
+      .spyOn(StreamableHTTPServerTransport.prototype, 'handleRequest')
+      .mockImplementationOnce((_request, response) => {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end('{"partial":true}');
+        return Promise.reject(new Error('after the answer started'));
+      });
+    const started = await rpc('tools/list');
+    expect(started.status).toBe(200);
+    expect(started.body).toEqual({ partial: true });
+    jest.spyOn(auth, 'authenticate').mockRejectedValueOnce('a string');
+    expect((await rpc('tools/list')).status).toBe(500);
+    expect(logged.join('\n')).toContain('MCP request failed: unknown');
   });
 
   it('serves the OAuth discovery documents', async () => {

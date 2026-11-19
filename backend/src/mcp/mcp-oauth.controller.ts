@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Req, Res } from '@nestjs/common';
-import type { McpHttpReply, McpHttpRequest } from './http.types';
+import type { McpHttpReply, McpHttpRequest } from './mcp.controller';
 import { Public } from '../auth/public.decorator';
 import {
   COGNITO_HOSTED_DOMAIN,
