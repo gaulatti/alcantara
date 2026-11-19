@@ -77,15 +77,15 @@ export class McpController {
         await reply.status(413).send({ error: 'payload_too_large' });
         return;
       }
-      const principal = await this.auth.authenticate(
-        request.raw,
-        clientName(request.headers['user-agent']),
-      );
+      const client = clientName(request.headers['user-agent']);
+      const principal = await this.auth.authenticate(request.raw, client);
       const server = new McpServer(
         { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
         { instructions: INSTRUCTIONS },
       );
-      this.registry.register(server, principal);
+      this.registry.register(server, principal, () =>
+        this.auth.reauthorize(request.raw, client),
+      );
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

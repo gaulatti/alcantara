@@ -44,6 +44,13 @@ export interface McpOutcome {
 
 export interface McpContext {
   principal: McpPrincipal;
+  /**
+   * Asks Pompeii again, with no cache, for the same credential. The registry
+   * calls it before every A-tier and D-tier action (access-management
+   * capabilities are A or D), so a revoked token or a removed permission is
+   * refused on the next such call.
+   */
+  reauthorize?: () => Promise<McpPrincipal>;
 }
 
 export interface McpToolSpec<Shape extends z.ZodRawShape = z.ZodRawShape> {

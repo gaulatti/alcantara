@@ -96,8 +96,12 @@ export class McpRegistry implements OnModuleInit {
     return this.specs;
   }
 
-  register(server: McpServer, principal: McpPrincipal): void {
-    const ctx: McpContext = { principal };
+  register(
+    server: McpServer,
+    principal: McpPrincipal,
+    reauthorize: () => Promise<McpPrincipal>,
+  ): void {
+    const ctx: McpContext = { principal, reauthorize };
     const allowed = this.specs.filter((spec) =>
       principal.permissions.has(spec.permission),
     );
@@ -133,7 +137,15 @@ export class McpRegistry implements OnModuleInit {
             'unavailable',
             'Actions are not enabled on this server yet.',
           );
-        return ok(await this.executor.execute(spec, args, ctx));
+        let actingCtx = ctx;
+        if (spec.tier === 'A' || spec.tier === 'D') {
+          // No cached decision for what listeners hear or what cannot be undone.
+          const fresh = await ctx.reauthorize!();
+          if (!fresh.permissions.has(spec.permission))
+            throw new McpToolError('forbidden', `requires ${spec.permission}`);
+          actingCtx = { principal: fresh, reauthorize: ctx.reauthorize };
+        }
+        return ok(await this.executor.execute(spec, args, actingCtx));
       }
       const parsed = z.object(spec.shape).strict().safeParse(args);
       if (!parsed.success)

@@ -68,6 +68,26 @@ class SampleTools {
         run: () => Promise.resolve({ result: { written: true }, audit: {} }),
       },
       {
+        name: 'sample_on_air',
+        title: 'Sample on-air action',
+        description: 'An on-air action for the test.',
+        permission: ALCANTARA_PERMISSIONS.radio.operate,
+        tier: 'A',
+        firstClass: true,
+        shape: {},
+        run: () => Promise.resolve({ result: { aired: true }, audit: {} }),
+      },
+      {
+        name: 'sample_delete',
+        title: 'Sample delete',
+        description: 'A destructive action for the test.',
+        permission: ALCANTARA_PERMISSIONS.song.manage,
+        tier: 'D',
+        firstClass: false,
+        shape: {},
+        run: () => Promise.resolve({ result: { deleted: true }, audit: {} }),
+      },
+      {
         name: 'sample_fails',
         title: 'Sample failure',
         description: 'A read that throws an unexpected error.',
@@ -619,6 +639,100 @@ describe('MCP endpoint', () => {
     jest.spyOn(auth, 'authenticate').mockRejectedValueOnce('a string');
     expect((await rpc('tools/list')).status).toBe(500);
     expect(logged.join('\n')).toContain('MCP request failed: unknown');
+  });
+
+  describe('actions that matter re-authorize with no cache', () => {
+    const operator = () => [
+      ALCANTARA_PERMISSIONS.access,
+      ALCANTARA_PERMISSIONS.radio.operate,
+      ALCANTARA_PERMISSIONS.song.manage,
+    ];
+
+    it('asks Pompeii again for every on-air and destructive call, even with a warm cache', async () => {
+      await boot({ executor: true });
+      answer.effective_permissions = operator();
+      await rpc('tools/list');
+      expect(grpcAuthorize).toHaveBeenCalledTimes(1);
+      expect((await callTool('sample_on_air')).body).toEqual({
+        executed: true,
+      });
+      // The request itself uses the cached allow; the action asks once more.
+      expect(grpcAuthorize).toHaveBeenCalledTimes(2);
+      expect(
+        (await callTool('call_capability', { name: 'sample_delete' })).body,
+      ).toEqual({ executed: true });
+      expect(grpcAuthorize).toHaveBeenCalledTimes(3);
+      // A reversible write may use the cached decision.
+      await callTool('sample_write', { id: 1 });
+      expect(grpcAuthorize).toHaveBeenCalledTimes(3);
+      expect(executor!.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'sample_on_air' }),
+        {},
+        expect.objectContaining({
+          principal: expect.objectContaining({ subject: 'subject-1' }),
+        }),
+      );
+    });
+
+    it('refuses the very next on-air call once the token is revoked, without running it, and the next request too', async () => {
+      await boot({ executor: true });
+      answer.effective_permissions = operator();
+      await rpc('tools/list');
+      const revoked = () => {
+        answer = {
+          authenticated: false,
+          allowed: false,
+          reason: 'DENY_REVOKED',
+        };
+      };
+      // The cached allow would still list tools; the action asks afresh.
+      const call = rpc('tools/call', { name: 'sample_on_air', arguments: {} });
+      revoked();
+      const refused = await call;
+      const body = JSON.parse(refused.body.result.content[0].text);
+      expect(body).toEqual({
+        error: 'forbidden',
+        message: 'Your credential no longer allows this action.',
+      });
+      expect(executor!.execute).not.toHaveBeenCalled();
+      // The fresh refusal replaced the cached allow: the next request is refused at the door.
+      expect((await rpc('tools/list')).status).toBe(401);
+    });
+
+    it('refuses on-air and destructive calls once the permission is removed', async () => {
+      await boot({ executor: true });
+      answer.effective_permissions = operator();
+      await rpc('tools/list');
+      answer.effective_permissions = [ALCANTARA_PERMISSIONS.access];
+      expect((await callTool('sample_on_air')).body).toEqual({
+        error: 'forbidden',
+        message: `requires ${ALCANTARA_PERMISSIONS.radio.operate}`,
+      });
+      expect(
+        (await callTool('call_capability', { name: 'sample_delete' })).body
+          .error,
+      ).toBe('forbidden');
+      expect(executor!.execute).not.toHaveBeenCalled();
+    });
+
+    it('answers unavailable when Pompeii cannot be asked, and never caches that as a refusal', async () => {
+      await boot({ executor: true });
+      answer.effective_permissions = operator();
+      await rpc('tools/list');
+      grpcAuthorize.mockImplementationOnce(
+        (_r: unknown, _o: unknown, callback: (e: Error) => void) =>
+          callback(new Error('unavailable')),
+      );
+      expect((await callTool('sample_on_air')).body).toEqual({
+        error: 'unavailable',
+        message: 'Authorization could not be checked; try again shortly.',
+        retry_after_seconds: 5,
+      });
+      expect((await callTool('sample_on_air')).body).toEqual({
+        executed: true,
+      });
+      expect((await rpc('tools/list')).status).toBe(200);
+    });
   });
 
   it('serves the OAuth discovery documents', async () => {

@@ -10,6 +10,7 @@ import {
 } from '../auth/permissions';
 import { TestAuthService } from '../auth/test-auth.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { McpToolError } from './contract';
 import type { McpAuthResult, McpPrincipal } from './contract';
 import { MCP_LIMITS, MCP_RESOURCE_METADATA_URL } from './mcp.constants';
 
@@ -123,6 +124,40 @@ export class McpAuthService {
         this.metrics.recordMcpAuth(error.result);
       throw error;
     }
+  }
+
+  /**
+   * Asks Pompeii again with no cache read, for an action that matters. The
+   * fresh answer also replaces the cached one. A refusal is a tool refusal;
+   * Pompeii being unavailable is `unavailable`, never cached as a refusal.
+   */
+  async reauthorize(
+    request: IncomingMessage,
+    client: string,
+  ): Promise<McpPrincipal> {
+    const header = request.headers.authorization as string;
+    const digest = createHash('sha256').update(header).digest('hex');
+    let decision: Decision;
+    try {
+      decision = await this.ask(header, digest);
+    } catch {
+      throw new McpToolError(
+        'unavailable',
+        'Authorization could not be checked; try again shortly.',
+        5,
+      );
+    }
+    if (decision.kind !== 'granted')
+      throw new McpToolError(
+        'forbidden',
+        'Your credential no longer allows this action.',
+      );
+    return {
+      subject: decision.subject,
+      principalId: decision.principalId,
+      permissions: decision.permissions,
+      client,
+    };
   }
 
   private async decide(
