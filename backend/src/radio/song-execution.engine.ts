@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   ActorContext,
   type Actor,
@@ -152,6 +153,56 @@ export interface PalazzoTelemetrySource {
   currentState?(programId: string): Promise<PalazzoPlaybackState | null>;
 }
 
+/**
+ * gaulatti/alcantara#230 watchdog: in an automatic mode the engine reads
+ * Palazzo's state every WATCHDOG_INTERVAL_MS. When Palazzo reports nothing on
+ * the air on reads at least NO_PLAYBACK_BOUND_MS apart, the engine reconciles
+ * from that report: an active song it still believes in is ended and the next
+ * one starts; an empty engine starts the sequence. It acts only on Palazzo's
+ * own report, never on elapsed time alone.
+ *
+ * Palazzo's `status` cannot tell a song being prepared from idle: a song
+ * command reads 'idle' until the song is on air, for up to Palazzo's request
+ * limit (SONG_REQUEST_TIMEOUT_MS, 29 s by default). Every command the engine
+ * sends restarts the bound, so the bound sits above that limit with margin:
+ * a load either starts or fails inside it. Production since 2026-11-19: the
+ * longest load was 1 s and the longest instant 11 s.
+ */
+/**
+ * After a failed song command in an automatic mode, the engine re-reads
+ * Palazzo's state and resumes from it after COMMAND_RETRY_BASE_MS, doubling
+ * up to COMMAND_RETRY_MAX_MS while commands keep failing (#230). On
+ * 2026-11-20 every Palazzo restart unfroze automation about 6 s before Palazzo
+ * could play, the first command failed and nothing followed it.
+ */
+export const COMMAND_RETRY_BASE_MS = 2_000;
+export const COMMAND_RETRY_MAX_MS = 30_000;
+
+export const WATCHDOG_INTERVAL_MS = 10_000;
+export const NO_PLAYBACK_BOUND_MS = 45_000;
+
+/**
+ * What a watchdog read of Palazzo shows (#230). Anything on the air (a song,
+ * an intro, an instant or the live input) is not a stall. A Palazzo that does
+ * not report its live input cannot rule a live show out, so the watchdog
+ * holds instead of starting a song under it.
+ */
+export function watchdogReading(
+  state: PalazzoPlaybackState,
+): 'on_air' | 'nothing_on_air' | 'unknown' {
+  if (state.availability !== 'available') return 'unknown';
+  if (
+    state.status !== 'idle' ||
+    state.intro?.status === 'playing' ||
+    state.levels.instant.rms > 0 ||
+    state.levels.instant.peak > 0 ||
+    state.live?.onAir === true
+  )
+    return 'on_air';
+  if (state.live === undefined) return 'unknown';
+  return 'nothing_on_air';
+}
+
 interface ActiveSong {
   token: string;
   playbackRequestId: string;
@@ -245,6 +296,11 @@ interface SongEngineState {
   frozen: boolean;
   reconciled: boolean;
   busyWithForeignTrack: boolean;
+  /** First watchdog read of Palazzo reporting no playback, or null (#230). */
+  noPlaybackSince: number | null;
+  /** The pending retry after a failed command, and how many in a row (#230). */
+  commandRetryTimer: ReturnType<typeof setTimeout> | null;
+  commandRetries: number;
   lastIdleSequence: number | null;
   transitioning: boolean;
   queueBlocked: boolean;
@@ -320,6 +376,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   private readonly states = new Map<string, SongEngineState>();
   private broadcast: SongEngineBroadcastFn | null = null;
   private telemetry: PalazzoTelemetrySource | null = null;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
   private readonly radioProgramIds = new Set<string>();
   private readonly queueMutationLocks = new Map<string, Promise<void>>();
   private readonly rotationMutationLocks = new Map<string, Promise<void>>();
@@ -392,12 +449,24 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       );
     }
     this.updateHighRotationFavoriteMetric();
+    // A deploy candidate (#223) starts no telemetry and no watchdog.
+    if (!isDeployCandidate()) {
+      this.watchdog = setInterval(
+        () => void this.checkPlayback(),
+        WATCHDOG_INTERVAL_MS,
+      );
+      this.watchdog.unref?.();
+    }
   }
 
   onModuleDestroy(): void {
-    for (const programId of this.states.keys()) {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
+    for (const [programId, state] of this.states) {
       this.clearTimer(programId);
       this.stopProgress(programId);
+      if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
+      state.commandRetryTimer = null;
     }
   }
 
@@ -429,6 +498,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         frozen: false,
         reconciled: false,
         busyWithForeignTrack: false,
+        noPlaybackSince: null,
+        commandRetryTimer: null,
+        commandRetries: 0,
         lastIdleSequence: null,
         transitioning: false,
         queueBlocked: false,
@@ -920,6 +992,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       typeof durationMs === 'number' && durationMs > 0 ? durationMs : 300000;
     const playbackRequestId = randomUUID();
     state.pendingRequestIds.add(playbackRequestId);
+    // A new command restarts the watchdog's bound (#230).
+    state.noPlaybackSince = null;
     if (state.activeSong) {
       this.closePlayForAsRun(programId, state.activeSong, 'replaced', actor);
     }
@@ -1121,6 +1195,61 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.handlePalazzoSnapshot(programId, snapshot);
   }
 
+  /**
+   * The watchdog (#230). Runs every WATCHDOG_INTERVAL_MS; see
+   * NO_PLAYBACK_BOUND_MS.
+   */
+  async checkPlayback(): Promise<void> {
+    for (const programId of [...this.radioProgramIds]) {
+      const state = this.states.get(programId);
+      if (!state) continue;
+      const automatic =
+        state.sequence?.mode === 'autoplay' ||
+        state.sequence?.mode === 'shuffle';
+      // A frozen engine or a stale stream: not ours to judge now. A command
+      // sent restarts the bound (see pendingRequestIds.add), so a command
+      // still pending while Palazzo reports no playback past the bound was
+      // lost, and the idle report drops it.
+      if (
+        !automatic ||
+        state.frozen ||
+        !this.telemetry?.isReconciled(programId)
+      ) {
+        state.noPlaybackSince = null;
+        continue;
+      }
+      let snapshot: PalazzoPlaybackState | null = null;
+      try {
+        snapshot = (await this.telemetry.currentState?.(programId)) ?? null;
+      } catch {
+        snapshot = null;
+      }
+      if (!snapshot) {
+        this.metrics.recordEngineResync('watchdog', 'unavailable');
+        continue;
+      }
+      const reading = watchdogReading(snapshot);
+      if (reading !== 'nothing_on_air') {
+        state.noPlaybackSince = null;
+        if (reading === 'unknown')
+          this.metrics.recordEngineResync('watchdog', 'undecided');
+        continue;
+      }
+      const now = Date.now();
+      if (state.noPlaybackSince === null) {
+        state.noPlaybackSince = now;
+        continue;
+      }
+      if (now - state.noPlaybackSince < NO_PLAYBACK_BOUND_MS) continue;
+      state.noPlaybackSince = null;
+      this.logger.warn(
+        `Palazzo has reported nothing on the air on ${programId} for ${NO_PLAYBACK_BOUND_MS / 1000} s or more; resuming the rotation`,
+      );
+      this.metrics.recordEngineResync('watchdog', 'resumed');
+      this.handlePalazzoSnapshot(programId, snapshot);
+    }
+  }
+
   handlePalazzoSnapshot(
     programId: string,
     snapshot: PalazzoPlaybackState,
@@ -1132,6 +1261,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.palazzoBootId = snapshot.bootId;
 
     if (snapshot.status === 'playing' && snapshot.track) {
+      // Palazzo plays: a run of failed commands is over (#230).
+      state.commandRetries = 0;
       this.reconcilePlayingSnapshot(programId, state, snapshot);
     } else {
       this.reconcileIdleSnapshot(programId, state, snapshot);
@@ -1248,6 +1379,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           activeSong.coverUrl = event.data.coverUrl;
         }
         activeSong.authoritativeStartedAt = Date.now();
+        // A song on the air ends a run of failed commands (#230).
+        state.commandRetries = 0;
         activeSong.authoritativePositionMs = 0;
         activeSong.authoritativeUpdatedAt = Date.now();
         this.metrics.recordTrackTransition('adopted');
@@ -1729,6 +1862,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const playbackRequestId = randomUUID();
     state.pendingRequestIds.delete(song.playbackRequestId);
     state.pendingRequestIds.add(playbackRequestId);
+    // A new command restarts the watchdog's bound (#230).
+    state.noPlaybackSince = null;
     song.playbackRequestId = playbackRequestId;
     song.promoted = false;
     this.logger.log(
@@ -2576,7 +2711,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         this.recordHandoff('command');
       }
     }
-    if (startedAt === null) state.pendingRequestIds.add(playbackRequestId);
+    if (startedAt === null) {
+      state.pendingRequestIds.add(playbackRequestId);
+      // A new command restarts the watchdog's bound (#230).
+      state.noPlaybackSince = null;
+    }
     state.activeSong = {
       token: `${resolved.id}:${resolved.audioUrl}`,
       playbackRequestId,
@@ -2825,6 +2964,42 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (failedQueueEntryId) {
       this.releaseQueueClaimAfterPlaybackStops(programId, failedQueueEntryId);
     }
+    this.scheduleCommandRetry(programId, state);
+  }
+
+  /**
+   * A failed command in an automatic mode leaves nothing to start the next
+   * song (#230): resume from Palazzo's own state after a backoff. Manual mode
+   * stays an operator boundary. The retry stands down when anything else has
+   * taken over by then (a song, a pending command, a freeze, a stale stream).
+   */
+  private scheduleCommandRetry(
+    programId: string,
+    state: SongEngineState,
+  ): void {
+    const automatic =
+      state.sequence?.mode === 'autoplay' || state.sequence?.mode === 'shuffle';
+    if (!automatic || state.commandRetryTimer) return;
+    const delay = Math.min(
+      COMMAND_RETRY_BASE_MS * 2 ** state.commandRetries,
+      COMMAND_RETRY_MAX_MS,
+    );
+    state.commandRetries += 1;
+    this.logger.warn(
+      `Retrying the rotation on ${programId} in ${delay / 1000} s from Palazzo's state`,
+    );
+    state.commandRetryTimer = setTimeout(() => {
+      state.commandRetryTimer = null;
+      if (
+        state.activeSong ||
+        state.pendingRequestIds.size ||
+        state.frozen ||
+        !this.telemetry?.isReconciled(programId)
+      )
+        return;
+      void this.resync(programId, 'command_failed');
+    }, delay);
+    state.commandRetryTimer.unref?.();
   }
 
   /**

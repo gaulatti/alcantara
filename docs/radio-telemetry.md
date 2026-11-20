@@ -107,6 +107,36 @@ root playback routes.
   remains idle. (Palazzo sends a `snapshot` only when a stream connects, so
   waiting for one on a healthy connection stalled the rotation until the next
   reconnect: gaulatti/alcantara#230, ten hours on 2026-11-20.)
+- **Playback watchdog (#230).** In autoplay or shuffle, every 10 s
+  (`WATCHDOG_INTERVAL_MS`) the engine reads Palazzo's state. When Palazzo reports
+  nothing on the air on reads at least 45 s apart (`NO_PLAYBACK_BOUND_MS`), the
+  engine reconciles from that report: a song it still believes is on air is
+  ended and the next one starts, and an empty engine starts the sequence.
+  - **Nothing on the air** means `status` is `idle`, no intro is playing, the
+    instant level is zero and `live.onAir` is false. An intro, an instant or a
+    live show is never read as a stall.
+  - **Why 45 s.** Palazzo's `status` reads `idle` while a commanded song is
+    still loading, up to its request limit (`SONG_REQUEST_TIMEOUT_MS`, 29 s by
+    default). Every song command restarts the bound, so a load either starts or
+    fails inside it. Production since 2026-11-19: the longest load was 1 s and
+    the longest instant 11 s.
+  - **It holds** (counted as `undecided`) while Palazzo reports itself
+    `degraded`, or when its state has no `live` field (a Palazzo older than
+    gaulatti/palazzo#48): with no way to rule a live show out, it starts no song
+    under one.
+  - It never acts in manual mode, while frozen, or while the stream is not
+    reconciled, and never on elapsed time alone. A deploy candidate (#223) runs
+    no watchdog.
+- **After a failed song command (#230).** In autoplay or shuffle, a song
+  command that Palazzo rejects no longer leaves the rotation quiet: after 2 s
+  (`COMMAND_RETRY_BASE_MS`) the engine reads Palazzo's state and resumes from
+  it, doubling the wait up to 30 s (`COMMAND_RETRY_MAX_MS`) while commands keep
+  failing. Palazzo playing a song resets the wait. The retry stands down when a
+  song or a command is already in flight, the engine is frozen, or the stream is
+  not reconciled. Manual mode stays an operator boundary. On 2026-11-20 every
+  Palazzo restart unfroze automation about 6 s before Palazzo could play, the
+  first command failed, and the radio stayed silent until a person restarted
+  the backend.
 
 ## Transports and failure behavior
 
@@ -293,11 +323,16 @@ belong to the observability repository (milano).
 
 `alcantara_radio_engine_resyncs_total{trigger,result}` counts the times the song
 engine read Palazzo's state itself. `trigger` is `foreign_ended` (a foreign
-track ended). `result` is `resumed` (Palazzo was idle and the engine reconciled
-from it), `playing` (Palazzo was playing; nothing to do) or `unavailable` (no
-state could be read). All three series are always present. A rising
-`unavailable` means the engine could not read Palazzo after a foreign track
-ended, the condition that stalled the rotation before #230.
+track ended), `watchdog` (Palazzo reported nothing on the air past the bound)
+or `command_failed` (the retry after a failed song command). `result` is
+`resumed` (Palazzo was idle and the engine reconciled from it, which for the
+watchdog means it acted), `playing` (Palazzo was playing; nothing to do),
+`unavailable` (no state could be read) or `undecided` (the watchdog held:
+Palazzo degraded or not reporting its live input). All twelve series are always
+present. A rising `watchdog,resumed` or `command_failed,resumed` means the
+rotation stalled and recovered on its own; a rising `unavailable` means the
+engine could not read Palazzo; a steady `watchdog,undecided` means the watchdog
+cannot act (check Palazzo's version and availability).
 
 ### Palazzo metrics passthrough
 

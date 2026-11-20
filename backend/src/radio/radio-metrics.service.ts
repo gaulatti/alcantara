@@ -53,18 +53,31 @@ export type PalazzoMachineResult =
   | 'unknown-value';
 
 /**
- * gaulatti/alcantara#230: the engine read Palazzo's state itself because a
- * foreign track ended, and what it found: `resumed` (Palazzo was idle and the
- * engine reconciled from it), `playing` (Palazzo was playing; nothing to do),
+ * gaulatti/alcantara#230: the engine read Palazzo's state itself, because a
+ * foreign track ended or because Palazzo kept reporting no playback (the
+ * watchdog), and what it found: `resumed` (Palazzo was idle and the engine
+ * reconciled from it), `playing` (Palazzo was playing; nothing to do),
  * `unavailable` (no state could be read).
  */
-export type EngineResyncTrigger = 'foreign_ended';
-export type EngineResyncResult = 'resumed' | 'playing' | 'unavailable';
-const RESYNC_TRIGGERS: EngineResyncTrigger[] = ['foreign_ended'];
+export type EngineResyncTrigger =
+  | 'foreign_ended'
+  | 'watchdog'
+  | 'command_failed';
+export type EngineResyncResult =
+  | 'resumed'
+  | 'playing'
+  | 'unavailable'
+  | 'undecided';
+const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
+  'foreign_ended',
+  'watchdog',
+  'command_failed',
+];
 const RESYNC_RESULTS: EngineResyncResult[] = [
   'resumed',
   'playing',
   'unavailable',
+  'undecided',
 ];
 
 export type TrackTransitionResult =

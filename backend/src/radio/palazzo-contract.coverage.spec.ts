@@ -61,6 +61,25 @@ describe('parsePalazzoState coverage', () => {
     });
   });
 
+  it('keeps the live input report and rejects a malformed one (palazzo#48)', () => {
+    expect(
+      parsePalazzoState(
+        mutate((s) => {
+          s.live = { onAir: true };
+        }),
+      )?.live,
+    ).toEqual({ onAir: true });
+    expect(parsePalazzoState(validState())).not.toHaveProperty('live');
+    for (const live of [null, 'on', { onAir: 'yes' }, {}])
+      expect(
+        parsePalazzoState(
+          mutate((s) => {
+            s.live = live;
+          }),
+        ),
+      ).toBeNull();
+  });
+
   it('keeps the optional intro level and a parsed intro', () => {
     const state = mutate((s) => {
       s.intro = validIntro();

@@ -146,27 +146,32 @@ describe('RadioMetricsService engine resyncs', () => {
   it('counts resyncs by bounded trigger and result, with every series present', () => {
     const metrics = new RadioMetricsService();
     metrics.recordEngineResync('foreign_ended', 'resumed');
-    metrics.recordEngineResync('foreign_ended', 'resumed');
-    metrics.recordEngineResync('foreign_ended', 'unavailable');
+    metrics.recordEngineResync('watchdog', 'resumed');
+    metrics.recordEngineResync('watchdog', 'resumed');
+    metrics.recordEngineResync('watchdog', 'unavailable');
     const rendered = metrics.render();
     expect(rendered).toContain(
       '# TYPE alcantara_radio_engine_resyncs_total counter',
     );
     expect(rendered).toContain(
-      'alcantara_radio_engine_resyncs_total{trigger="foreign_ended",result="resumed"} 2',
+      'alcantara_radio_engine_resyncs_total{trigger="foreign_ended",result="resumed"} 1',
     );
     expect(rendered).toContain(
-      'alcantara_radio_engine_resyncs_total{trigger="foreign_ended",result="playing"} 0',
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="playing"} 0',
     );
     const series = rendered
       .split('\n')
       .filter((line) =>
         line.startsWith('alcantara_radio_engine_resyncs_total{'),
       );
-    expect(series).toHaveLength(3);
+    expect(series).toHaveLength(12);
     expect(metrics.snapshot().engineResyncs).toEqual({
-      'foreign_ended:resumed': 2,
-      'foreign_ended:unavailable': 1,
+      'foreign_ended:resumed': 1,
+      'watchdog:resumed': 2,
+      'watchdog:unavailable': 1,
     });
   });
 });

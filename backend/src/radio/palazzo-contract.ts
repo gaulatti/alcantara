@@ -73,6 +73,12 @@ export interface PalazzoPlaybackState {
   positionSeconds: number;
   remainingSeconds: number | null;
   levels: PalazzoLevels;
+  /**
+   * Whether Palazzo's live RTMP input is on the air (gaulatti/palazzo#48).
+   * Absent from a Palazzo older than that field: the reader cannot tell a live
+   * show from silence then, since `status` stays 'idle' during one.
+   */
+  live?: { onAir: boolean };
 }
 
 export type PalazzoPlaybackEventType =
@@ -104,11 +110,7 @@ export type PalazzoPlaybackEventType =
  * reason Alcantara does not know is read as `other`.
  */
 export type PalazzoNextWithdrawnReason =
-  | 'replaced'
-  | 'withdrawn'
-  | 'flushed'
-  | 'not_ready'
-  | 'other';
+  'replaced' | 'withdrawn' | 'flushed' | 'not_ready' | 'other';
 
 const NEXT_WITHDRAWN_REASONS: ReadonlySet<string> = new Set([
   'replaced',
@@ -206,6 +208,12 @@ export function parsePalazzoState(
   const intro = parsedIntro === 'unknown-status' ? null : parsedIntro;
   const levels = parsePalazzoLevels(record.levels);
   if (!levels) return null;
+  const live = record.live as Record<string, unknown> | undefined;
+  if (
+    live !== undefined &&
+    (!live || typeof live !== 'object' || typeof live.onAir !== 'boolean')
+  )
+    return null;
   const liquidsoap = record.liquidsoap as Record<string, unknown> | undefined;
   const icecast = record.icecast as Record<string, unknown> | undefined;
   if (
@@ -245,6 +253,7 @@ export function parsePalazzoState(
     positionSeconds: record.positionSeconds as number,
     remainingSeconds: record.remainingSeconds as number | null,
     levels,
+    ...(live ? { live: { onAir: live.onAir as boolean } } : {}),
   };
 }
 
