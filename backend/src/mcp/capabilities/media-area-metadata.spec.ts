@@ -15,11 +15,14 @@ describe('song, media, asset and similarity provider decorator metadata under un
         SongsMcpTools,
         MediaMcpTools,
         MediaAssetsMcpTools,
-        SimilarityMcpTools,
       ])
         expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual([
           Object,
+          Object,
         ]);
+      expect(
+        Reflect.getMetadata('design:paramtypes', SimilarityMcpTools),
+      ).toEqual([Object]);
     });
   });
 });

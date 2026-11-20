@@ -4,6 +4,7 @@ import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { IS_PUBLIC_KEY } from '../auth/public.decorator';
 import { REQUIRED_PERMISSION_KEY } from '../auth/require-permission.decorator';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { ProgramService } from '../program/program.service';
 import { PrismaService } from '../prisma.service';
 import { MediaAssetsController } from './media-assets.controller';
 import { MediaAssetsModule } from './media-assets.module';
@@ -183,6 +184,15 @@ describe('MediaAssetsController (coverage)', () => {
   });
 });
 
+// The program module is global in the application; the capability provider of
+// this module asks for its service.
+@Global()
+@Module({
+  providers: [{ provide: ProgramService, useValue: {} }],
+  exports: [ProgramService],
+})
+class ProgramStubModule {}
+
 describe('MediaAssetsModule (coverage)', () => {
   const metrics = {
     recordJob: jest.fn(),
@@ -201,7 +211,7 @@ describe('MediaAssetsModule (coverage)', () => {
       mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const moduleRef = await Test.createTestingModule({
-      imports: [FakeObservabilityModule, MediaAssetsModule],
+      imports: [ProgramStubModule, FakeObservabilityModule, MediaAssetsModule],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)

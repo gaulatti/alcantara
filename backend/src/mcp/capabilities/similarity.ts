@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { SongSimilarityService } from '../../radio/song-similarity.service';
 import { McpToolProvider, type McpToolSpec } from '../contract';
-import { programIdArg, readSpec } from './support';
+import { actionSpec, programIdArg, readSpec } from './support';
 
 const permissions = ALCANTARA_PERMISSIONS.radio;
 
@@ -18,6 +18,11 @@ export const EXPORT_PAGE_MAX = 1000;
  * gaulatti/alcantara#218: the song similarity capabilities. They call
  * SongSimilarityService, the service the console's radio similarity routes
  * call, in process.
+ *
+ * radio_similarity_upload stores embeddings computed elsewhere: the service
+ * validates the whole payload (schema, model, window, at most 25 songs, every
+ * vector) and answers per song; a song it rejects is reported, not thrown.
+ * program_id is the route's, which the service does not read.
  */
 @Injectable()
 @McpToolProvider()
@@ -77,6 +82,28 @@ export class SimilarityMcpTools {
             songs: exported.songs.slice(offset, offset + limit),
           };
         },
+      }),
+      actionSpec({
+        name: 'radio_similarity_upload',
+        title: 'Upload song embeddings',
+        description:
+          'Stores embeddings computed outside the console for up to 25 songs: {schema: 1, model: {name, version, license}, windowSeconds, songs: [{songId, audioSha256, opening, closing}]}. The service answers per song (stored or rejected with a reason); a stored embedding replaces the one for the same song, model and window.',
+        permission: permissions.manage,
+        tier: 'W',
+        untrusted: SIMILARITY_UNTRUSTED,
+        shape: {
+          program_id: programIdArg,
+          upload: z.record(z.string(), z.unknown()),
+        },
+        id: (args) => args.program_id,
+        plan: (args) => ({
+          summary: `Stores the embeddings of ${
+            Array.isArray(args.upload.songs) ? args.upload.songs.length : 0
+          } song(s), replacing any stored for the same song, model and window (compute and upload them again to restore). The service validates every entry and reports each as stored or rejected.`,
+          affects: [],
+          recoverable: true,
+        }),
+        run: (args) => this.similarity.storeEmbeddings(args.upload),
       }),
     ];
   }

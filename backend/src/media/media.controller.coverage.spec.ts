@@ -1,6 +1,8 @@
+import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { REQUIRED_PERMISSION_KEY } from '../auth/require-permission.decorator';
+import { ProgramService } from '../program/program.service';
 import { PrismaService } from '../prisma.service';
 import { MediaController } from './media.controller';
 import { MediaModule } from './media.module';
@@ -102,13 +104,22 @@ describe('MediaService metadata (coverage)', () => {
   });
 });
 
+// The program module is global in the application; the capability provider of
+// this module asks for its service.
+@Global()
+@Module({
+  providers: [{ provide: ProgramService, useValue: {} }],
+  exports: [ProgramService],
+})
+class ProgramStubModule {}
+
 describe('MediaModule (coverage)', () => {
   it('provides and exports a MediaService backed by PrismaService', async () => {
     const prisma = {
       media: { findUnique: jest.fn().mockResolvedValue({ id: 1 }) },
     };
     const moduleRef = await Test.createTestingModule({
-      imports: [MediaModule],
+      imports: [ProgramStubModule, MediaModule],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)

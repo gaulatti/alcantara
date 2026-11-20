@@ -149,3 +149,54 @@ their own modules; `SimilarityMcpTools` is a provider of the radio module.
 - Text typed or imported by people (a song's artist, title and addresses, an
   asset's name and address, a label's name and description, a media image's name
   and address) is under `untrusted`.
+
+### Write and destructive capabilities
+
+Every W and D capability has a dry run; every D capability has a confirm target
+`{id, name}`. There are no A rows in this area. Arguments mirror the
+controller's body (snake_case) and reach the same service method with the same
+values: the specs call the real controller and the capability against one set
+of fakes and compare the service calls and the answers.
+
+| Area | R | W | A | D | Total |
+|---|---|---|---|---|---|
+| songs | 2 | 2 | 0 | 1 | 5 |
+| media | 2 | 2 | 0 | 1 | 5 |
+| media assets and labels | 4 | 5 | 0 | 2 | 11 |
+| radio similarity | 3 | 1 | 0 | 0 | 4 |
+
+- `song_create` and `song_update` take the song fields of the console's body
+  (`artist`, `title`, `audio_url`, `cover_url`, `duration_ms`,
+  `external_chart_id`, `external_chart_rank`, `external_chart_spins`,
+  `external_chart_provider`, `enabled`, `program_id`, `intro_instant_id`); a
+  field left out is not sent. `song_update` flags `onAir` in its dry run while
+  a program is playing the song.
+- The label writes (`media_asset_create_label`, `media_asset_update_label`,
+  `media_asset_replace_label_assets`) answer the label's ids, text, times,
+  `assetCount` and `assetIds`, not every asset (a stored outcome is kept whole
+  in memory); `media_asset_find_label` lists the assets.
+- `radio_similarity_upload` takes `program_id` (the route's, which the service
+  does not read) and `upload`, the console's body; the service validates it and
+  answers per song.
+- **Permissions of the media asset and label writes.** The seven writes of the
+  media-assets area need `media.manage`; a caller without it does not see them.
+  The service then decides from the caller's own permissions: a background audio
+  needs `scene.manage`, a label write any manage permission, an asset write the
+  manage permission of its kind.
+- **Stricter than the console.** The four D capabilities (`song_remove`,
+  `media_remove`, `media_asset_remove_standalone_asset`,
+  `media_asset_remove_label`) refuse with `on_air` where the console deletes,
+  and `song_remove` also refuses a song that is in any program's rotation; each
+  description says so.
+
+### Step 0 of every D row: what the console does today
+
+| Capability | The console today | The capability |
+|---|---|---|
+| `song_remove` | Checks the song exists, then deletes it, its media asset and cover link, its chart identity, intro assignment and embeddings in one transaction. It never looks at what is playing, queued or in a song sequence. | `on_air` while a program is playing the song, has it in its Play Next queue (a sequence item or a catalog entry) or lists it in its song sequence. Not recoverable (a new song gets a new id and must be analysed and embedded again; the file stays in storage). |
+| `media_remove` | Checks the image exists, deletes it and its media asset, removes it from every media group that holds it (renumbering their items and refreshing the legacy slideshow label). Never looks at what is on air. | `on_air` while a program that reads a group holding the image has a scene or fade to black on air, or a scene on air or staged names the image address in its settings. Not recoverable. The dry run lists the programs that read it. |
+| `media_asset_remove_standalone_asset` | Deletes an asset the caller may manage that is not an image, clip, song, cover or transition (the service answers 400 for those); its label assignments go by cascade. Never looks at what is on air. | `on_air` while a scene on air or staged names the asset id or address in its settings. Not recoverable. The dry run lists its label assignments and the programs with a scene that names it. |
+| `media_asset_remove_label` | Deletes the label and its assignments (the assets stay); a legacy slideshow label deletes the media group it mirrors, with its program assignments. Never looks at what is on air. | `on_air` while a scene on air or staged names the label id, or a program that reads the mirrored group has a scene or fade to black on air. Not recoverable. |
+
+An assignment to a program that is off air is not an `on_air` case: the dry run
+lists it as lost and the capability proceeds after the confirm.
