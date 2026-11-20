@@ -127,6 +127,7 @@ function setup(
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -229,6 +230,8 @@ describe('SongExecutionEngine module lifecycle', () => {
     // The four accepted programs each hold one queued entry.
     expect(metrics.recordSongQueueDepth).toHaveBeenLastCalledWith(4);
     expect(metrics.recordHighRotationFavorites).toHaveBeenLastCalledWith(1);
+    // The deploy radio check (#230) reads how many run on their own.
+    expect(metrics.recordAutomaticPrograms).toHaveBeenLastCalledWith(2);
     expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining('Booting auto, mode=autoplay'),
     );

@@ -885,12 +885,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   private updateHighRotationFavoriteMetric(): void {
     let favorites = 0;
+    let automatic = 0;
     for (const programId of this.radioProgramIds) {
-      favorites += collectHighRotationProgramSongLeaves(
-        this.states.get(programId)?.sequence ?? null,
-      ).length;
+      const sequence = this.states.get(programId)?.sequence ?? null;
+      favorites += collectHighRotationProgramSongLeaves(sequence).length;
+      // The deploy's radio check reads this (#230, deploy/cumulus.sh).
+      if (sequence?.mode === 'autoplay' || sequence?.mode === 'shuffle')
+        automatic += 1;
     }
     this.metrics.recordHighRotationFavorites(favorites);
+    this.metrics.recordAutomaticPrograms(automatic);
   }
 
   private async withRotationMutationLock<T>(

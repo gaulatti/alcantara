@@ -148,6 +148,16 @@ describe('RadioMetricsService coverage', () => {
     expect(metrics.snapshot().outputSilentPrograms).toBe(0);
   });
 
+  it('renders the automatic programs gauge the deploy radio check reads (#230)', () => {
+    expect(metrics.render()).toContain('alcantara_radio_automatic_programs 0');
+    metrics.recordAutomaticPrograms(1.9);
+    expect(metrics.render()).toContain(
+      '# TYPE alcantara_radio_automatic_programs gauge\nalcantara_radio_automatic_programs 1',
+    );
+    metrics.recordAutomaticPrograms(-2);
+    expect(metrics.render()).toContain('alcantara_radio_automatic_programs 0');
+  });
+
   it('records radio log and recovery preparation results in render output', () => {
     metrics.recordRadioLogResult('published');
     metrics.recordRadioLogResult('published');

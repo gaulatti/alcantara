@@ -157,6 +157,7 @@ function createEngine(opts: {
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
     recordSimilarityAction: jest.fn(),
   };
   const engine = new SongExecutionEngine(

@@ -394,6 +394,8 @@ reorder, consume, cursor persistence, rejection, and persistence failure,
 play, repeat-gap skips, unmet opportunities, and persistence failures,
 `alcantara_radio_high_rotation_favorites` for the bounded configured favorite
 count across radio-capable programs,
+`alcantara_radio_automatic_programs` for the radio-capable programs in autoplay
+or shuffle (read by the deploy's radio check, [deploy-candidate.md](deploy-candidate.md)),
 `alcantara_palazzo_machine_requests_total{operation,result}`, and
 `alcantara_palazzo_machine_retries_total{operation}`. The operation/result
 sets are closed enums covering success, deduplication, authentication,

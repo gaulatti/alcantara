@@ -151,6 +151,7 @@ function setup(
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
     recordEngineResync: jest.fn(),
   };
   const engine = new SongExecutionEngine(

@@ -378,6 +378,7 @@ export class RadioMetricsService {
   private readonly nextAnnouncements = new Map<string, number>();
   private readonly handoffs = new Map<string, number>();
   private highRotationFavorites = 0;
+  private automaticPrograms = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
 
@@ -535,6 +536,11 @@ export class RadioMetricsService {
       state,
       (this.outputConfidenceTransitions.get(state) ?? 0) + 1,
     );
+  }
+
+  /** Radio programs whose rotation runs on its own (autoplay or shuffle). */
+  recordAutomaticPrograms(count: number): void {
+    this.automaticPrograms = Math.max(0, Math.floor(count));
   }
 
   recordOutputSilentPrograms(count: number): void {
@@ -740,6 +746,9 @@ export class RadioMetricsService {
       '# HELP alcantara_radio_high_rotation_favorites Configured high rotation playlist songs across radio-capable programs.',
       '# TYPE alcantara_radio_high_rotation_favorites gauge',
       `alcantara_radio_high_rotation_favorites ${this.highRotationFavorites}`,
+      '# HELP alcantara_radio_automatic_programs Radio programs in autoplay or shuffle, whose rotation the engine runs on its own.',
+      '# TYPE alcantara_radio_automatic_programs gauge',
+      `alcantara_radio_automatic_programs ${this.automaticPrograms}`,
     );
     lines.push(
       '# HELP alcantara_palazzo_machine_requests_total Program-scoped Palazzo machine requests by bounded operation and result.',

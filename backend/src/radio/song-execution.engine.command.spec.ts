@@ -120,6 +120,7 @@ function setup(
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,

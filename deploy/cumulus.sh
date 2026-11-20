@@ -146,6 +146,9 @@ rollback_backend() {
   fi
 }
 
+# The radio check below waits for a song that started after this moment.
+radio_since="$(date +%s)"
+
 if ! docker run -d --name alcantara-backend \
   --network broadcast-control \
   -p 127.0.0.1:3006:3006 \
@@ -206,3 +209,68 @@ if [ "$had_previous" = true ]; then
 fi
 docker image prune --all --force
 echo ALCANTARA_HEALTHY
+
+# gaulatti/alcantara#230: a healthy backend is not a playing radio. When a radio
+# program is in automation (autoplay or shuffle), a song must start after the
+# restart, read from Palazzo's own state: within 120 s, or within the remaining
+# time of a song already on air plus 120 s (at most 15 minutes); a live show on
+# the air (live.onAir) passes at once with RADIO_LIVE. Otherwise the
+# deploy fails loudly with the playback state. It does not roll back: the new
+# backend is healthy, and another restart is what turns one stall into three.
+automatic_programs="$(docker exec alcantara-backend node -e "fetch('http://127.0.0.1:3006/metrics',{headers:{authorization:'Bearer '+require('fs').readFileSync(process.env.METRICS_TOKEN_FILE,'utf8').trim()}}).then(async(r)=>{if(!r.ok)process.exit(1);const m=/^alcantara_radio_automatic_programs (\\d+)$/m.exec(await r.text());if(!m)process.exit(1);console.log(m[1])},()=>process.exit(1))" || true)"
+case "$automatic_programs" in
+  ''|*[!0-9]*)
+    echo 'RADIO_CHECK_FAILED: the backend did not report its automatic programs'
+    exit 1
+    ;;
+  0)
+    echo 'RADIO_CHECK_SKIPPED: no radio program is in automation'
+    exit 0
+    ;;
+esac
+if ! docker exec palazzo node -e '
+const since = Number(process.argv[1]) * 1000;
+const url = "http://127.0.0.1:3100/v1/programs/" + encodeURIComponent(process.env.PROGRAM_ID) + "/playback/state";
+let deadline = Date.now() + 120000;
+let state = null;
+(async () => {
+  for (;;) {
+    try {
+      const response = await fetch(url);
+      state = response.ok ? await response.json() : { error: "http " + response.status };
+    } catch {
+      state = { error: "unreachable" };
+    }
+    // A live show is the radio playing; it never fails a deploy.
+    if (state?.live?.onAir === true) {
+      console.log("RADIO_LIVE");
+      return;
+    }
+    const startedAt = Date.parse(state?.track?.startedAt ?? "");
+    if (state?.status === "playing" && startedAt >= since) {
+      console.log("RADIO_PLAYING startedAt=" + state.track.startedAt);
+      return;
+    }
+    if (state?.status === "playing" && typeof state.remainingSeconds === "number")
+      deadline = Math.max(deadline, Math.min(Date.now() + state.remainingSeconds * 1000 + 120000, since + 900000));
+    if (Date.now() > deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  console.log("RADIO_NOT_PLAYING " + JSON.stringify({
+    error: state?.error ?? null,
+    availability: state?.availability ?? null,
+    status: state?.status ?? null,
+    trackStartedAt: state?.track?.startedAt ?? null,
+    remainingSeconds: state?.remainingSeconds ?? null,
+    intro: state?.intro?.status ?? null,
+    outputRms: state?.levels?.output?.rms ?? null,
+    liveOnAir: state?.live?.onAir ?? null,
+    liquidsoapRunning: state?.liquidsoap?.running ?? null,
+    icecastConnected: state?.icecast?.connected ?? null,
+  }));
+  process.exitCode = 1;
+})();
+' "$radio_since"; then
+  echo 'RADIO_CHECK_FAILED: no song started after the restart; the backend stays deployed'
+  exit 1
+fi
