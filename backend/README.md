@@ -34,7 +34,8 @@ The external-source control plane is documented in
 Set `METRICS_TOKEN_FILE` to a root-readable file containing one bearer token;
 the default path is `/run/secrets/alcantara-metrics-token`. The endpoint returns
 `503` when the file is absent and `401` when the request does not provide the
-matching `Authorization: Bearer …` header. See
+matching `Authorization: Bearer …` header. Deploys provision that file from the
+`metrics_bearer_token` field of the production config secret. See
 [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md#metrics) for metric
 families, bounded-label rules, verification, and the central deployment
 dependency.

@@ -173,7 +173,7 @@ test('a failed start prints a bounded, filtered log tail on stderr', () => {
 // commands. A candidate that fails its health check stops the deploy before
 // the running backend is stopped; a healthy one is removed and the deploy
 // goes on to replace the running backend as before.
-function runDeploy({ candidateHealthy }) {
+function runDeploy({ candidateHealthy, tokenFails = false }) {
   const {
     mkdtempSync,
     writeFileSync,
@@ -198,6 +198,7 @@ function runDeploy({ candidateHealthy }) {
 case "$args" in
   *login*) cat >/dev/null ;;
   "inspect alcantara-backend-previous") exit 1 ;;
+  "run --rm"*print-metrics-token*) ${tokenFails ? 'exit 1' : 'echo fictional-scrape-token'} ;;
   *"State.Running"*) echo ${candidateHealthy ? 'true' : 'false'} ;;
   "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
   "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
@@ -205,7 +206,14 @@ esac
 exit 0`,
   );
   stub('curl', 'case "$*" in *write-out*) printf 200 ;; esac\nexit 0');
-  for (const name of ['sleep', 'install', 'nginx', 'systemctl', 'certbot'])
+  for (const name of [
+    'sleep',
+    'install',
+    'mv',
+    'nginx',
+    'systemctl',
+    'certbot',
+  ])
     stub(name, 'exit 0');
   const result = spawnSync(
     'bash',
@@ -264,4 +272,67 @@ test('a healthy candidate is removed before the running backend is replaced as b
   assert.ok(removed >= 0 && stop > removed && live > stop);
   assert.doesNotMatch(log[live], /ALCANTARA_DEPLOY_CANDIDATE/);
   assert.match(log[live], /--network broadcast-control/);
+});
+
+test('mounts the scrape credential from the production secret read-only without exposing it', () => {
+  const tokenScript = readFileSync('./scripts/print-metrics-token.mjs', 'utf8');
+  const resolve = deployScript.indexOf('node scripts/print-metrics-token.mjs');
+  const stop = deployScript.indexOf('docker stop alcantara-backend');
+  const run = deployScript.indexOf('docker run -d --name alcantara-backend \\');
+
+  assert.ok(resolve >= 0);
+  assert.ok(resolve < stop);
+  assert.ok(stop < run);
+  assert.match(tokenScript, /metrics_bearer_token/);
+  assert.match(tokenScript, /process\.exit\(1\)/);
+  assert.doesNotMatch(tokenScript, /console\.(log|error)\([^)]*token\)/);
+  assert.match(
+    deployScript,
+    /\| install -m 0400 -o root -g root \/dev\/stdin "\$metrics_token_file\.new"/,
+  );
+  assert.doesNotMatch(deployScript, /node scripts\/print-metrics-token\.mjs >/);
+  assert.match(deployScript, /install -d -m 0755 -o root -g root/);
+  assert.match(
+    deployScript,
+    /-v "\$metrics_token_file":\/run\/secrets\/alcantara-metrics-token:ro/,
+  );
+  assert.match(
+    deployScript,
+    /-e METRICS_TOKEN_FILE=\/run\/secrets\/alcantara-metrics-token/,
+  );
+  assert.doesNotMatch(deployScript, /metrics_bearer_token/);
+});
+
+test('a deploy whose scrape token cannot be resolved stops before the running backend is touched', () => {
+  const { status, log } = runDeploy({
+    candidateHealthy: true,
+    tokenFails: true,
+  });
+  assert.notEqual(status, 0);
+  assert.ok(
+    log.some((line) => /^docker run --rm .*print-metrics-token/.test(line)),
+  );
+  for (const line of log) {
+    assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+    assert.doesNotMatch(line, /^docker run -d --name alcantara-backend /);
+  }
+});
+
+test('a healthy deploy mounts the scrape token file read-only on the live backend only', () => {
+  const { status, stdout, log } = runDeploy({ candidateHealthy: true });
+  assert.equal(status, 0, stdout);
+  const mount =
+    '-v /etc/alcantara/metrics-token:/run/secrets/alcantara-metrics-token:ro';
+  const live = log.find((line) =>
+    line.startsWith('docker run -d --name alcantara-backend '),
+  );
+  const candidate = log.find((line) =>
+    line.startsWith('docker run -d --name alcantara-backend-candidate'),
+  );
+  assert.ok(live.includes(mount));
+  assert.ok(
+    live.includes('-e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token'),
+  );
+  assert.ok(!candidate.includes('alcantara-metrics-token'));
+  assert.doesNotMatch(log.join('\n'), /fictional-scrape-token/);
 });

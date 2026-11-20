@@ -42,6 +42,14 @@ export const ACCESS_METRIC_RESULTS = [
   'unavailable',
   'not_configured',
 ] as const;
+/** How a GET /metrics/palazzo passthrough scrape ended. */
+export const PALAZZO_METRICS_SCRAPE_RESULTS = [
+  'ok',
+  'unavailable',
+  'timeout',
+  'too_large',
+  'error',
+] as const;
 /** Results of alcantara_mcp_auth_total (gaulatti/alcantara#211). */
 export const MCP_AUTH_METRIC_RESULTS = [
   'ok',
@@ -283,6 +291,8 @@ export class ManagedMetricsService {
   private readonly pompeiiChannelResets: Counter<string>;
   private readonly accessRequests: Counter<string>;
   private readonly accessDuration: Histogram<string>;
+  private readonly palazzoMetricsScrapes: Counter<string>;
+  private readonly palazzoMetricsScrapeDuration: Histogram<string>;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
   private mcpToolNames = new Set<string>();
@@ -423,6 +433,20 @@ export class ManagedMetricsService {
     for (const route of ACCESS_METRIC_ROUTES)
       for (const result of ACCESS_METRIC_RESULTS)
         this.accessRequests.labels(route, result).inc(0);
+    this.palazzoMetricsScrapes = new Counter({
+      name: 'alcantara_palazzo_metrics_scrape_total',
+      help: 'Palazzo metrics passthrough scrapes by bounded result.',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.palazzoMetricsScrapeDuration = new Histogram({
+      name: 'alcantara_palazzo_metrics_scrape_duration_seconds',
+      help: 'Duration of Palazzo metrics passthrough scrapes.',
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 2.5],
+      registers: [this.registry],
+    });
+    for (const result of PALAZZO_METRICS_SCRAPE_RESULTS)
+      this.palazzoMetricsScrapes.labels(result).inc(0);
     this.mcpAuth = new Counter({
       name: 'alcantara_mcp_auth_total',
       help: 'MCP endpoint authentications by bounded result.',
@@ -617,6 +641,13 @@ export class ManagedMetricsService {
       return;
     this.accessRequests.inc({ route, result });
     this.accessDuration.observe({ route }, Math.max(0, seconds));
+  }
+
+  recordPalazzoMetricsScrape(result: string, seconds: number): void {
+    if (!(PALAZZO_METRICS_SCRAPE_RESULTS as readonly string[]).includes(result))
+      return;
+    this.palazzoMetricsScrapes.inc({ result });
+    this.palazzoMetricsScrapeDuration.observe(Math.max(0, seconds));
   }
 
   recordMcpAuth(result: string): void {

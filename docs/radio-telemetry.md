@@ -263,6 +263,51 @@ from `METRICS_TOKEN_FILE` (default
 `503`; absent or incorrect bearer values return `401`. Never publish or pass the
 credential as a build argument or ordinary environment value.
 
+Deployment provisioning: the production secret `broadcast/production/config`
+carries a `metrics_bearer_token` field (ignored by the runtime secret contract).
+After the candidate check passes and before the running backend is stopped,
+`deploy/cumulus.sh` runs `scripts/print-metrics-token.mjs` inside the new image.
+The script writes only the trimmed field to stdout; the deploy pipes it into a
+root-owned `0400` file (`/etc/alcantara/metrics-token`), which is mounted
+read-only at `/run/secrets/alcantara-metrics-token` on the live backend with
+`METRICS_TOKEN_FILE` set. The script never logs the token or the secret payload,
+and a missing, blank or non-string field, or an unreadable secret, fails the
+deploy before the live backend is touched. The deploy candidate does not get the
+mount: its health check calls `GET /` and never `/metrics`. Rotate by changing
+the secret field and redeploying, then updating the scraper's token file.
+The on-premises workflow path (`.github/workflows/backend-deploy.yml`) is wired
+separately.
+
+Boundary: the provisioning itself adds no metric family or label. The
+scrape surface is the backend's HTTP port with two routes behind the same
+`MetricsTokenGuard` (`GET /metrics` and `GET /metrics/palazzo`, below), the
+bearer value never appears in metric labels, logs, build arguments or the
+container environment, and the Prometheus scrape job and its credential file
+belong to the observability repository (milano).
+
+### Palazzo metrics passthrough
+
+`GET /metrics/palazzo` lets the single authenticated scrape reach Palazzo's own
+`/metrics` without publishing Palazzo. It is authenticated by the metrics token
+exactly like `GET /metrics` (`503` credential unavailable, `401` absent or wrong
+bearer; Palazzo is never contacted in those cases). The outbound request is a
+fixed `GET <origin>/metrics`, where the origin is the one entry of the existing
+`PALAZZO_ALLOWED_URLS` (no new variable, no fallback host; zero, several or an
+invalid entry fail closed and log one warning without the value). Nothing from
+the incoming request is used: the scrape bearer is never forwarded, redirects
+are not followed (a redirect counts as a failure), and the whole exchange,
+including the body read, has a 2 second budget and a 5 MiB body cap. A `200`
+returns Palazzo's text unchanged as `text/plain; version=0.0.4`. Palazzo
+unreachable, timing out, answering non-2xx, or answering an oversized body
+returns `502` with an empty body, so the scrape never hangs.
+
+| Metric family                                       | Bounded labels                                       | Operational meaning                         |
+| --------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------- |
+| `alcantara_palazzo_metrics_scrape_total`            | `result`: `ok`, `unavailable`, `timeout`, `too_large`, `error` | Outcome of each passthrough (`unavailable`: unconfigured or connection failure; `error`: non-2xx, redirect or body read failure) |
+| `alcantara_palazzo_metrics_scrape_duration_seconds` | none                                                 | Wall time of each passthrough, up to the 2 s budget |
+
+The HTTP metrics label the route as the existing `metrics` group.
+
 | Metric family                                  | Bounded labels                      | Operational meaning                            |
 | ---------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
 | `alcantara_service_info`                       | `service`, `runtime`, `version`     | Service/build identity                         |

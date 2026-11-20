@@ -3,10 +3,11 @@ describe('MetricsController design metadata under unresolved circular imports', 
     jest.isolateModules(() => {
       jest.doMock('./radio/radio-metrics.service', () => ({}));
       jest.doMock('./observability/managed-metrics.service', () => ({}));
+      jest.doMock('./observability/palazzo-metrics.passthrough', () => ({}));
       const { MetricsController } = require('./metrics.controller');
       expect(
         Reflect.getMetadata('design:paramtypes', MetricsController),
-      ).toEqual([Object, Object]);
+      ).toEqual([Object, Object, Object]);
     });
   });
 
@@ -18,6 +19,9 @@ describe('MetricsController design metadata under unresolved circular imports', 
       }));
       jest.doMock('./observability/managed-metrics.service', () => ({
         ManagedMetricsService: class ManagedMetricsService {},
+      }));
+      jest.doMock('./observability/palazzo-metrics.passthrough', () => ({
+        PalazzoMetricsPassthrough: class PalazzoMetricsPassthrough {},
       }));
       // Warm the module registry so only metrics.controller is evaluated
       // while Promise is unavailable.

@@ -6,7 +6,7 @@ A new backend image is started once as a throwaway **candidate** and must answer
 
 After the restore check, the runtime preflight and the migrations, and before `docker stop alcantara-backend`:
 
-1. Start `alcantara-backend-candidate` from the new image. It gets the same configuration and secrets as the live container, plus `ALCANTARA_DEPLOY_CANDIDATE=1`. It is not on the `broadcast-control` network, so it cannot reach Palazzo. It publishes no port and has no restart policy.
+1. Start `alcantara-backend-candidate` from the new image. It gets the same configuration and secrets as the live container, plus `ALCANTARA_DEPLOY_CANDIDATE=1`. It is not on the `broadcast-control` network, so it cannot reach Palazzo. It publishes no port, has no restart policy and gets no metrics token mount (its health check calls `GET /`, never `/metrics`; the token is provisioned after the candidate passes, see [radio-telemetry.md](radio-telemetry.md#metrics)).
 2. Check `GET /` from inside the container, up to 45 tries 2 s apart. The check stops early if the container exits.
 3. **Failure:** the deploy prints `Alcantara candidate failed its health check; the running backend is untouched` and the candidate's bounded log tail (on stderr, filtered as for the live container), removes the candidate and exits 1. The running backend is never stopped.
 4. **Success:** the deploy removes the candidate, prints `Alcantara candidate passed its health check`, and replaces the running container exactly as before (with its own health check, rollback and `ALCANTARA_HEALTHY`).

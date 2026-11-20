@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { MetricsController } from './metrics.controller';
 import { RadioMetricsService } from './radio/radio-metrics.service';
 import { ManagedMetricsService } from './observability/managed-metrics.service';
+import { PalazzoMetricsPassthrough } from './observability/palazzo-metrics.passthrough';
 import { MetricsTokenGuard } from './observability/metrics-token.guard';
 
 describe('MetricsController', () => {
@@ -13,6 +14,7 @@ describe('MetricsController', () => {
       providers: [
         { provide: RadioMetricsService, useValue: radio },
         { provide: ManagedMetricsService, useValue: managed },
+        { provide: PalazzoMetricsPassthrough, useValue: { fetch: jest.fn() } },
       ],
     })
       .overrideGuard(MetricsTokenGuard)
@@ -33,5 +35,64 @@ describe('MetricsController', () => {
         value: 'text/plain; version=0.0.4; charset=utf-8',
       },
     ]);
+  });
+
+  describe('GET /metrics/palazzo', () => {
+    async function build(body: string | null) {
+      const passthrough = { fetch: jest.fn().mockResolvedValue(body) };
+      const moduleRef = await Test.createTestingModule({
+        controllers: [MetricsController],
+        providers: [
+          { provide: RadioMetricsService, useValue: {} },
+          { provide: ManagedMetricsService, useValue: {} },
+          { provide: PalazzoMetricsPassthrough, useValue: passthrough },
+        ],
+      })
+        .overrideGuard(MetricsTokenGuard)
+        .useValue({ canActivate: () => true })
+        .compile();
+      return moduleRef.get(MetricsController);
+    }
+
+    it('returns the body with the Prometheus content type', async () => {
+      const controller = await build('palazzo_up 1\n');
+      const response = { status: jest.fn(), setHeader: jest.fn() };
+      await expect(controller.getPalazzoMetrics(response)).resolves.toBe(
+        'palazzo_up 1\n',
+      );
+      expect(response.setHeader).toHaveBeenCalledWith(
+        'Content-Type',
+        'text/plain; version=0.0.4; charset=utf-8',
+      );
+      expect(response.status).not.toHaveBeenCalled();
+    });
+
+    it('answers 502 with an empty body on failure', async () => {
+      const controller = await build(null);
+      const response = { status: jest.fn(), setHeader: jest.fn() };
+      await expect(controller.getPalazzoMetrics(response)).resolves.toBe('');
+      expect(response.status).toHaveBeenCalledWith(502);
+      expect(response.setHeader).not.toHaveBeenCalled();
+    });
+
+    it('is behind the same MetricsTokenGuard as /metrics', () => {
+      expect(
+        Reflect.getMetadata(
+          '__guards__',
+          MetricsController.prototype.getPalazzoMetrics,
+        ),
+      ).toEqual(
+        Reflect.getMetadata(
+          '__guards__',
+          MetricsController.prototype.getMetrics,
+        ),
+      );
+      expect(
+        Reflect.getMetadata(
+          'path',
+          MetricsController.prototype.getPalazzoMetrics,
+        ),
+      ).toBe('metrics/palazzo');
+    });
   });
 });
