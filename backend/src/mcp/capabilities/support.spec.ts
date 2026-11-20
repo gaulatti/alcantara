@@ -1,9 +1,12 @@
 import { BadRequestException, HttpException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { McpToolError } from '../contract';
 import {
   answer,
   assertNoCredential,
+  actionSpec,
   isolateUntrusted,
+  present,
   readSpec,
   refusal,
   viaService,
@@ -108,6 +111,26 @@ describe('refusal', () => {
     expect(codeOf(new Error(message))).toBe(code);
   });
 
+  it.each([
+    ['P2025', 'not_found'],
+    ['P2003', 'conflict'],
+    ['P2002', 'conflict'],
+  ])('maps the database refusal %s to %s', (code, mcp) => {
+    const error = new Prisma.PrismaClientKnownRequestError('db', {
+      code,
+      clientVersion: 'test',
+    });
+    expect(codeOf(error)).toBe(mcp);
+  });
+
+  it('rethrows a database error it has no code for', () => {
+    const error = new Prisma.PrismaClientKnownRequestError('db', {
+      code: 'P2034',
+      clientVersion: 'test',
+    });
+    expect(codeOf(error)).toBe(error);
+  });
+
   it('rethrows an unknown error and a non-error', () => {
     const unknown = new Error('connection reset');
     expect(codeOf(unknown)).toBe(unknown);
@@ -119,6 +142,56 @@ describe('refusal', () => {
     await expect(
       viaService(() => Promise.reject(new Error('Program not found'))),
     ).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
+describe('present', () => {
+  it('keeps given fields, nulls included, and drops absent ones', () => {
+    expect(present({ a: 1, b: null, c: undefined, d: false })).toEqual({
+      a: 1,
+      b: null,
+      d: false,
+    });
+  });
+});
+
+describe('actionSpec', () => {
+  const base = {
+    name: 'x_act',
+    title: 'X',
+    description: 'Acts.',
+    permission: 'alcantara:access' as const,
+    shape: { id: z.number() },
+    id: (args: { id: number }) => String(args.id),
+    plan: () => ({ summary: 'plan', affects: [], recoverable: true }),
+  };
+
+  it('needs no loader, refusal, label or result mapper: W with only the required parts', async () => {
+    const spec = actionSpec({
+      ...base,
+      tier: 'W',
+      run: () => Promise.resolve({ ok: true }),
+    });
+    expect(spec.confirmTarget).toBeUndefined();
+    await expect(spec.dryRun!({ id: 1 }, {} as never)).resolves.toEqual({
+      summary: 'plan',
+      affects: [],
+      recoverable: true,
+      onAir: false,
+    });
+    await expect(spec.run({ id: 1 }, {} as never)).resolves.toEqual({
+      result: { ok: true },
+      audit: { target: '1' },
+    });
+  });
+
+  it('refuses a call whose service answer carries a credential, after the service ran', async () => {
+    const run = jest.fn().mockResolvedValue({ ticket: 't' });
+    const spec = actionSpec({ ...base, tier: 'W', run });
+    await expect(spec.run({ id: 1 }, {} as never)).rejects.toMatchObject({
+      code: 'unavailable',
+    });
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });
 

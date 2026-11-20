@@ -200,6 +200,31 @@ export class ScenesService {
     return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket });
   }
 
+  // Neutrally named entry points for callers outside this module (the MCP
+  // capabilities), so they need not carry the brand-bearing method names.
+  drawBracket(id: number, data: { componentType?: string; seed?: number }) {
+    return this.drawModoItalianoBracket(id, data);
+  }
+
+  voteBracket(
+    id: number,
+    data: {
+      componentType?: string;
+      matchId?: number;
+      voterId?: string;
+      songId?: number | null;
+    },
+  ) {
+    return this.voteModoItalianoBracket(id, data);
+  }
+
+  openBracketVoting(
+    id: number,
+    data: { componentType?: string; matchId?: number },
+  ) {
+    return this.openModoItalianoBracketVoting(id, data);
+  }
+
   async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }) {
     const matchId = Number(data.matchId);
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');

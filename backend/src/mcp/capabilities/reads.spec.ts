@@ -42,10 +42,10 @@ const controllers = {
   groups: new MediaGroupsController(services.groups as never),
 };
 const specs = [
-  ...new ProgramMcpTools(services.programs as never).specs(),
-  ...new ScenesMcpTools(services.scenes as never).specs(),
-  ...new LayoutsMcpTools(services.layouts as never).specs(),
-  ...new MediaGroupsMcpTools(services.groups as never).specs(),
+  ...new ProgramMcpTools(services.programs as never, {} as never).specs(),
+  ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
+  ...new LayoutsMcpTools(services.layouts as never, {} as never).specs(),
+  ...new MediaGroupsMcpTools(services.groups as never, {} as never).specs(),
 ];
 const ctx = { principal: {} as never };
 const run = async (name: string, args: Record<string, unknown>) =>

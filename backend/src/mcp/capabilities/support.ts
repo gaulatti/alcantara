@@ -1,8 +1,11 @@
 import { HttpException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
   McpToolError,
   UNTRUSTED_NOTE,
+  type ConfirmTarget,
+  type DryRunResult,
   type McpErrorCode,
   type McpOutcome,
   type McpToolSpec,
@@ -100,6 +103,14 @@ const STATUS_CODES: Record<number, McpErrorCode> = {
   409: 'conflict',
 };
 
+// A database refusal the console reports as a plain 500: a row that is not
+// there, or one that something still points at.
+const PRISMA_CODES: Record<string, [McpErrorCode, string]> = {
+  P2025: ['not_found', 'The record is not there.'],
+  P2003: ['conflict', 'Something still refers to this record.'],
+  P2002: ['conflict', 'A record with that name already exists.'],
+};
+
 // Messages of the plain Errors the services throw; none carries user text.
 const PLAIN_ERRORS: ReadonlyArray<[RegExp, McpErrorCode]> = [
   [/ not found$/, 'not_found'],
@@ -116,6 +127,11 @@ export function refusal(error: unknown): never {
   if (error instanceof HttpException) {
     const code = STATUS_CODES[error.getStatus()];
     if (code) throw new McpToolError(code, error.message);
+  } else if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    PRISMA_CODES[error.code]
+  ) {
+    throw new McpToolError(...PRISMA_CODES[error.code]);
   } else if (error instanceof Error) {
     const known = PLAIN_ERRORS.find(([pattern]) => pattern.test(error.message));
     if (known) throw new McpToolError(known[1], error.message);
@@ -158,4 +174,105 @@ export function readSpec<S extends z.ZodRawShape>(
       audit: {},
     }),
   } as McpToolSpec;
+}
+
+export type Args<S extends z.ZodRawShape> = z.infer<z.ZodObject<S>>;
+
+export interface Plan {
+  summary: string;
+  affects: DryRunResult['affects'];
+  recoverable: boolean;
+}
+
+export interface ActionDef<S extends z.ZodRawShape, L> {
+  name: string;
+  title: string;
+  description: string;
+  permission: McpToolSpec['permission'];
+  tier: 'W' | 'A' | 'D';
+  shape: S;
+  /** What the plan, the confirm target and the refusal are decided from. */
+  load?: (args: Args<S>) => Promise<L>;
+  /** The target id the audit and the confirm string carry. */
+  id: (args: Args<S>, loaded: L) => string;
+  /** The confirm name (A and D): it changes when the target changes. */
+  label?: (args: Args<S>, loaded: L) => string;
+  plan: (args: Args<S>, loaded: L) => Plan;
+  /** D: why the target is on air, queued or in use; refused as `on_air`. */
+  refuse?: (args: Args<S>, loaded: L) => string | null;
+  /** W: the change shows on air at once. */
+  onAir?: (args: Args<S>, loaded: L) => boolean;
+  run: (args: Args<S>, loaded: L) => Promise<unknown>;
+  /** The answer to return instead of the service's (when that is large). */
+  result?: (raw: unknown, args: Args<S>) => unknown;
+}
+
+/**
+ * A write capability. It loads what it decides from, plans (the dry run),
+ * confirms against the target as it is now, refuses `on_air` when `refuse`
+ * says so (checked again at run time, so a stale plan cannot cut a live
+ * target), then calls the service.
+ */
+export function actionSpec<S extends z.ZodRawShape, L>(
+  def: ActionDef<S, L>,
+): McpToolSpec {
+  const load = (args: Args<S>): Promise<L> =>
+    viaService(() =>
+      def.load ? def.load(args) : Promise.resolve(undefined as L),
+    );
+  const blocked = (args: Args<S>, loaded: L): string | null =>
+    def.refuse ? def.refuse(args, loaded) : null;
+  const spec = {
+    name: def.name,
+    title: def.title,
+    description: `${def.description} ${UNTRUSTED_NOTE}`,
+    permission: def.permission,
+    tier: def.tier,
+    firstClass: false,
+    shape: def.shape,
+    dryRun: async (args: Args<S>): Promise<DryRunResult> => {
+      const loaded = await load(args);
+      const plan = def.plan(args, loaded);
+      const why = blocked(args, loaded);
+      return {
+        ...plan,
+        summary:
+          why === null
+            ? plan.summary
+            : `REFUSED (on_air): ${why}. ${plan.summary}`,
+        onAir:
+          def.tier === 'A' ||
+          why !== null ||
+          (def.onAir ? def.onAir(args, loaded) : false),
+      };
+    },
+    run: async (args: Args<S>): Promise<McpOutcome> => {
+      const loaded = await load(args);
+      const why = blocked(args, loaded);
+      if (why !== null) throw new McpToolError('on_air', why);
+      const raw = await viaService(() => def.run(args, loaded));
+      return {
+        result: answer(def.result ? def.result(raw, args) : raw),
+        audit: { target: def.id(args, loaded) },
+      };
+    },
+  } as McpToolSpec;
+  if (def.tier !== 'W')
+    spec.confirmTarget = async (args): Promise<ConfirmTarget> => {
+      const loaded = await load(args as Args<S>);
+      return {
+        id: def.id(args as Args<S>, loaded),
+        name: def.label!(args as Args<S>, loaded),
+      };
+    };
+  return spec;
+}
+
+/** The entries of a record whose value was given (an absent key is not a null one). */
+export function present(
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  );
 }
