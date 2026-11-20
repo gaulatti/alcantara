@@ -250,3 +250,117 @@ describe('UploadsService.importFromUrl', () => {
     ).resolves.toMatchObject({ sizeBytes: 4 });
   });
 });
+
+describe('UploadsService.importFromUrl: artwork and stinger kinds', () => {
+  let logs: jest.SpyInstance[];
+  beforeEach(() => {
+    sendMock.mockReset().mockResolvedValue({});
+    logs = [
+      jest.spyOn(console, 'error').mockImplementation(() => {}),
+      jest.spyOn(console, 'warn').mockImplementation(() => {}),
+      jest.spyOn(console, 'log').mockImplementation(() => {}),
+    ];
+  });
+  afterEach(() => logs.forEach((spy) => spy.mockRestore()));
+
+  const file = (type: string, extra: Record<string, string> = {}) => ({
+    status: 200,
+    headers: { 'content-type': type, ...extra },
+    body: [Buffer.from('bytes')],
+  });
+
+  it('stores an image as an artwork upload and a webm as a stinger upload', async () => {
+    const { service } = build({
+      [`${SECRET_HOST}/Cover.png`]: file('image/png'),
+      [`${SECRET_HOST}/hit.webm`]: file('video/webm'),
+    });
+    const art = await service.importFromUrl({
+      kind: 'artwork',
+      url: `https://${SECRET_HOST}/Cover.png`,
+    });
+    expect(art).toMatchObject({ contentType: 'image/png', sizeBytes: 5 });
+    expect(art.key).toMatch(/^artwork\/\d{4}\/\d{2}\/\d{2}\/cover-.+\.png$/);
+    expect(art.metadata).toBeUndefined();
+    const stinger = await service.importFromUrl({
+      kind: 'stinger',
+      url: `https://${SECRET_HOST}/hit.webm`,
+    });
+    expect(stinger).toMatchObject({
+      contentType: 'video/webm',
+      sizeBytes: 5,
+    });
+    expect(stinger.key).toMatch(/^stinger\/.+\/hit-.+\.webm$/);
+  });
+
+  it.each([
+    ['artwork', 'audio/mpeg', 'a.png'],
+    ['artwork', 'image/svg+xml', 'a.png'],
+    ['artwork', 'text/html', 'a.png'],
+    ['stinger', 'video/mp4', 'a.webm'],
+    ['stinger', 'audio/webm', 'a.webm'],
+    ['song', 'image/png', 'a.mp3'],
+    ['instant', 'video/webm', 'a.mp3'],
+  ] as const)(
+    'refuses a %s whose address answers %s, before reading the body',
+    async (kind, type, name) => {
+      const { service, recorded } = build({
+        [`${SECRET_HOST}/${name}`]: file(type),
+      });
+      await expect(
+        service.importFromUrl({
+          kind,
+          url: `https://${SECRET_HOST}/${name}`,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(recorded).toEqual([['media_import', 'content_type']]);
+      expect(sendMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('caps an artwork at 10 MiB and a stinger at 50 MiB, as the upload routes do', async () => {
+    const { service, recorded } = build({
+      [`${SECRET_HOST}/big.png`]: file('image/png', {
+        'content-length': String(10 * 1024 * 1024 + 1),
+      }),
+      [`${SECRET_HOST}/big.webm`]: file('video/webm', {
+        'content-length': String(50 * 1024 * 1024 + 1),
+      }),
+      [`${SECRET_HOST}/ok.webm`]: file('video/webm', {
+        'content-length': String(10 * 1024 * 1024 + 1),
+      }),
+    });
+    for (const [kind, name] of [
+      ['artwork', 'big.png'],
+      ['stinger', 'big.webm'],
+    ] as const)
+      await expect(
+        service.importFromUrl({
+          kind,
+          url: `https://${SECRET_HOST}/${name}`,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    expect(recorded).toEqual([
+      ['media_import', 'too_large'],
+      ['media_import', 'too_large'],
+    ]);
+    // 10 MiB + 1 is within a stinger's cap: the fetch lets it through.
+    await expect(
+      service.importFromUrl({
+        kind: 'stinger',
+        url: `https://${SECRET_HOST}/ok.webm`,
+      }),
+    ).resolves.toMatchObject({ contentType: 'video/webm' });
+  });
+
+  it('keeps the type and the extension of the image fetched', async () => {
+    const { service } = build({
+      [`${SECRET_HOST}/odd.jpg`]: file('image/jpeg'),
+    });
+    await expect(
+      service.importFromUrl({
+        kind: 'artwork',
+        url: `https://${SECRET_HOST}/odd.jpg`,
+      }),
+    ).resolves.toMatchObject({ contentType: 'image/jpeg' });
+  });
+});

@@ -1,6 +1,6 @@
 area	method	path	permission	handler	capability	tier
 as-run	GET	/program/:programId/as-run	radio.read	export	as-run_export	R
-auth	GET	/auth/me	access	getMe	auth_get_me	R
+auth	GET	/auth/me	access	getMe	auth_get_me	covered by whoami
 auth	POST	/auth/realtime-ticket	program.read	issueRealtimeTicket	—	excluded: returns a credential
 broadcast-destinations	GET	/broadcast/destinations	broadcast.view	listDestinations	destination_list_destinations	R
 broadcast-destinations	GET	/broadcast/destinations/catalog	broadcast.manage	listCatalog	destination_list_catalog	R
@@ -151,9 +151,9 @@ stingers	PUT	/stingers/:stingerId	stinger.manage	updateStinger	stinger_update_st
 stingers	DELETE	/stingers/:stingerId	stinger.manage	deleteStinger	stinger_delete_stinger	D
 uploads	POST	/uploads/instant	upload.create	uploadInstant	upload_instant	covered by import_media_from_url
 uploads	POST	/uploads/background	upload.create	uploadBackground	upload_background	covered by import_media_from_url
-uploads	POST	/uploads/artwork	upload.create	uploadArtwork	upload_artwork	W
+uploads	POST	/uploads/artwork	upload.create	uploadArtwork	upload_artwork	covered by import_media_from_url
 uploads	POST	/uploads/song	upload.create	uploadSong	upload_song	covered by import_media_from_url
-uploads	POST	/uploads/stinger	upload.create	uploadStinger	upload_stinger	W
+uploads	POST	/uploads/stinger	upload.create	uploadStinger	upload_stinger	covered by import_media_from_url
 webrtc	GET	/webrtc/invitations	webrtc.read	listInvitations	webrtc_list_invitations	R
 webrtc	POST	/webrtc/invitations	webrtc.operate	createInvitation	—	excluded: produces a guest link (a credential)
 webrtc	POST	/webrtc/invitations/:id/replace	webrtc.operate	replaceInvitation	—	excluded: produces a guest link (a credential)

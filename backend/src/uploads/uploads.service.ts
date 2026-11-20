@@ -53,12 +53,18 @@ const MAX_INSTANT_BYTES = 200 * 1024 * 1024;
 const MAX_ARTWORK_BYTES = 10 * 1024 * 1024;
 const MAX_SONG_BYTES = 200 * 1024 * 1024;
 const MAX_STINGER_BYTES = 50 * 1024 * 1024;
-/** An import is read under the upload limit of the audio kinds. */
+/** An import is read under the upload limit of its kind (the audio limit is the largest). */
 export const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 export const IMPORT_TIMEOUT_MS = 120_000;
 export const IMPORT_MAX_REDIRECTS = 3;
-/** The audio kinds a URL may be imported as (the console's audio uploads). */
-export const IMPORT_KINDS = ['instant', 'background', 'song'] as const;
+/** The kinds a URL may be imported as: every kind the console's upload routes take. */
+export const IMPORT_KINDS = [
+  'instant',
+  'background',
+  'song',
+  'artwork',
+  'stinger',
+] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
 const INSTANT_MIME_TYPES = new Set<string>([
@@ -112,6 +118,32 @@ const ARTWORK_EXTENSIONS = new Set<string>([
   '.png',
   '.webp',
 ]);
+
+/**
+ * What the fetch of an import accepts, per kind: the response content type and
+ * the byte cap are the upload route's own (audio 200 MiB, artwork an image of
+ * at most 10 MiB, a stinger video/webm of at most 50 MiB). The bytes then go
+ * through upload(), whose type, extension and size checks are the console's.
+ */
+const IMPORT_POLICY: Record<
+  ImportKind,
+  { maxBytes: number; allowContentType: (mediaType: string) => boolean }
+> = {
+  instant: { maxBytes: MAX_IMPORT_BYTES, allowContentType: isAudioMediaType },
+  background: {
+    maxBytes: MAX_IMPORT_BYTES,
+    allowContentType: isAudioMediaType,
+  },
+  song: { maxBytes: MAX_IMPORT_BYTES, allowContentType: isAudioMediaType },
+  artwork: {
+    maxBytes: MAX_ARTWORK_BYTES,
+    allowContentType: (mediaType) => ARTWORK_MIME_TYPES.has(mediaType),
+  },
+  stinger: {
+    maxBytes: MAX_STINGER_BYTES,
+    allowContentType: (mediaType) => STINGER_MIME_TYPES.has(mediaType),
+  },
+};
 
 @Injectable()
 export class UploadsService {
@@ -185,11 +217,11 @@ export class UploadsService {
   }
 
   /**
-   * Fetches an audio file from an address someone supplied and stores it as
-   * the same kind of upload the console's multipart routes store. The fetch
-   * is the outbound-request policy's (https only, public addresses only, every
-   * redirect checked again, an audio content type, at most MAX_IMPORT_BYTES,
-   * one deadline), streamed into memory under the cap; the bytes then go
+   * Fetches a file from an address someone supplied and stores it as the same
+   * kind of upload the console's multipart routes store. The fetch is the
+   * outbound-request policy's (https only, public addresses only, every
+   * redirect checked again, the content type and byte cap of the kind in
+   * IMPORT_POLICY, one deadline), streamed into memory under the cap; the bytes then go
    * through upload(), so type, size and extension are validated as for a file
    * the operator sends. The address is never stored, logged or echoed: a
    * refusal is the policy's plain message.
@@ -211,10 +243,10 @@ export class UploadsService {
         payload.url.trim(),
         {
           path: 'media_import',
-          maxBytes: MAX_IMPORT_BYTES,
+          maxBytes: IMPORT_POLICY[payload.kind].maxBytes,
           timeoutMs: IMPORT_TIMEOUT_MS,
           maxRedirects: IMPORT_MAX_REDIRECTS,
-          allowContentType: isAudioMediaType,
+          allowContentType: IMPORT_POLICY[payload.kind].allowContentType,
           bodySink: sink,
         },
         {

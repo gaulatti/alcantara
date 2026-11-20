@@ -138,19 +138,28 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all 160 capabilities (3 of them covered by another tool) and the 7 exclusions from appendix A', () => {
+  it('reads all 160 capabilities (6 of them covered by another tool) and the 7 exclusions from appendix A', () => {
     const { rows, excluded, covered } = appendix();
     expect(rows.size + covered.size).toBe(160);
     expect(excluded).toBe(7);
     for (const tool of covered.values())
-      expect(Object.keys({ ...RADIO_TOOLS, ...EXTRA_CAPABILITIES })).toContain(
-        tool,
-      );
-    expect([...covered.keys()].sort()).toEqual([
-      'upload_background',
-      'upload_instant',
-      'upload_song',
-    ]);
+      expect(
+        Object.keys({ ...BUILT_INS, ...RADIO_TOOLS, ...EXTRA_CAPABILITIES }),
+      ).toContain(tool);
+    // auth_get_me is whoami (same permission, same tier, the caller's own
+    // identity); the five uploads are import_media_from_url's kinds.
+    expect(Object.fromEntries(covered)).toEqual({
+      auth_get_me: 'whoami',
+      upload_artwork: 'import_media_from_url',
+      upload_background: 'import_media_from_url',
+      upload_instant: 'import_media_from_url',
+      upload_song: 'import_media_from_url',
+      upload_stinger: 'import_media_from_url',
+    });
+    expect(rows.get('as-run_export')).toEqual({
+      permission: ALCANTARA_PERMISSIONS.radio.read,
+      tier: 'R',
+    });
   });
 
   it('registers the four built-ins, read tier, with their permissions', () => {

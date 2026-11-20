@@ -205,25 +205,28 @@ lists it as lost and the capability proceeds after the confirm.
 
 File: `backend/src/mcp/capabilities/media-import.ts`; the work is
 `UploadsService.importFromUrl`. A W capability with `upload.create`, taking
-`url` (at most 2000 characters) and `kind` (`instant`, `background` or `song`:
-the console's audio uploads; artwork and stinger are not importable).
+`url` (at most 2000 characters) and `kind` (`instant`, `background`, `song`,
+`artwork` or `stinger`: the five kinds the console's upload routes take; #226
+added the last two).
 
-- **It covers three `upload_*` rows.** Appendix A's `upload_instant`,
-  `upload_background` and `upload_song` are multipart routes that an MCP
-  client cannot use; they are marked `covered by import_media_from_url` in the
-  tsv and are not capabilities of their own. `upload_artwork` and
-  `upload_stinger` stay plain rows: artwork and stinger are not importable kinds
-  (image and video types); their import is tracked in #226. The console has no import route: its
-  uploads are multipart bodies. The ticket names this capability beside the rows, so the
-  registry subset test pins it as an extra capability (permission
-  `upload.create`, tier W).
+- **It covers the five `upload_*` rows.** Appendix A's `upload_instant`,
+  `upload_background`, `upload_song`, `upload_artwork` and `upload_stinger` are
+  multipart routes that an MCP client cannot use; they are marked
+  `covered by import_media_from_url` in the tsv and are not capabilities of
+  their own. The console has no import route: its uploads are multipart bodies.
+  The ticket names this capability beside the rows, so the registry subset test
+  pins it as an extra capability (permission `upload.create`, tier W).
 - **The fetch is the outbound-request policy's** (`docs/outbound-requests.md`):
   https only, public addresses only, every redirect (at most 3) checked again,
-  an `audio/*` content type, at most 200 MiB (the audio upload limit) streamed
-  under the cap, one 120 second deadline. No request header is sent. The
-  bytes then go through `UploadsService.upload()`, so size, type and extension
-  are validated, and a song's tags and cover are read, exactly as for a file
-  the operator sends.
+  the content type and byte cap of the kind, streamed under the cap, one 120
+  second deadline. No request header is sent. Per kind: `instant`, `background`
+  and `song` take an `audio/*` type (or `application/ogg`), at most 200 MiB;
+  `artwork` an avif, gif, jpeg, png or webp image, at most 10 MiB; `stinger`
+  `video/webm`, at most 50 MiB (the limits of `UploadsService`'s upload
+  routes). The bytes then go through `UploadsService.upload()`, so size, type
+  and extension are validated as for a file the operator sends, and a song's
+  tags and cover are read. An address whose answer is of another kind's type
+  (an image for a song, audio for artwork) is refused before the body is read.
 - **No media asset, no analysis scheduling.** An upload only stores the file
   (S3) and answers `{key, url, bucket, contentType, sizeBytes, metadata?}`; the
   asset is created by the create that follows (`song_create` or the instant and
@@ -509,3 +512,20 @@ proceeds after the confirm, as the console does.
   start or a recovery start.
 - Metrics: the area adds no metric. The executor counts every call under
   `alcantara_mcp_requests_total{tool,tier,result}`.
+
+## The rows no ticket owned (#226)
+
+Appendix A is 167 rows: 154 are capabilities, 6 are `covered by` another tool
+(`whoami` or `import_media_from_url`; 160 capability rows in all) and 7 are
+exclusions (they return or produce a credential).
+
+| Row | Outcome | Why |
+|---|---|---|
+| `auth_get_me` | covered by `whoami` | Same permission (`access`), same tier (R), no service behind either: both answer the caller's own identity from the verified token. `whoami` carries subject, principal id, client and the sorted permissions; the console's route also returns the Pompeii role names and team id, which the MCP principal does not hold. |
+| `as-run_export` | registered capability (`backend/src/mcp/capabilities/as-run.ts`) | Not covered by `get_as_run`: that tool lists rows as data through `AsRunService.listRecords` in a window of at most `asRunWindowDays`; the row is the download, `AsRunService.export`, a CSV of the log or the SoundExchange report of use over any window. Same permission (`radio.read`) and tier (R). Args `program_id`, `from`, `to`, `format` (`csv` or `soundexchange`), `inferred`; the file text is in `untrusted.csv` with `program_id` and `format`. |
+| `radio_get_palazzo_status` | capability (already registered by #219) | Mirrors the controller: `PalazzoRadioTelemetryService.getStatus`, `radio.read`, R, `firstClass: false`. |
+| `radio_get_output_confidence` | capability (already registered by #219) | Mirrors the controller: program check, then `RadioOutputConfidenceService.get`; `radio.read`, R. |
+| `upload_artwork`, `upload_stinger` | covered by `import_media_from_url` | The import now takes both kinds with the upload routes' type and size limits. |
+
+The exclusions are unchanged. `as-run_export` has no byte cap, as the console's
+download has none; the framework's own limits apply. The area adds no metric.

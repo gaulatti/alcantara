@@ -87,6 +87,23 @@ describe('import_media_from_url', () => {
     expect(out.audit).toEqual({ target: 'import-song' });
   });
 
+  it.each([
+    ['instant', /audio content types, at most 200 MiB/],
+    ['artwork', /an image content type, at most 10 MiB/],
+    ['stinger', /video\/webm, at most 50 MiB/],
+  ] as const)(
+    'plans the %s limits and passes the kind to the service',
+    async (kind, limits) => {
+      const plan = await spec.dryRun!({ url: ADDRESS, kind }, ctx);
+      expect(plan.summary).toMatch(limits);
+      await spec.run({ url: ADDRESS, kind }, ctx);
+      expect(uploads.importFromUrl).toHaveBeenCalledWith({
+        kind,
+        url: ADDRESS,
+      });
+    },
+  );
+
   it('plans without the address and changes nothing', async () => {
     const plan = await spec.dryRun!({ url: ADDRESS, kind: 'instant' }, ctx);
     expect(plan).toMatchObject({
@@ -120,11 +137,11 @@ describe('import_media_from_url', () => {
     }
   });
 
-  it('takes audio kinds only and an address of bounded length', () => {
+  it('takes the five upload kinds and an address of bounded length', () => {
     const shape = spec.shape;
-    expect(shape.kind.safeParse('song').success).toBe(true);
-    expect(shape.kind.safeParse('artwork').success).toBe(false);
-    expect(shape.kind.safeParse('stinger').success).toBe(false);
+    for (const kind of ['instant', 'background', 'song', 'artwork', 'stinger'])
+      expect(shape.kind.safeParse(kind).success).toBe(true);
+    expect(shape.kind.safeParse('video').success).toBe(false);
     expect(shape.url.safeParse('x'.repeat(2001)).success).toBe(false);
   });
 });
