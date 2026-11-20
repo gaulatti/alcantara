@@ -10,6 +10,12 @@ on:
       - "infra/**"
       - ".github/workflows/backend-deploy.yml"
 
+# One deploy at a time: a second run waits for the first instead of meeting its
+# rollback container on the host.
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
 env:
   ALCANTARA_CONFIG_SECRET_ID: broadcast/production/config
 

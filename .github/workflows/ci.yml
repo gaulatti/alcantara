@@ -155,7 +155,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
           METRICS_SCRAPE_OUTPUT: /tmp/alcantara.prom
-        run: pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns='metrics|media-label-concurrency|filler-persistence'
+        run: pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns='metrics|media-label-concurrency|filler-persistence|deploy-candidate'
       - name: Parse the actual authenticated scrape
         if: *verify-code
         run: |

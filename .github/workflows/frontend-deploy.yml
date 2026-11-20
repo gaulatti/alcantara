@@ -78,16 +78,24 @@ jobs:
 
       - name: Upload to S3
         run: |
-          aws s3 rm s3://${{ vars.BUCKET_NAME }} --recursive
+          # The site stays complete at every moment (gaulatti/alcantara#228).
+          # New hashed assets first: nothing references them yet.
+          aws s3 sync frontend-dist/assets/ s3://${{ vars.BUCKET_NAME }}/assets/ \
+            --cache-control "public,max-age=31536000,immutable"
+          # Everything else except the entry page.
           aws s3 sync frontend-dist/ s3://${{ vars.BUCKET_NAME }} \
             --exclude "assets/*" \
             --exclude "index.html" \
             --cache-control "public,max-age=300"
-          aws s3 sync frontend-dist/assets/ s3://${{ vars.BUCKET_NAME }}/assets/ \
-            --cache-control "public,max-age=31536000,immutable"
+          # The entry page last: this is the switch to the new build.
           aws s3 cp frontend-dist/index.html s3://${{ vars.BUCKET_NAME }}/index.html \
             --content-type "text/html; charset=utf-8" \
             --cache-control "no-cache,no-store,must-revalidate"
+          # Remove files the new build no longer has, outside assets/. Old
+          # hashed assets stay so a console already open keeps loading its chunks.
+          aws s3 sync frontend-dist/ s3://${{ vars.BUCKET_NAME }} \
+            --exclude "assets/*" --exclude "index.html" --delete --size-only \
+            --cache-control "public,max-age=300"
 
       - name: Invalidate CloudFront cache
         run: |
