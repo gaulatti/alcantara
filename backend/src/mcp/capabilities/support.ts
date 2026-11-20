@@ -43,6 +43,14 @@ const UNTRUSTED_KEYS: ReadonlySet<string> = new Set([
   'items',
   'songSequence',
   'warnings',
+  // gaulatti/alcantara#219: destination, consumer, guest and radio text.
+  'displayName',
+  'url',
+  'listenerUrl',
+  'palazzoUrl',
+  'text',
+  'payload',
+  'headerNames',
 ]);
 
 const isPlain = (value: unknown): value is Record<string, unknown> =>

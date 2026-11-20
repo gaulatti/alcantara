@@ -1,3 +1,4 @@
+import { WebrtcMcpTools } from '../mcp/capabilities/webrtc';
 import { PrismaService } from '../prisma.service';
 import { WebrtcController } from './webrtc.controller';
 import { WebrtcModule } from './webrtc.module';
@@ -9,6 +10,7 @@ describe('WebrtcModule', () => {
       WebrtcController,
     ]);
     expect(Reflect.getMetadata('providers', WebrtcModule)).toEqual([
+      WebrtcMcpTools,
       WebrtcService,
       PrismaService,
     ]);
