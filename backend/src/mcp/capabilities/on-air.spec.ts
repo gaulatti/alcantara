@@ -36,6 +36,7 @@ describe('loadProgramLive', () => {
       liveText: 'nothing is live',
       queued: 0,
       stamp: 'scene:null fade:0 song:0 queue:0',
+      activeFlightSequenceId: null,
       scenes: [{ id: 3, name: 'Evening news' }],
       mediaGroups: [{ id: 5, name: 'Headlines' }],
       stingers: [{ id: 7, name: 'Whoosh' }],
@@ -70,6 +71,7 @@ describe('loadProgramLive', () => {
     expect(live.visuallyOnAir).toBe(true);
     expect(live.instantSceneId).toBe(3);
     expect(live.flightSequences).toBe(1);
+    expect(live.activeFlightSequenceId).toBe(9);
     expect(live.stamp).toBe('scene:3 fade:1 song:1 queue:2');
   });
 

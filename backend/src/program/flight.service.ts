@@ -22,6 +22,9 @@ import type {
   FlightSequence,
 } from './flight.types';
 
+/** How late a published log may start: the scheduler skips one later than this. */
+export const START_GRACE_MS = 5000;
+
 const FLIGHT_CUE_KINDS: Set<FlightCueKind> = new Set([
   'scene',
   'playSong',
@@ -696,7 +699,10 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
         where: {
           publishedAt: { not: null },
           lastStartedAt: null,
-          scheduledAt: { gte: new Date(now.getTime() - 5000), lte: now },
+          scheduledAt: {
+            gte: new Date(now.getTime() - START_GRACE_MS),
+            lte: now,
+          },
         },
         include: { programState: { select: { programId: true } } },
         take: 20,

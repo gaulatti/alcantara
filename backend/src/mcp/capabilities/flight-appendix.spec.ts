@@ -15,9 +15,7 @@ const ROWS = readFileSync(join(__dirname, '..', 'appendix-a.tsv'), 'utf8')
   .split('\n')
   .slice(1)
   .map((line) => line.split('\t'))
-  .filter(([, , path]) => /\/flight(\/|$)/.test(path))
-  // The write, on-air and destructive rows land in the next commit.
-  .filter(([, , , , , , tier]) => tier === 'R');
+  .filter(([, , path]) => /\/flight(\/|$)/.test(path));
 
 const permissionOf = (key: string): string => {
   const [group, action] = key.split('.');
@@ -26,12 +24,23 @@ const permissionOf = (key: string): string => {
   )[group][action];
 };
 
-const specs = new FlightMcpTools({} as never).specs();
+const specs = new FlightMcpTools({} as never, {} as never).specs();
 
 describe('appendix A rows of ticket #215 (flight)', () => {
   it('has the rows the ticket names, none of them excluded', () => {
-    expect(ROWS).toHaveLength(2);
+    expect(ROWS).toHaveLength(14);
     expect(ROWS.every((row) => !row[6].startsWith('excluded'))).toBe(true);
+  });
+
+  it('has the counted rows per tier', () => {
+    const tiers = ROWS.map((row) => row[6]);
+    for (const [tier, n] of [
+      ['R', 2],
+      ['W', 5],
+      ['A', 6],
+      ['D', 1],
+    ] as const)
+      expect(tiers.filter((candidate) => candidate === tier)).toHaveLength(n);
   });
 
   it.each(ROWS)(

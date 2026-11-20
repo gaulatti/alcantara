@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { McpToolError, UNTRUSTED_NOTE } from '../contract';
 import { asRest, rebuilt, specNamed } from './capabilities.testing';
 import { buildFlight, clocked, cue, sequence } from './flight.testing';
@@ -39,8 +40,13 @@ describe('program_list_flight_sequences_by_id', () => {
 
   it('is a read with the console permission and the untrusted note', () => {
     const { specs } = buildFlight();
-    for (const spec of specs) {
-      expect(spec.tier).toBe('R');
+    const reads = specs.filter((spec) => spec.tier === 'R');
+    expect(reads.map((spec) => spec.name)).toEqual([
+      'program_list_flight_sequences_by_id',
+      'program_preflight_flight_sequence_by_id',
+    ]);
+    for (const spec of reads) {
+      expect(spec.permission).toBe(ALCANTARA_PERMISSIONS.flight.read);
       expect(spec.firstClass).toBe(false);
       expect(spec.dryRun).toBeUndefined();
       expect(spec.confirmTarget).toBeUndefined();

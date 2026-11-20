@@ -78,6 +78,9 @@ export function buildFlight() {
     flights as never,
     f.templates as never,
   );
-  const specs = new FlightMcpTools(flights as never).specs();
+  const specs = new FlightMcpTools(
+    flights as never,
+    f.programs as never,
+  ).specs();
   return { f, flights, controller, specs };
 }

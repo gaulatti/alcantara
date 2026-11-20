@@ -18,6 +18,7 @@ export interface ProgramLive {
   type: string;
   activeSceneId: number | null;
   stagedSceneId: number | null;
+  activeFlightSequenceId: number | null;
   /** A scene or fade to black is on air. */
   visuallyOnAir: boolean;
   /** The scene whose background instant is playing, if one is. */
@@ -84,6 +85,7 @@ export async function loadProgramLive(
     type: state.type,
     activeSceneId: state.activeSceneId,
     stagedSceneId: state.stagedSceneId,
+    activeFlightSequenceId: state.activeFlightSequenceId,
     visuallyOnAir,
     instantSceneId: instant.isPlaying ? instant.sceneId : null,
     scenes: state.scenes.map((entry) => ({

@@ -3,8 +3,10 @@ describe('flight capability provider decorator metadata under unresolved circula
   it('records Object for dependencies whose modules are not yet defined', () => {
     jest.isolateModules(() => {
       jest.doMock('../../program/flight.service', () => ({}));
+      jest.doMock('../../program/program.service', () => ({}));
       const { FlightMcpTools } = require('./flight');
       expect(Reflect.getMetadata('design:paramtypes', FlightMcpTools)).toEqual([
+        Object,
         Object,
       ]);
     });

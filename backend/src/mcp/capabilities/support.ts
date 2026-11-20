@@ -42,6 +42,7 @@ const UNTRUSTED_KEYS: ReadonlySet<string> = new Set([
   'videoUrl',
   'items',
   'songSequence',
+  'warnings',
 ]);
 
 const isPlain = (value: unknown): value is Record<string, unknown> =>
