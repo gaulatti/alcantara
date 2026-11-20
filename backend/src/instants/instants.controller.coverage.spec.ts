@@ -1,3 +1,4 @@
+import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { REQUIRED_PERMISSION_KEY } from '../auth/require-permission.decorator';
@@ -6,6 +7,7 @@ import { ProgramTemplateService } from '../program/program-template.service';
 import { ProgramRealtimeService } from '../program/program.realtime.service';
 import { ProgramService } from '../program/program.service';
 import { PrismaService } from '../prisma.service';
+import { RadioService } from '../radio/radio.service';
 import { InstantsController } from './instants.controller';
 import { InstantsModule } from './instants.module';
 
@@ -103,11 +105,20 @@ describe('InstantsController (coverage)', () => {
   });
 });
 
+// The radio module is global in the application; the capability provider of
+// the instants module asks for its service.
+@Global()
+@Module({
+  providers: [{ provide: RadioService, useValue: {} }],
+  exports: [RadioService],
+})
+class RadioStubModule {}
+
 describe('InstantsModule (coverage)', () => {
   it('wires the controller to the program service exported by ProgramModule', async () => {
     const program = { listInstants: jest.fn().mockResolvedValue(['x']) };
     const moduleRef = await Test.createTestingModule({
-      imports: [InstantsModule],
+      imports: [RadioStubModule, InstantsModule],
     })
       .overrideProvider(ProgramService)
       .useValue(program)

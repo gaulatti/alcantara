@@ -33,8 +33,8 @@ const services = {
   stingers: { findAll: jest.fn() },
 };
 const specs = [
-  ...new InstantsMcpTools(services.programs as never).specs(),
-  ...new StingersMcpTools(services.stingers as never).specs(),
+  ...new InstantsMcpTools(services.programs as never, {} as never).specs(),
+  ...new StingersMcpTools(services.stingers as never, {} as never).specs(),
 ];
 const controllers = {
   instants: new InstantsController(services.programs as never),

@@ -307,3 +307,92 @@ Metrics: the area adds none; calls count under the executor's
 `alcantara_mcp_requests_total{tool,tier,result}`. `generate`, `fill` and
 `publish` keep recording the console's own `radio log` results, since they call
 the same service methods.
+
+## Instants and stingers (gaulatti/alcantara#217)
+
+Files: `backend/src/mcp/capabilities/instants.ts` (`InstantsMcpTools`, registered
+in `InstantsModule`) and `backend/src/mcp/capabilities/stingers.ts`
+(`StingersMcpTools`, registered in `StingersModule`). Ten appendix A rows: two
+R, four W, two A and two D. All are `firstClass: false`, call the service the
+console's controller calls in process (`ProgramService` for instants,
+`StingersService` for stingers) and answer what the controller answers, with
+user text under `untrusted`. The program and radio rows that name instants and
+stingers (`program_take_program_scene_instant_by_id`,
+`program_add_stinger_to_program`, `radio_play_instant` and the like) belong to
+the program and radio areas, not to this one.
+
+### Reads
+
+- `instant_list_instants` (`instant.read`): `program_id` (optional; the console's
+  `programId` query, default `main`) selects which song each instant introduces
+  (`assignedSongId`). The answer is the console's list: every instant in order
+  with `availableForSongIntro`. The name (and, as untrusted, the audio address)
+  sit under `untrusted`.
+- `stinger_list_stingers` (`stinger.read`): no arguments; every stinger, newest
+  change first. Name and video address sit under `untrusted`.
+- No answer carries a credential: an answer that holds a signed link or a
+  credential field is withheld (`unavailable`), the same tripwire as every other
+  capability, tested with a planted secret.
+
+### Writes and operations
+
+The service of every row is the controller's; an argument is the controller's
+field in snake case, `*_id` named after the path parameter. Answers equal the
+controller's answer for the same input (one set of fake services behind both),
+except that user text is under `untrusted`. A service refusal is reported as the
+closed MCP code (400 as `invalid`, 404 as `not_found`).
+
+| Capability | Tier | Permission | Arguments | Answer and notes |
+|---|---|---|---|---|
+| `instant_create_instant` | W | `instant.manage` | `name`, `audio_url`, `volume`, `enabled` | The created instant. The service clamps `volume` to 0..1 (the console accepts any finite number, so does this); the instant goes to the end of the list and gets its media asset. |
+| `instant_update_instant` | W | `instant.manage` | `instant_id`, `name`, `audio_url`, `volume`, `enabled` | The instant. A field left out stays. The dry run says where the instant is used (scene backgrounds, bumper rotations) and sets `onAir` while it is playing, named by a scene on air or staged, or in a rotation with bumpers on. |
+| `instant_delete_instant` | D | `instant.manage` | `instant_id` | `{deletedInstantId}`. See the D table. |
+| `instant_play_instant` | A | `instant.operate` | `instant_id`, `program_id` (default `main`) | `{ok: true}`. The console's `programId` query or body. Plays once, now, over what is playing. Confirm target: `{id: instant id, name: "<instant name> on <program> (enabled|disabled; <live stamp>)"}`, so a plan made before the instant was disabled or the program changed state is refused as `confirm_mismatch`. |
+| `instant_stop_all_instants` | A | `instant.operate` | `program_id` (default `main`) | `{ok: true}`. Confirm target: `{id: program, name: live stamp}`. |
+| `stinger_create_stinger` | W | `stinger.manage` | `name`, `video_url`, `cut_point_ms`, `enabled` | The created stinger (cut point default 1000 ms, enabled default true). `cut_point_ms` is an integer of at least 0: the column is an integer and the console sends any number to the database, which fails for a fraction. |
+| `stinger_update_stinger` | W | `stinger.manage` | `stinger_id`, `name`, `video_url`, `cut_point_ms`, `enabled` | The stinger. A field left out stays. `onAir` in the dry run while a program that uses it has a scene or fade to black on air (its next scene change shows the change). |
+| `stinger_delete_stinger` | D | `stinger.manage` | `stinger_id` | `{deletedStingerId}`. See the D table. |
+
+- **Program defaults.** `instant_play_instant` and `instant_stop_all_instants`
+  take `program_id` with default `main` (the console's default when no program is
+  sent), so the action executor always spaces on-air runs by a program. The
+  capability loads the program's live state for the dry run and the confirm
+  stamp, so an unknown program is `not_found` here where the console broadcasts
+  to a program nobody listens to.
+- **Instant text.** `audioUrl` is user text and moves under `untrusted` with the
+  name; an answer whose address is a signed link is withheld (`unavailable`) like
+  everywhere else, after the write has happened.
+- **Rows the program and radio areas own.** Taking and stopping a scene instant
+  (`program_take_program_scene_instant_by_id`,
+  `program_stop_program_scene_instant_by_id`), adding and removing a stinger on a
+  program (`program_add_stinger_to_program`,
+  `program_remove_stinger_from_program`) and `radio_play_instant` /
+  `radio_stop_all_instants` are capabilities of #216 and #214's areas; the
+  stinger upload is the plain W row `upload_stinger`, left to #226.
+
+### Step 0 of the D rows: what the console does today
+
+| Capability | The console today | The capability |
+|---|---|---|
+| `instant_delete_instant` | Checks the instant exists, answers 400 when it is a song's intro (any program), then in one transaction deletes the instant and its media asset and renumbers the later instants. It never looks at what is playing, named by a scene or in a bumper rotation. | `on_air` while a program is playing it as its scene background, while a scene on air or staged names it as `sceneInstant.instantId` in its settings, or while a program with bumpers on lists it in `bumperInstantIds` (the bumper timer would then find no audio and skip silently). The song intro refusal stays the console's (`invalid`) and the dry run says so. The dry run lists the programs whose scenes name it and whose rotations list it (off air or with bumpers off they do not refuse), that the media asset and the place in the list are lost, and that none of it can be recovered (a new instant gets a new id, so scene settings and rotations that name the old id must be edited by hand). The audio file stays in storage. |
+| `stinger_delete_stinger` | Checks the stinger exists, then in one transaction deletes it and its media asset; its program assignments go by cascade. It never looks at what is on air. | `on_air` while a program that uses it has a scene or fade to black on air, because that program's scene changes play its stingers (the condition `program_remove_stinger_from_program` refuses on). The dry run lists the programs it is taken off and that the name, the cut point and each program's place for it are lost, not recoverable (a new stinger gets a new id and is added to each program again). The video file stays in storage. |
+
+Both refusals are checked again when the action runs, so a plan made while the
+target was idle cannot delete a live one. A target that a program uses while
+that program is off air is not an `on_air` case: the dry run lists it as lost
+and the capability proceeds after the confirm.
+
+### Tests
+
+`instants-stingers-reads.spec.ts` and `instants-stingers-writes.spec.ts` pin the
+ten rows against `appendix-a.tsv` (name, permission, tier, the controller's own
+permission, dry run and confirm target presence), compare each answer with the
+real controller's over the same fake service, and plant a signed link or a
+credential field in a service answer to prove it is withheld.
+`instants-stingers-destructive.spec.ts` is the Step 0 table as tests: each
+refusal (`on_air` from both the dry run and the run, the service not called),
+the idle run and the unrecoverable dry run. `instants-stingers-registry.spec.ts`
+runs the providers through the registry's real call path (visibility by
+permission, dry run, confirmation, idempotency, re-authorization and the
+default program). No metric is added: the executor's counters cover every
+capability.
