@@ -31,7 +31,7 @@ Pompeii authorizes every `/mcp` request for `alcantara:access`, using either:
 
 ## Tools
 
-A signed-in caller sees only the tools whose permission they hold, checked again at call time. Built in, all tier R:
+A signed-in caller sees only the tools whose permission they hold, checked again at call time. Built in, all tier R. The first four are the framework's; the radio tools after them are the daily radio reads of #214, each a tool of its own:
 
 | Tool | Permission | What it does |
 |---|---|---|
@@ -39,6 +39,18 @@ A signed-in caller sees only the tools whose permission they hold, checked again
 | `list_programs` | `alcantara:program:read` | Program ids, types and song rotation mode. |
 | `list_capabilities` | `alcantara:access` | Every capability you may run, paged and searchable, with tier and input schema. |
 | `call_capability` | `alcantara:access` | Runs one listed capability through its own permission, tier, dry-run, confirmation, rate-limit and audit path ([action framework](./mcp-action-framework.md)). |
+| `get_on_air` | `alcantara:radio:read` | Reports what the radio is playing now: the song (playback request id, start time, seconds remaining), the song announced next, the rotation mode (manual, autoplay or shuffle), whether automation is frozen, the Palazzo connection and the output confidence. |
+| `get_queue` | `alcantara:radio:read` | Lists the Play Next queue in order, with each entry's id (entry_id), song id and whether it is the one playing. |
+| `get_rundown` | `alcantara:flight:read` | Lists the program's rundown sequences (flight logs) with the active one and, for each clocked log that has not started, a preflight summary (ready and the number of issues). |
+| `wait_for_change` | `alcantara:radio:read` | Holds the call open until the radio changes, for at most timeout_seconds (30 at most), and returns the first change or {timeout: true}. |
+| `get_as_run` | `alcantara:radio:read` | Lists as-run log rows between from and to (at most 7 days apart), oldest first, at most limit rows (500 at most). |
+| `get_royalty_summary` | `alcantara:radio:read` | Counts the performances of each song between from and to (at most 92 days apart): the rows of the SoundExchange export, as data, most played first, at most 500 songs (truncated says when there are more). |
+| `search_songs` | `alcantara:song:read` | Searches the song library by title, artist or chart id, at most limit songs (50 at most), ordered by artist. |
+| `get_song` | `alcantara:song:read` | Reads one song: its metadata and the stored audio analysis (status, cue in and out, fades, overlap, integrated loudness and true peak). |
+| `get_instants` | `alcantara:instant:read` | Lists the instants (short clips): id, name, volume, whether enabled and whether one is free to be a song intro, with the song it introduces in this program. |
+| `get_radio_health` | `alcantara:radio:read` | Summarizes the radio's health: the Palazzo connection (connected, degraded, last event), the output confidence (audible, silent, idle, unknown) and the recovery state (the filler prepared, the automation Palazzo reports and whether it answered). |
+
+`backend/src/mcp/mcp.docs.spec.ts` fails when this table and the registry's first-class tools differ, when [MCP capabilities](./mcp-capabilities.md) and the registered capabilities differ, or when a metric named below is not in the backend source.
 
 Everything else is a capability: find it with `list_capabilities`, then run it with `call_capability`. The capabilities by feature are in [MCP capabilities](./mcp-capabilities.md).
 

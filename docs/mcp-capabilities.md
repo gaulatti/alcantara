@@ -579,3 +579,105 @@ display prefix is returned). `mcp.registry.appendix.spec.ts` pins the new totals
 Metrics: `alcantara_access_requests_total{route,result}` and
 `alcantara_access_request_duration_seconds{route}` count the Pompeii calls
 ([Access](access-api.md)); the executor counts each tool call as usual.
+
+## Every registered capability by name (#220)
+
+`backend/src/mcp/mcp.docs.spec.ts` fails when a capability is registered but is not the first cell of a row in this file, or when a row names one that is not registered. Most capabilities have a row in the sections above; the ones below are listed here from the registry's own specs (name, permission, tier, first sentence of the description). Full arguments come from `list_capabilities`.
+
+| Capability | Permission | Tier | What it does |
+|---|---|---|---|
+| `destination_create_destination` | `broadcast.manage` | W | Adds a destination to the end of the catalog: an id, a display name and the Secrets Manager reference (secret id and pinned version id) of its stream key. |
+| `destination_get_program_state` | `broadcast.view` | R | Reads the television broadcast state of a program: its selectable destinations and what the executor reports (requested and actual state, transition, readiness, active and pending destinations). |
+| `destination_list_catalog` | `broadcast.manage` | R | Lists the full destination catalog with the Secrets Manager reference (not the key) each destination streams with, and its retirement and update times. |
+| `destination_list_destinations` | `broadcast.view` | R | Lists the broadcast destinations an operator may select (id, display name, position, retired), in catalog order. |
+| `destination_reload` | `broadcast.operate` | A | Loads a destination selection into the stopped television executor of a program without going live. |
+| `destination_reorder_destinations` | `broadcast.manage` | W | Sets the catalog order. |
+| `destination_restore_destination` | `broadcast.manage` | W | Restores a retired destination so it can be selected again. |
+| `destination_retire_destination` | `broadcast.manage` | W | Retires a destination: it can no longer be selected for a start (a replay of an older selection that includes it is refused too). |
+| `destination_start` | `broadcast.operate` | A | Starts the television broadcast of a program to the selected destinations: the stream goes out live to every one of them. |
+| `destination_stop` | `broadcast.operate` | A | Stops the television broadcast of a program: the stream ends for every destination. |
+| `destination_update_destination` | `broadcast.manage` | W | Replaces the display name and the Secrets Manager reference of a destination (all three are required, as the console sends them). |
+| `external_source_create` | `alcantara:webrtc:operate` | A | Creates an external source of the team for one to 16 programs. |
+| `external_source_get` | `alcantara:webrtc:read` | R | Reads one external source: transport, lifecycle, health, programs, credential version, ingress and participant identity. |
+| `external_source_list` | `alcantara:webrtc:read` | R | Lists the external sources of the team (name, transport, lifecycle, health, programs, credential version), active ones first. |
+| `external_source_reconcile` | `alcantara:webrtc:operate` | A | Records the lifecycle and health an external source reports (and its ingress and participant identity). |
+| `external_source_redirect` | `alcantara:webrtc:operate` | A | Checks whether an address is allowed as a redirect of an HLS or SRT source (scheme, no user name, a public address). |
+| `external_source_update` | `alcantara:webrtc:operate` | A | Changes the name, programs, normalization profile or transport address of an external source; only the fields given change. |
+| `filler_get_state` | `broadcast.view` | R | Reads the pending (next session) and active (in session) filler version of each leg of a program: checksum, status, sources and order. |
+| `filler_prepare_radio` | `broadcast.manage` | W | Prepares one to 100 distinct enabled audio media assets as the radio filler of a program, in order or shuffled with a seed. |
+| `filler_prepare_television` | `broadcast.manage` | W | Prepares an enabled image or video media asset as the television filler of a program: the executor must acknowledge the exact asset before the version becomes the pending (next session) filler. |
+| `import_media_from_url` | `alcantara:upload:create` | W | Fetches a file from an https address on the public internet and stores it as an instant, background, song, artwork or stinger upload, exactly as the console stores a file it is sent: instant, background and song take audio content types (at most 200 MiB), artwork an image (avif, gif, jpeg, png or webp, at most 10 MiB) and stinger a video/webm (at most 50 MiB). |
+| `instant_list_instants` | `alcantara:instant:read` | R | Lists every instant (a short audio clip played over the program) in the console order, with whether it can still be assigned as a song intro and, for program_id (default main), which song it introduces there. |
+| `layout_create` | `alcantara:layout:manage` | W | Creates a layout (a component type with settings); its name must be unique. |
+| `layout_update` | `alcantara:layout:manage` | W | Changes the name, component type or settings of a layout; only the fields given change. |
+| `media_asset_create_background_audio` | `alcantara:media:manage` | W | Creates a background audio asset (a name, a source address and a default volume from 0 to 1, default 1). |
+| `media_asset_create_label` | `alcantara:media:manage` | W | Creates a media label (a unique name and an optional description). |
+| `media_asset_replace_asset_labels` | `alcantara:media:manage` | W | Replaces the whole list of labels of an asset (label_ids); the asset keeps its position in a label it stays in and goes last in a new one. |
+| `media_asset_replace_label_assets` | `alcantara:media:manage` | W | Replaces the whole ordered list of assets of a media label (asset_ids); assets it drops stay, only their place in the label goes. |
+| `media_asset_update_label` | `alcantara:media:manage` | W | Changes the name or description of a media label; a field left out stays, null clears the description. |
+| `media_create` | `alcantara:media:manage` | W | Adds an image (a name and an image address) and creates its media asset. |
+| `media_group_create` | `alcantara:media:manage` | W | Creates a media group (a unique name, an optional description and an ordered list of existing media). |
+| `media_group_update` | `alcantara:media:manage` | W | Changes the name, description or ordered media of a media group; only the fields given change, and media_ids replaces the whole list. |
+| `media_update` | `alcantara:media:manage` | W | Changes the name or image address of an image; a field left out stays. |
+| `preference_discover` | `alcantara:access` | R | Lists the shared console layouts published for a program or for the team (name, description, source device class, version). |
+| `preference_get` | `alcantara:access` | R | Reads your own console profile for a device class (desktop, tablet or phone); the default profile at version 0 when none is saved. |
+| `preference_load` | `alcantara:access` | W | Copies a shared layout into your own console profile for its device class. |
+| `preference_publish` | `alcantara:layout:manage` | W | Publishes your console profile as a shared layout for a program or the team, under a name. |
+| `preference_save` | `alcantara:access` | W | Saves your own console profile for a device class. |
+| `program_activate_scene` | `alcantara:program:operate` | A | Puts an assigned scene on air on the default program ('main'); the scene it replaces becomes the staged scene. |
+| `program_activate_scene_by_id` | `alcantara:program:operate` | A | Puts an assigned scene on air on a television program; the scene it replaces becomes the staged scene. |
+| `program_add_media_group_to_program` | `alcantara:program:manage` | W | Assigns a media group to a television program. |
+| `program_add_scene_to_program` | `alcantara:program:manage` | W | Assigns a scene to a television program (radio programs take no scenes). |
+| `program_add_stinger_to_program` | `alcantara:program:manage` | W | Assigns a stinger to a television program. |
+| `program_create_program` | `alcantara:program:manage` | W | Creates a program (tv by default; radio programs take no visual template) and returns its ids. |
+| `program_enqueue_program_song_by_id` | `alcantara:program:operate` | A | Adds a song of the program playlist to the Play Next queue (at most 100 entries). |
+| `program_inspect_template` | `alcantara:program:manage` | W | Fetches a program template manifest (public https only, under the outbound-request policy) and reports what it declares. |
+| `program_reload_program` | `alcantara:program:operate` | A | Tells every live page of the default program ('main') to reload. |
+| `program_reload_program_by_id` | `alcantara:program:operate` | A | Tells every live page of a program to reload. |
+| `program_remove_queued_program_song_by_id` | `alcantara:program:operate` | W | Removes one entry from the Play Next queue (not the one playing). |
+| `program_rename_program` | `alcantara:program:manage` | W | Renames a program, changes its type, or sets (or clears, with null) its template. |
+| `program_reorder_program_song_queue_by_id` | `alcantara:program:operate` | A | Sets the order of the Play Next queue; the ids must be exactly the queued entries. |
+| `program_set_fade_to_black_by_id` | `alcantara:program:operate` | A | Turns fade to black on or off on a television program. |
+| `program_stage_scene_by_id` | `alcantara:program:operate` | A | Stages an assigned scene to go on air next on a television program, or clears the staged scene with null. |
+| `program_stop_program_scene_instant_by_id` | `alcantara:program:operate` | A | Stops the scene background audio playing on a program. |
+| `program_take_program_off_air` | `alcantara:program:operate` | A | Takes the scene on air (and fade to black) off the default program ('main'). |
+| `program_take_program_off_air_by_id` | `alcantara:program:operate` | A | Takes the scene on air (and fade to black) off a program and stops its scene background audio. |
+| `program_take_program_scene_instant_by_id` | `alcantara:program:operate` | A | Plays the background audio of a scene (the configured one, or the instant or media asset named) on a program, on loop, until it is stopped. |
+| `program_take_program_song_off_air` | `alcantara:program:operate` | A | Stops the song playing on the default program ('main') and turns its rotation to manual. |
+| `program_take_program_song_off_air_by_id` | `alcantara:program:operate` | A | Stops the song playing on a program and turns its rotation to manual (the operator Stop). |
+| `program_update_broadcast_settings` | `alcantara:program:operate` | A | Changes the global broadcast settings (time override, mixer levels, mute and solo) that every program reads. |
+| `program_update_program_audio_bus_by_id` | `alcantara:program:operate` | A | Replaces the song sequence (playlist and rotation mode) and/or the mixer settings of a program. |
+| `radio_get_recovery` | `alcantara:radio:read` | R | Reads the recovery (filler) session of a radio program: the selected songs, the prepared version and Palazzo's automation state; `connection` is "unavailable" when Palazzo cannot be reached. |
+| `radio_get_settings` | `alcantara:radio:read` | R | Reads the radio settings of a program (Palazzo address, listener address, bumpers, recovery playlist, segue and similarity settings); null when the program has none yet. |
+| `radio_get_status` | `alcantara:radio:read` | R | Reads whether the radio engine of a program is running (liquidsoap and icecast connected). |
+| `radio_list_now_playing_consumers` | `alcantara:radio:read` | R | Lists the endpoints that are told what is playing: name, address, method, enabled and position. |
+| `radio_now_playing_publishing` | `alcantara:radio:read` | R | Says whether now-playing updates are published ("enabled") or held back on a local stack ("blocked-local"). |
+| `radio_play_instant` | `alcantara:radio:operate` | A | Plays an instant (a short sound) at an audio address over a radio program, at an optional volume from 0 to 1. |
+| `radio_play_song` | `alcantara:radio:operate` | A | Plays the song at an audio address now on a radio program, as the console's manual play does. |
+| `radio_prepare_recovery` | `alcantara:radio:manage` | W | Prepares one to 100 distinct catalog songs as the recovery (fallback) playlist: Palazzo downloads and verifies them, and the version is saved only after it reports ready. |
+| `radio_replace_now_playing_consumers` | `alcantara:radio:manage` | W | Replaces the whole list of endpoints that are told what is playing: any consumer not in the list is deleted. |
+| `radio_similarity_upload` | `alcantara:radio:manage` | W | Stores embeddings computed outside the console for up to 25 songs: {schema: 1, model: {name, version, license}, windowSeconds, songs: [{songId, audioSha256, opening, closing}]}. |
+| `radio_start_recovery` | `alcantara:radio:operate` | A | Starts the recovery (fallback) session of a radio program, bound to the program radio filler version (or, without one, the prepared recovery playlist): when the live song queue runs dry, Palazzo plays the local playlist. |
+| `radio_stop_all_instants` | `alcantara:radio:operate` | A | Cuts every instant playing over a radio program. |
+| `radio_stop_recovery` | `alcantara:radio:operate` | A | Stops the recovery session of a radio program: the program audio is cleared and the binding to the playlist is dropped. |
+| `radio_stop_song` | `alcantara:radio:operate` | A | Stops the song that is playing on a radio program and tells the engine to stop. |
+| `radio_update_settings` | `alcantara:radio:manage` | W | Changes the radio settings of a program (Palazzo address, listener address, bumpers, segue, similarity, enabled). |
+| `recording_start` | `alcantara:program:operate` | A | Starts recording the program output on the executor: it writes segments to its disk, up to the quota, until stopped. |
+| `recording_status` | `alcantara:program:read` | R | Reads the recording of a program: state, times, size, segments, errors, finalization and disk quota. |
+| `recording_stop` | `alcantara:program:operate` | A | Stops the recording and finalizes it into one file. |
+| `recording_tape_start` | `alcantara:program:operate` | A | Starts the tape of the program on the executor (the executor refuses while the program is live and answers program-live). |
+| `recording_tape_status` | `alcantara:program:read` | R | Reads the tape (the program-level recording the executor keeps) of a program: whether it is enabled, active and healthy, with the recording it feeds. |
+| `recording_tape_stop` | `alcantara:program:operate` | A | Stops the tape and finalizes the recording it feeds. |
+| `scene_create` | `alcantara:scene:manage` | W | Creates a scene on a layout. |
+| `scene_draw_modo_italiano_bracket` | `alcantara:scene:operate` | A | Starts the animated draw that fills the next open opening slot of the scene bracket from its random song pool. |
+| `scene_open_modo_italiano_bracket_voting` | `alcantara:scene:operate` | A | Opens voting for one match of the scene bracket (both songs set, no winner yet). |
+| `scene_update` | `alcantara:scene:manage` | W | Changes the name, layout, chyron text, metadata or external source of a scene; only the fields given change. |
+| `scene_update_chyron` | `alcantara:scene:operate` | A | Sets the chyron (lower-third) text of a scene; where the scene is on air, viewers see it at once. |
+| `scene_vote_modo_italiano_bracket` | `alcantara:scene:operate` | A | Records one registered voter's vote (a song of the match, or null to withdraw it) in the scene bracket; a majority decides the match. |
+| `song_create` | `alcantara:song:manage` | W | Adds a song to the catalog (artist or title, and an audio address) and creates its media asset; an intro Instant may be set for a program (default main). |
+| `song_update` | `alcantara:song:manage` | W | Changes the given fields of a song; a field left out stays, null clears cover_url, duration, the chart values and the intro. |
+| `stinger_list_stingers` | `alcantara:stinger:read` | R | Lists every stinger (a transition video played between scenes) with its cut point, enabled flag and times, newest change first. |
+| `webrtc_control_participant` | `alcantara:webrtc:operate` | A | Sends one command to a connected guest of a program room: type "media" (device camera or microphone, enabled; disabling mutes the published track), "cue" (standby, live or wrap), "message" (text of up to 500 characters shown to the guest) or "talkback" (enabled). |
+| `webrtc_list_invitations` | `alcantara:webrtc:read` | R | Lists the guest invitations (program, guest name, slot, return feed, gain, expiry, status and the last ten commands sent). |
+| `webrtc_list_participants` | `alcantara:webrtc:read` | R | Lists the guests invited to a program room and whether each is connected, reconnecting or offline, with their tracks and recent commands. |
+| `webrtc_update_return` | `alcantara:webrtc:operate` | A | Sets the return feed of an invitation: the video (program, preview or none), the audio bus (master, monitor or aux-1 to aux-8), the gain from 0 to 1, mute and delay up to 2000 ms. |
