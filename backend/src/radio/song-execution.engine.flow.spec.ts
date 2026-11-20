@@ -70,6 +70,27 @@ function idle(sequence = 1): PalazzoPlaybackState {
   };
 }
 
+function playing(
+  requestId: string,
+  url: string,
+  sequence = 2,
+): PalazzoPlaybackState {
+  return {
+    ...idle(sequence),
+    status: 'playing',
+    track: {
+      playbackRequestId: requestId,
+      url,
+      title: 'Fictional',
+      artist: 'Fictional',
+      coverUrl: null,
+      startedAt: new Date().toISOString(),
+    } as unknown as PalazzoPlaybackState['track'],
+    positionSeconds: 30,
+    remainingSeconds: 60,
+  };
+}
+
 function setup(
   persisted: {
     type?: string;
@@ -126,6 +147,7 @@ function setup(
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordEngineResync: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -137,7 +159,15 @@ function setup(
   const events: SongEngineEvent[] = [];
   engine.setBroadcastHandler((event) => events.push(event));
   let reconciled = true;
-  engine.setPalazzoTelemetry({ isReconciled: () => reconciled });
+  // What Palazzo reports when the engine asks for its state (#230).
+  const palazzo: { state: PalazzoPlaybackState | null } = { state: null };
+  const currentState = jest.fn((_programId: string) =>
+    Promise.resolve(palazzo.state),
+  );
+  engine.setPalazzoTelemetry({
+    isReconciled: () => reconciled,
+    currentState,
+  });
   engine.registerRadioProgram('radio-1');
   return {
     engine,
@@ -151,6 +181,8 @@ function setup(
     setTelemetryReconciled: (value: boolean) => {
       reconciled = value;
     },
+    palazzo,
+    currentState,
   };
 }
 
@@ -663,6 +695,36 @@ describe('SongExecutionEngine high rotation selection', () => {
 });
 
 describe('SongExecutionEngine authoritative track end', () => {
+  // gaulatti/alcantara#230: the backend restarted while Palazzo played a track
+  // the new engine could not adopt (here an announced song outside the
+  // sequence), so it withheld commands. When that track ended, it waited for an
+  // idle snapshot that Palazzo only sends on a new SSE connection: the radio
+  // played no programmed song for ten hours. The end must end the wait.
+  it('resumes the rotation when a foreign track that a restart found on air ends', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('inherited-intro-song', 'https://example.test/announced.mp3'),
+    );
+    await flush(40);
+    expect(stateOf(ctx.engine).busyWithForeignTrack).toBe(true);
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+
+    // The foreign track ends; the connection stays up, so no snapshot comes by
+    // itself. Asked for its state, Palazzo reports idle.
+    ctx.palazzo.state = idle(3);
+    end(ctx, 'inherited-intro-song');
+    await flush(80);
+
+    expect(ctx.currentState).toHaveBeenCalledWith('radio-1');
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'resumed',
+    );
+    expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+  });
+
   it('ignores an end event without a request id', async () => {
     const ctx = setup();
     await startAutomatic(ctx);
@@ -1138,3 +1200,103 @@ const FAVORITES_FOR_MANUAL = sequenceOf([
   { ...SONG_A, id: 'fav', highRotation: true },
   SONG_B,
 ]);
+
+describe('SongExecutionEngine reads of Palazzo state (#230)', () => {
+  const foreignThenEnd = async (ctx: ReturnType<typeof setup>) => {
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('announced', 'https://example.test/announced.mp3'),
+    );
+    await flush(40);
+    end(ctx, 'announced');
+    await flush(80);
+  };
+
+  it('counts a state it cannot read after a foreign end and starts nothing', async () => {
+    const ctx = setup();
+    ctx.currentState.mockRejectedValueOnce(new Error('unreachable'));
+    await foreignThenEnd(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'unavailable',
+    );
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+  });
+
+  it('reconciles from a playing state after a foreign end without starting a song', async () => {
+    const ctx = setup();
+    ctx.palazzo.state = playing('another', 'https://example.test/other.mp3', 9);
+    await foreignThenEnd(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'playing',
+    );
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+  });
+
+  it('treats a telemetry source that cannot read state as unavailable', async () => {
+    const ctx = setup();
+    ctx.engine.setPalazzoTelemetry({ isReconciled: () => true });
+    await foreignThenEnd(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'unavailable',
+    );
+  });
+});
+
+// gaulatti/alcantara#230 acceptance: a backend restarted mid-song, with an intro
+// and without, resumes the rotation within the bound whether the song ends
+// while the backend is down or while it is starting.
+describe('SongExecutionEngine after a restart mid-song', () => {
+  const withIntro = (state: PalazzoPlaybackState): PalazzoPlaybackState => ({
+    ...state,
+    intro: {
+      playbackId: 'intro-1',
+      status: 'ended',
+      url: 'https://example.test/intro.mp3',
+    } as unknown as PalazzoPlaybackState['intro'],
+  });
+
+  for (const intro of [false, true]) {
+    const label = intro ? 'with an intro' : 'without an intro';
+
+    it(`song ended while the backend was down (${label}): the connect snapshot is idle and the next song starts`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
+      await flush(60);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+    });
+
+    it(`song ends while the backend is starting (${label}): an adopted song advances on its end`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const snap = playing('inherited', 'https://example.test/a.mp3');
+      ctx.engine.handlePalazzoSnapshot(
+        'radio-1',
+        intro ? withIntro(snap) : snap,
+      );
+      await flush(40);
+      end(ctx, 'inherited');
+      await flush(80);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/b.mp3']);
+    });
+
+    it(`song ends while the backend is starting (${label}): a song it cannot adopt still lets the rotation resume`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const snap = playing('announced', 'https://example.test/announced.mp3');
+      ctx.engine.handlePalazzoSnapshot(
+        'radio-1',
+        intro ? withIntro(snap) : snap,
+      );
+      await flush(40);
+      ctx.palazzo.state = idle(6);
+      end(ctx, 'announced');
+      await flush(80);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+    });
+  }
+});

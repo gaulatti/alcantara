@@ -102,3 +102,19 @@ describe('PalazzoRadioTelemetryService instance ownership', () => {
     service.onModuleDestroy();
   });
 });
+
+// gaulatti/alcantara#230: the engine reads Palazzo's state through the service.
+describe('PalazzoRadioTelemetryService current state', () => {
+  it('answers null for a program it has no client for, and asks the client otherwise', async () => {
+    const { service } = createService();
+    expect(await service.currentState('radio-unknown')).toBeNull();
+    const state = { status: 'idle' };
+    const client = { currentState: jest.fn().mockResolvedValue(state) };
+    (service as unknown as { clients: Map<string, unknown> }).clients.set(
+      'radio-1',
+      client,
+    );
+    expect(await service.currentState('radio-1')).toBe(state);
+    expect(client.currentState).toHaveBeenCalledTimes(1);
+  });
+});

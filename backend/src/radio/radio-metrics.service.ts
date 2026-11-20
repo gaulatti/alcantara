@@ -52,6 +52,21 @@ export type PalazzoMachineResult =
    */
   | 'unknown-value';
 
+/**
+ * gaulatti/alcantara#230: the engine read Palazzo's state itself because a
+ * foreign track ended, and what it found: `resumed` (Palazzo was idle and the
+ * engine reconciled from it), `playing` (Palazzo was playing; nothing to do),
+ * `unavailable` (no state could be read).
+ */
+export type EngineResyncTrigger = 'foreign_ended';
+export type EngineResyncResult = 'resumed' | 'playing' | 'unavailable';
+const RESYNC_TRIGGERS: EngineResyncTrigger[] = ['foreign_ended'];
+const RESYNC_RESULTS: EngineResyncResult[] = [
+  'resumed',
+  'playing',
+  'unavailable',
+];
+
 export type TrackTransitionResult =
   | 'advanced'
   | 'ignored-no-active'
@@ -128,6 +143,7 @@ export interface RadioMetricsSnapshot {
   eventsIgnored: Record<string, number>;
   degradedPrograms: number;
   trackTransitions: Record<string, number>;
+  engineResyncs: Record<string, number>;
   introTransitions: Record<string, number>;
   songRequestFailures: Record<string, number>;
   songQueueActions: Record<string, number>;
@@ -338,6 +354,7 @@ export class RadioMetricsService {
   private degradedPrograms = 0;
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
+  private readonly engineResyncs = new Map<string, number>();
   private readonly introTransitions = new Map<string, number>();
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
@@ -401,6 +418,14 @@ export class RadioMetricsService {
       result,
       (this.trackTransitions.get(result) ?? 0) + 1,
     );
+  }
+
+  recordEngineResync(
+    trigger: EngineResyncTrigger,
+    result: EngineResyncResult,
+  ): void {
+    const key = `${trigger}:${result}`;
+    this.engineResyncs.set(key, (this.engineResyncs.get(key) ?? 0) + 1);
   }
 
   /** A song Palazzo could not load (`playout.request_failed`), by reason. */
@@ -533,6 +558,7 @@ export class RadioMetricsService {
       eventsIgnored: Object.fromEntries(this.eventsIgnored),
       degradedPrograms: this.degradedPrograms,
       trackTransitions: Object.fromEntries(this.trackTransitions),
+      engineResyncs: Object.fromEntries(this.engineResyncs),
       introTransitions: Object.fromEntries(this.introTransitions),
       songRequestFailures: Object.fromEntries(this.songRequestFailures),
       songQueueActions: Object.fromEntries(this.songQueueActions),
@@ -611,6 +637,15 @@ export class RadioMetricsService {
         `alcantara_radio_track_transitions_total{result="${result}"} ${this.trackTransitions.get(result) ?? 0}`,
       );
     }
+    lines.push(
+      '# HELP alcantara_radio_engine_resyncs_total Times the song engine read Palazzo state itself, by trigger and outcome.',
+      '# TYPE alcantara_radio_engine_resyncs_total counter',
+    );
+    for (const trigger of RESYNC_TRIGGERS)
+      for (const result of RESYNC_RESULTS)
+        lines.push(
+          `alcantara_radio_engine_resyncs_total{trigger="${trigger}",result="${result}"} ${this.engineResyncs.get(`${trigger}:${result}`) ?? 0}`,
+        );
     lines.push(
       '# HELP alcantara_radio_intro_transitions_total Atomic song-intro lifecycle transitions by bounded result.',
       '# TYPE alcantara_radio_intro_transitions_total counter',

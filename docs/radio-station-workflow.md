@@ -97,7 +97,7 @@ another song, such as a manual pick, already replaced.
 
 **Inferred ends.** When the real `track.ended` never reaches the engine (for
 example the event stream dropped) and an authoritative idle snapshot ends the
-song, the engine emits a `track.ended` with `inferred: true` at the moment it
+song (including a state the engine read after a foreign track ended, #230), the engine emits a `track.ended` with `inferred: true` at the moment it
 advanced. The record stores `inferred = true`. If it closes a play shorter than
 30 seconds after its recorded start, or no start was recorded, it also carries a
 `reviewFlag` of `short` or `no-start`. Thirty seconds is a review threshold, not

@@ -101,8 +101,12 @@ root playback routes.
   leaf when its authoritative end arrives.
 - An unknown URL, or a URL reused by multiple sequence leaves, remains foreign:
   Alcantara sends no command while it plays and does not guess a successor from
-  its end event. It waits for an authoritative idle snapshot before normal
-  automatic recovery. Explicit manual mode remains idle.
+  its end event. When that foreign track ends, the engine reads Palazzo's
+  current state (`GET .../playback/state`) and reconciles from it as from a
+  snapshot: idle resumes normal automatic recovery. Explicit manual mode
+  remains idle. (Palazzo sends a `snapshot` only when a stream connects, so
+  waiting for one on a healthy connection stalled the rotation until the next
+  reconnect: gaulatti/alcantara#230, ten hours on 2026-11-20.)
 
 ## Transports and failure behavior
 
@@ -284,6 +288,16 @@ scrape surface is the backend's HTTP port with two routes behind the same
 bearer value never appears in metric labels, logs, build arguments or the
 container environment, and the Prometheus scrape job and its credential file
 belong to the observability repository (milano).
+
+### Engine resyncs (#230)
+
+`alcantara_radio_engine_resyncs_total{trigger,result}` counts the times the song
+engine read Palazzo's state itself. `trigger` is `foreign_ended` (a foreign
+track ended). `result` is `resumed` (Palazzo was idle and the engine reconciled
+from it), `playing` (Palazzo was playing; nothing to do) or `unavailable` (no
+state could be read). All three series are always present. A rising
+`unavailable` means the engine could not read Palazzo after a foreign track
+ended, the condition that stalled the rotation before #230.
 
 ### Palazzo metrics passthrough
 

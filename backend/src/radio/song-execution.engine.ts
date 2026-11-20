@@ -23,6 +23,7 @@ import { PrismaService } from '../prisma.service';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import {
   RadioMetricsService,
+  type EngineResyncTrigger,
   type HandoffPath,
   type SongQueueActionResult,
   type SongRequestFailureReason,
@@ -143,6 +144,12 @@ export type SongEngineBroadcastFn = (event: SongEngineEvent) => void;
 /** Subset of Palazzo telemetry knowledge the engine needs to gate playback. */
 export interface PalazzoTelemetrySource {
   isReconciled(programId: string): boolean;
+  /**
+   * Palazzo's current state on request (#230). Palazzo sends a snapshot only
+   * when a stream connects, so the engine asks when it needs the
+   * authoritative state. Null when it cannot be read.
+   */
+  currentState?(programId: string): Promise<PalazzoPlaybackState | null>;
 }
 
 interface ActiveSong {
@@ -1086,6 +1093,32 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Unfreezing radio automation for ${programId}`);
     }
     this.emit({ type: 'radio_leg_status', programId, status });
+  }
+
+  /**
+   * Reads Palazzo's state and reconciles from it (#230), as a snapshot would:
+   * idle with an active song ends it and advances, idle and empty starts the
+   * sequence, playing adopts or withholds as usual.
+   */
+  private async resync(
+    programId: string,
+    trigger: EngineResyncTrigger,
+  ): Promise<void> {
+    let snapshot: PalazzoPlaybackState | null = null;
+    try {
+      snapshot = (await this.telemetry?.currentState?.(programId)) ?? null;
+    } catch {
+      snapshot = null;
+    }
+    if (!snapshot) {
+      this.metrics.recordEngineResync(trigger, 'unavailable');
+      return;
+    }
+    this.metrics.recordEngineResync(
+      trigger,
+      snapshot.status === 'playing' ? 'playing' : 'resumed',
+    );
+    this.handlePalazzoSnapshot(programId, snapshot);
   }
 
   handlePalazzoSnapshot(
@@ -2061,9 +2094,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordTrackTransition('ignored-no-active');
       if (!state.activeSong && state.busyWithForeignTrack) {
         state.busyWithForeignTrack = false;
+        // #230: Palazzo sends no snapshot on a healthy connection, so waiting
+        // for one stalled the rotation until the next reconnect. Read the
+        // state now and reconcile from it.
         this.logger.warn(
-          `Foreign track ended on ${programId}; awaiting an authoritative idle snapshot`,
+          `Foreign track ended on ${programId}; reading Palazzo's state to resume`,
         );
+        void this.resync(programId, 'foreign_ended');
       }
       return false;
     }

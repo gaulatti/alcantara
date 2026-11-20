@@ -497,6 +497,23 @@ export class PalazzoProgramClient {
     );
   }
 
+  /**
+   * Palazzo's current state on request (gaulatti/alcantara#230): Palazzo sends
+   * a snapshot only when a stream connects, so a healthy connection never
+   * reports an idle player by itself. The engine asks when it needs the
+   * authoritative state. Null when this client is stopped, Palazzo is
+   * unreachable, or the state belongs to another Palazzo instance or boot;
+   * nothing is emitted and the stream's cursor is not touched.
+   */
+  async currentState(): Promise<PalazzoPlaybackState | null> {
+    if (this.stopped) return null;
+    const state = await this.fetchState();
+    if (!state || state.instanceId !== this.instanceId) return null;
+    if (this.currentBootId && state.bootId !== this.currentBootId) return null;
+    this.lastStatus = state.status;
+    return state;
+  }
+
   private async fetchState(): Promise<PalazzoPlaybackState | null> {
     try {
       return await this.options.machineClient.getPlaybackState(

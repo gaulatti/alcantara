@@ -15,6 +15,7 @@ import {
   type PalazzoInstanceValidation,
 } from './palazzo-program.client';
 import type {
+  PalazzoPlaybackState,
   PalazzoProgramStatus,
   PalazzoProgramType,
 } from './palazzo-contract';
@@ -121,6 +122,12 @@ export class PalazzoRadioTelemetryService
       (status.connection === 'connected' || status.connection === 'polling') &&
       status.lastSnapshotAt !== null
     );
+  }
+
+  /** Palazzo's current state for the program, on request (#230). */
+  async currentState(programId: string): Promise<PalazzoPlaybackState | null> {
+    const client = this.clients.get(programId);
+    return client ? client.currentState() : null;
   }
 
   getStatus(programId: string): PalazzoProgramStatus | null {

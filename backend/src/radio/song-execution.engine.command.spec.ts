@@ -114,6 +114,7 @@ function setup(
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordEngineResync: jest.fn(),
     recordIntroTransition: jest.fn(),
     recordSongQueueAction: jest.fn(),
     recordSongQueueDepth: jest.fn(),

@@ -140,3 +140,33 @@ describe('RadioMetricsService', () => {
     expect(metrics.snapshot().connectionsByState).toEqual({});
   });
 });
+
+// gaulatti/alcantara#230: the engine's own reads of Palazzo's state.
+describe('RadioMetricsService engine resyncs', () => {
+  it('counts resyncs by bounded trigger and result, with every series present', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordEngineResync('foreign_ended', 'resumed');
+    metrics.recordEngineResync('foreign_ended', 'resumed');
+    metrics.recordEngineResync('foreign_ended', 'unavailable');
+    const rendered = metrics.render();
+    expect(rendered).toContain(
+      '# TYPE alcantara_radio_engine_resyncs_total counter',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="foreign_ended",result="resumed"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="foreign_ended",result="playing"} 0',
+    );
+    const series = rendered
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_radio_engine_resyncs_total{'),
+      );
+    expect(series).toHaveLength(3);
+    expect(metrics.snapshot().engineResyncs).toEqual({
+      'foreign_ended:resumed': 2,
+      'foreign_ended:unavailable': 1,
+    });
+  });
+});

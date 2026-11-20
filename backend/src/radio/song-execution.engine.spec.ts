@@ -144,6 +144,7 @@ function createEngine(opts: {
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordEngineResync: jest.fn(),
     recordIntroTransition: jest.fn(),
     recordEventIgnored: jest.fn(),
     recordDegradedPrograms: jest.fn(),
