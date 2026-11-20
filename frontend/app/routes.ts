@@ -13,6 +13,7 @@ export default [
       route('songs', 'routes/songs.tsx'),
       route('media', 'routes/media.tsx'),
       route('calls', 'routes/calls.tsx'),
+      route('sources', 'routes/sources.tsx'),
       route('scenes', 'routes/scenes.tsx'),
       route('programs', 'routes/programs.tsx'),
       route('broadcasts', 'routes/broadcasts.tsx'),
