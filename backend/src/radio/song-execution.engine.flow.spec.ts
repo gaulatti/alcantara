@@ -1658,6 +1658,67 @@ describe('SongExecutionEngine after a failed song command', () => {
     expect(bare.commandRetries).toBe(0);
   });
 
+  // Tonight's case end to end: Palazzo restarts under a playing song, the
+  // engine freezes and unfreezes, its first commands land before Palazzo can
+  // play and fail, and the retries bring a song on the air with nobody acting.
+  const status = (connection: string) =>
+    ({ programId: 'radio-1', connection }) as never;
+
+  it('recovers a Palazzo restart: commands fail, freeze, unfreeze, song', async () => {
+    const ctx = setup();
+    const first = await startAutomatic(ctx);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing(first, 'https://example.test/a.mp3', 3),
+    );
+    await flush(40);
+
+    ctx.engine.handlePalazzoStatus('radio-1', status('unavailable'));
+    expect(stateOf(ctx.engine).frozen).toBe(true);
+    ctx.engine.handlePalazzoStatus('radio-1', status('connected'));
+    ctx.radioService.playSong
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: false });
+    ctx.palazzo.state = { ...idle(1), bootId: 'boot-2' };
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...idle(1),
+      bootId: 'boot-2',
+    });
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+    expect(stateOf(ctx.engine).activeSong).toBeNull();
+
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(3);
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS * 2);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(4);
+    const onAir = activeRequestId(ctx.engine);
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...playing(onAir, playedUrls(ctx)[3], 2),
+      bootId: 'boot-2',
+    });
+    await flush(40);
+    expect(stateOf(ctx.engine).commandRetries).toBe(0);
+    expect(stateOf(ctx.engine).commandRetryTimer).toBeNull();
+  });
+
+  it('a retry that meets a freeze stands down, and the unfreeze path resumes', async () => {
+    const ctx = await failFirst(1);
+    ctx.engine.handlePalazzoStatus('radio-1', status('unavailable'));
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(stateOf(ctx.engine).commandRetryTimer).toBeNull();
+    // Nothing re-arms the retry; the unfreeze and its snapshot start the song.
+    ctx.engine.handlePalazzoStatus('radio-1', status('connected'));
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle(9));
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+    expect(stateOf(ctx.engine).activeSong).not.toBeNull();
+  });
+
   it('clears a pending retry when the module stops', async () => {
     const ctx = await failFirst(1);
     expect(stateOf(ctx.engine).commandRetryTimer).not.toBeNull();
