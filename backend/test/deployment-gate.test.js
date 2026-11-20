@@ -206,9 +206,13 @@ esac
 exit 0`,
   );
   stub('curl', 'case "$*" in *write-out*) printf 200 ;; esac\nexit 0');
+  // The deploy writes the token to a temp file by redirection (no pipe, so no
+  // SIGPIPE under pipefail). mktemp is the one command that must hand back a real,
+  // writable path; install and mv are recorded.
+  stub('mktemp', `command -p mktemp "${bin}/token.XXXXXX"`);
   for (const name of [
-    'sleep',
     'install',
+    'sleep',
     'mv',
     'nginx',
     'systemctl',
@@ -288,9 +292,15 @@ test('mounts the scrape credential from the production secret read-only without 
   assert.doesNotMatch(tokenScript, /console\.(log|error)\([^)]*token\)/);
   assert.match(
     deployScript,
-    /\| install -m 0400 -o root -g root \/dev\/stdin "\$metrics_token_file\.new"/,
+    /node scripts\/print-metrics-token\.mjs >"\$metrics_token_tmp"/,
   );
-  assert.doesNotMatch(deployScript, /node scripts\/print-metrics-token\.mjs >/);
+  assert.match(
+    deployScript,
+    /install -m 0400 -o root -g root "\$metrics_token_tmp" "\$metrics_token_file\.new"/,
+  );
+  // No pipe between the writer and install: SIGPIPE under pipefail (141).
+  assert.doesNotMatch(deployScript, /print-metrics-token\.mjs\s*\\?\n?\s*\|/);
+  assert.doesNotMatch(deployScript, /\/dev\/stdin/);
   assert.match(deployScript, /install -d -m 0755 -o root -g root/);
   assert.match(
     deployScript,

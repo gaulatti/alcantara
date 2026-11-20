@@ -113,12 +113,21 @@ echo 'Alcantara candidate passed its health check'
 # Resolve the scrape credential before touching the live backend. A missing or
 # malformed secret field fails the deploy; the token is never printed.
 install -d -m 0755 -o root -g root "$metrics_token_dir"
-docker run --rm \
+# No pipe: a reader that exits early would kill the writer with SIGPIPE under
+# pipefail. The value goes to a private temp file by redirection, is checked
+# non-empty, then installed read-only for root and moved into place.
+metrics_token_tmp="$(umask 077 && mktemp "$metrics_token_dir/metrics-token.XXXXXX")"
+if ! docker run --rm \
   -e AWS_REGION=us-east-1 \
   -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
   "$image" \
-  node scripts/print-metrics-token.mjs \
-  | install -m 0400 -o root -g root /dev/stdin "$metrics_token_file.new"
+  node scripts/print-metrics-token.mjs >"$metrics_token_tmp" || [ ! -s "$metrics_token_tmp" ]; then
+  rm -f "$metrics_token_tmp"
+  echo 'Alcantara metrics scrape token could not be resolved; the running backend was not touched' >&2
+  exit 1
+fi
+install -m 0400 -o root -g root "$metrics_token_tmp" "$metrics_token_file.new"
+rm -f "$metrics_token_tmp"
 mv -f "$metrics_token_file.new" "$metrics_token_file"
 
 had_previous=false

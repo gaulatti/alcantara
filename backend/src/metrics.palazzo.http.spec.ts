@@ -1,4 +1,7 @@
-import { INestApplication } from '@nestjs/common';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -28,8 +31,13 @@ async function boot(tokenFile: string, fetchImpl: jest.Mock) {
       { provide: PALAZZO_FETCH, useValue: fetchImpl },
     ],
   }).compile();
-  const app = moduleRef.createNestApplication();
+  // The production HTTP adapter is Fastify (main.ts); an Express test app hid a
+  // reply API that only exists on Express (response.setHeader).
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(
+    new FastifyAdapter(),
+  );
   await app.init();
+  await app.getHttpAdapter().getInstance().ready();
   return { app, managed: moduleRef.get(ManagedMetricsService) };
 }
 
@@ -37,7 +45,7 @@ describe('GET /metrics/palazzo over HTTP', () => {
   const dir = mkdtempSync(join(tmpdir(), 'palazzo-metrics-'));
   const tokenFile = join(dir, 'token');
   writeFileSync(tokenFile, `${TOKEN}\n`);
-  let app: INestApplication;
+  let app: NestFastifyApplication;
 
   afterEach(async () => {
     await app?.close();

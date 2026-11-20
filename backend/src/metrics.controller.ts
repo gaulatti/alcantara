@@ -35,11 +35,11 @@ export class MetricsController {
    */
   @Get('metrics/palazzo')
   @UseGuards(MetricsTokenGuard)
+  @Header('Content-Type', PALAZZO_METRICS_CONTENT_TYPE)
   async getPalazzoMetrics(
     @Res({ passthrough: true })
     response: {
       status(code: number): unknown;
-      setHeader(name: string, value: string): unknown;
     },
   ): Promise<string> {
     const body = await this.palazzoMetrics.fetch();
@@ -47,7 +47,6 @@ export class MetricsController {
       response.status(502);
       return '';
     }
-    response.setHeader('Content-Type', PALAZZO_METRICS_CONTENT_TYPE);
     return body;
   }
 }

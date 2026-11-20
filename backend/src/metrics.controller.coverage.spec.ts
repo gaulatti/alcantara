@@ -56,23 +56,31 @@ describe('MetricsController', () => {
 
     it('returns the body with the Prometheus content type', async () => {
       const controller = await build('palazzo_up 1\n');
-      const response = { status: jest.fn(), setHeader: jest.fn() };
+      const response = { status: jest.fn() };
       await expect(controller.getPalazzoMetrics(response)).resolves.toBe(
         'palazzo_up 1\n',
       );
-      expect(response.setHeader).toHaveBeenCalledWith(
-        'Content-Type',
-        'text/plain; version=0.0.4; charset=utf-8',
-      );
+      // The content type is set by the @Header decorator, which works on the
+      // production Fastify adapter; the handler never touches a header API.
+      expect(
+        Reflect.getMetadata(
+          '__headers__',
+          MetricsController.prototype.getPalazzoMetrics,
+        ),
+      ).toEqual([
+        {
+          name: 'Content-Type',
+          value: 'text/plain; version=0.0.4; charset=utf-8',
+        },
+      ]);
       expect(response.status).not.toHaveBeenCalled();
     });
 
     it('answers 502 with an empty body on failure', async () => {
       const controller = await build(null);
-      const response = { status: jest.fn(), setHeader: jest.fn() };
+      const response = { status: jest.fn() };
       await expect(controller.getPalazzoMetrics(response)).resolves.toBe('');
       expect(response.status).toHaveBeenCalledWith(502);
-      expect(response.setHeader).not.toHaveBeenCalled();
     });
 
     it('is behind the same MetricsTokenGuard as /metrics', () => {
