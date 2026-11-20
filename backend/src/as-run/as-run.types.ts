@@ -85,3 +85,30 @@ export interface SoundExchangeRow {
 
 export const SOUNDEXCHANGE_SPECIFICATION_VERSION =
   '37 CFR § 370.4 / SoundExchange Report of Use Delivery Specifications';
+
+/** One sound recording's counted performances in a window. */
+export interface AsRunPerformance {
+  songId: number | null;
+  assetId: string | null;
+  artist: string;
+  title: string;
+  count: number;
+}
+
+/** One as-run log row as a read-only consumer sees it. */
+export interface AsRunListedRecord {
+  id: number;
+  songId: number | null;
+  assetId: string | null;
+  title: string;
+  artist: string;
+  state: string;
+  at: Date;
+  playbackRequestId: string | null;
+  inferred: boolean;
+  reviewFlag: string | null;
+  endReason: string | null;
+  actorPrincipalId: string | null;
+  actorVia: string | null;
+  actorClient: string | null;
+}

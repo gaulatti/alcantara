@@ -6,5 +6,6 @@ import { SongsService } from './songs.service';
 @Module({
   controllers: [SongsController],
   providers: [SongsService, PrismaService],
+  exports: [SongsService],
 })
 export class SongsModule {}

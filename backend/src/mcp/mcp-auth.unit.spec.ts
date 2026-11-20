@@ -5,7 +5,15 @@ import type { PompeiiService } from '../auth/pompeii.service';
 import { PompeiiService as PompeiiServiceToken } from '../auth/pompeii.service';
 import { TestAuthService } from '../auth/test-auth.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { FlightService } from '../program/flight.service';
 import { ProgramService } from '../program/program.service';
+import { PrismaService } from '../prisma.service';
+import { PalazzoRadioTelemetryService } from '../radio/palazzo-telemetry.service';
+import { RadioOutputConfidenceService } from '../radio/radio-output-confidence.service';
+import { RadioService } from '../radio/radio.service';
+import { SongExecutionEngine } from '../radio/song-execution.engine';
+import { McpRegistry } from './mcp-registry.service';
+import { McpRadioReadTools } from './tools/radio-read.tools';
 import { McpAuthService, McpHttpError } from './mcp-auth.service';
 import { clientName } from './mcp.controller';
 import { McpModule } from './mcp.module';
@@ -127,18 +135,45 @@ describe('MCP auth client key', () => {
 });
 
 describe('MCP module', () => {
-  it('compiles with its global dependencies', async () => {
+  it('compiles with its global dependencies and registers the radio read tools', async () => {
     const module = await Test.createTestingModule({ imports: [McpModule] })
+      .overrideProvider(PrismaService)
+      .useValue({})
       .useMocker((token) => {
         if (token === PompeiiServiceToken)
           return { teamId: 1, authorize: jest.fn() };
         if (token === ManagedMetricsService) return new ManagedMetricsService();
         if (token === TestAuthService) return { isEnabled: () => false };
-        if (token === ProgramService) return { listPrograms: jest.fn() };
+        if (token === ProgramService)
+          return {
+            listPrograms: jest.fn(),
+            addEventListener: jest.fn(() => jest.fn()),
+          };
+        if (
+          [
+            FlightService,
+            SongExecutionEngine,
+            PalazzoRadioTelemetryService,
+            RadioOutputConfidenceService,
+            RadioService,
+          ].includes(token as never)
+        )
+          return {};
         return undefined;
       })
       .compile();
     expect(module.get(McpAuthService)).toBeInstanceOf(McpAuthService);
+    expect(module.get(McpRadioReadTools)).toBeInstanceOf(McpRadioReadTools);
+    await module.init();
+    expect(
+      module
+        .get(McpRegistry)
+        .all()
+        .filter((spec) => spec.tier === 'R')
+        .map((spec) => spec.name),
+    ).toEqual(
+      expect.arrayContaining(['get_on_air', 'wait_for_change', 'get_song']),
+    );
     await module.close();
   });
 });

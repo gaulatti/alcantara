@@ -59,3 +59,29 @@ export const MCP_ACTION_LIMITS = {
   idempotencyKeyMax: 128,
   confirmMax: 2048,
 } as const;
+
+/**
+ * Longest a wait_for_change call may hold a request open
+ * (gaulatti/alcantara#214). Code-owned, like every limit here.
+ */
+export const MCP_WAIT_MAX_SECONDS = 30;
+
+/** Bounds of the R-tier radio tools (gaulatti/alcantara#214). */
+export const MCP_READ_LIMITS = {
+  /** wait_for_change calls one identity may hold open at once. */
+  concurrentWaitsPerIdentity: 2,
+  /** Changes kept per program for since_sequence; older ones are dropped. */
+  changeBuffer: 64,
+  /** get_as_run: widest window, most rows and the default row count. */
+  asRunWindowDays: 7,
+  asRunLimitMax: 500,
+  asRunLimitDefault: 100,
+  /** get_royalty_summary: widest window (one quarter) and most songs listed. */
+  royaltyWindowDays: 92,
+  royaltySongsMax: 500,
+  /** search_songs: most songs returned. */
+  songSearchMax: 50,
+  songSearchDefault: 20,
+  /** get_rundown: clocked logs that get a preflight summary. */
+  rundownPreflightMax: 10,
+} as const;

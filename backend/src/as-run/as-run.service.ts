@@ -18,6 +18,8 @@ import {
   AS_RUN_SHORT_INFERRED_PLAY_MS,
   type AsRunExportQuery,
   type AsRunInferredFilter,
+  type AsRunListedRecord,
+  type AsRunPerformance,
   type AsRunReviewFlag,
   type AsRunTrackEvent,
 } from './as-run.types';
@@ -419,14 +421,65 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     to?: Date,
     inferred: AsRunInferredFilter = 'include',
   ): Promise<string> {
+    const header = [
+      'Transmission Category Code',
+      'Featured Artist Name',
+      'Sound Recording Title',
+      'ISRC',
+      'Album Title',
+      'Marketing Label',
+      'Actual Total Performances',
+    ].join(',');
+
+    const lines = [header];
+
+    for (const performance of await this.summarizePerformances(
+      programId,
+      from,
+      to,
+      inferred,
+    )) {
+      // Plays lacking an ISRC are listed as gaps (empty string field in SoundExchange layout)
+      const isrc = '';
+      const albumTitle = '';
+      const marketingLabel = '';
+      const categoryCode = 'E'; // Eligible nonsubscription transmission (37 CFR § 370.4)
+
+      const row = [
+        escapeCsvField(categoryCode),
+        escapeCsvField(performance.artist),
+        escapeCsvField(performance.title),
+        escapeCsvField(isrc),
+        escapeCsvField(albumTitle),
+        escapeCsvField(marketingLabel),
+        escapeCsvField(performance.count),
+      ].join(',');
+
+      lines.push(row);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * The counted performances of each sound recording in a window: the rows of
+   * the SoundExchange export, as data. Inferred ends count as performances;
+   * `only` and `exclude` list them separately from ends that are not inferred
+   * (Palazzo's reported ends, operator stops and manual cuts). A superseded end
+   * is inferred. In SoundExchange Report of Use, performances are based on
+   * completed plays (state = 'ended'); a preempted announced song is recorded,
+   * never counted.
+   */
+  async summarizePerformances(
+    programId: string,
+    from?: Date,
+    to?: Date,
+    inferred: AsRunInferredFilter = 'include',
+  ): Promise<AsRunPerformance[]> {
     const atFilter: { gte?: Date; lte?: Date } = {};
     if (from) atFilter.gte = from;
     if (to) atFilter.lte = to;
 
-    // Inferred ends count as performances; `only` and `exclude` list them
-    // separately from ends that are not inferred (Palazzo's reported ends,
-    // operator stops and manual cuts). A superseded end is inferred.
-    // In SoundExchange Report of Use, performances are based on completed plays (state = 'ended')
     const records = (
       await this.prisma.asRunRecord.findMany({
         where: {
@@ -497,45 +550,72 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const header = [
-      'Transmission Category Code',
-      'Featured Artist Name',
-      'Sound Recording Title',
-      'ISRC',
-      'Album Title',
-      'Marketing Label',
-      'Actual Total Performances',
-    ].join(',');
-
-    const lines = [header];
-
-    for (const { count, record } of performanceCounts.values()) {
+    return [...performanceCounts.values()].map(({ count, record }) => {
       const song =
         record.songId !== null ? songMap.get(record.songId) : undefined;
       const asset =
         record.assetId !== null ? assetMap.get(record.assetId) : undefined;
+      return {
+        songId: record.songId,
+        assetId: record.assetId,
+        artist: song?.artist ?? '',
+        title: song?.title ?? asset?.name ?? '',
+        count,
+      };
+    });
+  }
 
-      const artist = song?.artist ?? '';
-      const title = song?.title ?? asset?.name ?? '';
-      // Plays lacking an ISRC are listed as gaps (empty string field in SoundExchange layout)
-      const isrc = '';
-      const albumTitle = '';
-      const marketingLabel = '';
-      const categoryCode = 'E'; // Eligible nonsubscription transmission (37 CFR § 370.4)
-
-      const row = [
-        escapeCsvField(categoryCode),
-        escapeCsvField(artist),
-        escapeCsvField(title),
-        escapeCsvField(isrc),
-        escapeCsvField(albumTitle),
-        escapeCsvField(marketingLabel),
-        escapeCsvField(count),
-      ].join(',');
-
-      lines.push(row);
-    }
-
-    return lines.join('\n');
+  /**
+   * The log rows of a window in time order, as the CSV export lists them, at
+   * most `limit` of them. `truncated` is true when the window holds more.
+   */
+  async listRecords(
+    programId: string,
+    from: Date,
+    to: Date,
+    limit: number,
+  ): Promise<{ records: AsRunListedRecord[]; truncated: boolean }> {
+    const rows = await this.prisma.asRunRecord.findMany({
+      where: { programId, at: { gte: from, lte: to } },
+      orderBy: [{ at: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
+    });
+    const page = rows.slice(0, limit);
+    const songIds = Array.from(
+      new Set(
+        page
+          .map((r) => r.songId)
+          .filter((id): id is number => typeof id === 'number'),
+      ),
+    );
+    const songs = songIds.length
+      ? await this.prisma.song.findMany({
+          where: { id: { in: songIds } },
+          select: { id: true, title: true, artist: true },
+        })
+      : [];
+    const songMap = new Map(songs.map((s) => [s.id, s]));
+    return {
+      truncated: rows.length > limit,
+      records: page.map((r) => {
+        const song = r.songId !== null ? songMap.get(r.songId) : undefined;
+        return {
+          id: r.id,
+          songId: r.songId,
+          assetId: r.assetId,
+          title: song?.title ?? '',
+          artist: song?.artist ?? '',
+          state: r.state,
+          at: r.at,
+          playbackRequestId: r.playbackRequestId,
+          inferred: r.inferred === true,
+          reviewFlag: r.reviewFlag,
+          endReason: r.endReason,
+          actorPrincipalId: r.actorPrincipalId,
+          actorVia: r.actorVia,
+          actorClient: r.actorClient,
+        };
+      }),
+    };
   }
 }

@@ -124,6 +124,20 @@ export type SongEngineEvent =
       failedAt: string;
     };
 
+/** The engine's read-only account of one program; see getOnAirView. */
+export interface SongEngineOnAirView {
+  playbackRequestId: string | null;
+  songId: number | null;
+  next: {
+    playbackId: string;
+    status: 'pending' | 'accepted' | 'not-announced';
+    title: string;
+    artist: string;
+  } | null;
+  mode: ProgramSongSequence['mode'] | null;
+  frozen: boolean;
+}
+
 export type SongEngineBroadcastFn = (event: SongEngineEvent) => void;
 
 /** Subset of Palazzo telemetry knowledge the engine needs to gate playback. */
@@ -1020,6 +1034,34 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
   getPlaybackState(programId: string): SongPlaybackData | null {
     const s = this.states.get(programId)?.activeSong;
     return s ? this.playbackData(programId, s) : null;
+  }
+
+  /**
+   * What the engine itself knows about a program, for read-only consumers
+   * (gaulatti/alcantara#214): the song on air with its playback request ID and
+   * song ID, the next song announced to Palazzo, the rotation mode and whether
+   * the engine is frozen. Never exposes the playback token or an audio URL.
+   * A program the engine has no state for reads as idle, manual-less and
+   * unfrozen.
+   */
+  getOnAirView(programId: string): SongEngineOnAirView {
+    const state = this.states.get(programId);
+    const active = state?.activeSong ?? null;
+    const announced = state?.announcement ?? null;
+    return {
+      playbackRequestId: active?.playbackRequestId ?? null,
+      songId: active?.songId ?? null,
+      next: announced
+        ? {
+            playbackId: announced.playbackId,
+            status: announced.status,
+            title: announced.title,
+            artist: announced.artist,
+          }
+        : null,
+      mode: state?.sequence?.mode ?? null,
+      frozen: state?.frozen ?? false,
+    };
   }
 
   // ---------------------------------------------------------------------

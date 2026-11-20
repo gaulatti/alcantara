@@ -40,6 +40,19 @@ interface FindAllParams {
   programId?: string;
 }
 
+export interface SongAnalysis {
+  assetId: string;
+  status: string;
+  cueInSeconds: number | null;
+  cueOutSeconds: number | null;
+  fadeInSeconds: number | null;
+  fadeOutSeconds: number | null;
+  overlapSeconds: number | null;
+  integratedLufs: number | null;
+  truePeakDbtp: number | null;
+  updatedAt: Date;
+}
+
 const ALLOWED_SORT_FIELDS = [
   'id',
   'artist',
@@ -134,6 +147,30 @@ export class SongsService {
       throw new NotFoundException('Song not found');
     }
     return this.withGenericChartFields(this.scopeIntro(song, programId));
+  }
+
+  /**
+   * The stored audio analysis (cue points, fades, loudness, status) of each
+   * media asset, keyed by asset ID. An asset with no row has no entry.
+   */
+  async findAnalyses(assetIds: string[]) {
+    if (assetIds.length === 0) return new Map<string, SongAnalysis>();
+    const rows = await this.prisma.mediaAssetAnalysis.findMany({
+      where: { assetId: { in: assetIds } },
+      select: {
+        assetId: true,
+        status: true,
+        cueInSeconds: true,
+        cueOutSeconds: true,
+        fadeInSeconds: true,
+        fadeOutSeconds: true,
+        overlapSeconds: true,
+        integratedLufs: true,
+        truePeakDbtp: true,
+        updatedAt: true,
+      },
+    });
+    return new Map<string, SongAnalysis>(rows.map((row) => [row.assetId, row]));
   }
 
   async create(data: SongInput) {

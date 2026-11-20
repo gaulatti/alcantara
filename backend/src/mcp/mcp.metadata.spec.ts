@@ -36,4 +36,26 @@ describe('MCP design metadata under unresolved circular imports', () => {
       ).toEqual([Object, Object]);
     });
   });
+  it('records Object for the radio read tools and the change feed dependencies', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../as-run/as-run.service', () => ({}));
+      jest.doMock('../program/flight.service', () => ({}));
+      jest.doMock('../program/program.service', () => ({}));
+      jest.doMock('../radio/palazzo-telemetry.service', () => ({}));
+      jest.doMock('../radio/radio-output-confidence.service', () => ({}));
+      jest.doMock('../radio/radio.service', () => ({}));
+      jest.doMock('../radio/song-execution.engine', () => ({}));
+      jest.doMock('../songs/songs.service', () => ({}));
+      jest.doMock('./tools/mcp-change.feed', () => ({}));
+      const { McpRadioReadTools } = require('./tools/radio-read.tools');
+      jest.dontMock('./tools/mcp-change.feed');
+      const { McpChangeFeed } = require('./tools/mcp-change.feed');
+      expect(
+        Reflect.getMetadata('design:paramtypes', McpRadioReadTools),
+      ).toEqual(Array(9).fill(Object));
+      expect(Reflect.getMetadata('design:paramtypes', McpChangeFeed)).toEqual([
+        Object,
+      ]);
+    });
+  });
 });
