@@ -319,6 +319,26 @@ describe('/access', () => {
     },
   );
 
+  it('refuses a personal access token at the guard, before any access RPC', async () => {
+    await start();
+    for (const [method, route, body] of [
+      ['post', '/access/tokens', { name: 'x', no_expiry: true }],
+      ['put', '/access/token-switch', { enabled: true }],
+      ['post', '/access/grants', { user_id: 1, role_id: 2 }],
+    ] as const) {
+      const response = await http()
+        [method](route)
+        .set('Authorization', 'Bearer pmp_pat_not-a-real-token')
+        .send(body)
+        .expect(401);
+      expect(response.body).toEqual({
+        error: 'UNAUTHENTICATED',
+        reason: 'DENY_UNSUPPORTED_CREDENTIAL',
+      });
+    }
+    expect(accessCalls()).toEqual([]);
+  });
+
   it.each([status.UNAVAILABLE, status.INTERNAL, status.UNIMPLEMENTED])(
     'maps gRPC %s to 503 access_unavailable',
     async (code) => {
