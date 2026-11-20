@@ -154,7 +154,10 @@ test('a failed start prints a bounded, filtered log tail on stderr', () => {
   assert.match(deployScript, /print_startup_log\(\) \{/);
   assert.match(deployScript, /tail -n 35/);
   assert.match(deployScript, /cut -c1-200 >&2/);
-  assert.match(deployScript, /grep -vE 'Mapped \\\{\|RoutesResolver\|InstanceLoader'/);
+  assert.match(
+    deployScript,
+    /grep -vE 'Mapped \\\{\|RoutesResolver\|InstanceLoader'/,
+  );
   const failure = deployScript.indexOf(
     'Alcantara backend failed its local health check; rolling back',
   );
@@ -164,4 +167,101 @@ test('a failed start prints a bounded, filtered log tail on stderr', () => {
       failure,
   );
   assert.doesNotMatch(deployScript, /docker logs --tail 200 alcantara-backend/);
+});
+
+// gaulatti/alcantara#223: the deploy script itself runs here against stub
+// commands. A candidate that fails its health check stops the deploy before
+// the running backend is stopped; a healthy one is removed and the deploy
+// goes on to replace the running backend as before.
+function runDeploy({ candidateHealthy }) {
+  const {
+    mkdtempSync,
+    writeFileSync,
+    chmodSync,
+    readFileSync: read,
+  } = require('node:fs');
+  const { join } = require('node:path');
+  const { tmpdir } = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const bin = mkdtempSync(join(tmpdir(), 'alcantara-deploy-'));
+  const calls = join(bin, 'calls.log');
+  const stub = (name, body) => {
+    writeFileSync(
+      join(bin, name),
+      `#!/usr/bin/env bash\necho "${name} $*" >> "${calls}"\n${body}\n`,
+    );
+    chmodSync(join(bin, name), 0o755);
+  };
+  stub(
+    'docker',
+    `args="$*"
+case "$args" in
+  *login*) cat >/dev/null ;;
+  "inspect alcantara-backend-previous") exit 1 ;;
+  *"State.Running"*) echo ${candidateHealthy ? 'true' : 'false'} ;;
+  "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
+  "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
+esac
+exit 0`,
+  );
+  stub('curl', 'case "$*" in *write-out*) printf 200 ;; esac\nexit 0');
+  for (const name of ['sleep', 'install', 'nginx', 'systemctl', 'certbot'])
+    stub(name, 'exit 0');
+  const result = spawnSync(
+    'bash',
+    [
+      '../deploy/cumulus.sh',
+      'fictional-user',
+      Buffer.from('fictional-registry-token').toString('base64'),
+      'fictional/broadcast',
+      'fictional/database',
+      'ghcr.io/example/alcantara:fictional',
+      Buffer.from('# nginx').toString('base64'),
+      'fictional-bucket',
+    ],
+    {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      encoding: 'utf8',
+    },
+  );
+  const log = read(calls, 'utf8').split('\n').filter(Boolean);
+  return { ...result, log };
+}
+
+test('a candidate that fails its health check leaves the running backend untouched', () => {
+  const { status, stdout, stderr, log } = runDeploy({
+    candidateHealthy: false,
+  });
+  assert.equal(status, 1);
+  assert.match(
+    stdout,
+    /Alcantara candidate failed its health check; the running backend is untouched/,
+  );
+  assert.match(stderr, /fictional start-up failure/);
+  const candidate = log.findIndex((line) =>
+    line.startsWith('docker run -d --name alcantara-backend-candidate'),
+  );
+  assert.ok(candidate >= 0);
+  assert.match(log[candidate], /-e ALCANTARA_DEPLOY_CANDIDATE=1/);
+  assert.doesNotMatch(log[candidate], /broadcast-control|-p |--restart/);
+  assert.ok(log.includes('docker rm -f alcantara-backend-candidate'));
+  for (const line of log) {
+    assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+    assert.doesNotMatch(line, /^docker run -d --name alcantara-backend /);
+  }
+});
+
+test('a healthy candidate is removed before the running backend is replaced as before', () => {
+  const { status, stdout, log } = runDeploy({ candidateHealthy: true });
+  assert.equal(status, 0, stdout);
+  assert.match(stdout, /Alcantara candidate passed its health check/);
+  assert.match(stdout, /ALCANTARA_HEALTHY/);
+  const removed = log.lastIndexOf('docker rm -f alcantara-backend-candidate');
+  const stop = log.indexOf('docker stop alcantara-backend');
+  const live = log.findIndex((line) =>
+    line.startsWith('docker run -d --name alcantara-backend '),
+  );
+  assert.ok(removed >= 0 && stop > removed && live > stop);
+  assert.doesNotMatch(log[live], /ALCANTARA_DEPLOY_CANDIDATE/);
+  assert.match(log[live], /--network broadcast-control/);
 });

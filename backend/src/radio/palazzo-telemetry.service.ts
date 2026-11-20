@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
   Logger,
@@ -51,6 +52,10 @@ export class PalazzoRadioTelemetryService
 
   async onModuleInit(): Promise<void> {
     this.engine.setPalazzoTelemetry(this);
+    if (isDeployCandidate()) {
+      this.logger.log('Deploy candidate: no Palazzo telemetry is started');
+      return;
+    }
     await this.startAll();
   }
 

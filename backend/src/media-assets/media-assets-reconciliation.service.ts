@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { MediaAssetKind, Prisma } from '@prisma/client';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
@@ -51,6 +52,10 @@ export class MediaAssetsReconciliationService implements OnApplicationBootstrap 
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    if (isDeployCandidate()) {
+      this.logger.log('Deploy candidate: media assets are not reconciled');
+      return;
+    }
     try {
       const result = await this.reconcile();
       this.metrics.recordJob('media-asset-reconciliation', 'success');

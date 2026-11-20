@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Inject,
   Injectable,
@@ -104,6 +105,10 @@ export class MediaAnalysisService
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    if (isDeployCandidate()) {
+      this.logger.log('Deploy candidate: media analysis is not scheduled');
+      return;
+    }
     if (!(await this.analyzer.available(TOOL_CHECK_TIMEOUT_MS))) {
       this.logger.error(
         'Media analysis is not scheduled: ffmpeg or ffprobe is not installed',

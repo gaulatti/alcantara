@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
   forwardRef,
@@ -229,6 +230,12 @@ export class FlightService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (isDeployCandidate()) {
+      this.logger.log(
+        'Deploy candidate: rundown blocks are left as they are and none is started',
+      );
+      return;
+    }
     // Runtime timers cannot survive a process restart. Preserve the one-time
     // start claim and rotation; mark interrupted blocks accurately in the UI.
     const interrupted = await this.prisma.flightSequence.updateMany({

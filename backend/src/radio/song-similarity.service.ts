@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
   Injectable,
@@ -96,6 +97,12 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Similarity state could not be loaded; similarity stays off: ${String(error)}`,
       );
+    }
+    if (isDeployCandidate()) {
+      this.logger.log(
+        'Deploy candidate: the similarity catalog is not refreshed',
+      );
+      return;
     }
     this.refreshTimer = setInterval(() => {
       if (!this.anyActive()) return;

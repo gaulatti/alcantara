@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
   BadGatewayException,
@@ -215,6 +216,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       this.songExecutionEngine.trackEvents$.subscribe((event) =>
         this.handleTrackEvent(event),
       );
+    // A deploy candidate (#223) writes no program state.
+    if (isDeployCandidate()) return;
     await this.ensureDefaultProgramState();
   }
 

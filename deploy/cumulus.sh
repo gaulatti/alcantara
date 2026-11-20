@@ -64,6 +64,50 @@ print_startup_log() {
     | cut -c1-200 >&2 || true
 }
 
+# gaulatti/alcantara#223: boot the new image once as a deploy candidate and
+# check that it answers before the running backend is touched. The candidate
+# loads the same configuration and secrets, opens only read-only database
+# sessions and starts no writer, claimer or scheduler; it is off the
+# broadcast-control network, so it cannot reach Palazzo, and it publishes no
+# port. A candidate that fails leaves production as it is.
+docker rm -f alcantara-backend-candidate >/dev/null 2>&1 || true
+if ! docker run -d --name alcantara-backend-candidate \
+  -e NODE_ENV=production \
+  -e HTTP_PORT=3006 \
+  -e PORT=3006 \
+  -e AWS_REGION=us-east-1 \
+  -e ARAUCO_SECRET_ID="$database_secret_id" \
+  -e ALCANTARA_BUILD_VERSION="${image##*:}" \
+  -e ALCANTARA_CONFIG_SECRET_ID="$broadcast_secret_id" \
+  -e ALLOWED_ORIGINS=https://alcantara.gaulatti.com,https://fifthbell.com,https://cdn.fifthbell.com \
+  -e POMPEII_TEAM_ID=1 \
+  -e MEDIA_S3_BUCKET="$media_bucket" \
+  -e CONTAINERIZED=true \
+  -e ALCANTARA_DEPLOY_CANDIDATE=1 \
+  "$image" >/dev/null; then
+  echo 'Alcantara candidate could not be created; the running backend is untouched'
+  exit 1
+fi
+candidate_ready=false
+for _ in $(seq 1 45); do
+  if docker exec alcantara-backend-candidate node -e "fetch('http://127.0.0.1:3006/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" >/dev/null 2>&1; then
+    candidate_ready=true
+    break
+  fi
+  if [ "$(docker inspect --format '{{.State.Running}}' alcantara-backend-candidate 2>/dev/null)" != true ]; then
+    break
+  fi
+  sleep 2
+done
+if [ "$candidate_ready" != true ]; then
+  echo 'Alcantara candidate failed its health check; the running backend is untouched'
+  print_startup_log alcantara-backend-candidate
+  docker rm -f alcantara-backend-candidate >/dev/null 2>&1 || true
+  exit 1
+fi
+docker rm -f alcantara-backend-candidate >/dev/null
+echo 'Alcantara candidate passed its health check'
+
 had_previous=false
 if docker inspect alcantara-backend >/dev/null 2>&1; then
   docker stop alcantara-backend

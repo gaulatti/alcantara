@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
   Logger,
@@ -147,6 +148,10 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit() {
+    if (isDeployCandidate()) {
+      this.logger.log('Deploy candidate: chart polling is off');
+      return;
+    }
     if (!this.pollingEnabled()) {
       this.logger.warn(
         'Chart polling is off outside production; no external chart feed is contacted',

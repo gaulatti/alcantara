@@ -133,6 +133,11 @@ before success is recorded. See
 [`../docs/production-database-backups.md`](../docs/production-database-backups.md)
 for paths, metrics, recovery checks, and the separate retention-policy boundary.
 
+Before the running container is stopped, the Cumulus deploy starts the new
+image once as a read-only deploy candidate and requires it to answer; a
+candidate that fails leaves the running backend untouched. See
+[`../docs/deploy-candidate.md`](../docs/deploy-candidate.md).
+
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks
 for the restored `ProgramState` table and at least one program row before it
