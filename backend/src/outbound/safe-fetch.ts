@@ -29,6 +29,7 @@ export const OUTBOUND_FETCH_PATHS = [
   'program_audio',
   'now_playing',
   'media_analysis',
+  'media_import',
 ] as const;
 export type OutboundFetchPath = (typeof OUTBOUND_FETCH_PATHS)[number];
 

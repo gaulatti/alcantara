@@ -149,10 +149,10 @@ stingers	GET	/stingers	stinger.read	listStingers	stinger_list_stingers	R
 stingers	POST	/stingers	stinger.manage	createStinger	stinger_create_stinger	W
 stingers	PUT	/stingers/:stingerId	stinger.manage	updateStinger	stinger_update_stinger	W
 stingers	DELETE	/stingers/:stingerId	stinger.manage	deleteStinger	stinger_delete_stinger	D
-uploads	POST	/uploads/instant	upload.create	uploadInstant	upload_instant	W
-uploads	POST	/uploads/background	upload.create	uploadBackground	upload_background	W
+uploads	POST	/uploads/instant	upload.create	uploadInstant	upload_instant	covered by import_media_from_url
+uploads	POST	/uploads/background	upload.create	uploadBackground	upload_background	covered by import_media_from_url
 uploads	POST	/uploads/artwork	upload.create	uploadArtwork	upload_artwork	W
-uploads	POST	/uploads/song	upload.create	uploadSong	upload_song	W
+uploads	POST	/uploads/song	upload.create	uploadSong	upload_song	covered by import_media_from_url
 uploads	POST	/uploads/stinger	upload.create	uploadStinger	upload_stinger	W
 webrtc	GET	/webrtc/invitations	webrtc.read	listInvitations	webrtc_list_invitations	R
 webrtc	POST	/webrtc/invitations	webrtc.operate	createInvitation	webrtc_create_invitation	A

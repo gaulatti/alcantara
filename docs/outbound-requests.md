@@ -37,6 +37,7 @@ outbound-request policy: `backend/src/outbound/safe-fetch.ts`, built on Node's
 | --- | --- | --- | --- |
 | Program page remote audio (`ProgramService`) | GET, no request headers | `audio/*`, `application/ogg` | 100 MiB, 60 s, 3 redirects |
 | Media analysis input (`FfmpegAudioAnalyzer`) | GET with `User-Agent: alcantara-media-analysis` only; `http` is counted as `legacy_http` | `audio/*`, `application/ogg` | 200 MiB (the upload limit), streamed to a temporary file; 180 s per file shared with the tools; no redirects |
+| Media import by URL (`UploadsService.importFromUrl`, MCP `import_media_from_url`) | GET, no request headers; `https` only | `audio/*`, `application/ogg` | 200 MiB (the upload limit), streamed under the cap into the upload; 120 s; 3 redirects |
 | Now-playing delivery (`NowPlayingPublisherService`) | The consumer's POST, PUT or PATCH, with `Content-Type: application/json` and the consumer's own headers | Any 2xx; the answer is not read | 10 s, 3 redirects |
 
 The program page calls it only for audio whose origin differs from the page
@@ -117,7 +118,9 @@ the track itself still plays.
 
 `alcantara_outbound_fetch_total{path,result}` counts every fetch under the
 policy. `path` is the caller (`program_audio`, `now_playing`,
-`media_analysis`); `result` is `ok`, `legacy_http` or one of the refusal
+`media_analysis`, `media_import`); `result` is `ok`, `legacy_http` or one of the refusal
 reasons above. For `media_analysis` it counts the input fetch, which
-is the only read: the tools open the fetched file. Every series starts at
+is the only read: the tools open the fetched file. For `media_import` it counts
+the fetch of the MCP capability `import_media_from_url` (an audio file streamed
+under the 200 MiB cap, then stored as an upload). Every series starts at
 zero. No URL, host or address appears in a label or a log line.

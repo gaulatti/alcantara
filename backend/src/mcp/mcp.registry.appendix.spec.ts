@@ -57,6 +57,15 @@ const RADIO_TOOLS: Record<string, [string, McpTier]> = {
   set_automation_mode: ['program.manage', 'A'],
 };
 
+/**
+ * Capabilities that gaulatti/alcantara#218 names beside appendix A's rows:
+ * the audio upload of the console with the file fetched from an address,
+ * which has no route of its own to list.
+ */
+const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
+  import_media_from_url: ['upload.create', 'W'],
+};
+
 function permissionKey(short: string): string {
   if (short === 'access') return ALCANTARA_PERMISSIONS.access;
   const [area, action] = short.split('.');
@@ -68,17 +77,28 @@ function permissionKey(short: string): string {
   return key;
 }
 
-function appendix(): { rows: Map<string, Row>; excluded: number } {
+function appendix(): {
+  rows: Map<string, Row>;
+  excluded: number;
+  covered: Map<string, string>;
+} {
   const lines = readFileSync(join(__dirname, 'appendix-a.tsv'), 'utf8')
     .trim()
     .split('\n')
     .slice(1);
   const rows = new Map<string, Row>();
+  const covered = new Map<string, string>();
   let excluded = 0;
   for (const line of lines) {
     const [, , , permission, , capability, tier] = line.split('\t');
     if (tier.startsWith('excluded')) {
       excluded += 1;
+      continue;
+    }
+    // A row another tool already does is marked "covered by <tool>".
+    const coveredBy = /^covered by ([a-z_]+)$/.exec(tier);
+    if (coveredBy) {
+      covered.set(capability, coveredBy[1]);
       continue;
     }
     if (rows.has(capability)) throw new Error(`duplicate row ${capability}`);
@@ -87,7 +107,7 @@ function appendix(): { rows: Map<string, Row>; excluded: number } {
       tier: tier as McpTier,
     });
   }
-  return { rows, excluded };
+  return { rows, excluded, covered };
 }
 
 describe('MCP registry against appendix A', () => {
@@ -118,10 +138,19 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all 163 capabilities and the 4 exclusions from appendix A', () => {
-    const { rows, excluded } = appendix();
-    expect(rows.size).toBe(163);
+  it('reads all 163 capabilities (3 of them covered by another tool) and the 4 exclusions from appendix A', () => {
+    const { rows, excluded, covered } = appendix();
+    expect(rows.size + covered.size).toBe(163);
     expect(excluded).toBe(4);
+    for (const tool of covered.values())
+      expect(Object.keys({ ...RADIO_TOOLS, ...EXTRA_CAPABILITIES })).toContain(
+        tool,
+      );
+    expect([...covered.keys()].sort()).toEqual([
+      'upload_background',
+      'upload_instant',
+      'upload_song',
+    ]);
   });
 
   it('registers the four built-ins, read tier, with their permissions', () => {
@@ -130,9 +159,12 @@ describe('MCP registry against appendix A', () => {
     }
   });
 
-  it('registers only appendix A rows and the #214 radio tools, each with its exact permission and tier', () => {
+  it('registers only appendix A rows, the #214 radio tools and the named extra capabilities, each with its exact permission and tier', () => {
     const { rows } = appendix();
-    for (const [name, [permission, tier]] of Object.entries(RADIO_TOOLS)) {
+    for (const [name, [permission, tier]] of Object.entries({
+      ...RADIO_TOOLS,
+      ...EXTRA_CAPABILITIES,
+    })) {
       expect(rows.has(name)).toBe(false);
       rows.set(name, { permission: permissionKey(permission), tier });
     }

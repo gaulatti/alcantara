@@ -11,6 +11,8 @@ describe('song, media, asset and similarity provider decorator metadata under un
       const { MediaMcpTools } = require('./media');
       const { MediaAssetsMcpTools } = require('./media-assets');
       const { SimilarityMcpTools } = require('./similarity');
+      jest.doMock('../../uploads/uploads.service', () => ({}));
+      const { MediaImportMcpTools } = require('./media-import');
       for (const provider of [
         SongsMcpTools,
         MediaMcpTools,
@@ -22,6 +24,9 @@ describe('song, media, asset and similarity provider decorator metadata under un
         ]);
       expect(
         Reflect.getMetadata('design:paramtypes', SimilarityMcpTools),
+      ).toEqual([Object]);
+      expect(
+        Reflect.getMetadata('design:paramtypes', MediaImportMcpTools),
       ).toEqual([Object]);
     });
   });

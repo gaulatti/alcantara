@@ -200,3 +200,40 @@ of fakes and compare the service calls and the answers.
 
 An assignment to a program that is off air is not an `on_air` case: the dry run
 lists it as lost and the capability proceeds after the confirm.
+
+### Import media by URL (`import_media_from_url`)
+
+File: `backend/src/mcp/capabilities/media-import.ts`; the work is
+`UploadsService.importFromUrl`. A W capability with `upload.create`, taking
+`url` (at most 2000 characters) and `kind` (`instant`, `background` or `song`:
+the console's audio uploads; artwork and stinger are not importable).
+
+- **It covers three `upload_*` rows.** Appendix A's `upload_instant`,
+  `upload_background` and `upload_song` are multipart routes that an MCP
+  client cannot use; they are marked `covered by import_media_from_url` in the
+  tsv and are not capabilities of their own. `upload_artwork` and
+  `upload_stinger` stay plain rows: artwork and stinger are not importable kinds
+  (image and video types); their import is tracked in #226. The console has no import route: its
+  uploads are multipart bodies. The ticket names this capability beside the rows, so the
+  registry subset test pins it as an extra capability (permission
+  `upload.create`, tier W).
+- **The fetch is the outbound-request policy's** (`docs/outbound-requests.md`):
+  https only, public addresses only, every redirect (at most 3) checked again,
+  an `audio/*` content type, at most 200 MiB (the audio upload limit) streamed
+  under the cap, one 120 second deadline. No request header is sent. The
+  bytes then go through `UploadsService.upload()`, so size, type and extension
+  are validated, and a song's tags and cover are read, exactly as for a file
+  the operator sends.
+- **No media asset, no analysis scheduling.** An upload only stores the file
+  (S3) and answers `{key, url, bucket, contentType, sizeBytes, metadata?}`; the
+  asset is created by the create that follows (`song_create` or the instant and
+  background creates) and analysis follows from the asset. The import does the
+  same: use the answer's `url` there.
+- **The address is never logged or echoed; only its file name is kept.** The
+  stored object key carries the sanitised last path segment as the file name of
+  a sent file does, nothing else of the address. The audit target is
+  `import-<kind>`; the dry run and the answer carry no address; a refusal is
+  the policy's plain message (400 as `invalid`; 502 and 504 and a failed store
+  as `unavailable`). The idempotency record keeps a hash of the arguments.
+- **Metric:** `alcantara_outbound_fetch_total{path="media_import",result}`,
+  the policy's counter (all series start at zero); no new metric.
