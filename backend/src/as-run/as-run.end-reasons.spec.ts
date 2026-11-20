@@ -40,7 +40,7 @@ type Where = Record<string, unknown> & { at?: { gte?: Date; lte?: Date } };
 const SX_HEADER =
   'Transmission Category Code,Featured Artist Name,Sound Recording Title,ISRC,Album Title,Marketing Label,Actual Total Performances';
 const CSV_HEADER =
-  'id,programId,songId,assetId,title,artist,state,at,createdAt,inferred,reviewFlag,endReason';
+  'id,programId,songId,assetId,title,artist,state,at,createdAt,inferred,reviewFlag,endReason,actorPrincipalId,actorVia,actorClient';
 
 /** In-memory AsRunRecord table with the migration's unique key. */
 function memoryStore(songs: CatalogSong[]) {
@@ -648,7 +648,7 @@ describe('as-run export of each end reason', () => {
     );
   });
 
-  it('appends the end reason as the last CSV column', async () => {
+  it('keeps the end reason ahead of the actor columns', async () => {
     const csv = (await service.export('radio-1', {})).split('\n');
     expect(csv[0]).toBe(CSV_HEADER);
     expect(
@@ -656,7 +656,7 @@ describe('as-run export of each end reason', () => {
         .filter((line) => line.includes(',ended,'))
         .map((line) => {
           const fields = line.split(',');
-          return fields.slice(-3).join(',');
+          return fields.slice(-6, -3).join(',');
         }),
     ).toEqual([
       'false,,',

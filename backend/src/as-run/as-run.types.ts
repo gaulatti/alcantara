@@ -10,7 +10,17 @@ export interface AsRunTrackEvent {
   inferred?: boolean;
   /** Why the engine itself ended a started play; absent on Palazzo's own ends. */
   endReason?: AsRunEndReason;
+  /**
+   * Who caused the transition (gaulatti/alcantara#213), captured when the
+   * operator command arrived: the Pompeii principal, `console` or `mcp`, and
+   * the MCP client name. Absent on automatic transitions.
+   */
+  actorPrincipalId?: string | null;
+  actorVia?: string | null;
+  actorClient?: string | null;
 }
+
+export const AS_RUN_ACTOR_VIAS: readonly string[] = ['console', 'mcp'];
 
 /**
  * Why the engine itself ended a started play: an operator Stop, a manual pick

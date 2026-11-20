@@ -141,11 +141,61 @@ twice. After a stop or a cut the engine also ignores the song's late end, and
 after a superseding snapshot it does not close the play again. Rows written before this column existed have no request ID and are left
 as they were.
 
+**Who acted (gaulatti/alcantara#213).** A record caused by an operator also
+names the acting identity, in three nullable columns: `actorPrincipalId`
+(Pompeii's principal; empty while Pompeii has not resolved one), `actorVia`
+(`console` or `mcp`) and `actorClient` (the MCP client name; empty for the
+console). They are set on:
+
+- the `ended` row of a `stopped` or `replaced` end, with whoever pressed Stop
+  or picked the song that cut it;
+- the `started` row of a manually picked song, with the picker.
+
+Everything automatic keeps all three NULL: Palazzo's own ends, inferred and
+`superseded` ends, `preempted` ends, starts of songs the rotation or the queue
+chose, and every row written before the columns existed (the migration adds
+them nullable and rewrites nothing). A rundown (flight) stop or pick driven by
+a timer reads no actor and stays NULL. Queue changes write no as-run row; the
+song events below carry their actor.
+
+*How the actor reaches the record.* `ActorContext`
+(`backend/src/auth/actor-context.ts`) is an `AsyncLocalStorage` scope per
+command. A console request enters it in `ActorContextInterceptor`, a global
+interceptor that runs after the authorization guard and reads the guard's
+`request.user` (`principalId`, `via: 'console'`); it changes no guard
+decision, and public routes carry no actor. An MCP action enters it through
+the `McpAttribution` provider bound under `MCP_ATTRIBUTION`
+(`via: 'mcp'` and the client name). The song engine reads the context once,
+when the command arrives (manual pick, Stop, queue enqueue, reorder, remove),
+and carries the value with the event or the active song, so the later write
+(Palazzo confirming the pick, the as-run insert) never reads it again. The
+scope also expires when its command ends, so a timer created during a request
+reads no actor.
+
+*Events.* The engine's `song_off_air`, `song_playback_active` and
+`song_queue_update` events and its `track.started`/`track.ended` events gain
+`actorPrincipalId`, `actorVia` and `actorClient` only when an operator caused
+them; automatic events omit the fields. `radio_leg_status` reports Palazzo's
+connection and has no actor. The program's public realtime stream
+(`/program/:programId/events`, unauthenticated) deliberately does not forward
+the fields: `ProgramService` rebuilds each event without them, so no identity
+is published to anonymous viewers.
+
+*Known gaps.* (1) A song the rotation starts from a queue entry is not
+attributed to whoever queued it: queue entries have no actor field, so that
+`started` row keeps all three columns NULL (the enqueue itself is attributed
+only on the `song_queue_update` event). (2) Console events on the public
+`/program/:programId/events` stream do not carry the actor fields, by design
+(see above); the actor is available to the as-run export and to engine-level
+subscribers only.
+
 **Export rules.** `GET /program/:programId/as-run` (permission `alcantara:radio:read`):
 
 - `format=csv` (default) lists every record, with `inferred` (`true`/`false`),
-  `reviewFlag` and `endReason` columns at the end (`endReason` was appended
-  last).
+  `reviewFlag`, `endReason`, `actorPrincipalId`, `actorVia` and `actorClient`
+  columns at the end, in that order (each was appended last when added; the
+  actor columns are empty for automatic rows). `format=soundexchange` keeps its
+  fixed specification columns and carries no actor.
 - `format=soundexchange` counts each `ended` record as one performance,
   inferred and flagged ends included, because the track was transmitted.
   `preempted` ends are the exception: they are left out of every filter.

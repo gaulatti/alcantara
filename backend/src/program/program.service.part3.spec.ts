@@ -1420,6 +1420,33 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       },
     );
 
+    it('keeps the acting identity off the public program stream', () => {
+      const { service } = build();
+      const events: any[] = [];
+      service.addEventListener((e) => events.push(e.data));
+      const actor = {
+        actorPrincipalId: 'principal-1',
+        actorVia: 'mcp',
+        actorClient: 'claude-desktop',
+      };
+      (service as any).handleEngineEvent({
+        type: 'song_off_air',
+        programId: 'main',
+        triggeredAt: 'now',
+        ...actor,
+      });
+      (service as any).handleEngineEvent({
+        type: 'song_queue_update',
+        programId: 'main',
+        songQueue: [],
+        ...actor,
+      });
+      expect(events).toHaveLength(2);
+      expect(JSON.stringify(events)).not.toMatch(
+        /principal-1|claude-desktop|actor/,
+      );
+    });
+
     it('derives the off-air playback from the previous playback', () => {
       const { service } = build();
       const events: any[] = [];

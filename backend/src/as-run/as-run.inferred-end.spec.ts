@@ -280,11 +280,11 @@ describe('AsRunService inferred ends', () => {
 
     const csv = await service.export('radio-1', {});
     expect(csv.split('\n')).toEqual([
-      'id,programId,songId,assetId,title,artist,state,at,createdAt,inferred,reviewFlag,endReason',
-      '1,radio-1,1,,Dropped Connection,Artist A,started,2026-11-17T10:00:00.000Z,2026-11-17T10:00:00.000Z,false,,',
-      '2,radio-1,1,,Dropped Connection,Artist A,ended,2026-11-17T10:03:10.000Z,2026-11-17T10:03:10.000Z,true,,',
-      '3,radio-1,2,,Normal Play,Artist B,started,2026-11-17T10:03:10.000Z,2026-11-17T10:03:10.000Z,false,,',
-      '4,radio-1,2,,Normal Play,Artist B,ended,2026-11-17T10:07:10.000Z,2026-11-17T10:07:10.000Z,false,,',
+      'id,programId,songId,assetId,title,artist,state,at,createdAt,inferred,reviewFlag,endReason,actorPrincipalId,actorVia,actorClient',
+      '1,radio-1,1,,Dropped Connection,Artist A,started,2026-11-17T10:00:00.000Z,2026-11-17T10:00:00.000Z,false,,,,,',
+      '2,radio-1,1,,Dropped Connection,Artist A,ended,2026-11-17T10:03:10.000Z,2026-11-17T10:03:10.000Z,true,,,,,',
+      '3,radio-1,2,,Normal Play,Artist B,started,2026-11-17T10:03:10.000Z,2026-11-17T10:03:10.000Z,false,,,,,',
+      '4,radio-1,2,,Normal Play,Artist B,ended,2026-11-17T10:07:10.000Z,2026-11-17T10:07:10.000Z,false,,,,,',
     ]);
 
     expect(await service.export('radio-1', { format: 'soundexchange' })).toBe(

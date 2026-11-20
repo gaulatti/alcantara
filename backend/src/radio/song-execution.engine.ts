@@ -1,4 +1,9 @@
 import {
+  ActorContext,
+  type Actor,
+  type ActorFields,
+} from '../auth/actor-context';
+import {
   BadRequestException,
   Injectable,
   Logger,
@@ -81,18 +86,22 @@ export type IntroPlaybackStatus =
 
 export type SongEngineEvent =
   | { type: 'playback_update'; programId: string; playback: SongPlaybackData }
-  | {
+  | ({
       type: 'song_playback_active';
       programId: string;
       playback: SongPlaybackData;
-    }
-  | { type: 'song_off_air'; programId: string; triggeredAt: string }
-  | {
+    } & Partial<ActorFields>)
+  | ({
+      type: 'song_off_air';
+      programId: string;
+      triggeredAt: string;
+    } & Partial<ActorFields>)
+  | ({
       type: 'song_queue_update';
       programId: string;
       songQueue: ProgramSongQueueEntry[];
       songSequence?: ProgramSongSequence | null;
-    }
+    } & Partial<ActorFields>)
   | {
       type: 'radio_leg_status';
       programId: string;
@@ -145,6 +154,11 @@ interface ActiveSong {
   cycleReset?: boolean;
   /** The engine already closed this play for the as-run log. */
   asRunClosed?: boolean;
+  /**
+   * Who picked it, captured when the command arrived: its `track.started`
+   * is confirmed later, outside the request, so it is never read then.
+   */
+  actor?: Actor | null;
   /** Promoted from an announcement: Palazzo started it, no command was sent. */
   promoted?: boolean;
 }
@@ -258,7 +272,7 @@ export type SongEngineTrackEvent = {
    * stop-reason label.
    */
   endReason?: SongEngineEndReason;
-};
+} & Partial<ActorFields>;
 
 /**
  * Why the engine itself ended a started song; see SongEngineTrackEvent.
@@ -474,6 +488,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     itemId: string,
   ): Promise<ProgramSongQueueEntry[]> {
+    const actor = ActorContext.current();
     return this.withQueueMutationLock(programId, async () => {
       try {
         const normalizedItemId = itemId.trim();
@@ -503,7 +518,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           },
         ];
         await this.persistQueue(programId, nextQueue);
-        this.applyPersistedQueue(programId, nextQueue, 'enqueued');
+        this.applyPersistedQueue(
+          programId,
+          nextQueue,
+          'enqueued',
+          undefined,
+          actor,
+        );
         return nextQueue;
       } catch (error) {
         this.recordQueueMutationFailure(error);
@@ -516,6 +537,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     entryId: string,
   ): Promise<ProgramSongQueueEntry[]> {
+    const actor = ActorContext.current();
     return this.withQueueMutationLock(programId, async () => {
       try {
         const normalizedEntryId = entryId.trim();
@@ -536,7 +558,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           throw new NotFoundException('Queued song not found');
         }
         await this.persistQueue(programId, nextQueue);
-        this.applyPersistedQueue(programId, nextQueue, 'removed');
+        this.applyPersistedQueue(
+          programId,
+          nextQueue,
+          'removed',
+          undefined,
+          actor,
+        );
         return nextQueue;
       } catch (error) {
         this.recordQueueMutationFailure(error);
@@ -549,6 +577,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     entryIds: string[],
   ): Promise<ProgramSongQueueEntry[]> {
+    const actor = ActorContext.current();
     return this.withQueueMutationLock(programId, async () => {
       try {
         if (
@@ -585,7 +614,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         const byId = new Map(queue.map((entry) => [entry.id, entry]));
         const nextQueue = normalizedIds.map((id) => byId.get(id)!);
         await this.persistQueue(programId, nextQueue);
-        this.applyPersistedQueue(programId, nextQueue, 'reordered');
+        this.applyPersistedQueue(
+          programId,
+          nextQueue,
+          'reordered',
+          undefined,
+          actor,
+        );
         return nextQueue;
       } catch (error) {
         this.recordQueueMutationFailure(error);
@@ -650,6 +685,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     queue: ProgramSongQueueEntry[],
     result: SongQueueActionResult,
     songSequence?: ProgramSongSequence | null,
+    actor: Actor | null = null,
   ): void {
     const state = this.ensureState(programId);
     state.queue = queue;
@@ -661,6 +697,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       programId,
       songQueue: queue,
       ...(songSequence !== undefined ? { songSequence } : {}),
+      ...ActorContext.eventFields(actor),
     });
     if (
       queue.length &&
@@ -851,6 +888,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       fadeOutSeconds?: number;
     },
   ): void {
+    // Captured now: Palazzo confirms the start later, outside this command.
+    const actor = ActorContext.current();
     const state = this.ensureState(programId);
     const playlistSong = findUniqueProgramSongLeafByAudioUrl(
       state.sequence,
@@ -861,10 +900,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const playbackRequestId = randomUUID();
     state.pendingRequestIds.add(playbackRequestId);
     if (state.activeSong) {
-      this.closePlayForAsRun(programId, state.activeSong, 'replaced');
+      this.closePlayForAsRun(programId, state.activeSong, 'replaced', actor);
     }
     // Palazzo's song command flushes the announced song as well.
-    this.forgetAnnouncement(programId, state, 'replaced');
+    this.forgetAnnouncement(programId, state, 'replaced', actor);
     state.activeSong = {
       token: `${Date.now()}:${audioUrl}`,
       playbackRequestId,
@@ -885,6 +924,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       authoritativeUpdatedAt: null,
       queueEntryId: null,
       highRotation: playlistSong?.highRotation === true,
+      actor,
     };
     this.emitPlaybackActive(programId, state.activeSong);
     void this.publishNowPlaying(programId, state.activeSong);
@@ -922,6 +962,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     options: { keepSequence?: boolean; keepMode?: boolean } = {},
   ): void {
+    const actor = ActorContext.current();
     const state = this.states.get(programId);
     if (!state) {
       void this.nowPlayingPublisherService.publishStopped(programId);
@@ -954,10 +995,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     const stoppedQueueEntryId = state.activeSong?.queueEntryId ?? null;
     if (state.activeSong) {
-      this.closePlayForAsRun(programId, state.activeSong, 'stopped');
+      this.closePlayForAsRun(programId, state.activeSong, 'stopped', actor);
     }
     // Palazzo's song stop flushes the announced song as well.
-    this.forgetAnnouncement(programId, state, 'stopped');
+    this.forgetAnnouncement(programId, state, 'stopped', actor);
     this.clearTimer(programId);
     this.stopProgress(programId);
     state.activeSong = null;
@@ -968,6 +1009,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       type: 'song_off_air',
       programId,
       triggeredAt: new Date().toISOString(),
+      ...ActorContext.eventFields(actor),
     });
     void this.nowPlayingPublisherService.publishStopped(programId);
     if (stoppedQueueEntryId) {
@@ -1141,7 +1183,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           activeSong.authoritativeStartedAt,
         );
         this.emitPlaybackUpdate(programId, activeSong);
-        this.emitTrackEvent(programId, event.type, requestId, event.data);
+        this.emitTrackEvent(
+          programId,
+          event.type,
+          requestId,
+          event.data,
+          false,
+          undefined,
+          undefined,
+          activeSong.actor,
+        );
         this.refreshAnnouncement(programId);
       } else if (this.acceptAnnouncedStart(programId, state, requestId)) {
         // The announced song started, under overlap or at the handoff.
@@ -1179,6 +1230,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     inferred = false,
     endReason?: SongEngineEndReason,
     at = new Date(),
+    actor: Actor | null = null,
   ): void {
     try {
       this.trackEventsSubject.next({
@@ -1191,6 +1243,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         at,
         ...(inferred ? { inferred: true as const } : {}),
         ...(endReason ? { endReason } : {}),
+        ...ActorContext.eventFields(actor),
       });
     } catch (error) {
       this.logger.error(
@@ -1248,6 +1301,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     song: ActiveSong,
     endReason: SongEngineEndReason,
+    actor: Actor | null = null,
   ): void {
     if (song.authoritativeStartedAt === null || song.asRunClosed) return;
     song.asRunClosed = true;
@@ -1258,6 +1312,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       { title: song.title, artist: song.artist, url: song.audioUrl },
       endReason === 'superseded',
       endReason,
+      undefined,
+      actor,
     );
   }
 
@@ -1623,6 +1679,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     state: SongEngineState,
     endReason: 'stopped' | 'replaced',
+    actor: Actor | null = null,
   ): void {
     const announcement = state.announcement;
     state.announcement = null;
@@ -1639,6 +1696,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         },
         false,
         endReason,
+        undefined,
+        actor,
       );
     }
   }
@@ -2954,6 +3013,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       type: 'song_playback_active',
       programId,
       playback: this.playbackData(programId, song),
+      ...ActorContext.eventFields(song.actor),
     });
   }
 

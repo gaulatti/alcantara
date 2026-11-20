@@ -687,6 +687,12 @@ model AsRunRecord {
   reviewFlag        String?
   /// Why the engine ended a started play: `stopped`, `replaced` or `superseded`; null otherwise.
   endReason         String?
+  /// Who caused an operator action: Pompeii principal (null while unresolved or for automatic transitions).
+  actorPrincipalId  String?
+  /// `console` or `mcp`; null for automatic transitions and older rows.
+  actorVia          String?
+  /// MCP client name when `actorVia` is `mcp`; null otherwise.
+  actorClient       String?
 
   @@unique([programId, playbackRequestId, state])
   @@index([programId, at])

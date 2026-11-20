@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma.service';
 import { SongExecutionEngine } from '../radio/song-execution.engine';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
 import {
+  AS_RUN_ACTOR_VIAS,
   AS_RUN_END_REASONS,
   AS_RUN_UNCOUNTED_END_REASONS,
   AS_RUN_SHORT_INFERRED_PLAY_MS,
@@ -131,6 +132,26 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       AS_RUN_END_REASONS.includes(event.endReason)
         ? event.endReason
         : null;
+    // Attribution is stored only when the engine named a known channel; an
+    // automatic transition carries none and keeps all three columns NULL.
+    const actorVia =
+      typeof event.actorVia === 'string' &&
+      AS_RUN_ACTOR_VIAS.includes(event.actorVia)
+        ? event.actorVia
+        : null;
+    const actor = actorVia
+      ? {
+          actorVia,
+          actorPrincipalId:
+            typeof event.actorPrincipalId === 'string' && event.actorPrincipalId
+              ? event.actorPrincipalId
+              : null,
+          actorClient:
+            typeof event.actorClient === 'string' && event.actorClient
+              ? event.actorClient
+              : null,
+        }
+      : {};
     // Inferred ends and ends the engine caused are flagged, never dropped.
     const reviewFlag =
       state === 'ended' && (inferred || endReason)
@@ -150,6 +171,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
           reviewFlag,
           // Omitted rather than null when absent: the column defaults to NULL.
           ...(endReason ? { endReason } : {}),
+          ...actor,
         },
       })
       .catch((error: unknown) => {
@@ -355,6 +377,9 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       'inferred',
       'reviewFlag',
       'endReason',
+      'actorPrincipalId',
+      'actorVia',
+      'actorClient',
     ].join(',');
 
     const lines = [header];
@@ -377,6 +402,9 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
         escapeCsvField(r.inferred === true),
         escapeCsvField(r.reviewFlag),
         escapeCsvField(r.endReason),
+        escapeCsvField(r.actorPrincipalId),
+        escapeCsvField(r.actorVia),
+        escapeCsvField(r.actorClient),
       ].join(',');
 
       lines.push(row);
