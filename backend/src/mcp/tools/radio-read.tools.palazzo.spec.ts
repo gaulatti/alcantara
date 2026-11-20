@@ -254,6 +254,20 @@ async function until(done: () => boolean): Promise<void> {
   expect(done()).toBe(true);
 }
 
+const FORBIDDEN = [
+  PLANTED,
+  'X-Amz-Signature',
+  'token=',
+  'palazzo:3100',
+  'https://media.test',
+];
+
+/** Throws when an answer carries a planted secret, a signed link or an address. */
+function assertNoLeak(text: string): void {
+  for (const needle of FORBIDDEN)
+    if (text.includes(needle)) throw new Error(`The answer leaks ${needle}`);
+}
+
 async function build() {
   const state: Record<string, any> = {
     id: 7,
@@ -599,6 +613,7 @@ async function build() {
       content: Array<{ text: string }>;
       isError?: boolean;
     };
+    assertNoLeak(result.content[0].text);
     return {
       status: response.status,
       isError: result.isError === true,
@@ -1092,6 +1107,18 @@ describe('MCP radio read tools against a fake Palazzo and the console endpoints'
       expect(answers.get_instants.body.instants).toHaveLength(2);
       expect(answers.get_song.body.song_id).toBe(SONGS[0].id);
     });
+  });
+
+  it('negative control: the leak check fails on an answer that carries a planted value', () => {
+    expect(() => assertNoLeak('{"title":"ok"}')).not.toThrow();
+    for (const leak of [
+      `{"x":"${PLANTED}"}`,
+      '{"x":"a?X-Amz-Signature=1"}',
+      '{"x":"a?token=1"}',
+      '{"x":"http://palazzo:3100"}',
+      '{"x":"https://media.test/a.mp3"}',
+    ])
+      expect(() => assertNoLeak(leak)).toThrow(/leaks/);
   });
 
   it('answers get_radio_health as unavailable with no Palazzo address when the program has no radio settings', async () => {
