@@ -12,14 +12,14 @@ import { ProgramService } from '../../program/program.service';
 import { MCP_ACTION_EXECUTOR, UNTRUSTED_NOTE } from '../contract';
 import { McpActionExecutor } from '../mcp-action.executor';
 import { McpRegistry } from '../mcp-registry.service';
-import { AsRunMcpTools } from './as-run';
+import { AS_RUN_EXPORT_MAX_ROWS, AsRunMcpTools } from './as-run';
 import { principalWith, specNamed } from './capabilities.testing';
 
 // as-run_export (#226): the console's as-run download as a read capability.
 // One fake service behind the real controller and the capability.
 
 const CSV = 'id,title\nr1,"Anthem, The"';
-const asRun = { export: jest.fn() };
+const asRun = { export: jest.fn(), countExportRows: jest.fn() };
 const controller = new AsRunController(asRun as never);
 const spec = specNamed(
   new AsRunMcpTools(asRun as never).specs(),
@@ -30,6 +30,7 @@ const ctx = { principal: principalWith(ALCANTARA_PERMISSIONS.radio.read) };
 beforeEach(() => {
   jest.clearAllMocks();
   asRun.export.mockResolvedValue(CSV);
+  asRun.countExportRows.mockResolvedValue(10);
 });
 
 describe('as-run_export', () => {
@@ -92,6 +93,39 @@ describe('as-run_export', () => {
     await expect(
       spec.run({ program_id: 'main', inferred: 'only' }, ctx),
     ).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  it('counts the window first, with the export query, and exports at exactly the cap', async () => {
+    expect(AS_RUN_EXPORT_MAX_ROWS).toBe(5000);
+    asRun.countExportRows.mockResolvedValue(5000);
+    const query = {
+      from: '2026-11-01',
+      to: undefined,
+      format: 'csv',
+      inferred: undefined,
+    };
+    const { result } = await spec.run(
+      { program_id: 'main', from: '2026-11-01', format: 'csv' },
+      ctx,
+    );
+    expect(asRun.countExportRows).toHaveBeenCalledWith('main', query);
+    expect(asRun.export).toHaveBeenCalledWith('main', query);
+    expect(result).toMatchObject({ untrusted: { csv: CSV } });
+  });
+
+  it('refuses a window over the cap as invalid, with its row count, and exports nothing', async () => {
+    asRun.countExportRows.mockResolvedValue(5001);
+    await expect(spec.run({ program_id: 'main' }, ctx)).rejects.toMatchObject({
+      code: 'invalid',
+      message: expect.stringMatching(/holds 5001 rows.*at most 5000.*narrow/),
+    });
+    expect(asRun.export).not.toHaveBeenCalled();
+  });
+
+  it('leaves the console download uncapped: the controller never counts', async () => {
+    asRun.countExportRows.mockResolvedValue(1_000_000);
+    await expect(controller.export('main')).resolves.toBe(CSV);
+    expect(asRun.countExportRows).not.toHaveBeenCalled();
   });
 
   it('bounds its arguments to what the service accepts', () => {

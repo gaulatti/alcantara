@@ -336,6 +336,34 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * How many log rows an export of this window reads, for a caller that caps
+   * the window (the MCP capability). Counted with the filters the export
+   * applies: every record for csv, the ended records of the inferred filter
+   * for soundexchange. Reads the same query as export() and refuses a bad date.
+   */
+  async countExportRows(
+    programId: string,
+    query: AsRunExportQuery,
+  ): Promise<number> {
+    const { from, to } = this.parseExportDates(query);
+    const atFilter: { gte?: Date; lte?: Date } = {};
+    if (from) atFilter.gte = from;
+    if (to) atFilter.lte = to;
+    const soundExchange = (query.format || 'csv').toLowerCase() !== 'csv';
+    const inferred = (query.inferred ?? 'include').toLowerCase();
+    return this.prisma.asRunRecord.count({
+      where: {
+        programId,
+        ...(from || to ? { at: atFilter } : {}),
+        ...(soundExchange ? { state: 'ended' } : {}),
+        ...(soundExchange && inferred !== 'include'
+          ? { inferred: inferred === 'only' }
+          : {}),
+      },
+    });
+  }
+
   async exportCsv(programId: string, from?: Date, to?: Date): Promise<string> {
     const atFilter: { gte?: Date; lte?: Date } = {};
     if (from) atFilter.gte = from;

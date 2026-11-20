@@ -2,8 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { AsRunService } from '../../as-run/as-run.service';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
-import { McpToolProvider, type McpToolSpec } from '../contract';
+import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
 import { programIdArg, readSpec } from './support';
+
+/** The most log rows one as-run_export may return; the console download has no cap. */
+export const AS_RUN_EXPORT_MAX_ROWS = 5000;
 
 /**
  * gaulatti/alcantara#226: as-run_export (R, radio.read), the as-run export of
@@ -32,7 +35,7 @@ export class AsRunMcpTools {
         name: 'as-run_export',
         title: 'Export the as-run log of a program',
         description:
-          'Exports the as-run log of a program as the console downloads it: format csv (every record, with song title and artist) or soundexchange (the counted performances of each recording; `inferred` is include, only or exclude and applies to soundexchange only). from and to bound the window (ISO 8601; both optional, as in the console). The file text is in untrusted.csv.',
+          'Exports the as-run log of a program as the console downloads it: format csv (every record, with song title and artist) or soundexchange (the counted performances of each recording; `inferred` is include, only or exclude and applies to soundexchange only). from and to bound the window (ISO 8601; each optional, an omitted end is open). A window holding more than 5,000 log rows is refused with its row count: narrow the dates. The file text is in untrusted.csv.',
         permission: ALCANTARA_PERMISSIONS.radio.read,
         shape: {
           program_id: programIdArg,
@@ -42,16 +45,25 @@ export class AsRunMcpTools {
           inferred: z.enum(['include', 'only', 'exclude']).optional(),
         },
         untrusted: ['csv'],
-        run: async (args) => ({
-          program_id: args.program_id,
-          format: args.format ?? 'csv',
-          csv: await this.asRun.export(args.program_id, {
+        run: async (args) => {
+          const query = {
             from: args.from,
             to: args.to,
             format: args.format,
             inferred: args.inferred,
-          }),
-        }),
+          };
+          const rows = await this.asRun.countExportRows(args.program_id, query);
+          if (rows > AS_RUN_EXPORT_MAX_ROWS)
+            throw new McpToolError(
+              'invalid',
+              `The window holds ${rows} rows and an export returns at most ${AS_RUN_EXPORT_MAX_ROWS}: narrow from and to.`,
+            );
+          return {
+            program_id: args.program_id,
+            format: args.format ?? 'csv',
+            csv: await this.asRun.export(args.program_id, query),
+          };
+        },
       }),
     ];
   }

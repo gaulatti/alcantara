@@ -108,3 +108,50 @@ describe('AsRunService read views', () => {
     ]);
   });
 });
+
+describe('AsRunService.countExportRows', () => {
+  const count = async (query: Record<string, string>) => {
+    const prisma = { asRunRecord: { count: jest.fn().mockResolvedValue(7) } };
+    const service = new AsRunService(prisma as unknown as PrismaService);
+    const n = await service.countExportRows('p1', query);
+    return { n, where: prisma.asRunRecord.count.mock.calls[0][0].where };
+  };
+
+  it('counts every record of a csv window, open ends included', async () => {
+    expect(await count({})).toEqual({ n: 7, where: { programId: 'p1' } });
+    const { where } = await count({
+      from: '2026-11-10T00:00:00Z',
+      to: '2026-11-11T00:00:00Z',
+      format: 'CSV',
+    });
+    expect(where).toEqual({
+      programId: 'p1',
+      at: {
+        gte: new Date('2026-11-10T00:00:00Z'),
+        lte: new Date('2026-11-11T00:00:00Z'),
+      },
+    });
+    expect((await count({ to: '2026-11-11T00:00:00Z' })).where.at).toEqual({
+      lte: new Date('2026-11-11T00:00:00Z'),
+    });
+  });
+
+  it('counts the ended records of the inferred filter for soundexchange', async () => {
+    const base = { format: 'soundexchange' };
+    expect((await count(base)).where).toEqual({
+      programId: 'p1',
+      state: 'ended',
+    });
+    expect((await count({ ...base, inferred: 'ONLY' })).where).toMatchObject({
+      state: 'ended',
+      inferred: true,
+    });
+    expect((await count({ ...base, inferred: 'exclude' })).where).toMatchObject(
+      { state: 'ended', inferred: false },
+    );
+  });
+
+  it('refuses a bad date as export does', async () => {
+    await expect(count({ from: 'nope' })).rejects.toThrow('Invalid from date');
+  });
+});
