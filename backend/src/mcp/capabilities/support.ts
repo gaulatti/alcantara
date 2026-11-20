@@ -6,6 +6,7 @@ import {
   UNTRUSTED_NOTE,
   type ConfirmTarget,
   type DryRunResult,
+  type McpContext,
   type McpErrorCode,
   type McpOutcome,
   type McpToolSpec,
@@ -48,15 +49,23 @@ const isPlain = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' &&
   Object.getPrototypeOf(value) === Object.prototype;
 
-/** Moves every user-entered field of a service answer under `untrusted`. */
-export function isolateUntrusted(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(isolateUntrusted);
+/**
+ * Moves every user-entered field of a service answer under `untrusted`. A
+ * capability whose answers carry more user text (a song's artist and title, a
+ * file address) names those keys in `extra`.
+ */
+export function isolateUntrusted(
+  value: unknown,
+  extra: readonly string[] = [],
+): unknown {
+  if (Array.isArray(value))
+    return value.map((item) => isolateUntrusted(item, extra));
   if (!isPlain(value)) return value;
   const safe: Record<string, unknown> = {};
   const untrusted: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value))
-    if (UNTRUSTED_KEYS.has(key)) untrusted[key] = item;
-    else safe[key] = isolateUntrusted(item);
+    if (UNTRUSTED_KEYS.has(key) || extra.includes(key)) untrusted[key] = item;
+    else safe[key] = isolateUntrusted(item, extra);
   return Object.keys(untrusted).length > 0 ? { ...safe, untrusted } : safe;
 }
 
@@ -90,8 +99,8 @@ export function assertNoCredential(value: unknown): void {
 }
 
 /** The answer of every capability here: user text isolated, credentials refused. */
-export function answer(raw: unknown): unknown {
-  const result = isolateUntrusted(raw);
+export function answer(raw: unknown, extra: readonly string[] = []): unknown {
+  const result = isolateUntrusted(raw, extra);
   assertNoCredential(result);
   return result;
 }
@@ -154,7 +163,9 @@ export interface ReadDef<S extends z.ZodRawShape> {
   description: string;
   permission: McpToolSpec['permission'];
   shape: S;
-  run: (args: z.infer<z.ZodObject<S>>) => Promise<unknown>;
+  /** Keys of this answer that hold user text beyond the shared list. */
+  untrusted?: readonly string[];
+  run: (args: z.infer<z.ZodObject<S>>, ctx: McpContext) => Promise<unknown>;
 }
 
 /** A read capability: the service's answer, user text isolated, never a ticket. */
@@ -169,8 +180,11 @@ export function readSpec<S extends z.ZodRawShape>(
     tier: 'R',
     firstClass: false,
     shape: def.shape,
-    run: async (args): Promise<McpOutcome> => ({
-      result: answer(await viaService(() => def.run(args as never))),
+    run: async (args, ctx): Promise<McpOutcome> => ({
+      result: answer(
+        await viaService(() => def.run(args as never, ctx)),
+        def.untrusted,
+      ),
       audit: {},
     }),
   } as McpToolSpec;
@@ -191,8 +205,10 @@ export interface ActionDef<S extends z.ZodRawShape, L> {
   permission: McpToolSpec['permission'];
   tier: 'W' | 'A' | 'D';
   shape: S;
+  /** Keys of the answer that hold user text beyond the shared list. */
+  untrusted?: readonly string[];
   /** What the plan, the confirm target and the refusal are decided from. */
-  load?: (args: Args<S>) => Promise<L>;
+  load?: (args: Args<S>, ctx: McpContext) => Promise<L>;
   /** The target id the audit and the confirm string carry. */
   id: (args: Args<S>, loaded: L) => string;
   /** The confirm name (A and D): it changes when the target changes. */
@@ -202,7 +218,7 @@ export interface ActionDef<S extends z.ZodRawShape, L> {
   refuse?: (args: Args<S>, loaded: L) => string | null;
   /** W: the change shows on air at once. */
   onAir?: (args: Args<S>, loaded: L) => boolean;
-  run: (args: Args<S>, loaded: L) => Promise<unknown>;
+  run: (args: Args<S>, loaded: L, ctx: McpContext) => Promise<unknown>;
   /** The answer to return instead of the service's (when that is large). */
   result?: (raw: unknown, args: Args<S>) => unknown;
 }
@@ -216,9 +232,9 @@ export interface ActionDef<S extends z.ZodRawShape, L> {
 export function actionSpec<S extends z.ZodRawShape, L>(
   def: ActionDef<S, L>,
 ): McpToolSpec {
-  const load = (args: Args<S>): Promise<L> =>
+  const load = (args: Args<S>, ctx: McpContext): Promise<L> =>
     viaService(() =>
-      def.load ? def.load(args) : Promise.resolve(undefined as L),
+      def.load ? def.load(args, ctx) : Promise.resolve(undefined as L),
     );
   const blocked = (args: Args<S>, loaded: L): string | null =>
     def.refuse ? def.refuse(args, loaded) : null;
@@ -230,8 +246,8 @@ export function actionSpec<S extends z.ZodRawShape, L>(
     tier: def.tier,
     firstClass: false,
     shape: def.shape,
-    dryRun: async (args: Args<S>): Promise<DryRunResult> => {
-      const loaded = await load(args);
+    dryRun: async (args: Args<S>, ctx: McpContext): Promise<DryRunResult> => {
+      const loaded = await load(args, ctx);
       const plan = def.plan(args, loaded);
       const why = blocked(args, loaded);
       return {
@@ -246,20 +262,20 @@ export function actionSpec<S extends z.ZodRawShape, L>(
           (def.onAir ? def.onAir(args, loaded) : false),
       };
     },
-    run: async (args: Args<S>): Promise<McpOutcome> => {
-      const loaded = await load(args);
+    run: async (args: Args<S>, ctx: McpContext): Promise<McpOutcome> => {
+      const loaded = await load(args, ctx);
       const why = blocked(args, loaded);
       if (why !== null) throw new McpToolError('on_air', why);
-      const raw = await viaService(() => def.run(args, loaded));
+      const raw = await viaService(() => def.run(args, loaded, ctx));
       return {
-        result: answer(def.result ? def.result(raw, args) : raw),
+        result: answer(def.result ? def.result(raw, args) : raw, def.untrusted),
         audit: { target: def.id(args, loaded) },
       };
     },
   } as McpToolSpec;
   if (def.tier !== 'W')
-    spec.confirmTarget = async (args): Promise<ConfirmTarget> => {
-      const loaded = await load(args as Args<S>);
+    spec.confirmTarget = async (args, ctx): Promise<ConfirmTarget> => {
+      const loaded = await load(args as Args<S>, ctx);
       return {
         id: def.id(args as Args<S>, loaded),
         name: def.label!(args as Args<S>, loaded),

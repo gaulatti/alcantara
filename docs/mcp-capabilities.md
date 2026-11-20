@@ -117,3 +117,35 @@ does.
 - Metrics: the area adds no metric. Calls count under the executor's
   `alcantara_mcp_requests_total{tool,tier,result}` with the registered
   capability name, tier and a closed result as the only labels.
+
+## Songs, media, media assets, labels and similarity (#218)
+
+Files: `backend/src/mcp/capabilities/{songs,media,media-assets,similarity}.ts`.
+`SongsMcpTools`, `MediaMcpTools` and `MediaAssetsMcpTools` are providers of
+their own modules; `SimilarityMcpTools` is a provider of the radio module.
+
+### Read capabilities
+
+| Capability | Permission | Answers like |
+|---|---|---|
+| `song_find_all` | `song.read` | `GET /songs`; `limit` is 1 to 200 (default 50), where the console also accepts 0 for the whole catalog |
+| `song_find_one` | `song.read` | `GET /songs/:id` (a missing song is `not_found`) |
+| `media_find_all` | `media.read` | `GET /media` (limit at most 200, default 50) |
+| `media_find_one` | `media.read` | `GET /media/:id` |
+| `media_asset_find_all` | `access` | `GET /media-assets`, limited to the assets the caller may read |
+| `media_asset_find_one` | `access` | `GET /media-assets/:id` |
+| `media_asset_find_labels` | `access` | `GET /media-labels` |
+| `media_asset_find_label` | `access` | `GET /media-labels/:id` |
+| `radio_similarity_coverage` | `radio.read` | `GET /radio/:programId/similarity/coverage` |
+| `radio_similarity_decisions` | `radio.read` | `GET /radio/:programId/similarity/decisions` (limit 1 to 200, default 50) |
+| `radio_similarity_export` | `radio.manage` | `GET /radio/:programId/similarity/export`, one page of `songs` (see below) |
+
+- Asset and label reads pass the caller's own permissions to the service, as the
+  console's guard does, so a caller sees only the assets the service lets that
+  caller read.
+- `radio_similarity_export` answers the console's body with `songs` reduced to
+  one page (`offset`, `limit`: default 200, at most 1000) and a `total` of the
+  whole list, because the console's answer lists every song with its address.
+- Text typed or imported by people (a song's artist, title and addresses, an
+  asset's name and address, a label's name and description, a media image's name
+  and address) is under `untrusted`.
