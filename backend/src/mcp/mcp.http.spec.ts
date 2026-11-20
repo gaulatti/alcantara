@@ -30,7 +30,12 @@ import { McpAuthService } from './mcp-auth.service';
 import { McpController } from './mcp.controller';
 import { McpOAuthController } from './mcp-oauth.controller';
 import { McpRegistry } from './mcp-registry.service';
-import { MCP_LIMITS, MCP_SHARED_CLIENT_ID } from './mcp.constants';
+import {
+  COGNITO_ISSUER,
+  MCP_LIMITS,
+  MCP_PUBLIC_ORIGIN,
+  MCP_SHARED_CLIENT_ID,
+} from './mcp.constants';
 
 // /mcp through a real Fastify app, the real global guard and the real Pompeii
 // client code; only the gRPC call and the program list are replaced. Every
@@ -803,11 +808,16 @@ describe('MCP endpoint', () => {
       '/.well-known/oauth-authorization-server',
     );
     expect(server.body).toMatchObject({
+      // The issuer is the address the document is served for, not the pool
+      // that issues tokens (the pool's issuer and keys are checked by Pompeii).
+      issuer: MCP_PUBLIC_ORIGIN,
       authorization_endpoint: 'https://buendia.gaulatti.com/oauth2/authorize',
       token_endpoint: 'https://buendia.gaulatti.com/oauth2/token',
+      jwks_uri: `${COGNITO_ISSUER}/.well-known/jwks.json`,
       registration_endpoint: 'https://api.alcantara.gaulatti.com/register',
       code_challenge_methods_supported: ['S256'],
     });
+    expect(server.body.issuer).not.toBe(COGNITO_ISSUER);
   });
 
   it('registers a client by reflecting valid redirect URIs, with no fixed list of clients', async () => {

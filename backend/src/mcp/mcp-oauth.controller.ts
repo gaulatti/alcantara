@@ -20,9 +20,12 @@ const PROTECTED_RESOURCE = {
 };
 
 const AUTHORIZATION_SERVER = {
-  issuer: COGNITO_ISSUER,
+  // RFC 8414: the issuer is the address this document is served for. Tokens
+  // are still issued by the pool (COGNITO_ISSUER); Pompeii verifies them.
+  issuer: MCP_PUBLIC_ORIGIN,
   authorization_endpoint: `${COGNITO_HOSTED_DOMAIN}/oauth2/authorize`,
   token_endpoint: `${COGNITO_HOSTED_DOMAIN}/oauth2/token`,
+  jwks_uri: `${COGNITO_ISSUER}/.well-known/jwks.json`,
   registration_endpoint: MCP_REGISTRATION_URL,
   response_types_supported: ['code'],
   grant_types_supported: ['authorization_code', 'refresh_token'],
