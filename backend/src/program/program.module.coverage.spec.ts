@@ -1,6 +1,7 @@
 import { Global, Injectable, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
+import { ProgramMcpTools } from '../mcp/capabilities/program';
 import { PrismaService } from '../prisma.service';
 import { FlightService } from './flight.service';
 import { ProgramController } from './program.controller';
@@ -120,6 +121,7 @@ describe('ProgramModule wiring', () => {
       ProgramRealtimeService,
       FlightService,
       ProgramTemplateService,
+      ProgramMcpTools,
       PrismaService,
     ]);
   });
