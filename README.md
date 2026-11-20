@@ -466,6 +466,7 @@ than the deadline is not redialled on every request. Each replacement logs
 
 ## Architecture
 
+- [MCP endpoint](docs/mcp.md) documents `/mcp`, its OAuth discovery documents, who can reach it, and the registered tools.
 - [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.
 
 Production places the backend on the external `broadcast-control` Docker

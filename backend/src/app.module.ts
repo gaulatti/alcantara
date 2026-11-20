@@ -26,6 +26,7 @@ import { DatabaseBackupModule } from './database-backup/database-backup.module';
 import { MediaAssetsModule } from './media-assets/media-assets.module';
 import { AsRunModule } from './as-run/as-run.module';
 import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -55,6 +56,8 @@ import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
     MediaAssetsModule,
     AsRunModule,
     MediaAnalysisModule,
+    // gaulatti/alcantara#221: /mcp, /register and the OAuth discovery documents.
+    McpModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],

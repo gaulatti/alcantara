@@ -12,6 +12,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
 import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
+import { McpModule } from './mcp/mcp.module';
 
 describe('AppModule metadata', () => {
   it('declares the root controllers and providers', () => {
@@ -33,6 +34,7 @@ describe('AppModule metadata', () => {
         OperatorPreferencesModule,
         DatabaseBackupModule,
         MediaAnalysisModule,
+        McpModule,
       ]),
     );
     const config = imports.find(
