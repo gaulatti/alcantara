@@ -10,6 +10,8 @@ export interface SourceListProps {
   selectedIds: Set<string>;
   onToggleSelect: (source: ExternalSource) => void;
   onRefresh: () => void;
+  /** Page-level reason preview is unavailable (media service, permission, connection); null when ready. */
+  previewUnavailableReason?: string | null;
   isLoading?: boolean;
   error?: string | null;
   className?: string;
@@ -21,6 +23,7 @@ export function SourceList({
   selectedIds,
   onToggleSelect,
   onRefresh,
+  previewUnavailableReason = null,
   isLoading = false,
   error = null,
   className = '',
@@ -125,6 +128,7 @@ export function SourceList({
                   source={source}
                   isSelected={selectedIds.has(source.id)}
                   onToggleSelect={onToggleSelect}
+                  previewUnavailableReason={previewUnavailableReason}
                 />
               ))}
             </tbody>

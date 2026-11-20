@@ -7,6 +7,7 @@ export interface SourceRowProps {
   source: ExternalSource;
   isSelected: boolean;
   onToggleSelect: (source: ExternalSource) => void;
+  previewUnavailableReason?: string | null;
   className?: string;
 }
 
@@ -49,9 +50,13 @@ export function SourceRow({
   source,
   isSelected,
   onToggleSelect,
+  previewUnavailableReason = null,
   className = '',
 }: SourceRowProps) {
-  const canPreview = isPreviewable(source);
+  const sourcePreviewable = isPreviewable(source);
+  // A selected row stays operable so the operator can always deselect.
+  const canPreview = sourcePreviewable && (previewUnavailableReason === null || isSelected);
+  const reasonId = `preview-reason-${source.id}`;
   const lifecycleInfo = getLifecycleBadge(source.lifecycle);
   const healthInfo = getHealthBadge(source.health);
 
@@ -72,11 +77,14 @@ export function SourceRow({
           disabled={!canPreview}
           aria-disabled={!canPreview ? 'true' : undefined}
           aria-pressed={isSelected}
+          aria-describedby={sourcePreviewable && !canPreview ? reasonId : undefined}
           aria-label={
             canPreview
               ? isSelected
                 ? `Stop previewing ${source.name}`
                 : `Preview ${source.name}`
+              : sourcePreviewable
+              ? `Preview ${source.name}`
               : `${source.name} cannot be previewed in ${source.lifecycle} state`
           }
           title={
@@ -84,6 +92,8 @@ export function SourceRow({
               ? isSelected
                 ? 'Deselect preview'
                 : 'Preview source'
+              : sourcePreviewable
+              ? (previewUnavailableReason ?? undefined)
               : 'Cannot preview in current lifecycle'
           }
           onClick={() => {
@@ -101,6 +111,11 @@ export function SourceRow({
             <EyeOff className="h-3.5 w-3.5 text-zinc-400" />
           )}
         </Button>
+        {sourcePreviewable && !canPreview && (
+          <span id={reasonId} className="sr-only">
+            {previewUnavailableReason}
+          </span>
+        )}
       </td>
 
       {/* Name */}

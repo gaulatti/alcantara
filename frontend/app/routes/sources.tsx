@@ -17,6 +17,15 @@ import { SourceList } from '../components/sources/SourceList';
 import { SourcePreviewTile } from '../components/sources/SourcePreviewTile';
 import { Room } from 'livekit-client';
 
+export type PreviewAvailability = 'connecting' | 'ready' | 'unconfigured' | 'denied' | 'failed';
+
+export const PREVIEW_UNAVAILABLE_MESSAGES: Record<Exclude<PreviewAvailability, 'ready'>, string> = {
+  connecting: 'Connecting live preview...',
+  unconfigured: 'Live preview is not available: the media service is not configured on this server.',
+  denied: "You don't have permission to preview sources.",
+  failed: 'Live preview could not connect.',
+};
+
 export function meta() {
   return [{ title: 'External Sources - Alcántara' }];
 }
@@ -27,7 +36,11 @@ function SourcesManagerContent({
   isLoading,
   error,
   onRefresh,
+  previewAvailability,
+  onRetryPreview,
 }: {
+  previewAvailability: PreviewAvailability;
+  onRetryPreview: () => void;
   sources: ExternalSource[];
   currentProgramId: string;
   isLoading: boolean;
@@ -89,6 +102,21 @@ function SourcesManagerContent({
         </section>
       )}
 
+      {previewAvailability !== 'ready' && (
+        <div role="status" data-testid="preview-availability" className="flex items-center gap-3 text-sm text-amber-300">
+          <span>{PREVIEW_UNAVAILABLE_MESSAGES[previewAvailability]}</span>
+          {previewAvailability === 'failed' && (
+            <button
+              type="button"
+              onClick={onRetryPreview}
+              className="rounded border border-zinc-600 px-2 py-0.5 text-xs text-zinc-100 hover:bg-zinc-800"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Source List Section */}
       <section aria-label="External sources registry">
         <SourceList
@@ -96,6 +124,9 @@ function SourcesManagerContent({
           currentProgramId={currentProgramId}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
+          previewUnavailableReason={
+            previewAvailability === 'ready' ? null : PREVIEW_UNAVAILABLE_MESSAGES[previewAvailability]
+          }
           onRefresh={onRefresh}
           isLoading={isLoading}
           error={error}
@@ -117,6 +148,11 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
   const [error, setError] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<any>(testRoom ?? null);
   const roomRef = useRef<any>(testRoom ?? null);
+  const [previewAvailability, setPreviewAvailability] = useState<PreviewAvailability>(
+    testRoom ? 'ready' : 'connecting'
+  );
+  const [connectAttempt, setConnectAttempt] = useState(0);
+  const retryPreview = useCallback(() => setConnectAttempt((n) => n + 1), []);
 
   const loadSources = useCallback(async () => {
     setIsLoading(true);
@@ -135,6 +171,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
   useEffect(() => {
     if (testRoom) {
       setActiveRoom(testRoom);
+      setPreviewAvailability('ready');
       return;
     }
     if (typeof window === 'undefined') return;
@@ -143,18 +180,28 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
     let roomInstance: Room | null = null;
 
     async function connectLiveKit() {
+      setPreviewAvailability('connecting');
       try {
         const configRes = await fetch(apiUrl('/webrtc/config'));
-        if (!configRes.ok) return;
+        if (!configRes.ok) {
+          if (!cancelled) setPreviewAvailability('unconfigured');
+          return;
+        }
         const config = (await configRes.json()) as { livekit?: { enabled?: boolean } };
-        if (!config.livekit?.enabled) return;
+        if (!config.livekit?.enabled) {
+          if (!cancelled) setPreviewAvailability('unconfigured');
+          return;
+        }
 
         const tokenRes = await authFetch('/webrtc/operator-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ programId }),
         });
-        if (!tokenRes.ok) return;
+        if (!tokenRes.ok) {
+          if (!cancelled) setPreviewAvailability(tokenRes.status === 401 || tokenRes.status === 403 ? 'denied' : 'failed');
+          return;
+        }
         const creds = (await tokenRes.json()) as { serverUrl: string; token: string };
 
         if (cancelled) return;
@@ -166,11 +213,12 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
         if (!cancelled) {
           roomRef.current = roomInstance;
           setActiveRoom(roomInstance);
+          setPreviewAvailability('ready');
         } else {
           roomInstance.disconnect();
         }
       } catch {
-        // Fallback or unconfigured media service
+        if (!cancelled) setPreviewAvailability('failed');
       }
     }
 
@@ -182,7 +230,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
         roomInstance.disconnect();
       }
     };
-  }, [programId, testRoom]);
+  }, [programId, testRoom, connectAttempt]);
 
   // Initial load and periodic refresh
   useEffect(() => {
@@ -211,6 +259,8 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
             isLoading={isLoading}
             error={error}
             onRefresh={loadSources}
+            previewAvailability={previewAvailability}
+            onRetryPreview={retryPreview}
           />
         </SourcesSubscriptionProvider>
       </div>
