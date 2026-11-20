@@ -28,3 +28,30 @@ Access changes made through Alcántara: when, what, who, and whether from this p
 ## When it says "not available yet"
 
 Alcántara has no service credential configured yet (`POMPEII_ACCESS_CREDENTIAL` in its application secret), or Pompeii's access service can't be reached. The owner issues the credential once, following Pompeii's runbook (docs/application-access.md, "Issuing service credentials").
+
+## Local browser check
+
+`scripts/access-fake/` runs the Access screen in a browser with no Pompeii and no Cognito. It is a local check tool: it is not in any image or deploy path (the backend and frontend images build from `backend/` and `frontend/` only).
+
+```sh
+export BACKEND_PORT=3224 VITE_PORT=5224 LOCALSTACK_PORT=4724   # any free ports
+docker compose -p a224 -f compose.yml -f scripts/access-fake/compose.yml up --build -d backend frontend access-fake
+# open http://localhost:5224/access (TEST AUTH signs you in)
+FAKE_CALLER=member docker compose -p a224 -f compose.yml -f scripts/access-fake/compose.yml up -d --force-recreate --no-deps access-fake
+docker compose -p a224 -f compose.yml -f scripts/access-fake/compose.yml down -v
+```
+
+The fake serves `pompeii.access.v1.ApplicationAccessService` (plain gRPC, in memory, state resets when it restarts). It holds the name `host.docker.internal` on the Compose network, which is the address the backend already uses outside production, so no new setting exists. The override only adds a fake `POMPEII_ACCESS_CREDENTIAL` (`pmp_svc_FAKE...`, not a real credential) to the local backend.
+
+| Do this | You see |
+| --- | --- |
+| Open `/access` | My tokens, Token switch, People, History tabs |
+| Create a token | The value once, with a copy button; gone after reload or another tab |
+| Revoke it | It leaves the list |
+| Turn the Token switch off, then create | "Personal access tokens are switched off here, so new ones cannot be created." |
+| Grant a role to a user id, then revoke it | The person appears in People and leaves; History records each change |
+| Token named `FORBIDDEN` | "You are not allowed to do that." |
+| Token named `BADARG` | "That request was not accepted. Check what you entered." |
+| Token named `DOWN`, or grant to user id `503` | "Access is not available yet" |
+| Revoke something already revoked in another tab | "That record no longer exists." and the list refreshes |
+| `FAKE_CALLER=member` | Only My tokens and History; no Token switch or People |

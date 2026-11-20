@@ -147,6 +147,16 @@ it.each([
   expect(await screen.findByRole('alert')).toHaveTextContent(words);
 });
 
+it('refreshes the lists after a revoke finds the record already gone', async () => {
+  const { client, spy } = spied({ ...memoryAccessClient(), revokeMyToken: () => Promise.reject(refusal('not_found', 404)) });
+  await open(client);
+  const before = spy.listMyTokens.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke Console script' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/no longer exists/);
+  await waitFor(() => expect(spy.listMyTokens.mock.calls.length).toBeGreaterThan(before));
+  expect(screen.getByRole('alert')).toHaveTextContent(/no longer exists/);
+});
+
 it('reads an unrecognised failure as a plain retry', async () => {
   await open({ ...memoryAccessClient(), revokeMyToken: () => Promise.reject(new Error('boom')) });
   fireEvent.click(screen.getByRole('button', { name: 'Revoke Console script' }));

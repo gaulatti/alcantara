@@ -122,17 +122,24 @@ export function AccessPanel({ client, application }: AccessPanelProps) {
   }, [load]);
 
   // Runs one change; a 503 anywhere turns the whole panel to "not available yet".
-  const attempt = useCallback(async (work: () => Promise<void>): Promise<boolean> => {
-    setNotice('');
-    try {
-      await work();
-      return true;
-    } catch (error) {
-      if (isUnavailable(error)) setPhase('unavailable');
-      else setNotice(describe(error));
-      return false;
-    }
-  }, []);
+  const attempt = useCallback(
+    async (work: () => Promise<void>): Promise<boolean> => {
+      setNotice('');
+      try {
+        await work();
+        return true;
+      } catch (error) {
+        if (isUnavailable(error)) setPhase('unavailable');
+        else {
+          setNotice(describe(error));
+          // The record went away elsewhere: show what is there now, not a row that cannot be removed.
+          if (isAccessError(error) && error.error === 'not_found') void load();
+        }
+        return false;
+      }
+    },
+    [load]
+  );
 
   const loadOlderHistory = () =>
     attempt(async () => {
