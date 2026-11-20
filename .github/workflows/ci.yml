@@ -39,7 +39,9 @@ permissions: {}
 
 concurrency:
   group: alcantara-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
-  cancel-in-progress: true
+  # A push to main is never cancelled by the next push: every commit on main
+  # gets a complete verification. Pull request and review runs still cancel.
+  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   resolve-clouseau:
