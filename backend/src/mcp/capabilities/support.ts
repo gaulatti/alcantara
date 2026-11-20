@@ -45,7 +45,6 @@ const UNTRUSTED_KEYS: ReadonlySet<string> = new Set([
   'warnings',
   // gaulatti/alcantara#219: destination, consumer, guest and radio text.
   'displayName',
-  'url',
   'listenerUrl',
   'palazzoUrl',
   'text',

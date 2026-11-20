@@ -396,3 +396,116 @@ runs the providers through the registry's real call path (visibility by
 permission, dry run, confirmation, idempotency, re-authorization and the
 default program). No metric is added: the executor's counters cover every
 capability.
+
+## Broadcast, filler, recording, radio, preferences, external sources and guests (#219)
+
+Files: `backend/src/mcp/capabilities/{destinations,filler,recording,radio,preferences,external-sources,webrtc}.ts`,
+each registered in the module of the services it calls. The 57 rows of
+appendix A that are not excluded and not another ticket's:
+
+| Area | R | W | A | D | Total |
+|---|---|---|---|---|---|
+| broadcast destinations (`destination_*`) | 3 | 5 | 3 | 0 | 11 |
+| filler (`filler_*`) | 1 | 2 | 0 | 0 | 3 |
+| recording and tape (`recording_*`) | 2 | 0 | 4 | 0 | 6 |
+| radio (`radio_*`: settings, Palazzo, recovery, now-playing, manual song and instant) | 7 | 3 | 6 | 0 | 16 |
+| operator preferences (`preference_*`) | 2 | 3 | 0 | 3 | 8 |
+| external sources (`external_source_*`) | 2 | 0 | 4 | 1 | 7 |
+| guests (`webrtc_*`) | 2 | 0 | 2 | 2 | 6 |
+| **Total** | **19** | **13** | **19** | **6** | **57** |
+
+`backend/src/mcp/capabilities/appendix-a-broadcast.spec.ts` reads these rows
+from `appendix-a.tsv` and asserts, for each, the capability's name, permission
+(and that it is the controller handler's own), tier, a dry run for every W, A
+and D, and a confirm target for every A and D.
+
+**Not capabilities.** Appendix A marks seven rows excluded (capability
+column `—`) because they return or produce a credential:
+`POST /auth/realtime-ticket`, `POST /radio/:programId/monitor-ticket`,
+`POST /program/:programId/recording/download-ticket`,
+`POST /external-sources/:id/credentials/rotate`, `POST /webrtc/operator-token`,
+and the two routes whose whole product is a guest link,
+`POST /webrtc/invitations` (create) and
+`POST /webrtc/invitations/:id/replace` (replace; it also disconnects the
+guest). A guest link is created and replaced in the console only. The four
+`radio_similarity_*` rows belong to #218. `auth_get_me` is not in these areas.
+
+### What differs from the console's answer
+
+- **No credential is ever returned.** `external_source_create` answers
+  without the credential a push (RTMP, WHIP) source is issued: the answer has
+  `credentialIssued: true` and a note, and the credential is read after
+  rotating it in the console. The answer tripwire still withholds any answer
+  that carries a credential field or a signed link as `unavailable`.
+- **Now-playing consumer headers** can carry an API key, so
+  `radio_list_now_playing_consumers` and
+  `radio_replace_now_playing_consumers` answer each consumer with
+  `headerNames` (under `untrusted`) and never the values. To replace the list
+  without retyping a header value, set `keep_stored_headers` on the consumer:
+  it keeps the stored headers of the stored consumer of the same name
+  (`invalid` when there is none); headers given beside it win.
+- Destination catalog rows carry the Secrets Manager reference of the stream
+  key (`secretId`, `secretVersionId`), as the console's management endpoint
+  does (`broadcast.manage`), never the key.
+- Added to the untrusted keys: `displayName`, `url`, `listenerUrl`,
+  `palazzoUrl`, `text`, `payload`, `headerNames`.
+
+### Arguments the console sends differently
+
+- `destination_start`, `destination_reload` and `destination_stop` take
+  `command_id` (the console's `commandId`, the executor's replay key) and
+  send `confirmed: true` themselves, because the framework's `confirm` string
+  has matched by then. `stop` takes no destinations. The caller is the
+  `actorSubject`. The confirm name is where the executor is
+  (`requested=… actual=… transition=…`, or `executor-unavailable`).
+- `recording_start`, `recording_stop`, `recording_tape_start` and
+  `recording_tape_stop` take `command_key` (the console's `Idempotency-Key`
+  header, validated by the same function). The confirm name is the recording
+  state.
+- `radio_update_settings` repeats the controller's three steps (read the
+  previous settings, update, reload the similarity settings when a similarity
+  field was given, reconnect telemetry when the Palazzo address or `enabled`
+  changed). Its dry run is live for every field except `listener_url`.
+- `radio_start_recovery` and `radio_stop_recovery` confirm against Palazzo's
+  automation state; the manual song and instant routes
+  (`radio_play_song`, `radio_stop_song`, `radio_play_instant`,
+  `radio_stop_all_instants`) confirm against the program's live stamp, like
+  the program actions. `radio_play_instant` accepts `instant_id` as the
+  console sends it; the route does not use it.
+- `webrtc_update_return` sets every field of the return feed: a field not
+  given goes to its default (program, master, 1, not muted, 0 ms), exactly as
+  the console's route does. The dry run shows the resulting values.
+- `webrtc_control_participant` takes a flat body (`type`, then `device`,
+  `enabled`, `cue` or `text` as the type needs); the service validates it.
+- The preference capabilities act as the caller (subject and canonical
+  principal from Pompeii) and read shared layouts with the caller's
+  permissions and the application's team, as the console's guard builds them.
+  A caller never reaches another operator's profile.
+
+### Step 0 of every D row: what the console does today
+
+| Capability | The console today | The capability |
+|---|---|---|
+| `external_source_revoke` | Revokes every credential, marks the source revoked and unavailable and clears its ingress and participant, whatever is on air. A scene whose `externalSourceId` points at it keeps pointing at it and shows nothing. There is no restore. | `on_air` while a scene that points at the source is on air or staged on any program. Not recoverable: a new source must be created and its scenes pointed at it. The dry run lists the programs that have such a scene. |
+| `webrtc_revoke_invitation` | Revokes the invitation (its link dies, its slot is freed) and removes the guest from the room if connected, whatever is on air. | `on_air` while the guest is connected (status `active`) and the program has a scene or fade to black on air (the guest may be in the picture; which scene shows which guest is not recorded). Not recoverable: a new invitation needs a new link, made in the console. |
+| `webrtc_remove_participant` | Disconnects the guest at once and clears their session; the invitation stays valid, so the guest can rejoin with the same link. Never looks at what is on air. | `on_air` while the guest is connected and the program is on air. Recoverable (rejoin). |
+| `preference_retire` | Marks the shared layout retired and bumps its version; it stops being listed and loadable. Copies operators already loaded are plain profile copies and stay. A layout is not an on-air object. | Never `on_air`. Recoverable: publishing the same name again clears the retirement. `not_found` for a layout that is not there. |
+| `preference_reset_class` | Deletes the caller's saved profile for the class (the default applies again). Only the caller's own row. | Never `on_air`. The dry run says the version that is lost; not recoverable unless nothing was saved. |
+| `preference_reset_all` | Deletes every saved profile of the caller. | Never `on_air`. The dry run lists the version of each class; not recoverable unless nothing was saved. |
+
+A guest who is not connected, a program off air or a source no scene points
+at is not an `on_air` case: the dry run lists what is lost and the capability
+proceeds after the confirm, as the console does.
+
+### Rows worth knowing about
+
+- `destination_retire_destination`, `destination_restore_destination` and
+  the other catalog rows are W: a running broadcast keeps the immutable
+  selection it started with, so none of them changes what is on air.
+- `external_source_redirect` is an A row although it changes nothing (it
+  resolves the host name and answers a fingerprint).
+- `filler_prepare_television` and `filler_prepare_radio` write the pending
+  (next session) version only; the version in session changes at a broadcast
+  start or a recovery start.
+- Metrics: the area adds no metric. The executor counts every call under
+  `alcantara_mcp_requests_total{tool,tier,result}`.

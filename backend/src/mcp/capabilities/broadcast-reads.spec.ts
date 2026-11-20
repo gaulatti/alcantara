@@ -95,16 +95,21 @@ const specs = [
     s.consumers as never,
     s.telemetry as never,
     s.confidence as never,
+    {} as never,
+    {} as never,
+    s.programs as never,
   ).specs(),
   ...new OperatorPreferencesMcpTools(
     s.preferences as never,
     s.pompeii as never,
+    {} as never,
   ).specs(),
   ...new ExternalSourcesMcpTools(
     s.sources as never,
     s.pompeii as never,
+    s.programs as never,
   ).specs(),
-  ...new WebrtcMcpTools(s.webrtc as never).specs(),
+  ...new WebrtcMcpTools(s.webrtc as never, s.programs as never).specs(),
 ];
 
 const run = async (name: string, args: Record<string, unknown> = {}) =>

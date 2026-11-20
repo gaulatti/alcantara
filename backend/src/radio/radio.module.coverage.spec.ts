@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { FlightService } from '../program/flight.service';
+import { ProgramService } from '../program/program.service';
 import { RadioModule } from './radio.module';
 import { RadioController } from './radio.controller';
 import { RadioMonitorController } from './radio-monitor.controller';
@@ -23,6 +24,7 @@ const configStub = {
   getOrThrow: jest.fn(),
 };
 const flightStub = {};
+const programStub = {};
 
 // External collaborators that other application modules provide globally.
 @Global()
@@ -30,8 +32,9 @@ const flightStub = {};
   providers: [
     { provide: ConfigService, useValue: configStub },
     { provide: FlightService, useValue: flightStub },
+    { provide: ProgramService, useValue: programStub },
   ],
-  exports: [ConfigService, FlightService],
+  exports: [ConfigService, FlightService, ProgramService],
 })
 class RadioModuleCoverageHostModule {}
 

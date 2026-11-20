@@ -138,10 +138,10 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all 163 capabilities (3 of them covered by another tool) and the 4 exclusions from appendix A', () => {
+  it('reads all 160 capabilities (3 of them covered by another tool) and the 7 exclusions from appendix A', () => {
     const { rows, excluded, covered } = appendix();
-    expect(rows.size + covered.size).toBe(163);
-    expect(excluded).toBe(4);
+    expect(rows.size + covered.size).toBe(160);
+    expect(excluded).toBe(7);
     for (const tool of covered.values())
       expect(Object.keys({ ...RADIO_TOOLS, ...EXTRA_CAPABILITIES })).toContain(
         tool,
