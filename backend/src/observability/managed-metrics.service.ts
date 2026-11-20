@@ -18,6 +18,30 @@ export const POMPEII_CHANNEL_RESET_METRIC_REASONS = [
   'deadline_exceeded',
   'unavailable',
 ] as const;
+/** The access screen's Pompeii calls (gaulatti/alcantara#224), one per RPC. */
+export const ACCESS_METRIC_ROUTES = [
+  'tokens_list',
+  'token_create',
+  'token_revoke',
+  'token_switch_get',
+  'token_switch_set',
+  'roles_list',
+  'grants_list',
+  'grant_create',
+  'grant_revoke',
+  'history_list',
+] as const;
+/** How an access call ended; mirrors the contract's HTTP error table. */
+export const ACCESS_METRIC_RESULTS = [
+  'ok',
+  'unauthenticated',
+  'forbidden',
+  'invalid_request',
+  'tokens_off',
+  'not_found',
+  'unavailable',
+  'not_configured',
+] as const;
 /** Results of alcantara_mcp_auth_total (gaulatti/alcantara#211). */
 export const MCP_AUTH_METRIC_RESULTS = [
   'ok',
@@ -58,6 +82,7 @@ const HTTP_ROUTES = new Set([
   'root',
   'metrics',
   'auth',
+  'access',
   'operator-preferences',
   'program',
   'radio',
@@ -256,6 +281,8 @@ export class ManagedMetricsService {
   private readonly outboundFetches: Counter<string>;
   private readonly authRefusals: Counter<string>;
   private readonly pompeiiChannelResets: Counter<string>;
+  private readonly accessRequests: Counter<string>;
+  private readonly accessDuration: Histogram<string>;
   private readonly mcpAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
   private mcpToolNames = new Set<string>();
@@ -380,6 +407,22 @@ export class ManagedMetricsService {
     });
     for (const reason of POMPEII_CHANNEL_RESET_METRIC_REASONS)
       this.pompeiiChannelResets.labels(reason).inc(0);
+    this.accessRequests = new Counter({
+      name: 'alcantara_access_requests_total',
+      help: 'Calls to Pompeii application access service by bounded route and result.',
+      labelNames: ['route', 'result'],
+      registers: [this.registry],
+    });
+    this.accessDuration = new Histogram({
+      name: 'alcantara_access_request_duration_seconds',
+      help: 'Duration of calls to Pompeii application access service by bounded route.',
+      labelNames: ['route'],
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      registers: [this.registry],
+    });
+    for (const route of ACCESS_METRIC_ROUTES)
+      for (const result of ACCESS_METRIC_RESULTS)
+        this.accessRequests.labels(route, result).inc(0);
     this.mcpAuth = new Counter({
       name: 'alcantara_mcp_auth_total',
       help: 'MCP endpoint authentications by bounded result.',
@@ -564,6 +607,16 @@ export class ManagedMetricsService {
     )
       return;
     this.pompeiiChannelResets.inc({ reason });
+  }
+
+  recordAccessRequest(route: string, result: string, seconds: number): void {
+    if (
+      !(ACCESS_METRIC_ROUTES as readonly string[]).includes(route) ||
+      !(ACCESS_METRIC_RESULTS as readonly string[]).includes(result)
+    )
+      return;
+    this.accessRequests.inc({ route, result });
+    this.accessDuration.observe({ route }, Math.max(0, seconds));
   }
 
   recordMcpAuth(result: string): void {

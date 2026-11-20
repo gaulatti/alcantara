@@ -517,7 +517,9 @@ proceeds after the confirm, as the console does.
 
 Appendix A is 167 rows: 154 are capabilities, 6 are `covered by` another tool
 (`whoami` or `import_media_from_url`; 160 capability rows in all) and 7 are
-exclusions (they return or produce a credential).
+exclusions (they return or produce a credential). Ticket #224 adds the access
+rows below: 11 more, for 178 in all (163 capabilities, 7 `covered by`, 8
+exclusions; 170 capability and covered rows).
 
 | Row | Outcome | Why |
 |---|---|---|
@@ -528,3 +530,52 @@ exclusions (they return or produce a credential).
 | `upload_artwork`, `upload_stinger` | covered by `import_media_from_url` | The import now takes both kinds with the upload routes' type and size limits. |
 
 The exclusions are unchanged. The console's as-run download stays uncapped; only the MCP capability refuses a window over 5,000 rows. The area adds no metric.
+
+## Access (gaulatti/alcantara#224)
+
+File: `backend/src/mcp/capabilities/access.ts` (`AccessMcpTools`), registered in
+`AccessModule` beside the `/access` controller. Each capability forwards the
+caller's own `Authorization` header to Pompeii's `ApplicationAccessService`
+through `AccessService` with `via_client: mcp`, so Pompeii's audit shows the
+change came from an MCP client. Pompeii makes every decision; Alcantara adds
+no check but the `alcantara:access` permission every signed-in caller holds, and
+the registry asks Pompeii again before each A and D action (`reauthorize`), so a
+revoked session or a removed manage key is refused on the next call.
+
+| Capability | Tier | Route it mirrors | Notes |
+|---|---|---|---|
+| `list_my_tokens` | R | `GET /access/tokens` | id, name, permissions, created and last used (when and in which application). Never a value or a display prefix. |
+| `revoke_my_token` | W | `DELETE /access/tokens/:id` | Dry run, no confirm. Revokes the caller's own token only (Pompeii enforces it). |
+| `get_token_switch` | R | `GET /access/token-switch` | |
+| `set_token_switch` | A | `PUT /access/token-switch` | Needs `alcantara:access:manage` in Pompeii. Confirm string `token switch on to off` (the switch as read now), so a plan made before someone else flipped it is refused as `confirm_mismatch`. |
+| `list_access_roles` | R | `GET /access/roles` | |
+| `list_grants` | R | `GET /access/grants` | |
+| `grant_role` | D | `POST /access/grants` | Args `user_id`, `role_id`. Confirm names the role and user ids. Pompeii bounds it: the caller must hold every permission the role carries. |
+| `revoke_role` | D | `DELETE /access/grants/:id` | Arg `grant_id` (from `list_grants`); a grant that is not listed is `not_found`. |
+| `list_access_history` | R | `GET /access/history` | Args `limit` (1 to 200) and `before` (RFC 3339). |
+
+`POST /access/tokens` is **excluded** (it returns a token value), and
+`GET /access/my-permissions` is **covered by `whoami`** (the caller's own
+permissions). There is no capability that creates a token, and none returns a
+token value or `display_prefix`: `list_my_tokens` lists tokens through an
+explicit field list, and `display_prefix` joins the keys the answer tripwire
+(`assertNoCredential`) refuses, so an answer that ever carried one would be
+withheld. What people typed (`name`, `user_email`, `actor_email`, `target`,
+`role_name`) travels under `untrusted`.
+
+Pompeii's errors become the closed MCP codes without its message:
+`UNAUTHENTICATED` and `PERMISSION_DENIED` are `forbidden` (a personal access
+token is refused as the person: sign in to manage access), `INVALID_ARGUMENT` is
+`invalid`, `FAILED_PRECONDITION` (the token switch is off) is `conflict`,
+`NOT_FOUND` is `not_found`, and anything else, or no service credential, is
+`unavailable`. The capabilities need the connection's own credential, so an
+MCP client signed in with a personal access token gets `forbidden` from Pompeii;
+use an OAuth session.
+
+Tests: `access.registry.spec.ts` runs the nine on the registry's real call path
+over the real `AccessService` (tiers, confirm, re-authorization before every A
+and D, the error mapping, and a check over every answer that no token value or
+display prefix is returned). `mcp.registry.appendix.spec.ts` pins the new totals.
+Metrics: `alcantara_access_requests_total{route,result}` and
+`alcantara_access_request_duration_seconds{route}` count the Pompeii calls
+([Access](access-api.md)); the executor counts each tool call as usual.

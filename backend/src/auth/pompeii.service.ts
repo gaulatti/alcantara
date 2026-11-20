@@ -11,6 +11,7 @@ import {
   ChannelCredentials,
   Client,
   type ClientUnaryCall,
+  Metadata,
   type ServiceError,
   credentials,
   loadPackageDefinition,
@@ -76,6 +77,41 @@ type AuthorizationClient = Client & {
   ): ClientUnaryCall;
 };
 
+/** The ten RPCs of pompeii.access.v1.ApplicationAccessService. */
+export const ACCESS_METHODS = [
+  'ListMyTokens',
+  'CreateMyToken',
+  'RevokeMyToken',
+  'GetTokenSwitch',
+  'SetTokenSwitch',
+  'ListRoles',
+  'ListGrants',
+  'Grant',
+  'Revoke',
+  'ListAccessHistory',
+] as const;
+export type AccessMethod = (typeof ACCESS_METHODS)[number];
+
+type AccessClient = Client &
+  Record<
+    AccessMethod,
+    (
+      request: object,
+      metadata: Metadata,
+      options: { deadline: Date },
+      callback: (error: ServiceError | null, response?: object) => void,
+    ) => ClientUnaryCall
+  >;
+
+type AccessClientConstructor = new (
+  address: string,
+  channelCredentials: ChannelCredentials,
+  options?: Record<string, unknown>,
+) => AccessClient;
+
+/** gRPC metadata that carries Alcantara's service credential to Pompeii. */
+export const ACCESS_CREDENTIAL_METADATA = 'x-pompeii-service-credential';
+
 type AuthorizationClientConstructor = new (
   address: string,
   channelCredentials: ChannelCredentials,
@@ -137,16 +173,35 @@ export class PompeiiChannel {
     request: AuthorizeWireRequest,
     timeoutMs: number,
   ): Promise<AuthorizeWireResponse> {
+    return this.unary<AuthorizeWireResponse>(
+      (client, options, done) => client.authorize(request, options, done),
+      timeoutMs,
+    );
+  }
+
+  /**
+   * Any unary call on the current channel. A call that times out or finds the
+   * transport unavailable replaces the channel exactly as an authorization
+   * call does (gaulatti/alcantara#225); the failure still reaches the caller.
+   */
+  unary<T extends object>(
+    start: (
+      client: AuthorizationClient,
+      options: { deadline: Date },
+      done: (error: ServiceError | null, value?: T) => void,
+    ) => unknown,
+    timeoutMs: number,
+  ): Promise<T> {
     const client = this.client;
-    return new Promise<AuthorizeWireResponse>((resolve, reject) => {
-      client.authorize(
-        request,
+    return new Promise<T>((resolve, reject) => {
+      start(
+        client,
         { deadline: new Date(this.now() + timeoutMs) },
         (error, value) => {
           if (error) {
             this.replaceAfter(client, error);
             reject(error);
-          } else resolve(value ?? {});
+          } else resolve(value ?? ({} as T));
         },
       );
     });
@@ -188,6 +243,10 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
   private readonly channel: PompeiiChannel;
   private readonly isProduction: boolean;
   private readonly isTestAuth: boolean;
+  private readonly AccessClient: AccessClientConstructor;
+  /** One access client per channel; a replaced channel gets a new one. */
+  private readonly accessClients = new WeakMap<Client, AccessClient>();
+  private readonly accessCredential: string | null;
   readonly teamId: number;
 
   constructor(
@@ -201,6 +260,10 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
       config.get<string>('POMPEII_GRPC_TIMEOUT_MS'),
       2_000,
     );
+    // Absent or blank means the access screens answer access_unavailable;
+    // it never fails startup (the screen ships before the credential exists).
+    this.accessCredential =
+      config.get<string>('POMPEII_ACCESS_CREDENTIAL')?.trim() || null;
     this.teamId = this.nonNegativeInteger(
       config.get<string>('POMPEII_TEAM_ID'),
       0,
@@ -227,6 +290,23 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
       };
     };
     const Client = loaded.pompeii.authorization.v1.AuthorizationService;
+    const accessDefinition = loadSync(
+      join(__dirname, '..', 'proto', 'application_access.proto'),
+      {
+        defaults: true,
+        enums: String,
+        keepCase: true,
+        longs: Number,
+        oneofs: true,
+      },
+    );
+    this.AccessClient = (
+      loadPackageDefinition(accessDefinition) as unknown as {
+        pompeii: {
+          access: { v1: { ApplicationAccessService: AccessClientConstructor } };
+        };
+      }
+    ).pompeii.access.v1.ApplicationAccessService;
     const channelCredentials = this.isProduction
       ? credentials.createSsl()
       : credentials.createInsecure();
@@ -320,6 +400,45 @@ export class PompeiiService implements OnModuleInit, OnModuleDestroy {
         error: 'AUTHORIZATION_SERVICE_UNAVAILABLE',
       });
     }
+  }
+
+  /** Whether Alcantara holds a service credential for the access service. */
+  hasAccessCredential(): boolean {
+    return this.accessCredential !== null;
+  }
+
+  /**
+   * One ApplicationAccessService call, on the same channel (and so the same
+   * reset behaviour) as authorization. The credential travels in metadata and
+   * is never logged; the caller checks hasAccessCredential() first.
+   */
+  accessCall<T extends object>(
+    method: AccessMethod,
+    request: object,
+  ): Promise<T> {
+    const metadata = new Metadata();
+    metadata.set(ACCESS_CREDENTIAL_METADATA, this.accessCredential as string);
+    return this.channel.unary<T>(
+      (client, options, done) =>
+        this.accessClientFor(client)[method](request, metadata, options, done),
+      this.timeoutMs,
+    );
+  }
+
+  private accessClientFor(client: Client): AccessClient {
+    let access = this.accessClients.get(client);
+    if (!access) {
+      // The access client rides the authorization client's own channel.
+      access = new this.AccessClient(
+        this.grpcUrl,
+        credentials.createInsecure(),
+        {
+          channelOverride: client.getChannel(),
+        },
+      );
+      this.accessClients.set(client, access);
+    }
+    return access;
   }
 
   /** Counts a request the guard refused before any authorization call. */

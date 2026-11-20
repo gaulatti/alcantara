@@ -104,8 +104,9 @@ export class McpRegistry implements OnModuleInit {
     server: McpServer,
     principal: McpPrincipal,
     reauthorize: () => Promise<McpPrincipal>,
+    bearer?: string,
   ): void {
-    const ctx: McpContext = { principal, reauthorize };
+    const ctx: McpContext = { principal, reauthorize, bearer };
     const allowed = this.specs.filter((spec) =>
       principal.permissions.has(spec.permission),
     );
@@ -150,7 +151,11 @@ export class McpRegistry implements OnModuleInit {
           const fresh = await ctx.reauthorize!();
           if (!fresh.permissions.has(spec.permission))
             throw new McpToolError('forbidden', `requires ${spec.permission}`);
-          actingCtx = { principal: fresh, reauthorize: ctx.reauthorize };
+          actingCtx = {
+            principal: fresh,
+            reauthorize: ctx.reauthorize,
+            bearer: ctx.bearer,
+          };
         }
         counted = true;
         return ok(await this.executor.execute(spec, args, actingCtx));

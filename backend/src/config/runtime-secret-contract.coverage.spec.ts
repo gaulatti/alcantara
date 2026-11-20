@@ -38,6 +38,7 @@ describe('runtime secret contract', () => {
     expect(Object.isFrozen(RUNTIME_SECRET_KEYS)).toBe(true);
     expect(ALLOWLISTED_OPTIONAL_SECRET_KEYS).toEqual([
       'programTemplateOrigins',
+      'POMPEII_ACCESS_CREDENTIAL',
     ]);
     expect(Object.isFrozen(ALLOWLISTED_OPTIONAL_SECRET_KEYS)).toBe(true);
   });
@@ -285,6 +286,35 @@ describe('runtime secret contract', () => {
         ),
       );
       expect(empty.programTemplateOrigins).toBe('');
+    });
+  });
+
+  describe('POMPEII_ACCESS_CREDENTIAL (gaulatti/alcantara#224)', () => {
+    it('is optional: absent or blank never fails the payload, a value is trimmed', () => {
+      expect(
+        parseRuntimeSecretPayload(JSON.stringify(payload()))
+          .POMPEII_ACCESS_CREDENTIAL,
+      ).toBeUndefined();
+      expect(
+        parseRuntimeSecretPayload(
+          JSON.stringify(payload({ POMPEII_ACCESS_CREDENTIAL: '   ' })),
+        ).POMPEII_ACCESS_CREDENTIAL,
+      ).toBe('');
+      expect(
+        parseRuntimeSecretPayload(
+          JSON.stringify(payload({ POMPEII_ACCESS_CREDENTIAL: ' pmp_svc_x ' })),
+        ).POMPEII_ACCESS_CREDENTIAL,
+      ).toBe('pmp_svc_x');
+    });
+
+    it('refuses a value that is not a string, naming the key and never the value', () => {
+      expect(() =>
+        parseRuntimeSecretPayload(
+          JSON.stringify(payload({ POMPEII_ACCESS_CREDENTIAL: 12345 })),
+        ),
+      ).toThrow(
+        'Alcantara runtime configuration field POMPEII_ACCESS_CREDENTIAL is malformed',
+      );
     });
   });
 

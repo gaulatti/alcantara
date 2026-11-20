@@ -1,4 +1,6 @@
 import {
+  ACCESS_METRIC_RESULTS,
+  ACCESS_METRIC_ROUTES,
   ManagedMetricsService,
   POMPEII_CHANNEL_RESET_METRIC_REASONS,
 } from './managed-metrics.service';
@@ -94,6 +96,45 @@ describe('ManagedMetricsService outbound fetch metrics', () => {
     );
     expect(text).not.toContain('fictional.example');
     expect(text).not.toContain('unlisted');
+  });
+});
+
+describe('ManagedMetricsService access metrics (gaulatti/alcantara#224)', () => {
+  it('counts access calls by route and result from closed sets, every pair starting at zero', async () => {
+    const metrics = new ManagedMetricsService();
+    const lines = (text: string) =>
+      text
+        .split('\n')
+        .filter((line) => line.startsWith('alcantara_access_requests_total{'));
+    const before = lines(await metrics.registry.metrics());
+    expect(before).toHaveLength(
+      ACCESS_METRIC_ROUTES.length * ACCESS_METRIC_RESULTS.length,
+    );
+    expect(before.every((line) => line.endsWith(' 0'))).toBe(true);
+    metrics.recordAccessRequest('tokens_list', 'ok', 0.02);
+    metrics.recordAccessRequest('tokens_list', 'ok', -1);
+    metrics.recordAccessRequest('grant_create', 'forbidden', 0.3);
+    // Anything outside the closed sets is dropped, never labelled.
+    metrics.recordAccessRequest('/access/tokens/abc', 'ok', 1);
+    metrics.recordAccessRequest('tokens_list', 'Pompeii said no', 1);
+    const text = await metrics.registry.metrics();
+    expect(lines(text).filter((line) => !line.endsWith(' 0'))).toEqual([
+      'alcantara_access_requests_total{route="tokens_list",result="ok"} 2',
+      'alcantara_access_requests_total{route="grant_create",result="forbidden"} 1',
+    ]);
+    expect(text).toContain(
+      'alcantara_access_request_duration_seconds_count{route="tokens_list"} 2',
+    );
+    expect(text).not.toContain('abc');
+    expect(text).not.toContain('Pompeii said no');
+  });
+
+  it('groups /access under its own HTTP route label', async () => {
+    const metrics = new ManagedMetricsService();
+    metrics.recordHttp('GET', 'access', 200, 0.01);
+    expect(await metrics.registry.metrics()).toContain(
+      'alcantara_http_requests_total{method="GET",route="access",status_class="2xx"} 1',
+    );
   });
 });
 

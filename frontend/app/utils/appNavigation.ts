@@ -130,6 +130,11 @@ export function getAppNavigationSections({
           href: "/media-fixture",
           label: "Media fixture",
         },
+        {
+          id: "access-fixture",
+          href: "/access-fixture",
+          label: "Access fixture",
+        },
       ],
     });
   }

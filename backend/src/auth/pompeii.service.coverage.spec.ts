@@ -27,13 +27,23 @@ jest.mock('@grpc/grpc-js', () => {
       mockClients.push(this);
     }
   }
+  class FakeAccessClient {
+    constructor(
+      public address: string,
+      public creds: unknown,
+      public options: unknown,
+    ) {}
+  }
   return {
     credentials: {
       createSsl: jest.fn(() => 'ssl-credentials'),
       createInsecure: jest.fn(() => 'insecure-credentials'),
     },
     loadPackageDefinition: jest.fn(() => ({
-      pompeii: { authorization: { v1: { AuthorizationService: FakeClient } } },
+      pompeii: {
+        authorization: { v1: { AuthorizationService: FakeClient } },
+        access: { v1: { ApplicationAccessService: FakeAccessClient } },
+      },
     })),
     waitForClientReady: jest.fn(),
     status: { DEADLINE_EXCEEDED: 4, UNAVAILABLE: 14 },

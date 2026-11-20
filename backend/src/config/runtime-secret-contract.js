@@ -7,8 +7,11 @@ const RUNTIME_SECRET_KEYS = Object.freeze([
   'externalSourceConfigCurrentVersion',
   'externalSourceConfigKeys',
 ]);
+// POMPEII_ACCESS_CREDENTIAL (gaulatti/alcantara#224) is optional: absent or
+// blank, the access screens answer access_unavailable and startup is unaffected.
 const ALLOWLISTED_OPTIONAL_SECRET_KEYS = Object.freeze([
   'programTemplateOrigins',
+  'POMPEII_ACCESS_CREDENTIAL',
 ]);
 const allowedSecretFields = new Set([
   ...RUNTIME_SECRET_KEYS,
@@ -174,7 +177,7 @@ function parseRuntimeSecretPayload(secretString) {
         `Alcantara runtime configuration field ${key} is malformed`,
       );
     }
-    if (key !== 'programTemplateOrigins' && !value.trim()) {
+    if (!ALLOWLISTED_OPTIONAL_SECRET_KEYS.includes(key) && !value.trim()) {
       throw new Error(
         `Alcantara runtime configuration field ${key} is malformed`,
       );

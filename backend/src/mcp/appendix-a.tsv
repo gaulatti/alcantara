@@ -166,3 +166,14 @@ webrtc	DELETE	/webrtc/rooms/:programId/participants/:identity	webrtc.operate	rem
 scenes	POST	/scenes/:id/(bracket)/draw	scene.operate	drawBracket	scene_draw_modo_italiano_bracket	A
 scenes	POST	/scenes/:id/(bracket)/vote	scene.operate	voteBracket	scene_vote_modo_italiano_bracket	A
 scenes	POST	/scenes/:id/(bracket)/voting/open	scene.operate	openBracketVoting	scene_open_modo_italiano_bracket_voting	A
+access	GET	/access/tokens	access	listTokens	list_my_tokens	R
+access	POST	/access/tokens	access	createToken	—	excluded: returns a token value (a credential)
+access	DELETE	/access/tokens/:id	access	revokeToken	revoke_my_token	W
+access	GET	/access/token-switch	access	getTokenSwitch	get_token_switch	R
+access	PUT	/access/token-switch	access	setTokenSwitch	set_token_switch	A
+access	GET	/access/roles	access	listRoles	list_access_roles	R
+access	GET	/access/grants	access	listGrants	list_grants	R
+access	POST	/access/grants	access	grant	grant_role	D
+access	DELETE	/access/grants/:id	access	revokeGrant	revoke_role	D
+access	GET	/access/history	access	listHistory	list_access_history	R
+access	GET	/access/my-permissions	access	myPermissions	access_my_permissions	covered by whoami

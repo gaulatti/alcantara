@@ -333,6 +333,27 @@ it("selects the first known show when the saved one is gone, and opens its telev
   expect(shell.logout).toHaveBeenCalled();
 });
 
+it("opens the Access page from the sidebar and from the mobile navigation", async () => {
+  open("/songs");
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
+  const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
+  expect(
+    within(sidebar).getByRole("button", { name: "Access" }),
+  ).not.toHaveAttribute("aria-current");
+  fireEvent.click(within(sidebar).getByRole("button", { name: "Access" }));
+  expect(where()).toBe("/access");
+  expect(
+    within(screen.getByRole("navigation", { name: "Sidebar" })).getByRole(
+      "button",
+      { name: "Access" },
+    ),
+  ).toHaveAttribute("aria-current", "page");
+  fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+  const mobile = screen.getByRole("navigation", { name: "Mobile sidebar" });
+  fireEvent.click(within(mobile).getByRole("button", { name: "Access" }));
+  expect(where()).toBe("/access");
+});
+
 it("reloads the program from the header and reports a refused reload in the console", async () => {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   let reload: (response: Response) => void = () => {};

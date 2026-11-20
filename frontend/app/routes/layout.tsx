@@ -14,6 +14,7 @@ import {
   Images,
   LayoutTemplate,
   List,
+  KeyRound,
   LogOut,
   Menu,
   Music,
@@ -433,6 +434,13 @@ export default function Layout() {
     </IconButton>
   );
 
+  const renderAccessButton = () => (
+    <Button variant='ghost' size='sm' onClick={() => navigate('/access')} aria-current={location.pathname === '/access' ? 'page' : undefined}>
+      <KeyRound size={15} strokeWidth={1.5} />
+      <span>Access</span>
+    </Button>
+  );
+
   const renderLogoutButton = () => (
     <Button variant='ghost' size='sm' onClick={logout}>
       <LogOut size={15} strokeWidth={1.5} />
@@ -771,7 +779,10 @@ export default function Layout() {
         <Button size='sm' variant='ghost' onClick={() => setCommandOpen(true)}>
           <Search size={14} /> Commands
         </Button>
-        {renderLogoutButton()}
+        <div className='flex items-center gap-1'>
+          {renderAccessButton()}
+          {renderLogoutButton()}
+        </div>
       </div>
     </div>
   );
@@ -832,6 +843,7 @@ export default function Layout() {
                     </Button>
                     {renderOpenProgramButton()}
                     {renderRefreshProgramButton()}
+                    {renderAccessButton()}
                     {renderLogoutButton()}
                   </div>
                 }

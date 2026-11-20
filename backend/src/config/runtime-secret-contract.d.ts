@@ -8,6 +8,7 @@ export const RUNTIME_SECRET_KEYS: readonly [
 
 export const ALLOWLISTED_OPTIONAL_SECRET_KEYS: readonly [
   'programTemplateOrigins',
+  'POMPEII_ACCESS_CREDENTIAL',
 ];
 
 export type RuntimeSecretPayload = {
@@ -17,6 +18,7 @@ export type RuntimeSecretPayload = {
   externalSourceConfigCurrentVersion: string;
   externalSourceConfigKeys: string;
   programTemplateOrigins?: string;
+  POMPEII_ACCESS_CREDENTIAL?: string;
 };
 
 export function isPrivateServiceHostname(hostname: string): boolean;

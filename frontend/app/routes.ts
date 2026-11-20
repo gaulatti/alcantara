@@ -28,7 +28,9 @@ export default [
       route('slideshow-fixture', 'routes/slideshow-fixture.tsx'),
       route('recording-fixture', 'routes/recording-fixture.tsx'),
       route('filler-fixture', 'routes/filler-fixture.tsx'),
-      route('flight', 'routes/flight.tsx')
+      route('access-fixture', 'routes/access-fixture.tsx'),
+      route('flight', 'routes/flight.tsx'),
+      route('access', 'routes/access.tsx')
     ]),
     route('overlay', 'routes/overlay.tsx')
   ]),

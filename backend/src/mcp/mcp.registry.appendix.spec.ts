@@ -132,13 +132,15 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all of appendix A: capabilities, covered rows and the 7 exclusions', () => {
+  it('reads all of appendix A: capabilities, covered rows and the 8 exclusions', () => {
     const { rows, excluded, covered } = appendix();
-    expect(rows.size + covered.size).toBe(160);
-    expect(excluded).toBe(7);
+    expect(rows.size + covered.size).toBe(170);
+    expect(excluded).toBe(8);
     // auth_get_me is whoami (same permission, same tier, the caller's own
-    // identity); the five uploads are import_media_from_url's kinds.
+    // identity), as is access_my_permissions (the caller's own keys); the
+    // five uploads are import_media_from_url's kinds.
     expect(Object.fromEntries(covered)).toEqual({
+      access_my_permissions: 'whoami',
       auth_get_me: 'whoami',
       upload_artwork: 'import_media_from_url',
       upload_background: 'import_media_from_url',

@@ -51,6 +51,12 @@ export interface McpContext {
    * refused on the next such call.
    */
   reauthorize?: () => Promise<McpPrincipal>;
+  /**
+   * The caller's Authorization header exactly as received. Only the access
+   * capabilities (gaulatti/alcantara#224) use it, to forward the person to
+   * Pompeii; it is never logged, audited or returned.
+   */
+  bearer?: string;
 }
 
 export interface McpToolSpec<Shape extends z.ZodRawShape = z.ZodRawShape> {

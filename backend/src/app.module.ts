@@ -27,6 +27,7 @@ import { MediaAssetsModule } from './media-assets/media-assets.module';
 import { AsRunModule } from './as-run/as-run.module';
 import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
 import { McpModule } from './mcp/mcp.module';
+import { AccessModule } from './access/access.module';
 
 @Module({
   imports: [
@@ -56,6 +57,8 @@ import { McpModule } from './mcp/mcp.module';
     MediaAssetsModule,
     AsRunModule,
     MediaAnalysisModule,
+    // gaulatti/alcantara#224: /access and the access MCP capabilities.
+    AccessModule,
     // gaulatti/alcantara#221: /mcp, /register and the OAuth discovery documents.
     McpModule,
   ],

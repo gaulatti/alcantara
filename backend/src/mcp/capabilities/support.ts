@@ -78,7 +78,7 @@ export function isolateUntrusted(
 }
 
 const CREDENTIAL_KEY =
-  /^(token|secret|ticket|password|authorization|signature|credentials?|apikey)$/i;
+  /^(token|secret|ticket|password|authorization|signature|credentials?|apikey|display_?prefix)$/i;
 const SIGNED_LINK =
   /X-Amz-(Signature|Credential)|[?&](token|ticket|signature|sig|access_token)=/i;
 

@@ -25,7 +25,7 @@ RUN pnpm install --no-frozen-lockfile
 COPY . .
 RUN pnpm run prisma:generate
 RUN pnpm run build
-RUN test -f /app/dist/src/proto/authorization.proto
+RUN test -f /app/dist/src/proto/authorization.proto && test -f /app/dist/src/proto/application_access.proto
 
 ENV ALCANTARA_BUILD_VERSION=${ALCANTARA_BUILD_VERSION}
 

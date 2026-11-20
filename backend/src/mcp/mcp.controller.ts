@@ -83,8 +83,11 @@ export class McpController {
         { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
         { instructions: INSTRUCTIONS },
       );
-      this.registry.register(server, principal, () =>
-        this.auth.reauthorize(request.raw, client),
+      this.registry.register(
+        server,
+        principal,
+        () => this.auth.reauthorize(request.raw, client),
+        request.raw.headers.authorization,
       );
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

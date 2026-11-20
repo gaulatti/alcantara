@@ -28,6 +28,7 @@ interface RuntimeEnvironment {
   EXTERNAL_SOURCE_CONFIG_CURRENT_VERSION?: string;
   EXTERNAL_SOURCE_CONFIG_KEYS?: string;
   PROGRAM_TEMPLATE_ORIGINS?: string;
+  POMPEII_ACCESS_CREDENTIAL?: string;
   [key: string]: string | undefined;
 }
 
@@ -120,6 +121,12 @@ export async function loadRuntimeSecrets(
   } else {
     // The secret is authoritative: a container leftover must not configure origins.
     delete environment.PROGRAM_TEMPLATE_ORIGINS;
+  }
+  if (selected.POMPEII_ACCESS_CREDENTIAL) {
+    environment.POMPEII_ACCESS_CREDENTIAL = selected.POMPEII_ACCESS_CREDENTIAL;
+  } else {
+    // The secret is authoritative: a container leftover must not configure it.
+    delete environment.POMPEII_ACCESS_CREDENTIAL;
   }
   validateRuntimeConfiguration(environment);
 }

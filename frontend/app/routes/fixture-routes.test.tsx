@@ -16,6 +16,7 @@ import BroadcastLayoutExample from "./layout-demo";
 import SongIntroFixture from "./song-intro-fixture";
 import MediaFixture from "./media-fixture";
 import RecordingFixture from "./recording-fixture";
+import AccessFixture from "./access-fixture";
 
 // The visual fixture routes: each opens its fictional states with the real
 // components, as a reviewer sees them.
@@ -147,4 +148,39 @@ it("opens the recording fixture as active without a state", () => {
   expect(
     container.querySelector('[data-visual-fixture="active"]'),
   ).toBeInTheDocument();
+});
+
+it.each([
+  ["manager", ["My tokens", "Token switch", "People", "History"]],
+  ["member", ["My tokens", "History"]],
+])("opens the access fixture as a %s", async (state, tabs) => {
+  render(
+    <MemoryRouter initialEntries={[`/access-fixture?state=${state}`]}>
+      <AccessFixture />
+    </MemoryRouter>,
+  );
+  await waitFor(() =>
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(
+      tabs,
+    ),
+  );
+  expect(screen.getByText("Studio laptop")).toBeInTheDocument();
+});
+
+it("opens the access fixture with the service not available yet, and a manager by default", async () => {
+  const { unmount } = render(
+    <MemoryRouter initialEntries={["/access-fixture?state=unavailable"]}>
+      <AccessFixture />
+    </MemoryRouter>,
+  );
+  expect(
+    await screen.findByText("Access is not available yet"),
+  ).toBeInTheDocument();
+  unmount();
+  render(
+    <MemoryRouter initialEntries={["/access-fixture?state=nonsense"]}>
+      <AccessFixture />
+    </MemoryRouter>,
+  );
+  expect(await screen.findByRole("tab", { name: "People" })).toBeInTheDocument();
 });
