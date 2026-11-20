@@ -34,6 +34,9 @@ const BUILT_INS: Record<string, Row> = {
 /**
  * The first-class daily radio tools of gaulatti/alcantara#214, pinned from
  * that ticket's table: they are tools of their own, not appendix A rows.
+ * Only its read tools were built; its write and action tools were dropped in
+ * favour of the appendix A capabilities that do the same (one way to do each
+ * thing), so none is expected here.
  */
 const RADIO_TOOLS: Record<string, [string, McpTier]> = {
   get_on_air: ['radio.read', 'R'],
@@ -46,15 +49,6 @@ const RADIO_TOOLS: Record<string, [string, McpTier]> = {
   get_song: ['song.read', 'R'],
   get_instants: ['instant.read', 'R'],
   get_radio_health: ['radio.read', 'R'],
-  queue_song: ['program.operate', 'W'],
-  reorder_queue: ['program.operate', 'W'],
-  remove_from_queue: ['program.operate', 'W'],
-  play_song_now: ['radio.operate', 'A'],
-  stop_song: ['program.operate', 'A'],
-  resume_rotation: ['program.manage', 'A'],
-  skip_to_next: ['radio.operate', 'A'],
-  play_instant: ['instant.operate', 'A'],
-  set_automation_mode: ['program.manage', 'A'],
 };
 
 /**
@@ -95,7 +89,7 @@ function appendix(): {
       excluded += 1;
       continue;
     }
-    // A row another tool already does is marked "covered by <tool>".
+    // A row another registered tool already does is marked "covered by <tool>".
     const coveredBy = /^covered by ([a-z_]+)$/.exec(tier);
     if (coveredBy) {
       covered.set(capability, coveredBy[1]);
@@ -138,14 +132,10 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all 160 capabilities (6 of them covered by another tool) and the 7 exclusions from appendix A', () => {
+  it('reads all of appendix A: capabilities, covered rows and the 7 exclusions', () => {
     const { rows, excluded, covered } = appendix();
     expect(rows.size + covered.size).toBe(160);
     expect(excluded).toBe(7);
-    for (const tool of covered.values())
-      expect(
-        Object.keys({ ...BUILT_INS, ...RADIO_TOOLS, ...EXTRA_CAPABILITIES }),
-      ).toContain(tool);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity); the five uploads are import_media_from_url's kinds.
     expect(Object.fromEntries(covered)).toEqual({
@@ -162,13 +152,42 @@ describe('MCP registry against appendix A', () => {
     });
   });
 
+  // A "covered by" value must name a tool or capability that is actually
+  // registered (a #214 tool, a built-in or a pinned extra capability), so the
+  // column cannot point at something that does not exist.
+  it('names only registered tools in the covered-by column', () => {
+    const { covered } = appendix();
+    const names = new Set(registered.map((spec) => spec.name));
+    for (const [row, tool] of covered) {
+      expect({ row, tool, registered: names.has(tool) }).toEqual({
+        row,
+        tool,
+        registered: true,
+      });
+    }
+  });
+
+  // gaulatti/alcantara#210's closing check: every appendix A capability
+  // (minus exclusions and covered rows), every #214 radio tool and the
+  // built-ins are registered, and nothing else.
+  it('registers exactly appendix A, the #214 radio tools, the extra capabilities and the built-ins', () => {
+    const { rows } = appendix();
+    const expected = [
+      ...rows.keys(),
+      ...Object.keys(RADIO_TOOLS),
+      ...Object.keys(EXTRA_CAPABILITIES),
+      ...Object.keys(BUILT_INS),
+    ].sort();
+    expect(registered.map((spec) => spec.name).sort()).toEqual(expected);
+  });
+
   it('registers the four built-ins, read tier, with their permissions', () => {
     for (const [name, row] of Object.entries(BUILT_INS)) {
       expect(registered).toContainEqual({ name, ...row });
     }
   });
 
-  it('registers only appendix A rows, the #214 radio tools and the named extra capabilities, each with its exact permission and tier', () => {
+  it('registers only appendix A rows, the #214 radio tools and the extra capabilities, each with its exact permission and tier', () => {
     const { rows } = appendix();
     for (const [name, [permission, tier]] of Object.entries({
       ...RADIO_TOOLS,
