@@ -149,4 +149,19 @@ describe('SourceRow', () => {
       unmount();
     }
   });
+
+  it('cannot preview a connected source with no participant identity', () => {
+    render(
+      <table>
+        <tbody>
+          <SourceRow
+            source={{ ...baseSource, participantIdentity: null }}
+            isSelected={false}
+            onToggleSelect={vi.fn()}
+          />
+        </tbody>
+      </table>
+    );
+    expect(screen.getByRole('button', { name: /preview/i })).toBeDisabled();
+  });
 });

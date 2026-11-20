@@ -88,3 +88,12 @@ describe('externalSources service', () => {
     });
   });
 });
+
+describe('isPreviewable', () => {
+  it('requires a previewable lifecycle and a participant identity', async () => {
+    const { isPreviewable } = await import('./externalSources');
+    expect(isPreviewable({ lifecycle: 'connected', participantIdentity: 'p1' })).toBe(true);
+    expect(isPreviewable({ lifecycle: 'connected', participantIdentity: null })).toBe(false);
+    expect(isPreviewable({ lifecycle: 'offline', participantIdentity: 'p1' })).toBe(false);
+  });
+});

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button, StatusBadge } from '@gaulatti/bleecker';
 import { Eye, EyeOff } from 'lucide-react';
-import { isSelectableLifecycle, type ExternalSource } from '../../services/externalSources';
+import { isPreviewable, type ExternalSource } from '../../services/externalSources';
 
 export interface SourceRowProps {
   source: ExternalSource;
@@ -51,7 +51,7 @@ export function SourceRow({
   onToggleSelect,
   className = '',
 }: SourceRowProps) {
-  const canPreview = isSelectableLifecycle(source.lifecycle);
+  const canPreview = isPreviewable(source);
   const lifecycleInfo = getLifecycleBadge(source.lifecycle);
   const healthInfo = getHealthBadge(source.health);
 
@@ -110,7 +110,7 @@ export function SourceRow({
             {source.name}
           </span>
           <span className="text-[10px] text-zinc-500 font-mono">
-            {source.participantIdentity}
+            {source.participantIdentity ?? 'no participant'}
           </span>
         </div>
       </td>

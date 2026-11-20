@@ -57,7 +57,9 @@ function SourcesManagerContent({
     });
   }, []);
 
-  const selectedSources = sources.filter((s) => selectedIds.has(s.id));
+  const selectedSources = sources.flatMap((s) =>
+    selectedIds.has(s.id) && s.participantIdentity !== null ? [{ ...s, participantIdentity: s.participantIdentity }] : []
+  );
 
   return (
     <div className="flex flex-col gap-6">

@@ -6,7 +6,7 @@ import { AudioMeter } from './AudioMeter';
 import type { ExternalSource } from '../../services/externalSources';
 
 export interface SourcePreviewTileProps {
-  source: ExternalSource;
+  source: ExternalSource & { participantIdentity: string };
   onDeselect: () => void;
   className?: string;
 }

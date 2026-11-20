@@ -11,7 +11,7 @@ describe('SourcePreviewTile', () => {
     cleanup();
   });
 
-  const mockSource: ExternalSource = {
+  const mockSource: ExternalSource & { participantIdentity: string } = {
     id: 'src-123',
     name: 'Camera Studio A',
     transport: 'rtmp',

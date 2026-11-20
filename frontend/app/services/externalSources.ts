@@ -22,7 +22,7 @@ export interface ExternalSource {
   transport: string;
   lifecycle: ExternalSourceLifecycle;
   health: ExternalSourceHealth;
-  participantIdentity: string;
+  participantIdentity: string | null;
   lastConnectedAt: string | null;
   revokedAt: string | null;
   programIds: string[];
@@ -41,6 +41,11 @@ export const PREVIEWABLE_LIFECYCLES: ReadonlySet<ExternalSourceLifecycle> = new 
 
 export function isSelectableLifecycle(lifecycle: ExternalSourceLifecycle): boolean {
   return PREVIEWABLE_LIFECYCLES.has(lifecycle);
+}
+
+/** A source is previewable only with a previewable lifecycle and an assigned LiveKit participant identity. */
+export function isPreviewable(source: Pick<ExternalSource, 'lifecycle' | 'participantIdentity'>): boolean {
+  return isSelectableLifecycle(source.lifecycle) && source.participantIdentity !== null;
 }
 
 export async function fetchExternalSources(): Promise<ExternalSource[]> {
