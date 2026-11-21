@@ -1,0 +1,130 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { controlServer, stubConsoleBrowser, type ControlServer } from "../../test/controlKit";
+
+// gaulatti/alcantara#194 group 3: the scene editor. Editing the staged scene's
+// components saves its metadata (on its own after a pause, or at once with
+// Save changes); a failed save is shown and retried; the scene's background
+// audio is chosen, taken and stopped from the editor.
+
+vi.mock("../hooks/useSSE", () => ({ useSSE: () => ({ isConnected: true }) }));
+vi.mock("../utils/globalProgram", () => ({ useGlobalProgramId: () => ["main"] }));
+vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
+  const actual = await original<typeof import("../contexts/ConsolePreferencesContext")>();
+  return {
+    ...actual,
+    useConsolePreferences: () => ({
+      profile: actual.defaultConsoleProfile("desktop"),
+      updateProfile: vi.fn(),
+    }),
+  };
+});
+
+import Control from "./control";
+
+let server: ControlServer;
+
+const playerScene = (
+  metadata: Record<string, unknown> = { header: { show: false } },
+  componentType = "header",
+) => ({
+  id: 1,
+  name: "Fictional player scene",
+  layoutId: 1,
+  metadata: JSON.stringify(metadata),
+  layout: { id: 1, name: "Fixture layout", componentType },
+});
+
+function open(metadata?: Record<string, unknown>, componentType?: string) {
+  const scene = playerScene(metadata, componentType);
+  server = controlServer({
+    "GET /scenes": Response.json([scene]),
+    "GET /instants": Response.json([]),
+    "GET /songs?limit=0": Response.json([]),
+    "GET /program/main/state": Response.json({
+      id: 1,
+      programId: "main",
+      type: "tv",
+      activeSceneId: null,
+      stagedSceneId: 1,
+      stagedScene: scene,
+      fadeToBlack: false,
+      scenes: [{ id: 1, sceneId: 1, position: 0, scene }],
+      mediaGroups: [],
+    }),
+    "GET /program/main/media-groups": Response.json([]),
+    "GET /media-assets?mediaType=AUDIO&capability=BACKGROUND&limit=200": Response.json({
+      data: [{ id: "a1", name: "Fictional rain", enabled: true }],
+    }),
+  });
+  render(
+    <MemoryRouter>
+      <Control />
+    </MemoryRouter>,
+  );
+  return scene;
+}
+
+beforeEach(() => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  stubConsoleBrowser();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+it("saves an edit to the staged scene on its own, and at once with Save changes", async () => {
+  const scene = open();
+  server.answer("PUT /scenes/1", () =>
+    Response.json({ ...scene, metadata: JSON.stringify({ header: { show: true } }) }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Show component" }));
+  await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBeGreaterThan(0), { timeout: 4000 });
+  expect(server.requests("PUT /scenes/1")[0]).toMatchObject({ metadata: { header: { show: true } } });
+  const saves = server.requests("PUT /scenes/1").length;
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBe(saves + 1));
+});
+
+it("retries a failed autosave until it lands, and shows a refused save on request", async () => {
+  const scene = open();
+  let fail = true;
+  server.answer("PUT /scenes/1", () =>
+    fail
+      ? new Response("down", { status: 500 })
+      : Response.json({ ...scene, metadata: JSON.stringify({ header: { show: true } }) }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Show component" }));
+  expect(await screen.findByText("Scene save failed. Retrying...", {}, { timeout: 4000 })).toBeVisible();
+  fail = false;
+  await waitFor(() => expect(screen.queryByText("Scene save failed. Retrying...")).toBeNull(), { timeout: 4000 });
+  // Save changes against a refusing server says so.
+  fail = true;
+  fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
+  expect(await screen.findByText("Scene save failed. Please try again.")).toBeVisible();
+});
+
+
+it("chooses, takes and stops the scene's background audio", async () => {
+  const scene = open(
+    { player: { show: true }, sceneInstant: { assetId: "a1", instantId: null, volume: 0.5 } },
+    "player",
+  );
+  server.answer("PUT /scenes/1", () => Response.json(scene));
+  server.answer("POST /program/main/scene-instant/take", Response.json({ sceneId: 1, mediaAssetId: "a1", isPlaying: true, instant: { name: "Fictional rain" } }));
+  server.answer("POST /program/main/scene-instant/stop", Response.json({ sceneId: 1, isPlaying: false }));
+  fireEvent.click(await screen.findByRole("button", { name: "TAKE BG" }));
+  await waitFor(() =>
+    expect(server.requests("POST /program/main/scene-instant/take")).toEqual([
+      { sceneId: 1, instantId: null, mediaAssetId: "a1" },
+    ]),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "STOP BG" }));
+  await waitFor(() => expect(server.calls.some((call) => call.path === "/program/main/scene-instant/stop")).toBe(true));
+});
