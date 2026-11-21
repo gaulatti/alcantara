@@ -102,8 +102,10 @@ export function normalizeFlightCue(value: unknown): FlightCue | null {
     if (VALID_MIXER_CHANNEL_IDS.has(channelId as FlightMixerChange['channelId'])) {
       change.channelId = channelId as FlightMixerChange['channelId'];
     }
-    const volume = normalizeOptionalNumber(value.mixerChange.volume);
-    if (volume !== undefined) {
+    // A fraction (0-1, the rundown editor's step is 0.05), kept as given like
+    // the backend's flight normaliser does: rounding it made 0.4 silent (#244).
+    const volume = value.mixerChange.volume;
+    if (typeof volume === 'number' && Number.isFinite(volume)) {
       change.volume = volume;
     }
     if (typeof value.mixerChange.muted === 'boolean') {
