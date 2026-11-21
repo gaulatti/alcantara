@@ -70,6 +70,8 @@ Each edge is checked on its own before sending. An edge that would trim more tha
 
 A song without a stored duration keeps the earlier behaviour: both measured cues, or none.
 
+With a cue group, the song command also carries `duration`: the duration the group was checked against (the caller's, else `Song.durationMs`, in seconds). Palazzo then bounds the tail and counts it in `palazzo_song_trimmed_seconds{edge="tail"}` on the command path, as it does for an announced song from the probed file. Before 2026-11-21 the command carried no duration, so the cue-out was applied but the tail trim was never counted. A command without a cue group is unchanged.
+
 Every resolved group is counted in `alcantara_radio_cue_groups_total{shape="both|head_filled|tail_filled|none"}`. In the catalog of 2026-11-21, 536 songs measure only a tail, 13 only a head, 195 both and 48 neither.
 
 1. **Finite Numbers**: All numeric fields in `segue` (`cueInSeconds`, `cueOutSeconds`, `fadeInSeconds`, `fadeOutSeconds`, `overlapSeconds`) and `loudness` (`integratedLufs`, `truePeakDbtp`) must be finite numbers.

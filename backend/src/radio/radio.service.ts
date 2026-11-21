@@ -514,18 +514,27 @@ export class RadioService {
     if (!settings) return { ok: false };
     const requestId = playbackRequestId?.trim() || randomUUID();
 
-    const { segue: resolvedSegue, loudness: resolvedLoudness } =
-      settings.segueMode === 'on'
-        ? await this.resolveSongAnalysis(
-            programId,
-            requestId,
-            audioUrl,
-            songId,
-            duration,
-            segue,
-            loudness,
-          )
-        : { segue: undefined, loudness: undefined };
+    const {
+      segue: resolvedSegue,
+      loudness: resolvedLoudness,
+      durationSeconds: resolvedDuration,
+    } = settings.segueMode === 'on'
+      ? await this.resolveSongAnalysis(
+          programId,
+          requestId,
+          audioUrl,
+          songId,
+          duration,
+          segue,
+          loudness,
+        )
+      : { segue: undefined, loudness: undefined, durationSeconds: undefined };
+    // With a cue group, the duration it was checked against (the caller's,
+    // else the stored Song.durationMs), so Palazzo bounds and counts the tail
+    // trim on the command path as it does for an announced song. Without
+    // one, the command is unchanged.
+    const sentDuration =
+      duration ?? (resolvedSegue ? resolvedDuration : undefined);
 
     try {
       const result = await this.palazzo.playSong(
@@ -538,7 +547,7 @@ export class RadioService {
           artist,
           coverUrl,
           intro,
-          ...(duration !== undefined && { duration }),
+          ...(sentDuration !== undefined && { duration: sentDuration }),
           ...(resolvedSegue && { segue: resolvedSegue }),
           ...(resolvedLoudness && { loudness: resolvedLoudness }),
         },
@@ -645,7 +654,11 @@ export class RadioService {
     duration: number | undefined,
     segue: PalazzoSongSegue | undefined,
     loudness: PalazzoSongLoudness | undefined,
-  ): Promise<{ segue?: PalazzoSongSegue; loudness?: PalazzoSongLoudness }> {
+  ): Promise<{
+    segue?: PalazzoSongSegue;
+    loudness?: PalazzoSongLoudness;
+    durationSeconds?: number;
+  }> {
     const drops: AnalysisDropResult[] = [];
     let durationSeconds = duration;
     // The cue group's shape, counted once the group is final (#234); a
@@ -730,7 +743,11 @@ export class RadioService {
         reasons: drops,
       });
     }
-    return { ...(segue && { segue }), ...(loudness && { loudness }) };
+    return {
+      ...(segue && { segue }),
+      ...(loudness && { loudness }),
+      ...(durationSeconds !== undefined && { durationSeconds }),
+    };
   }
 
   // The song whose analysis applies: by id when given, else by audio URL only when exactly one song has it.

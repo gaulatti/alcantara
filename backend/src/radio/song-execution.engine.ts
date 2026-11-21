@@ -2612,7 +2612,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         return;
       }
       state.transitioning = false;
-      if (this.playNext(programId, true)) return;
+      if (this.playNext(programId, true, endedRequestId)) return;
       state.queueBlocked = true;
       this.logger.error(
         `Queued playlist item could not be resolved on ${programId}; stopping without falling through`,
@@ -2630,7 +2630,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // This callback originates from an authoritative Palazzo end event;
       // the general reconciliation/pending guards have already been
       // satisfied above. Dispatch the resolved successor directly.
-      if (this.playNext(programId, true)) return;
+      if (this.playNext(programId, true, endedRequestId)) return;
       this.logger.error(
         `Successor could not be resolved on ${programId}: cursor=${state.sequence.activeItemId ?? 'none'}`,
       );
@@ -2900,7 +2900,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * entry and cursor are consumed, and no command is sent because Palazzo
    * already started it.
    */
-  private playNext(programId: string, handoff = false): boolean {
+  private playNext(
+    programId: string,
+    handoff = false,
+    endedRequestId?: string,
+  ): boolean {
     // Log ownership also protects against queue claims begun before log start.
     if (this.flightService.isClockedLogRunning(programId)) return true;
     const state = this.states.get(programId);
@@ -2923,7 +2927,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           if (!nextState) return;
           nextState.transitioning = false;
           if (claimed) {
-            if (!this.playNext(programId, handoff)) {
+            if (!this.playNext(programId, handoff, endedRequestId)) {
               this.logger.error(
                 `Claimed Play Next item could not be resolved on ${programId}; stopping without falling through`,
               );
@@ -2948,10 +2952,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // deterministic selection (cursor, similarity, high rotation), with its
     // effects applied now. A queue or operator change re-announced or
     // withdrew it before the end, so the selection then follows that change.
+    // Only the ended song's own announcement: a stale accepted one never
+    // makes the handoff select at an old instant (as for the spot,
+    // bumperAtEnd).
     const held =
       handoff &&
       !queueEntry &&
       state.announcement?.status === 'accepted' &&
+      state.announcement.forRequestId === endedRequestId &&
       typeof state.announcement.selectAt === 'number'
         ? state.announcement.selectAt
         : undefined;

@@ -2342,6 +2342,32 @@ describe('the successor chosen for the expected end, with production settings', 
     ]);
   });
 
+  it('selects at the held instant only for the announcement of the song that ended, never a stale one', async () => {
+    for (const stale of [false, true]) {
+      jest.setSystemTime(T0);
+      const h = production(T0 - 5 * 60_000);
+      const engine = h.engine as unknown as {
+        resolveNextPlaylistSong: (...args: unknown[]) => unknown;
+        states: Map<
+          string,
+          { announcement: { forRequestId: string; selectAt: number } | null }
+        >;
+      };
+      await onAir(h);
+      const announcement = engine.states.get(PROGRAM)!.announcement!;
+      expect(announcement.selectAt).toBe(EXPECTED_END);
+      // An accepted announcement left from another song: its instant must
+      // not be used.
+      if (stale) announcement.forRequestId = 'another-song';
+      const selection = jest.spyOn(engine, 'resolveNextPlaylistSong');
+      jest.setSystemTime(EXPECTED_END + 6_000);
+      h.palazzo.endCurrent();
+      await settle();
+      // The handoff's own selection is the first call after the end.
+      expect(selection.mock.calls[0][2]).toBe(stale ? undefined : EXPECTED_END);
+    }
+  });
+
   it('names the reason when nothing resolves, when the sequence has no successor, and when the queue head is on air or unresolved', () => {
     const h = harness();
     const engine = h.engine as unknown as {

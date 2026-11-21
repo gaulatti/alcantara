@@ -988,7 +988,7 @@ describe('RadioService coverage', () => {
       for (const cueInSeconds of [-1, 170]) {
         const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds, ...VALID_LOUDNESS });
         await play(service);
-        expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueInSeconds: 0 } });
+        expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 180, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueInSeconds: 0 } });
         expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
         expect(metrics.recordCueGroup).toHaveBeenCalledWith('head_filled');
       }
@@ -997,21 +997,22 @@ describe('RadioService coverage', () => {
     it('drops invalid loudness but keeps valid cue points', async () => {
       const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, integratedLufs: Number.NaN, truePeakDbtp: -1 });
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 180, segue: VALID_SEGUE });
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('loudness-invalid');
     });
 
     it('treats a cue-out beyond the song duration as no tail trim, keeping the head (#234)', async () => {
       const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS }, 150000);
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueOutSeconds: 150 } });
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 150, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueOutSeconds: 150 } });
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
       // Within the duration the same segue is kept, and a song with no stored duration is not bounded.
       const within = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, 170000);
       await play(within.service);
-      expect(sent(within.palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
+      expect(sent(within.palazzo)).toEqual({ ...OFF_COMMAND, duration: 170, segue: VALID_SEGUE });
       const unknown = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, null);
       await play(unknown.service);
+      // No stored duration: none is sent, and Palazzo applies the cue-out as sent.
       expect(sent(unknown.palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
       expect(unknown.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
     });
@@ -1028,6 +1029,8 @@ describe('RadioService coverage', () => {
       await play(service);
       expect(sent(palazzo)).toEqual({
         ...OFF_COMMAND,
+        // The duration the group was checked against, so Palazzo bounds and counts the tail.
+        duration: 180,
         segue: { ...expected, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 },
       });
       expect(metrics.recordCueGroup).toHaveBeenCalledWith(shape);
@@ -1039,6 +1042,7 @@ describe('RadioService coverage', () => {
       const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, cueInSeconds: 2, cueOutSeconds: 168 });
       await play(service);
       expect(sent(palazzo).segue).toEqual({ cueInSeconds: 2, cueOutSeconds: 180, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 });
+      expect(sent(palazzo).duration).toBe(180);
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
       expect(metrics.recordCueGroup).toHaveBeenCalledWith('tail_filled');
       // Both edges over the bound: no group at all.
@@ -1142,7 +1146,7 @@ describe('RadioService coverage', () => {
     it('logs nothing and counts nothing when the analysis is valid', async () => {
       const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE, loudness: VALID_LOUDNESS });
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, duration: 180, segue: VALID_SEGUE, loudness: VALID_LOUDNESS });
       expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
       expect(service['logger'].warn).not.toHaveBeenCalled();
     });
