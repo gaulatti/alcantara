@@ -231,4 +231,5 @@ it("records a bracket ballot through the scene and shows what the scene then hol
   server.answer("POST /scenes/1/modo-italiano-bracket/vote", new Response("no", { status: 500 }));
   fireEvent.change(ballot, { target: { value: "1" } });
   await waitFor(() => expect(server.requests("POST /scenes/1/modo-italiano-bracket/vote")).toHaveLength(2));
+  await waitFor(() => expect(ballot.value).toBe("2"));
 });

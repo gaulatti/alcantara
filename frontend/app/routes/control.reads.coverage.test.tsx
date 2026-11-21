@@ -71,43 +71,71 @@ function base(): Record<string, Response> {
   };
 }
 
-it.each([
-  ["answer", (resolve: (r: Response) => void) => resolve(Response.json(state("main")))],
-  ["fail", (_resolve: (r: Response) => void, reject: (e: Error) => void) => reject(new Error("network"))],
-])("ignores every program read that comes back (%s) after the operator left the program", async (_label, settle) => {
-  const held: Array<{ resolve: (r: Response) => void; reject: (e: Error) => void }> = [];
-  const hold = () =>
+const song = (id: string, title: string) => ({
+  id,
+  kind: "preset",
+  songId: 1,
+  artist: "Fictional artist",
+  title,
+  coverUrl: "https://media.example.test/cover.jpg",
+  audioUrl: `https://media.example.test/${id}.mp3`,
+  durationMs: 180_000,
+});
+const rotationOf = (title: string) => ({ mode: "manual", items: [song("s1", title)], activeItemId: "s1", loop: true });
+
+// What the left program's late answers would show if they were applied: a TV
+// program, its own rotation, and its own song playing.
+const lateAnswer: Record<string, () => Response> = {
+  state: () => Response.json({ ...state("main"), type: "tv" }),
+  "audio-bus": () => Response.json({ songSequence: rotationOf("Fictional late song"), songQueue: [] }),
+  "audio-meter": () => Response.json({ song: { vu: 0.9, peak: 0.9 } }),
+  "song-playback": () => Response.json({ token: "late", audioUrl: "https://media.example.test/late.mp3", isPlaying: true, title: "Fictional late song" }),
+  "scene-instant": () => Response.json({ isPlaying: true }),
+};
+
+it.each(["answer", "fail"])("ignores every program read that comes back (%s) after the operator left the program", async (outcome) => {
+  const held = new Map<string, { resolve: (r: Response) => void; reject: (e: Error) => void }>();
+  const hold = (read: string) => () =>
     new Promise<Response>((resolve, reject) => {
-      held.push({ resolve, reject });
+      held.set(read, { resolve, reject });
     });
   server = controlServer({
     ...base(),
-    ...Object.fromEntries(READS.map((read) => [`GET /program/main/${read}`, hold])),
+    ...Object.fromEntries(READS.map((read) => [`GET /program/main/${read}`, hold(read)])),
     "GET /program/main/media-groups": Response.json([]),
     "GET /program/other/state": Response.json(state("other")),
     "GET /program/other/media-groups": Response.json([]),
-    "GET /program/other/audio-bus": Response.json({ songSequence: null, songQueue: [] }),
+    "GET /program/other/audio-bus": Response.json({ songSequence: rotationOf("Fictional current song"), songQueue: [] }),
   });
+  const errors = vi.mocked(console.error);
   const view = render(
     <MemoryRouter>
       <Control />
     </MemoryRouter>,
   );
-  await waitFor(() => expect(held.length).toBe(READS.length));
+  await waitFor(() => expect(held.size).toBe(READS.length));
   program.id = "other";
   view.rerender(
     <MemoryRouter>
       <Control />
     </MemoryRouter>,
   );
-  expect(await screen.findByRole("region", { name: "Continuous fillers" })).toBeVisible();
+  expect(await screen.findByText("Fictional current song")).toBeVisible();
+  const errorsBefore = errors.mock.calls.length;
   await act(async () => {
-    for (const read of held) settle(read.resolve, read.reject);
-    await Promise.resolve();
+    for (const [read, pending] of held) {
+      if (outcome === "answer") pending.resolve(lateAnswer[read]());
+      else pending.reject(new Error("network"));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  // Still the other program.
-  expect(server.calls.some((call) => call.path === "/program/other/state")).toBe(true);
+  // Still the other program: radio, its own rotation, nothing of the left one.
   expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
+  expect(screen.getByText("Fictional current song")).toBeVisible();
+  expect(screen.queryByText("Fictional late song")).toBeNull();
+  expect(screen.queryByRole("button", { name: "ARM FADE TO BLACK" })).toBeNull();
+  // A late failure for the left program is not reported either.
+  expect(errors.mock.calls.slice(errorsBefore)).toEqual([]);
 });
 
 it("ignores a fallback poll older than what the console already shows", async () => {
@@ -115,11 +143,14 @@ it("ignores a fallback poll older than what the console already shows", async ()
   let version = 5;
   server = controlServer({
     ...base(),
-    "GET /program/main/state": () => Response.json(state("main", version)),
+    "GET /program/main/state": () =>
+      Response.json(version === 5 ? state("main", 5) : { ...state("main", 3), type: "tv" }),
     "GET /program/main/media-groups": Response.json([]),
-    "GET /program/main/audio-bus": () => Response.json({ version, songSequence: null, songQueue: [] }),
+    "GET /program/main/audio-bus": () =>
+      Response.json({ version, songSequence: rotationOf(version === 5 ? "Fictional current song" : "Fictional old song"), songQueue: [] }),
     "GET /program/main/audio-meter": () => Response.json({ version, song: { vu: 0.2, peak: 0.3 } }),
-    "GET /program/main/song-playback": () => Response.json({ version, token: "t", audioUrl: "u", isPlaying: false }),
+    "GET /program/main/song-playback": () =>
+      Response.json({ version, token: "t", audioUrl: "u", isPlaying: version !== 5, title: "Fictional old song" }),
     "GET /program/main/scene-instant": () => Response.json({ version, isPlaying: false }),
   });
   render(
@@ -127,8 +158,8 @@ it("ignores a fallback poll older than what the console already shows", async ()
       <Control />
     </MemoryRouter>,
   );
-  expect(await screen.findByRole("region", { name: "Continuous fillers" })).toBeVisible();
-  const reads = () => server.calls.filter((call) => call.path === "/program/main/audio-meter").length;
+  expect(await screen.findByText("Fictional current song")).toBeVisible();
+  const reads = () => server.calls.filter((call) => call.path === "/program/main/audio-bus").length;
   await waitFor(() => expect(reads()).toBe(1));
   version = 3;
   // The fallback poll reads again after 900 ms; its older answers are ignored.
@@ -136,7 +167,9 @@ it("ignores a fallback poll older than what the console already shows", async ()
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
-  expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
+  expect(screen.getByText("Fictional current song")).toBeVisible();
+  expect(screen.queryByText("Fictional old song")).toBeNull();
+  expect(screen.queryByRole("button", { name: "ARM FADE TO BLACK" })).toBeNull();
 });
 
 it("reuses a clip length it already measured when the next program lists the same clip", async () => {
