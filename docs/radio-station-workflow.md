@@ -68,7 +68,7 @@ contains no URL or station labels. Updating only the listener URL does not
 reconnect Palazzo telemetry. The nullable database column is additive; reverting
 application code safely leaves it unused without removing station data.
 
-The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
+The authenticated private `/metrics` endpoint includes `alcantara_radio_log_transitions_total{result}` with bounded `interrupted`, `completed`, `unended-closed` and `unended-close-failed` (#241), `resume-failed`, `filled`, `fill-failed`, `generated`, `generation-failed`, `edited`, `edit-failed`, `published`, `started`, `start-failed`, `cue-failed`, `preflight-failed`, and `poll-failed` results; `alcantara_radio_output_confidence_transitions_total{state}` with bounded confidence states; `alcantara_radio_output_silent_programs`; `alcantara_radio_recovery_preparations_total{result}` with bounded `ready` and `failed` results; and the existing Palazzo request/retry metrics with `filler-prepare` and `automation-*` operations. No program, song, URL, version, or error text appears in metric labels. The Radio desk shows active and upcoming log state and recovery readiness; inspect Palazzo's filler metrics and lifecycle state for its local playback and preparation details.
 
 ## Fillers between timed blocks
 
@@ -111,6 +111,39 @@ Palazzo's reported start time (`track.startedAt`), or at the snapshot time when
 the snapshot carries none. The `started` row stores `inferred = true` and no
 `reviewFlag`; the play's end is then no longer flagged `no-start`. If the real
 `track.started` also arrives, the unique key keeps one row.
+
+**Plays whose end never arrived (#241).** A song that ends while the backend
+is down never delivers its `track.ended`. A restarted backend has no event
+cursor, so it does not replay it, and the play would stay open forever. Once a
+later play of the same program ends, every earlier play still open gets one
+inferred end. That covers plays from the last 24 hours (`AS_RUN_UNENDED_LOOKBACK_MS`),
+but never one that started more than an hour before this backend process
+started (`AS_RUN_UNENDED_BEFORE_BOOT_MS`), so a deploy never rewrites older
+history: those rows are only listed (below). Each closed play gets
+(`inferred = true`, `reviewFlag = unended`) at the next play's start, the latest
+moment it can have ended. That end is an upper bound on the play's air
+time, which is why the row is flagged: royalty summaries should treat `unended`
+rows as reviewable. It still counts as a performance: it aired. A failure while
+closing never affects the real end that triggered it, nor the engine: it is
+logged by its error class and counted as
+`alcantara_radio_log_transitions_total{result="unended-close-failed"}`. A
+crossfade is not affected, because the overlapped song always ends before the
+next one does. Each close logs one warning (with the record id, never a title)
+and counts `alcantara_radio_log_transitions_total{result="unended-closed"}`.
+
+To find rows written wrongly before this (every restart since the adoption code
+landed, cac3b74), run the read-only listing against the database after
+`npm run build`:
+
+```
+node scripts/list-as-run-anomalies.mjs [--since=2026-08-25T00:00:00Z] [--program=<id>]
+```
+
+It prints `unended` plays (started, never ended, while a later play did) and
+`overlap` plays (started more than 15 s before the previous play's end, which is
+two songs on air, as on 2026-11-21 at 08:10Z). It runs inside a read-only
+transaction and writes nothing. Corrections to historic rows wait for the
+owner.
 
 **Ends the engine causes.** When the engine itself ends a song that had
 started (Palazzo had confirmed it), it closes the play at that moment with an

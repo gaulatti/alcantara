@@ -246,6 +246,10 @@ const OUTPUT_CONFIDENCE_STATES = [
 const RADIO_LOG_RESULTS = [
   'interrupted',
   'completed',
+  // An as-run play whose end never arrived, closed when a later play ended (#241).
+  'unended-closed',
+  // The close of an unended play failed; the real end was still recorded (#241).
+  'unended-close-failed',
   'resume-failed',
   'filled',
   'fill-failed',

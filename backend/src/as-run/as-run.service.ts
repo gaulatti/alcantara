@@ -15,6 +15,8 @@ import {
   AS_RUN_ACTOR_VIAS,
   AS_RUN_END_REASONS,
   AS_RUN_UNCOUNTED_END_REASONS,
+  AS_RUN_UNENDED_BEFORE_BOOT_MS,
+  AS_RUN_UNENDED_LOOKBACK_MS,
   AS_RUN_SHORT_INFERRED_PLAY_MS,
   type AsRunExportQuery,
   type AsRunInferredFilter,
@@ -57,6 +59,8 @@ export function escapeCsvField(
 @Injectable()
 export class AsRunService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AsRunService.name);
+  /** When this process started: open plays far older than this are history (#241). */
+  private readonly bootedAt = Date.now();
   private subscription?: Subscription;
 
   constructor(
@@ -197,9 +201,109 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
 
     if (state === 'ended') {
       this.radioMetrics?.recordRadioLogResult('completed');
+      // #241: closing an earlier unended play never fails the real end, nor the
+      // engine's handling of it. A failure is logged by its class and counted.
+      if (playbackRequestId)
+        await this.closeUnendedEarlierPlays(
+          event.programId,
+          playbackRequestId,
+        ).catch((error: unknown) => {
+          this.logger.error(
+            `Closing unended as-run plays on ${event.programId} failed (${error instanceof Error ? error.name : typeof error})`,
+          );
+          this.radioMetrics?.recordRadioLogResult('unended-close-failed');
+        });
     }
 
     return record;
+  }
+
+  /**
+   * gaulatti/alcantara#241: a play whose end never arrived (it ended while the
+   * backend was down, so its track.ended was never delivered) stays open. Once a
+   * later play of the program has ended, every earlier play still open must
+   * have ended by the time the next play started: it gets one inferred end
+   * there, flagged `unended`. Safe under a crossfade, where the next song
+   * starts under the end of the current one, because the current one always
+   * ends before the next one does.
+   */
+  async closeUnendedEarlierPlays(
+    programId: string,
+    endedPlaybackRequestId: string,
+  ): Promise<number> {
+    const endedStart = await this.prisma.asRunRecord.findFirst({
+      where: {
+        programId,
+        playbackRequestId: endedPlaybackRequestId,
+        state: 'started',
+      },
+      select: { at: true },
+    });
+    if (!endedStart) return 0;
+    const earlierStarts = await this.prisma.asRunRecord.findMany({
+      where: {
+        programId,
+        state: 'started',
+        playbackRequestId: { not: null },
+        at: {
+          lt: endedStart.at,
+          gte: new Date(
+            Math.max(
+              endedStart.at.getTime() - AS_RUN_UNENDED_LOOKBACK_MS,
+              this.bootedAt - AS_RUN_UNENDED_BEFORE_BOOT_MS,
+            ),
+          ),
+        },
+      },
+      orderBy: [{ at: 'asc' }, { id: 'asc' }],
+    });
+    if (!earlierStarts.length) return 0;
+    const ids = earlierStarts.map((row) => row.playbackRequestId as string);
+    const ended = new Set(
+      (
+        await this.prisma.asRunRecord.findMany({
+          where: { programId, state: 'ended', playbackRequestId: { in: ids } },
+          select: { playbackRequestId: true },
+        })
+      ).map((row) => row.playbackRequestId),
+    );
+    let closed = 0;
+    for (const [index, open] of earlierStarts.entries()) {
+      if (ended.has(open.playbackRequestId)) continue;
+      // It ended no later than the next play's start: the next earlier start,
+      // or the start of the play that has just ended.
+      const nextStart = earlierStarts[index + 1]?.at ?? endedStart.at;
+      const created = await this.prisma.asRunRecord
+        .create({
+          data: {
+            programId,
+            songId: open.songId,
+            assetId: open.assetId,
+            state: 'ended',
+            at: nextStart,
+            playbackRequestId: open.playbackRequestId,
+            inferred: true,
+            reviewFlag: 'unended',
+          },
+        })
+        .catch((error: unknown) => {
+          // Its real end, or another close, was recorded first.
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002'
+          ) {
+            return null;
+          }
+          throw error;
+        });
+      if (!created) continue;
+      closed += 1;
+      this.radioMetrics?.recordRadioLogResult('unended-closed');
+      this.logger.warn(
+        `As-run play ${open.id} on ${programId} never received its end; closed at the next play's start (unended)`,
+      );
+    }
+    return closed;
   }
 
   /**

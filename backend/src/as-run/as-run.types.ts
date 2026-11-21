@@ -54,7 +54,23 @@ export const AS_RUN_UNCOUNTED_END_REASONS: readonly string[] = ['preempted'];
 export type AsRunInferredFilter = 'include' | 'only' | 'exclude';
 
 /** Review flags an inferred end can carry. */
-export type AsRunReviewFlag = 'short' | 'no-start';
+/**
+ * `short`: an inferred or engine-caused end soon after its start. `no-start`:
+ * an end with no recorded start. `unended`: a play whose end never arrived (it
+ * ended while the backend was down) closed once a later play ended
+ * (gaulatti/alcantara#241).
+ */
+export type AsRunReviewFlag = 'short' | 'no-start' | 'unended';
+
+/**
+ * How far back an open play is looked for when a later play ends (#241): at
+ * most this long before the play that ended, and never earlier than this long
+ * before the process started. The play on air at a restart started minutes
+ * before it; older open rows are history, listed by
+ * scripts/list-as-run-anomalies.mjs and corrected only by the owner's decision.
+ */
+export const AS_RUN_UNENDED_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+export const AS_RUN_UNENDED_BEFORE_BOOT_MS = 60 * 60 * 1000;
 
 /**
  * An inferred end, or an end the engine caused (see AsRunEndReason), less than
