@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { controlServer, stubConsoleBrowser, type ControlServer } from "../../test/controlKit";
@@ -21,6 +21,24 @@ vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
   };
 });
 
+// The design system's Select is a native select here, as in the bracket
+// editor's own tests, so a ballot can be cast with a change event.
+vi.mock("@gaulatti/bleecker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
+  return {
+    ...actual,
+    Select: ({ options, onChange, value, ...rest }: any) => (
+      <select {...rest} value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option: any) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
+  };
+});
+
 import Control from "./control";
 
 let server: ControlServer;
@@ -36,12 +54,12 @@ const playerScene = (
   layout: { id: 1, name: "Fixture layout", componentType },
 });
 
-function open(metadata?: Record<string, unknown>, componentType?: string) {
+function open(metadata?: Record<string, unknown>, componentType?: string, songs: unknown[] = []) {
   const scene = playerScene(metadata, componentType);
   server = controlServer({
     "GET /scenes": Response.json([scene]),
     "GET /instants": Response.json([]),
-    "GET /songs?limit=0": Response.json([]),
+    "GET /songs?limit=0": Response.json({ data: songs }),
     "GET /program/main/state": Response.json({
       id: 1,
       programId: "main",
@@ -148,4 +166,69 @@ it.each([
   await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBeGreaterThan(0));
   const [saved] = server.requests("PUT /scenes/1") as Array<{ metadata: Record<string, unknown> }>;
   (check as (props: unknown) => void)(saved.metadata[componentType as string]);
+});
+
+it("switches the chyron to a sequence and takes a value live, saving each change", async () => {
+  const scene = open({ "toni-chyron": { contentMode: "text", text: "Fictional line" } }, "toni-chyron");
+  // The server stores what it is sent and answers with it.
+  const echo = () => {
+    const sent = server.calls.filter((call) => call.method === "PUT").at(-1)?.body as { metadata: unknown };
+    return Response.json({ ...scene, metadata: JSON.stringify(sent.metadata) });
+  };
+  server.answer("PUT /scenes/1", echo);
+  fireEvent.click(await screen.findByRole("button", { name: "Sequence" }));
+  await waitFor(() =>
+    expect(
+      (server.requests("PUT /scenes/1") as Array<{ metadata: Record<string, any> }>).some(
+        (body) => body.metadata["toni-chyron"]?.contentMode === "sequence",
+      ),
+    ).toBe(true),
+    { timeout: 4000 },
+  );
+  const before = server.requests("PUT /scenes/1").length;
+  fireEvent.click(screen.getAllByRole("button", { name: "Take" })[0]);
+  // Taking a value saves at once instead of waiting for the autosave.
+  await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBeGreaterThan(before));
+
+  // A take the server refuses keeps the editor open with the change.
+  server.answer("PUT /scenes/1", new Response("down", { status: 500 }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Take" })[0]);
+  expect(await screen.findByText(/Scene save failed/)).toBeVisible();
+});
+
+it("records a bracket ballot through the scene and shows what the scene then holds", async () => {
+  const type = "modoitaliano-bracket";
+  const bracket = {
+    matches: [{ id: 1, songAId: 1, songBId: 2, winnerId: null }],
+    voters: [{ id: "v1", name: "Fictional voter" }],
+  };
+  const scene = open({ [type]: bracket }, type, [
+    { id: 1, title: "Fictional A", artist: "Fictional artist", audioUrl: "https://media.example.test/a.mp3" },
+    { id: 2, title: "Fictional B", artist: "Fictional artist", audioUrl: "https://media.example.test/b.mp3" },
+  ]);
+  server.answer("PUT /scenes/1", () => Response.json(scene));
+  server.answer("POST /scenes/1/modo-italiano-bracket/voting/open", Response.json({}));
+  server.answer(
+    "POST /scenes/1/modo-italiano-bracket/vote",
+    Response.json({ ...scene, metadata: JSON.stringify({ [type]: { ...bracket, matchVotes: { 1: { v1: 2 } } } }) }),
+  );
+  const votes = await screen.findAllByRole("button", { name: "Vote" });
+  fireEvent.click(votes[0]);
+  expect(await screen.findByText("Ballots")).toBeVisible();
+  const ballotLabel = screen
+    .getAllByText("Fictional voter")
+    .map((element) => element.closest("label"))
+    .find((label) => label && within(label).queryByRole("combobox")) as HTMLElement;
+  const ballot = within(ballotLabel).getByRole("combobox") as HTMLSelectElement;
+  fireEvent.change(ballot, { target: { value: "2" } });
+  await waitFor(() =>
+    expect(server.requests("POST /scenes/1/modo-italiano-bracket/vote")).toEqual([
+      { componentType: type, matchId: 1, voterId: "v1", songId: 2 },
+    ]),
+  );
+  await waitFor(() => expect(ballot.value).toBe("2"));
+  // A ballot the server refuses falls back to what the editor held.
+  server.answer("POST /scenes/1/modo-italiano-bracket/vote", new Response("no", { status: 500 }));
+  fireEvent.change(ballot, { target: { value: "1" } });
+  await waitFor(() => expect(server.requests("POST /scenes/1/modo-italiano-bracket/vote")).toHaveLength(2));
 });
