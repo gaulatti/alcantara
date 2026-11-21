@@ -226,10 +226,16 @@ same segue and loudness the song command would carry; with segue off, neither.
   successor is selected once, for the instant the song is expected to end
   (Palazzo's last position report, else its start plus its duration), with the
   same selection the end runs: high rotation, the similarity pick, else the
-  cursor. That instant is kept with the announcement: a refresh for the same
-  song selects at it again, and at the handoff the engine selects at it too,
-  so the announced song is what plays and is promoted with no command, even
-  when the song ends late. A favourite that comes due between that instant and
+  cursor. That instant is kept with the announcement, and a refresh for the
+  same song selects at it again. At the handoff the engine does not select
+  again: it plays the announced song itself, promoted with no command, even
+  when the song ends late or what the selection reads changed in between
+  (on 2026-11-21 01:51Z a re-selection right after a restart picked another
+  song and cut the announced one 0.2 s in). The held song is played only for
+  the ended song's own accepted announcement and only while it is still valid
+  (in the sequence with the same audio, or a catalog pick); otherwise the end
+  selects anew. The selection's metrics and similarity decision are recorded
+  when the held song plays, not when it is announced. A favourite that comes due between that instant and
   the real end waits for the next change. Before this, the successor was
   probed at now, the expected end, and one and ten minutes later, and left
   unannounced when the probes disagreed: with high rotation (a favourite due

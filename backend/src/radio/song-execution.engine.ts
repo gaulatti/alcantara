@@ -275,6 +275,19 @@ interface NextAnnouncement {
    * choice. Null for a queue head.
    */
   selectAt?: number | null;
+  /**
+   * The playlist successor chosen, held as is: the handoff plays this leaf
+   * when the announcement is the ended song's own and the leaf is still in
+   * the sequence with the same audio (or is a catalog pick).
+   */
+  leaf?: ProgramResolvedSongLeaf | null;
+  /** The similarity pick's cycle reset, applied when the held leaf plays. */
+  cycleReset: boolean;
+  /**
+   * The selection's metric and similarity decision records, applied once when
+   * the held leaf plays, as the selection at the end would have recorded them.
+   */
+  effects: (() => void)[];
 }
 
 /** The spot chosen for a bumper slot, once per song (gaulatti/alcantara#232). */
@@ -1684,7 +1697,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
       return;
     }
-    const { leaf, queueEntryId, bumper, selectAt } = successor;
+    const { leaf, queueEntryId, bumper, selectAt, cycleReset, effects } =
+      successor;
     if (
       current &&
       current.itemId === leaf.id &&
@@ -1709,6 +1723,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         current?.status === 'accepted' ? current : (current?.replaces ?? null),
       bumper,
       selectAt,
+      leaf: selectAt === null ? null : leaf,
+      cycleReset,
+      effects,
     };
     state.announcement = announcement;
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
@@ -1779,6 +1796,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         queueEntryId: string | null;
         bumper: BumperChoice | null;
         selectAt: number | null;
+        cycleReset: boolean;
+        effects: (() => void)[];
       }
     | { skip: AnnouncementSkipReason }
   > {
@@ -1905,6 +1924,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         queueEntryId: string | null;
         /** The instant a playlist successor was selected for; null for a queue head. */
         selectAt: number | null;
+        /** The similarity pick's cycle reset (false for a queue head). */
+        cycleReset: boolean;
+        /** The selection's deferred metric and decision records. */
+        effects: (() => void)[];
       }
     | {
         skip: 'no_successor' | 'queue_head_active';
@@ -1922,6 +1945,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
             queueEntryId: head.id,
             selectAt: null,
+            cycleReset: false,
+            effects: [],
           }
         : { skip: 'no_successor', detail: 'queue head not resolved' };
     }
@@ -1949,13 +1974,16 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     const { next: probe } = this.sequenceAfterEnd(state.sequence, song);
     // hasSuccessor implies a sequence.
     restampSequence(probe as ProgramSongSequence, Date.now(), selectAt);
-    const leaf = this.selectionView().resolveNextPlaylistSong(
+    const view = {
+      ...state,
+      sequence: probe,
+      lastEnded: { songId: song.songId, artist: song.artist },
+      pendingCycleReset: false,
+    };
+    const effects: (() => void)[] = [];
+    const leaf = this.selectionView(effects).resolveNextPlaylistSong(
       programId,
-      {
-        ...state,
-        sequence: probe,
-        lastEnded: { songId: song.songId, artist: song.artist },
-      },
+      view,
       selectAt,
     );
     if (!leaf?.audioUrl) {
@@ -1965,23 +1993,46 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
       queueEntryId: null,
       selectAt,
+      cycleReset: view.pendingCycleReset,
+      effects,
     };
   }
 
   /**
    * This engine's selection code with its metrics and similarity decision
-   * log replaced by no-ops, so a peek runs the exact same selection without
-   * recording anything.
+   * log deferred, so a peek runs the exact same selection without recording
+   * anything. Each deferred record is pushed to `deferred`, to be applied if
+   * that selection is the one played (a held announcement at its handoff).
    */
-  private selectionView(): this {
-    const silentMetrics = new Proxy({}, { get: () => () => undefined });
+  private selectionView(deferred: (() => void)[] = []): this {
+    const metrics = this.metrics as unknown as Record<
+      string,
+      (...args: unknown[]) => unknown
+    >;
+    const deferredMetrics = new Proxy(
+      {},
+      {
+        get:
+          (_target, name: string) =>
+          (...args: unknown[]) => {
+            deferred.push(() => metrics[name](...args));
+          },
+      },
+    );
     const view = Object.create(this) as this;
-    Object.defineProperty(view, 'metrics', { value: silentMetrics });
+    Object.defineProperty(view, 'metrics', { value: deferredMetrics });
+    const similarity = this.similarity;
     Object.defineProperty(view, 'similarity', {
       value:
-        this.similarity &&
-        Object.create(this.similarity, {
-          recordDecision: { value: () => undefined },
+        similarity &&
+        Object.create(similarity, {
+          recordDecision: {
+            value: (
+              ...args: Parameters<SongSimilarityService['recordDecision']>
+            ) => {
+              deferred.push(() => similarity.recordDecision(...args));
+            },
+          },
         }),
     });
     return view;
@@ -2894,6 +2945,18 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  /** The held leaf as the sequence has it now, or null when it is no longer valid. */
+  private validHeldLeaf(
+    sequence: ProgramSongSequence,
+    leaf: ProgramResolvedSongLeaf,
+  ): ProgramResolvedSongLeaf | null {
+    if (leaf.id.startsWith(CATALOG_ITEM_PREFIX)) return leaf;
+    const current = findUniqueProgramSongLeafById(sequence, leaf.id);
+    return current?.audioUrl && current.audioUrl === leaf.audioUrl
+      ? current
+      : null;
+  }
+
   /**
    * Plays the next song. With `handoff` (an accepted end), an accepted
    * announcement that is the song selected here is promoted: the same queue
@@ -2947,25 +3010,39 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         });
       return true;
     }
-    // At a handoff, a playlist successor that was announced is selected at the
-    // instant it was chosen for, so the held choice is what plays: the same
-    // deterministic selection (cursor, similarity, high rotation), with its
-    // effects applied now. A queue or operator change re-announced or
-    // withdrew it before the end, so the selection then follows that change.
-    // Only the ended song's own announcement: a stale accepted one never
-    // makes the handoff select at an old instant (as for the spot,
-    // bumperAtEnd).
-    const held =
+    // At a handoff, the playlist successor that was announced is what plays:
+    // the held leaf itself, not a new selection, which can differ (state the
+    // selection reads changed after the announcement, 2026-11-21 01:51Z). Only
+    // the ended song's own announcement (a stale accepted one is never held,
+    // as for the spot in bumperAtEnd), and only while the leaf is still valid:
+    // in the sequence with the same audio, or a catalog pick. A queue or
+    // operator change re-announced or withdrew it before the end.
+    const announcedHere =
       handoff &&
       !queueEntry &&
       state.announcement?.status === 'accepted' &&
-      state.announcement.forRequestId === endedRequestId &&
-      typeof state.announcement.selectAt === 'number'
-        ? state.announcement.selectAt
-        : undefined;
+      state.announcement.forRequestId === endedRequestId
+        ? state.announcement
+        : null;
+    const heldLeaf = announcedHere?.leaf
+      ? this.validHeldLeaf(state.sequence, announcedHere.leaf)
+      : null;
+    if (heldLeaf && announcedHere) {
+      if (!heldLeaf.id.startsWith(CATALOG_ITEM_PREFIX)) {
+        activateProgramSongLeaf(state.sequence, heldLeaf.id);
+      }
+      state.pendingCycleReset = announcedHere.cycleReset;
+      for (const record of announcedHere.effects.splice(0)) {
+        try {
+          record();
+        } catch {
+          // Metrics and the decision log are best-effort.
+        }
+      }
+    }
     const resolved = queueEntry
       ? findUniqueProgramSongLeafById(state.sequence, queueEntry.itemId)
-      : this.resolveNextPlaylistSong(programId, state, held);
+      : (heldLeaf ?? this.resolveNextPlaylistSong(programId, state));
     if (!resolved?.audioUrl) return false;
 
     const dur =

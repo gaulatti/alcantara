@@ -2231,10 +2231,13 @@ describe('the successor chosen for the expected end, with production settings', 
     recordDecision: jest.fn(),
     noteSongStarted: jest.fn(),
   });
-  const production = (lastFavouritePlay?: number) => {
+  const production = (
+    lastFavouritePlay?: number,
+    similarity: ReturnType<typeof similarityOn> = similarityOn(),
+  ) => {
     const h = harness({
       mode: 'shuffle',
-      similarity: similarityOn(),
+      similarity,
       capabilities: ['next.bumper'],
       favoriteItemId: FAVOURITE.itemId,
     });
@@ -2342,7 +2345,7 @@ describe('the successor chosen for the expected end, with production settings', 
     ]);
   });
 
-  it('selects at the held instant only for the announcement of the song that ended, never a stale one', async () => {
+  it('holds only the announcement of the song that ended, never a stale one', async () => {
     for (const stale of [false, true]) {
       jest.setSystemTime(T0);
       const h = production(T0 - 5 * 60_000);
@@ -2356,16 +2359,125 @@ describe('the successor chosen for the expected end, with production settings', 
       await onAir(h);
       const announcement = engine.states.get(PROGRAM)!.announcement!;
       expect(announcement.selectAt).toBe(EXPECTED_END);
-      // An accepted announcement left from another song: its instant must
-      // not be used.
+      // An accepted announcement left from another song is never held.
       if (stale) announcement.forRequestId = 'another-song';
       const selection = jest.spyOn(engine, 'resolveNextPlaylistSong');
       jest.setSystemTime(EXPECTED_END + 6_000);
       h.palazzo.endCurrent();
       await settle();
-      // The handoff's own selection is the first call after the end.
-      expect(selection.mock.calls[0][2]).toBe(stale ? undefined : EXPECTED_END);
+      // Held: the handoff selects nothing, and the first selection after the
+      // end is the next song's announcement, at its expected end. Stale: the
+      // handoff selects anew, at now.
+      expect(selection.mock.calls[0][2]).toBe(
+        stale ? undefined : EXPECTED_END + 6_000 + 180_000,
+      );
     }
+  });
+
+  it('plays the announced song when a new selection at the end would pick another (2026-11-21 01:51Z)', async () => {
+    const similarity = similarityOn();
+    const h = production(T0 - 5 * 60_000, similarity);
+    await onAir(h);
+    expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+    // What the selection reads changed after the announcement (at 01:51Z the
+    // process had booted three minutes earlier): a new selection would now
+    // pick Track 4.
+    similarity.propose.mockImplementation(() => ({
+      result: {
+        outcome: 'selected',
+        chosen: { songId: SONGS[3].id, itemId: SONGS[3].itemId, score: 0.9 },
+        runnerUps: [],
+        cycleReset: false,
+      },
+      leaf: leafOf(SONGS[3]),
+    }));
+    const decisions = similarity.recordDecision.mock.calls.length;
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+    expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    // The held selection's own decision is recorded once, at the handoff,
+    // with the song that played; the next announcement's peek records none.
+    expect(similarity.recordDecision.mock.calls.slice(decisions)).toEqual([
+      [
+        PROGRAM,
+        expect.objectContaining({
+          outcome: 'selected',
+          playedSongId: SONGS[1].id,
+        }),
+      ],
+    ]);
+  });
+
+  it('holds a catalog pick as is', async () => {
+    // A catalog pick (outside the sequence) is held as is.
+    const catalog = similarityOn();
+    catalog.propose.mockImplementation(() => ({
+      result: {
+        outcome: 'selected',
+        chosen: { songId: 900, itemId: 'catalog:900', score: 0.7 },
+        runnerUps: [],
+        cycleReset: true,
+      },
+      leaf: {
+        ...leafOf(SONGS[4]),
+        id: 'catalog:900',
+        songId: 900,
+        audioUrl: 'https://media.test/catalog-900.mp3',
+      },
+    }));
+    const h = harness({ mode: 'shuffle', similarity: catalog });
+    await onAir(h);
+    expect(h.palazzo.announced.at(-1)?.url).toBe(
+      'https://media.test/catalog-900.mp3',
+    );
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(
+      'https://media.test/catalog-900.mp3',
+    );
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+  });
+
+  it('holds a sequence song only while it is in the sequence with the same audio', () => {
+    const h = harness();
+    const engine = h.engine as unknown as {
+      validHeldLeaf: (sequence: unknown, leaf: unknown) => unknown;
+    };
+    const sequence = h.sequence() as { items: { id: string }[] };
+    const leaf = { id: SONGS[1].itemId, audioUrl: SONGS[1].url };
+    expect(engine.validHeldLeaf(sequence, leaf)).toMatchObject(leaf);
+    expect(
+      engine.validHeldLeaf(sequence, {
+        ...leaf,
+        audioUrl: 'https://media.test/other.mp3',
+      }),
+    ).toBeNull();
+    expect(
+      engine.validHeldLeaf(
+        {
+          ...sequence,
+          items: sequence.items.filter((item) => item.id !== leaf.id),
+        },
+        leaf,
+      ),
+    ).toBeNull();
+    const catalog = { id: 'catalog:900', audioUrl: 'https://media.test/c.mp3' };
+    expect(engine.validHeldLeaf(sequence, catalog)).toBe(catalog);
+  });
+
+  it('still plays the held song when a deferred record throws', async () => {
+    const similarity = similarityOn();
+    const h = harness({ mode: 'shuffle', similarity });
+    await onAir(h);
+    similarity.recordDecision.mockImplementation(() => {
+      throw new Error('decision log down');
+    });
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
   });
 
   it('names the reason when nothing resolves, when the sequence has no successor, and when the queue head is on air or unresolved', () => {
