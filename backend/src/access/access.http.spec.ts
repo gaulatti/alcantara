@@ -1,5 +1,6 @@
+import * as fs from 'node:fs';
 import { status } from '@grpc/grpc-js';
-import { INestApplication, Logger } from '@nestjs/common';
+import { INestApplication, Logger, Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -7,8 +8,10 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { PompeiiAuthorizationGuard } from '../auth/pompeii-authorization.guard';
 import { PompeiiService } from '../auth/pompeii.service';
+import { PrismaService } from '../prisma.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AccessController } from './access.controller';
+import { AccessModule } from './access.module';
 import { AccessService } from './access.service';
 import {
   BEARER,
@@ -49,7 +52,10 @@ describe('/access', () => {
   let metrics: ManagedMetricsService;
   let logged: string[];
 
-  async function start(config: Record<string, string> = {}) {
+  async function start(
+    config: Record<string, string> = {},
+    extraProviders: Provider[] = [],
+  ) {
     metrics = new ManagedMetricsService();
     const pompeii = new PompeiiService(
       new ConfigService({
@@ -76,6 +82,7 @@ describe('/access', () => {
         PompeiiAuthorizationGuard,
         { provide: PompeiiService, useValue: pompeii },
         { provide: ManagedMetricsService, useValue: metrics },
+        ...extraProviders,
       ],
     }).compile();
     app = module.createNestApplication({ logger: false });
@@ -236,6 +243,70 @@ describe('/access', () => {
         'alcantara_access_request_duration_seconds',
       ),
     ).toContain('route="history_list"');
+  });
+
+  it('stores nothing: no route touches a database or the file system', async () => {
+    const touched: string[] = [];
+    const prisma = new Proxy(
+      {},
+      {
+        get: (_target, property) => {
+          // Nest probes lifecycle hooks on every provider; anything else is a use.
+          if (
+            typeof property === 'symbol' ||
+            /^(on|before)[A-Z]/.test(property)
+          ) {
+            return undefined;
+          }
+          touched.push(property);
+          throw new Error(`database touched: ${property}`);
+        },
+      },
+    );
+    await start({}, [{ provide: PrismaService, useValue: prisma }]);
+    const writes = (['writeFile', 'appendFile', 'mkdir'] as const).map((name) =>
+      jest.spyOn(fs.promises, name),
+    );
+    fake.answers.set('ListMyTokens', { reply: { tokens: [token] } });
+    fake.answers.set('CreateMyToken', { reply: { token, value: TOKEN_VALUE } });
+    fake.answers.set('RevokeMyToken', { reply: {} });
+    fake.answers.set('GetTokenSwitch', { reply: { enabled: true } });
+    fake.answers.set('SetTokenSwitch', { reply: { enabled: false } });
+    fake.answers.set('ListRoles', { reply: { roles: [] } });
+    fake.answers.set('ListGrants', { reply: { grants: [grant] } });
+    fake.answers.set('Grant', { reply: grant });
+    fake.answers.set('Revoke', { reply: {} });
+    fake.answers.set('ListAccessHistory', { reply: { entries: [] } });
+    const auth = (r: request.Test) => r.set('Authorization', BEARER);
+
+    const answered = [
+      await auth(http().get('/access/tokens')),
+      await auth(http().post('/access/tokens').send({ name: 'My laptop' })),
+      await auth(http().delete(`/access/tokens/${token.id}`)),
+      await auth(http().get('/access/token-switch')),
+      await auth(http().put('/access/token-switch').send({ enabled: false })),
+      await auth(http().get('/access/roles')),
+      await auth(http().get('/access/grants')),
+      await auth(
+        http().post('/access/grants').send({ user_id: 4, role_id: 2 }),
+      ),
+      await auth(http().delete('/access/grants/9')),
+      await auth(http().get('/access/history')),
+    ].map((response) => response.status);
+
+    expect(answered).toEqual([
+      200, 201, 200, 200, 200, 200, 200, 201, 200, 200,
+    ]);
+    expect(accessCalls()).toHaveLength(10);
+    expect(touched).toEqual([]);
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    expect(Reflect.getMetadata('design:paramtypes', AccessService)).toEqual([
+      PompeiiService,
+      ManagedMetricsService,
+    ]);
+    expect(Reflect.getMetadata('providers', AccessModule)).not.toContain(
+      PrismaService,
+    );
   });
 
   it('uses the defaults of the history query and of a bare create', async () => {
