@@ -1081,3 +1081,27 @@ it("updates only the edited rundown among the scheduled ones", async () => {
     ),
   ).toHaveLength(5);
 });
+
+// gaulatti/alcantara#194: a refused Play Next add used to be dropped (the
+// editor fires and forgets); it is shown like a refused rotation change.
+it("shows why a song could not be added to Play Next", async () => {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.onQueueSong = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Play Next is full"))
+    .mockRejectedValueOnce("refused");
+  mount(p);
+  const [playNext] = screen.getAllByRole("button", { name: /^Play .+ next$/ });
+  fireEvent.click(playNext);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Play Next is full",
+  );
+  fireEvent.click(playNext);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Play Next was not changed",
+    ),
+  );
+  expect(p.onQueueSong).toHaveBeenCalledTimes(2);
+});

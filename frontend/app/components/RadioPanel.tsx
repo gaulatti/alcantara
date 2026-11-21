@@ -684,7 +684,18 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                         ? (next) => runRotation(() => onTakeSelection(next))
                         : undefined
                     }
-                    onQueueItem={onQueueSong}
+                    onQueueItem={(itemId) => {
+                      // The editor fires and forgets; a refused add is shown
+                      // here, as a refused rotation change is (#194).
+                      void Promise.resolve(onQueueSong(itemId)).catch(
+                        (cause) =>
+                          setQueueError(
+                            cause instanceof Error
+                              ? cause.message
+                              : "Play Next was not changed",
+                          ),
+                      );
+                    }}
                     view={addingFillers ? "full" : "queue"}
                     rotationLabel="Filler rotation"
                   />
