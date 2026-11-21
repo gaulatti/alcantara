@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { controlServer, stubConsoleBrowser, type ControlServer } from "../../test/controlKit";
@@ -137,4 +137,61 @@ it("ignores a fallback poll older than what the console already shows", async ()
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
   expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
+});
+
+it("reuses a clip length it already measured when the next program lists the same clip", async () => {
+  const loads: string[] = [];
+  class FakeAudio {
+    preload = "";
+    src = "";
+    duration = Number.NaN;
+    onloadedmetadata: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    load() {
+      loads.push(this.src);
+      queueMicrotask(() => {
+        this.duration = 2;
+        this.onloadedmetadata?.();
+      });
+    }
+  }
+  vi.stubGlobal("Audio", FakeAudio);
+  const instant = (id: number, name: string, url: string) => ({ id, name, audioUrl: url, volume: 1, enabled: true, position: id });
+  let list = [instant(1, "Fictional bell", "https://media.example.test/bell.mp3"), instant(2, "Fictional sting", "https://media.example.test/sting.mp3")];
+  server = controlServer({
+    ...base(),
+    "GET /instants": () => Response.json(list),
+    "GET /program/main/state": Response.json(state("main")),
+    "GET /program/main/media-groups": Response.json([]),
+    "GET /program/other/state": Response.json(state("other")),
+    "GET /program/other/media-groups": Response.json([]),
+    "POST /instants/3/play?programId=other": Response.json({}),
+  });
+  const view = render(
+    <MemoryRouter>
+      <Control />
+    </MemoryRouter>,
+  );
+  await screen.findByRole("button", { name: "Fictional sting" });
+  await waitFor(() => expect(loads).toHaveLength(2));
+  // The other program lists one clip the console has already measured.
+  list = [instant(3, "Fictional bell again", "https://media.example.test/bell.mp3")];
+  program.id = "other";
+  view.rerender(
+    <MemoryRouter>
+      <Control />
+    </MemoryRouter>,
+  );
+  const again = await screen.findByRole("button", { name: "Fictional bell again" });
+  expect(screen.queryByRole("button", { name: "Fictional sting" })).toBeNull();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  fireEvent.click(again);
+  expect(await screen.findByRole("button", { name: "Fictional bell again · playing" })).toBeVisible();
+  await act(async () => {
+    vi.advanceTimersByTime(2100);
+  });
+  expect(await screen.findByRole("button", { name: "Fictional bell again" })).toBeVisible();
+  // Measured once: no new load for the clip it already knew.
+  expect(loads).toHaveLength(2);
+  vi.useRealTimers();
 });
