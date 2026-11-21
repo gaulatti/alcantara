@@ -187,7 +187,7 @@ describe('RadioMetricsService engine resyncs', () => {
       .filter((line) =>
         line.startsWith('alcantara_radio_engine_resyncs_total{'),
       );
-    expect(series).toHaveLength(12);
+    expect(series).toHaveLength(13);
     expect(metrics.snapshot().engineResyncs).toEqual({
       'foreign_ended:resumed': 1,
       'watchdog:resumed': 2,

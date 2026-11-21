@@ -1525,6 +1525,7 @@ describe('next-song announcement and handoff', () => {
         'alcantara_radio_bumpers_total{path="announced",result="played"} 1',
         'alcantara_radio_bumpers_total{path="command",result="sent"} 0',
         'alcantara_radio_bumpers_total{path="command",result="played"} 0',
+        'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
       ]);
       // The sequence moved past the spot used: the next slot (song 4's end)
       // is announced with spot 2.
@@ -1581,6 +1582,7 @@ describe('next-song announcement and handoff', () => {
       ).toEqual([
         'alcantara_radio_bumpers_total{path="command",result="sent"} 1',
         'alcantara_radio_bumpers_total{path="command",result="played"} 1',
+        'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
       ]);
     });
 
@@ -1824,6 +1826,53 @@ describe('next-song announcement and handoff', () => {
       );
     });
 
+    it('logs and counts a command spot only once Palazzo took it; a failed send is counted failed and the song is not held for 8 s', async () => {
+      const h = harness();
+      h.palazzo.settings = BUMPERS;
+      const log = jest.spyOn(
+        (h.engine as unknown as { logger: { log: () => void } }).logger,
+        'log',
+      );
+      const warn = jest.spyOn(
+        (h.engine as unknown as { logger: { warn: () => void } }).logger,
+        'warn',
+      );
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      h.palazzo.radioService.playInstant.mockRejectedValueOnce(
+        new Error('Palazzo is restarting'),
+      );
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+      // No 8 s wait: the song is commanded within settle()'s 4 s.
+      expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
+      expect(
+        metricLine(h, 'alcantara_radio_bumpers_total{path="command"'),
+      ).toEqual([
+        'alcantara_radio_bumpers_total{path="command",result="sent"} 0',
+        'alcantara_radio_bumpers_total{path="command",result="played"} 0',
+        'alcantara_radio_bumpers_total{path="command",result="failed"} 1',
+      ]);
+      expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/^Bumper: /));
+      expect(warn).toHaveBeenCalledWith(
+        `Bumper failed: Bumper on ${PROGRAM}; Palazzo did not take the spot`,
+      );
+      // A late instant.started for the spot that was never sent counts nothing.
+      const spotId = h.palazzo.radioService.playInstant.mock
+        .calls[0][3] as string;
+      h.palazzo.event('instant.started', { playbackId: spotId });
+      expect(
+        metricLine(
+          h,
+          'alcantara_radio_bumpers_total{path="command",result="played"}',
+        ),
+      ).toEqual([
+        'alcantara_radio_bumpers_total{path="command",result="played"} 0',
+      ]);
+    });
+
     it('remembers at most 16 spots awaiting their start', () => {
       const h = harness();
       const engine = h.engine as unknown as {
@@ -1994,3 +2043,121 @@ function asRunStore() {
   };
   return { rows, prisma };
 }
+
+// gaulatti/alcantara#233 and the 2026-11-21 01:13Z restart: a backend restart
+// in the middle of a song, and a watchdog resume that changes nothing.
+describe('restart adoption and watchdog resumes', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('announces the successor of a song adopted mid-song at boot, so its end is a preloaded handoff with no command', async () => {
+    const h = harness();
+    // As in production, the sequence loaded (and its refresh ran) well
+    // before the first snapshot named the inherited track.
+    await settle();
+    const inherited = { id: 'inherited-before-restart', url: SONGS[0].url };
+    h.palazzo.current = inherited;
+    h.playing(inherited);
+    await settle();
+    expect(h.engine.getOnAirView(PROGRAM).playbackRequestId).toBe(inherited.id);
+    expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.palazzo.commands).toEqual([]);
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+  });
+
+  it('counts a watchdog resume that commands nothing as resumed_no_command and says why', async () => {
+    const h = harness({ clockedLog: () => true });
+    const warn = jest.spyOn(
+      (h.engine as unknown as { logger: { warn: () => void } }).logger,
+      'warn',
+    );
+    h.idle();
+    await settle();
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: () =>
+        Promise.resolve({
+          ...snapshot('boot-1', 99, null),
+          live: { onAir: false },
+        }),
+    } as never);
+    await h.engine.checkPlayback();
+    jest.setSystemTime(Date.now() + 46_000);
+    await h.engine.checkPlayback();
+    await settle();
+    expect(h.palazzo.commands).toEqual([]);
+    const rendered = h.metrics.render();
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed_no_command"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed"} 0',
+    );
+    expect(warn).toHaveBeenCalledWith(
+      `Watchdog resume commanded nothing on ${PROGRAM}: clocked_log`,
+    );
+  });
+
+  it('counts a watchdog resume that commands a song as resumed', async () => {
+    const h = harness();
+    h.idle();
+    await settle();
+    h.palazzo.stop();
+    h.engine.setPalazzoTelemetry({
+      isReconciled: () => true,
+      currentState: () =>
+        Promise.resolve({
+          ...snapshot('boot-1', 99, null),
+          live: { onAir: false },
+        }),
+    } as never);
+    const before = h.palazzo.commands.length;
+    await h.engine.checkPlayback();
+    jest.setSystemTime(Date.now() + 46_000);
+    await h.engine.checkPlayback();
+    await settle();
+    expect(h.palazzo.commands.length).toBeGreaterThan(before);
+    const rendered = h.metrics.render();
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed_no_command"} 0',
+    );
+  });
+
+  it('names the reason a resume left the rotation as it was', () => {
+    const h = harness();
+    const engine = h.engine as unknown as {
+      resumeIdleReason: (
+        programId: string,
+        state: Record<string, unknown>,
+        before: unknown,
+      ) => string | null;
+    };
+    const song = { playbackRequestId: 'held' };
+    const base = {
+      transitioning: false,
+      pendingRequestIds: new Set<string>(),
+      activeSong: null,
+      queueBlocked: false,
+      busyWithForeignTrack: false,
+    };
+    const reason = (state: Record<string, unknown>, before: unknown = null) =>
+      engine.resumeIdleReason(PROGRAM, { ...base, ...state }, before);
+    expect(reason({ transitioning: true })).toBeNull();
+    expect(reason({ pendingRequestIds: new Set(['cmd']) })).toBeNull();
+    expect(reason({ activeSong: song })).toBeNull();
+    expect(reason({ activeSong: song }, song)).toBe('held_song');
+    expect(reason({ queueBlocked: true })).toBe('queue_blocked');
+    expect(reason({ busyWithForeignTrack: true })).toBe('foreign_track');
+    expect(reason({})).toBe('no_successor');
+  });
+});

@@ -56,8 +56,9 @@ export type PalazzoMachineResult =
  * gaulatti/alcantara#230: the engine read Palazzo's state itself, because a
  * foreign track ended or because Palazzo kept reporting no playback (the
  * watchdog), and what it found: `resumed` (Palazzo was idle and the engine
- * reconciled from it), `playing` (Palazzo was playing; nothing to do),
- * `unavailable` (no state could be read).
+ * reconciled from it), `resumed_no_command` (a watchdog resume after which
+ * nothing was commanded or advanced, gaulatti/alcantara#233), `playing`
+ * (Palazzo was playing; nothing to do), `unavailable` (no state could be read).
  */
 export type EngineResyncTrigger =
   | 'foreign_ended'
@@ -65,6 +66,7 @@ export type EngineResyncTrigger =
   | 'command_failed';
 export type EngineResyncResult =
   | 'resumed'
+  | 'resumed_no_command'
   | 'playing'
   | 'unavailable'
   | 'undecided';
@@ -75,6 +77,7 @@ const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
 ];
 const RESYNC_RESULTS: EngineResyncResult[] = [
   'resumed',
+  'resumed_no_command',
   'playing',
   'unavailable',
   'undecided',
@@ -168,13 +171,18 @@ export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
 /**
  * A bumper spot by how it reached Palazzo: `announced` with the next song
  * (gaulatti/palazzo#50) or `command` (played after the end, then the song by
- * command); `sent` when the engine committed to it, `played` on Palazzo's
- * instant.started for it.
+ * command); `sent` when Palazzo took it, `played` on Palazzo's
+ * instant.started for it, `failed` when Palazzo did not take a command spot.
  */
 export type BumperPath = 'announced' | 'command';
-export type BumperResult = 'sent' | 'played';
+export type BumperResult = 'sent' | 'played' | 'failed';
 const BUMPER_PATHS: BumperPath[] = ['announced', 'command'];
-const BUMPER_RESULTS: BumperResult[] = ['sent', 'played'];
+const BUMPER_RESULTS: BumperResult[] = ['sent', 'played', 'failed'];
+/** `failed` is a command spot Palazzo did not take; an announced spot travels with its announcement, whose refusal is counted as a skip. */
+const isBumperSeries = (path: BumperPath, result: BumperResult): boolean =>
+  BUMPER_PATHS.includes(path) &&
+  BUMPER_RESULTS.includes(result) &&
+  !(path === 'announced' && result === 'failed');
 
 export type SnapshotReconciliationResult =
   | 'accepted'
@@ -567,8 +575,7 @@ export class RadioMetricsService {
   }
 
   recordBumper(path: BumperPath, result: BumperResult): void {
-    if (!BUMPER_PATHS.includes(path) || !BUMPER_RESULTS.includes(result))
-      return;
+    if (!isBumperSeries(path, result)) return;
     const key = `${path}\t${result}`;
     this.bumpers.set(key, (this.bumpers.get(key) ?? 0) + 1);
   }
@@ -731,9 +738,11 @@ export class RadioMetricsService {
     );
     for (const trigger of RESYNC_TRIGGERS)
       for (const result of RESYNC_RESULTS)
-        lines.push(
-          `alcantara_radio_engine_resyncs_total{trigger="${trigger}",result="${result}"} ${this.engineResyncs.get(`${trigger}:${result}`) ?? 0}`,
-        );
+        // resumed_no_command is the watchdog's alone (#233).
+        if (result !== 'resumed_no_command' || trigger === 'watchdog')
+          lines.push(
+            `alcantara_radio_engine_resyncs_total{trigger="${trigger}",result="${result}"} ${this.engineResyncs.get(`${trigger}:${result}`) ?? 0}`,
+          );
     lines.push(
       '# HELP alcantara_radio_intro_transitions_total Atomic song-intro lifecycle transitions by bounded result.',
       '# TYPE alcantara_radio_intro_transitions_total counter',
@@ -830,11 +839,12 @@ export class RadioMetricsService {
       );
     }
     lines.push(
-      '# HELP alcantara_radio_bumpers_total Bumper spots by how they reached Palazzo (announced with the next song, or command after the end) and result (sent, played on Palazzo).',
+      '# HELP alcantara_radio_bumpers_total Bumper spots by how they reached Palazzo (announced with the next song, or command after the end) and result (sent, played on Palazzo, failed: a command spot Palazzo did not take).',
       '# TYPE alcantara_radio_bumpers_total counter',
     );
     for (const path of BUMPER_PATHS) {
       for (const result of BUMPER_RESULTS) {
+        if (!isBumperSeries(path, result)) continue;
         lines.push(
           `alcantara_radio_bumpers_total{path="${path}",result="${result}"} ${this.bumpers.get(`${path}\t${result}`) ?? 0}`,
         );

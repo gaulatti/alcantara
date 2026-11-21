@@ -1292,9 +1292,45 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Palazzo has reported nothing on the air on ${programId} for ${NO_PLAYBACK_BOUND_MS / 1000} s or more; resuming the rotation`,
       );
-      this.metrics.recordEngineResync('watchdog', 'resumed');
+      const before = state.activeSong;
       this.handlePalazzoSnapshot(programId, snapshot);
+      const idle = this.resumeIdleReason(programId, state, before);
+      if (idle) {
+        // gaulatti/alcantara#233: a resume that changed nothing looked like a
+        // real one, which hid the 2026-11-21 00:28Z stall.
+        this.logger.warn(
+          `Watchdog resume commanded nothing on ${programId}: ${idle}`,
+        );
+        this.metrics.recordEngineResync('watchdog', 'resumed_no_command');
+      } else {
+        this.metrics.recordEngineResync('watchdog', 'resumed');
+      }
     }
+  }
+
+  /**
+   * Why a watchdog resume left the rotation as it was, or null when it acted:
+   * a song was commanded or started (a new active song or a pending command),
+   * or an accepted end is advancing to the next one.
+   */
+  private resumeIdleReason(
+    programId: string,
+    state: SongEngineState,
+    before: ActiveSong | null,
+  ):
+    | 'held_song'
+    | 'queue_blocked'
+    | 'clocked_log'
+    | 'foreign_track'
+    | 'no_successor'
+    | null {
+    if (state.transitioning || state.pendingRequestIds.size) return null;
+    if (state.activeSong && state.activeSong !== before) return null;
+    if (state.activeSong) return 'held_song';
+    if (state.queueBlocked) return 'queue_blocked';
+    if (this.flightService.isClockedLogRunning(programId)) return 'clocked_log';
+    if (state.busyWithForeignTrack) return 'foreign_track';
+    return 'no_successor';
   }
 
   handlePalazzoSnapshot(
@@ -2329,6 +2365,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.emitPlaybackActive(programId, state.activeSong);
       void this.publishNowPlaying(programId, state.activeSong);
       this.startProgress(programId);
+      // Its successor is announced as for any started song, so a restart in
+      // the middle of a song does not cost a commanded (cold) change at its end.
+      this.refreshAnnouncement(programId);
       return;
     }
 
@@ -3316,7 +3355,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   private recordBumperMetric(
     path: 'announced' | 'command',
-    result: 'sent' | 'played',
+    result: 'sent' | 'played' | 'failed',
   ): void {
     try {
       this.metrics.recordBumper(path, result);
@@ -3364,15 +3403,26 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         where: { id: ids[idx] },
       });
       if (!inst?.audioUrl) return;
-      this.logger.log(`Bumper: ${inst.name} on ${programId}`);
       const playbackRequestId = randomUUID();
+      // Known before the send: Palazzo's instant.started can arrive first.
       this.rememberBumperSpot(state, playbackRequestId, inst.name, 'command');
-      await this.radioService.playInstant(
-        programId,
-        inst.audioUrl,
-        undefined,
-        playbackRequestId,
-      );
+      try {
+        await this.radioService.playInstant(
+          programId,
+          inst.audioUrl,
+          undefined,
+          playbackRequestId,
+        );
+      } catch {
+        // Not sent: no spot is on air, so the song is not held back for it.
+        state.bumperSpotsSent?.delete(playbackRequestId);
+        this.logger.warn(
+          `Bumper failed: ${inst.name} on ${programId}; Palazzo did not take the spot`,
+        );
+        this.recordBumperMetric('command', 'failed');
+        return;
+      }
+      this.logger.log(`Bumper: ${inst.name} on ${programId}`);
       this.recordBumperMetric('command', 'sent');
       await new Promise((r) => setTimeout(r, 8000));
     } catch {

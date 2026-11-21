@@ -326,10 +326,16 @@ engine read Palazzo's state itself. `trigger` is `foreign_ended` (a foreign
 track ended), `watchdog` (Palazzo reported nothing on the air past the bound)
 or `command_failed` (the retry after a failed song command). `result` is
 `resumed` (Palazzo was idle and the engine reconciled from it, which for the
-watchdog means it acted), `playing` (Palazzo was playing; nothing to do),
-`unavailable` (no state could be read) or `undecided` (the watchdog held:
-Palazzo degraded or not reporting its live input). All twelve series are always
-present. A rising `watchdog,resumed` or `command_failed,resumed` means the
+watchdog means it commanded a song or advanced past an end),
+`resumed_no_command` (watchdog only, gaulatti/alcantara#233: the watchdog
+resumed but nothing was commanded or advanced; the log line `Watchdog resume
+commanded nothing on <program>: <reason>` names `held_song`, `queue_blocked`,
+`clocked_log`, `foreign_track` or `no_successor`), `playing` (Palazzo was
+playing; nothing to do), `unavailable` (no state could be read) or `undecided`
+(the watchdog held: Palazzo degraded or not reporting its live input). All
+thirteen series are always present. Any `watchdog,resumed_no_command` is worth
+paging on: the radio is silent and the engine's recovery did nothing (the
+2026-11-21 00:28Z stall looked like a healthy `resumed`). A rising `watchdog,resumed` or `command_failed,resumed` means the
 rotation stalled and recovered on its own; a rising `unavailable` means the
 engine could not read Palazzo; a steady `watchdog,undecided` means the watchdog
 cannot act (check Palazzo's version and availability).
@@ -484,8 +490,11 @@ Contract: gaulatti/palazzo#40 §5.
 - `alcantara_radio_bumpers_total{path,result}` counts bumper spots.
   - `path`: `announced` with the next song (gaulatti/palazzo#50), or `command`
     (after the end, then the song by command).
-  - `result`: `sent` when the engine used the slot, `played` on Palazzo's
-    `instant.started` for that spot.
+  - `result`: `sent` when the engine used the slot (for a command spot, once
+    Palazzo took it), `played` on Palazzo's `instant.started` for that spot,
+    and `failed` for a command spot Palazzo did not take. `failed` exists only
+    for `path="command"`: an announced spot travels with its announcement,
+    whose refusal is counted as a `refused` skip.
 - The machine requests `next-announce` and `next-withdraw` appear in
   `alcantara_palazzo_machine_requests_total` and
   `alcantara_palazzo_machine_retries_total`.

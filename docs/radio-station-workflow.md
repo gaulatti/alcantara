@@ -209,7 +209,9 @@ subscribers only.
 ## Gapless handoff: announcing the next song
 
 Contract: gaulatti/palazzo#40. When Palazzo accepts the active song's start in
-autoplay or shuffle, segue on or off, the engine announces the song it expects
+autoplay or shuffle, segue on or off (and when a restarted backend adopts the
+song Palazzo is already playing, so a restart in the middle of a song does not
+cost a commanded change at its end), the engine announces the song it expects
 to play next (`PUT …/playback/next`), so Palazzo fetches and queues it while
 the current song plays and starts it itself at the cue-out (minus the segue's
 `overlapSeconds`, under overlap). With segue on, the announcement carries the
@@ -261,7 +263,10 @@ same segue and loudness the song command would carry; with segue off, neither.
     spot has no audio keeps today's path. The spot plays after the end, the
     engine waits 8 s, then commands the song. That spot counts under
     `path="command"`, played on its `instant.started` when Palazzo journals
-    instants.
+    instants. It is logged (`Bumper: <name> on <program>`) and counted `sent`
+    only once Palazzo took it. A spot Palazzo did not take (for example while
+    Palazzo restarts) is logged `Bumper failed: …`, counted `failed`, and the
+    song is commanded at once with no 8 s wait.
   - The silence at a bumper change is read on Palazzo, in
     `palazzo_song_change_gap_seconds{handoff="bumper"}`. A 409, 400 or 422 answer, or a `playout.next_withdrawn` with reason
   `not_ready` before the end, leaves the next song to today's song command.
