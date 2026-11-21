@@ -380,7 +380,8 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.asRunRecord.count({
       where: {
         programId,
-        ...(from || to ? { at: atFilter } : {}),
+        // exportWindow always sets `from` (#237), so the window always applies.
+        at: atFilter,
         ...(soundExchange ? { state: 'ended' } : {}),
         ...(soundExchange && inferred !== 'include'
           ? { inferred: inferred === 'only' }

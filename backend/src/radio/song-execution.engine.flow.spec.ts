@@ -1869,6 +1869,18 @@ describe('degraded engine paths are logged and counted', () => {
     expect(ctx.radioService.playInstant).not.toHaveBeenCalled();
   });
 
+  it('names an Error without a name as Error', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    const nameless = new Error('secret detail');
+    nameless.name = '';
+    ctx.currentState.mockRejectedValueOnce(nameless);
+    await ctx.engine['resync']('radio-1', 'watchdog');
+    expect(warn).toHaveBeenCalledWith(
+      'Resync could not read Palazzo state for radio-1 (Error)',
+    );
+  });
+
   it('never logs the error message', async () => {
     const ctx = setup();
     const warn = degraded(ctx);
