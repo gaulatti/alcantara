@@ -686,7 +686,9 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     }
                     onQueueItem={(itemId) => {
                       // The editor fires and forgets; a refused add is shown
-                      // here, as a refused rotation change is (#194).
+                      // here, as a refused rotation change is (#194). A new
+                      // add clears the last refusal first.
+                      setQueueError(null);
                       void Promise.resolve(onQueueSong(itemId)).catch(
                         (cause) =>
                           setQueueError(

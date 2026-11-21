@@ -1104,4 +1104,8 @@ it("shows why a song could not be added to Play Next", async () => {
     ),
   );
   expect(p.onQueueSong).toHaveBeenCalledTimes(2);
+  // A later add that succeeds leaves no stale refusal on screen.
+  fireEvent.click(playNext);
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(p.onQueueSong).toHaveBeenCalledTimes(3);
 });
