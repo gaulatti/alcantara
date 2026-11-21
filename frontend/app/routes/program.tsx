@@ -54,8 +54,7 @@ import { faderToGain } from '../utils/audioTaper';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
-import { fetchEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
-import { loadChartLookup, realtimeChartValues, type ChartSource } from '../utils/chartFeed';
+import { loadChartLookup, realtimeChartValues, type ChartFeedLookup } from '../utils/chartFeed';
 import { chartLookupId, resolveChartDisplay } from '../utils/programChartValues';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import { getProgramSlideshowLabelIds, getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
@@ -757,7 +756,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   const [slideshowMediaGroupsById, setSlideshowMediaGroupsById] = useState<Record<number, SlideshowMediaGroup>>({});
   const [slideshowMediaLabelsById, setSlideshowMediaLabelsById] = useState<Record<string, SlideshowMediaLabel>>({});
   const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
-  const [chartLookup, setChartLookup] = useState<ChartSource<EaroneRealtimeLookup> | null>(null);
+  const [chartLookup, setChartLookup] = useState<ChartFeedLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
   const [fadeToBlackAudioGain, setFadeToBlackAudioGain] = useState(1);
   const previousFadeToBlackRef = useRef<boolean | null>(null);
@@ -2163,13 +2162,12 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
     const loadEarone = async () => {
       try {
-        // The generic chart feed if it answers, else the branded proxy as before.
-        const lookup = await loadChartLookup(() => fetchEaroneRealtimeLookup());
+        const lookup = await loadChartLookup();
         if (!cancelled) {
           setChartLookup(lookup);
         }
       } catch (err) {
-        console.error('Failed to fetch EarOne realtime data:', err);
+        console.error('Failed to fetch the chart feed:', err);
       }
     };
 
@@ -2585,14 +2583,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
               case 'toni-logo':
                 return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
               case 'earone': {
-                const realtimeChart = realtimeChartValues(
-                  chartLookup,
-                  { id: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf), text: activeToniLeaf?.text || null },
-                  (proxyLookup, match) => {
-                    const matchedEaroneEntry = matchEaroneRealtimeEntry(proxyLookup, { earoneSongId: match.id, text: match.text });
-                    return matchedEaroneEntry ? { rank: matchedEaroneEntry.ranking, spins: matchedEaroneEntry.radioSpinsToday } : null;
-                  }
-                );
+                const realtimeChart = realtimeChartValues(chartLookup, {
+                  id: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf),
+                  text: activeToniLeaf?.text || null
+                });
                 const chartDisplay = resolveChartDisplay({
                   scene: { rank: props.rank, spins: props.spins },
                   song: activeToniLeaf,

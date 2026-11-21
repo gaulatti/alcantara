@@ -170,7 +170,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async getSanremoRealtime() {
+  async getSnapshot() {
     if (this.cache.entries.length === 0) {
       await this.refreshCache();
     }
@@ -179,12 +179,11 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * The same refreshed entries as the branded proxy, in a provider-neutral
-   * shape. Only rank and spins are carried; the proxy's streaming counts are
-   * not part of the feed.
+   * The refreshed entries in a provider-neutral shape. Only rank and spins
+   * are carried; the upstream's streaming counts are not part of the feed.
    */
   async getRealtimeFeed(): Promise<ChartFeedEntry[]> {
-    const cache = await this.getSanremoRealtime();
+    const cache = await this.getSnapshot();
     return cache.entries.map((entry) => ({
       provider: entry.sourceKeys.earone ? RANKED_PROVIDER : 'escplus',
       externalId: entry.earoneSongId,

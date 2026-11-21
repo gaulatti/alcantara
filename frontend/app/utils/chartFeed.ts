@@ -2,8 +2,8 @@ import { apiUrl } from './apiBaseUrl';
 import type { ChartValues } from './programChartValues';
 
 /**
- * Provider-neutral chart feed. The backend refreshes it from the same upstream,
- * on the same timer, as the branded chart proxy the page used before.
+ * Provider-neutral chart feed, refreshed by the backend from the chart
+ * upstream every 15 seconds. It is the program page's only chart source.
  */
 export const CHART_FEED_URL = apiUrl('/charts/realtime');
 
@@ -24,9 +24,6 @@ export interface ChartFeedLookup {
   byKey: Record<string, ChartFeedEntry>;
   updatedAt: string | null;
 }
-
-/** Where the page's chart values came from: the feed, or the fallback it replaced. */
-export type ChartSource<Fallback> = { source: 'feed'; lookup: ChartFeedLookup } | { source: 'fallback'; lookup: Fallback };
 
 /** The text normalization chart matching has always used (and the backend uses for its keys). */
 export function normalizeChartText(value: string): string {
@@ -103,39 +100,24 @@ export function buildChartFeedLookup(payload: unknown): ChartFeedLookup | null {
 }
 
 /**
- * The page's chart lookup: the generic feed if it answers with a feed, else
- * the fallback (the branded proxy), which is not called when the feed answers.
+ * The page's chart lookup from the feed. A feed that does not answer, answers
+ * with an error or does not return a list is an error for the caller to report;
+ * the page then keeps the last lookup it loaded.
  */
-export async function loadChartLookup<Fallback>(
-  fallback: () => Promise<Fallback>,
-  fetchImpl: typeof fetch = fetch
-): Promise<ChartSource<Fallback>> {
-  try {
-    const res = await fetchImpl(CHART_FEED_URL);
-    if (res.ok) {
-      const lookup = buildChartFeedLookup(await res.json());
-      if (lookup) {
-        return { source: 'feed', lookup };
-      }
-    }
-  } catch {
-    // The feed is unavailable; the fallback below answers instead.
+export async function loadChartLookup(fetchImpl: typeof fetch = fetch): Promise<ChartFeedLookup> {
+  const res = await fetchImpl(CHART_FEED_URL);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
   }
-  return { source: 'fallback', lookup: await fallback() };
+  const lookup = buildChartFeedLookup(await res.json());
+  if (!lookup) {
+    throw new Error('The chart feed did not return a list');
+  }
+  return lookup;
 }
 
-/** Rank and spins for a chyron item from whichever source the page loaded. */
-export function realtimeChartValues<Fallback>(
-  chart: ChartSource<Fallback> | null,
-  options: { id?: string | null; text?: string | null },
-  fromFallback: (lookup: Fallback, options: { id?: string | null; text?: string | null }) => ChartValues | null
-): ChartValues | null {
-  if (!chart) {
-    return null;
-  }
-  if (chart.source === 'fallback') {
-    return fromFallback(chart.lookup, options);
-  }
-  const entry = matchChartEntry(chart.lookup, options);
+/** Rank and spins for a chyron item from the loaded feed. */
+export function realtimeChartValues(lookup: ChartFeedLookup | null, options: { id?: string | null; text?: string | null }): ChartValues | null {
+  const entry = matchChartEntry(lookup, options);
   return entry ? { rank: entry.rank, spins: entry.spins } : null;
 }

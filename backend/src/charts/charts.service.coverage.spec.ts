@@ -115,7 +115,7 @@ describe('ChartsService merging', () => {
     );
     const service = new ChartsService(prismaStub(), metrics as never);
 
-    const result = await service.getSanremoRealtime();
+    const result = await service.getSnapshot();
 
     expect(result.sources.earoneUpdatedAt).toBe('2026-02-01T00:00:00Z');
     expect(typeof result.sources.escplusUpdatedAt).toBe('string');
@@ -190,7 +190,7 @@ describe('ChartsService merging', () => {
     );
     const service = new ChartsService(prismaStub());
     // entries stay empty, so each call retries the refresh
-    const result = await service.getSanremoRealtime();
+    const result = await service.getSnapshot();
     expect(result.entries).toEqual([]);
     expect(result.sources.earoneUpdatedAt).toBeNull();
     expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -199,7 +199,7 @@ describe('ChartsService merging', () => {
   it('handles an empty earone payload object', async () => {
     mockFetch((url) => (url.includes(EARONE) ? ok(null) : ok([])));
     const service = new ChartsService(prismaStub());
-    const result = await service.getSanremoRealtime();
+    const result = await service.getSnapshot();
     expect(result.entries).toEqual([]);
     expect(result.sources.earoneUpdatedAt).toBeNull();
   });
@@ -215,8 +215,8 @@ describe('ChartsService merging', () => {
         : ok([]),
     );
     const service = new ChartsService(prismaStub());
-    const first = await service.getSanremoRealtime();
-    const second = await service.getSanremoRealtime();
+    const first = await service.getSnapshot();
+    const second = await service.getSnapshot();
     expect(second).toBe(first);
     expect(first.entries).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -232,7 +232,7 @@ describe('ChartsService failures', () => {
         : { ok: false, status: 503, json: async () => ({}) },
     );
     const service = new ChartsService(prismaStub(), metrics as never);
-    const result = await service.getSanremoRealtime();
+    const result = await service.getSnapshot();
     expect(result.entries).toEqual([]);
     expect(metrics.recordDependency).toHaveBeenCalledWith(
       'earone',
@@ -256,7 +256,7 @@ describe('ChartsService failures', () => {
       return Promise.reject('plain string');
     });
     const service = new ChartsService(prismaStub(), metrics as never);
-    await service.getSanremoRealtime();
+    await service.getSnapshot();
     const unavailable = metrics.recordDependency.mock.calls.filter(
       (c) => c[2] === 'unavailable',
     );
@@ -278,7 +278,7 @@ describe('ChartsService failures', () => {
         : ok([]),
     );
     const service = new ChartsService(prismaStub(), metrics as never);
-    await service.getSanremoRealtime();
+    await service.getSnapshot();
     expect(metrics.recordDependency).toHaveBeenCalledWith(
       'earone',
       'fetch',
@@ -292,7 +292,7 @@ describe('ChartsService failures', () => {
       throw new Error('x');
     });
     const service = new ChartsService(prismaStub());
-    await expect(service.getSanremoRealtime()).resolves.toMatchObject({
+    await expect(service.getSnapshot()).resolves.toMatchObject({
       entries: [],
     });
     expect(errorSpy).toHaveBeenCalled();
@@ -306,8 +306,8 @@ describe('ChartsService failures', () => {
       return url.includes(EARONE) ? ok(earonePayload([])) : ok([]);
     });
     const service = new ChartsService(prismaStub());
-    const a = service.getSanremoRealtime();
-    const b = service.getSanremoRealtime();
+    const a = service.getSnapshot();
+    const b = service.getSnapshot();
     release();
     await Promise.all([a, b]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -407,7 +407,7 @@ describe('ChartsService rank refresh into SongChartIdentity', () => {
     const metrics = { recordJob: jest.fn(), recordDependency: jest.fn() };
     const service = new ChartsService(prisma as never, metrics as never);
 
-    await service.getSanremoRealtime();
+    await service.getSnapshot();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(
@@ -434,14 +434,14 @@ describe('ChartsService rank refresh into SongChartIdentity', () => {
     const prisma = prismaWith([
       { id: 11, externalId: '501', rank: '1', spins: '310' },
     ]);
-    await new ChartsService(prisma as never).getSanremoRealtime();
+    await new ChartsService(prisma as never).getSnapshot();
     expect(prisma.songChartIdentity.update).not.toHaveBeenCalled();
   });
 
   it('skips the database when no upstream entry has an id and a value', async () => {
     upstream({ result: { postTypeData: { songs: [] } } });
     const prisma = prismaWith([]);
-    await new ChartsService(prisma as never).getSanremoRealtime();
+    await new ChartsService(prisma as never).getSnapshot();
     expect(prisma.songChartIdentity.findMany).not.toHaveBeenCalled();
   });
 
@@ -493,22 +493,22 @@ describe('ChartsService rank refresh into SongChartIdentity', () => {
 });
 
 describe('ChartsService provider-neutral feed', () => {
-  it('returns the same entries as the branded proxy, field for field apart from naming', async () => {
+  it('returns the refreshed snapshot entries, field for field apart from naming', async () => {
     upstream();
     const service = new ChartsService(prismaWith([]) as never);
 
-    const proxy = await service.getSanremoRealtime();
+    const snapshot = await service.getSnapshot();
     const feed = await service.getRealtimeFeed();
 
     expect(feed).toEqual(
-      proxy.entries.map((entry) => ({
+      snapshot.entries.map((entry) => ({
         provider: entry.sourceKeys.earone ? 'earone' : 'escplus',
         externalId: entry.earoneSongId,
         title: entry.title,
         artist: entry.artist,
         rank: entry.ranking,
         spins: entry.radioSpinsToday,
-        updatedAt: proxy.updatedAt,
+        updatedAt: snapshot.updatedAt,
       })),
     );
     expect(feed).toEqual([
@@ -519,7 +519,7 @@ describe('ChartsService provider-neutral feed', () => {
         artist: 'Alba',
         rank: '1',
         spins: '310',
-        updatedAt: proxy.updatedAt,
+        updatedAt: snapshot.updatedAt,
       },
       {
         provider: 'earone',
@@ -528,7 +528,7 @@ describe('ChartsService provider-neutral feed', () => {
         artist: 'Bruno',
         rank: '7',
         spins: '120',
-        updatedAt: proxy.updatedAt,
+        updatedAt: snapshot.updatedAt,
       },
       {
         provider: 'earone',
@@ -537,7 +537,7 @@ describe('ChartsService provider-neutral feed', () => {
         artist: 'Carla',
         rank: null,
         spins: null,
-        updatedAt: proxy.updatedAt,
+        updatedAt: snapshot.updatedAt,
       },
       {
         provider: 'escplus',
@@ -546,7 +546,7 @@ describe('ChartsService provider-neutral feed', () => {
         artist: 'Dario',
         rank: null,
         spins: null,
-        updatedAt: proxy.updatedAt,
+        updatedAt: snapshot.updatedAt,
       },
     ]);
     expect(JSON.stringify(feed)).not.toMatch(
