@@ -1769,7 +1769,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         return { skip: 'bumper_slot' };
       }
       bumper = await this.chooseBumper(state, settings, song.playbackRequestId);
-      if (!bumper) return { skip: 'bumper_slot' };
+      // The slot's spot was not found or has no audio: a separate reason, so
+      // the counter tells it from a Palazzo without `next.bumper`.
+      if (!bumper) return { skip: 'bumper_unavailable' };
     }
     if (await this.hasIntro(programId, successor.leaf.songId)) {
       return { skip: 'intro' };

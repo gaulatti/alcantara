@@ -146,6 +146,7 @@ export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
 /** Why a started song was left without an announced successor (gaulatti/alcantara#232). */
 export type AnnouncementSkipReason =
   | 'bumper_slot'
+  | 'bumper_unavailable'
   | 'intro'
   | 'clocked_log'
   | 'no_successor'
@@ -155,6 +156,7 @@ export type AnnouncementSkipReason =
   | 'refused';
 export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
   'bumper_slot',
+  'bumper_unavailable',
   'intro',
   'clocked_log',
   'no_successor',

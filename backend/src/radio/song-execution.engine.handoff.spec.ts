@@ -1640,15 +1640,34 @@ describe('next-song announcement and handoff', () => {
       expect(
         metricLine(
           h,
-          'alcantara_radio_announcement_skipped_total{reason="bumper_slot"}',
+          'alcantara_radio_announcement_skipped_total{reason="bumper_unavailable"}',
         ),
       ).toEqual([
-        'alcantara_radio_announcement_skipped_total{reason="bumper_slot"} 1',
+        'alcantara_radio_announcement_skipped_total{reason="bumper_unavailable"} 1',
       ]);
       h.palazzo.endCurrent();
       await settle();
       expect(h.palazzo.radioService.playInstant).not.toHaveBeenCalled();
       expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
+    });
+
+    it('counts a slot whose spot is not found as bumper_unavailable, not bumper_slot', async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      h.prisma.instant.findUnique.mockResolvedValue(null);
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced).toHaveLength(1);
+      expect(
+        metricLine(
+          h,
+          'alcantara_radio_announcement_skipped_total{reason="bumper',
+        ),
+      ).toEqual([
+        'alcantara_radio_announcement_skipped_total{reason="bumper_slot"} 0',
+        'alcantara_radio_announcement_skipped_total{reason="bumper_unavailable"} 1',
+      ]);
     });
 
     it('keeps the spot sequence where it was when the settings cannot be read at the end, or list no spot', async () => {
@@ -1856,6 +1875,7 @@ describe('next-song announcement and handoff', () => {
       h.metrics.recordBumper('announced', 'bogus' as never);
       for (const reason of [
         'bumper_slot',
+        'bumper_unavailable',
         'intro',
         'clocked_log',
         'no_successor',

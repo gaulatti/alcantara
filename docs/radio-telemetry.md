@@ -468,7 +468,9 @@ Contract: gaulatti/palazzo#40 §5.
   and the announced one preempted).
 - `alcantara_radio_announcement_skipped_total{reason}` counts, once per song,
   why a started song was left without an announced successor:
-  - `bumper_slot`: a slot without `next.bumper`, or the spot has no audio;
+  - `bumper_slot`: a slot while Palazzo does not list `next.bumper`;
+  - `bumper_unavailable`: a slot whose spot was not found or has no audio
+    (counted as `bumper_slot` before this reason existed);
   - `intro`;
   - `clocked_log`;
   - `no_successor`;
