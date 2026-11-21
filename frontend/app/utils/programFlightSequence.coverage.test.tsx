@@ -54,6 +54,14 @@ describe('flight cue normalization', () => {
     });
   });
 
+  it('keeps a fractional mixer volume as the operator set it (#244)', () => {
+    const cue = normalizeFlightCue({ kind: 'mixer', mixerChange: { channelId: 'song', volume: 0.4 } });
+    expect(cue?.mixerChange).toEqual({ channelId: 'song', volume: 0.4 });
+    expect(getFlightCueDisplayLabel(cue!)).toBe('Mixer: song vol 40%');
+    expect(normalizeFlightCue({ kind: 'mixer', mixerChange: { channelId: 'main', volume: 0.5 } })?.mixerChange?.volume).toBe(0.5);
+    expect(normalizeFlightCue({ kind: 'mixer', mixerChange: { channelId: 'main', volume: Number.NaN } })?.mixerChange).toEqual({ channelId: 'main' });
+  });
+
   it('drops invalid optional fields and generates an id when none is given', () => {
     const cue = normalizeFlightCue({
       id: '   ',
