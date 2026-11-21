@@ -309,19 +309,21 @@ export class McpActionExecutor implements McpActionExecutorContract {
       }),
     });
     try {
-      // 6. attribution, 7. run
+      // 6. attribution, 7. run. Every tier is wrapped (#213): the actor is
+      // read by the engine at command time, so a W that changes what is queued
+      // (program_remove_queued_program_song_by_id) is attributed like an A or D,
+      // and a W that reaches no operator record leaves nothing to read.
       const work = () => spec.run(args, ctx);
-      const outcome =
-        tier !== 'W' && this.attribution
-          ? await this.attribution.run(
-              {
-                principalId: ctx.principal.principalId,
-                via: 'mcp',
-                client: ctx.principal.client,
-              },
-              work,
-            )
-          : await work();
+      const outcome = this.attribution
+        ? await this.attribution.run(
+            {
+              principalId: ctx.principal.principalId,
+              via: 'mcp',
+              client: ctx.principal.client,
+            },
+            work,
+          )
+        : await work();
       // 8. store, after a successful run only
       this.store.set(slot, hash, outcome.result, Date.now());
       return {

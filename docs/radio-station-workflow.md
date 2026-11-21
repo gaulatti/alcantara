@@ -165,7 +165,10 @@ interceptor that runs after the authorization guard and reads the guard's
 `request.user` (`principalId`, `via: 'console'`); it changes no guard
 decision, and public routes carry no actor. An MCP action enters it through
 the `McpAttribution` provider bound under `MCP_ATTRIBUTION`
-(`via: 'mcp'` and the client name). The song engine reads the context once,
+(`via: 'mcp'` and the client name), which the action executor applies to every
+W, A and D run; which W capabilities change what is on air or queued, and which
+of those have a record to carry the actor, is classified in
+[MCP capabilities](./mcp-capabilities.md#tier-w-and-the-actor-213). The song engine reads the context once,
 when the command arrives (manual pick, Stop, queue enqueue, reorder, remove),
 and carries the value with the event or the active song, so the later write
 (Palazzo confirming the pick, the as-run insert) never reads it again. The

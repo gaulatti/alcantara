@@ -107,7 +107,7 @@ export interface McpActionExecutor {
   ): Promise<unknown>;
 }
 
-/** Bound by attribution (#213); receives the actor before A and D actions run. */
+/** Bound by attribution (#213); receives the actor before every W, A and D action runs. */
 export const MCP_ATTRIBUTION = Symbol('MCP_ATTRIBUTION');
 export interface McpAttribution {
   run<T>(

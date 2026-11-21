@@ -244,15 +244,16 @@ describe('MCP action framework through the registry', () => {
     await module.close();
   });
 
-  it('hands the attribution hook an A call and not a W call, when one is bound', async () => {
+  it('hands the attribution hook a W call and an A call, when one is bound', async () => {
     const { module, call, attribution } = await setup(true);
     await call('fake_write', { id: 1, idempotency_key: 'key-00000001' });
-    expect(attribution.run).not.toHaveBeenCalled();
+    expect(attribution.run).toHaveBeenCalledTimes(1);
     await call('fake_on_air', {
       id: 1,
       confirm: '1 Thing',
       idempotency_key: 'key-00000002',
     });
+    expect(attribution.run).toHaveBeenCalledTimes(2);
     expect(attribution.run).toHaveBeenCalledWith(
       { principalId: 'principal-1', via: 'mcp', client: 'claude-code' },
       expect.any(Function),

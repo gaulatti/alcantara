@@ -580,6 +580,87 @@ Metrics: `alcantara_access_requests_total{route,result}` and
 `alcantara_access_request_duration_seconds{route}` count the Pompeii calls
 ([Access](access-api.md)); the executor counts each tool call as usual.
 
+## Tier W and the actor (#213)
+
+The action executor wraps the run of every W, A and D action in the
+`MCP_ATTRIBUTION` provider (a dry run and a replay are not wrapped), so the actor
+(principal, `via: 'mcp'`, client name) is readable at command time. Wrapping
+records nothing by itself: a capability is attributed only where the engine
+reads `ActorContext` when the command arrives, and then carries the value with
+the event or the pending song, so a later timer never reads it. Today those
+readers are the song engine's stop, manual pick, enqueue, reorder and remove
+(`backend/src/radio/song-execution.engine.ts`), which write the as-run `ended`
+and `started` columns and the `song_queue_update`, `song_off_air` and
+`song_playback_active` events. Automatic transitions keep all three fields null.
+
+Every W capability, and whether it changes what is on air or queued:
+
+- **Queue**: changes the Play Next queue. Its actor is recorded.
+- **Live output**: its own `onAir` declaration (or its plan) says viewers or
+  listeners see the change at once, but the service writes no as-run row and
+  emits no engine operator event, so there is no record to attribute. The MCP
+  audit line (`McpAudit`, identity and tool) is the only trace; giving these a
+  record is a new mechanism and is not part of #213.
+- **No**: library, catalog or console-profile data, a proposal, or a value read
+  by a later (A-tier or automatic) start.
+
+| Capability | Defined at | Changes on air or queued | Actor recorded | Why |
+|---|---|---|---|---|
+| `destination_create_destination` | `backend/src/mcp/capabilities/destinations.ts:108` | No | - | Adds a catalog entry; nothing is selected or started. |
+| `destination_reorder_destinations` | `backend/src/mcp/capabilities/destinations.ts:134` | No | - | Catalog order only; a running stream keeps its destinations. |
+| `destination_update_destination` | `backend/src/mcp/capabilities/destinations.ts:155` | No | - | Display name and secret reference are read at the next start (an A row). |
+| `destination_retire_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Blocks future selection; a stream already out is not touched. |
+| `destination_restore_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Re-enables selection for a later start. |
+| `filler_prepare_television` | `backend/src/mcp/capabilities/filler.ts:36` | No | - | Its description: it does not change what is on air; the version is pending for the next session. |
+| `filler_prepare_radio` | `backend/src/mcp/capabilities/filler.ts:60` | No | - | Same: pending for the next recovery start, a running session keeps its version. |
+| `instant_create_instant` | `backend/src/mcp/capabilities/instants.ts:138` | No | - | A new library row; nothing names it yet. |
+| `instant_update_instant` | `backend/src/mcp/capabilities/instants.ts:167` | Live output | No record to write (see below) | Declares `onAir` while it plays as a scene background, is named by a scene on air or staged, or is in the rotation of a program with bumpers on (instants.ts:197). |
+| `layout_create` | `backend/src/mcp/capabilities/layouts.ts:84` | No | - | A new library row. |
+| `layout_update` | `backend/src/mcp/capabilities/layouts.ts:109` | Live output | No record to write (see below) | Declares `onAir` while a scene of the layout is on air (layouts.ts:131). |
+| `media_asset_create_background_audio` | `backend/src/mcp/capabilities/media-assets.ts:224` | No | - | A new library asset. |
+| `media_asset_replace_asset_labels` | `backend/src/mcp/capabilities/media-assets.ts:254` | No | - | Label membership of one asset; the spec declares no on-air effect. |
+| `media_asset_create_label` | `backend/src/mcp/capabilities/media-assets.ts:279` | No | - | A new, empty label. |
+| `media_asset_update_label` | `backend/src/mcp/capabilities/media-assets.ts:301` | Live output | No record to write (see below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:322). |
+| `media_asset_replace_label_assets` | `backend/src/mcp/capabilities/media-assets.ts:332` | Live output | No record to write (see below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:350). |
+| `media_group_create` | `backend/src/mcp/capabilities/media-groups.ts:88` | No | - | A new group; nothing assigns it. |
+| `media_group_update` | `backend/src/mcp/capabilities/media-groups.ts:114` | Live output | No record to write (see below) | Changes the media a live page may read; the spec declares no `onAir` flag (judgement: treated as live output, not as queue). |
+| `media_create` | `backend/src/mcp/capabilities/media.ts:88` | No | - | A new image row. |
+| `media_update` | `backend/src/mcp/capabilities/media.ts:106` | Live output | No record to write (see below) | Declares `onAir` while a group or scene on air reads the image (media.ts:131). |
+| `preference_publish` | `backend/src/mcp/capabilities/preferences.ts:106` | No | - | A shared console layout for operators; its plan says nothing on air changes. |
+| `preference_load` | `backend/src/mcp/capabilities/preferences.ts:158` | No | - | Copies a layout into the caller's own console profile. |
+| `preference_save` | `backend/src/mcp/capabilities/preferences.ts:195` | No | - | The caller's own console profile. |
+| `program_inspect_template` | `backend/src/mcp/capabilities/program.ts:201` | No | - | Fetches and reports a manifest; nothing is stored. |
+| `program_create_program` | `backend/src/mcp/capabilities/program.ts:213` | No | - | Its plan: the program starts empty and off air. |
+| `program_rename_program` | `backend/src/mcp/capabilities/program.ts:244` | Live output | No record to write (see below) | Declares `onAir` while the program has a scene, fade, song, queue, flight sequence or scene instant live (program.ts:269); players lose the old id. |
+| `program_remove_queued_program_song_by_id` | `backend/src/mcp/capabilities/program.ts:466` | Queue | Yes, through the executor's attribution wrap | Removes a Play Next entry: `ProgramService.removeQueuedProgramSong` -> `SongExecutionEngine.removeQueuedSong` (song-execution.engine.ts:682) reads the actor and emits `song_queue_update` with it. |
+| `program_add_scene_to_program` | `backend/src/mcp/capabilities/program.ts:498` | No | - | Assignment only; its plan: nothing goes on air. |
+| `program_add_media_group_to_program` | `backend/src/mcp/capabilities/program.ts:513` | No | - | Assignment only; takes effect when a scene or page reads it. |
+| `program_add_stinger_to_program` | `backend/src/mcp/capabilities/program.ts:530` | No | - | Assignment only; played by a later scene change. |
+| `program_create_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:270` | No | - | A new inactive sequence; its plan: it does not air until activated and started. |
+| `program_update_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:293` | Live output | No record to write (see below) | Declares `onAir` while the sequence runs (flight.ts:322): later cues of a running rundown change at once. Cues fire by timer, which reads no actor. |
+| `program_generate_tagged_log` | `backend/src/mcp/capabilities/flight.ts:333` | No | - | Returns a proposal; nothing is saved or aired. |
+| `program_fill_rundown` | `backend/src/mcp/capabilities/flight.ts:353` | No | - | Returns a proposal; nothing is saved or aired. |
+| `program_publish_flight_sequence_by_id` | `backend/src/mcp/capabilities/flight.ts:375` | Live output | No record to write (see below) | Schedules a log to start itself at its time; that start is automatic (timer) and stays null by design. |
+| `radio_similarity_upload` | `backend/src/mcp/capabilities/similarity.ts:87` | No | - | Embeddings for song similarity; they inform later automatic picks only. |
+| `radio_update_settings` | `backend/src/mcp/capabilities/radio.ts:204` | Live output | No record to write (see below) | Declares `onAir` for the live settings (radio.ts:225: Palazzo address, bumpers, segue, similarity, enabled). |
+| `radio_prepare_recovery` | `backend/src/mcp/capabilities/radio.ts:266` | No | - | A prepared version; a running session keeps its own. |
+| `radio_replace_now_playing_consumers` | `backend/src/mcp/capabilities/radio.ts:290` | No | - | Who is told what plays; not what plays. |
+| `scene_create` | `backend/src/mcp/capabilities/scenes.ts:112` | No | - | A new library scene. |
+| `scene_update` | `backend/src/mcp/capabilities/scenes.ts:147` | Live output | No record to write (see below) | Declares `onAir` while the scene is on air (scenes.ts:177): viewers see the change at once. |
+| `song_create` | `backend/src/mcp/capabilities/songs.ts:155` | No | - | A new catalog song. |
+| `song_update` | `backend/src/mcp/capabilities/songs.ts:173` | Live output | No record to write (see below) | Declares `onAir` while the song is playing (songs.ts:199); a queued song shows the change when it plays. |
+| `stinger_create_stinger` | `backend/src/mcp/capabilities/stingers.ts:84` | No | - | A new stinger. |
+| `stinger_update_stinger` | `backend/src/mcp/capabilities/stingers.ts:113` | Live output | No record to write (see below) | Declares `onAir` while a program that plays it has a scene or fade on air (stingers.ts:137). |
+| `revoke_my_token` | `backend/src/mcp/capabilities/access.ts:115` | No | - | Revokes the caller's own token. |
+| `import_media_from_url` | `backend/src/mcp/capabilities/media-import.ts:46` | No | - | Stores an upload; its plan: it creates no media asset and nothing changes on air. |
+
+`backend/src/as-run/as-run.actor.spec.ts` runs
+`program_remove_queued_program_song_by_id` through the real executor, the real
+attribution provider and the real engine: an MCP call carries the principal, `via: 'mcp'`
+and the client name, the console call carries `via: 'console'`, and an automatic
+queue update carries nothing. `mcp-action.executor.spec.ts` pins that W, A and D
+are wrapped and a dry run is not.
+
 ## Every registered capability by name (#220)
 
 `backend/src/mcp/mcp.docs.spec.ts` fails when a capability is registered but is not the first cell of a row in this file, or when a row names one that is not registered. Most capabilities have a row in the sections above; the ones below are listed here from the registry's own specs (name, permission, tier, first sentence of the description). Full arguments come from `list_capabilities`.

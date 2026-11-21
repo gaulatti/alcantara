@@ -47,9 +47,12 @@ turned into a real run).
    Different: `confirm_mismatch`.
 5. **Idempotency.** See below. A key reused with different arguments:
    `idempotency_reuse`.
-6. **Attribution.** For A and D, when `MCP_ATTRIBUTION` is bound, the run is
-   wrapped in `attribution.run({principalId, via: 'mcp', client}, work)`. W runs
-   directly, and so does everything when nothing is bound.
+6. **Attribution.** For W, A and D, when `MCP_ATTRIBUTION` is bound, the run is
+   wrapped in `attribution.run({principalId, via: 'mcp', client}, work)`; a dry
+   run and a replay are not. Everything runs directly when nothing is bound. The
+   wrap only makes the actor readable at command time: a capability records it
+   only where the engine reads it (see
+   [which W capabilities change what is on air or queued](./mcp-capabilities.md#tier-w-and-the-actor-213)).
 7. **Run.** The rate limit is recorded immediately before the run, in the same
    synchronous step as the last check, so concurrent calls cannot overspend it.
    A run that fails still counts: it may have acted.

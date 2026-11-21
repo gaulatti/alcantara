@@ -1,6 +1,15 @@
 import { Prisma } from '@prisma/client';
 import { ActorContext } from '../auth/actor-context';
 import { McpActorAttribution } from '../auth/mcp-actor-attribution';
+import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
+import type { McpContext } from '../mcp/contract';
+import { McpActionExecutor } from '../mcp/mcp-action.executor';
+import {
+  fakeServices,
+  specNamed,
+} from '../mcp/capabilities/capabilities.testing';
+import { ProgramMcpTools } from '../mcp/capabilities/program';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AsRunService } from './as-run.service';
 import {
   SongExecutionEngine,
@@ -672,5 +681,122 @@ describe('as-run attribution of operator actions', () => {
       'mcp',
       'claude-desktop',
     ]);
+  });
+  // Tier W (gaulatti/alcantara#213): program_remove_queued_program_song_by_id
+  // is the one W capability that reaches an engine path reading the actor. It
+  // runs through the real executor, the real attribution provider and the real
+  // engine; the console path enters the same context the interceptor does.
+  describe('tier W: program_remove_queued_program_song_by_id', () => {
+    const NAME = 'program_remove_queued_program_song_by_id';
+
+    function removal(s: ReturnType<typeof session>) {
+      const fakes = fakeServices();
+      fakes.programs.removeQueuedProgramSong.mockImplementation(
+        async (programId: string, entryId: string) => ({
+          songQueue: await s.engine.removeQueuedSong(programId, entryId),
+          version: 1,
+        }),
+      );
+      const spec = specNamed(
+        new ProgramMcpTools(
+          fakes.programs as never,
+          fakes.templates as never,
+        ).specs(),
+        NAME,
+      );
+      const metrics = new ManagedMetricsService();
+      metrics.registerMcpTools([NAME]);
+      const executor = new McpActionExecutor(
+        metrics,
+        new McpActorAttribution(),
+      );
+      const ctx = {
+        principal: {
+          subject: 'subject-mcp',
+          principalId: MCP.principalId,
+          permissions: new Set([ALCANTARA_PERMISSIONS.program.operate]),
+          client: MCP.client,
+        },
+      } as McpContext;
+      return {
+        spec,
+        mcp: (entryId: string, extra: Record<string, unknown> = {}) =>
+          executor.execute(
+            spec,
+            {
+              program_id: 'radio-1',
+              entry_id: entryId,
+              idempotency_key: `key-${entryId}`,
+              ...extra,
+            },
+            ctx,
+          ),
+        console: (entryId: string) =>
+          ActorContext.run(
+            CONSOLE,
+            () =>
+              fakes.programs.removeQueuedProgramSong(
+                'radio-1',
+                entryId,
+              ) as Promise<unknown>,
+          ),
+      };
+    }
+
+    const removed = (s: ReturnType<typeof session>) =>
+      s.events.filter((event) => event.type === 'song_queue_update');
+
+    it('is tier W, and an MCP call records the actor, via mcp and the client name', async () => {
+      const s = session();
+      const r = removal(s);
+      expect(r.spec.tier).toBe('W');
+      const [entry] = await s.engine.enqueueSong('radio-1', 'item-100');
+      s.events.length = 0;
+
+      await r.mcp(entry.id);
+
+      expect(removed(s)).toEqual([
+        expect.objectContaining({
+          actorPrincipalId: 'principal-mcp',
+          actorVia: 'mcp',
+          actorClient: 'claude-desktop',
+        }),
+      ]);
+    });
+
+    it('records via console for the console call, and nothing for a dry run or an automatic update', async () => {
+      const s = session();
+      const r = removal(s);
+      const [first, second] = [
+        (await s.engine.enqueueSong('radio-1', 'item-100'))[0],
+        (await s.engine.enqueueSong('radio-1', 'item-101'))[1],
+      ];
+      s.events.length = 0;
+
+      await r.mcp(first.id, { dry_run: true });
+      expect(removed(s)).toHaveLength(0);
+
+      await r.console(first.id);
+      expect(removed(s)).toEqual([
+        expect.objectContaining({
+          actorPrincipalId: 'principal-console',
+          actorVia: 'console',
+          actorClient: null,
+        }),
+      ]);
+
+      s.events.length = 0;
+      await s.engine.removeQueuedSong('radio-1', second.id);
+      expect(removed(s)).toHaveLength(1);
+      expect(removed(s)[0].actorVia).toBeUndefined();
+    });
+
+    it('does not let a later timer read the MCP actor', async () => {
+      const s = session();
+      const r = removal(s);
+      const [entry] = await s.engine.enqueueSong('radio-1', 'item-100');
+      await r.mcp(entry.id);
+      expect(ActorContext.current()).toBeNull();
+    });
   });
 });

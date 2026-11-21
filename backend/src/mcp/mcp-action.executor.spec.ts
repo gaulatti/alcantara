@@ -879,7 +879,7 @@ describe('McpActionExecutor', () => {
   });
 
   describe('attribution', () => {
-    it('wraps the run of an A and a D with the actor, and not a W', async () => {
+    it('wraps the run of a W, an A and a D with the actor, on the same path', async () => {
       attribution = {
         run: jest.fn(<T>(_actor: unknown, work: () => Promise<T>) => work()),
       } as unknown as jest.Mocked<McpAttribution>;
@@ -889,21 +889,28 @@ describe('McpActionExecutor', () => {
       const d = fake('D');
       await executor.execute(
         w.spec,
-        { idempotency_key: KEY, title: 't' },
+        { idempotency_key: KEY, title: 't', dry_run: true },
         ctxFor(),
       );
       expect(attribution!.run).not.toHaveBeenCalled();
+      await executor.execute(
+        w.spec,
+        { idempotency_key: KEY, title: 't' },
+        ctxFor(),
+      );
+      expect(attribution!.run).toHaveBeenCalledTimes(1);
       for (const f of [a, d])
         await executor.execute(
           f.spec,
           { idempotency_key: KEY, title: 't', confirm: confirmFor('t') },
           ctxFor(),
         );
-      expect(attribution!.run).toHaveBeenCalledTimes(2);
+      expect(attribution!.run).toHaveBeenCalledTimes(3);
       expect(attribution!.run).toHaveBeenCalledWith(
         { principalId: 'principal-1', via: 'mcp', client: 'test-client' },
         expect.any(Function),
       );
+      expect(w.runs).toHaveLength(1);
       expect(a.runs).toHaveLength(1);
     });
 
