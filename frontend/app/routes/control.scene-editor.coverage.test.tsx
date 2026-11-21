@@ -128,3 +128,24 @@ it("chooses, takes and stops the scene's background audio", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "STOP BG" }));
   await waitFor(() => expect(server.calls.some((call) => call.path === "/program/main/scene-instant/stop")).toBe(true));
 });
+
+// What the editor starts from for each component of a staged scene: its
+// defaults, then the scene's own settings, reading the older shared keys
+// (fifthbell, toni-chyron, toni-clock) where a component kept them before.
+it.each([
+  ["fifthbell-content", {}, (props: any) => expect(Array.isArray(props.weatherCities) && props.weatherCities.length).toBeTruthy()],
+  ["reloj-digital-loop-clock", {}, (props: any) => expect(props.textSequence?.items?.length).toBe(1)],
+  ["modoitaliano-chyron", {}, (props: any) => expect(props.ctaSequence?.items?.length).toBe(1)],
+  ["modoitaliano-giorgia-chyron", {}, (props: any) => expect(props.textSequence?.items?.[0]?.useMarquee).toBe(false)],
+  ["fifthbell", {}, (props: any) => expect(Array.isArray(props.weatherCities)).toBe(true)],
+  ["fifthbell-marquee", { fifthbell: { tone: "legacy" }, "fifthbell-marquee": { speed: 3 } }, (props: any) => expect(props).toMatchObject({ tone: "legacy", speed: 3 })],
+  ["fifthbell-chyron", { "toni-chyron": { a: 1 }, "fifthbell-chyron": { b: 2 } }, (props: any) => expect(props).toMatchObject({ a: 1, b: 2 })],
+  ["fifthbell-corner", { fifthbell: { c: 1 }, "toni-clock": { d: 2 }, "fifthbell-corner": { e: 3 } }, (props: any) => expect(props).toMatchObject({ c: 1, d: 2, e: 3 })],
+])("saves %s with its defaults and the scene's own settings", async (componentType, metadata, check) => {
+  const scene = open(metadata as Record<string, unknown>, componentType as string);
+  server.answer("PUT /scenes/1", () => Response.json(scene));
+  fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(server.requests("PUT /scenes/1").length).toBeGreaterThan(0));
+  const [saved] = server.requests("PUT /scenes/1") as Array<{ metadata: Record<string, unknown> }>;
+  (check as (props: unknown) => void)(saved.metadata[componentType as string]);
+});
