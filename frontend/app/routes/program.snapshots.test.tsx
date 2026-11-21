@@ -190,3 +190,35 @@ it("keeps the stingers when a stinger change cannot be reloaded", async () => {
   );
   expect(screen.getByText("Fictional on-air headline")).toBeInTheDocument();
 });
+
+// gaulatti/alcantara#195: an update is applied only when its version is newer
+// than the last one applied for that topic, so a late older message never
+// replaces what is on air.
+it("puts a newer program snapshot on air and ignores an older one that arrives late", async () => {
+  openOnAirPage();
+  await advance(1000);
+  expect(screen.getByText("Fictional on-air headline")).toBeInTheDocument();
+
+  await act(async () => {
+    sse.onMessage?.({
+      type: "program_state_snapshot",
+      version: 5,
+      state: { ...state("Fictional newer headline"), activeSceneId: 8, activeScene: { ...onAir("Fictional newer headline"), id: 8 } },
+    });
+  });
+  await advance(1000);
+  expect(screen.getByText("Fictional newer headline")).toBeInTheDocument();
+
+  await act(async () => {
+    sse.onMessage?.({
+      type: "program_state_snapshot",
+      version: 4,
+      state: state("Fictional late older headline"),
+    });
+  });
+  await advance(1000);
+  expect(screen.getByText("Fictional newer headline")).toBeInTheDocument();
+  expect(
+    screen.queryByText("Fictional late older headline"),
+  ).not.toBeInTheDocument();
+});
