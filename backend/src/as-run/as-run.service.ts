@@ -26,6 +26,13 @@ import {
 
 const INFERRED_FILTERS: readonly string[] = ['include', 'only', 'exclude'];
 
+type AsRunRecordRow = Prisma.AsRunRecordGetPayload<object>;
+
+/** Rows read per query by the export and the royalty summary (#237). */
+export const AS_RUN_PAGE_SIZE = 1000;
+/** The export window when the request names no `from` (#237). */
+export const AS_RUN_EXPORT_DEFAULT_DAYS = 31;
+
 export function escapeCsvField(
   value: string | number | boolean | Date | null | undefined,
 ): string {
@@ -281,6 +288,24 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     return { songId: null, assetId: null };
   }
 
+  /**
+   * The window an export reads: the request's dates, and without `from` the
+   * AS_RUN_EXPORT_DEFAULT_DAYS before `to` (or now), so an export is never
+   * unbounded (#237). export() and countExportRows() share it.
+   */
+  exportWindow(query: AsRunExportQuery): { from: Date; to?: Date } {
+    const { from, to } = this.parseExportDates(query);
+    return {
+      from:
+        from ??
+        new Date(
+          (to ?? new Date()).getTime() -
+            AS_RUN_EXPORT_DEFAULT_DAYS * 24 * 60 * 60 * 1000,
+        ),
+      to,
+    };
+  }
+
   parseExportDates(query: AsRunExportQuery): { from?: Date; to?: Date } {
     let from: Date | undefined;
     let to: Date | undefined;
@@ -310,7 +335,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('format must be csv or soundexchange');
     }
 
-    const { from, to } = this.parseExportDates(query);
+    const { from, to } = this.exportWindow(query);
 
     if (rawFormat === 'csv') {
       if (query.inferred !== undefined) {
@@ -346,7 +371,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     query: AsRunExportQuery,
   ): Promise<number> {
-    const { from, to } = this.parseExportDates(query);
+    const { from, to } = this.exportWindow(query);
     const atFilter: { gte?: Date; lte?: Date } = {};
     if (from) atFilter.gte = from;
     if (to) atFilter.lte = to;
@@ -369,30 +394,10 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     if (from) atFilter.gte = from;
     if (to) atFilter.lte = to;
 
-    const records = await this.prisma.asRunRecord.findMany({
-      where: {
-        programId,
-        ...(from || to ? { at: atFilter } : {}),
-      },
-      orderBy: { at: 'asc' },
-    });
-
-    const songIds = Array.from(
-      new Set(
-        records
-          .map((r) => r.songId)
-          .filter((id): id is number => typeof id === 'number'),
-      ),
-    );
-
-    const songs = songIds.length
-      ? await this.prisma.song.findMany({
-          where: { id: { in: songIds } },
-          select: { id: true, title: true, artist: true },
-        })
-      : [];
-
-    const songMap = new Map(songs.map((s) => [s.id, s]));
+    const songMap = new Map<
+      number,
+      { id: number; title: string; artist: string }
+    >();
 
     const header = [
       'id',
@@ -414,33 +419,76 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
 
     const lines = [header];
 
-    for (const r of records) {
-      const song = r.songId !== null ? songMap.get(r.songId) : undefined;
-      const title = song?.title ?? '';
-      const artist = song?.artist ?? '';
+    // #237: read in pages, resolving each page's songs once.
+    for await (const records of this.recordPages({
+      programId,
+      ...(from || to ? { at: atFilter } : {}),
+    })) {
+      const missing = Array.from(
+        new Set(
+          records
+            .map((r) => r.songId)
+            .filter(
+              (id): id is number => typeof id === 'number' && !songMap.has(id),
+            ),
+        ),
+      );
+      if (missing.length) {
+        for (const song of await this.prisma.song.findMany({
+          where: { id: { in: missing } },
+          select: { id: true, title: true, artist: true },
+        }))
+          songMap.set(song.id, song);
+      }
+      for (const r of records) {
+        const song = r.songId !== null ? songMap.get(r.songId) : undefined;
+        const title = song?.title ?? '';
+        const artist = song?.artist ?? '';
 
-      const row = [
-        escapeCsvField(r.id),
-        escapeCsvField(r.programId),
-        escapeCsvField(r.songId),
-        escapeCsvField(r.assetId),
-        escapeCsvField(title),
-        escapeCsvField(artist),
-        escapeCsvField(r.state),
-        escapeCsvField(r.at.toISOString()),
-        escapeCsvField(r.createdAt.toISOString()),
-        escapeCsvField(r.inferred === true),
-        escapeCsvField(r.reviewFlag),
-        escapeCsvField(r.endReason),
-        escapeCsvField(r.actorPrincipalId),
-        escapeCsvField(r.actorVia),
-        escapeCsvField(r.actorClient),
-      ].join(',');
+        const row = [
+          escapeCsvField(r.id),
+          escapeCsvField(r.programId),
+          escapeCsvField(r.songId),
+          escapeCsvField(r.assetId),
+          escapeCsvField(title),
+          escapeCsvField(artist),
+          escapeCsvField(r.state),
+          escapeCsvField(r.at.toISOString()),
+          escapeCsvField(r.createdAt.toISOString()),
+          escapeCsvField(r.inferred === true),
+          escapeCsvField(r.reviewFlag),
+          escapeCsvField(r.endReason),
+          escapeCsvField(r.actorPrincipalId),
+          escapeCsvField(r.actorVia),
+          escapeCsvField(r.actorClient),
+        ].join(',');
 
-      lines.push(row);
+        lines.push(row);
+      }
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * The records matching `where`, in time order, AS_RUN_PAGE_SIZE at a time
+   * (#237): no read loads a whole window at once.
+   */
+  private async *recordPages(
+    where: Prisma.AsRunRecordWhereInput,
+  ): AsyncGenerator<AsRunRecordRow[]> {
+    let cursor: number | undefined;
+    for (;;) {
+      const page = await this.prisma.asRunRecord.findMany({
+        where,
+        orderBy: [{ at: 'asc' }, { id: 'asc' }],
+        take: AS_RUN_PAGE_SIZE,
+        ...(cursor !== undefined ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (page.length) yield page;
+      if (page.length < AS_RUN_PAGE_SIZE) return;
+      cursor = page[page.length - 1].id;
+    }
   }
 
   async exportSoundExchange(
@@ -508,20 +556,33 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
     if (from) atFilter.gte = from;
     if (to) atFilter.lte = to;
 
-    const records = (
-      await this.prisma.asRunRecord.findMany({
-        where: {
-          programId,
-          state: 'ended',
-          ...(from || to ? { at: atFilter } : {}),
-          ...(inferred === 'include' ? {} : { inferred: inferred === 'only' }),
-        },
-        orderBy: { at: 'asc' },
-      })
-    ).filter(
-      // A preempted announced song is recorded, never counted.
-      (r) => !AS_RUN_UNCOUNTED_END_REASONS.includes(r.endReason ?? ''),
-    );
+    // #237: read the window in pages and keep only one record per sound
+    // recording, so memory follows the distinct recordings, not the plays.
+    const performanceCounts = new Map<
+      string,
+      { count: number; record: AsRunRecordRow }
+    >();
+    for await (const page of this.recordPages({
+      programId,
+      state: 'ended',
+      ...(from || to ? { at: atFilter } : {}),
+      ...(inferred === 'include' ? {} : { inferred: inferred === 'only' }),
+    })) {
+      for (const r of page) {
+        // A preempted announced song is recorded, never counted.
+        if (AS_RUN_UNCOUNTED_END_REASONS.includes(r.endReason ?? '')) continue;
+        const key =
+          r.songId !== null
+            ? `song:${r.songId}`
+            : r.assetId !== null
+              ? `asset:${r.assetId}`
+              : `record:${r.id}`;
+        const existing = performanceCounts.get(key);
+        if (existing) existing.count += 1;
+        else performanceCounts.set(key, { count: 1, record: r });
+      }
+    }
+    const records = [...performanceCounts.values()].map(({ record }) => record);
 
     const songIds = Array.from(
       new Set(
@@ -555,28 +616,6 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
 
     const songMap = new Map(songs.map((s) => [s.id, s]));
     const assetMap = new Map(assets.map((a) => [a.id, a]));
-
-    // Aggregate performances by unique sound recording
-    const performanceCounts = new Map<
-      string,
-      { count: number; record: (typeof records)[0] }
-    >();
-
-    for (const r of records) {
-      const key =
-        r.songId !== null
-          ? `song:${r.songId}`
-          : r.assetId !== null
-            ? `asset:${r.assetId}`
-            : `record:${r.id}`;
-
-      const existing = performanceCounts.get(key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        performanceCounts.set(key, { count: 1, record: r });
-      }
-    }
 
     return [...performanceCounts.values()].map(({ count, record }) => {
       const song =

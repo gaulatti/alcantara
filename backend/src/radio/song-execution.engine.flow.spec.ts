@@ -153,6 +153,7 @@ function setup(
     recordHighRotationFavorites: jest.fn(),
     recordAutomaticPrograms: jest.fn(),
     recordEngineResync: jest.fn(),
+    recordEngineDegraded: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -1788,5 +1789,94 @@ describe('SongExecutionEngine after a failed song command', () => {
     jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
     await flush(80);
     expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+  });
+});
+
+// gaulatti/alcantara#237: every engine path that degrades instead of failing
+// says so once at warn, with the program and the error class only, and counts.
+describe('degraded engine paths are logged and counted', () => {
+  const degraded = (ctx: ReturnType<typeof setup>) => {
+    const warn = jest
+      .spyOn(ctx.engine['logger'], 'warn')
+      .mockImplementation(() => undefined);
+    return warn;
+  };
+
+  it('an unreadable Palazzo state at resync', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    ctx.currentState.mockRejectedValueOnce(new TypeError('secret detail'));
+    await ctx.engine['resync']('radio-1', 'watchdog');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'Resync could not read Palazzo state for radio-1 (TypeError)',
+    );
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+      'telemetry_state',
+    );
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'unavailable',
+    );
+  });
+
+  it('unreadable radio settings when an announced bumper ends', async () => {
+    const ctx = setup();
+    const state = ctx.engine['ensureState']('radio-1');
+    state.announcement = {
+      status: 'accepted',
+      forRequestId: 'ended-1',
+      bumper: { index: 0, name: 'Spot' },
+    } as never;
+    state.nextBumperIdx = 4;
+    const warn = degraded(ctx);
+    ctx.radioService.getRadioSettings.mockRejectedValueOnce(
+      new Error('secret detail'),
+    );
+    await ctx.engine['bumperAtEnd']('radio-1', 'ended-1');
+    expect(state.nextBumperIdx).toBe(4);
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes('radio settings unreadable'),
+      ),
+    ).toEqual([
+      [
+        'Bumper sequence not advanced on radio-1: radio settings unreadable (Error)',
+      ],
+    ]);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+      'bumper_settings',
+    );
+  });
+
+  it('a bumper attempt that fails before its send', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    ctx.radioService.getRadioSettings.mockRejectedValueOnce(
+      new RangeError('secret detail'),
+    );
+    await ctx.engine['maybeBumper']('radio-1');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'Bumper attempt failed before its send on radio-1 (RangeError)',
+    );
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+      'bumper_attempt',
+    );
+    expect(ctx.radioService.playInstant).not.toHaveBeenCalled();
+  });
+
+  it('never logs the error message', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    ctx.currentState.mockRejectedValueOnce('a thrown string');
+    await ctx.engine['resync']('radio-1', 'watchdog');
+    expect(warn).toHaveBeenCalledWith(
+      'Resync could not read Palazzo state for radio-1 (string)',
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret');
   });
 });

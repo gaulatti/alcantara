@@ -52,6 +52,7 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     recordListenerConfiguration: jest.fn(),
     recordAnalysisDrop: jest.fn(),
     recordCueGroup: jest.fn(),
+    recordEngineDegraded: jest.fn(),
   };
   const service = new RadioService(prisma, palazzo, config, metrics);
   jest.spyOn(service['logger'], 'error').mockImplementation();
@@ -705,13 +706,23 @@ describe('RadioService coverage', () => {
 
   describe('playSong', () => {
     it('returns not ok when radio settings are missing', async () => {
-      const { service, prisma, palazzo } = build();
+      const { service, prisma, palazzo, metrics } = build();
+      const warn = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation(() => undefined);
       prisma.programState.findUnique.mockResolvedValue({
         id: 1,
         radioSettings: null,
       });
       await expect(service.playSong('p', 'u')).resolves.toEqual({ ok: false });
       expect(palazzo.playSong).not.toHaveBeenCalled();
+      // #237: said once and counted, never silent.
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('Radio settings missing for program p');
+      expect(metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+      expect(metrics.recordEngineDegraded).toHaveBeenCalledWith(
+        'radio_settings_missing',
+      );
     });
 
     it('plays with the trimmed supplied request id and returns palazzo ids', async () => {

@@ -194,7 +194,12 @@ subscribers only.
 
 **Export rules.** `GET /program/:programId/as-run` (permission `alcantara:radio:read`):
 
-- `format=csv` (default) lists every record, with `inferred` (`true`/`false`),
+- Every export has a window (gaulatti/alcantara#237). `from` and `to` are
+  optional ISO 8601 dates; without `from` the window is the 31 days before
+  `to`, or before now when `to` is omitted too (`AS_RUN_EXPORT_DEFAULT_DAYS`).
+  To export more, pass an earlier `from`. Records are read 1,000 at a time
+  (`AS_RUN_PAGE_SIZE`), in time order.
+- `format=csv` (default) lists every record of the window, with `inferred` (`true`/`false`),
   `reviewFlag`, `endReason`, `actorPrincipalId`, `actorVia` and `actorClient`
   columns at the end, in that order (each was appended last when added; the
   actor columns are empty for automatic rows). `format=soundexchange` keeps its

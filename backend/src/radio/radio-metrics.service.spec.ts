@@ -195,3 +195,38 @@ describe('RadioMetricsService engine resyncs', () => {
     });
   });
 });
+
+// gaulatti/alcantara#237: engine paths that degrade instead of failing.
+describe('RadioMetricsService engine degraded paths', () => {
+  it('renders every site from zero and counts each by its bounded site', () => {
+    const metrics = new RadioMetricsService();
+    const fresh = metrics.render();
+    expect(fresh).toContain(
+      '# TYPE alcantara_radio_engine_degraded_total counter',
+    );
+    for (const site of [
+      'telemetry_state',
+      'bumper_settings',
+      'bumper_attempt',
+      'radio_settings_missing',
+    ])
+      expect(fresh).toContain(
+        `alcantara_radio_engine_degraded_total{site="${site}"} 0`,
+      );
+    metrics.recordEngineDegraded('bumper_attempt');
+    metrics.recordEngineDegraded('bumper_attempt');
+    metrics.recordEngineDegraded('telemetry_state');
+    metrics.recordEngineDegraded('unbounded' as never);
+    const rendered = metrics.render();
+    expect(rendered).toContain(
+      'alcantara_radio_engine_degraded_total{site="bumper_attempt"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_degraded_total{site="telemetry_state"} 1',
+    );
+    expect(rendered).not.toContain('unbounded');
+    expect(
+      rendered.match(/^alcantara_radio_engine_degraded_total\{/gm),
+    ).toHaveLength(4);
+  });
+});

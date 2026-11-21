@@ -23,10 +23,7 @@ import {
   validateSongLoudness,
   validateSongSegue,
 } from './palazzo-machine.client';
-import {
-  isLocalMediaUrl,
-  localMediaEnvironment,
-} from '../config/local-media';
+import { isLocalMediaUrl, localMediaEnvironment } from '../config/local-media';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
   MAX_WINDOW_SECONDS,
@@ -511,7 +508,13 @@ export class RadioService {
     introPlaybackId?: string | null;
   }> {
     const settings = await this.getRadioSettings(programId);
-    if (!settings) return { ok: false };
+    if (!settings) {
+      // #237: a song command for a program with no radio settings is refused;
+      // say so instead of answering ok:false silently.
+      this.logger.warn(`Radio settings missing for program ${programId}`);
+      this.metrics.recordEngineDegraded('radio_settings_missing');
+      return { ok: false };
+    }
     const requestId = playbackRequestId?.trim() || randomUUID();
 
     const {

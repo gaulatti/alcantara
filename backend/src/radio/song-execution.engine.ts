@@ -1238,8 +1238,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     let snapshot: PalazzoPlaybackState | null = null;
     try {
       snapshot = (await this.telemetry?.currentState?.(programId)) ?? null;
-    } catch {
+    } catch (error) {
       snapshot = null;
+      this.logger.warn(
+        `Resync could not read Palazzo state for ${programId} (${errorClass(error)})`,
+      );
+      this.metrics.recordEngineDegraded('telemetry_state');
     }
     if (!snapshot) {
       this.metrics.recordEngineResync(trigger, 'unavailable');
@@ -3436,8 +3440,12 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         const settings = await this.radioService.getRadioSettings(programId);
         const length = settings?.bumperInstantIds.length ?? 0;
         if (length) state.nextBumperIdx = (spot.index + 1) % length;
-      } catch {
-        /* the sequence stays where it was */
+      } catch (error) {
+        // The sequence stays where it was.
+        this.logger.warn(
+          `Bumper sequence not advanced on ${programId}: radio settings unreadable (${errorClass(error)})`,
+        );
+        this.metrics.recordEngineDegraded('bumper_settings');
       }
       state.bumperChoice = null;
       this.logger.log(`Bumper: ${spot.name} on ${programId} (announced)`);
@@ -3536,8 +3544,11 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Bumper: ${inst.name} on ${programId}`);
       this.recordBumperMetric('command', 'sent');
       await new Promise((r) => setTimeout(r, 8000));
-    } catch {
-      /* silent */
+    } catch (error) {
+      this.logger.warn(
+        `Bumper attempt failed before its send on ${programId} (${errorClass(error)})`,
+      );
+      this.metrics.recordEngineDegraded('bumper_attempt');
     }
   }
 
@@ -3744,4 +3755,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Broadcast error: ${e}`);
     }
   }
+}
+
+/** The class of a caught value, safe to log: never its message (#237). */
+function errorClass(error: unknown): string {
+  if (error instanceof Error) return error.name || 'Error';
+  return typeof error;
 }

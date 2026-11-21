@@ -496,22 +496,36 @@ describe('AsRunService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('defaults format to csv when omitted', async () => {
+    it('defaults format to csv and the window to the last 31 days when omitted', async () => {
+      jest.useFakeTimers({ now: new Date('2026-11-21T00:00:00Z') });
       const spy = jest
         .spyOn(service, 'exportCsv')
         .mockResolvedValueOnce('csv-data');
       const res = await service.export('p1', {});
+      jest.useRealTimers();
       expect(res).toBe('csv-data');
-      expect(spy).toHaveBeenCalledWith('p1', undefined, undefined);
+      expect(spy).toHaveBeenCalledWith(
+        'p1',
+        new Date('2026-10-21T00:00:00Z'),
+        undefined,
+      );
     });
 
     it('delegates to exportSoundExchange when format is soundexchange', async () => {
       const spy = jest
         .spyOn(service, 'exportSoundExchange')
         .mockResolvedValueOnce('sx-data');
-      const res = await service.export('p1', { format: 'soundexchange' });
+      const res = await service.export('p1', {
+        format: 'soundexchange',
+        to: '2026-11-11T00:00:00Z',
+      });
       expect(res).toBe('sx-data');
-      expect(spy).toHaveBeenCalledWith('p1', undefined, undefined, 'include');
+      expect(spy).toHaveBeenCalledWith(
+        'p1',
+        new Date('2026-10-11T00:00:00Z'),
+        new Date('2026-11-11T00:00:00Z'),
+        'include',
+      );
     });
   });
 

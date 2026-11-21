@@ -70,6 +70,24 @@ export type EngineResyncResult =
   | 'playing'
   | 'unavailable'
   | 'undecided';
+/**
+ * Engine paths that degrade instead of failing (#237): Palazzo state unreadable
+ * at resync, radio settings unreadable when advancing the bumper sequence, a
+ * bumper attempt that failed before its send, and a command with no radio
+ * settings for the program.
+ */
+export type EngineDegradedSite =
+  | 'telemetry_state'
+  | 'bumper_settings'
+  | 'bumper_attempt'
+  | 'radio_settings_missing';
+export const ENGINE_DEGRADED_SITES: EngineDegradedSite[] = [
+  'telemetry_state',
+  'bumper_settings',
+  'bumper_attempt',
+  'radio_settings_missing',
+];
+
 const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
   'foreign_ended',
   'watchdog',
@@ -424,6 +442,7 @@ export class RadioMetricsService {
   private staleTelemetryPrograms = 0;
   private readonly trackTransitions = new Map<string, number>();
   private readonly engineResyncs = new Map<string, number>();
+  private readonly engineDegraded = new Map<EngineDegradedSite, number>();
   private readonly introTransitions = new Map<string, number>();
   private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
@@ -499,6 +518,12 @@ export class RadioMetricsService {
   ): void {
     const key = `${trigger}:${result}`;
     this.engineResyncs.set(key, (this.engineResyncs.get(key) ?? 0) + 1);
+  }
+
+  /** An engine path that degraded instead of failing (#237). */
+  recordEngineDegraded(site: EngineDegradedSite): void {
+    if (!ENGINE_DEGRADED_SITES.includes(site)) return;
+    this.engineDegraded.set(site, (this.engineDegraded.get(site) ?? 0) + 1);
   }
 
   /** A song Palazzo could not load (`playout.request_failed`), by reason. */
@@ -745,6 +770,14 @@ export class RadioMetricsService {
           lines.push(
             `alcantara_radio_engine_resyncs_total{trigger="${trigger}",result="${result}"} ${this.engineResyncs.get(`${trigger}:${result}`) ?? 0}`,
           );
+    lines.push(
+      '# HELP alcantara_radio_engine_degraded_total Song engine paths that degraded instead of failing, by site.',
+      '# TYPE alcantara_radio_engine_degraded_total counter',
+    );
+    for (const site of ENGINE_DEGRADED_SITES)
+      lines.push(
+        `alcantara_radio_engine_degraded_total{site="${site}"} ${this.engineDegraded.get(site) ?? 0}`,
+      );
     lines.push(
       '# HELP alcantara_radio_intro_transitions_total Atomic song-intro lifecycle transitions by bounded result.',
       '# TYPE alcantara_radio_intro_transitions_total counter',

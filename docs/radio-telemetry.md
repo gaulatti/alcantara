@@ -319,6 +319,24 @@ bearer value never appears in metric labels, logs, build arguments or the
 container environment, and the Prometheus scrape job and its credential file
 belong to the observability repository (milano).
 
+### Degraded engine paths (#237)
+
+`alcantara_radio_engine_degraded_total{site}` counts the engine paths that carry
+on in a degraded way instead of failing. Each one also logs one warning naming
+the program and the error class, never the error message:
+
+- `telemetry_state`: a resync could not read Palazzo's state (`Resync could not
+  read Palazzo state for <program> (<class>)`); the resync then records
+  `unavailable`.
+- `bumper_settings`: the radio settings could not be read when an announced
+  bumper ended, so the bumper sequence stays where it was.
+- `bumper_attempt`: the bumper path failed before its send, for example
+  because the settings or the instant could not be read. No spot plays.
+- `radio_settings_missing`: a song command for a program without radio
+  settings, answered `ok: false` (`Radio settings missing for program <id>`).
+
+Every site is rendered from zero.
+
 ### Engine resyncs (#230)
 
 `alcantara_radio_engine_resyncs_total{trigger,result}` counts the times the song
