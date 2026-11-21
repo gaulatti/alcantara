@@ -222,19 +222,24 @@ same segue and loudness the song command would carry; with segue off, neither.
   moving the cursor or recording selection metrics. Selection is unchanged: at
   the end the engine selects exactly as before and promotes the announced song
   only if it is the one selected.
-- **Only an order-determined successor.** A playlist successor is announced
-  only when it is the same whenever the end happens: the selection is worked
-  out as if the song ended now, at its expected end, and one and ten minutes
-  later, each time stamping the advanced cursor with that time as the end does.
-  If the results differ, the successor depends on the clock (selection by
-  elapsed time from a playlist start time, a timed nested sequence, high
-  rotation becoming due) and nothing is announced: the end goes by today's
-  command. Since #176 the playlist resumes at its cursor item by position, so
-  the song after a queued song is order-determined and announced; a high
-  rotation favorite coming due before the end is the usual clock-dependent
-  case.
+- **Chosen once, for the expected end, and held (2026-11-21).** The playlist
+  successor is selected once, for the instant the song is expected to end
+  (Palazzo's last position report, else its start plus its duration), with the
+  same selection the end runs: high rotation, the similarity pick, else the
+  cursor. That instant is kept with the announcement: a refresh for the same
+  song selects at it again, and at the handoff the engine selects at it too,
+  so the announced song is what plays and is promoted with no command, even
+  when the song ends late. A favourite that comes due between that instant and
+  the real end waits for the next change. Before this, the successor was
+  probed at now, the expected end, and one and ten minutes later, and left
+  unannounced when the probes disagreed: with high rotation (a favourite due
+  every 30 min) that was about half of all songs, and on 2026-11-21 01:13Z to
+  01:30Z nothing was announced at all. A queue change, an operator pick or a
+  sequence, mode or cursor change still re-announces or withdraws as below,
+  and the end then follows that change.
 - **Not announced** when a clocked flight log runs, the successor has an
-  intro, there is no successor, or Palazzo answered 404 (an older Palazzo;
+  intro, there is no successor, the queue head is already on air, or Palazzo
+  answered 404 (an older Palazzo;
   nothing more is announced to it until its boot changes). A bumper slot is
   announced only to a Palazzo that lists `next.bumper` (see below); for any
   other Palazzo the bumper slot is not announced either. Each song left

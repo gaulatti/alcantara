@@ -269,6 +269,12 @@ interface NextAnnouncement {
   replaces: NextAnnouncement | null;
   /** The spot Palazzo plays before it, when announced with one (palazzo#50). */
   bumper?: BumperChoice | null;
+  /**
+   * The instant a playlist successor was selected for (the expected end),
+   * held through the end: the handoff selects at it again, so it plays this
+   * choice. Null for a queue head.
+   */
+  selectAt?: number | null;
 }
 
 /** The spot chosen for a bumper slot, once per song (gaulatti/alcantara#232). */
@@ -285,8 +291,6 @@ interface BumperChoice {
 
 const MAX_PREEMPTED_REQUEST_IDS = 32;
 /** How late after the expected end a successor must still be the same to be announced. */
-const CLOCK_PROBE_LATE_MS = 60_000;
-const CLOCK_PROBE_LATER_MS = 600_000;
 
 /**
  * Moves every cursor stamp the end's advance wrote (at or after `from`) to
@@ -1680,7 +1684,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
       return;
     }
-    const { leaf, queueEntryId, bumper } = successor;
+    const { leaf, queueEntryId, bumper, selectAt } = successor;
     if (
       current &&
       current.itemId === leaf.id &&
@@ -1704,6 +1708,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       replaces:
         current?.status === 'accepted' ? current : (current?.replaces ?? null),
       bumper,
+      selectAt,
     };
     state.announcement = announcement;
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
@@ -1773,6 +1778,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         leaf: ProgramResolvedSongLeaf & { audioUrl: string };
         queueEntryId: string | null;
         bumper: BumperChoice | null;
+        selectAt: number | null;
       }
     | { skip: AnnouncementSkipReason }
   > {
@@ -1791,8 +1797,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (this.flightService.isClockedLogRunning(programId)) {
       return { skip: 'clocked_log' };
     }
-    const successor = this.peekSuccessor(programId, state, song);
-    if (!successor) return { skip: 'no_successor' };
+    const held =
+      state.announcement?.forRequestId === song.playbackRequestId
+        ? state.announcement.selectAt
+        : null;
+    const successor = this.peekSuccessor(programId, state, song, held);
+    if ('skip' in successor) {
+      this.logger.log(
+        `Next song not announced on ${programId}: ${successor.skip} (${successor.detail})`,
+      );
+      return { skip: successor.skip };
+    }
     const settings = await this.radioService.getRadioSettings(programId);
     let bumper: BumperChoice | null = null;
     if (
@@ -1883,29 +1898,36 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     programId: string,
     state: SongEngineState,
     song: ActiveSong,
-  ): {
-    leaf: ProgramResolvedSongLeaf & { audioUrl: string };
-    queueEntryId: string | null;
-  } | null {
+    heldSelectAt?: number | null,
+  ):
+    | {
+        leaf: ProgramResolvedSongLeaf & { audioUrl: string };
+        queueEntryId: string | null;
+        /** The instant a playlist successor was selected for; null for a queue head. */
+        selectAt: number | null;
+      }
+    | {
+        skip: 'no_successor' | 'queue_head_active';
+        detail: string;
+      } {
     const { next, hasSuccessor } = this.sequenceAfterEnd(state.sequence, song);
     const head = state.queue.find((entry) => entry.id !== song.queueEntryId);
     if (head) {
-      if (head.active) return null;
+      if (head.active) {
+        return { skip: 'queue_head_active', detail: 'queue head on air' };
+      }
       const leaf = findUniqueProgramSongLeafById(next, head.itemId);
       return leaf?.audioUrl
         ? {
             leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
             queueEntryId: head.id,
+            selectAt: null,
           }
-        : null;
+        : { skip: 'no_successor', detail: 'queue head not resolved' };
     }
-    if (!hasSuccessor) return null;
-    // Only a successor fixed by order is announced: the selection must be the
-    // same whenever the end happens. The end stamps the cursor it advances
-    // with the end time and selects at once, so each probe does the same at
-    // its own time; a selection that still varies is anchored to the clock
-    // (a playlist start time, a timed nested sequence, high rotation) and is
-    // left to today's command at the end.
+    if (!hasSuccessor) {
+      return { skip: 'no_successor', detail: 'sequence has no successor' };
+    }
     const now = Date.now();
     // Only a started song is announced from (updateAnnouncement).
     // From Palazzo's last position report when there is one: its position is
@@ -1918,39 +1940,31 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         ? song.authoritativeUpdatedAt +
           (song.durationMs - song.authoritativePositionMs)
         : (song.authoritativeStartedAt as number) + song.durationMs;
-    const expectedEnd = Math.max(now, reportedEnd);
-    let chosen: ProgramResolvedSongLeaf | null = null;
-    for (const at of [
-      now,
-      expectedEnd,
-      expectedEnd + CLOCK_PROBE_LATE_MS,
-      expectedEnd + CLOCK_PROBE_LATER_MS,
-    ]) {
-      const stamp = Date.now();
-      const { next: probe } = this.sequenceAfterEnd(state.sequence, song);
-      // hasSuccessor implies a sequence.
-      restampSequence(probe as ProgramSongSequence, stamp, at);
-      const leaf = this.selectionView().resolveNextPlaylistSong(
-        programId,
-        {
-          ...state,
-          sequence: probe,
-          lastEnded: { songId: song.songId, artist: song.artist },
-        },
-        at,
-      );
-      if (!leaf?.audioUrl) return null;
-      if (
-        chosen &&
-        (chosen.id !== leaf.id || chosen.audioUrl !== leaf.audioUrl)
-      ) {
-        return null;
-      }
-      chosen = leaf;
+    // Chosen once, for the expected end, and held: a refresh for the same
+    // song selects at the same instant, and the handoff plays this choice
+    // (playNext selects at the announcement's `selectAt`). A favourite that
+    // comes due between this instant and the real end waits for the next
+    // change, rather than every song near a due favourite going unannounced.
+    const selectAt = heldSelectAt ?? Math.max(now, reportedEnd);
+    const { next: probe } = this.sequenceAfterEnd(state.sequence, song);
+    // hasSuccessor implies a sequence.
+    restampSequence(probe as ProgramSongSequence, Date.now(), selectAt);
+    const leaf = this.selectionView().resolveNextPlaylistSong(
+      programId,
+      {
+        ...state,
+        sequence: probe,
+        lastEnded: { songId: song.songId, artist: song.artist },
+      },
+      selectAt,
+    );
+    if (!leaf?.audioUrl) {
+      return { skip: 'no_successor', detail: 'nothing resolves at the end' };
     }
     return {
-      leaf: chosen as ProgramResolvedSongLeaf & { audioUrl: string },
+      leaf: leaf as ProgramResolvedSongLeaf & { audioUrl: string },
       queueEntryId: null,
+      selectAt,
     };
   }
 
@@ -2929,9 +2943,21 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         });
       return true;
     }
+    // At a handoff, a playlist successor that was announced is selected at the
+    // instant it was chosen for, so the held choice is what plays: the same
+    // deterministic selection (cursor, similarity, high rotation), with its
+    // effects applied now. A queue or operator change re-announced or
+    // withdrew it before the end, so the selection then follows that change.
+    const held =
+      handoff &&
+      !queueEntry &&
+      state.announcement?.status === 'accepted' &&
+      typeof state.announcement.selectAt === 'number'
+        ? state.announcement.selectAt
+        : undefined;
     const resolved = queueEntry
       ? findUniqueProgramSongLeafById(state.sequence, queueEntry.itemId)
-      : this.resolveNextPlaylistSong(programId, state);
+      : this.resolveNextPlaylistSong(programId, state, held);
     if (!resolved?.audioUrl) return false;
 
     const dur =

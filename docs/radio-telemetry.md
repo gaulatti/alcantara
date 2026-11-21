@@ -479,14 +479,17 @@ Contract: gaulatti/palazzo#40 §5.
     (counted as `bumper_slot` before this reason existed);
   - `intro`;
   - `clocked_log`;
-  - `no_successor`;
+  - `no_successor`: the sequence has no successor, the queue head does not
+    resolve, or nothing resolves at the expected end; the engine log line
+    `Next song not announced on <program>: <reason> (<detail>)` says which;
+  - `queue_head_active`: the queue head is already on air;
   - `not_autoplay`;
   - `unsupported`: a 404 Palazzo;
   - `superseded`: the song changed while the successor was worked out;
   - `refused`: Palazzo did not accept the announcement.
 
-  A handoff counted `command` with no skip for its song is a refused or
-  clock-dependent successor.
+  A handoff counted `command` with no skip for its song had its announcement
+  refused or never reached Palazzo (for example across a Palazzo restart).
 - `alcantara_radio_bumpers_total{path,result}` counts bumper spots.
   - `path`: `announced` with the next song (gaulatti/palazzo#50), or `command`
     (after the end, then the song by command).

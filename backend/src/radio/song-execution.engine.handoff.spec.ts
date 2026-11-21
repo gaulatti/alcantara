@@ -242,6 +242,8 @@ function harness(
     similarity?: unknown;
     withoutSongId?: string;
     capabilities?: string[];
+    mode?: 'autoplay' | 'shuffle';
+    favoriteItemId?: string;
   } = {},
 ) {
   const items = options.items ?? SONGS;
@@ -249,7 +251,7 @@ function harness(
     programId: PROGRAM,
     type: 'radio',
     songSequence: {
-      mode: 'autoplay',
+      mode: options.mode ?? 'autoplay',
       loop: options.loop ?? true,
       intervalMs: 500,
       items: items.map((song) => ({
@@ -261,6 +263,9 @@ function harness(
         audioUrl: song.url,
         durationMs: 180_000,
         ...(song.itemId === options.withoutSongId ? {} : { songId: song.id }),
+        ...(song.itemId === options.favoriteItemId
+          ? { highRotation: true }
+          : {}),
       })),
     } as Record<string, unknown>,
     songQueue: [] as unknown[],
@@ -1182,7 +1187,7 @@ describe('next-song announcement and handoff', () => {
       expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 2 });
     });
 
-    it('does not announce when a high rotation favorite comes due before the end', async () => {
+    it('holds the successor chosen for the expected end even when a favourite comes due before a late end', async () => {
       const h = harness();
       const items = (h.sequence().items as Record<string, unknown>[]).map(
         (entry, i) => ({ ...entry, durationMs: 6000, highRotation: i === 0 }),
@@ -1197,22 +1202,22 @@ describe('next-song announcement and handoff', () => {
       const favoritePlayedAt = Date.now();
       expect(h.palazzo.current?.url).toBe(SONGS[0].url);
       // The next song starts 20 s before the favorite is due again (30 min):
-      // it is not due if that song ends on time, but is a minute later.
+      // it is not due at that song's expected end (6 s later).
       jest.setSystemTime(favoritePlayedAt + 30 * 60_000 - 20_000);
       h.palazzo.endCurrent();
       await settle();
-      const announcedBefore = h.palazzo.announced.length;
       expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
-      // Its successor depends on when it ends: nothing is announced.
-      expect(h.palazzo.announced).toHaveLength(announcedBefore);
+      // The successor chosen for its expected end is announced.
+      expect(h.palazzo.announced.at(-1)?.url).toBe(SONGS[2].url);
+      // It ends a minute late, after the favorite came due: the held choice
+      // plays, with no command, and the favorite waits for the next change.
+      jest.setSystemTime(favoritePlayedAt + 30 * 60_000 + 60_000);
       h.palazzo.endCurrent();
       await settle();
-      // Ending on time, the cursor item is commanded as today.
-      expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
-      expect(h.metrics.snapshot().handoffs).toEqual({
-        preloaded: 1,
-        command: 1,
-      });
+      expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[2].url);
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 2 });
+      expect(h.palazzo.announced.at(-1)?.url).toBe(SONGS[0].url);
     });
   });
 
@@ -1928,6 +1933,7 @@ describe('next-song announcement and handoff', () => {
         'intro',
         'clocked_log',
         'no_successor',
+        'queue_head_active',
         'not_autoplay',
         'unsupported',
         'superseded',
@@ -2159,5 +2165,231 @@ describe('restart adoption and watchdog resumes', () => {
     expect(reason({ queueBlocked: true })).toBe('queue_blocked');
     expect(reason({ busyWithForeignTrack: true })).toBe('foreign_track');
     expect(reason({})).toBe('no_successor');
+  });
+});
+
+// 2026-11-21 01:13Z–01:30Z: the process running 9c896f2 announced nothing.
+// Production's settings: shuffle, similarity on (catalog pool, threshold 0.5,
+// window 30 s), 12 favourites (one due every 30 min), bumper interval 2. The
+// four clock probes (now, end, end+1m, end+10m) disagreed whenever a
+// favourite came due inside that 14-min window, about 45% of songs, and with
+// the other skips almost nothing was announced. The successor is now chosen
+// once, for the expected end, and held through the end.
+describe('the successor chosen for the expected end, with production settings', () => {
+  const T0 = Date.parse('2026-11-21T01:21:18.568Z');
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(T0);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const PRODUCTION_BUMPERS = {
+    bumperEnabled: true,
+    bumperInterval: 2,
+    bumperInstantIds: [1, 2],
+    bumperMode: 'sequential',
+  };
+  const FAVOURITE = SONGS[5];
+  const leafOf = (song: Song) => ({
+    id: song.itemId,
+    kind: 'preset',
+    songId: song.id,
+    title: song.title,
+    artist: song.artist,
+    coverUrl: '',
+    audioUrl: song.url,
+    durationMs: 180_000,
+  });
+  /**
+   * Similarity as production runs it (`on`, catalog pool): a pure pick, the
+   * song after the current one among the non-favourites, the first at start.
+   */
+  const similarityOn = () => ({
+    getSettings: () => ({
+      mode: 'on',
+      pool: 'catalog',
+      threshold: 0.5,
+      windowSeconds: 30,
+    }),
+    propose: jest.fn(
+      (_programId: string, input: { currentSongId: number | null }) => {
+        const index = SONGS.findIndex(
+          (song) => song.id === input.currentSongId,
+        );
+        const pick = SONGS[(index + 1) % 5];
+        return {
+          result: {
+            outcome: 'selected',
+            chosen: { songId: pick.id, itemId: pick.itemId, score: 0.8 },
+            runnerUps: [],
+            cycleReset: false,
+          },
+          leaf: leafOf(pick),
+        };
+      },
+    ),
+    recordDecision: jest.fn(),
+    noteSongStarted: jest.fn(),
+  });
+  const production = (lastFavouritePlay?: number) => {
+    const h = harness({
+      mode: 'shuffle',
+      similarity: similarityOn(),
+      capabilities: ['next.bumper'],
+      favoriteItemId: FAVOURITE.itemId,
+    });
+    h.palazzo.settings = PRODUCTION_BUMPERS;
+    const state = (
+      h.engine as unknown as {
+        states: Map<string, { rotation: { history: unknown[] } }>;
+      }
+    ).states.get(PROGRAM)!;
+    state.rotation.history =
+      lastFavouritePlay === undefined
+        ? []
+        : [
+            {
+              requestId: 'earlier-favourite',
+              songKey: `song:${FAVOURITE.id}`,
+              itemId: FAVOURITE.itemId,
+              playedAt: lastFavouritePlay,
+            },
+          ];
+    return h;
+  };
+  const skipped = (h: ReturnType<typeof harness>) =>
+    h.metrics
+      .render()
+      .split('\n')
+      .filter(
+        (line) =>
+          line.startsWith('alcantara_radio_announcement_skipped_total{') &&
+          !line.endsWith(' 0'),
+      );
+  // onAir: the first song is commanded at T0 + 4 s and starts there, so its
+  // expected end is T0 + 184 s.
+  const EXPECTED_END = T0 + 4_000 + 180_000;
+  const DUE_AFTER = 30 * 60_000;
+
+  it('announces the similarity pick, and the slot with its spot, when no favourite comes due', async () => {
+    const h = production(T0 - 5 * 60_000);
+    await onAir(h);
+    expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+    expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+    h.palazzo.endCurrent();
+    await settle();
+    // The second song's end is the slot: announced with the spot.
+    expect(h.palazzo.announced.at(-1)?.url).toBe(SONGS[2].url);
+    expect(h.palazzo.announced.at(-1)?.bumper).toBeDefined();
+    expect(skipped(h)).toEqual([]);
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+  });
+
+  it('chooses and announces a favourite that comes due inside the song', async () => {
+    const h = production(T0 + 120_000 - DUE_AFTER);
+    await onAir(h);
+    expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+    expect(urls(h.palazzo.announced)).toEqual([FAVOURITE.url]);
+    h.palazzo.endCurrent();
+    await settle();
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(FAVOURITE.url);
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    expect(skipped(h)).toEqual([]);
+  });
+
+  it('does not choose a favourite due one second after the expected end, holds that choice through a late end, and makes the favourite the next successor', async () => {
+    const h = production(EXPECTED_END + 1_000 - DUE_AFTER);
+    await onAir(h);
+    expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+    // The song ends 6 s late, after the favourite came due.
+    jest.setSystemTime(EXPECTED_END + 6_000);
+    h.palazzo.endCurrent();
+    await settle();
+    // The held choice is what plays: promoted, no command.
+    expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[1].url);
+    expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+    expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    // The favourite is the next song's successor, at the bumper slot.
+    expect(h.palazzo.announced.at(-1)?.url).toBe(FAVOURITE.url);
+    expect(h.palazzo.announced.at(-1)?.bumper).toBeDefined();
+    expect(skipped(h)).toEqual([]);
+  });
+
+  it('selects at the held instant for a refresh of the same song', async () => {
+    const h = production(EXPECTED_END + 1_000 - DUE_AFTER);
+    await onAir(h);
+    expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+    // Late in the song, past the favourite's due time, a sequence refresh
+    // re-runs the announcement: the choice stands, nothing is re-sent.
+    jest.setSystemTime(EXPECTED_END + 2_000);
+    h.engine.handleSequenceUpdated(PROGRAM, h.sequence());
+    await settle();
+    expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+  });
+
+  it('rules out 9c896f2: a commanded song with no position report selects at start + duration, as before', async () => {
+    const h = production(T0 - 5 * 60_000);
+    const engine = h.engine as unknown as {
+      resolveNextPlaylistSong: (...args: unknown[]) => unknown;
+    };
+    const selection = jest.spyOn(engine, 'resolveNextPlaylistSong');
+    await onAir(h);
+    // The command's own selection (no held instant), then the announcement's
+    // one evaluation, at the expected end: start + durationMs.
+    expect(selection.mock.calls.map((call) => call[2])).toEqual([
+      undefined,
+      EXPECTED_END,
+    ]);
+  });
+
+  it('names the reason when nothing resolves, when the sequence has no successor, and when the queue head is on air or unresolved', () => {
+    const h = harness();
+    const engine = h.engine as unknown as {
+      peekSuccessor: (
+        programId: string,
+        state: Record<string, unknown>,
+        song: Record<string, unknown>,
+      ) => { skip?: string; detail?: string };
+      selectionView: () => { resolveNextPlaylistSong: () => unknown };
+    };
+    const song = {
+      itemId: SONGS[0].itemId,
+      queueEntryId: null,
+      authoritativeStartedAt: Date.now(),
+      authoritativePositionMs: null,
+      authoritativeUpdatedAt: null,
+      durationMs: 180_000,
+      songId: SONGS[0].id,
+      artist: SONGS[0].artist,
+    };
+    const state = (extra: Record<string, unknown>) => ({
+      sequence: h.sequence(),
+      queue: [],
+      ...extra,
+    });
+    expect(
+      engine.peekSuccessor(
+        PROGRAM,
+        state({ queue: [{ id: 'q1', itemId: SONGS[1].itemId, active: true }] }),
+        song,
+      ),
+    ).toEqual({ skip: 'queue_head_active', detail: 'queue head on air' });
+    expect(
+      engine.peekSuccessor(
+        PROGRAM,
+        state({ queue: [{ id: 'q1', itemId: 'missing', active: false }] }),
+        song,
+      ),
+    ).toEqual({ skip: 'no_successor', detail: 'queue head not resolved' });
+    expect(
+      engine.peekSuccessor(PROGRAM, state({ sequence: null }), song),
+    ).toEqual({ skip: 'no_successor', detail: 'sequence has no successor' });
+    jest
+      .spyOn(engine, 'selectionView')
+      .mockReturnValue({ resolveNextPlaylistSong: () => null });
+    expect(engine.peekSuccessor(PROGRAM, state({}), song)).toEqual({
+      skip: 'no_successor',
+      detail: 'nothing resolves at the end',
+    });
   });
 });

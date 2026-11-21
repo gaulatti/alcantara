@@ -153,6 +153,7 @@ export type AnnouncementSkipReason =
   | 'intro'
   | 'clocked_log'
   | 'no_successor'
+  | 'queue_head_active'
   | 'not_autoplay'
   | 'unsupported'
   | 'superseded'
@@ -163,6 +164,7 @@ export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
   'intro',
   'clocked_log',
   'no_successor',
+  'queue_head_active',
   'not_autoplay',
   'unsupported',
   'superseded',
