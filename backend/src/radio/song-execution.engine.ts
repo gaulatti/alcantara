@@ -2178,6 +2178,22 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // A track whose end this engine already accepted is not on air: a state
+    // read just after the end can still name it (Palazzo's own state lags its
+    // journal). Adopting it would hold an ended song and stall the rotation
+    // (2026-11-21 00:28Z), so it is read as the idle state it is.
+    if (requestId && state.endedRequestIds.includes(requestId)) {
+      this.logger.warn(
+        `Palazzo's state still names ended playback ${requestId} on ${programId}; reading it as idle`,
+      );
+      this.reconcileIdleSnapshot(programId, state, {
+        ...snapshot,
+        status: 'idle',
+        track: null,
+      });
+      return;
+    }
+
     // The announced song Palazzo started itself is expected, not a takeover.
     const announcement = state.announcement;
     if (
@@ -2326,7 +2342,31 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // Palazzo is idle: an announced song that has not started is not queued.
     if (state.announcement?.startedAt === null) state.announcement = null;
 
-    if (requestId && state.activeSong) {
+    if (
+      requestId &&
+      state.activeSong &&
+      state.endedRequestIds.includes(requestId)
+    ) {
+      // Palazzo is idle and the song held as active already ended once (it
+      // was adopted after its end): its end cannot be accepted again, so drop
+      // it and resume, rather than hold it on every idle read.
+      const song = state.activeSong;
+      this.logger.warn(
+        `Dropping ended playback ${requestId} held as active on ${programId}; resuming the rotation`,
+      );
+      if (!song.asRunClosed) {
+        song.asRunClosed = true;
+        this.emitTrackEvent(
+          programId,
+          'track.ended',
+          requestId,
+          { title: song.title, artist: song.artist, url: song.audioUrl },
+          true,
+        );
+      }
+      state.activeSong = null;
+      this.stopProgress(programId);
+    } else if (requestId && state.activeSong) {
       // Authoritative idle state while we believe our song is active: the
       // song ended without a lifecycle event reaching us (e.g. SSE loss).
       const song = state.activeSong;

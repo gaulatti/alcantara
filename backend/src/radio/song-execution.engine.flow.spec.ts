@@ -730,6 +730,66 @@ describe('SongExecutionEngine authoritative track end', () => {
     expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
   });
 
+  // 2026-11-21 00:28Z: a deploy restarted the backend mid-song. The track was
+  // foreign at boot (no sequence loaded yet) and ended 12 s later. The state
+  // read for the foreign end still named the ended track; the engine adopted
+  // it, and every watchdog resume after that ignored it as an already-ended
+  // song, so the filler held the air for five minutes.
+  it('never adopts a track whose end it accepted, even when the state read after the end still names it', async () => {
+    const ctx = setup();
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('inherited', 'https://example.test/b.mp3'),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    await flush(40);
+    expect(stateOf(ctx.engine).busyWithForeignTrack).toBe(true);
+    // The end arrives; Palazzo's state read still names the ended track.
+    ctx.palazzo.state = playing('inherited', 'https://example.test/b.mp3', 3);
+    end(ctx, 'inherited');
+    await flush(80);
+    expect(ctx.engine.getPlaybackState('radio-1')?.playbackRequestId).not.toBe(
+      'inherited',
+    );
+    expect(playedUrls(ctx)).toHaveLength(1);
+  });
+
+  it('drops an ended song held as active and commands one when Palazzo is idle past the watchdog bound', async () => {
+    const ctx = setup();
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('inherited', 'https://example.test/b.mp3'),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    await flush(40);
+    // Simulates the state before the fix: the ended track was adopted, so the
+    // engine holds an active song whose id it has already seen end.
+    ctx.palazzo.state = playing('inherited', 'https://example.test/b.mp3', 3);
+    end(ctx, 'inherited');
+    await flush(80);
+    const held = stateOf(ctx.engine);
+    held.activeSong = {
+      ...(held.activeSong ?? {}),
+      playbackRequestId: 'inherited',
+      audioUrl: 'https://example.test/b.mp3',
+    } as never;
+    ctx.radioService.playSong.mockClear();
+    // Palazzo idle (no live input) for longer than the bound.
+    ctx.palazzo.state = { ...idle(4), live: { onAir: false } };
+    await ctx.engine.checkPlayback();
+    jest.setSystemTime(Date.now() + 46_000);
+    await ctx.engine.checkPlayback();
+    await flush(80);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'resumed',
+    );
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(ctx.engine.getPlaybackState('radio-1')?.playbackRequestId).not.toBe(
+      'inherited',
+    );
+  });
+
   it('ignores an end event without a request id', async () => {
     const ctx = setup();
     await startAutomatic(ctx);
