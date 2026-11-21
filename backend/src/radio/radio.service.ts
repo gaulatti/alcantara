@@ -566,6 +566,7 @@ export class RadioService {
       artist?: string;
       coverUrl?: string;
     },
+    bumper?: { playbackId: string; url: string },
   ): Promise<'accepted' | 'not_ready' | 'rejected' | 'unsupported'> {
     const settings = await this.getRadioSettings(programId);
     if (!settings) {
@@ -595,6 +596,7 @@ export class RadioService {
           coverUrl: song.coverUrl,
           ...(segue && { segue }),
           ...(loudness && { loudness }),
+          ...(bumper && { bumper }),
         })
       ).result;
     } catch (error) {

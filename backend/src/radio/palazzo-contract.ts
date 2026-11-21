@@ -79,7 +79,16 @@ export interface PalazzoPlaybackState {
    * show from silence then, since `status` stays 'idle' during one.
    */
   live?: { onAir: boolean };
+  /**
+   * What this Palazzo supports beyond the base contract (gaulatti/palazzo#50),
+   * for example `next.bumper`. Absent from an older Palazzo, and read as empty
+   * when malformed: a capability is used only when it is listed.
+   */
+  capabilities?: string[];
 }
+
+/** Palazzo plays an announced spot before the announced song (gaulatti/palazzo#50). */
+export const PALAZZO_NEXT_BUMPER = 'next.bumper';
 
 export type PalazzoPlaybackEventType =
   | 'snapshot'
@@ -101,6 +110,8 @@ export type PalazzoPlaybackEventType =
   | 'playout.request_failed'
   | 'playout.next_queued'
   | 'playout.next_withdrawn'
+  | 'instant.started'
+  | 'instant.ended'
   | 'playback.position'
   | 'audio.levels'
   | 'heartbeat';
@@ -254,7 +265,18 @@ export function parsePalazzoState(
     remainingSeconds: record.remainingSeconds as number | null,
     levels,
     ...(live ? { live: { onAir: live.onAir as boolean } } : {}),
+    ...(record.capabilities !== undefined
+      ? { capabilities: parseCapabilities(record.capabilities) }
+      : {}),
   };
+}
+
+/** Bounded capability names; anything malformed reads as no capability. */
+function parseCapabilities(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 32) return [];
+  return value.every((entry) => boundedString(entry, 64))
+    ? [...(value as string[])]
+    : [];
 }
 
 function parsePalazzoTrack(value: unknown): PalazzoTrackState | null {
@@ -356,6 +378,8 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<PalazzoPlaybackEventType>([
   'playout.request_failed',
   'playout.next_queued',
   'playout.next_withdrawn',
+  'instant.started',
+  'instant.ended',
   'playback.position',
   'audio.levels',
   'heartbeat',
@@ -443,7 +467,10 @@ export function classifyPalazzoFrame(
   )
     return malformed;
   if (
-    (type === 'playout.next_queued' || type === 'playout.next_withdrawn') &&
+    (type === 'playout.next_queued' ||
+      type === 'playout.next_withdrawn' ||
+      type === 'instant.started' ||
+      type === 'instant.ended') &&
     !boundedString(data.playbackId, 200)
   )
     return malformed;

@@ -59,7 +59,14 @@ export interface PalazzoSongCommand {
 }
 
 /** The next song announced while the current one plays (contract palazzo#40 §1): a song command without an intro. */
-export type PalazzoNextSongCommand = Omit<PalazzoSongCommand, 'intro'>;
+export type PalazzoNextSongCommand = Omit<PalazzoSongCommand, 'intro'> & {
+  /**
+   * A spot Palazzo plays when the current song ends, before this one, which
+   * starts at the spot's own end (gaulatti/palazzo#50). Sent only to a
+   * Palazzo that lists the `next.bumper` capability.
+   */
+  bumper?: { playbackId: string; url: string };
+};
 
 /**
  * What Palazzo answered to an announcement: `accepted` (200, queued),
@@ -270,6 +277,12 @@ export class PalazzoMachineClient {
             ...(command.segue && { segue: command.segue }),
             ...(command.loudness && { loudness: command.loudness }),
           },
+          ...(command.bumper && {
+            bumper: {
+              playbackId: command.bumper.playbackId,
+              url: command.bumper.url,
+            },
+          }),
         },
       });
     } catch (error) {

@@ -175,3 +175,20 @@ describe('RadioService.withdrawNext', () => {
     expect(unconfigured.palazzo.withdrawNext).not.toHaveBeenCalled();
   });
 });
+
+// gaulatti/alcantara#232: a spot announced with the song is passed to Palazzo as given.
+describe('RadioService.announceNext with a spot', () => {
+  it('passes the bumper through, and omits it when none is given', async () => {
+    const { service, palazzo } = build({ palazzoUrl: 'http://palazzo:3100' });
+    const bumper = {
+      playbackId: 'spot-1',
+      url: 'https://media.example/spot.mp3',
+    };
+    await expect(service.announceNext('radio-1', SONG, bumper)).resolves.toBe(
+      'accepted',
+    );
+    await service.announceNext('radio-1', SONG);
+    expect(palazzo.announceNext.mock.calls[0][2].bumper).toEqual(bumper);
+    expect(palazzo.announceNext.mock.calls[1][2]).not.toHaveProperty('bumper');
+  });
+});

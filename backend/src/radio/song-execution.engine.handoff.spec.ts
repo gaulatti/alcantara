@@ -41,8 +41,10 @@ function snapshot(
   bootId: string,
   sequence: number,
   track: { id: string; url: string } | null,
+  capabilities?: string[],
 ): PalazzoPlaybackState {
   return {
+    ...(capabilities ? { capabilities } : {}),
     schemaVersion: 1,
     instanceId: 'palazzo-a',
     bootId,
@@ -88,9 +90,20 @@ type AnnounceAnswer = 'accepted' | 'not_ready' | 'rejected' | 'unsupported';
 class FakePalazzo {
   engine!: SongExecutionEngine;
   current: { id: string; url: string } | null = null;
-  queued: { id: string; url: string } | null = null;
+  queued: {
+    id: string;
+    url: string;
+    bumper?: { playbackId: string; url: string };
+  } | null = null;
+  /** Spots this Palazzo put on air before an announced song (palazzo#50). */
+  spots: string[] = [];
   commands: { url: string; id: string }[] = [];
-  announced: { id: string; url: string; body: Record<string, unknown> }[] = [];
+  announced: {
+    id: string;
+    url: string;
+    body: Record<string, unknown>;
+    bumper?: { playbackId: string; url: string };
+  }[] = [];
   withdrawals = 0;
   older = false;
   answer: (url: string) => AnnounceAnswer = () => 'accepted';
@@ -122,17 +135,27 @@ class FakePalazzo {
       (
         _programId: string,
         song: { playbackId: string; url: string } & Record<string, unknown>,
+        bumper?: { playbackId: string; url: string },
       ): Promise<AnnounceAnswer> => {
         if (this.older) return Promise.resolve('unsupported');
         const decide = (): AnnounceAnswer => {
           if (!this.current) return 'rejected';
           const result = this.answer(song.url);
           if (result === 'accepted') {
-            this.queued = { id: song.playbackId, url: song.url };
+            this.queued = {
+              id: song.playbackId,
+              url: song.url,
+              ...(bumper ? { bumper } : {}),
+            };
           }
           return result;
         };
-        this.announced.push({ id: song.playbackId, url: song.url, body: song });
+        this.announced.push({
+          id: song.playbackId,
+          url: song.url,
+          body: song,
+          ...(bumper ? { bumper } : {}),
+        });
         if (!this.holdAnswers) return Promise.resolve(decide());
         return new Promise((resolve) =>
           this.heldAnswers.push(() => resolve(decide())),
@@ -193,13 +216,19 @@ class FakePalazzo {
       this.current = null;
       return;
     }
-    if (next && options.overlap) this.start(next);
+    if (next && options.overlap && !next.bumper) this.start(next);
     this.event('track.ended', {
       playbackRequestId: ended.id,
       url: ended.url,
     });
     this.current = next;
-    if (next && !options.overlap) this.start(next);
+    // With a spot announced, the spot plays first and the song at its end.
+    if (next?.bumper) {
+      this.spots.push(next.bumper.url);
+      this.event('instant.started', { playbackId: next.bumper.playbackId });
+      this.event('instant.ended', { playbackId: next.bumper.playbackId });
+    }
+    if (next && (!options.overlap || next.bumper)) this.start(next);
   }
 }
 
@@ -212,6 +241,7 @@ function harness(
     intro?: number;
     similarity?: unknown;
     withoutSongId?: string;
+    capabilities?: string[];
   } = {},
 ) {
   const items = options.items ?? SONGS;
@@ -293,12 +323,12 @@ function harness(
   const idle = (bootId = 'boot-1') =>
     engine.handlePalazzoSnapshot(
       PROGRAM,
-      snapshot(bootId, ++snapshotSequence, null),
+      snapshot(bootId, ++snapshotSequence, null, options.capabilities),
     );
   const playing = (track: { id: string; url: string }, bootId = 'boot-1') =>
     engine.handlePalazzoSnapshot(
       PROGRAM,
-      snapshot(bootId, ++snapshotSequence, track),
+      snapshot(bootId, ++snapshotSequence, track, options.capabilities),
     );
   const sequence = () => programState.songSequence;
   return { engine, palazzo, metrics, prisma, flight, idle, playing, sequence };
@@ -1447,6 +1477,379 @@ describe('next-song announcement and handoff', () => {
         decisionsBeforeEnd + 1,
       );
       expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+    });
+  });
+
+  // gaulatti/alcantara#232: at a bumper slot, a Palazzo that lists
+  // next.bumper is given the successor with the slot's spot; it plays the spot
+  // and the song at the spot's end, so there is no fixed sleep and no cold
+  // command. Without the capability the slot stays today's path.
+  describe('bumper slot (alcantara#232)', () => {
+    const BUMPERS = {
+      bumperEnabled: true,
+      bumperInterval: 2,
+      bumperInstantIds: [1, 2],
+      bumperMode: 'sequential',
+    };
+    const metricLine = (h: ReturnType<typeof harness>, prefix: string) =>
+      h.metrics
+        .render()
+        .split('\n')
+        .filter((line) => line.startsWith(prefix));
+
+    it('announces the successor with the spot, records the spot from Palazzo, and never sleeps or commands', async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      await onAir(h);
+      // Song 1 ends on an ordinary change; song 2's end is the bumper slot.
+      expect(h.palazzo.announced[0].bumper).toBeUndefined();
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced).toHaveLength(2);
+      const spot = h.palazzo.announced[1].bumper!;
+      expect(spot.url).toBe('https://media.test/bumper.mp3');
+      expect(h.prisma.instant.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
+
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.spots).toEqual(['https://media.test/bumper.mp3']);
+      expect(h.palazzo.radioService.playInstant).not.toHaveBeenCalled();
+      // Only the first song was ever commanded; song 3 started from its deck.
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+      expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[2].url);
+      expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 2 });
+      expect(metricLine(h, 'alcantara_radio_bumpers_total')).toEqual([
+        'alcantara_radio_bumpers_total{path="announced",result="sent"} 1',
+        'alcantara_radio_bumpers_total{path="announced",result="played"} 1',
+        'alcantara_radio_bumpers_total{path="command",result="sent"} 0',
+        'alcantara_radio_bumpers_total{path="command",result="played"} 0',
+      ]);
+      // The sequence moved past the spot used: the next slot (song 4's end)
+      // is announced with spot 2.
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced.at(-1)!.bumper).toBeDefined();
+      expect(h.prisma.instant.findUnique).toHaveBeenLastCalledWith({
+        where: { id: 2 },
+      });
+      // An instant Alcantara did not send changes nothing.
+      h.palazzo.event('instant.started', { playbackId: 'someone-else' });
+      h.palazzo.event('instant.ended', { playbackId: 'someone-else' });
+      expect(
+        metricLine(
+          h,
+          'alcantara_radio_bumpers_total{path="announced",result="played"}',
+        ),
+      ).toEqual([
+        'alcantara_radio_bumpers_total{path="announced",result="played"} 1',
+      ]);
+    });
+
+    it("keeps today's path without the capability: no announcement at the slot, the spot, 8 s, then the song by command", async () => {
+      const h = harness();
+      h.palazzo.settings = BUMPERS;
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced).toHaveLength(1);
+      expect(
+        metricLine(
+          h,
+          'alcantara_radio_announcement_skipped_total{reason="bumper_slot"}',
+        ),
+      ).toEqual([
+        'alcantara_radio_announcement_skipped_total{reason="bumper_slot"} 1',
+      ]);
+
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+      const spotId = h.palazzo.radioService.playInstant.mock
+        .calls[0][3] as string;
+      await jest.advanceTimersByTimeAsync(8_000);
+      await settle();
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url, SONGS[2].url]);
+      expect(h.metrics.snapshot().handoffs).toEqual({
+        preloaded: 1,
+        command: 1,
+      });
+      h.palazzo.event('instant.started', { playbackId: spotId });
+      expect(
+        metricLine(h, 'alcantara_radio_bumpers_total{path="command"'),
+      ).toEqual([
+        'alcantara_radio_bumpers_total{path="command",result="sent"} 1',
+        'alcantara_radio_bumpers_total{path="command",result="played"} 1',
+      ]);
+    });
+
+    it("falls back to today's path when the announcement with the spot is refused", async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      h.palazzo.answer = (url) =>
+        url === SONGS[2].url ? 'rejected' : 'accepted';
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced[1].bumper).toBeDefined();
+      expect(
+        metricLine(
+          h,
+          'alcantara_radio_announcement_skipped_total{reason="refused"}',
+        ),
+      ).toEqual([
+        'alcantara_radio_announcement_skipped_total{reason="refused"} 1',
+      ]);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.spots).toEqual([]);
+      expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(8_000);
+      await settle();
+      expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
+    });
+
+    it('keeps the spot chosen for a slot when the announcement is refreshed', async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      const calls = h.prisma.instant.findUnique.mock.calls.length;
+      const announced = h.palazzo.announced.length;
+      h.engine.handleSequenceUpdated(PROGRAM, h.sequence());
+      await settle();
+      // Same successor and same spot: nothing is re-announced or re-chosen.
+      expect(h.palazzo.announced).toHaveLength(announced);
+      expect(h.prisma.instant.findUnique.mock.calls.length).toBe(calls);
+    });
+
+    it('skips a slot whose spot has no audio, and plays no spot at its end', async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      h.prisma.instant.findUnique.mockResolvedValue({
+        id: 1,
+        name: 'Silent',
+        audioUrl: '',
+      });
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced).toHaveLength(1);
+      expect(
+        metricLine(
+          h,
+          'alcantara_radio_announcement_skipped_total{reason="bumper_slot"}',
+        ),
+      ).toEqual([
+        'alcantara_radio_announcement_skipped_total{reason="bumper_slot"} 1',
+      ]);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.radioService.playInstant).not.toHaveBeenCalled();
+      expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
+    });
+
+    it('keeps the spot sequence where it was when the settings cannot be read at the end, or list no spot', async () => {
+      for (const atEnd of ['throws', 'empty', 'none'] as const) {
+        const h = harness({ capabilities: ['next.bumper'] });
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.announced[1].bumper).toBeDefined();
+        if (atEnd === 'throws')
+          h.palazzo.radioService.getRadioSettings.mockRejectedValueOnce(
+            new Error('settings unavailable'),
+          );
+        else if (atEnd === 'empty')
+          h.palazzo.settings = { ...BUMPERS, bumperInstantIds: [] };
+        else
+          h.palazzo.radioService.getRadioSettings.mockResolvedValueOnce(
+            null as never,
+          );
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.spots).toHaveLength(1);
+        expect(
+          (
+            h.engine as unknown as {
+              states: Map<string, { nextBumperIdx: number }>;
+            }
+          ).states.get(PROGRAM)!.nextBumperIdx,
+        ).toBe(0);
+      }
+    });
+
+    it("never lets another song's accepted spot announcement suppress the slot: the old path plays", async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.announced[1].bumper).toBeDefined();
+      // The announcement is made stale: it belongs to some other song.
+      const states = (
+        h.engine as unknown as {
+          states: Map<string, { announcement: { forRequestId: string } }>;
+        }
+      ).states;
+      states.get(PROGRAM)!.announcement.forRequestId = 'another-song';
+      h.palazzo.queued = null;
+      h.palazzo.endCurrent();
+      await settle();
+      // The old path: the spot by instant command, counted under `command`.
+      expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+      expect(
+        h.metrics
+          .render()
+          .split('\n')
+          .filter((line) => line.startsWith('alcantara_radio_bumpers_total')),
+      ).toContain(
+        'alcantara_radio_bumpers_total{path="command",result="sent"} 1',
+      );
+    });
+
+    it('treats a 50 s announced spot on air as playback: the watchdog neither resyncs nor commands over it', async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      const next = h.palazzo.queued!;
+      expect(next.bumper).toBeDefined();
+      // Palazzo idle while the spot plays: no song on air.
+      h.engine.setPalazzoTelemetry({
+        isReconciled: () => true,
+        // Idle, no live input, and the spot's level reading 0 (a quiet
+        // passage, or a level that lags): the watchdog's 'nothing on air'.
+        currentState: () =>
+          Promise.resolve({
+            ...snapshot('boot-1', 99, null, ['next.bumper']),
+            live: { onAir: false },
+          }),
+      } as never);
+      const ended = h.palazzo.current!;
+      h.palazzo.queued = null;
+      h.palazzo.event('track.ended', {
+        playbackRequestId: ended.id,
+        url: ended.url,
+      });
+      h.palazzo.event('instant.started', {
+        playbackId: next.bumper!.playbackId,
+      });
+      await settle();
+      // Watchdog reads at 0, 10, … 50 s: without the guard the 45 s bound
+      // would pass and the rotation would be resumed over the spot.
+      await h.engine.checkPlayback();
+      for (let t = 0; t < 50; t += 10) {
+        jest.setSystemTime(Date.now() + 10_000);
+        await h.engine.checkPlayback();
+      }
+      await settle();
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+      expect(h.metrics.render()).toContain(
+        'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed"} 0',
+      );
+      // The spot ends and the announced song starts: one preloaded handoff.
+      h.palazzo.event('instant.ended', { playbackId: next.bumper!.playbackId });
+      h.palazzo.current = next;
+      h.palazzo.start(next);
+      await settle();
+      expect(h.engine.getPlaybackState(PROGRAM)?.audioUrl).toBe(SONGS[2].url);
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+      // Past the bound, a spot whose end never arrived no longer holds the watchdog.
+      const states = (
+        h.engine as unknown as {
+          states: Map<string, { announcedSpotOnAir: unknown }>;
+        }
+      ).states;
+      expect(states.get(PROGRAM)!.announcedSpotOnAir).toBeNull();
+    });
+
+    it('lets the watchdog judge again once an announced spot has been on air past the bound', async () => {
+      const h = harness({ capabilities: ['next.bumper'] });
+      h.palazzo.settings = BUMPERS;
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      const next = h.palazzo.queued!;
+      h.engine.setPalazzoTelemetry({
+        isReconciled: () => true,
+        currentState: () =>
+          Promise.resolve({
+            ...snapshot('boot-1', 99, null, ['next.bumper']),
+            live: { onAir: false },
+          }),
+      } as never);
+      const ended = h.palazzo.current!;
+      h.palazzo.queued = null;
+      h.palazzo.event('track.ended', {
+        playbackRequestId: ended.id,
+        url: ended.url,
+      });
+      h.palazzo.event('instant.started', {
+        playbackId: next.bumper!.playbackId,
+      });
+      // Another instant's end does not clear the spot.
+      h.palazzo.event('instant.ended', { playbackId: 'someone-else' });
+      await settle();
+      jest.setSystemTime(Date.now() + 76_000);
+      await h.engine.checkPlayback();
+      jest.setSystemTime(Date.now() + 46_000);
+      await h.engine.checkPlayback();
+      await settle();
+      expect(h.metrics.render()).toContain(
+        'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed"} 1',
+      );
+    });
+
+    it('remembers at most 16 spots awaiting their start', () => {
+      const h = harness();
+      const engine = h.engine as unknown as {
+        rememberBumperSpot: (
+          state: { bumperSpotsSent?: Map<string, unknown> },
+          id: string,
+          name: string,
+          path: string,
+        ) => void;
+      };
+      const state: { bumperSpotsSent?: Map<string, unknown> } = {};
+      for (let i = 0; i < 17; i += 1)
+        engine.rememberBumperSpot(state, `spot-${i}`, 'Spot', 'command');
+      expect(state.bumperSpotsSent!.size).toBe(16);
+      expect(state.bumperSpotsSent!.has('spot-0')).toBe(false);
+    });
+
+    it('labels the new counters with bounded values only', () => {
+      const h = harness();
+      h.metrics.recordAnnouncementSkipped('bogus' as never);
+      h.metrics.recordBumper('bogus' as never, 'sent');
+      h.metrics.recordBumper('announced', 'bogus' as never);
+      for (const reason of [
+        'bumper_slot',
+        'intro',
+        'clocked_log',
+        'no_successor',
+        'not_autoplay',
+        'unsupported',
+        'superseded',
+        'refused',
+      ])
+        expect(
+          metricLine(
+            h,
+            `alcantara_radio_announcement_skipped_total{reason="${reason}"}`,
+          ),
+        ).toEqual([
+          `alcantara_radio_announcement_skipped_total{reason="${reason}"} 0`,
+        ]);
+      expect(
+        metricLine(h, 'alcantara_radio_bumpers_total').every((line) =>
+          line.endsWith(' 0'),
+        ),
+      ).toBe(true);
     });
   });
 });

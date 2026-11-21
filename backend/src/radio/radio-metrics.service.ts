@@ -142,6 +142,36 @@ export type NextAnnouncementResult =
 
 /** How the engine moved from one song to the next at an accepted end. */
 export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
+/** Why a started song was left without an announced successor (gaulatti/alcantara#232). */
+export type AnnouncementSkipReason =
+  | 'bumper_slot'
+  | 'intro'
+  | 'clocked_log'
+  | 'no_successor'
+  | 'not_autoplay'
+  | 'unsupported'
+  | 'superseded'
+  | 'refused';
+export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
+  'bumper_slot',
+  'intro',
+  'clocked_log',
+  'no_successor',
+  'not_autoplay',
+  'unsupported',
+  'superseded',
+  'refused',
+];
+/**
+ * A bumper spot by how it reached Palazzo: `announced` with the next song
+ * (gaulatti/palazzo#50) or `command` (played after the end, then the song by
+ * command); `sent` when the engine committed to it, `played` on Palazzo's
+ * instant.started for it.
+ */
+export type BumperPath = 'announced' | 'command';
+export type BumperResult = 'sent' | 'played';
+const BUMPER_PATHS: BumperPath[] = ['announced', 'command'];
+const BUMPER_RESULTS: BumperResult[] = ['sent', 'played'];
 
 export type SnapshotReconciliationResult =
   | 'accepted'
@@ -377,6 +407,8 @@ export class RadioMetricsService {
   private readonly analysisDrops = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
   private readonly handoffs = new Map<string, number>();
+  private readonly announcementSkips = new Map<string, number>();
+  private readonly bumpers = new Map<string, number>();
   private highRotationFavorites = 0;
   private automaticPrograms = 0;
   private readonly machineRequests = new Map<string, number>();
@@ -502,6 +534,21 @@ export class RadioMetricsService {
   recordHandoff(path: HandoffPath): void {
     if (!HANDOFF_PATHS.includes(path)) return;
     this.handoffs.set(path, (this.handoffs.get(path) ?? 0) + 1);
+  }
+
+  recordAnnouncementSkipped(reason: AnnouncementSkipReason): void {
+    if (!ANNOUNCEMENT_SKIP_REASONS.includes(reason)) return;
+    this.announcementSkips.set(
+      reason,
+      (this.announcementSkips.get(reason) ?? 0) + 1,
+    );
+  }
+
+  recordBumper(path: BumperPath, result: BumperResult): void {
+    if (!BUMPER_PATHS.includes(path) || !BUMPER_RESULTS.includes(result))
+      return;
+    const key = `${path}\t${result}`;
+    this.bumpers.set(key, (this.bumpers.get(key) ?? 0) + 1);
   }
 
   recordHighRotationFavorites(count: number): void {
@@ -741,6 +788,26 @@ export class RadioMetricsService {
       lines.push(
         `alcantara_radio_handoffs_total{path="${path}"} ${this.handoffs.get(path) ?? 0}`,
       );
+    }
+    lines.push(
+      '# HELP alcantara_radio_announcement_skipped_total Started songs left without an announced successor, by bounded reason (once per song).',
+      '# TYPE alcantara_radio_announcement_skipped_total counter',
+    );
+    for (const reason of ANNOUNCEMENT_SKIP_REASONS) {
+      lines.push(
+        `alcantara_radio_announcement_skipped_total{reason="${reason}"} ${this.announcementSkips.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_bumpers_total Bumper spots by how they reached Palazzo (announced with the next song, or command after the end) and result (sent, played on Palazzo).',
+      '# TYPE alcantara_radio_bumpers_total counter',
+    );
+    for (const path of BUMPER_PATHS) {
+      for (const result of BUMPER_RESULTS) {
+        lines.push(
+          `alcantara_radio_bumpers_total{path="${path}",result="${result}"} ${this.bumpers.get(`${path}\t${result}`) ?? 0}`,
+        );
+      }
     }
     lines.push(
       '# HELP alcantara_radio_high_rotation_favorites Configured high rotation playlist songs across radio-capable programs.',

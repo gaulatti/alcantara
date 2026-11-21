@@ -231,10 +231,39 @@ same segue and loudness the song command would carry; with segue off, neither.
   the song after a queued song is order-determined and announced; a high
   rotation favorite coming due before the end is the usual clock-dependent
   case.
-- **Not announced** when a bumper is due after the song, a clocked flight log
-  runs, the successor has an intro, there is no successor, or Palazzo answered
-  404 (an older Palazzo; nothing more is announced to it until its boot
-  changes). A 409, 400 or 422 answer, or a `playout.next_withdrawn` with reason
+- **Not announced** when a clocked flight log runs, the successor has an
+  intro, there is no successor, or Palazzo answered 404 (an older Palazzo;
+  nothing more is announced to it until its boot changes). A bumper slot is
+  announced only to a Palazzo that lists `next.bumper` (see below); for any
+  other Palazzo the bumper slot is not announced either. Each song left
+  unannounced is counted once, by reason, in
+  `alcantara_radio_announcement_skipped_total{reason}`.
+- **Bumper slots (gaulatti/alcantara#232, contract gaulatti/palazzo#50).**
+  Bumpers stay Alcantara's: every `bumperInterval` songs, a spot from
+  `bumperInstantIds`, sequential or random. When the end of the song on air is
+  a slot and Palazzo's state lists `next.bumper` in `capabilities`, the engine
+  chooses the spot once for that song and announces the successor with
+  `bumper: {playbackId, url}`. Palazzo then plays the spot when the song ends,
+  and the announced song at the spot's own end: there is no fixed wait and no
+  song command, and the handoff counts as `preloaded`.
+  - The spot sequence advances when the slot is used, and only for the ended
+    song's own announcement: an accepted announcement for any other song never
+    suppresses the slot.
+  - While an announced spot is on air (its `instant.started` seen, no
+    `instant.ended` yet), the no-playback watchdog (#230) counts it as
+    playback, for at most 75 s (`ANNOUNCED_SPOT_PLAYBACK_MS`; Palazzo cuts a
+    spot at 60 s). So a spot of 46–60 s is never mistaken for silence, and the
+    engine sends nothing over it.
+  - The spot counts as `sent` at the end and as `played` on Palazzo's
+    `instant.started` for its playback ID. The log line is `Bumper played:
+    <name> on <program>`.
+  - A Palazzo without the capability, a refused announcement, or a slot whose
+    spot has no audio keeps today's path. The spot plays after the end, the
+    engine waits 8 s, then commands the song. That spot counts under
+    `path="command"`, played on its `instant.started` when Palazzo journals
+    instants.
+  - The silence at a bumper change is read on Palazzo, in
+    `palazzo_song_change_gap_seconds{handoff="bumper"}`. A 409, 400 or 422 answer, or a `playout.next_withdrawn` with reason
   `not_ready` before the end, leaves the next song to today's song command.
 - **Re-announced or withdrawn** (`DELETE …/playback/next`) whenever the
   successor changes while the song plays: queue enqueue, removal or reorder,

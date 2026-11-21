@@ -327,3 +327,31 @@ describe('PalazzoMachineClient next-song announcement: unknown state', () => {
     expect(series(metrics, 'unknown-value')).toBe(0);
   });
 });
+
+// gaulatti/alcantara#232 (contract gaulatti/palazzo#50): the spot rides on the
+// announcement only when the engine gives one; without it the body is as before.
+describe('PalazzoMachineClient next-song announcement with a spot', () => {
+  it('adds the bumper object, and nothing else, when the command carries one', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, { ok: true, playbackRequestId: 'next-1', state: 'queued' }),
+      json(200, { ok: true, playbackRequestId: 'next-1', state: 'queued' }),
+    );
+    await client.announceNext(BASE_URL, PROGRAM_ID, {
+      ...SONG,
+      bumper: { playbackId: 'spot-1', url: 'https://media.example/spot.mp3' },
+    });
+    await client.announceNext(BASE_URL, PROGRAM_ID, SONG);
+    const bodies = fetchImpl.mock.calls.map(
+      (call) =>
+        JSON.parse((call as [string, RequestInit])[1].body as string) as Record<
+          string,
+          unknown
+        >,
+    );
+    expect(bodies[0]).toEqual({
+      song: { programId: PROGRAM_ID, ...SONG },
+      bumper: { playbackId: 'spot-1', url: 'https://media.example/spot.mp3' },
+    });
+    expect(bodies[1]).not.toHaveProperty('bumper');
+  });
+});

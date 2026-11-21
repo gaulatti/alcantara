@@ -136,6 +136,27 @@ describe('parsePalazzoState coverage', () => {
   });
 });
 
+describe('Palazzo capabilities (gaulatti/palazzo#50)', () => {
+  it('keeps the listed capabilities, reads a malformed list as none, and omits an absent one', () => {
+    expect(
+      parsePalazzoState(mutate((s) => (s.capabilities = ['next.bumper'])))
+        ?.capabilities,
+    ).toEqual(['next.bumper']);
+    expect(parsePalazzoState(validState())).not.toHaveProperty('capabilities');
+    for (const capabilities of [
+      'next.bumper',
+      [1],
+      ['x'.repeat(65)],
+      [''],
+      Array.from({ length: 33 }, (_, i) => `c${i}`),
+    ])
+      expect(
+        parsePalazzoState(mutate((s) => (s.capabilities = capabilities)))
+          ?.capabilities,
+      ).toEqual([]);
+  });
+});
+
 describe('parsePalazzoTrack (via state) coverage', () => {
   const withTrack = (change: (track: Record<string, any>) => void) =>
     mutate((s) => change(s.track));
@@ -275,6 +296,24 @@ describe('parsePalazzoEvent coverage', () => {
 
   it('accepts a plain event', () => {
     expect(parsePalazzoEvent(validEvent())).toEqual(validEvent());
+  });
+
+  it('accepts instant.started and instant.ended with a playback ID and refuses one without (gaulatti/palazzo#50)', () => {
+    for (const type of ['instant.started', 'instant.ended']) {
+      const e = event((x) => {
+        x.type = type;
+        x.data = { playbackId: 'spot-1', programId: 'main', liquidsoapSequence: 3 };
+      });
+      expect(parsePalazzoEvent(e)).toEqual(e);
+      expect(
+        parsePalazzoEvent(
+          event((x) => {
+            x.type = type;
+            x.data = { programId: 'main' };
+          }),
+        ),
+      ).toBeNull();
+    }
   });
 
   it('accepts well-formed track and intro events', () => {

@@ -15,6 +15,8 @@ import {
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { PALAZZO_NEXT_BUMPER } from './palazzo-contract';
+import type { AnnouncementSkipReason } from './radio-metrics.service';
 import { randomUUID } from 'node:crypto';
 import { Subject, type Observable } from 'rxjs';
 import type { Prisma } from '@prisma/client';
@@ -180,6 +182,13 @@ export const COMMAND_RETRY_MAX_MS = 30_000;
 
 export const WATCHDOG_INTERVAL_MS = 10_000;
 export const NO_PLAYBACK_BOUND_MS = 45_000;
+/**
+ * An announced spot on air (instant.started seen, instant.ended not yet) is
+ * playback for the watchdog for at most this long: Palazzo cuts a spot at 60 s
+ * (gaulatti/palazzo#50), so past this the watchdog judges as usual even if the
+ * spot's end was never received.
+ */
+export const ANNOUNCED_SPOT_PLAYBACK_MS = 75_000;
 
 /**
  * What a watchdog read of Palazzo shows (#230). Anything on the air (a song,
@@ -258,6 +267,20 @@ interface NextAnnouncement {
    * unanswered: Palazzo may still start it at the handoff.
    */
   replaces: NextAnnouncement | null;
+  /** The spot Palazzo plays before it, when announced with one (palazzo#50). */
+  bumper?: BumperChoice | null;
+}
+
+/** The spot chosen for a bumper slot, once per song (gaulatti/alcantara#232). */
+interface BumperChoice {
+  /** Request ID of the song whose end is the slot. */
+  forRequestId: string;
+  /** Index in bumperInstantIds; the sequence advances past it once it is used. */
+  index: number;
+  instantId: number;
+  name: string;
+  audioUrl: string;
+  playbackId: string;
 }
 
 const MAX_PREEMPTED_REQUEST_IDS = 32;
@@ -316,6 +339,19 @@ interface SongEngineState {
   nextUnsupportedBootId?: string | null;
   /** Announced songs replaced at the handoff before their start arrived. */
   preemptedRequestIds: string[];
+  /** Capabilities from the latest Palazzo snapshot (gaulatti/palazzo#50). */
+  palazzoCapabilities?: string[];
+  /** The spot chosen for the active song's bumper slot, if any. */
+  bumperChoice?: BumperChoice | null;
+  /** Song whose missing announcement was already counted, so once per song. */
+  skipCountedFor?: string | null;
+  /** The announced spot Palazzo has on air, and since when (palazzo#50). */
+  announcedSpotOnAir?: { playbackId: string; since: number } | null;
+  /** Bumper spots sent and not yet seen on air, by playback ID. */
+  bumperSpotsSent?: Map<
+    string,
+    { name: string; path: 'announced' | 'command' }
+  >;
 }
 
 const MAX_ENDED_REQUEST_IDS = 128;
@@ -1232,6 +1268,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         this.metrics.recordEngineResync('watchdog', 'unavailable');
         continue;
       }
+      const spot = state.announcedSpotOnAir;
+      if (spot && Date.now() - spot.since < ANNOUNCED_SPOT_PLAYBACK_MS) {
+        // The announced song waits for the spot's end (palazzo#50): a spot on
+        // air is playback, not the silence the watchdog recovers from.
+        state.noPlaybackSince = null;
+        continue;
+      }
       const reading = watchdogReading(snapshot);
       if (reading !== 'nothing_on_air') {
         state.noPlaybackSince = null;
@@ -1263,6 +1306,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.reconciled = true;
     state.frozen = false;
     state.palazzoBootId = snapshot.bootId;
+    state.palazzoCapabilities = snapshot.capabilities ?? [];
 
     if (snapshot.status === 'playing' && snapshot.track) {
       // Palazzo plays: a run of failed commands is over (#230).
@@ -1326,6 +1370,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       | {
           type: 'playout.next_withdrawn';
           data: { playbackId: string; reason: string };
+        }
+      | {
+          type: 'instant.started' | 'instant.ended';
+          data: { playbackId: string; programId?: string | null };
         },
   ): void {
     if (!this.isRadioCapable(programId)) return;
@@ -1334,6 +1382,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
     if (event.type === 'playout.next_withdrawn') {
       this.handleNextWithdrawn(programId, state, event.data);
+      return;
+    }
+
+    if (event.type === 'instant.started') {
+      this.handleInstantStarted(programId, state, event.data.playbackId);
+      return;
+    }
+    if (event.type === 'instant.ended') {
+      if (state.announcedSpotOnAir?.playbackId === event.data.playbackId) {
+        state.announcedSpotOnAir = null;
+      }
       return;
     }
 
@@ -1559,8 +1618,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (!song || song.authoritativeStartedAt === null || song.asRunClosed) {
       return;
     }
-    const successor = await this.announceableSuccessor(programId, state, song);
-    if (state.activeSong !== song) return;
+    const found = await this.announceableSuccessor(programId, state, song);
+    if (state.activeSong !== song) {
+      this.countAnnouncementSkip(state, song, 'superseded');
+      return;
+    }
+    const successor = 'skip' in found ? null : found;
+    if ('skip' in found) this.countAnnouncementSkip(state, song, found.skip);
     const current =
       state.announcement?.forRequestId === song.playbackRequestId
         ? state.announcement
@@ -1580,12 +1644,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
       return;
     }
-    const { leaf, queueEntryId } = successor;
+    const { leaf, queueEntryId, bumper } = successor;
     if (
       current &&
       current.itemId === leaf.id &&
       current.queueEntryId === queueEntryId &&
-      current.audioUrl === leaf.audioUrl
+      current.audioUrl === leaf.audioUrl &&
+      (current.bumper?.playbackId ?? null) === (bumper?.playbackId ?? null)
     ) {
       return;
     }
@@ -1602,17 +1667,24 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       // A refused announcement may still hold the previous one, on air.
       replaces:
         current?.status === 'accepted' ? current : (current?.replaces ?? null),
+      bumper,
     };
     state.announcement = announcement;
     let result: Awaited<ReturnType<RadioService['announceNext']>>;
     try {
-      result = await this.radioService.announceNext(programId, {
-        playbackId: announcement.playbackId,
-        url: leaf.audioUrl,
-        title: leaf.title,
-        artist: leaf.artist,
-        coverUrl: leaf.coverUrl,
-      });
+      result = await this.radioService.announceNext(
+        programId,
+        {
+          playbackId: announcement.playbackId,
+          url: leaf.audioUrl,
+          title: leaf.title,
+          artist: leaf.artist,
+          coverUrl: leaf.coverUrl,
+        },
+        bumper
+          ? { playbackId: bumper.playbackId, url: bumper.audioUrl }
+          : undefined,
+      );
     } catch (error) {
       this.logger.warn(
         `Next-song announcement failed on ${programId}: ${String(error)}`,
@@ -1621,6 +1693,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     if (state.announcement !== announcement) return;
     announcement.status = result === 'accepted' ? 'accepted' : 'not-announced';
+    if (result !== 'accepted')
+      this.countAnnouncementSkip(state, song, 'refused');
     if (result === 'unsupported') {
       state.nextUnsupportedBootId = state.palazzoBootId;
     }
@@ -1628,6 +1702,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // Accepted: Palazzo replaced the previous announcement.
     if (result === 'accepted') {
       announcement.replaces = null;
+      if (bumper) {
+        this.rememberBumperSpot(
+          state,
+          bumper.playbackId,
+          bumper.name,
+          'announced',
+        );
+      }
       return;
     }
     // Refused: Palazzo keeps the previous one, so withdraw it now rather than
@@ -1640,41 +1722,116 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** The successor to announce, or null in every "do not announce" case. */
+  /**
+   * The successor to announce, or why there is none. At a bumper slot the
+   * successor is announced with the slot's spot when Palazzo lists
+   * `next.bumper` (gaulatti/palazzo#50); without it the slot is skipped as
+   * before, and the spot plays after the end with the song by command.
+   */
   private async announceableSuccessor(
     programId: string,
     state: SongEngineState,
     song: ActiveSong,
-  ): Promise<{
-    leaf: ProgramResolvedSongLeaf & { audioUrl: string };
-    queueEntryId: string | null;
-  } | null> {
+  ): Promise<
+    | {
+        leaf: ProgramResolvedSongLeaf & { audioUrl: string };
+        queueEntryId: string | null;
+        bumper: BumperChoice | null;
+      }
+    | { skip: AnnouncementSkipReason }
+  > {
     if (
       state.nextUnsupportedBootId !== undefined &&
       state.nextUnsupportedBootId === state.palazzoBootId
     ) {
-      return null;
+      return { skip: 'unsupported' };
     }
     if (
       state.sequence?.mode !== 'autoplay' &&
       state.sequence?.mode !== 'shuffle'
     ) {
-      return null;
+      return { skip: 'not_autoplay' };
     }
-    if (this.flightService.isClockedLogRunning(programId)) return null;
+    if (this.flightService.isClockedLogRunning(programId)) {
+      return { skip: 'clocked_log' };
+    }
     const successor = this.peekSuccessor(programId, state, song);
-    if (!successor) return null;
+    if (!successor) return { skip: 'no_successor' };
     const settings = await this.radioService.getRadioSettings(programId);
+    let bumper: BumperChoice | null = null;
     if (
       settings?.bumperEnabled &&
       settings.bumperInterval &&
       settings.bumperInstantIds.length &&
       (state.songCount + 1) % settings.bumperInterval === 0
     ) {
-      return null;
+      if (!state.palazzoCapabilities?.includes(PALAZZO_NEXT_BUMPER)) {
+        return { skip: 'bumper_slot' };
+      }
+      bumper = await this.chooseBumper(state, settings, song.playbackRequestId);
+      if (!bumper) return { skip: 'bumper_slot' };
     }
-    if (await this.hasIntro(programId, successor.leaf.songId)) return null;
-    return successor;
+    if (await this.hasIntro(programId, successor.leaf.songId)) {
+      return { skip: 'intro' };
+    }
+    return { ...successor, bumper };
+  }
+
+  /**
+   * The spot for the bumper slot at the end of `forRequestId`, chosen once per
+   * song by the same rule as maybeBumper (sequential or random over
+   * bumperInstantIds), so a refreshed announcement keeps its spot. The
+   * sequence advances only when the spot is used (consumeBumper).
+   */
+  private async chooseBumper(
+    state: SongEngineState,
+    settings: { bumperInstantIds: number[]; bumperMode?: string | null },
+    forRequestId: string,
+  ): Promise<BumperChoice | null> {
+    if (state.bumperChoice?.forRequestId === forRequestId) {
+      return state.bumperChoice;
+    }
+    const ids = settings.bumperInstantIds;
+    const index = this.bumperIndex(state, settings);
+    const instant = await this.prisma.instant.findUnique({
+      where: { id: ids[index] },
+    });
+    if (!instant?.audioUrl) return null;
+    state.bumperChoice = {
+      forRequestId,
+      index,
+      instantId: instant.id,
+      name: instant.name,
+      audioUrl: instant.audioUrl,
+      playbackId: randomUUID(),
+    };
+    return state.bumperChoice;
+  }
+
+  /** The next spot's index in bumperInstantIds, without advancing. */
+  private bumperIndex(
+    state: SongEngineState,
+    settings: { bumperInstantIds: number[]; bumperMode?: string | null },
+  ): number {
+    const length = settings.bumperInstantIds.length;
+    return settings.bumperMode === 'random'
+      ? Math.floor(Math.random() * length)
+      : state.nextBumperIdx % length;
+  }
+
+  /** Counts, once per song, why it was left without an announced successor. */
+  private countAnnouncementSkip(
+    state: SongEngineState,
+    song: ActiveSong,
+    reason: AnnouncementSkipReason,
+  ): void {
+    if (state.skipCountedFor === song.playbackRequestId) return;
+    state.skipCountedFor = song.playbackRequestId;
+    try {
+      this.metrics.recordAnnouncementSkipped(reason);
+    } catch {
+      // Metrics are best-effort.
+    }
   }
 
   /**
@@ -2266,6 +2423,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       endedSong.queueEntryId,
       nextSequence,
       hasSuccessor,
+      endedSong.playbackRequestId,
     );
     return true;
   }
@@ -2299,6 +2457,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     endedQueueEntryId: string | null,
     nextSequence: ProgramSongSequence | null,
     hasSequenceSuccessor: boolean,
+    endedRequestId: string,
   ): Promise<void> {
     if (this.flightService.isClockedLogRunning(programId)) {
       // The log decides what plays next; the announced song must not.
@@ -2337,7 +2496,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.maybeBumper(programId);
+    await this.bumperAtEnd(programId, endedRequestId);
     const state = this.states.get(programId);
     if (!state || state.activeSong || state.frozen) return;
 
@@ -3052,6 +3211,92 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * The bumper slot at an accepted end. When the ended song's accepted
+   * announcement carried the slot's spot, Palazzo plays the spot and then the
+   * announced song at the spot's own end (gaulatti/palazzo#50): the spot is
+   * used, and nothing is played or waited for here. Otherwise the slot is
+   * played as before (maybeBumper).
+   */
+  private async bumperAtEnd(
+    programId: string,
+    endedRequestId: string,
+  ): Promise<void> {
+    const state = this.states.get(programId);
+    const announced = state?.announcement;
+    // Only the ended song's own announcement: a stale one never suppresses
+    // the slot's spot.
+    if (
+      state &&
+      announced?.status === 'accepted' &&
+      announced.bumper &&
+      announced.forRequestId === endedRequestId
+    ) {
+      const spot = announced.bumper;
+      try {
+        const settings = await this.radioService.getRadioSettings(programId);
+        const length = settings?.bumperInstantIds.length ?? 0;
+        if (length) state.nextBumperIdx = (spot.index + 1) % length;
+      } catch {
+        /* the sequence stays where it was */
+      }
+      state.bumperChoice = null;
+      this.logger.log(`Bumper: ${spot.name} on ${programId} (announced)`);
+      this.recordBumperMetric('announced', 'sent');
+      return;
+    }
+    if (state) state.bumperChoice = null;
+    await this.maybeBumper(programId);
+  }
+
+  /**
+   * A spot Palazzo may put on air, by playback ID, so its instant.started is
+   * counted as played whenever it arrives: an announced spot goes on air just
+   * before the song's end, before the engine reads that end.
+   */
+  private rememberBumperSpot(
+    state: SongEngineState,
+    playbackId: string,
+    name: string,
+    path: 'announced' | 'command',
+  ): void {
+    const sent = (state.bumperSpotsSent ??= new Map());
+    sent.set(playbackId, { name, path });
+    if (sent.size > 16) sent.delete(sent.keys().next().value as string);
+  }
+
+  private recordBumperMetric(
+    path: 'announced' | 'command',
+    result: 'sent' | 'played',
+  ): void {
+    try {
+      this.metrics.recordBumper(path, result);
+    } catch {
+      // Metrics are best-effort.
+    }
+  }
+
+  /** Palazzo put a spot on air (instant.started, gaulatti/palazzo#50). */
+  private handleInstantStarted(
+    programId: string,
+    state: SongEngineState,
+    playbackId: string,
+  ): void {
+    const spot = state.bumperSpotsSent?.get(playbackId);
+    if (!spot) return;
+    state.bumperSpotsSent?.delete(playbackId);
+    if (spot.path === 'announced') {
+      state.announcedSpotOnAir = { playbackId, since: Date.now() };
+    }
+    this.recordBumperMetric(spot.path, 'played');
+    this.logger.log(`Bumper played: ${spot.name} on ${programId}`);
+  }
+
+  /**
+   * Today's bumper path, for a Palazzo without `next.bumper` or a slot whose
+   * announcement was not accepted: the spot after the end, a fixed 8 s, then
+   * the song by command.
+   */
   private async maybeBumper(programId: string): Promise<void> {
     try {
       const settings = await this.radioService.getRadioSettings(programId);
@@ -3064,10 +3309,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const state = this.states.get(programId);
       if (!state || state.songCount % settings.bumperInterval !== 0) return;
       const ids = settings.bumperInstantIds;
-      const idx =
-        settings.bumperMode === 'random'
-          ? Math.floor(Math.random() * ids.length)
-          : state.nextBumperIdx % ids.length;
+      const idx = this.bumperIndex(state, settings);
       state.nextBumperIdx = (idx + 1) % ids.length;
       const inst = await this.prisma.instant.findUnique({
         where: { id: ids[idx] },
@@ -3075,12 +3317,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (!inst?.audioUrl) return;
       this.logger.log(`Bumper: ${inst.name} on ${programId}`);
       const playbackRequestId = randomUUID();
+      this.rememberBumperSpot(state, playbackRequestId, inst.name, 'command');
       await this.radioService.playInstant(
         programId,
         inst.audioUrl,
         undefined,
         playbackRequestId,
       );
+      this.recordBumperMetric('command', 'sent');
       await new Promise((r) => setTimeout(r, 8000));
     } catch {
       /* silent */

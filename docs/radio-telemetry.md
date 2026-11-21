@@ -458,6 +458,24 @@ Contract: gaulatti/palazzo#40 §5.
   `command` (today's song command) and `race_replaced` (an accepted
   announcement was no longer the successor, so the selected song was commanded
   and the announced one preempted).
+- `alcantara_radio_announcement_skipped_total{reason}` counts, once per song,
+  why a started song was left without an announced successor:
+  - `bumper_slot`: a slot without `next.bumper`, or the spot has no audio;
+  - `intro`;
+  - `clocked_log`;
+  - `no_successor`;
+  - `not_autoplay`;
+  - `unsupported`: a 404 Palazzo;
+  - `superseded`: the song changed while the successor was worked out;
+  - `refused`: Palazzo did not accept the announcement.
+
+  A handoff counted `command` with no skip for its song is a refused or
+  clock-dependent successor.
+- `alcantara_radio_bumpers_total{path,result}` counts bumper spots.
+  - `path`: `announced` with the next song (gaulatti/palazzo#50), or `command`
+    (after the end, then the song by command).
+  - `result`: `sent` when the engine used the slot, `played` on Palazzo's
+    `instant.started` for that spot.
 - The machine requests `next-announce` and `next-withdraw` appear in
   `alcantara_palazzo_machine_requests_total` and
   `alcantara_palazzo_machine_retries_total`.
