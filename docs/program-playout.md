@@ -60,6 +60,18 @@ With `segueMode` on, a song that has no analysis (no media asset, no analysis ro
 
 Before sending any command to Liquidsoap, the payload is validated strictly:
 
+**One measured edge is enough (gaulatti/alcantara#234).** Analysis measures a cue-in only when the file starts in silence, and a cue-out only when it ends in silence. When either one exists, a full group is sent, and the other edge is filled:
+- a missing `cueInSeconds` is 0;
+- a missing `cueOutSeconds` is the song's duration (`Song.durationMs`, the duration Palazzo validates against).
+
+Palazzo (Liquidsoap 2.4.5 `request.create`) applies `liq_cue_in`/`liq_cue_out` from that group, so the song plays from cue-in to cue-out, and its end, handoff and remaining time are on the trimmed clock.
+
+Each edge is checked on its own before sending. An edge that would trim more than 10 s (`CUE_EDGE_BOUND_SECONDS`, the same bound as Palazzo's), or that is negative or not finite, is not applied: that edge is filled instead, and the drop is counted as `segue-edge-bound`.
+
+A song without a stored duration keeps the earlier behaviour: both measured cues, or none.
+
+Every resolved group is counted in `alcantara_radio_cue_groups_total{shape="both|head_filled|tail_filled|none"}`. In the catalog of 2026-11-21, 536 songs measure only a tail, 13 only a head, 195 both and 48 neither.
+
 1. **Finite Numbers**: All numeric fields in `segue` (`cueInSeconds`, `cueOutSeconds`, `fadeInSeconds`, `fadeOutSeconds`, `overlapSeconds`) and `loudness` (`integratedLufs`, `truePeakDbtp`) must be finite numbers.
 2. **Cue Bounds**:
    - `0 <= cueInSeconds < cueOutSeconds`
@@ -87,7 +99,7 @@ The rules above are enforced by `PalazzoMachineClient` (`validateSongSegue` and 
 
 When both groups are dropped, the command is byte-identical to the `segueMode`-off command.
 
-Each drop increments `alcantara_radio_analysis_dropped_total{result=...}`. `result` is one of `segue-invalid`, `segue-beyond-duration`, `loudness-invalid` or `ambiguous-match`, and there are no song or program labels. Each song with any drop is logged once as `radio.song_analysis_dropped`, with `programId`, `playbackRequestId`, `songId` when known, and the list of reasons. The audio URL is never logged.
+Each drop increments `alcantara_radio_analysis_dropped_total{result=...}`. `result` is one of `segue-invalid`, `segue-beyond-duration`, `segue-edge-bound`, `loudness-invalid` or `ambiguous-match`, and there are no song or program labels. Each song with any drop is logged once as `radio.song_analysis_dropped`, with `programId`, `playbackRequestId`, `songId` when known, and the list of reasons. The audio URL is never logged.
 
 ## Next-song announcement (`PUT`/`DELETE …/playback/next`)
 

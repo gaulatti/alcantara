@@ -51,6 +51,7 @@ function build(settings: Record<string, unknown> | null = defaultSettings()) {
     recordRecoveryPreparation: jest.fn(),
     recordListenerConfiguration: jest.fn(),
     recordAnalysisDrop: jest.fn(),
+    recordCueGroup: jest.fn(),
   };
   const service = new RadioService(prisma, palazzo, config, metrics);
   jest.spyOn(service['logger'], 'error').mockImplementation();
@@ -973,8 +974,7 @@ describe('RadioService coverage', () => {
     it.each([
       ['loudness below -70 LUFS', { ...NO_SEGUE, integratedLufs: -71, truePeakDbtp: -1 }, 'loudness-invalid'],
       ['true peak above +6 dBTP', { ...NO_SEGUE, integratedLufs: -14, truePeakDbtp: 6.5 }, 'loudness-invalid'],
-      ['cue-in not before cue-out', { ...NO_LOUDNESS, ...VALID_SEGUE, cueInSeconds: 170, cueOutSeconds: 170 }, 'segue-invalid'],
-      ['overlap longer than the cue span', { ...NO_LOUDNESS, ...VALID_SEGUE, cueInSeconds: 10, cueOutSeconds: 20, overlapSeconds: 11 }, 'segue-invalid'],
+      ['overlap longer than the cue span', { ...NO_LOUDNESS, ...VALID_SEGUE, cueInSeconds: 1, cueOutSeconds: 175, overlapSeconds: 175 }, 'segue-invalid'],
     ])('drops %s and sends the segueMode-off command, so the song plays', async (_name, analysis, reason) => {
       const { service, palazzo, metrics } = onWithAnalysis(analysis);
       await expect(play(service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
@@ -983,11 +983,15 @@ describe('RadioService coverage', () => {
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledTimes(1);
     });
 
-    it('drops invalid cue points but keeps valid loudness', async () => {
-      const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds: -1, ...VALID_LOUDNESS });
-      await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS });
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-invalid');
+    it('drops an invalid edge on its own (#234), keeping the valid edge and loudness', async () => {
+      // An invalid cue-in (negative, or past the bound) is not applied; the valid cue-out still is.
+      for (const cueInSeconds of [-1, 170]) {
+        const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds, ...VALID_LOUDNESS });
+        await play(service);
+        expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueInSeconds: 0 } });
+        expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
+        expect(metrics.recordCueGroup).toHaveBeenCalledWith('head_filled');
+      }
     });
 
     it('drops invalid loudness but keeps valid cue points', async () => {
@@ -997,11 +1001,11 @@ describe('RadioService coverage', () => {
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('loudness-invalid');
     });
 
-    it('checks cue-out against the song duration and drops segue beyond it', async () => {
+    it('treats a cue-out beyond the song duration as no tail trim, keeping the head (#234)', async () => {
       const { service, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS }, 150000);
       await play(service);
-      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS });
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-beyond-duration');
+      expect(sent(palazzo)).toEqual({ ...OFF_COMMAND, loudness: VALID_LOUDNESS, segue: { ...VALID_SEGUE, cueOutSeconds: 150 } });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
       // Within the duration the same segue is kept, and a song with no stored duration is not bounded.
       const within = onWithAnalysis({ ...VALID_SEGUE, ...NO_LOUDNESS }, 170000);
       await play(within.service);
@@ -1010,6 +1014,62 @@ describe('RadioService coverage', () => {
       await play(unknown.service);
       expect(sent(unknown.palazzo)).toEqual({ ...OFF_COMMAND, segue: VALID_SEGUE });
       expect(unknown.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+    });
+
+    // gaulatti/alcantara#234: one measured edge is enough. The other is filled
+    // (cue-in 0, cue-out the duration), each edge is bounded at 10 s, and
+    // the group's shape is counted.
+    it.each([
+      ['a tail-only song (the 536)', { cueInSeconds: null, cueOutSeconds: 176 }, { cueInSeconds: 0, cueOutSeconds: 176 }, 'head_filled'],
+      ['a head-only song (the 13)', { cueInSeconds: 2.5, cueOutSeconds: null }, { cueInSeconds: 2.5, cueOutSeconds: 180 }, 'tail_filled'],
+      ['a song with both edges', { cueInSeconds: 1, cueOutSeconds: 177 }, { cueInSeconds: 1, cueOutSeconds: 177 }, 'both'],
+    ])('sends a full cue group for %s', async (_name, cues, expected, shape) => {
+      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, ...cues });
+      await play(service);
+      expect(sent(palazzo)).toEqual({
+        ...OFF_COMMAND,
+        segue: { ...expected, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 },
+      });
+      expect(metrics.recordCueGroup).toHaveBeenCalledWith(shape);
+      expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+    });
+
+    it('does not apply an edge that would trim more than 10 s, and counts it', async () => {
+      // Tail of 12 s (cue-out 168 of 180) is over the bound; the head of 2 s is kept.
+      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, cueInSeconds: 2, cueOutSeconds: 168 });
+      await play(service);
+      expect(sent(palazzo).segue).toEqual({ cueInSeconds: 2, cueOutSeconds: 180, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 });
+      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('segue-edge-bound');
+      expect(metrics.recordCueGroup).toHaveBeenCalledWith('tail_filled');
+      // Both edges over the bound: no group at all.
+      const both = onWithAnalysis({ ...NO_LOUDNESS, cueInSeconds: 11, cueOutSeconds: 160 });
+      await play(both.service);
+      expect(sent(both.palazzo)).toEqual(OFF_COMMAND);
+      expect(both.metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-edge-bound'], ['segue-edge-bound']]);
+      expect(both.metrics.recordCueGroup).toHaveBeenCalledWith('none');
+    });
+
+    it('treats a cue-out past the stored duration as no tail trim and keeps the head', async () => {
+      // durationMs 180 s, analysed cue-out 181.2 s: the file is a little longer than the stored duration.
+      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, fadeInSeconds: null, fadeOutSeconds: null, overlapSeconds: null, cueInSeconds: 1.5, cueOutSeconds: 181.2 });
+      await play(service);
+      expect(sent(palazzo).segue).toEqual({ cueInSeconds: 1.5, cueOutSeconds: 180, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 });
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-edge-bound']]);
+      expect(metrics.recordCueGroup).toHaveBeenCalledWith('tail_filled');
+    });
+
+    it('keeps today\'s behaviour without a stored duration: both measured cues or none', async () => {
+      const tailOnly = onWithAnalysis({ ...NO_LOUDNESS, cueInSeconds: null, cueOutSeconds: 176 }, null);
+      await play(tailOnly.service);
+      expect(sent(tailOnly.palazzo)).toEqual(OFF_COMMAND);
+      expect(tailOnly.metrics.recordCueGroup).toHaveBeenCalledWith('none');
+    });
+
+    it('counts a song analysed with neither edge as none', async () => {
+      const { service, palazzo, metrics } = onWithAnalysis({ ...NO_LOUDNESS, cueInSeconds: null, cueOutSeconds: null });
+      await play(service);
+      expect(sent(palazzo)).toEqual(OFF_COMMAND);
+      expect(metrics.recordCueGroup).toHaveBeenCalledWith('none');
     });
 
     it('applies no analysis when more than one song shares the audio URL', async () => {
@@ -1045,14 +1105,14 @@ describe('RadioService coverage', () => {
     it('counts every drop and logs once per song with the reasons and no audio URL', async () => {
       const { service, metrics } = onWithAnalysis({ ...VALID_SEGUE, cueInSeconds: 200, integratedLufs: 1, truePeakDbtp: 0 });
       await play(service);
-      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-invalid'], ['loudness-invalid']]);
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['segue-edge-bound'], ['loudness-invalid']]);
       expect(service['logger'].warn).toHaveBeenCalledTimes(1);
       expect(service['logger'].warn).toHaveBeenCalledWith({
         event: 'radio.song_analysis_dropped',
         programId: 'p',
         playbackRequestId: 'req',
         songId: 7,
-        reasons: ['segue-invalid', 'loudness-invalid'],
+        reasons: ['segue-edge-bound', 'loudness-invalid'],
       });
       expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('"u"');
     });

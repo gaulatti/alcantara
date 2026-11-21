@@ -8,7 +8,11 @@ import {
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import { RadioMetricsService, type AnalysisDropResult } from './radio-metrics.service';
+import {
+  RadioMetricsService,
+  type AnalysisDropResult,
+  type CueGroupShape,
+} from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
 import {
   PalazzoMachineClient,
@@ -644,6 +648,9 @@ export class RadioService {
   ): Promise<{ segue?: PalazzoSongSegue; loudness?: PalazzoSongLoudness }> {
     const drops: AnalysisDropResult[] = [];
     let durationSeconds = duration;
+    // The cue group's shape, counted once the group is final (#234); a
+    // caller-supplied segue is not an analysis group and is not counted.
+    let shape: CueGroupShape | null = null;
     if (!segue && !loudness) {
       try {
         const song = await this.findSongForAnalysis(audioUrl, songId, drops);
@@ -658,13 +665,17 @@ export class RadioService {
             where: { assetId: song.assetId },
           });
           if (analysis && analysis.status === 'success') {
-            if (
-              analysis.cueInSeconds !== null &&
-              analysis.cueOutSeconds !== null
-            ) {
+            const cues = cueGroupFrom(
+              analysis.cueInSeconds,
+              analysis.cueOutSeconds,
+              durationSeconds,
+              drops,
+            );
+            shape = cues?.shape ?? 'none';
+            if (cues) {
               segue = {
-                cueInSeconds: analysis.cueInSeconds,
-                cueOutSeconds: analysis.cueOutSeconds,
+                cueInSeconds: cues.cueInSeconds,
+                cueOutSeconds: cues.cueOutSeconds,
                 fadeInSeconds: analysis.fadeInSeconds ?? 0,
                 fadeOutSeconds: analysis.fadeOutSeconds ?? 0,
                 overlapSeconds: analysis.overlapSeconds ?? 0,
@@ -708,6 +719,7 @@ export class RadioService {
         drops.push('loudness-invalid');
       }
     }
+    if (shape !== null) this.metrics.recordCueGroup(segue ? shape : 'none');
     for (const drop of drops) this.metrics.recordAnalysisDrop(drop);
     if (drops.length) {
       this.logger.warn({
@@ -851,4 +863,79 @@ export class RadioService {
       reason,
     });
   }
+}
+
+/**
+ * Seconds a cue point may trim from one edge of a song (gaulatti/alcantara#234,
+ * the same bound as Palazzo's). Catalog on 2026-11-21: tail silence max 8.01 s,
+ * head max 9.81 s.
+ */
+export const CUE_EDGE_BOUND_SECONDS = 10;
+
+/**
+ * The cue group to send for a song's measured edges (gaulatti/alcantara#234).
+ * Palazzo trims when it receives a full group, so a single measured edge is
+ * sent with the other filled: a missing cue-in is 0, a missing cue-out is the
+ * song's duration (the same duration Palazzo validates against). Each edge is
+ * bounded on its own: a cue that would trim more than CUE_EDGE_BOUND_SECONDS,
+ * is not finite or is negative is not applied (that edge is filled instead)
+ * and counted. Without a known duration a song keeps today's behaviour: both
+ * measured cues, unbounded (Palazzo's own bound applies at play time), or
+ * none. Null when no edge is left to trim.
+ */
+export function cueGroupFrom(
+  cueIn: number | null,
+  cueOut: number | null,
+  durationSeconds: number | undefined,
+  drops: AnalysisDropResult[],
+): {
+  cueInSeconds: number;
+  cueOutSeconds: number;
+  shape: Exclude<CueGroupShape, 'none'>;
+} | null {
+  const known =
+    durationSeconds !== undefined && Number.isFinite(durationSeconds);
+  if (!known) {
+    // Without a duration neither the fill nor the tail bound is possible: a
+    // song keeps exactly today's behaviour, both measured cues or none.
+    return cueIn !== null && cueOut !== null
+      ? { cueInSeconds: cueIn, cueOutSeconds: cueOut, shape: 'both' }
+      : null;
+  }
+  const duration = durationSeconds as number;
+  let head = cueIn;
+  let tail = cueOut;
+  if (
+    head !== null &&
+    !(Number.isFinite(head) && head >= 0 && head <= CUE_EDGE_BOUND_SECONDS)
+  ) {
+    drops.push('segue-edge-bound');
+    head = null;
+  }
+  if (
+    tail !== null &&
+    !(
+      Number.isFinite(tail) &&
+      tail >= 0 &&
+      // A cue-out past the stored duration (the file a little longer than
+      // Song.durationMs) is no tail trim: the duration stands in for it, and
+      // the head is kept rather than the whole group being dropped later.
+      tail <= duration &&
+      duration - tail <= CUE_EDGE_BOUND_SECONDS
+    )
+  ) {
+    drops.push('segue-edge-bound');
+    tail = null;
+  }
+  if (head === null && tail === null) return null;
+  return {
+    cueInSeconds: head ?? 0,
+    cueOutSeconds: tail ?? duration,
+    shape:
+      head !== null && tail !== null
+        ? 'both'
+        : head === null
+          ? 'head_filled'
+          : 'tail_filled',
+  };
 }

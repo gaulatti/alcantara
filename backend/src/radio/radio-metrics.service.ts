@@ -122,6 +122,7 @@ export type HighRotationActionResult =
 export type AnalysisDropResult =
   | 'segue-invalid'
   | 'segue-beyond-duration'
+  | 'segue-edge-bound'
   | 'loudness-invalid'
   | 'ambiguous-match';
 
@@ -330,9 +331,22 @@ const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
   'persistence-failed',
 ];
 
+/**
+ * The cue group sent with a song (gaulatti/alcantara#234): both edges
+ * measured, the head filled with 0 (only the tail measured), the tail filled
+ * with the song's duration (only the head measured), or none sent.
+ */
+export type CueGroupShape = 'both' | 'head_filled' | 'tail_filled' | 'none';
+const CUE_GROUP_SHAPES: CueGroupShape[] = [
+  'both',
+  'head_filled',
+  'tail_filled',
+  'none',
+];
 const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
   'segue-invalid',
   'segue-beyond-duration',
+  'segue-edge-bound',
   'loudness-invalid',
   'ambiguous-match',
 ];
@@ -405,6 +419,7 @@ export class RadioMetricsService {
   private readonly highRotationActions = new Map<string, number>();
   private readonly similarityActions = new Map<string, number>();
   private readonly analysisDrops = new Map<string, number>();
+  private readonly cueGroups = new Map<string, number>();
   private readonly nextAnnouncements = new Map<string, number>();
   private readonly handoffs = new Map<string, number>();
   private readonly announcementSkips = new Map<string, number>();
@@ -521,6 +536,11 @@ export class RadioMetricsService {
   recordAnalysisDrop(result: AnalysisDropResult): void {
     if (!ANALYSIS_DROP_RESULTS.includes(result)) return;
     this.analysisDrops.set(result, (this.analysisDrops.get(result) ?? 0) + 1);
+  }
+
+  recordCueGroup(shape: CueGroupShape): void {
+    if (!CUE_GROUP_SHAPES.includes(shape)) return;
+    this.cueGroups.set(shape, (this.cueGroups.get(shape) ?? 0) + 1);
   }
 
   recordNextAnnouncement(result: NextAnnouncementResult): void {
@@ -769,6 +789,15 @@ export class RadioMetricsService {
     for (const result of ANALYSIS_DROP_RESULTS) {
       lines.push(
         `alcantara_radio_analysis_dropped_total{result="${result}"} ${this.analysisDrops.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_cue_groups_total Cue groups sent with a song or announcement, by shape: both edges measured, head filled with 0, tail filled with the duration, or none sent.',
+      '# TYPE alcantara_radio_cue_groups_total counter',
+    );
+    for (const shape of CUE_GROUP_SHAPES) {
+      lines.push(
+        `alcantara_radio_cue_groups_total{shape="${shape}"} ${this.cueGroups.get(shape) ?? 0}`,
       );
     }
     lines.push(

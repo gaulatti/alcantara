@@ -1822,6 +1822,33 @@ describe('next-song announcement and handoff', () => {
       expect(state.bumperSpotsSent!.has('spot-0')).toBe(false);
     });
 
+    // gaulatti/alcantara#234: the successor's clock probes use Palazzo's
+    // last position report when there is one (its remaining is cut at
+    // cue-out), else the start plus the duration; both still announce.
+    it('works out the successor with or without a position report', async () => {
+      const h = harness();
+      await onAir(h);
+      const states = (
+        h.engine as unknown as {
+          states: Map<
+            string,
+            {
+              activeSong: {
+                authoritativePositionMs: number | null;
+                authoritativeUpdatedAt: number | null;
+              };
+            }
+          >;
+        }
+      ).states;
+      states.get(PROGRAM)!.activeSong.authoritativePositionMs = null;
+      states.get(PROGRAM)!.activeSong.authoritativeUpdatedAt = null;
+      h.palazzo.answer = () => 'accepted';
+      h.engine.handleSequenceUpdated(PROGRAM, h.sequence());
+      await settle();
+      expect(urls(h.palazzo.announced)).toContain(SONGS[1].url);
+    });
+
     it('labels the new counters with bounded values only', () => {
       const h = harness();
       h.metrics.recordAnnouncementSkipped('bogus' as never);

@@ -192,3 +192,53 @@ describe('RadioService.announceNext with a spot', () => {
     expect(palazzo.announceNext.mock.calls[1][2]).not.toHaveProperty('bumper');
   });
 });
+
+// gaulatti/alcantara#234: the announcement resolves cue points with the song
+// command's resolver, so a preloaded tail-only song is trimmed like a
+// commanded one.
+describe('RadioService.announceNext with one measured edge', () => {
+  it('sends the same filled cue group as the song command for a tail-only song', async () => {
+    const { service, prisma, palazzo, metrics } = build({
+      palazzoUrl: 'http://palazzo:3100',
+      segueMode: 'on',
+    });
+    prisma.mediaAssetAnalysis.findUnique.mockResolvedValue({
+      ...ANALYSIS,
+      cueInSeconds: null,
+      cueOutSeconds: 196,
+      fadeInSeconds: null,
+      fadeOutSeconds: null,
+      overlapSeconds: null,
+    });
+    await service.announceNext('radio-1', SONG);
+    await service.playSong(
+      'radio-1',
+      SONG.url,
+      SONG.title,
+      SONG.artist,
+      SONG.playbackId,
+      SONG.coverUrl,
+      undefined,
+    );
+    const announced = palazzo.announceNext.mock.calls[0][2].segue;
+    const commanded = palazzo.playSong.mock.calls[0][2].segue;
+    expect(announced).toEqual({
+      cueInSeconds: 0,
+      cueOutSeconds: 196,
+      fadeInSeconds: 0,
+      fadeOutSeconds: 0,
+      overlapSeconds: 0,
+    });
+    expect(commanded).toEqual(announced);
+    expect(
+      metrics
+        .render()
+        .split('\n')
+        .filter((line: string) =>
+          line.startsWith(
+            'alcantara_radio_cue_groups_total{shape="head_filled"}',
+          ),
+        ),
+    ).toEqual(['alcantara_radio_cue_groups_total{shape="head_filled"} 2']);
+  });
+});

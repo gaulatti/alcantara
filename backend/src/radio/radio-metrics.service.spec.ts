@@ -14,9 +14,29 @@ describe('RadioMetricsService', () => {
     expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="loudness-invalid"} 1');
     expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-beyond-duration"} 0');
     expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="ambiguous-match"} 0');
-    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(4);
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-edge-bound"} 0');
+    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(5);
     expect(rendered).not.toContain('media.example');
     expect(metrics.snapshot().analysisDrops).toEqual({ 'segue-invalid': 2, 'loudness-invalid': 1 });
+  });
+
+  // gaulatti/alcantara#234: cue groups by shape, bounded, exported at 0.
+  it('counts cue groups by bounded shape only', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordCueGroup('head_filled');
+    metrics.recordCueGroup('head_filled');
+    metrics.recordCueGroup('both');
+    metrics.recordCueGroup('bogus' as never);
+    const lines = metrics
+      .render()
+      .split('\n')
+      .filter((line) => line.startsWith('alcantara_radio_cue_groups_total{'));
+    expect(lines).toEqual([
+      'alcantara_radio_cue_groups_total{shape="both"} 1',
+      'alcantara_radio_cue_groups_total{shape="head_filled"} 2',
+      'alcantara_radio_cue_groups_total{shape="tail_filled"} 0',
+      'alcantara_radio_cue_groups_total{shape="none"} 0',
+    ]);
   });
 
   it('renders bounded-cardinality Prometheus output', () => {

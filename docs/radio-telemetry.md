@@ -442,7 +442,15 @@ an already-playing queue head and resume without losing or duplicating it.
 
 ## Song analysis drop metric
 
-`alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command, with `segueMode` on, because Palazzo would reject it. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value) or `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied). Every result is exported at 0 from start-up. A song with no analysis is not a drop and is not counted. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).
+`alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command, with `segueMode` on, because Palazzo would reject it. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `segue-edge-bound` (one cue edge would trim more than 10 s, or is negative or not finite; the other edge is still sent, gaulatti/alcantara#234), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value) or `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied). Every result is exported at 0 from start-up. A song with no analysis is not a drop and is not counted. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).
+
+`alcantara_radio_cue_groups_total{shape}` counts the cue groups the radio service resolved for a song command or a next-song announcement (gaulatti/alcantara#234):
+- `both`: both edges measured;
+- `head_filled`: only the tail was measured, cue-in sent as 0;
+- `tail_filled`: only the head was measured, cue-out sent as the duration;
+- `none`: no edge left to trim, or the group was dropped.
+
+A caller-supplied segue is not counted. A song is counted once per command or announcement, so a re-announced song counts again.
 
 ## Next-song announcement metrics
 

@@ -1870,10 +1870,17 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // left to today's command at the end.
     const now = Date.now();
     // Only a started song is announced from (updateAnnouncement).
-    const expectedEnd = Math.max(
-      now,
-      (song.authoritativeStartedAt as number) + song.durationMs,
-    );
+    // From Palazzo's last position report when there is one: its position is
+    // file-relative and its remaining is cut at cue-out, so durationMs ends at
+    // cue-out on the file's clock and start + durationMs would be late by the
+    // cue-in (#234). Position and remaining together give the real end.
+    const reportedEnd =
+      song.authoritativePositionMs !== null &&
+      song.authoritativeUpdatedAt !== null
+        ? song.authoritativeUpdatedAt +
+          (song.durationMs - song.authoritativePositionMs)
+        : (song.authoritativeStartedAt as number) + song.durationMs;
+    const expectedEnd = Math.max(now, reportedEnd);
     let chosen: ProgramResolvedSongLeaf | null = null;
     for (const at of [
       now,
