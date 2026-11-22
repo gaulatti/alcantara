@@ -17,6 +17,7 @@ import { ProgramSongSequenceEditor } from "../components/editors";
 import { ScenePreparationFixture } from "../components/ScenePreparationFixture";
 import { AppLoading } from "../components/AppLoading";
 import { RundownFixture } from "../components/RundownFixture";
+import { CallerDeskFixture, ProgramReturnFixture } from "../components/ReturnCallersFixture";
 import { RundownFillers } from "../components/RundownFillers";
 import {
   TvAudioWorkspace,
@@ -319,6 +320,8 @@ export default function ConsoleFixture() {
       </main>
     );
   if (fixture === "rundown-desk") return <RundownFixture />;
+  if (fixture === "program-return") return <ProgramReturnFixture />;
+  if (fixture === "caller-desk") return <CallerDeskFixture />;
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
   if (fixture === "prepare-timezone") return <ScenePreparationFixture timezone />;

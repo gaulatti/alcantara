@@ -163,6 +163,10 @@ a per-guest on-air state and mic meters are not built yet, and the desk says
 so. Without LiveKit (alcantara#51) the page names that dependency, and a control
 plane that can't be reached is named instead of showing a raw fetch error.
 
+`/console-fixture?state=program-return` draws the tile in each state, today's
+local render first. `/console-fixture?state=caller-desk` draws three fictional
+strips: cued live, connected and reconnecting.
+
 
 
 Each panel has one name. Radio and TV Audio use **Cartwall** and **Mixer** without

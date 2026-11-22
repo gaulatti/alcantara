@@ -160,3 +160,27 @@ describe("ConfidenceMonitor", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Signal lost · no frame yet");
   });
 });
+
+describe("visual fixtures (alcantara#301)", () => {
+  it("draw every return state and a caller desk, sending nothing", async () => {
+    const { CallerDeskFixture, ProgramReturnFixture } = await import("./ReturnCallersFixture");
+    render(<ProgramReturnFixture />);
+    expect(
+      screen.getAllByRole("region").map((region) => region.getAttribute("data-return-state")),
+    ).toEqual(["local", "live", "delayed", "frozen", "lost"]);
+    cleanup();
+    render(<CallerDeskFixture />);
+    expect(screen.getAllByRole("article").map((strip) => strip.getAttribute("data-state"))).toEqual([
+      "cued-live",
+      "connected",
+      "reconnecting",
+    ]);
+    const message = screen.getByLabelText("Message Diego Montes");
+    act(() => {
+      message.focus();
+    });
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.change(message, { target: { value: "Hi" } });
+    expect(message).toHaveValue("Hi");
+  });
+});
