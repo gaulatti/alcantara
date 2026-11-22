@@ -87,12 +87,12 @@ import {
   FIFTHBELL_AVAILABLE_WEATHER_CITIES,
   INSTANT_PLAYBACK_PULSE_ANIMATION,
   INSTANT_PLAYBACK_SWEEP_ANIMATION,
-  INSTANT_SHORTCUT_KEYS,
   MIXER_TAKE_CHANNELS,
   SONG_PROGRESS_FILL_ANIMATION,
   TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS,
   createEmptyMeterChannel,
   defaultMixerChannelsFromScalars,
+  getInstantShortcutIndex,
   getInstantShortcutLetter,
   isEditableTarget,
   meterLevelToFill,
@@ -2797,11 +2797,7 @@ export default function Control() {
         return;
       }
 
-      if (!/^[a-z]$/.test(key)) {
-        return;
-      }
-
-      const shortcutIndex = INSTANT_SHORTCUT_KEYS.indexOf(key);
+      const shortcutIndex = getInstantShortcutIndex(key);
       if (shortcutIndex === -1) {
         return;
       }

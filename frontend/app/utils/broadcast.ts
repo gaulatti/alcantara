@@ -26,7 +26,10 @@ export const TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS = 220;
 export const INSTANT_PLAYBACK_SWEEP_ANIMATION = 'alcantaraInstantPlaybackSweep';
 export const INSTANT_PLAYBACK_PULSE_ANIMATION = 'alcantaraInstantPlaybackPulse';
 export const SONG_PROGRESS_FILL_ANIMATION = 'alcantaraSongProgressFill';
-export const INSTANT_SHORTCUT_KEYS = 'qwertyuiopasdfghjklzxcvbnm';
+// Ctrl+letter chords for the cartwall, in slot order. k, w, t, n, l, r and s are
+// left out: Ctrl+K belongs to the command palette, Ctrl+S is the scene hotkey, and
+// the others are browser or palette chords. Slots past the end get no key cap.
+export const INSTANT_SHORTCUT_KEYS = 'qeyuiopadfghjzxcvbm';
 
 export const DEFAULT_MIXER_TAKE_PRESETS_DB: MixerTakePresetDbMap = {
   song: { aDb: -15, bDb: -30 },
@@ -63,6 +66,12 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 export function getInstantShortcutLetter(index: number): string | null {
   if (index < 0 || index >= INSTANT_SHORTCUT_KEYS.length) return null;
   return INSTANT_SHORTCUT_KEYS[index].toUpperCase();
+}
+
+// The cartwall slot a pressed key plays, or -1 when the key has no slot.
+export function getInstantShortcutIndex(key: string): number {
+  if (!/^[a-z]$/.test(key)) return -1;
+  return INSTANT_SHORTCUT_KEYS.indexOf(key);
 }
 
 export function normalizeMasterVolume(value: unknown, fallback: number = 1): number {

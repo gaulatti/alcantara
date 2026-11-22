@@ -8,6 +8,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
+import { listenOnLoopback } from '../test/loopback-supertest';
 import { MetricsController } from './metrics.controller';
 import { ManagedMetricsService } from './observability/managed-metrics.service';
 import { MetricsTokenGuard } from './observability/metrics-token.guard';
@@ -38,6 +39,7 @@ async function boot(tokenFile: string, fetchImpl: jest.Mock) {
   );
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
+  await listenOnLoopback(app.getHttpServer());
   return { app, managed: moduleRef.get(ManagedMetricsService) };
 }
 

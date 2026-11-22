@@ -72,6 +72,14 @@ $ pnpm run test:e2e
 $ pnpm run test:cov
 ```
 
+HTTP specs that use supertest start their app with `listenOnLoopback`
+(`backend/test/loopback-supertest.ts`) before the first request. supertest's own
+idle `listen(0)` binds every address, and on macOS the kernel can give it a port
+that another process holds on `127.0.0.1` alone; the request then reaches that
+process and the spec sees a 404 or an empty answer. Do not call
+`request(app.getHttpServer())` on an app that was not started this way
+(gaulatti/alcantara#310).
+
 `src/tenancy/scoped-prisma.spec.ts` runs against a real, migrated PostgreSQL
 database named `alcantara_ci` on localhost; it never mocks Prisma. CI starts and
 migrates that database before `test:coverage`, so the spec uses CI's documented
