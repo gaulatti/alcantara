@@ -374,6 +374,7 @@ it("gives Logout its own room in the sidebar footer, and an icon to every Develo
     "Rundown desk",
     "Rundown fillers",
     "Media states",
+    "Label states",
     "Access states",
   ]) {
     const links = within(sidebar).getAllByRole("link", { name: label });

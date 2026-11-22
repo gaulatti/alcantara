@@ -15,6 +15,7 @@ import {
   LayoutTemplate,
   List,
   KeyRound,
+  Tag,
   LogOut,
   Menu,
   Music,
@@ -95,6 +96,7 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   'rundown-desk-fixture': <List size={17} />,
   'rundown-filler-fixture': <List size={17} />,
   'media-fixture': <Images size={17} />,
+  'labels-fixture': <Tag size={17} />,
   'access-fixture': <KeyRound size={17} />
 };
 
