@@ -65,7 +65,7 @@ it("plays a cart, numbered and with its Ctrl shortcut, and not a disabled one", 
   expect(within(horn).getByText("Ctrl+E")).toBeInTheDocument();
 });
 
-it("shows carts past the twentieth without a shortcut", () => {
+it("shows carts past the nineteenth without a shortcut", () => {
   const instants = Array.from({ length: 27 }, (_, index) =>
     instant(index + 1, `Cart ${index + 1}`),
   );
@@ -75,10 +75,10 @@ it("shows carts past the twentieth without a shortcut", () => {
   expect(last.textContent).not.toMatch(/Ctrl\+/);
   expect(last.querySelector("svg")).not.toBeNull();
   expect(
-    within(screen.getByRole("button", { name: "Cart 20" })).getByText("Ctrl+M"),
+    within(screen.getByRole("button", { name: "Cart 19" })).getByText("Ctrl+M"),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "Cart 21" }).textContent,
+    screen.getByRole("button", { name: "Cart 20" }).textContent,
   ).not.toMatch(/Ctrl\+/);
 });
 

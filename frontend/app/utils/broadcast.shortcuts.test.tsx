@@ -5,7 +5,7 @@ import {
   getInstantShortcutLetter,
 } from "./broadcast";
 
-const RETIRED_KEYS = ["k", "w", "t", "n", "l", "r"];
+const RETIRED_KEYS = ["k", "w", "t", "n", "l", "r", "s"];
 
 it("keeps the six chords the palette and the browser own out of the cartwall map", () => {
   for (const key of RETIRED_KEYS) {

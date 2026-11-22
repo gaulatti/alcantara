@@ -26,10 +26,10 @@ export const TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS = 220;
 export const INSTANT_PLAYBACK_SWEEP_ANIMATION = 'alcantaraInstantPlaybackSweep';
 export const INSTANT_PLAYBACK_PULSE_ANIMATION = 'alcantaraInstantPlaybackPulse';
 export const SONG_PROGRESS_FILL_ANIMATION = 'alcantaraSongProgressFill';
-// Ctrl+letter chords for the cartwall, in slot order. k, w, t, n, l and r are
-// left out: Ctrl+K belongs to the command palette, and the others are browser
-// or palette chords. Slots past the end of this string get no key cap.
-export const INSTANT_SHORTCUT_KEYS = 'qeyuiopasdfghjzxcvbm';
+// Ctrl+letter chords for the cartwall, in slot order. k, w, t, n, l, r and s are
+// left out: Ctrl+K belongs to the command palette, Ctrl+S is the scene hotkey, and
+// the others are browser or palette chords. Slots past the end get no key cap.
+export const INSTANT_SHORTCUT_KEYS = 'qeyuiopadfghjzxcvbm';
 
 export const DEFAULT_MIXER_TAKE_PRESETS_DB: MixerTakePresetDbMap = {
   song: { aDb: -15, bDb: -30 },
