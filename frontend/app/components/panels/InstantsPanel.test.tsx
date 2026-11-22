@@ -124,3 +124,39 @@ it("marks a playing cart, sweeping over its length or pulsing when the length is
   expect(animation("Horn · playing")).toMatch(/ 200ms linear forwards$/);
   expect(animation("Drum · playing")).toMatch(/ 1400ms ease-in-out infinite$/);
 });
+
+it("keeps each cart's key cap and number when a search filters the wall", () => {
+  cartwall({
+    instants: [
+      instant(10, "Applause"),
+      instant(11, "Horn"),
+      instant(12, "Weather sting"),
+    ],
+    search: "sting",
+  });
+  expect(screen.queryByRole("button", { name: "Applause" })).toBeNull();
+  const sting = screen.getByRole("button", { name: "Weather sting" });
+  // Its place in the whole wall, not in the filtered list: third, so Y (#307 keeps the chord off the browser).
+  expect(sting).toHaveTextContent("03");
+  expect(within(sting).getByText("Ctrl+Y")).toBeInTheDocument();
+});
+
+it("shows the time left of a playing cart, and nothing when its length is unknown", () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+  vi.setSystemTime(new Date("2026-11-22T12:00:00Z"));
+  const now = Date.now();
+  try {
+    cartwall({
+      instants: [instant(10, "Applause"), instant(11, "Horn")],
+      playback: {
+        10: { startedAtMs: now - 3_000, endsAtMs: now + 4_000 },
+        11: { startedAtMs: now - 1_000, endsAtMs: null },
+      },
+    });
+    expect(screen.getByTestId("cart-time-left")).toHaveTextContent("0:04 left");
+    expect(screen.getAllByTestId("cart-time-left")).toHaveLength(1);
+    expect(screen.getAllByText("PLAYING")).toHaveLength(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
