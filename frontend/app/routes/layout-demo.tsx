@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Button, Card } from '@gaulatti/bleecker';
 import { BroadcastLayout } from '../components';
+
+const STAGE_WIDTH = 1920;
+const STAGE_HEIGHT = 1080;
 
 /**
  * Complete broadcast layout example matching the screenshot
@@ -9,6 +12,21 @@ import { BroadcastLayout } from '../components';
 export default function BroadcastLayoutExample() {
   const [chyronText, setChyronText] = useState('');
   const [showChyron, setShowChyron] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  // The stage is a fixed 1920x1080 canvas. It is scaled to the console's content column, and the
+  // transform makes the frame the containing block of the stage's `position: fixed` widgets, so
+  // the QR code stays inside the frame instead of covering the sidebar.
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const fit = () => setScale(Math.min(1, frame.clientWidth / STAGE_WIDTH));
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
 
   const displayChyron = (text: string) => {
     setChyronText(text);
@@ -16,6 +34,8 @@ export default function BroadcastLayoutExample() {
   };
 
   return (
+    <div ref={frameRef} data-testid='layout-demo-frame' className='w-full overflow-hidden' style={{ height: STAGE_HEIGHT * scale }}>
+      <div data-testid='layout-demo-stage' style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
     <BroadcastLayout
       headerTitle='ModoSanremo | La evolución gráfica del Festival (1969-1989)'
       headerDate='23/01/2026'
@@ -62,5 +82,7 @@ export default function BroadcastLayoutExample() {
         </Card>
       </div>
     </BroadcastLayout>
+      </div>
+    </div>
   );
 }

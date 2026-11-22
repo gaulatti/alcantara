@@ -579,7 +579,7 @@ export default function SongsCatalog() {
               </div>
               <div className='hidden overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40 md:block'>
                 {/* Header row */}
-                <div className='grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 dark:border-sand/35 dark:bg-dark-sand/40'>
+                <div className='grid grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(0,1fr)_5rem_8.5rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 dark:border-sand/35 dark:bg-dark-sand/40'>
                   <span />
                   <span className='text-center text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:text-text-secondary'>#</span>
                   <SortHeader field='title'>Title</SortHeader>
@@ -593,7 +593,7 @@ export default function SongsCatalog() {
                   {songs.map((song, index) => (
                     <div
                       key={song.id}
-                      className={`group grid grid-cols-[2.5rem_2rem_1fr_1fr_6rem_6rem] items-center gap-2 px-3 py-2 transition-colors hover:bg-sand/10 dark:hover:bg-dark-sand/50 ${!song.enabled ? 'opacity-50' : ''}`}
+                      className={`group grid grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(0,1fr)_5rem_8.5rem] items-center gap-2 px-3 py-2 transition-colors hover:bg-sand/10 dark:hover:bg-dark-sand/50 ${!song.enabled ? 'opacity-50' : ''}`}
                     >
                       {/* Cover art */}
                       <div className='h-9 w-9 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
