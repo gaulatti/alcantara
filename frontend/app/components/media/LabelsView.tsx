@@ -381,7 +381,7 @@ export function LabelsView<T extends LabelsViewLabel>({
                           <span className="shrink-0 text-[11px] text-text-secondary">
                             {asset.mediaType.toLowerCase()}
                           </span>
-                          <span className="flex shrink-0 gap-0.5">
+                          <span className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                             <IconButton
                               aria-label={`Move ${asset.name} up`}
                               disabled={index === 0}
