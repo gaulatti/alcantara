@@ -40,6 +40,11 @@ export const LEASE_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 3;
 /** Wait before the second and the third run. */
 export const RETRY_BACKOFF_MS = [5 * 60_000, 30 * 60_000];
+/**
+ * Runs that retry the write of a finished result, after the run that failed to
+ * store it, before the claim is released (#278).
+ */
+export const MAX_WRITE_RETRIES = 3;
 const TOOL_CHECK_TIMEOUT_MS = 10_000;
 
 type FailureCode =
@@ -125,6 +130,19 @@ function isTransientDatabaseError(error: unknown): boolean {
   );
 }
 
+/** A finished result the database refused, held until a later run stores it. */
+interface HeldResult {
+  candidate: Candidate;
+  /** The attempts the asset had before the run that produced this result. */
+  previousAttempts: number;
+  data: Prisma.MediaAssetAnalysisUpdateManyMutationInput;
+  outcome: MediaAnalysisResult;
+  error?: FailureCode;
+  /** How long the analysis itself took, for the duration metric. */
+  analysisMs: number;
+  retries: number;
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -147,6 +165,9 @@ export class MediaAnalysisService
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private running = false;
+  // The result of a finished analysis whose write failed on a transient database
+  // error. It is lost on a restart; the lease then runs out as before (#278).
+  private held: HeldResult | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -223,6 +244,12 @@ export class MediaAnalysisService
     if (this.running) return false;
     this.running = true;
     try {
+      // A finished result that could not be stored comes first, so it is not
+      // measured again and no other asset starves behind a retry that is bounded.
+      if (this.held) {
+        await this.retryHeld(this.held, now);
+        return true;
+      }
       const candidate = await this.nextCandidate(now);
       this.metrics.setBacklog(candidate ? Number(candidate.remaining) : 0);
       if (!candidate) return false;
@@ -275,8 +302,15 @@ export class MediaAnalysisService
     if (!(await this.claim(candidate, attempts, now))) return;
 
     if (!isHttpUrl(candidate.sourceUrl)) {
-      await this.write(candidate, this.failure('unsupported-source', now));
-      this.finish(candidate, 'failure', startedAt, 'unsupported-source');
+      await this.store({
+        candidate,
+        previousAttempts,
+        data: this.failure('unsupported-source', now),
+        outcome: 'failure',
+        error: 'unsupported-source',
+        analysisMs: Date.now() - startedAt,
+        retries: 0,
+      });
       return;
     }
 
@@ -295,31 +329,126 @@ export class MediaAnalysisService
         ? RETRY_BACKOFF_MS[attempts - 1]
         : undefined;
       const data = this.failure(failure.code, now, backoff);
-      await this.write(candidate, data);
-      this.finish(
+      await this.store({
         candidate,
-        data.nextAttemptAt ? 'retry' : 'failure',
-        startedAt,
-        failure.code,
-      );
+        previousAttempts,
+        data,
+        outcome: data.nextAttemptAt ? 'retry' : 'failure',
+        error: failure.code,
+        analysisMs: Date.now() - startedAt,
+        retries: 0,
+      });
       return;
     }
 
-    await this.write(candidate, {
-      status: 'success',
-      cueInSeconds: analysis.cueInSeconds,
-      cueOutSeconds: analysis.cueOutSeconds,
-      fadeInSeconds: null,
-      fadeOutSeconds: null,
-      overlapSeconds: null,
-      integratedLufs: analysis.integratedLufs,
-      truePeakDbtp: analysis.truePeakDbtp,
-      isrc: analysis.isrc,
-      musicbrainzRecordingId: analysis.musicbrainzRecordingId,
-      error: null,
-      nextAttemptAt: null,
+    await this.store({
+      candidate,
+      previousAttempts,
+      outcome: 'success',
+      analysisMs: Date.now() - startedAt,
+      retries: 0,
+      data: {
+        status: 'success',
+        cueInSeconds: analysis.cueInSeconds,
+        cueOutSeconds: analysis.cueOutSeconds,
+        fadeInSeconds: null,
+        fadeOutSeconds: null,
+        overlapSeconds: null,
+        integratedLufs: analysis.integratedLufs,
+        truePeakDbtp: analysis.truePeakDbtp,
+        isrc: analysis.isrc,
+        musicbrainzRecordingId: analysis.musicbrainzRecordingId,
+        error: null,
+        nextAttemptAt: null,
+      },
     });
-    this.finish(candidate, 'success', startedAt);
+  }
+
+  // Stores the result of a claimed run. A transient database error does not
+  // lose a finished analysis: the result is held and the next runs retry the
+  // write, a bounded number of times, before another asset is taken (#278).
+  // Any other error is final for this result and is logged as an error.
+  private async store(result: HeldResult, now = new Date()): Promise<void> {
+    try {
+      await this.write(result.candidate, result.data);
+    } catch (error) {
+      await this.writeFailed(result, error, now);
+      return;
+    }
+    this.held = null;
+    if (result.retries > 0) this.metrics.recordWrite('stored_after_retry');
+    this.finish(
+      result.candidate,
+      result.outcome,
+      Date.now() - result.analysisMs,
+      result.error,
+    );
+  }
+
+  private async retryHeld(result: HeldResult, now: Date): Promise<void> {
+    await this.store({ ...result, retries: result.retries + 1 }, now);
+  }
+
+  private async writeFailed(
+    result: HeldResult,
+    error: unknown,
+    now: Date,
+  ): Promise<void> {
+    const cause = errorCause(error);
+    if (!isTransientDatabaseError(error)) {
+      // A write that cannot succeed is not retried. Nothing is held: the lease
+      // runs out and the asset is taken up again as before.
+      this.held = null;
+      this.metrics.recordWrite('dropped');
+      this.logger.error(
+        `Media analysis could not store the result of a file (${cause})`,
+      );
+      return;
+    }
+    if (result.retries < MAX_WRITE_RETRIES) {
+      this.held = result;
+      this.metrics.recordWrite('retried');
+      this.logger.warn(
+        `Media analysis could not store a finished result (${cause}); retrying on the next run (${result.retries + 1} of ${MAX_WRITE_RETRIES})`,
+      );
+      return;
+    }
+    this.held = null;
+    await this.release(result, cause, now);
+  }
+
+  // Gives the claim back with the attempt the asset had, so a write the
+  // database lost is not counted as an attempt. The asset waits the first retry
+  // backoff, so a database that keeps refusing it does not starve the others.
+  // If this write fails too, the lease runs out and the asset is taken up again.
+  private async release(
+    result: HeldResult,
+    cause: string,
+    now: Date,
+  ): Promise<void> {
+    try {
+      await this.prisma.mediaAssetAnalysis.updateMany({
+        where: {
+          assetId: result.candidate.assetId,
+          sourceUrl: result.candidate.sourceUrl,
+          status: 'pending',
+        },
+        data: {
+          attempts: result.previousAttempts,
+          nextAttemptAt: new Date(now.getTime() + RETRY_BACKOFF_MS[0]),
+        },
+      });
+    } catch (error) {
+      this.metrics.recordWrite('dropped');
+      this.logger.warn(
+        `Media analysis could not release the claim of a finished result (${errorCause(error)}); the lease runs out and the file is analysed again`,
+      );
+      return;
+    }
+    this.metrics.recordWrite('released');
+    this.logger.warn(
+      `Media analysis gave up storing a finished result (${cause}) after ${MAX_WRITE_RETRIES} retries; the file is analysed again without spending an attempt`,
+    );
   }
 
   // A failed row keeps no measurement. It is retried after the backoff when one
