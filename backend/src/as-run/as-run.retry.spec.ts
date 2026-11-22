@@ -116,6 +116,19 @@ describe('AsRunService record retry (#256)', () => {
     expect(recordRadioLogResult).toHaveBeenCalledWith('record-failed');
   });
 
+  it('counts completed and closes unended plays once when an ended write is retried', async () => {
+    const closeUnended = jest
+      .spyOn(service, 'closeUnendedEarlierPlays')
+      .mockResolvedValue(0);
+    create.mockRejectedValueOnce(new Error('blip'));
+    create.mockRejectedValueOnce(new Error('blip'));
+    subject.next(event('p1', 'track.ended', 'r1'));
+    await settle();
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(recordRadioLogResult.mock.calls).toEqual([['completed']]);
+    expect(closeUnended).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps one row when the same event is delivered twice', async () => {
     subject.next(event('p1', 'track.started', 'r1'));
     subject.next(event('p1', 'track.started', 'r1'));
