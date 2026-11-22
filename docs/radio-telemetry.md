@@ -99,9 +99,47 @@ root playback routes.
   the configured sequence. Adoption preserves Palazzo's request ID, start time,
   and position, sends no competing play command, and advances from that exact
   leaf when its authoritative end arrives.
-- An unknown URL, or a URL reused by multiple sequence leaves, remains foreign:
-  Alcantara sends no command while it plays and does not guess a successor from
-  its end event. When that foreign track ends, the engine reads Palazzo's
+- A track that is not a unique leaf of the configured sequence (a catalogue
+  pick, or the successor an earlier process announced, which Palazzo started by
+  itself while no backend was running) is looked up by its audio URL in the song
+  catalogue (gaulatti/alcantara#272). Palazzo is commanded only by Alcantara, so a
+  track this process did not command is one an earlier process commanded or
+  announced. Commands are withheld at once, while the lookup runs. Exactly one
+  catalogue song with that audio URL (enabled or not: it aired) makes the track
+  the engine's own: it is adopted as above (an inferred as-run start at
+  Palazzo's reported start time, now-playing published, its successor announced,
+  a command only after its authoritative end), counted as
+  `alcantara_radio_track_transitions_total{result="adopted"}`. The previous play
+  of the program, whose end was lost with the old process, is closed by the
+  as-run log at this start, flagged `unended` for review (#241), once the
+  adopted play ends. A recognised song is treated as one picked from outside the
+  playlist (`catalog:<song id>`): it never moved the cursor, so its end advances
+  nothing and the next song is the one the cursor already points at, never a
+  playlist song skipped.
+- **The lookup answers late or fails.** The answer is used only if the track it
+  was asked for is still the one withheld: it must not have ended, no song of
+  Alcantara's own may be active, and no other uncommanded track may have been
+  withheld since (a slow answer for an earlier track is dropped). The adopted
+  position is derived from Palazzo's reported start (now minus that start), or
+  else the snapshot's position plus the time the lookup took, because Palazzo
+  sends no further snapshot on a healthy connection. A **failed** lookup (the
+  database unreachable or throttled) is tried again, eight attempts in all, 2, 4,
+  8, 16, 30, 30 and 30 s apart (`INHERITED_LOOKUP_ATTEMPTS`, the command-retry
+  backoff), about two minutes, with commands withheld throughout; the retry
+  stops when the track ends, is replaced or the engine shuts down, and the track
+  is reported (below) only after the last failure. An answer with no match or
+  several matches is final at once. One series per track: the same track named
+  again starts no new one.
+- A track with no URL, an unknown URL, a URL shared by several catalogue songs
+  or a failed lookup stays **unidentified**: Alcantara sends no command while it
+  plays, records nothing for it and does not guess a successor from its end
+  event. It is counted once in
+  `alcantara_radio_track_transitions_total{result="unidentified"}` (a new label
+  value on the existing counter; the label is that fixed word, never the title)
+  and logged once at warn level with what Palazzo says is playing (request id,
+  title, artist and url, each cut at 200 characters, start time, position,
+  the number of catalogue matches and whether the lookup failed), so the play can
+  be reconstructed by hand. When that track ends, the engine reads Palazzo's
   current state (`GET .../playback/state`) and reconciles from it as from a
   snapshot: idle resumes normal automatic recovery. Explicit manual mode
   remains idle. (Palazzo sends a `snapshot` only when a stream connects, so

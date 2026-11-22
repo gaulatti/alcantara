@@ -870,14 +870,19 @@ describe('SongExecutionEngine playing snapshots', () => {
     ]);
   });
 
-  it('only warns once about a foreign track and never adopts it', () => {
-    const { engine, radioService } = setup();
+  it('only warns once about a foreign track and never adopts it', async () => {
+    const { engine, radioService, prisma } = setup();
+    (prisma as unknown as { song: unknown }).song = {
+      findMany: jest.fn().mockResolvedValue([]),
+    };
     engine.handleSequenceUpdated('radio-1', AUTO);
     const foreign = playing('foreign', {
       url: 'https://example.test/unknown.mp3',
     });
     engine.handlePalazzoSnapshot('radio-1', foreign);
     engine.handlePalazzoSnapshot('radio-1', foreign);
+    await Promise.resolve();
+    await Promise.resolve();
     expect(stateOf(engine).busyWithForeignTrack).toBe(true);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(engine.getPlaybackState('radio-1')).toBeNull();

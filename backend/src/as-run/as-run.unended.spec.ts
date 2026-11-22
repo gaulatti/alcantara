@@ -148,6 +148,38 @@ describe('as-run plays whose end never arrived (#241)', () => {
     );
   });
 
+  // gaulatti/alcantara#272, 2026-11-22: a backend-only restart while Palazzo
+  // handed off alone. The engine now records the track it did not command as an
+  // inferred start at Palazzo's reported time; when it ends, the previous play
+  // (whose end was lost) closes at that start, flagged for review.
+  it('closes the previous play at the inferred start of a track the engine inherited', async () => {
+    const s = setup('05:24:30');
+    await s.event('track.started', 'A', '05:20:35');
+    await s.service.handleTrackEvent({
+      programId: 'p',
+      type: 'track.started',
+      playbackRequestId: 'INHERITED',
+      at: t('05:23:55'),
+      inferred: true,
+      title: null,
+      artist: null,
+      url: null,
+    } as never);
+    expect(
+      s.store.rows.find((r) => r.playbackRequestId === 'INHERITED'),
+    ).toMatchObject({
+      state: 'started',
+      inferred: true,
+    });
+    await s.event('track.ended', 'INHERITED', '05:28:53');
+    expect(s.endOf('A')).toMatchObject({
+      at: t('05:23:55'),
+      inferred: true,
+      reviewFlag: 'unended',
+    });
+    expect(s.endOf('INHERITED')).toMatchObject({ inferred: false });
+  });
+
   it('leaves a crossfaded predecessor alone: it ends before the next does', async () => {
     const s = setup();
     await s.event('track.started', 'A', '06:00:00');
