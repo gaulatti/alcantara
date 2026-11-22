@@ -141,6 +141,18 @@ export default function ConsoleFixture() {
         : previewScene,
   );
   const [ftb, setFtb] = useState(fixture === "ftb");
+  // radio-refused: a refused instant, and a song library and cartwall that
+  // did not load; a retry clears its own error (gaulatti/alcantara#253).
+  const refused = fixture === "radio-refused";
+  const [fixtureInstantError, setFixtureInstantError] = useState<
+    string | null
+  >(refused ? "Could not play News sting: Instant is disabled for this program" : null);
+  const [fixtureSongLoadError, setFixtureSongLoadError] = useState<
+    string | null
+  >(refused ? "HTTP 503" : null);
+  const [fixtureInstantsLoadError, setFixtureInstantsLoadError] = useState<
+    string | null
+  >(refused ? "Fictional library is offline" : null);
   const [onAirScene, setOnAirScene] = useState<Scene | null>(programScene);
   const takeFixtureScene = () => {
     if (!staged || fixture === "take-failed") return;
@@ -486,6 +498,14 @@ export default function ConsoleFixture() {
               }))
             }
             onStopAllInstants={() => setCartPlayback({})}
+            instantError={fixtureInstantError}
+            instantsLoadError={fixtureInstantsLoadError}
+            onRetryInstants={() => {
+              setFixtureInstantError(null);
+              setFixtureInstantsLoadError(null);
+            }}
+            songCatalogLoadError={fixtureSongLoadError}
+            onRetrySongCatalog={() => setFixtureSongLoadError(null)}
             instantPlayback={cartPlayback}
             mixer={{ ...fixtureMixer, saving: false, error: null }}
             onSongVolumeChange={(volume) =>
