@@ -136,9 +136,9 @@ it("keeps each cart's key cap and number when a search filters the wall", () => 
   });
   expect(screen.queryByRole("button", { name: "Applause" })).toBeNull();
   const sting = screen.getByRole("button", { name: "Weather sting" });
-  // Its place in the whole wall, not in the filtered list: third, so E.
+  // Its place in the whole wall, not in the filtered list: third, so Y (#307 keeps the chord off the browser).
   expect(sting).toHaveTextContent("03");
-  expect(within(sting).getByText("Ctrl+E")).toBeInTheDocument();
+  expect(within(sting).getByText("Ctrl+Y")).toBeInTheDocument();
 });
 
 it("shows the time left of a playing cart, and nothing when its length is unknown", () => {

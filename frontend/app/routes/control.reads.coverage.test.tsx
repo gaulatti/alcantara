@@ -120,7 +120,7 @@ it.each(["answer", "fail"])("ignores every program read that comes back (%s) aft
       <Control />
     </MemoryRouter>,
   );
-  expect(await screen.findByText("Fictional current song")).toBeVisible();
+  expect((await screen.findAllByText("Fictional current song"))[0]).toBeVisible();
   const errorsBefore = errors.mock.calls.length;
   await act(async () => {
     for (const [read, pending] of held) {
@@ -131,7 +131,7 @@ it.each(["answer", "fail"])("ignores every program read that comes back (%s) aft
   });
   // Still the other program: radio, its own rotation, nothing of the left one.
   expect(screen.getByRole("region", { name: "Continuous fillers" })).toBeVisible();
-  expect(screen.getByText("Fictional current song")).toBeVisible();
+  expect(screen.getAllByText("Fictional current song")[0]).toBeVisible();
   expect(screen.queryByText("Fictional late song")).toBeNull();
   expect(screen.queryByRole("button", { name: "ARM FADE TO BLACK" })).toBeNull();
   // A late failure for the left program is not reported either.
@@ -158,7 +158,7 @@ it("ignores a fallback poll older than what the console already shows", async ()
       <Control />
     </MemoryRouter>,
   );
-  expect(await screen.findByText("Fictional current song")).toBeVisible();
+  expect((await screen.findAllByText("Fictional current song"))[0]).toBeVisible();
   const reads = () => server.calls.filter((call) => call.path === "/program/main/audio-bus").length;
   await waitFor(() => expect(reads()).toBe(1));
   version = 3;
@@ -167,7 +167,7 @@ it("ignores a fallback poll older than what the console already shows", async ()
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
-  expect(screen.getByText("Fictional current song")).toBeVisible();
+  expect(screen.getAllByText("Fictional current song")[0]).toBeVisible();
   expect(screen.queryByText("Fictional old song")).toBeNull();
   expect(screen.queryByRole("button", { name: "ARM FADE TO BLACK" })).toBeNull();
 });
