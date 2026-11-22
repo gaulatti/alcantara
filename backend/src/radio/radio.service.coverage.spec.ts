@@ -1100,13 +1100,33 @@ describe('RadioService coverage', () => {
       expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('ambiguous-match');
     });
 
-    it('applies no analysis and records no drop when no song has the audio URL', async () => {
+    // gaulatti/alcantara#255: a song no library song matches is sent without analysis, and counted.
+    it('applies no analysis and counts no-asset when no song has the audio URL', async () => {
       const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
       prisma.song.findMany.mockResolvedValue([]);
       await expect(service.playSong('p', 'u', undefined, undefined, 'req')).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
       expect(prisma.mediaAssetAnalysis.findUnique).not.toHaveBeenCalled();
       expect(sent(palazzo)).toEqual(OFF_COMMAND);
-      expect(metrics.recordAnalysisDrop).not.toHaveBeenCalled();
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['no-asset']]);
+    });
+
+    // gaulatti/alcantara#255: a failed lookup still sends the song, and is counted and logged.
+    it.each([
+      ['the song lookup', (prisma: any) => prisma.song.findUnique.mockRejectedValue(new Error('db down'))],
+      ['the analysis lookup', (prisma: any) => prisma.mediaAssetAnalysis.findUnique.mockRejectedValue(new Error('db down'))],
+    ])('sends the song without analysis and counts lookup-failed when %s fails', async (_name, fail) => {
+      const { service, prisma, palazzo, metrics } = onWithAnalysis({ ...VALID_SEGUE, ...VALID_LOUDNESS });
+      fail(prisma);
+      jest.spyOn(service['logger'], 'warn').mockImplementation();
+      await expect(play(service)).resolves.toEqual({ ok: true, playbackRequestId: 'req' });
+      expect(sent(palazzo)).toEqual(OFF_COMMAND);
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['lookup-failed']]);
+      expect(service['logger'].warn).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'radio.song_analysis_dropped',
+        reasons: ['lookup-failed'],
+      }));
+      // The error text never reaches the log or a label.
+      expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('db down');
     });
 
     it('also validates segue and loudness the caller supplies', async () => {
@@ -1132,12 +1152,15 @@ describe('RadioService coverage', () => {
       expect(JSON.stringify((service['logger'].warn as jest.Mock).mock.calls)).not.toContain('"u"');
     });
 
+    // gaulatti/alcantara#255: what airs is unchanged; only the gap is counted and logged.
     it.each([
-      ['the song has no asset', () => ({ songRow: { assetId: null, durationMs: 180000 }, analysisRow: null })],
-      ['the asset has no analysis row', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: null })],
-      ['the analysis is still pending', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'pending', ...NO_SEGUE, ...NO_LOUDNESS } })],
-      ['the analysis has no measurements', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'success', ...NO_SEGUE, ...NO_LOUDNESS } })],
-    ])('plays a song whose %s with the same command segue off sends', async (_name, fixture) => {
+      ['the song has no asset', () => ({ songRow: { assetId: null, durationMs: 180000 }, analysisRow: null }), ['no-asset']],
+      ['no library song has the id', () => ({ songRow: null, analysisRow: null }), ['no-asset']],
+      ['the asset has no analysis row', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: null }), ['not-analyzed']],
+      ['the analysis is still pending', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'pending', ...NO_SEGUE, ...NO_LOUDNESS } }), ['not-analyzed']],
+      ['the analysis failed', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'failed', ...NO_SEGUE, ...NO_LOUDNESS } }), ['not-analyzed']],
+      ['the analysis has no measurements', () => ({ songRow: { assetId: 'asset-1', durationMs: 180000 }, analysisRow: { status: 'success', ...NO_SEGUE, ...NO_LOUDNESS } }), []],
+    ])('plays a song whose %s with the same command segue off sends', async (_name, fixture, reasons) => {
       const { songRow, analysisRow } = fixture();
       const on = build({ ...defaultSettings(), segueMode: 'on' });
       const off = build({ ...defaultSettings(), segueMode: 'off' });
@@ -1150,8 +1173,18 @@ describe('RadioService coverage', () => {
       }
       expect(JSON.stringify(on.palazzo.playSong.mock.calls)).toBe(JSON.stringify(off.palazzo.playSong.mock.calls));
       expect(sent(on.palazzo)).toEqual(OFF_COMMAND);
-      expect(on.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
-      expect(on.service['logger'].warn).not.toHaveBeenCalled();
+      expect(on.metrics.recordAnalysisDrop.mock.calls).toEqual(reasons.map((reason) => [reason]));
+      if (reasons.length) {
+        expect(on.service['logger'].warn).toHaveBeenCalledWith(expect.objectContaining({
+          event: 'radio.song_analysis_dropped',
+          playbackRequestId: 'req',
+          reasons,
+        }));
+      } else {
+        expect(on.service['logger'].warn).not.toHaveBeenCalled();
+      }
+      // Segue off looks nothing up, so it counts nothing.
+      expect(off.metrics.recordAnalysisDrop).not.toHaveBeenCalled();
     });
 
     it('logs nothing and counts nothing when the analysis is valid', async () => {

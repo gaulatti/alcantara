@@ -145,7 +145,11 @@ export type AnalysisDropResult =
   | 'segue-beyond-duration'
   | 'segue-edge-bound'
   | 'loudness-invalid'
-  | 'ambiguous-match';
+  | 'ambiguous-match'
+  // A song sent with no analysis at all (gaulatti/alcantara#255).
+  | 'no-asset'
+  | 'not-analyzed'
+  | 'lookup-failed';
 
 export type SimilarityActionResult =
   | 'selected'
@@ -383,6 +387,9 @@ const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
   'segue-edge-bound',
   'loudness-invalid',
   'ambiguous-match',
+  'no-asset',
+  'not-analyzed',
+  'lookup-failed',
 ];
 
 const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [

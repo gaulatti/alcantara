@@ -670,6 +670,11 @@ export class RadioService {
     if (!segue && !loudness) {
       try {
         const song = await this.findSongForAnalysis(audioUrl, songId, drops);
+        // A song sent without its analysis is counted too (gaulatti/alcantara#255):
+        // no library song with a media asset, or an asset not (yet) analysed.
+        if (!song?.assetId && !drops.includes('ambiguous-match')) {
+          drops.push('no-asset');
+        }
         if (song?.assetId) {
           if (
             durationSeconds === undefined &&
@@ -706,10 +711,14 @@ export class RadioService {
                 truePeakDbtp: analysis.truePeakDbtp,
               };
             }
+          } else {
+            // Missing, pending or failed analysis.
+            drops.push('not-analyzed');
           }
         }
       } catch {
         // A failed analysis lookup never blocks playback: the song plays without segue and loudness.
+        drops.push('lookup-failed');
       }
     }
     if (segue) {

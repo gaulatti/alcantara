@@ -101,7 +101,7 @@ The rules above are enforced by `PalazzoMachineClient` (`validateSongSegue` and 
 
 When both groups are dropped, the command is byte-identical to the `segueMode`-off command.
 
-Each drop increments `alcantara_radio_analysis_dropped_total{result=...}`. `result` is one of `segue-invalid`, `segue-beyond-duration`, `segue-edge-bound`, `loudness-invalid` or `ambiguous-match`, and there are no song or program labels. Each song with any drop is logged once as `radio.song_analysis_dropped`, with `programId`, `playbackRequestId`, `songId` when known, and the list of reasons. The audio URL is never logged.
+Each drop increments `alcantara_radio_analysis_dropped_total{result=...}`. `result` is one of `segue-invalid`, `segue-beyond-duration`, `segue-edge-bound`, `loudness-invalid`, `ambiguous-match`, or, for a song sent with no analysis at all (#255), `no-asset`, `not-analyzed` or `lookup-failed`; there are no song or program labels. The song is sent either way: these results make the gap visible, they never hold a song back. Each song with any drop is logged once as `radio.song_analysis_dropped`, with `programId`, `playbackRequestId`, `songId` when known, and the list of reasons. The audio URL is never logged.
 
 ## Next-song announcement (`PUT`/`DELETE …/playback/next`)
 
