@@ -191,6 +191,8 @@ describe('main bootstrap', () => {
       for (const origin of [
         undefined,
         'null',
+        // The consent page's own form POST (bastille#34).
+        'https://api.alcantara.gaulatti.com',
         'https://alcantara.gaulatti.com',
         'https://alcantara.dev',
         'https://alcantara.gt',
