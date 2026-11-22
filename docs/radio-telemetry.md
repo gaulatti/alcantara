@@ -594,6 +594,16 @@ Contract: gaulatti/palazzo#40 §5.
     and `failed` for a command spot Palazzo did not take. `failed` exists only
     for `path="command"`: an announced spot travels with its announcement,
     whose refusal is counted as a `refused` skip.
+    `retried` exists only for `path="command"` too: Palazzo refused the spot
+    as not ready yet (the answer a freshly restarted Palazzo gives until its
+    lifecycle is ready), so the engine waited 2 s and sent it once more with
+    the same playback id. The retry happens at most once per spot, and only
+    for that refusal; any other failure, including a timeout whose outcome is
+    unknown, is not retried, so a spot is never played twice. A retried spot
+    that Palazzo then takes is counted `sent` (and `played`) as usual; one
+    refused again is counted `failed` and its slot is consumed. The song is
+    delayed by at most those 2 s. If Palazzo freezes or the program resets
+    during the wait, nothing more is sent and the slot is kept for later.
 - The machine requests `next-announce` and `next-withdraw` appear in
   `alcantara_palazzo_machine_requests_total` and
   `alcantara_palazzo_machine_retries_total`.

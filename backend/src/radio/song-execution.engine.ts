@@ -20,7 +20,7 @@ import type { AnnouncementSkipReason } from './radio-metrics.service';
 import { randomUUID } from 'node:crypto';
 import { Subject, type Observable } from 'rxjs';
 import type { Prisma } from '@prisma/client';
-import { RadioService } from './radio.service';
+import { PalazzoInstantRefusedException, RadioService } from './radio.service';
 import { FlightService } from '../program/flight.service';
 import { PrismaService } from '../prisma.service';
 import { NowPlayingPublisherService } from './now-playing-publisher.service';
@@ -178,6 +178,9 @@ export interface PalazzoTelemetrySource {
  * could play, the first command failed and nothing followed it.
  */
 export const COMMAND_RETRY_BASE_MS = 2_000;
+
+/** Sends of one command spot: the first and one retry of a not-ready refusal (gaulatti/alcantara#274). */
+const BUMPER_COMMAND_ATTEMPTS = 2;
 export const COMMAND_RETRY_MAX_MS = 30_000;
 /**
  * A failed catalogue lookup for a track this process did not command is tried
@@ -3706,7 +3709,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   private recordBumperMetric(
     path: 'announced' | 'command',
-    result: 'sent' | 'played' | 'failed',
+    result: 'sent' | 'played' | 'failed' | 'retried',
   ): void {
     try {
       this.metrics.recordBumper(path, result);
@@ -3757,21 +3760,50 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const playbackRequestId = randomUUID();
       // Known before the send: Palazzo's instant.started can arrive first.
       this.rememberBumperSpot(state, playbackRequestId, inst.name, 'command');
-      try {
-        await this.radioService.playInstant(
-          programId,
-          inst.audioUrl,
-          undefined,
-          playbackRequestId,
-        );
-      } catch {
-        // Not sent: no spot is on air, so the song is not held back for it.
-        state.bumperSpotsSent?.delete(playbackRequestId);
-        this.logger.warn(
-          `Bumper failed: ${inst.name} on ${programId}; Palazzo did not take the spot`,
-        );
-        this.recordBumperMetric('command', 'failed');
-        return;
+      // gaulatti/alcantara#274: right after a Palazzo restart it refuses an
+      // instant (409, automation not ready) for a moment. That one answer is
+      // sent again once after COMMAND_RETRY_BASE_MS, with the same playback ID;
+      // any other failure, and an outcome with no answer, is final, so a spot
+      // can never play twice.
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          await this.radioService.playInstant(
+            programId,
+            inst.audioUrl,
+            undefined,
+            playbackRequestId,
+          );
+          break;
+        } catch (error) {
+          const retryable =
+            error instanceof PalazzoInstantRefusedException &&
+            error.retryable &&
+            attempt < BUMPER_COMMAND_ATTEMPTS;
+          if (retryable) {
+            this.recordBumperMetric('command', 'retried');
+            await new Promise((r) => setTimeout(r, COMMAND_RETRY_BASE_MS));
+            // Frozen or reset while waiting, or a song became active (an
+            // adoption or a manual play): the spot is not sent, so it can never
+            // play over a song, and it keeps its turn.
+            if (
+              this.states.get(programId) !== state ||
+              state.frozen ||
+              state.activeSong
+            ) {
+              state.bumperSpotsSent?.delete(playbackRequestId);
+              state.nextBumperIdx = idx;
+              return;
+            }
+            continue;
+          }
+          // Not sent: no spot is on air, so the song is not held back for it.
+          state.bumperSpotsSent?.delete(playbackRequestId);
+          this.logger.warn(
+            `Bumper failed: ${inst.name} on ${programId}; Palazzo did not take the spot`,
+          );
+          this.recordBumperMetric('command', 'failed');
+          return;
+        }
       }
       this.logger.log(`Bumper: ${inst.name} on ${programId}`);
       this.recordBumperMetric('command', 'sent');

@@ -2,7 +2,10 @@ import { Prisma } from '@prisma/client';
 import { SongExecutionEngine } from './song-execution.engine';
 import { RadioMetricsService } from './radio-metrics.service';
 import { AsRunService } from '../as-run/as-run.service';
-import type { RadioService } from './radio.service';
+import {
+  PalazzoInstantRefusedException,
+  type RadioService,
+} from './radio.service';
 import type { FlightService } from '../program/flight.service';
 import type { PrismaService } from '../prisma.service';
 import type { NowPlayingPublisherService } from './now-playing-publisher.service';
@@ -1531,6 +1534,7 @@ describe('next-song announcement and handoff', () => {
         'alcantara_radio_bumpers_total{path="command",result="sent"} 0',
         'alcantara_radio_bumpers_total{path="command",result="played"} 0',
         'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
+        'alcantara_radio_bumpers_total{path="command",result="retried"} 0',
       ]);
       // The sequence moved past the spot used: the next slot (song 4's end)
       // is announced with spot 2.
@@ -1588,6 +1592,7 @@ describe('next-song announcement and handoff', () => {
         'alcantara_radio_bumpers_total{path="command",result="sent"} 1',
         'alcantara_radio_bumpers_total{path="command",result="played"} 1',
         'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
+        'alcantara_radio_bumpers_total{path="command",result="retried"} 0',
       ]);
     });
 
@@ -1859,6 +1864,7 @@ describe('next-song announcement and handoff', () => {
         'alcantara_radio_bumpers_total{path="command",result="sent"} 0',
         'alcantara_radio_bumpers_total{path="command",result="played"} 0',
         'alcantara_radio_bumpers_total{path="command",result="failed"} 1',
+        'alcantara_radio_bumpers_total{path="command",result="retried"} 0',
       ]);
       expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/^Bumper: /));
       expect(warn).toHaveBeenCalledWith(
@@ -1876,6 +1882,199 @@ describe('next-song announcement and handoff', () => {
       ).toEqual([
         'alcantara_radio_bumpers_total{path="command",result="played"} 0',
       ]);
+    });
+
+    describe('a spot Palazzo refused as not ready (alcantara#274)', () => {
+      const refused = () => new PalazzoInstantRefusedException(true);
+      const retriedCount = (h: ReturnType<typeof harness>) =>
+        metricLine(
+          h,
+          'alcantara_radio_bumpers_total{path="command",result="retried"}',
+        );
+
+      it('retries once with the same playback id, plays it, advances the index once and the song follows', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant.mockRejectedValueOnce(refused());
+        h.palazzo.endCurrent();
+        await settle();
+        const calls = h.palazzo.radioService.playInstant.mock.calls;
+        expect(calls).toHaveLength(2);
+        expect(calls[1][1]).toBe(calls[0][1]);
+        expect(calls[1][3]).toBe(calls[0][3]);
+        expect(retriedCount(h)).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="retried"} 1',
+        ]);
+        expect(
+          metricLine(
+            h,
+            'alcantara_radio_bumpers_total{path="command",result="sent"}',
+          ),
+        ).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="sent"} 1',
+        ]);
+        expect(
+          metricLine(
+            h,
+            'alcantara_radio_bumpers_total{path="command",result="failed"}',
+          ),
+        ).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
+        ]);
+        await jest.advanceTimersByTimeAsync(8_000);
+        await settle();
+        expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
+      });
+
+      it('a spot refused on every attempt logs once, counts one failure, keeps the song on time and consumes the slot', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        const warn = jest.spyOn(
+          (h.engine as unknown as { logger: { warn: () => void } }).logger,
+          'warn',
+        );
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant
+          .mockRejectedValueOnce(refused())
+          .mockRejectedValueOnce(refused());
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(2);
+        expect(retriedCount(h)).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="retried"} 1',
+        ]);
+        expect(
+          metricLine(
+            h,
+            'alcantara_radio_bumpers_total{path="command",result="failed"}',
+          ),
+        ).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="failed"} 1',
+        ]);
+        expect(
+          warn.mock.calls.filter((c) => /^Bumper failed/.test(String(c[0]))),
+        ).toHaveLength(1);
+        expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
+      });
+
+      it('does not retry a refusal that is not retryable', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant.mockRejectedValueOnce(
+          new PalazzoInstantRefusedException(false),
+        );
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+        expect(retriedCount(h)).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="retried"} 0',
+        ]);
+      });
+
+      it('does not retry an unknown outcome such as a timeout', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant.mockRejectedValueOnce(
+          new Error('timeout'),
+        );
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+        expect(retriedCount(h)).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="retried"} 0',
+        ]);
+      });
+
+      it('sends nothing more and restores the slot when Palazzo freezes during the wait', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant.mockImplementationOnce(() => {
+          const state = (
+            h.engine as unknown as {
+              states: Map<string, { frozen?: boolean }>;
+            }
+          ).states.get(PROGRAM);
+          if (state) state.frozen = true;
+          return Promise.reject(refused());
+        });
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+        const state = (
+          h.engine as unknown as {
+            states: Map<string, { nextBumperIdx?: number }>;
+          }
+        ).states.get(PROGRAM);
+        expect(state?.nextBumperIdx).toBe(0);
+      });
+
+      it('sends nothing more, counts no failure and restores the slot when a song became active during the wait', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant.mockImplementationOnce(() => {
+          const state = (
+            h.engine as unknown as {
+              states: Map<string, { activeSong: unknown }>;
+            }
+          ).states.get(PROGRAM);
+          if (state)
+            state.activeSong = {
+              token: 'adopted',
+              playbackRequestId: 'adopted',
+              audioUrl: SONGS[1].url,
+              artist: 'A',
+              title: 'T',
+              coverUrl: '',
+              durationMs: 200_000,
+              startedAt: Date.now(),
+              itemId: 'adopted',
+              songId: null,
+              introPlaybackId: null,
+              introStatus: 'none',
+              introFailureReason: null,
+              authoritativeStartedAt: Date.now(),
+              authoritativePositionMs: 0,
+              authoritativeUpdatedAt: Date.now(),
+              queueEntryId: null,
+              highRotation: false,
+            };
+          return Promise.reject(refused());
+        });
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+        expect(
+          metricLine(
+            h,
+            'alcantara_radio_bumpers_total{path="command",result="failed"}',
+          ),
+        ).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
+        ]);
+        const state = (
+          h.engine as unknown as {
+            states: Map<string, { nextBumperIdx?: number }>;
+          }
+        ).states.get(PROGRAM);
+        expect(state?.nextBumperIdx).toBe(0);
+      });
     });
 
     it('remembers at most 16 spots awaiting their start', () => {
