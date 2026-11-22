@@ -36,6 +36,7 @@ export default [
     route('overlay', 'routes/overlay.tsx')
   ]),
   route('guest/:invitation', 'routes/guest.tsx'),
+  route('connect', 'routes/connect.tsx'),
   route('return-router/:programId', 'routes/return-router.tsx'),
   route('program/:id', 'routes/program.tsx')
 ] satisfies RouteConfig;
