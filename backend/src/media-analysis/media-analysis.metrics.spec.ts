@@ -136,4 +136,23 @@ describe('MediaAnalysisMetrics', () => {
       expect(outcomes).toContain(sample.labels.outcome);
     }
   });
+
+  it('serves the length backfill as one gauge with no labels', async () => {
+    const managed = new ManagedMetricsService();
+    const metrics = new MediaAnalysisMetrics(managed);
+    const controller = new MetricsController(
+      new RadioMetricsService(),
+      managed,
+    );
+    const name = 'alcantara_media_analysis_duration_backfill_assets';
+    expect(samples(await controller.getMetrics(), name)).toEqual([
+      { name, labels: {}, value: 0 },
+    ]);
+    metrics.setDurationBackfill(4800);
+    metrics.setDurationBackfill(-1);
+    metrics.setDurationBackfill(4799);
+    expect(samples(await controller.getMetrics(), name)).toEqual([
+      { name, labels: {}, value: 4799 },
+    ]);
+  });
 });
