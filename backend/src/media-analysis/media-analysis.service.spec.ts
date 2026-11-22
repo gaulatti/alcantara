@@ -840,6 +840,8 @@ describe('MediaAnalysisService schedule', () => {
     await jest.advanceTimersByTimeAsync(IDLE_POLL_MS * 2);
     expect(busy.prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
+});
+
 describe('storing the decoded length (#296)', () => {
   const backfillRow = (overrides: Record<string, unknown> = {}) =>
     candidate({
