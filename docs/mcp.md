@@ -6,7 +6,7 @@ Alcantara serves the Model Context Protocol at `https://api.alcantara.gaulatti.c
 
 Two ways in. Use whichever your client supports.
 
-**OAuth (Claude, Grok and other OAuth-capable clients).** Point the client at `https://api.alcantara.gaulatti.com/mcp`. The client finds the sign-in through the protected-resource metadata, signs in with the gaulatti pool, and registers through `POST /register`. Registration returns the shared public client id for a well-formed callback and stores nothing. No client secret is issued.
+**OAuth (ChatGPT, Claude, Codex, Cursor and other OAuth-capable clients).** Point the client at `https://api.alcantara.gaulatti.com/mcp`. The client finds the sign-in through the protected-resource metadata, registers through `POST /register`, and signs in through Alcantara's own `/oauth/*` routes with the gaulatti pool ([Signing in through the API](#signing-in-through-the-api)). No client secret is issued and nothing is stored.
 
 **Personal access token (header-only clients).** Send `Authorization: Bearer pmp_pat_…`. Tokens are created in Pompeii. They work only while Alcantara's personal-access-token switch is **on** in Pompeii. It is off by default and Pompeii refuses tokens until it is turned on. The REST API refuses personal access tokens (#209); `/mcp` is the only path that accepts them.
 
@@ -19,8 +19,30 @@ After connecting, call `whoami` to confirm the subject, principal id, client and
 | `POST /mcp` | Streamable HTTP, stateless JSON mode. Without a bearer: `401 {"error":"unauthenticated"}` with `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`. With a bearer Pompeii rejects: `401` with `error="invalid_token"`. Signed in but without `alcantara:access`: `403 {"error":"forbidden"}` with `error="insufficient_scope"`. Too many failed attempts from one client: `429`, `Retry-After: 60`. Pompeii unreachable or saturated: `503`, `Retry-After: 5`. A body over the limit: `413`. |
 | `GET /mcp`, `DELETE /mcp` | `405`, `Allow: POST` (no server stream and no session in stateless mode). |
 | `GET /.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`) | RFC 9728 metadata naming the resource and Alcantara as its authorization server. Public. |
-| `GET /.well-known/oauth-authorization-server` | RFC 8414 metadata pointing at the gaulatti pool's hosted sign-in (`buendia.gaulatti.com`) and `/register`. Public. |
-| `POST /register` | RFC 7591 facade. It returns the shared public client id for well-formed callbacks and `400` otherwise. It stores nothing and issues no secret. `GET /register` answers `405`. |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 metadata: `authorization_endpoint` `https://api.alcantara.gaulatti.com/oauth/authorize`, `token_endpoint` `https://api.alcantara.gaulatti.com/oauth/token`, the pool's JWKS and `/register`. Public. |
+| `POST /register` | RFC 7591 facade. A registration whose callbacks are all accepted ones (below) gets a client id naming them (`mcp-proxy.` plus base64url of the callbacks and client name); any other well-formed registration gets the shared public client id. `400` otherwise. It stores nothing and issues no secret. `GET /register` answers `405`. |
+| `GET /oauth/authorize`, `POST /oauth/authorize`, `GET /oauth/callback`, `POST /oauth/token` | The MCP sign-in, below. Public. |
+
+## Signing in through the API
+
+Cognito redirects only to callbacks listed exactly on the app client, and no list can hold an MCP client's callback: Codex and Claude Code use a loopback address with a random port, and a ChatGPT plugin registers `https://chatgpt.com/connector/oauth/<id>` with a new id each time it is added. So every MCP sign-in goes through Alcantara and its one Cognito callback, `https://api.alcantara.gaulatti.com/oauth/callback` (gaulatti/bastille#34; `backend/src/mcp/mcp-oauth-proxy.service.ts`).
+
+**Accepted callbacks:**
+- loopback: `http` on `127.0.0.1`, `localhost` or `[::1]`, any port and path; or
+- `https` on exactly `chatgpt.com`, `claude.ai`, `claude.com` or `www.cursor.com`, on the default port, with no user information, any path.
+
+Anything else is refused at `/oauth/authorize` with an HTML page that says which callbacks are accepted, never sent on to Cognito.
+
+| Route | What it does |
+|---|---|
+| `GET /oauth/authorize` | Requires `response_type=code`, a `state` and an S256 `code_challenge` (else `400`). A callback that is not accepted gets the refusal page (`400`). A `mcp-proxy.` client may use only the callbacks it registered; the shared client may use any accepted callback. For an https callback it answers with the consent page (`200`, no-store, unframeable): "<name> (a name the app chose) at <host> wants to use Alcántara as you", the full callback, and Continue and Cancel. For a loopback callback, or once the user continues, it keeps a pending sign-in (10 minutes) and sends the user to Cognito with its own callback, state and S256 challenge. |
+| `POST /oauth/authorize` | The consent form: the original request, a nonce and an HMAC-SHA256 over both, keyed per process. Accepted only when the nonce matches the `SameSite=Strict`, `HttpOnly`, `Secure` cookie the page set and the MAC verifies; otherwise `400`. Continue goes to Cognito (`303`); Cancel sends the client `error=access_denied` with its `state` (`303`). |
+| `GET /oauth/callback` | Takes the pending sign-in by `state`, once. Redeems Cognito's code server-side, keeps the tokens under a new single-use 60-second code bound to the client's PKCE challenge, and redirects to the client's callback. A Cognito refusal reaches the client as `error`; a failed exchange as `server_error`. |
+| `POST /oauth/token` | Redeems that code once, within 60 seconds, when `client_id`, `redirect_uri` and `code_verifier` match (Cognito's token response, `no-store`); an unknown or used code is `invalid_grant`. A `refresh_token` goes to Cognito unchanged, with a `mcp-proxy.` id replaced by the app client's. |
+
+**Threat model.** Registration is open, so the accepted callbacks are what keep a code from reaching someone else. Codes are delivered only to loopback (the user's own machine) and the allowlisted MCP client hosts; each is single-use, expires in 60 seconds and needs the verifier of its challenge.
+
+**Consent.** Anyone can create their own ChatGPT or Claude connector, register its path and send the owner an authorize link, and Cognito signs an already-signed-in user in silently. So every https callback first shows the consent page, naming the host and the full callback path (the client name is labelled as one the app chose). A cross-site form cannot carry the `SameSite=Strict` cookie, and a request changed after the page was shown fails the MAC. Pending sign-ins, codes and tokens live only in the backend process's memory (at most 1000 each; a restart drops sign-ins in flight), never in the database, a log or a metric label. Adding another https host is a code change to `ALLOWED_HTTPS_HOSTS`, reviewed like any auth change.
 
 ## Who gets in
 
@@ -87,6 +109,7 @@ A refused call returns `rate_limited` with `retry_after_seconds`. Dry runs are n
 
 - `alcantara_mcp_requests_total{tool,tier,result}` counts each request once. `tool` is a registered capability name, or `unknown`. `tier` is `R`, `W`, `A` or `D`. `result` is `ok`, `dry_run`, or one of the closed error codes. No argument, key or identity is ever a label.
 - `alcantara_mcp_auth_total` counts authentication outcomes and is separate from the request counter.
+- `alcantara_mcp_oauth_total{step,result}` counts each sign-in step (bastille#34): `step` is `authorize`, `callback`, `token` or `refresh`; `result` is `consent`, `cancelled`, `proxied`, `refused`, `unknown_state`, `provider_error`, `exchange_failed`, `issued`, `passed_through`, `upstream_refused` or `upstream_unavailable`. No client id, callback or token is ever a label.
 - Each write-tier run writes one audit line with `tool`, `tier`, `result`, `dry_run` and a 12-character hash prefix of the idempotency key. Argument text, titles, confirm strings and key values are never logged.
 
 ## What is never returned

@@ -7,6 +7,8 @@ import { McpActionExecutor } from './mcp-action.executor';
 import { McpAuthService } from './mcp-auth.service';
 import { McpController } from './mcp.controller';
 import { McpOAuthController } from './mcp-oauth.controller';
+import { McpOAuthProxyController } from './mcp-oauth-proxy.controller';
+import { McpOAuthProxyService } from './mcp-oauth-proxy.service';
 import { McpRegistry } from './mcp-registry.service';
 import { McpChangeFeed } from './tools/mcp-change.feed';
 import { McpRadioReadTools } from './tools/radio-read.tools';
@@ -22,8 +24,9 @@ import { McpRadioReadTools } from './tools/radio-read.tools';
  */
 @Module({
   imports: [DiscoveryModule, AsRunModule, SongsModule],
-  controllers: [McpController, McpOAuthController],
+  controllers: [McpController, McpOAuthController, McpOAuthProxyController],
   providers: [
+    McpOAuthProxyService,
     McpAuthService,
     McpRegistry,
     McpActionExecutor,

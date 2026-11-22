@@ -474,6 +474,30 @@
     "permission": null
   },
   {
+    "method": "GET",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/oauth/callback",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/token",
+    "public": true,
+    "permission": null
+  },
+  {
     "method": "DELETE",
     "path": "/operator-preferences",
     "public": false,
