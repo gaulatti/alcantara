@@ -263,9 +263,12 @@ it("searches after a pause, filters audio by use, and clears the search", async 
   expect(
     await screen.findByText("Clear the filters and try again."),
   ).toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox"), {
-    target: { value: "INSTANT" },
-  });
+  fireEvent.click(
+    within(screen.getByRole("group", { name: "Capability" })).getByRole(
+      "button",
+      { name: "Instant" },
+    ),
+  );
   await waitFor(() =>
     expect(authFetch).toHaveBeenCalledWith(
       "/media-assets?page=1&limit=50&mediaType=AUDIO&search=bed&capability=INSTANT",
@@ -310,6 +313,74 @@ it("reports a library that cannot load", async () => {
   routes["GET /media-assets"] = () => json({ data: "nope" });
   open();
   expect(await screen.findByText("No image media found")).toBeInTheDocument();
+});
+
+it("lists audio as rows with the stored analysis and one shared transport, and labels or deletes from them", async () => {
+  assets = [
+    asset("song", {
+      mediaType: "AUDIO",
+      capabilities: ["SONG"],
+      song: {
+        id: 1,
+        artist: "A",
+        title: "T",
+        coverUrl: null,
+        durationMs: 200_000,
+      },
+      analysis: {
+        status: "success",
+        cueInSeconds: 1,
+        cueOutSeconds: 190,
+        fadeInSeconds: null,
+        fadeOutSeconds: null,
+        overlapSeconds: null,
+        integratedLufs: -11.5,
+        truePeakDbtp: -1.2,
+      },
+    }),
+    asset("bed", { mediaType: "AUDIO", capabilities: ["BACKGROUND"] }),
+  ];
+  labels = [label("l1", "Headlines")];
+  meta2 = { total: 2, totalPages: 1 };
+  open("/media?type=AUDIO");
+  await waitFor(() => expect(screen.getByText("2 assets")).toBeInTheDocument());
+  const table = within(screen.getByRole("table"));
+  const song = table.getByText("Asset song").closest("tr")!;
+  expect(song).toHaveTextContent("3:20");
+  expect(song).toHaveTextContent("-11.5");
+  expect(song).toHaveTextContent("Measured");
+  // A response with no analysis says so; it is not shown as a file that was never analysed.
+  expect(table.getByText("Asset bed").closest("tr")).toHaveTextContent(
+    "Analysis unavailable",
+  );
+  expect(document.querySelectorAll("audio")).toHaveLength(1);
+  expect(
+    within(screen.getByRole("group", { name: "Audio transport" })).getByText(
+      "Asset song",
+    ),
+  ).toBeInTheDocument();
+
+  // Bulk labelling works from the rows, as it did from the cards.
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Asset bed" }));
+  fireEvent.change(screen.getAllByRole("combobox").at(-1)!, {
+    target: { value: "l1" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Label 1/ }));
+  await toast("Label added to selected media.");
+  expect(requests("PUT")).toEqual([
+    ["/media-assets/bed/labels", { labelIds: ["l1"] }],
+  ]);
+
+  // A standalone clip can be deleted from its detail panel; a song cannot.
+  fireEvent.click(table.getByText("Asset bed").closest("tr")!);
+  routes["DELETE /media-assets/bed"] = () => json({});
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "Delete Asset bed" }));
+  await waitFor(() =>
+    expect(requests("DELETE")).toContainEqual(["/media-assets/bed", null]),
+  );
+  fireEvent.click(table.getByText("Asset song").closest("tr")!);
+  expect(screen.queryByRole("button", { name: "Delete Asset song" })).toBeNull();
 });
 
 it("labels the selected media in bulk, creating a label on the way", async () => {
