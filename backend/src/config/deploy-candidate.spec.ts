@@ -209,6 +209,9 @@ describe('deploy candidate mode', () => {
       const self: Hooked = {
         logger: logger(),
         settings: new Map(),
+        vectors: new Map(),
+        catalog: new Map(),
+        markReady: jest.fn(),
         reloadSettings: jest.fn(() => Promise.resolve()),
         anyActive: () => true,
         reloadEmbeddings: jest.fn(() => Promise.resolve()),
@@ -217,6 +220,8 @@ describe('deploy candidate mode', () => {
       await afterTimers();
       expect(self.reloadSettings).toHaveBeenCalledTimes(1);
       expect(self.reloadEmbeddings).toHaveBeenCalledTimes(1);
+      // The first load is done: the engine may announce from the index (#277).
+      expect(self.markReady).toHaveBeenCalledTimes(1);
     });
   });
 });
