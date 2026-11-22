@@ -1,134 +1,29 @@
 import { Slider } from "@gaulatti/bleecker";
 import { Button } from "./BleeckerButtons";
 import { Headphones, Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { apiUrl } from "../utils/apiBaseUrl";
+import { useEffect, useRef } from "react";
+import {
+  useRadioListener,
+  useRadioMonitor,
+  type RadioListener,
+} from "./RadioMonitor";
 
-/** Listener-side audio only. This component never issues a playout command. */
-export function RadioOutputPlayer({
-  listenerUrl,
-  programId,
+/** The listener controls over one listener: the audio element itself lives with whoever owns it. */
+function RadioListenerView({
+  listener,
+  focusOnHash,
+  audio,
 }: {
-  listenerUrl?: string;
-  programId?: string;
+  listener: RadioListener;
+  focusOnHash: unknown;
+  audio?: boolean;
 }) {
   const monitorRef = useRef<HTMLDivElement>(null);
-  const grantExpiresAt = useRef(0);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const request = useRef(0);
-  const [state, setState] = useState<"stopped" | "buffering" | "playing">(
-    "stopped",
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [volume, setVolume] = useState(1);
-  const [monitorUrl, setMonitorUrl] = useState<string | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const [retry, setRetry] = useState(0);
-
-  // Prepare authorization before the click to keep play() inside Safari's user
-  // gesture. Idle grants refresh from the producer's lifetime; active audio is
-  // never replaced. Returning from a background tab refreshes an idle grant.
-  useEffect(() => {
-    if (!programId || state !== "stopped") return;
-    const abort = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const prepare = async () => {
-      setPreparing(true);
-      setMonitorUrl(null);
-      try {
-        const response = await fetch(
-          apiUrl(`/radio/${encodeURIComponent(programId)}/monitor-ticket`),
-          { method: "POST", signal: abort.signal },
-        );
-        if (!response.ok) throw new Error();
-        const grant = await response.json();
-        if (
-          !Number.isFinite(grant.expiresInMs) ||
-          grant.expiresInMs < 5_000 ||
-          typeof grant.streamPath !== "string" ||
-          !grant.streamPath.startsWith(
-            `/radio/${encodeURIComponent(programId)}/monitor-audio?ticket=`,
-          )
-        )
-          throw new Error();
-        if (abort.signal.aborted) return;
-        grantExpiresAt.current = Date.now() + grant.expiresInMs;
-        setMonitorUrl(apiUrl(grant.streamPath));
-        timer = setTimeout(() => void prepare(), grant.expiresInMs - 5_000);
-      } catch {
-        if (!abort.signal.aborted)
-          setError("The Program monitor could not connect. Retry connection.");
-      } finally {
-        if (!abort.signal.aborted) setPreparing(false);
-      }
-    };
-    const refreshOnReturn = () => {
-      if (document.visibilityState !== "visible") return;
-      clearTimeout(timer);
-      setRetry((value) => value + 1);
-    };
-    document.addEventListener("visibilitychange", refreshOnReturn);
-    void prepare();
-    return () => {
-      document.removeEventListener("visibilitychange", refreshOnReturn);
-      abort.abort();
-      clearTimeout(timer);
-    };
-  }, [programId, state, retry]);
+  const { state, error, volume, monitorUrl, preparing, programId } = listener;
 
   useEffect(() => {
     if (window.location.hash === "#radio-monitor") monitorRef.current?.focus();
-  }, [programId]);
-
-  const stop = () => {
-    request.current += 1;
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    }
-    setState("stopped");
-  };
-  useEffect(() => {
-    const audio = audioRef.current;
-    request.current += 1;
-    setState("stopped");
-    setError(null);
-    return () => {
-      request.current += 1;
-      audio?.pause();
-      audio?.removeAttribute("src");
-      audio?.load();
-    };
-  }, [listenerUrl, programId]);
-
-  const listen = async () => {
-    const audio = audioRef.current;
-    const source = programId ? monitorUrl : listenerUrl;
-    if (!audio || !source) return;
-    if (programId && Date.now() >= grantExpiresAt.current) {
-      setMonitorUrl(null);
-      setError(
-        "Monitor connection expired. Preparing a new connection; press Listen when ready.",
-      );
-      setRetry((value) => value + 1);
-      return;
-    }
-    const current = ++request.current;
-    setError(null);
-    setState("buffering");
-    audio.src = source;
-    audio.volume = volume;
-    try {
-      await audio.play();
-      if (request.current === current) setState("playing");
-    } catch {
-      if (request.current !== current) return;
-      stop();
-      setError("Broadcast audio could not be played. Try listening again.");
-    }
-  };
+  }, [focusOnHash]);
 
   return (
     <div
@@ -138,22 +33,7 @@ export function RadioOutputPlayer({
       className="radio-output-monitor mt-3 space-y-2 border-t border-sand/20 pt-3"
       aria-label="Listener audio monitor"
     >
-      <audio
-        ref={audioRef}
-        preload="none"
-        onWaiting={() => {
-          if (audioRef.current?.getAttribute("src")) setState("buffering");
-        }}
-        onPlaying={() => {
-          if (audioRef.current?.getAttribute("src")) setState("playing");
-        }}
-        onEnded={stop}
-        onError={() => {
-          if (!audioRef.current?.getAttribute("src")) return;
-          stop();
-          setError("The listener stream is unavailable. Try listening again.");
-        }}
-      />
+      {audio ? <audio {...listener.audioProps} /> : null}
       <p role="status" className="text-xs text-text-secondary">
         {state === "playing"
           ? "Listening to broadcast"
@@ -173,7 +53,9 @@ export function RadioOutputPlayer({
           type="button"
           size="xs"
           disabled={state === "stopped" && !!programId && !monitorUrl}
-          onClick={() => (state === "stopped" ? void listen() : stop())}
+          onClick={() =>
+            state === "stopped" ? void listener.listen() : listener.stop()
+          }
           title={
             state === "stopped"
               ? "Listen to the station broadcast on this device"
@@ -192,10 +74,7 @@ export function RadioOutputPlayer({
             type="button"
             variant="secondary"
             size="xs"
-            onClick={() => {
-              setError(null);
-              setRetry((value) => value + 1);
-            }}
+            onClick={listener.retryConnection}
           >
             Retry connection
           </Button>
@@ -208,10 +87,7 @@ export function RadioOutputPlayer({
             max={1}
             step={0.01}
             value={volume}
-            onChange={(next) => {
-              setVolume(next);
-              if (audioRef.current) audioRef.current.volume = next;
-            }}
+            onChange={listener.setVolume}
           />
         </div>
       </div>
@@ -220,4 +96,50 @@ export function RadioOutputPlayer({
       </p>
     </div>
   );
+}
+
+/** A player with its own audio element: fixtures with an exact listener URL, or no shared monitor. */
+function StandaloneRadioPlayer({
+  listenerUrl,
+  programId,
+}: {
+  listenerUrl?: string;
+  programId?: string;
+}) {
+  const listener = useRadioListener({ listenerUrl, programId });
+  return (
+    <RadioListenerView
+      listener={listener}
+      focusOnHash={programId}
+      audio
+    />
+  );
+}
+
+/** A view of the console's shared listener: the audio keeps playing when this page is left. */
+function SharedRadioPlayer({
+  monitor,
+  programId,
+}: {
+  monitor: NonNullable<ReturnType<typeof useRadioMonitor>>;
+  programId: string;
+}) {
+  const { attachPlayer } = monitor;
+  useEffect(() => attachPlayer(), [attachPlayer]);
+  return <RadioListenerView listener={monitor} focusOnHash={programId} />;
+}
+
+/** Listener-side audio only. This component never issues a playout command. */
+export function RadioOutputPlayer({
+  listenerUrl,
+  programId,
+}: {
+  listenerUrl?: string;
+  programId?: string;
+}) {
+  const monitor = useRadioMonitor();
+  if (monitor && programId && !listenerUrl) {
+    return <SharedRadioPlayer monitor={monitor} programId={programId} />;
+  }
+  return <StandaloneRadioPlayer listenerUrl={listenerUrl} programId={programId} />;
 }

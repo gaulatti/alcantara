@@ -18,6 +18,7 @@ import {
 } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Layout from "./layout";
+import { RadioOutputPlayer } from "../components/RadioOutputPlayer";
 import { apiUrl } from "../utils/apiBaseUrl";
 
 // gaulatti/alcantara#187, group G5: the console shell: program selection,
@@ -35,13 +36,22 @@ const shell = vi.hoisted(() => ({
 }));
 
 vi.mock("../utils/globalProgram", async () => {
-  const { useState } = await import("react");
+  const { useSyncExternalStore } = await import("react");
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  };
   return {
+    // One shared selection, as the console's preferences are: every reader sees a change.
     useGlobalProgramId: () => {
-      const [value, setValue] = useState(shell.program);
+      const value = useSyncExternalStore(subscribe, () => shell.program);
       return [
         value,
-        (next: string) => setValue(next.trim() || "main"),
+        (next: string) => {
+          shell.program = next.trim() || "main";
+          listeners.forEach((listener) => listener());
+        },
       ] as const;
     },
   };
@@ -255,6 +265,10 @@ beforeEach(() => {
     return handler(init);
   });
   vi.stubGlobal("fetch", network);
+  // The shell owns the listener's audio element, which jsdom cannot play.
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -945,4 +959,93 @@ it("opens and closes the phone navigation, which closes on navigation", async ()
     ),
   );
   expect(commands()).toBeInTheDocument();
+});
+
+// gaulatti/alcantara#287: the listener audio lives in the shell, so it survives page changes.
+function openWithPlayer() {
+  function Player() {
+    const navigate = useNavigate();
+    return (
+      <div>
+        <RadioOutputPlayer programId="radio one" />
+        <button type="button" onClick={() => navigate("/scenes")}>
+          Go to songs page
+        </button>
+      </div>
+    );
+  }
+  return render(
+    <MemoryRouter initialEntries={["/player"]}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/player" element={<Player />} />
+          <Route path="*" element={<Page />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+async function startListening() {
+  shell.program = "radio one";
+  let grant = 0;
+  routes["POST /radio/radio one/monitor-ticket"] = () =>
+    json({
+      streamPath: `/radio/radio%20one/monitor-audio?ticket=g${++grant}`,
+      expiresInMs: 600000,
+    });
+  openWithPlayer();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  await waitFor(() =>
+    expect(screen.getByText("Listening · radio one")).toBeInTheDocument(),
+  );
+  return document.querySelector("audio")!;
+}
+const grantRequests = () =>
+  network.mock.calls.filter((call) => String(call[0]).includes("monitor-ticket"));
+
+it("keeps listening while the operator moves to another console page, with a chip to stop it", async () => {
+  const audio = await startListening();
+  const source = audio.getAttribute("src");
+  vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Go to songs page" }));
+  await waitFor(() => expect(where()).toBe("/scenes"));
+  expect(document.querySelectorAll("audio")).toHaveLength(1);
+  expect(document.querySelector("audio")).toBe(audio);
+  expect(audio.getAttribute("src")).toBe(source);
+  expect(HTMLMediaElement.prototype.pause).not.toHaveBeenCalled();
+  expect(screen.getByText("Listening · radio one")).toBeInTheDocument();
+  expect(grantRequests()).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Stop listening" }));
+  expect(audio).not.toHaveAttribute("src");
+  expect(screen.queryByText("Listening · radio one")).toBeNull();
+});
+
+it("stops the stream when the program is changed from the header", async () => {
+  const audio = await startListening();
+  choose("news");
+  await waitFor(() => expect(audio).not.toHaveAttribute("src"));
+  expect(screen.queryByText("Listening · radio one")).toBeNull();
+});
+
+it("stops the stream at Logout, before signing out", async () => {
+  const audio = await startListening();
+  shell.logout.mockImplementation(() => {
+    expect(audio).not.toHaveAttribute("src");
+  });
+  fireEvent.click(screen.getAllByRole("button", { name: "Logout" })[0]);
+  expect(shell.logout).toHaveBeenCalledTimes(1);
+  expect(audio).not.toHaveAttribute("src");
+  expect(screen.queryByText("Listening · radio one")).toBeNull();
+});
+
+it("shows no listening chip, and asks for no grant, on a page without a player", async () => {
+  shell.program = "radio one";
+  open("/songs");
+  await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
+  expect(screen.queryByText(/Listening ·/)).toBeNull();
+  expect(grantRequests()).toHaveLength(0);
 });

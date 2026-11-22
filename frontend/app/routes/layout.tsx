@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Square,
   SlidersHorizontal,
   Tv,
   Volume2,
@@ -37,6 +38,7 @@ import { resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
+import { RadioMonitorProvider, useRadioMonitor } from '../components/RadioMonitor';
 import { useFeatures } from '../hooks/useFeatures';
 import { isTestAuth } from '../services/session';
 import { getAppNavigationSections, isNavigationItemActive, type ProgramType } from '../utils/appNavigation';
@@ -115,10 +117,29 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   );
 }
 
+/**
+ * The console shell. The listener audio element lives in the provider around it, so it keeps
+ * playing while the operator moves between console pages, and stops when the Program changes or
+ * the shell leaves the screen (sign-out).
+ */
 export default function Layout() {
+  const [selectedProgramId] = useGlobalProgramId();
+  return (
+    <RadioMonitorProvider programId={selectedProgramId}>
+      <ConsoleShell />
+    </RadioMonitorProvider>
+  );
+}
+
+function ConsoleShell() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useLogout();
+  const { logout: signOut } = useLogout();
+  const radioMonitor = useRadioMonitor();
+  const logout = () => {
+    radioMonitor?.stop();
+    signOut();
+  };
   const { hasPermission } = useFeatures();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
@@ -862,6 +883,18 @@ export default function Layout() {
               <span className='hidden min-w-0 flex-1 truncate text-xs text-text-secondary lg:block'>
                 {selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
               </span>
+              {radioMonitor && radioMonitor.state !== 'stopped' ? (
+                <span
+                  role='status'
+                  className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] py-0.5 pl-2.5 pr-1 text-xs font-semibold text-text-secondary'
+                >
+                  <Headphones size={14} />
+                  <span className='max-w-32 truncate'>{radioMonitor.state === 'buffering' ? 'Connecting' : 'Listening'} · {selectedProgramId}</span>
+                  <Button size='xs' variant='ghost' onClick={radioMonitor.stop} aria-label='Stop listening'>
+                    <Square size={12} />
+                  </Button>
+                </span>
+              ) : null}
               <Button size='xs' variant='ghost' onClick={() => setCommandOpen(true)} aria-label='Open command menu'>
                 <Search size={14} />
                 <span className='hidden lg:inline'>Commands</span>
