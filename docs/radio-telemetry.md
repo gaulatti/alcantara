@@ -148,6 +148,18 @@ URL-free lifecycle events by request ID and hydrates a redacted playing
 snapshot from the private `/playback/state` endpoint before it reaches
 the execution engine. This keeps media URLs out of the event stream without
 mistaking a healthy stream for malformed telemetry.
+A reconnect whose `Last-Event-ID` Palazzo can no longer replay (outside its
+512-event window, or from another boot) gets a `replay.gap` event right after the
+snapshot (palazzo#56; its data is `{reason: "cursor_not_in_replay", replayEvents}`,
+and its id, boot and sequence are the snapshot's). Alcantara knows the type
+(gaulatti/alcantara#240): the snapshot just hydrated and applied the current
+state, so nothing more is fetched; the gap is counted under the existing
+`alcantara_palazzo_events_ignored_total{reason="sequence-gap"}` and logged once at
+warn level with the replay window size, the cursor stays at the snapshot, and the
+event is not forwarded to the song engine, so what airs does not change. Its data
+must be an object like every event's (otherwise `malformed`); a reason or field
+it does not know is ignored. It is not shown on the console: it records that
+events were missed, while the snapshot already carries the present state.
 Current Palazzo preflight and playout-observation events advance the replay
 cursor but are not forwarded into the song engine; only track, intro,
 position, and level events may change Alcantara playback state. This prevents

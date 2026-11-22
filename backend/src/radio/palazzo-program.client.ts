@@ -329,6 +329,11 @@ export class PalazzoProgramClient {
       return;
     }
 
+    if (event.type === 'replay.gap') {
+      this.recordReplayGap(event);
+      return;
+    }
+
     if (event.sequence === this.lastSequence) {
       this.options.metrics.recordEventIgnored('duplicate');
       return;
@@ -350,6 +355,27 @@ export class PalazzoProgramClient {
     if (isEnginePlaybackEvent(event.type)) {
       this.options.callbacks.onEvent(this.options.programId, event);
     }
+  }
+
+  /**
+   * Palazzo says the events between our last cursor and its snapshot are gone
+   * (gaulatti/alcantara#240): the cursor was outside its replay window or came
+   * from another boot. It arrives right after the snapshot, carrying the
+   * snapshot's id, boot and sequence, and that snapshot has already been
+   * hydrated and applied, so the state is current and there is nothing more to
+   * fetch. It is counted under the existing gap counter and logged once; the
+   * cursor stays at the snapshot and nothing reaches the engine, so what airs
+   * does not change.
+   */
+  private recordReplayGap(event: PalazzoPlaybackEvent): void {
+    this.options.metrics.recordEventIgnored('sequence-gap');
+    const replayEvents = event.data?.replayEvents;
+    this.logger.warn(
+      `Palazzo replay gap on ${this.options.programId}: events between the last cursor and the snapshot were not replayed` +
+        (Number.isSafeInteger(replayEvents)
+          ? ` (replay window held ${String(replayEvents)} events)`
+          : ''),
+    );
   }
 
   private async reconcileGap(): Promise<void> {
