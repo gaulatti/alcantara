@@ -19,6 +19,8 @@ export interface AssetAnalysis {
   nextAttemptAt?: string | null;
   isrc?: string | null;
   musicbrainzRecordingId?: string | null;
+  /** The probed length (gaulatti/alcantara#296); absent until the server stores it. */
+  durationSeconds?: number | null;
 }
 
 /**
@@ -91,12 +93,21 @@ export interface AudioAssetLike {
   analysis?: AssetAnalysisField;
 }
 
-/** The asset's length, only where the library stores one (songs). */
-export function durationSeconds(asset: AudioAssetLike): number | null {
-  const ms = asset.song?.durationMs;
-  return typeof ms === "number" && Number.isFinite(ms) && ms > 0
-    ? ms / 1000
+function positive(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
     : null;
+}
+
+/**
+ * The asset's length: the one the analysis stored (`durationSeconds`), else the song's
+ * `durationMs`. Null where the library stores neither.
+ */
+export function durationSeconds(asset: AudioAssetLike): number | null {
+  const fromAnalysis = positive(asset.analysis?.durationSeconds);
+  if (fromAnalysis !== null) return fromAnalysis;
+  const ms = positive(asset.song?.durationMs);
+  return ms === null ? null : ms / 1000;
 }
 
 /** How many of the listed assets fall in each analysis state. */

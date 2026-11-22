@@ -159,6 +159,31 @@ it("lists each asset with its length, loudness, peak and analysis state, reading
   }
 });
 
+it("reads the length from the analysis first, then from the song, and draws a timeline when either exists", () => {
+  setup({
+    assets: [
+      asset("probed", {
+        song: null,
+        capabilities: ["INSTANT"],
+        analysis: { ...ANALYSIS, durationSeconds: 12.5 },
+      }),
+      asset("both", {
+        song: { durationMs: 214_000 },
+        analysis: { ...ANALYSIS, durationSeconds: 200 },
+      }),
+      asset("song-only", { analysis: { ...ANALYSIS, durationSeconds: null } }),
+      asset("neither", { song: null, analysis: ANALYSIS }),
+    ],
+  });
+  expect(rowOf("Asset probed")).toHaveTextContent("0:12");
+  expect(within(rowOf("Asset probed")).getByTestId("timeline")).toBeInTheDocument();
+  // The analysis wins over the song's own length.
+  expect(rowOf("Asset both")).toHaveTextContent("3:20");
+  expect(rowOf("Asset song-only")).toHaveTextContent("3:34");
+  expect(rowOf("Asset neither")).toHaveTextContent("No duration stored");
+  expect(rowOf("Asset neither")).not.toHaveTextContent("0:00");
+});
+
 it("draws the cue-in and cue-out markers only where the analysis stored them", () => {
   setup();
   const harbor = within(rowOf("Asset harbor"));
