@@ -83,8 +83,6 @@ beforeEach(() => {
         { id: 2, name: "Close", layout: null },
         { id: 3, name: "Anchor", layout: { name: "Desk" } },
       ]),
-    "GET /media-groups?limit=0": () =>
-      json({ data: [{ id: 3, name: "Stills" }] }),
     "GET /stingers": () =>
       json([
         { id: 7, name: "Swoosh" },
@@ -157,11 +155,7 @@ it("reports shows that cannot load, and offers the first show when there are non
   open();
   await toast("Failed to load programs. Please refresh and try again.");
   cleanup();
-  for (const failing of [
-    "GET /program",
-    "GET /scenes",
-    "GET /media-groups?limit=0",
-  ]) {
+  for (const failing of ["GET /program", "GET /scenes"]) {
     routes = {
       ...routes,
       "GET /stingers": () => json([]),
@@ -173,7 +167,6 @@ it("reports shows that cannot load, and offers the first show when there are non
   }
   routes["GET /program"] = () => json([]);
   routes["GET /scenes"] = () => json([]);
-  routes["GET /media-groups?limit=0"] = () => json({ data: [] });
   open();
   expect(await screen.findByText("No shows yet")).toBeInTheDocument();
   fireEvent.click(
