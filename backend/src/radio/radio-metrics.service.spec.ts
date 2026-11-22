@@ -15,7 +15,11 @@ describe('RadioMetricsService', () => {
     expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-beyond-duration"} 0');
     expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="ambiguous-match"} 0');
     expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-edge-bound"} 0');
-    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(5);
+    // gaulatti/alcantara#255: a song sent with no analysis at all, exported at 0.
+    for (const result of ['no-asset', 'not-analyzed', 'lookup-failed']) {
+      expect(rendered).toContain(`alcantara_radio_analysis_dropped_total{result="${result}"} 0`);
+    }
+    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(8);
     expect(rendered).not.toContain('media.example');
     expect(metrics.snapshot().analysisDrops).toEqual({ 'segue-invalid': 2, 'loudness-invalid': 1 });
   });
