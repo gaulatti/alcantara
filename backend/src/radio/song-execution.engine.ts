@@ -336,6 +336,12 @@ interface SongEngineState {
   frozen: boolean;
   reconciled: boolean;
   busyWithForeignTrack: boolean;
+  /**
+   * Request IDs of playing tracks this process did not command, looked up in
+   * the catalogue or already reported as unidentified (gaulatti/alcantara#272):
+   * each is handled once, however many snapshots name it.
+   */
+  inheritedLookups: Set<string>;
   /** First watchdog read of Palazzo reporting no playback, or null (#230). */
   noPlaybackSince: number | null;
   /** The pending retry after a failed command, and how many in a row (#230). */
@@ -551,6 +557,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         frozen: false,
         reconciled: false,
         busyWithForeignTrack: false,
+        inheritedLookups: new Set<string>(),
         noPlaybackSince: null,
         commandRetryTimer: null,
         commandRetries: 0,
@@ -2368,86 +2375,207 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         state.queue[0].itemId === inheritedSong.id
           ? state.queue[0]
           : null;
-      const positionMs = Math.max(
-        0,
-        Math.round(snapshot.positionSeconds * 1000),
-      );
-      const parsedStartedAt = Date.parse(snapshot.track?.startedAt ?? '');
-      const authoritativeStartedAt = Number.isFinite(parsedStartedAt)
-        ? parsedStartedAt
-        : Date.now() - positionMs;
-      state.activeSong = {
+      this.adoptPlayingTrack(programId, state, snapshot, requestId, {
         token: `${inheritedSong.id}:${inheritedSong.audioUrl}`,
-        playbackRequestId: requestId,
         audioUrl: inheritedSong.audioUrl,
-        artist: snapshot.track?.artist || inheritedSong.artist,
-        title: snapshot.track?.title || inheritedSong.title,
-        coverUrl: snapshot.track?.coverUrl || inheritedSong.coverUrl,
+        artist: inheritedSong.artist,
+        title: inheritedSong.title,
+        coverUrl: inheritedSong.coverUrl,
         durationMs: inheritedSong.durationMs ?? 300000,
-        startedAt: authoritativeStartedAt,
         itemId: inheritedSong.id,
         songId: inheritedSong.songId ?? null,
-        introPlaybackId: snapshot.intro?.playbackId ?? null,
-        introStatus:
-          snapshot.intro?.status === 'playing'
-            ? 'playing'
-            : snapshot.intro?.status === 'failed'
-              ? 'degraded'
-              : 'none',
-        introFailureReason: this.boundedFailureReason(
-          snapshot.intro?.failureReason,
-        ),
-        authoritativeStartedAt,
-        authoritativePositionMs: positionMs,
-        authoritativeUpdatedAt: Date.now(),
         queueEntryId: inheritedQueueEntry?.id ?? null,
         highRotation: inheritedSong.highRotation === true,
-      };
-      state.busyWithForeignTrack = false;
-      this.logger.log(
-        `Adopted inherited Palazzo playback ${requestId} on ${programId}`,
-      );
-      this.metrics.recordTrackTransition('adopted');
-      this.recordHighRotationStarted(
-        programId,
-        state,
-        state.activeSong,
-        authoritativeStartedAt,
-      );
-      // The play gets its as-run start once (#174), inferred: at Palazzo's
-      // reported start time, or the snapshot time when it reports none.
-      this.emitTrackEvent(
-        programId,
-        'track.started',
-        requestId,
-        {
-          title: state.activeSong.title,
-          artist: state.activeSong.artist,
-          url: state.activeSong.audioUrl,
-        },
-        true,
-        undefined,
-        new Date(
-          Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now(),
-        ),
-      );
-      this.emitPlaybackActive(programId, state.activeSong);
-      void this.publishNowPlaying(programId, state.activeSong);
-      this.startProgress(programId);
-      // Its successor is announced as for any started song, so a restart in
-      // the middle of a song does not cost a commanded (cold) change at its end.
-      this.refreshAnnouncement(programId);
+      });
       return;
     }
 
-    // A track we did not command is playing. Never advance or publish
-    // anything from foreign playback; just avoid double audio.
-    if (!state.busyWithForeignTrack) {
-      state.busyWithForeignTrack = true;
-      this.logger.warn(
-        `Palazzo reports a foreign track on ${programId}; withholding new commands`,
-      );
+    // A track we did not command is playing: withhold every command at once, so
+    // there is never double audio, while it is identified (#272). Palazzo is
+    // commanded only by Alcantara, so a track this process did not command is
+    // one an earlier process commanded or announced: if the catalogue knows
+    // its audio it is recorded as our own song, otherwise it stays withheld and
+    // is reported once with what Palazzo says is playing.
+    state.busyWithForeignTrack = true;
+    if (requestId && !state.inheritedLookups.has(requestId)) {
+      state.inheritedLookups.add(requestId);
+      if (state.inheritedLookups.size > MAX_ENDED_REQUEST_IDS) {
+        state.inheritedLookups.delete(
+          state.inheritedLookups.values().next().value as string,
+        );
+      }
+      void this.recogniseInheritedTrack(programId, state, snapshot, requestId);
     }
+  }
+
+  /**
+   * Looks the playing track up by its audio URL in the song catalogue (#272).
+   * Exactly one song must match, and Palazzo must still report the track and
+   * the engine still hold no active song of its own; anything else is left
+   * withheld and reported, never recorded as a guess.
+   */
+  private async recogniseInheritedTrack(
+    programId: string,
+    state: SongEngineState,
+    snapshot: PalazzoPlaybackState,
+    requestId: string,
+  ): Promise<void> {
+    const url = snapshot.track?.url ?? '';
+    let lookupFailed = false;
+    let matches: {
+      id: number;
+      title: string;
+      artist: string;
+      audioUrl: string;
+      coverUrl: string | null;
+      durationMs: number | null;
+    }[] = [];
+    if (url) {
+      try {
+        matches = await this.prisma.song.findMany({
+          where: { audioUrl: url },
+          select: {
+            id: true,
+            title: true,
+            artist: true,
+            audioUrl: true,
+            coverUrl: true,
+            durationMs: true,
+          },
+          take: 2,
+        });
+      } catch {
+        lookupFailed = true;
+      }
+    }
+    // The track ended, or the engine took on a song, while the lookup ran.
+    if (state.activeSong || !state.busyWithForeignTrack) return;
+    if (matches.length === 1) {
+      const song = matches[0];
+      this.adoptPlayingTrack(programId, state, snapshot, requestId, {
+        token: `inherited:${song.id}:${song.audioUrl}`,
+        audioUrl: song.audioUrl,
+        artist: song.artist,
+        title: song.title,
+        coverUrl: song.coverUrl ?? '',
+        durationMs: song.durationMs ?? 300000,
+        itemId: '',
+        songId: song.id,
+        queueEntryId: null,
+        highRotation: false,
+      });
+      return;
+    }
+    this.metrics.recordTrackTransition('unidentified');
+    const track = snapshot.track;
+    this.logger.warn(
+      `Palazzo reports a track on ${programId} the engine cannot identify; withholding new commands: ` +
+        JSON.stringify({
+          requestId,
+          title: this.boundedText(track?.title),
+          artist: this.boundedText(track?.artist),
+          url: this.boundedText(track?.url),
+          startedAt: track?.startedAt ?? null,
+          positionSeconds: snapshot.positionSeconds,
+          catalogueMatches: matches.length,
+          ...(lookupFailed ? { catalogueLookup: 'failed' } : {}),
+        }),
+    );
+  }
+
+  private boundedText(value: string | null | undefined): string | null {
+    return typeof value === 'string' ? value.slice(0, 200) : null;
+  }
+
+  /**
+   * Takes a playing track the engine did not command as its own active song:
+   * records its start as inferred at Palazzo's reported time (#174), follows it
+   * to its end, publishes now-playing and announces its successor, and sends no
+   * command over it. Used for a track matching the program sequence and for
+   * one recognised in the catalogue (#272).
+   */
+  private adoptPlayingTrack(
+    programId: string,
+    state: SongEngineState,
+    snapshot: PalazzoPlaybackState,
+    requestId: string,
+    source: {
+      token: string;
+      audioUrl: string;
+      artist: string;
+      title: string;
+      coverUrl: string;
+      durationMs: number;
+      itemId: string;
+      songId: number | null;
+      queueEntryId: string | null;
+      highRotation: boolean;
+    },
+  ): void {
+    const positionMs = Math.max(0, Math.round(snapshot.positionSeconds * 1000));
+    const parsedStartedAt = Date.parse(snapshot.track?.startedAt ?? '');
+    const authoritativeStartedAt = Number.isFinite(parsedStartedAt)
+      ? parsedStartedAt
+      : Date.now() - positionMs;
+    state.activeSong = {
+      token: source.token,
+      playbackRequestId: requestId,
+      audioUrl: source.audioUrl,
+      artist: snapshot.track?.artist || source.artist,
+      title: snapshot.track?.title || source.title,
+      coverUrl: snapshot.track?.coverUrl || source.coverUrl,
+      durationMs: source.durationMs,
+      startedAt: authoritativeStartedAt,
+      itemId: source.itemId,
+      songId: source.songId,
+      introPlaybackId: snapshot.intro?.playbackId ?? null,
+      introStatus:
+        snapshot.intro?.status === 'playing'
+          ? 'playing'
+          : snapshot.intro?.status === 'failed'
+            ? 'degraded'
+            : 'none',
+      introFailureReason: this.boundedFailureReason(
+        snapshot.intro?.failureReason,
+      ),
+      authoritativeStartedAt,
+      authoritativePositionMs: positionMs,
+      authoritativeUpdatedAt: Date.now(),
+      queueEntryId: source.queueEntryId,
+      highRotation: source.highRotation,
+    };
+    state.busyWithForeignTrack = false;
+    this.logger.log(
+      `Adopted inherited Palazzo playback ${requestId} on ${programId}`,
+    );
+    this.metrics.recordTrackTransition('adopted');
+    this.recordHighRotationStarted(
+      programId,
+      state,
+      state.activeSong,
+      authoritativeStartedAt,
+    );
+    // The play gets its as-run start once (#174), inferred: at Palazzo's
+    // reported start time, or the snapshot time when it reports none.
+    this.emitTrackEvent(
+      programId,
+      'track.started',
+      requestId,
+      {
+        title: state.activeSong.title,
+        artist: state.activeSong.artist,
+        url: state.activeSong.audioUrl,
+      },
+      true,
+      undefined,
+      new Date(Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now()),
+    );
+    this.emitPlaybackActive(programId, state.activeSong);
+    void this.publishNowPlaying(programId, state.activeSong);
+    this.startProgress(programId);
+    // Its successor is announced as for any started song, so a restart in
+    // the middle of a song does not cost a commanded (cold) change at its end.
+    this.refreshAnnouncement(programId);
   }
 
   private reconcileIdleSnapshot(

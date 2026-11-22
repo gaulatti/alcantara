@@ -99,9 +99,30 @@ root playback routes.
   the configured sequence. Adoption preserves Palazzo's request ID, start time,
   and position, sends no competing play command, and advances from that exact
   leaf when its authoritative end arrives.
-- An unknown URL, or a URL reused by multiple sequence leaves, remains foreign:
-  Alcantara sends no command while it plays and does not guess a successor from
-  its end event. When that foreign track ends, the engine reads Palazzo's
+- A track that is not a unique leaf of the configured sequence (a catalogue
+  pick, or the successor an earlier process announced, which Palazzo started by
+  itself while no backend was running) is looked up by its audio URL in the song
+  catalogue (gaulatti/alcantara#272). Palazzo is commanded only by Alcantara, so a
+  track this process did not command is one an earlier process commanded or
+  announced. Commands are withheld at once, while the lookup runs. Exactly one
+  catalogue song with that audio URL (enabled or not: it aired) makes the track
+  the engine's own: it is adopted as above (an inferred as-run start at
+  Palazzo's reported start time, now-playing published, its successor announced,
+  a command only after its authoritative end), counted as
+  `alcantara_radio_track_transitions_total{result="adopted"}`. The previous play
+  of the program, whose end was lost with the old process, is closed by the
+  as-run log at this start, flagged `unended` for review (#241), once the
+  adopted play ends.
+- A track with no URL, an unknown URL, a URL shared by several catalogue songs
+  or a failed lookup stays **unidentified**: Alcantara sends no command while it
+  plays, records nothing for it and does not guess a successor from its end
+  event. It is counted once in
+  `alcantara_radio_track_transitions_total{result="unidentified"}` (a new label
+  value on the existing counter; the label is that fixed word, never the title)
+  and logged once at warn level with what Palazzo says is playing (request id,
+  title, artist and url, each cut at 200 characters, start time, position,
+  the number of catalogue matches and whether the lookup failed), so the play can
+  be reconstructed by hand. When that track ends, the engine reads Palazzo's
   current state (`GET .../playback/state`) and reconciles from it as from a
   snapshot: idle resumes normal automatic recovery. Explicit manual mode
   remains idle. (Palazzo sends a `snapshot` only when a stream connects, so
