@@ -62,10 +62,10 @@ it("plays a cart, numbered and with its Ctrl shortcut, and not a disabled one", 
   expect(onTrigger).toHaveBeenCalledWith(10);
   const horn = screen.getByRole("button", { name: "Horn" });
   expect(horn).toBeDisabled();
-  expect(within(horn).getByText("Ctrl+W")).toBeInTheDocument();
+  expect(within(horn).getByText("Ctrl+E")).toBeInTheDocument();
 });
 
-it("shows carts past the 26th without a shortcut", () => {
+it("shows carts past the twentieth without a shortcut", () => {
   const instants = Array.from({ length: 27 }, (_, index) =>
     instant(index + 1, `Cart ${index + 1}`),
   );
@@ -75,8 +75,11 @@ it("shows carts past the 26th without a shortcut", () => {
   expect(last.textContent).not.toMatch(/Ctrl\+/);
   expect(last.querySelector("svg")).not.toBeNull();
   expect(
-    within(screen.getByRole("button", { name: "Cart 26" })).getByText("Ctrl+M"),
+    within(screen.getByRole("button", { name: "Cart 20" })).getByText("Ctrl+M"),
   ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Cart 21" }).textContent,
+  ).not.toMatch(/Ctrl\+/);
 });
 
 it("filters by name and keeps each cart's own number and shortcut", () => {
@@ -91,7 +94,7 @@ it("filters by name and keeps each cart's own number and shortcut", () => {
   expect(screen.queryByRole("button", { name: "Applause" })).toBeNull();
   const big = screen.getByRole("button", { name: "Big laugh" });
   expect(big).toHaveTextContent("03");
-  expect(within(big).getByText("Ctrl+E")).toBeInTheDocument();
+  expect(within(big).getByText("Ctrl+Y")).toBeInTheDocument();
   expect(screen.getAllByRole("button")).toHaveLength(2);
   cleanup();
   cartwall({ instants: [instant(1, "Applause")], search: "drum" });

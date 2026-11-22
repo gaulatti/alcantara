@@ -263,10 +263,10 @@ it("ignores shortcuts for a disabled or missing instant, and keeps playing state
     new Response("no", { status: 500 }),
   );
   await screen.findByRole("button", { name: "Fictional sting" });
-  // Ctrl+E is the third (disabled) instant, Ctrl+R names none, Ctrl+1 is
+  // Ctrl+Y is the third (disabled) instant, Ctrl+R names none, Ctrl+1 is
   // not armed, a plain Q is not a shortcut, Ctrl+Shift+Q and Ctrl+5 are not
   // instant keys, and nothing typed in a field is a shortcut.
-  fireEvent.keyDown(window, { key: "e", code: "KeyE", ctrlKey: true });
+  fireEvent.keyDown(window, { key: "y", code: "KeyY", ctrlKey: true });
   fireEvent.keyDown(window, { key: "r", code: "KeyR", ctrlKey: true });
   fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true });
   fireEvent.keyDown(window, { key: "q", code: "KeyQ" });
