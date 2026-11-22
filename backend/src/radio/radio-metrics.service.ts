@@ -254,6 +254,7 @@ const RADIO_LOG_RESULTS = [
   'unended-closed',
   // The close of an unended play failed; the real end was still recorded (#241).
   'unended-close-failed',
+  'record-failed',
   'resume-failed',
   'filled',
   'fill-failed',
