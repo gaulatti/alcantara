@@ -77,6 +77,8 @@ export const CONSENT_COOKIE = 'alcantara_mcp_consent';
  * per pending sign-in, named by the start of its state.
  */
 export const SIGNIN_COOKIE_PREFIX = 'alcantara_mcp_signin_';
+/** The shape of a state the API mints (base64url), the only kind a cookie is named by. */
+const MINTED_STATE = /^[A-Za-z0-9_-]{1,128}$/;
 /** The authorize parameters a consent form carries back, in MAC order. */
 export const CONSENT_FIELDS = [
   'response_type',
@@ -496,9 +498,12 @@ export class McpOAuthProxyService {
   ): Promise<ProxyAnswer> {
     const answer = await this.callbackInner(params, cookieHeader);
     const state = params.state ?? '';
+    // Only a state shaped like one the API mints names a cookie: the query is
+    // the caller's, and a `;` or a non-ASCII character must never reach a
+    // Set-Cookie header.
     return this.observe(
       'callback',
-      state
+      MINTED_STATE.test(state)
         ? {
             ...answer,
             headers: {

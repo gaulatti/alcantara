@@ -418,6 +418,27 @@ describe('MCP sign-in through the API (bastille#34)', () => {
     expect((await call({ code: 'c' })).result).toBe('exchange_failed');
   });
 
+  it('names no cookie after a state the API did not mint', async () => {
+    const { service } = proxy();
+    for (const state of [
+      '\u00e9',
+      'a;Domain=gaulatti.com',
+      'a b',
+      'x'.repeat(129),
+    ]) {
+      const answer = await service.callback({ state, code: 'c' }, undefined);
+      expect(answer.result).toBe('unknown_state');
+      expect(answer.headers?.['set-cookie']).toBeUndefined();
+    }
+    const minted = await service.callback(
+      { state: 'Abc_-123', code: 'c' },
+      undefined,
+    );
+    expect(minted.headers?.['set-cookie']).toMatch(
+      /^alcantara_mcp_signin_Abc_-123=; Path=\/oauth\/callback; Max-Age=0;/,
+    );
+  });
+
   it('completes a sign-in only in the browser that started it', async () => {
     const { service } = proxy();
     const callback = 'https://chatgpt.com/connector/oauth/fictional-binding';
