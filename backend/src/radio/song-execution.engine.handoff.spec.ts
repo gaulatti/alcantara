@@ -2531,6 +2531,39 @@ describe('the successor chosen for the expected end, with production settings', 
       );
     });
 
+    it('keeps one pending wait however many times the announcement is refreshed meanwhile, and clears it on destroy', async () => {
+      const gate = notReady();
+      const h = production(T0 - 5 * 60_000, gate.similarity);
+      await onAir(h);
+      const engine = h.engine as unknown as {
+        refreshAnnouncement: (programId: string) => void;
+        states: Map<string, { similarityWait?: { timer: unknown } }>;
+      };
+      const before = gate.similarity.whenReady.mock.calls.length;
+      for (let i = 0; i < 12; i += 1) engine.refreshAnnouncement(PROGRAM);
+      await settle();
+      const timer = engine.states.get(PROGRAM)!.similarityWait?.timer;
+      expect(timer).toBeDefined();
+      // 12 refreshes registered at most one more readiness callback.
+      expect(
+        gate.similarity.whenReady.mock.calls.length - before,
+      ).toBeLessThanOrEqual(1);
+      gate.becomeReady();
+      await settle();
+      // The wait fired once: one re-run beyond the callers' own, then cleared.
+      expect(engine.states.get(PROGRAM)!.similarityWait).toBeUndefined();
+      expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+      const gate2 = notReady();
+      const h2 = production(T0 - 5 * 60_000, gate2.similarity);
+      await onAir(h2);
+      const e2 = h2.engine as unknown as {
+        states: Map<string, { similarityWait?: { timer: unknown } }>;
+      };
+      expect(e2.states.get(PROGRAM)!.similarityWait).toBeDefined();
+      h2.engine.onModuleDestroy();
+      expect(e2.states.get(PROGRAM)!.similarityWait).toBeUndefined();
+    });
+
     it('announces from the cursor and warns once when the index is not ready after the bound', async () => {
       const warn = jest
         .spyOn(Logger.prototype, 'warn')

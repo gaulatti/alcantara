@@ -336,6 +336,8 @@ interface SongEngineState {
   /** When the first announcement began waiting for the similarity index (#277). */
   similarityWaitSince?: number;
   similarityWaitWarned?: boolean;
+  /** The one pending wait for the similarity index, for the song on air (#277). */
+  similarityWait?: { timer: NodeJS.Timeout; song: ActiveSong };
   sequence: ProgramSongSequence | null;
   queue: ProgramSongQueueEntry[];
   rotation: ProgramSongRotationState;
@@ -547,7 +549,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
       state.commandRetryTimer = null;
       this.clearInheritedRetry(state);
+      this.clearSimilarityWait(state);
     }
+  }
+
+  private clearSimilarityWait(state: SongEngineState): void {
+    if (state.similarityWait) clearTimeout(state.similarityWait.timer);
+    state.similarityWait = undefined;
   }
 
   /** Registered by the telemetry supervisor for every radio-capable program. */
@@ -1717,14 +1725,21 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       const waitingSince = (state.similarityWaitSince ??= Date.now());
       const left = SIMILARITY_READY_WAIT_MS - (Date.now() - waitingSince);
       if (left > 0) {
-        void this.similarity
-          .whenReady()
-          .then(() => this.refreshAnnouncement(programId));
-        const timer = setTimeout(
-          () => this.refreshAnnouncement(programId),
-          left,
-        );
-        timer.unref();
+        // One pending wait per program, however many callers refresh the
+        // announcement meanwhile; a new song replaces it.
+        if (state.similarityWait?.song !== song) {
+          this.clearSimilarityWait(state);
+          const rerun = () => {
+            this.clearSimilarityWait(state);
+            this.refreshAnnouncement(programId);
+          };
+          const timer = setTimeout(rerun, left);
+          timer.unref();
+          state.similarityWait = { timer, song };
+          void this.similarity.whenReady().then(() => {
+            if (state.similarityWait?.timer === timer) rerun();
+          });
+        }
         return;
       }
       if (!state.similarityWaitWarned) {
