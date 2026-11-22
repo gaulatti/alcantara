@@ -473,6 +473,8 @@ export default function Control() {
     });
     instantPlaybackTimeoutsRef.current = {};
     setInstantPlayback({});
+    // A refusal belongs to the program it was made on.
+    setInstantError(null);
     setProgramAudioMeterLevels({
       song: createEmptyMeterChannel(),
       instants: createEmptyMeterChannel(),
@@ -2133,6 +2135,7 @@ export default function Control() {
   };
 
   const triggerInstant = async (instantId: number) => {
+    const targetProgramId = activeProgramId;
     setInstantError(null);
     try {
       const res = await fetch(
@@ -2182,6 +2185,8 @@ export default function Control() {
       }
     } catch (err) {
       console.error("Failed to trigger instant:", err);
+      // A refusal for a program the operator has left is not shown.
+      if (targetProgramId !== activeProgramIdRef.current) return;
       const name =
         instants.find((instant) => instant.id === instantId)?.name ??
         "the instant";
@@ -2190,6 +2195,7 @@ export default function Control() {
   };
 
   const stopAllInstants = async () => {
+    const targetProgramId = activeProgramId;
     setInstantError(null);
     try {
       const res = await fetch(
@@ -2212,6 +2218,7 @@ export default function Control() {
       setInstantPlayback({});
     } catch (err) {
       console.error("Failed to stop all instants:", err);
+      if (targetProgramId !== activeProgramIdRef.current) return;
       setInstantError(`Could not stop all instants: ${failureMessage(err)}`);
     }
   };

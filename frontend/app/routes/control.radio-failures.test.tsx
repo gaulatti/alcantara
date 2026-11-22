@@ -9,7 +9,8 @@ import { controlServer, stubConsoleBrowser, type ControlServer } from "../../tes
 // not as an empty list; and a refusal reads the server's own reason.
 
 vi.mock("../hooks/useSSE", () => ({ useSSE: () => ({ isConnected: false }) }));
-vi.mock("../utils/globalProgram", () => ({ useGlobalProgramId: () => ["main"] }));
+const program = vi.hoisted(() => ({ id: "main" }));
+vi.mock("../utils/globalProgram", () => ({ useGlobalProgramId: () => [program.id] }));
 vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
   const actual = await original<typeof import("../contexts/ConsolePreferencesContext")>();
   return {
@@ -39,7 +40,24 @@ const bell = { id: 1, name: "Fictional bell", audioUrl: "https://media.example.t
 const sting = { id: 2, name: "Fictional sting", audioUrl: "https://media.example.test/sting.mp3", volume: 1, enabled: true, position: 1 };
 const refusal = (message: unknown, status = 409) => () => Response.json({ statusCode: status, message }, { status });
 
-function open(routes: Record<string, Response | (() => Response)> = {}) {
+const radioState = (programId: string) => () =>
+  Response.json({
+    id: 1,
+    programId,
+    type: "radio",
+    activeSceneId: null,
+    fadeToBlack: false,
+    scenes: [],
+    mediaGroups: [],
+  });
+const otherProgram = {
+  "GET /program/other/state": radioState("other"),
+  "GET /program/other/media-groups": () => Response.json([]),
+  "GET /program/other/audio-bus": () =>
+    Response.json({ songSequence: { mode: "manual", items: [], activeItemId: null, loop: true }, songQueue: [] }),
+};
+
+function open(routes: Record<string, Response | (() => Response | Promise<Response>)> = {}) {
   server = controlServer({
     "GET /scenes": Response.json([]),
     "GET /instants": () => Response.json([bell, sting]),
@@ -61,7 +79,16 @@ function open(routes: Record<string, Response | (() => Response)> = {}) {
       }),
     ...routes,
   });
-  render(
+  return render(
+    <MemoryRouter>
+      <Control />
+    </MemoryRouter>,
+  );
+}
+
+function switchTo(view: ReturnType<typeof open>, programId: string) {
+  program.id = programId;
+  view.rerender(
     <MemoryRouter>
       <Control />
     </MemoryRouter>,
@@ -71,6 +98,7 @@ function open(routes: Record<string, Response | (() => Response)> = {}) {
 const cartwall = () => screen.findByRole("region", { name: "Cartwall" });
 
 beforeEach(() => {
+  program.id = "main";
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "log").mockImplementation(() => {});
   stubConsoleBrowser();
@@ -165,4 +193,60 @@ it("shows the server's reason for a refused Play Next add", async () => {
   expect(await screen.findByText("Fictional closer is already next")).toBeVisible();
   await act(async () => {});
   expect(screen.queryByText("HTTP 422")).toBeNull();
+});
+
+it("clears a refused instant when the operator switches program", async () => {
+  const view = open({
+    ...otherProgram,
+    "POST /instants/1/play?programId=main": refusal("Fictional bell is disabled for this program"),
+  });
+  const wall = await cartwall();
+  fireEvent.click(await within(wall).findByRole("button", { name: "Fictional bell" }));
+  expect(await within(wall).findByText(/^Could not play Fictional bell/)).toBeVisible();
+  switchTo(view, "other");
+  await waitFor(() => expect(server.requests("GET /program/other/state").length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.queryByText(/Could not play/)).toBeNull());
+});
+
+it("does not show a refusal that comes back after the operator left the program", async () => {
+  let release: (response: Response) => void = () => {};
+  const view = open({
+    ...otherProgram,
+    "POST /instants/stop-all?programId=main": () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  });
+  const wall = await cartwall();
+  fireEvent.click(within(wall).getByRole("button", { name: "Stop all" }));
+  await waitFor(() => expect(server.requests("POST /instants/stop-all?programId=main")).toHaveLength(1));
+  switchTo(view, "other");
+  await waitFor(() => expect(server.requests("GET /program/other/state").length).toBeGreaterThan(0));
+  await act(async () => {
+    release(refusal("Fictional late refusal", 503)());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(screen.queryByText(/Could not stop all/)).toBeNull();
+  expect(screen.queryByText(/Fictional late refusal/)).toBeNull();
+});
+
+it("does not show a refused instant that comes back after the operator left the program", async () => {
+  let release: (response: Response) => void = () => {};
+  const view = open({
+    ...otherProgram,
+    "POST /instants/1/play?programId=main": () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  });
+  const wall = await cartwall();
+  fireEvent.click(await within(wall).findByRole("button", { name: "Fictional bell" }));
+  await waitFor(() => expect(server.requests("POST /instants/1/play?programId=main")).toHaveLength(1));
+  switchTo(view, "other");
+  await waitFor(() => expect(server.requests("GET /program/other/state").length).toBeGreaterThan(0));
+  await act(async () => {
+    release(refusal("Fictional late refusal", 503)());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(screen.queryByText(/Could not play/)).toBeNull();
 });

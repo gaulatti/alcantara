@@ -187,7 +187,8 @@ with both following events and fixed-time boundaries; `radio-empty`,
 
 Failures on the Radio desk are shown, never only logged (#253). A refused
 instant or **Stop all** appears above the Cartwall pads and clears when the
-next instant or Stop all starts. A song library or Cartwall that did not load
+next instant or Stop all starts, or when the operator switches program; a
+refusal that arrives after a switch is not shown. A song library or Cartwall that did not load
 says so with **Retry song library** or **Retry cartwall** instead of looking
 empty; a later successful load replaces the error, and only the failed list
 shows one. Refusals read the server's own `message` when it answers with JSON
