@@ -17,7 +17,8 @@ After connecting, call `whoami` to confirm the subject, principal id, client and
 | Route | Answer |
 |---|---|
 | `POST /mcp` | Streamable HTTP, stateless JSON mode. Without a bearer: `401 {"error":"unauthenticated"}` with `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`. With a bearer Pompeii rejects: `401` with `error="invalid_token"`. Signed in but without `alcantara:access`: `403 {"error":"forbidden"}` with `error="insufficient_scope"`. Too many failed attempts from one client: `429`, `Retry-After: 60`. Pompeii unreachable or saturated: `503`, `Retry-After: 5`. A body over the limit: `413`. |
-| `GET /mcp`, `DELETE /mcp` | `405`, `Allow: POST` (no server stream and no session in stateless mode). |
+| `GET /mcp` from a browser (`Accept` ranks `text/html` above JSON and the event stream, no `Mcp-Session-Id`) | `302` to the console's `/connect` page (`https://alcantara.gaulatti.com/connect`), which explains how to add this server to a client. |
+| `GET /mcp` otherwise, `DELETE /mcp` | `405`, `Allow: POST` (no server stream and no session in stateless mode). |
 | `GET /.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`) | RFC 9728 metadata naming the resource and Alcantara as its authorization server. Public. |
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 metadata pointing at the gaulatti pool's hosted sign-in (`buendia.gaulatti.com`) and `/register`. Public. |
 | `POST /register` | RFC 7591 facade. It returns the shared public client id for well-formed callbacks and `400` otherwise. It stores nothing and issues no secret. `GET /register` answers `405`. |

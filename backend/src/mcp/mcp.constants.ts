@@ -6,6 +6,11 @@
  */
 export const MCP_PUBLIC_ORIGIN = 'https://api.alcantara.gaulatti.com';
 export const MCP_RESOURCE_URL = `${MCP_PUBLIC_ORIGIN}/mcp`;
+/**
+ * The console's page that explains how to add this server to a client (bastille#35):
+ * a browser GET /mcp is redirected here. Code-owned, like the origins above.
+ */
+export const MCP_CONSOLE_CONNECT_URL = 'https://alcantara.gaulatti.com/connect';
 export const MCP_RESOURCE_METADATA_URL = `${MCP_PUBLIC_ORIGIN}/.well-known/oauth-protected-resource`;
 export const MCP_REGISTRATION_URL = `${MCP_PUBLIC_ORIGIN}/register`;
 export const COGNITO_HOSTED_DOMAIN = 'https://buendia.gaulatti.com';

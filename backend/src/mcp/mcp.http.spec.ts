@@ -32,6 +32,7 @@ import { McpOAuthController } from './mcp-oauth.controller';
 import { McpRegistry } from './mcp-registry.service';
 import {
   COGNITO_ISSUER,
+  MCP_CONSOLE_CONNECT_URL,
   MCP_LIMITS,
   MCP_PUBLIC_ORIGIN,
   MCP_SHARED_CLIENT_ID,
@@ -640,6 +641,37 @@ describe('MCP endpoint', () => {
       expect(exposition).not.toContain(secret);
       expect(logged.join('\n')).not.toContain(secret);
     }
+  });
+
+  it('sends a browser GET on /mcp to the console connect page, and keeps every other GET a 405', async () => {
+    await boot();
+    const browser = await request(app.getHttpServer())
+      .get('/mcp')
+      .set(
+        'Accept',
+        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      );
+    expect(browser.status).toBe(302);
+    expect(browser.headers.location).toBe(MCP_CONSOLE_CONNECT_URL);
+    for (const accept of [
+      undefined,
+      '*/*',
+      'application/json',
+      'text/event-stream',
+      'application/json, text/event-stream',
+      'text/html;q=0, application/json',
+    ]) {
+      let call = request(app.getHttpServer()).get('/mcp');
+      if (accept !== undefined) call = call.set('Accept', accept);
+      const refused = await call;
+      expect(refused.status).toBe(405);
+      expect(refused.headers.allow).toBe('POST');
+    }
+    const withSession = await request(app.getHttpServer())
+      .get('/mcp')
+      .set('Accept', 'text/html')
+      .set('mcp-session-id', 'session-1');
+    expect(withSession.status).toBe(405);
   });
 
   it('refuses an oversized body, other methods on /mcp, and a malformed request', async () => {
