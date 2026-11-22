@@ -1,7 +1,7 @@
 import { TooltipButton } from "../components/BleeckerButtons";
-import { AlertContainer, Button, Card, Checkbox, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, Pagination, SectionHeader, showAlert } from '@gaulatti/bleecker';
-import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { AlertContainer, Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, Pagination, SectionHeader, Switch, showAlert } from '@gaulatti/bleecker';
+import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal, Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Route } from './+types/songs';
 import { AppPage } from '../components/AppPage';
 import { uploadFileToMediaBucket } from '../services/uploads';
@@ -11,6 +11,10 @@ import { fetchInstants } from '../services/instants';
 import type { InstantItem, SongCatalogItem } from '../models/broadcast';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { SongIntroField } from '../components/editors/SongIntroField';
+import { CatalogFilter } from '../components/songs/CatalogFilter';
+import { Transport } from '../components/songs/PreviewTransport';
+import { useSongPreview } from '../hooks/useSongPreview';
+import { catalogCounts, formatLength, formatRuntime, songLengthSeconds, type LengthSource } from '../utils/songCatalog';
 
 async function extractErrorMessage(res: Response): Promise<string> {
   const text = await res.text();
@@ -118,7 +122,10 @@ export default function SongsCatalog() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [showDisabledSongs, setShowDisabledSongs] = useState(true);
+  const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [selectedSongId, setSelectedSongId] = useState<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const preview = useSongPreview();
   const [sortBy, setSortBy] = useState('artist');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
@@ -160,7 +167,7 @@ export default function SongsCatalog() {
     try {
       const result = await fetchSongsPage({
         search: debouncedSearch || undefined,
-        ...(!showDisabledSongs ? { enabled: true } : {}),
+        ...(enabledFilter !== 'all' ? { enabled: enabledFilter === 'enabled' } : {}),
         sortBy,
         sortOrder,
         page,
@@ -179,7 +186,7 @@ export default function SongsCatalog() {
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSearch, showDisabledSongs, sortBy, sortOrder, page, activeProgramId]);
+  }, [debouncedSearch, enabledFilter, sortBy, sortOrder, page, activeProgramId]);
 
   const loadInstants = useCallback(async () => {
     setInstants(await fetchInstants(activeProgramId));
@@ -194,7 +201,7 @@ export default function SongsCatalog() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, showDisabledSongs, sortBy, sortOrder]);
+  }, [debouncedSearch, enabledFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchSongs();
@@ -314,16 +321,67 @@ export default function SongsCatalog() {
     setIsModalOpen(true);
   };
 
-  const playSongPreview = async (song: SongCatalogItem) => {
+  // The preview plays in this browser only: a local audio element, never the program's output.
+  const playSongPreview = (song: SongCatalogItem) => {
+    setSelectedSongId(song.id);
+    preview.toggle(song);
+  };
+
+  const selectSong = (song: SongCatalogItem) => {
+    setSelectedSongId(song.id);
+    if (preview.currentId !== song.id) preview.load(song);
+  };
+
+  const setSongEnabled = async (song: SongCatalogItem, enabled: boolean) => {
+    // The change is applied to the row at once and undone if the server refuses it.
+    setSongs((current) => current.map((entry) => (entry.id === song.id ? { ...entry, enabled } : entry)));
     try {
-      const audio = new Audio(song.audioUrl);
-      audio.preload = 'auto';
-      await audio.play();
+      const res = await fetch(apiUrl(`/songs/${song.id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await fetchSongs();
     } catch (err) {
-      console.error('Failed to play song preview:', err);
-      showAlert('Failed to play song preview.', 'error');
+      setSongs((current) => current.map((entry) => (entry.id === song.id ? { ...entry, enabled: song.enabled } : entry)));
+      showAlert(err instanceof Error ? err.message : 'Failed to update the song.', 'error');
     }
   };
+
+  // The desk's keys on this page: / searches, and a selected row takes the arrows, Space and E.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      const typing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (typing || isModalOpen) return;
+      if (event.key === '/') {
+        event.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      const index = songs.findIndex((song) => song.id === selectedSongId);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const next = songs[index + (event.key === 'ArrowDown' ? 1 : -1)];
+        if (index >= 0 && next) {
+          event.preventDefault();
+          selectSong(next);
+        } else if (index < 0 && songs[0]) {
+          event.preventDefault();
+          selectSong(songs[0]);
+        }
+      } else if (event.key === ' ' && index >= 0 && !(target instanceof HTMLButtonElement)) {
+        event.preventDefault();
+        preview.toggle(songs[index]);
+      } else if ((event.key === 'e' || event.key === 'E') && index >= 0) {
+        event.preventDefault();
+        void setSongEnabled(songs[index], !songs[index].enabled);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   // Takes the file just picked: the songFile state is not updated yet when the
   // picker's change handler calls this.
@@ -464,6 +522,9 @@ export default function SongsCatalog() {
     }
   };
 
+  const counts = catalogCounts({ catalogTotal, catalogEnabled, catalogKnownDurationCount });
+  const songsWithIntro = songs.filter((song) => song.intro).length;
+
   return (
     <AppPage width='wide'>
       <AlertContainer />
@@ -479,21 +540,30 @@ export default function SongsCatalog() {
         </div>
 
         <Card className='space-y-4'>
-          <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+          <div className='grid grid-cols-2 gap-3 lg:grid-cols-4' data-testid='catalog-strip'>
             <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>Songs</span>
-              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{catalogTotal}</p>
-              <p className='text-xs text-text-secondary dark:text-text-secondary'>{catalogEnabled} enabled</p>
+              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary'>Songs</span>
+              <p className='mt-1 font-mono text-2xl font-semibold tabular-nums text-text-primary'>{counts.total}</p>
+              <p className='text-xs text-text-secondary'>{counts.enabled} enabled</p>
             </div>
             <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>Duration</span>
-              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{formatSongDuration(catalogTotalDurationMs)}</p>
-              <p className='text-xs text-text-secondary dark:text-text-secondary'>{catalogKnownDurationCount} with known runtime</p>
+              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary'>With length</span>
+              <p className='mt-1 font-mono text-2xl font-semibold tabular-nums text-text-primary'>
+                {counts.withLength} <span className='text-sm font-normal text-text-secondary'>of {counts.total}</span>
+              </p>
+              <p className='text-xs text-text-secondary'>
+                {counts.withoutLength === 0 ? 'Every song has a stored length' : `${counts.withoutLength} ${counts.withoutLength === 1 ? 'has' : 'have'} no stored length`}
+              </p>
             </div>
             <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary'>View</span>
-              <p className='mt-1 text-2xl font-semibold text-text-primary dark:text-text-primary'>{totalCount}</p>
-              <p className='text-xs text-text-secondary dark:text-text-secondary'>matching current filters</p>
+              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary'>Runtime</span>
+              <p className='mt-1 font-mono text-2xl font-semibold tabular-nums text-text-primary'>{counts.withLength === 0 ? '—' : formatRuntime(catalogTotalDurationMs)}</p>
+              <p className='text-xs text-text-secondary'>h:mm, known lengths only</p>
+            </div>
+            <div className='rounded-xl border border-sand/25 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
+              <span className='text-[11px] font-semibold uppercase tracking-wide text-text-secondary'>With intro</span>
+              <p className='mt-1 font-mono text-2xl font-semibold tabular-nums text-text-primary'>{songsWithIntro}</p>
+              <p className='text-xs text-text-secondary'>of {songs.length} listed on this page</p>
             </div>
           </div>
 
@@ -505,13 +575,21 @@ export default function SongsCatalog() {
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                 }}
+                ref={searchRef}
                 placeholder='Search by artist, title, or EarOne ID'
                 startIcon={<Search size={14} className='text-text-secondary dark:text-text-secondary' />}
               />
             </div>
-            <div className='inline-flex items-center gap-2 rounded-xl border border-sand/30 bg-white/70 px-3 py-2 text-sm text-text-primary dark:border-sand/45 dark:bg-dark-sand/55 dark:text-text-primary'>
-              <Checkbox checked={showDisabledSongs} onChange={(event) => setShowDisabledSongs(event.target.checked)} label='Show disabled songs' />
-            </div>
+            <CatalogFilter
+              label='Show songs'
+              value={enabledFilter}
+              onChange={setEnabledFilter}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'enabled', label: 'Enabled' },
+                { value: 'disabled', label: 'Disabled' }
+              ]}
+            />
           </div>
 
           {isLoading ? (
@@ -524,13 +602,13 @@ export default function SongsCatalog() {
           ) : totalCount === 0 ? (
             <Empty
               title='No songs match this search'
-              description='Try another artist/title query or include disabled songs.'
+              description='Try another artist, title or EarOne ID, or show all songs.'
               action={
                 <Button
                   variant='secondary'
                   onClick={() => {
                     setSearchQuery('');
-                    setShowDisabledSongs(true);
+                    setEnabledFilter('all');
                   }}
                 >
                   Clear Filters
@@ -564,7 +642,7 @@ export default function SongsCatalog() {
                       </div>
                     </div>
                     <div className='mt-3 grid grid-cols-3 gap-2'>
-                      <Button size='sm' variant='secondary' onClick={() => void playSongPreview(song)}>
+                      <Button size='sm' variant='secondary' onClick={() => playSongPreview(song)}>
                         <Play size={14} /> Preview
                       </Button>
                       <Button size='sm' variant='secondary' onClick={() => openEditModal(song)}>
@@ -578,92 +656,118 @@ export default function SongsCatalog() {
                 ))}
               </div>
               <div className='hidden overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40 md:block'>
-                {/* Header row */}
-                <div className='grid grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(0,1fr)_5rem_8.5rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 dark:border-sand/35 dark:bg-dark-sand/40'>
+                <div className='grid grid-cols-[2.5rem_minmax(0,1.4fr)_minmax(0,1fr)_5.5rem_5rem_3.5rem_2.5rem] items-center gap-2 border-b border-sand/20 bg-sand/5 px-3 py-2 dark:border-sand/35 dark:bg-dark-sand/40'>
                   <span />
-                  <span className='text-center text-[11px] font-semibold uppercase tracking-widest text-text-secondary dark:text-text-secondary'>#</span>
                   <SortHeader field='title'>Title</SortHeader>
                   <SortHeader field='artist'>Artist</SortHeader>
                   <div className='text-right'>
-                    <SortHeader field='durationMs'>Duration</SortHeader>
+                    <SortHeader field='durationMs'>Length</SortHeader>
                   </div>
+                  <span className='text-[11px] font-semibold uppercase tracking-widest text-text-secondary'>Intro</span>
+                  <span className='text-[11px] font-semibold uppercase tracking-widest text-text-secondary'>On</span>
                   <span />
                 </div>
                 <div className='divide-y divide-sand/15 dark:divide-sand/25'>
-                  {songs.map((song, index) => (
-                    <div
-                      key={song.id}
-                      className={`group grid grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(0,1fr)_5rem_8.5rem] items-center gap-2 px-3 py-2 transition-colors hover:bg-sand/10 dark:hover:bg-dark-sand/50 ${!song.enabled ? 'opacity-50' : ''}`}
-                    >
-                      {/* Cover art */}
-                      <div className='h-9 w-9 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
-                        {song.coverUrl ? (
-                          <img src={song.coverUrl} alt='' className='h-full w-full object-cover' />
-                        ) : (
-                          <div className='flex h-full w-full items-center justify-center'>
-                            <Music2 size={14} className='text-text-secondary/40' />
+                  {songs.map((song) => {
+                    const seconds = songLengthSeconds(song as unknown as LengthSource);
+                    const isSelected = song.id === selectedSongId;
+                    const isPlaying = isSelected && preview.currentId === song.id && preview.playing;
+                    return (
+                      <div
+                        key={song.id}
+                        role='row'
+                        aria-selected={isSelected}
+                        onClick={() => selectSong(song)}
+                        className={`group grid grid-cols-[2.5rem_minmax(0,1.4fr)_minmax(0,1fr)_5.5rem_5rem_3.5rem_2.5rem] items-center gap-2 px-3 py-2 transition-colors ${isSelected ? 'bg-sea/10' : 'hover:bg-sand/10 dark:hover:bg-dark-sand/50'} ${!song.enabled ? 'opacity-60' : ''}`}
+                      >
+                        <div className='h-9 w-9 shrink-0 overflow-hidden rounded-md border border-sand/30 bg-sand/10 dark:border-sand/45 dark:bg-dark-sand'>
+                          {song.coverUrl ? (
+                            <img src={song.coverUrl} alt='' className='h-full w-full object-cover' />
+                          ) : (
+                            <div className='flex h-full w-full items-center justify-center'>
+                              <Music2 size={14} className='text-text-secondary/40' />
+                            </div>
+                          )}
+                        </div>
+                        <div className='min-w-0'>
+                          <div className='flex items-center gap-2 truncate text-sm font-medium text-text-primary'>
+                            <span className='truncate'>{song.title || 'Untitled'}</span>
+                            {isPlaying ? <span className='text-[10px] font-semibold uppercase text-sea'>Previewing</span> : null}
                           </div>
-                        )}
+                          <div className='truncate text-[11px] text-text-secondary'>
+                            {song.earoneSongId ? `EarOne ${song.earoneSongId}${song.earoneRank ? ` · rank ${song.earoneRank}` : ''}` : 'No EarOne ID'}
+                          </div>
+                        </div>
+                        <div className='min-w-0'>
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='sm'
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSearchQuery(song.artist || '');
+                            }}
+                            className='h-auto max-w-full justify-start truncate p-0 text-left text-sm font-normal text-text-secondary transition-colors hover:bg-transparent hover:text-sea'
+                            title={`Filter by ${song.artist}`}
+                          >
+                            {song.artist || '—'}
+                          </Button>
+                        </div>
+                        <span className='text-right font-mono text-xs tabular-nums'>
+                          {seconds === null ? <span className='text-amber-300'>no length</span> : <span className='text-text-secondary'>{formatLength(seconds)}</span>}
+                        </span>
+                        <span className='text-xs text-text-secondary'>
+                          {song.intro ? <span title={song.intro.instant.name} className='rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-[11px] font-medium text-sea'>Intro</span> : '—'}
+                        </span>
+                        <span onClick={(event) => event.stopPropagation()}>
+                          <Switch
+                            checked={song.enabled}
+                            aria-label={`${song.enabled ? 'Disable' : 'Enable'} ${formatSongTitle(song)}`}
+                            onCheckedChange={(checked) => void setSongEnabled(song, checked)}
+                          />
+                        </span>
+                        <span onClick={(event) => event.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton aria-label={`Actions for ${formatSongTitle(song)}`} title='Edit or delete'>
+                                <MoreHorizontal size={14} />
+                              </IconButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align='end'>
+                              <DropdownMenuItem onSelect={() => openEditModal(song)}>
+                                <Pencil size={14} className='mr-2' /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => void deleteSong(song)}>
+                                <Trash2 size={14} className='mr-2' /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </span>
                       </div>
-
-                      {/* Track number */}
-                      <span className='text-center text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{(page - 1) * 50 + index + 1}</span>
-
-                      {/* Title only */}
-                      <div className='min-w-0'>
-                        <div className='truncate text-sm font-medium text-text-primary dark:text-text-primary'>{song.title || 'Untitled'}</div>
-                        <div className='truncate text-[11px] text-text-secondary dark:text-text-secondary'>{song.intro ? `Song intro: ${song.intro.instant.name}` : 'No song intro'}</div>
-                      </div>
-
-                      {/* Artist */}
-                      <div className='min-w-0'>
-                        <Button
-                          type='button'
-                          variant='ghost'
-                          size='sm'
-                          onClick={() => setSearchQuery(song.artist || '')}
-                          className='h-auto max-w-full justify-start truncate p-0 text-left text-sm font-normal text-text-secondary transition-colors hover:bg-transparent hover:text-sea dark:text-text-secondary '
-                          title={`Filter by ${song.artist}`}
-                        >
-                          {song.artist || '—'}
-                        </Button>
-                      </div>
-
-                      {/* Duration */}
-                      <span className='text-right text-xs tabular-nums text-text-secondary dark:text-text-secondary'>{formatSongDuration(song.durationMs)}</span>
-
-                      {/* Actions — visible on hover */}
-                      <div className='flex items-center justify-end gap-1'>
-                        <IconButton
-                          onClick={() => {
-                            void playSongPreview(song);
-                          }}
-                          className='text-sea'
-                          title={`Preview ${formatSongTitle(song)}`}
-                          aria-label={`Preview ${formatSongTitle(song)}`}
-                        >
-                          <Play size={14} />
-                        </IconButton>
-                        <IconButton onClick={() => openEditModal(song)} className='text-sea' title={`Edit ${formatSongTitle(song)}`} aria-label={`Edit ${formatSongTitle(song)}`}>
-                          <Pencil size={14} />
-                        </IconButton>
-                        <IconButton
-                          onClick={() => {
-                            void deleteSong(song);
-                          }}
-                          className='text-terracotta'
-                          title={`Delete ${formatSongTitle(song)}`}
-                          aria-label={`Delete ${formatSongTitle(song)}`}
-                        >
-                          <Trash2 size={14} />
-                        </IconButton>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               <Pagination currentPage={page} totalPages={totalPages} hasNextPage={page < totalPages} hasPrevPage={page > 1} onPageChange={setPage} />
+              {(() => {
+                const loaded = songs.find((song) => song.id === (preview.currentId ?? selectedSongId)) ?? null;
+                const index = loaded ? songs.indexOf(loaded) : -1;
+                return (
+                  <Transport
+                    title={loaded ? formatSongTitle(loaded) : 'Nothing loaded'}
+                    subtitle={preview.error ?? 'Preview plays in this browser only, never on air.'}
+                    position={preview.position}
+                    duration={loaded ? (preview.length ?? songLengthSeconds(loaded as unknown as LengthSource)) : null}
+                    playing={preview.playing}
+                    disabled={!loaded}
+                    onToggle={() => loaded && preview.toggle(loaded)}
+                    onSeek={preview.seek}
+                    onPrev={index > 0 ? () => selectSong(songs[index - 1]) : undefined}
+                    onNext={index >= 0 && index < songs.length - 1 ? () => selectSong(songs[index + 1]) : undefined}
+                  />
+                );
+              })()}
             </>
           )}
         </Card>
