@@ -1097,7 +1097,8 @@ describe('RadioService coverage', () => {
       expect(prisma.song.findMany).toHaveBeenCalledWith({ where: { audioUrl: 'u' }, select: { assetId: true, durationMs: true }, take: 2 });
       expect(prisma.mediaAssetAnalysis.findUnique).not.toHaveBeenCalled();
       expect(sent(palazzo)).toEqual(OFF_COMMAND);
-      expect(metrics.recordAnalysisDrop).toHaveBeenCalledWith('ambiguous-match');
+      // Counted once, as ambiguous: never also as no-asset (#255).
+      expect(metrics.recordAnalysisDrop.mock.calls).toEqual([['ambiguous-match']]);
     });
 
     // gaulatti/alcantara#255: a song no library song matches is sent without analysis, and counted.

@@ -139,7 +139,7 @@ export type HighRotationActionResult =
   | 'quota-unmet'
   | 'history-persistence-failed';
 
-// Why analysis-derived segue or loudness was left off a song command (the song still plays without it).
+// Why analysis-derived segue or loudness was left off a song command or announcement (the song still plays without it).
 export type AnalysisDropResult =
   | 'segue-invalid'
   | 'segue-beyond-duration'
@@ -840,7 +840,7 @@ export class RadioMetricsService {
       );
     }
     lines.push(
-      '# HELP alcantara_radio_analysis_dropped_total Analysis-derived segue or loudness left off a song command, by bounded reason.',
+      '# HELP alcantara_radio_analysis_dropped_total Analysis-derived segue or loudness left off a song command or next-song announcement, including songs sent with no analysis at all, by bounded reason.',
       '# TYPE alcantara_radio_analysis_dropped_total counter',
     );
     for (const result of ANALYSIS_DROP_RESULTS) {
