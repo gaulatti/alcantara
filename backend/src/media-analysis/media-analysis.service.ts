@@ -80,22 +80,45 @@ const TRANSIENT_PRISMA_CODES = new Set([
   'P1002', // the server timed out
   'P1008', // the operation timed out
   'P1017', // the server closed the connection
-  'P2010', // a raw query failed (the nextCandidate query)
   'P2024', // no connection available from the pool in time
   'P2034', // a transaction conflict or deadlock
 ]);
 
+/**
+ * A raw query that failed (P2010) is transient only when the database itself
+ * says so: a connection exception (SQLSTATE class 08), the server shutting
+ * down or not accepting connections (57P01-57P03), too many connections
+ * (53300) or a cancelled/timed out statement (57014). A wrong query (42xxx) or
+ * anything the database does not code stays an error.
+ */
+const TRANSIENT_SQLSTATE = /^(08[0-9A-Z]{3}|57P0[123]|53300|57014)$/;
+
+/** The SQLSTATE the database gave a failed raw query, when it is a 5-character code. */
+function rawQuerySqlState(
+  error: Prisma.PrismaClientKnownRequestError,
+): string | null {
+  const code = (error.meta as { code?: unknown } | undefined)?.code;
+  return typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code) ? code : null;
+}
+
 /** The class of a caught value, with a Prisma error's code: safe to log, never the message. */
 function errorCause(error: unknown): string {
-  if (error instanceof Prisma.PrismaClientKnownRequestError)
-    return `${error.name} ${error.code}`;
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const sqlState = error.code === 'P2010' ? rawQuerySqlState(error) : null;
+    return `${error.name} ${error.code}${sqlState ? ` ${sqlState}` : ''}`;
+  }
   if (error instanceof Error) return error.name || 'Error';
   return typeof error;
 }
 
 function isTransientDatabaseError(error: unknown): boolean {
-  if (error instanceof Prisma.PrismaClientKnownRequestError)
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2010') {
+      const sqlState = rawQuerySqlState(error);
+      return sqlState !== null && TRANSIENT_SQLSTATE.test(sqlState);
+    }
     return TRANSIENT_PRISMA_CODES.has(error.code);
+  }
   return (
     error instanceof Prisma.PrismaClientInitializationError ||
     error instanceof Prisma.PrismaClientUnknownRequestError

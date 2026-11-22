@@ -628,13 +628,44 @@ describe('MediaAnalysisService schedule', () => {
   describe('a transient database error at the start of a run (#276)', () => {
     const transient: Array<[string, () => Error, string]> = [
       [
-        'a timed out raw query',
+        'a raw query that lost its connection (SQLSTATE 08006)',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('connection failure', {
+            code: 'P2010',
+            clientVersion: 'test',
+            meta: { code: '08006', message: 'terminating connection' },
+          }),
+        'PrismaClientKnownRequestError P2010 08006',
+      ],
+      [
+        'a raw query cancelled by a timeout (SQLSTATE 57014)',
         () =>
           new Prisma.PrismaClientKnownRequestError('Operation has timed out', {
             code: 'P2010',
             clientVersion: 'test',
+            meta: { code: '57014', message: 'canceling statement' },
           }),
-        'PrismaClientKnownRequestError P2010',
+        'PrismaClientKnownRequestError P2010 57014',
+      ],
+      [
+        'a raw query on a server that is shutting down (SQLSTATE 57P01)',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('admin shutdown', {
+            code: 'P2010',
+            clientVersion: 'test',
+            meta: { code: '57P01' },
+          }),
+        'PrismaClientKnownRequestError P2010 57P01',
+      ],
+      [
+        'a raw query refused for too many connections (SQLSTATE 53300)',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('too many', {
+            code: 'P2010',
+            clientVersion: 'test',
+            meta: { code: '53300' },
+          }),
+        'PrismaClientKnownRequestError P2010 53300',
       ],
       [
         'a pool timeout',
@@ -686,6 +717,37 @@ describe('MediaAnalysisService schedule', () => {
             data: expect.objectContaining({ status: 'success' }),
           }),
         );
+        service.onModuleDestroy();
+      },
+    );
+
+    it.each([
+      ['a wrong query (SQLSTATE 42703)', { code: '42703' }, 'P2010 42703'],
+      ['a raw query with no database code', undefined, 'P2010'],
+      [
+        'a raw query with a code that is not a SQLSTATE',
+        { code: 'oops' },
+        'P2010',
+      ],
+    ])(
+      'keeps ERROR for %s: it must not be retried forever as a warning',
+      async (_name, meta, cause) => {
+        jest.useFakeTimers();
+        const { service, prisma } = setup();
+        prisma.$queryRaw.mockRejectedValueOnce(
+          new Prisma.PrismaClientKnownRequestError('column does not exist', {
+            code: 'P2010',
+            clientVersion: 'test',
+            meta,
+          }),
+        );
+
+        await service.onApplicationBootstrap();
+        await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+        expect(Logger.prototype.error).toHaveBeenCalledWith(
+          `Media analysis run failed before analysing a file (PrismaClientKnownRequestError ${cause})`,
+        );
+        expect(Logger.prototype.warn).not.toHaveBeenCalled();
         service.onModuleDestroy();
       },
     );
