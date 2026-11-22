@@ -1125,6 +1125,28 @@ describe('SongExecutionEngine after a restart keeps the rotation where it was (#
       expect(ctx.metrics.recordCursorWrite).not.toHaveBeenCalled();
     });
 
+    it('reacts to nothing of its own write: no sequence reload, no event to consoles or overlays', async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const states = (
+        ctx.engine as unknown as {
+          states: Map<string, { sequence: unknown }>;
+        }
+      ).states;
+      const held = states.get('radio-1')!.sequence;
+      const reload = jest.spyOn(ctx.engine, 'handleSequenceUpdated');
+      const eventsBefore = ctx.events.length;
+      await (
+        ctx.engine as unknown as {
+          persistCursorBestEffort: (programId: string) => Promise<void>;
+        }
+      ).persistCursorBestEffort('radio-1');
+      expect(ctx.prisma.programState.updateMany).toHaveBeenCalledTimes(1);
+      expect(reload).not.toHaveBeenCalled();
+      expect(ctx.events).toHaveLength(eventsBefore);
+      expect(states.get('radio-1')!.sequence).toBe(held);
+    });
+
     it('counts a conflict when the program row is gone', async () => {
       const ctx = setup();
       ctx.engine.handleSequenceUpdated('radio-1', AUTO);
