@@ -49,6 +49,29 @@ describe('radio_get_playback_state', () => {
       'radio_get_playback_state',
     );
     const outcome = await spec.run({ program_id: 'main' }, ctx);
+    // Prompt-injection boundary: title and artist are reachable only under `untrusted`.
+    const withoutUntrusted = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(withoutUntrusted)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value)
+                .filter(([key]) => key !== 'untrusted')
+                .map(([key, inner]) => [key, withoutUntrusted(inner)]),
+            )
+          : value;
+    const plain = JSON.stringify(withoutUntrusted(outcome.result));
+    expect(plain).not.toContain('Fictional song');
+    expect(plain).not.toContain('Fictional next');
+    expect(plain).not.toContain('Fictional artist');
+    expect(outcome.result).toMatchObject({
+      on_air: {
+        untrusted: { title: 'Fictional song', artist: 'Fictional artist' },
+      },
+      next: {
+        untrusted: { title: 'Fictional next', artist: 'Fictional artist' },
+      },
+    });
     expect(outcome.result).toMatchObject({
       program_id: 'main',
       on_air: {
