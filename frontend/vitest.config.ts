@@ -21,6 +21,12 @@ export default defineConfig({
     // runtime source under app/, including files no test imports, reported as Istanbul JSON at
     // coverage/coverage-final.json plus a text summary. Only tests and declarations are left out. There
     // is no threshold yet; #83 adds the gate.
+    // Forks are capped at 4 (gaulatti/alcantara#83): with coverage on, the default one-fork-per-core
+    // saturates the machine, the workers' task updates starve the main process and vitest ends the run
+    // with `Timeout calling "onTaskUpdate"` (an unhandled error, exit 1). Measured on 172 files / 1,570
+    // tests: no coverage 30 s; coverage with 4 forks 96 s and with 2 forks 121 s, both exit 0; coverage
+    // with the default 9 forks 86 s and the timeout. No timeout is raised.
+    poolOptions: { forks: { maxForks: 4, minForks: 1 } },
     coverage: {
       provider: 'v8',
       all: true,
