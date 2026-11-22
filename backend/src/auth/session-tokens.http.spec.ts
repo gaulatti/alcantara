@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { listenOnLoopback } from '../../test/loopback-supertest';
 import type { App } from 'supertest/types';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AuthController } from './auth.controller';
@@ -71,6 +72,7 @@ describe('session tokens on the API', () => {
     app = module.createNestApplication({ logger: false });
     app.useGlobalGuards(app.get(PompeiiAuthorizationGuard));
     await app.init();
+    await listenOnLoopback(app.getHttpServer());
   });
 
   afterEach(async () => {

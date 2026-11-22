@@ -8,6 +8,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
+import { listenOnLoopback } from '../test/loopback-supertest';
 import { MetricsController } from './metrics.controller';
 import { ManagedMetricsService } from './observability/managed-metrics.service';
 import { MetricsTokenGuard } from './observability/metrics-token.guard';
@@ -54,6 +55,7 @@ describe('GET /metrics: songs sent without analysis', () => {
     );
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    await listenOnLoopback(app.getHttpServer());
 
     radioMetrics.recordAnalysisDrop('not-analyzed');
     radioMetrics.recordAnalysisDrop('not-analyzed');
@@ -70,7 +72,10 @@ describe('GET /metrics: songs sent without analysis', () => {
     for (const line of response.text.split('\n')) {
       if (!line.startsWith(`${METRIC}{`)) continue;
       // Exactly one label, `result`, with a bounded value.
-      const match = /^alcantara_radio_analysis_dropped_total\{result="([a-z-]+)"\} (\d+)$/.exec(line);
+      const match =
+        /^alcantara_radio_analysis_dropped_total\{result="([a-z-]+)"\} (\d+)$/.exec(
+          line,
+        );
       expect(match).not.toBeNull();
       samples.set(match![1], Number(match![2]));
     }

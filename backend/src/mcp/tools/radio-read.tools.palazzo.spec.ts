@@ -16,6 +16,7 @@ import {
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import request from 'supertest';
+import { listenOnLoopback } from '../../../test/loopback-supertest';
 import { AsRunController } from '../../as-run/as-run.controller';
 import { AsRunService } from '../../as-run/as-run.service';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
@@ -593,6 +594,7 @@ async function build() {
   );
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
+  await listenOnLoopback(app.getHttpServer());
 
   const consoleGet = async (path: string) => {
     const response = await request(app.getHttpServer()).get(path);
