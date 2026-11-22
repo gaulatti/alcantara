@@ -1,13 +1,17 @@
+import { NotFoundException } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { McpToolError } from '../contract';
 import { RadioMcpTools } from './radio';
 import { specNamed } from './capabilities.testing';
 
 // gaulatti/alcantara#300: two read-only radio capabilities. They read the engine's
 // on-air view and the program's audio meter; no write path is involved.
 
-function tools(engine: object, programs: object) {
+const knownProgram = { getRadioSettings: () => Promise.resolve({}) };
+
+function tools(engine: object, programs: object, radio: object = knownProgram) {
   return new RadioMcpTools(
-    {} as never,
+    radio as never,
     {} as never,
     {} as never,
     {} as never,
@@ -150,5 +154,64 @@ describe('radio_get_audio_levels', () => {
       expect(spec.permission).toBe(ALCANTARA_PERMISSIONS.radio.read);
       expect(spec.tier).toBe('R');
     }
+  });
+
+  it('answers not_found for an unknown program, as get_on_air does', async () => {
+    const radio = {
+      getRadioSettings: () =>
+        Promise.reject(new NotFoundException('no such program')),
+    };
+    const spec = specNamed(
+      tools({ getOnAirView: () => ({}) }, {}, radio).specs(),
+      'radio_get_playback_state',
+    );
+    await expect(
+      spec.run({ program_id: 'missing' }, ctx),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      spec.run({ program_id: 'missing' }, ctx),
+    ).rejects.toBeInstanceOf(McpToolError);
+  });
+
+  it('reports an idle program with on_air null, not an error', async () => {
+    const engine = {
+      getOnAirView: () => ({
+        playbackRequestId: null,
+        songId: null,
+        next: null,
+        mode: 'manual',
+        frozen: false,
+      }),
+      getPlaybackState: () => null,
+    };
+    const spec = specNamed(
+      tools(engine, {}).specs(),
+      'radio_get_playback_state',
+    );
+    const outcome = await spec.run({ program_id: 'main' }, ctx);
+    expect(outcome.result).toMatchObject({
+      on_air: null,
+      next: null,
+      mode: 'manual',
+    });
+  });
+
+  it('reports on_air null when a playback request exists without its playback state', async () => {
+    const engine = {
+      getOnAirView: () => ({
+        playbackRequestId: 'pb-9',
+        songId: 9,
+        next: null,
+        mode: 'autoplay',
+        frozen: false,
+      }),
+      getPlaybackState: () => null,
+    };
+    const spec = specNamed(
+      tools(engine, {}).specs(),
+      'radio_get_playback_state',
+    );
+    const outcome = await spec.run({ program_id: 'main' }, ctx);
+    expect(outcome.result).toMatchObject({ on_air: null });
   });
 });

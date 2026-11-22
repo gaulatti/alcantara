@@ -127,10 +127,14 @@ export class RadioMcpTools {
           'Reads what the radio is playing now in a program: the song on air (elapsed and duration in milliseconds, progress, intro status, whether telemetry is stale), the song announced next, and the rotation mode and frozen flag; `on_air` is null when nothing plays.',
         permission: permissions.read,
         shape: programArg,
-        run: (args) => {
+        // Title and artist are user-entered: the read isolates them under `untrusted`.
+        untrusted: ['title', 'artist'],
+        run: async (args) => {
+          // An unknown program is not_found, as get_on_air answers (requireProgram).
+          await this.radio.getRadioSettings(args.program_id);
           const view = this.engine.getOnAirView(args.program_id);
           const playback = this.engine.getPlaybackState(args.program_id);
-          return Promise.resolve({
+          return {
             program_id: args.program_id,
             on_air:
               playback && view.playbackRequestId
@@ -141,25 +145,21 @@ export class RadioMcpTools {
                     progress: playback.progress,
                     intro_status: playback.introStatus,
                     telemetry_stale: playback.telemetryStale,
-                    untrusted: {
-                      title: playback.title,
-                      artist: playback.artist,
-                    },
+                    title: playback.title,
+                    artist: playback.artist,
                   }
                 : null,
             next: view.next
               ? {
                   playback_id: view.next.playbackId,
                   status: view.next.status,
-                  untrusted: {
-                    title: view.next.title,
-                    artist: view.next.artist,
-                  },
+                  title: view.next.title,
+                  artist: view.next.artist,
                 }
               : null,
             mode: view.mode,
             frozen: view.frozen,
-          });
+          };
         },
       }),
       readSpec({
