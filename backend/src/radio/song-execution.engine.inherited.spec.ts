@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import {
   COMMAND_RETRY_BASE_MS,
   COMMAND_RETRY_MAX_MS,
+  INHERITED_LOOKUP_ATTEMPTS,
   NO_PLAYBACK_BOUND_MS,
   SongExecutionEngine,
   type SongEngineEvent,
@@ -316,7 +317,8 @@ describe('SongExecutionEngine recognises its own earlier announcement after a re
     ).states.get('radio-1')!;
     expect(song.activeSong).toMatchObject({
       songId: 77,
-      itemId: '',
+      // A song from outside the playlist: its end does not move the cursor.
+      itemId: 'catalog:77',
       durationMs: 215_000,
     });
     expect(song.busyWithForeignTrack).toBe(false);
@@ -335,8 +337,9 @@ describe('SongExecutionEngine recognises its own earlier announcement after a re
     expect(ctx.trackEvents[1]).toMatchObject({
       playbackRequestId: 'announced-by-the-old-process',
     });
-    // Only now, after its end, is the next song commanded.
-    expect(playedUrls(ctx)).toHaveLength(1);
+    // Only now, after its end, is the next song commanded, and it is the one
+    // the cursor already pointed at: no playlist song is skipped.
+    expect(playedUrls(ctx)).toEqual([SONG_A.audioUrl]);
   });
 
   it('announces the successor of the recognised song, as for any started song', async () => {
@@ -455,7 +458,7 @@ describe('SongExecutionEngine recognises its own earlier announcement after a re
     );
   });
 
-  it('withholds and reports when the catalogue lookup fails, and bounds long text', async () => {
+  it('withholds, retries a failed lookup and reports once after the last failure, bounding long text', async () => {
     const ctx = setup();
     ctx.prisma.song.findMany.mockRejectedValue(new Error('db down'));
     ctx.engine.handleSequenceUpdated('radio-1', AUTO);
@@ -463,13 +466,255 @@ describe('SongExecutionEngine recognises its own earlier announcement after a re
     (snapshot.track as unknown as { title: string }).title = 'x'.repeat(500);
     ctx.engine.handlePalazzoSnapshot('radio-1', snapshot);
     await flush(60);
-    expect(ctx.trackEvents).toEqual([]);
-    const messages = warnSpy.mock.calls.map((c) => String(c[0]));
-    expect(messages.some((m) => m.includes('"catalogueLookup":"failed"'))).toBe(
-      true,
+    // Withheld and not yet reported while retries remain.
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      warnSpy.mock.calls.map((c) => String(c[0])).join('\n'),
+    ).not.toContain('cannot identify');
+    // 2, 4, 8, 16, 30, 30 and 30 s apart: eight attempts in all.
+    for (const delay of [2000, 4000, 8000, 16000, 30000, 30000, 30000]) {
+      await jest.advanceTimersByTimeAsync(delay);
+    }
+    await flush(60);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(
+      INHERITED_LOOKUP_ATTEMPTS,
     );
-    const report = messages.find((m) => m.includes('cannot identify'))!;
-    expect(report).not.toContain('x'.repeat(201));
+    expect(ctx.trackEvents).toEqual([]);
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+    const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+    const reports = messages.filter((m) => m.includes('cannot identify'));
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toContain('"catalogueLookup":"failed"');
+    expect(reports[0]).not.toContain('x'.repeat(201));
+    expect(
+      ctx.metrics.recordTrackTransition.mock.calls.filter(
+        ([r]: [string]) => r === 'unidentified',
+      ),
+    ).toHaveLength(1);
+    // The same track named again starts no new series.
+    ctx.engine.handlePalazzoSnapshot('radio-1', { ...snapshot, sequence: 9 });
+    await jest.advanceTimersByTimeAsync(60000);
+    await flush(60);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(
+      INHERITED_LOOKUP_ATTEMPTS,
+    );
+  });
+
+  it('adopts the song when a retry succeeds after the database returns, with nothing reported', async () => {
+    const ctx = setup();
+    ctx.prisma.song.findMany
+      .mockRejectedValueOnce(new Error('P1001'))
+      .mockRejectedValueOnce(new Error('P1001'))
+      .mockResolvedValue([CATALOGUE_SONG]);
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('db-returns', CATALOGUE_SONG.audioUrl, STARTED),
+    );
+    await flush(60);
+    expect(ctx.trackEvents).toEqual([]);
+    await jest.advanceTimersByTimeAsync(2000);
+    await flush(60);
+    expect(ctx.trackEvents).toEqual([]);
+    await jest.advanceTimersByTimeAsync(4000);
+    await flush(60);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(3);
+    expect(ctx.trackEvents).toEqual([
+      expect.objectContaining({
+        type: 'track.started',
+        playbackRequestId: 'db-returns',
+        inferred: true,
+        at: new Date(STARTED),
+      }),
+    ]);
+    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith('adopted');
+    expect(ctx.metrics.recordTrackTransition).not.toHaveBeenCalledWith(
+      'unidentified',
+    );
+    expect(
+      warnSpy.mock.calls.map((c) => String(c[0])).join('\n'),
+    ).not.toContain('cannot identify');
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+  });
+
+  it('does not retry when the track ends during a retry delay, and clears the timer', async () => {
+    const ctx = setup();
+    ctx.prisma.song.findMany.mockRejectedValue(new Error('db down'));
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('ends-early', CATALOGUE_SONG.audioUrl, STARTED),
+    );
+    await flush(60);
+    const retry = (
+      ctx.engine as unknown as {
+        states: Map<string, { inheritedRetryTimer: unknown }>;
+      }
+    ).states.get('radio-1')!;
+    expect(retry.inheritedRetryTimer).not.toBeNull();
+    ctx.palazzo.state = idle(6);
+    end(ctx, 'ends-early');
+    expect(retry.inheritedRetryTimer).toBeNull();
+    await flush(80);
+    ctx.prisma.song.findMany.mockResolvedValue([CATALOGUE_SONG]);
+    await jest.advanceTimersByTimeAsync(120000);
+    await flush(60);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(1);
+    expect(ctx.trackEvents).toEqual([]);
+    expect(
+      warnSpy.mock.calls.map((c) => String(c[0])).join('\n'),
+    ).not.toContain('cannot identify');
+  });
+
+  it('does not look up again when the withheld track was replaced before the retry fires', async () => {
+    const ctx = setup();
+    ctx.prisma.song.findMany.mockRejectedValue(new Error('db down'));
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('replaced', CATALOGUE_SONG.audioUrl, STARTED),
+    );
+    await flush(60);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(1);
+    (
+      ctx.engine as unknown as {
+        states: Map<string, { withheldRequestId: string }>;
+      }
+    ).states.get('radio-1')!.withheldRequestId = 'someone-else';
+    await jest.advanceTimersByTimeAsync(120000);
+    await flush(60);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the retry timer when the engine shuts down', async () => {
+    const ctx = setup();
+    ctx.prisma.song.findMany.mockRejectedValue(new Error('db down'));
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('shutdown', CATALOGUE_SONG.audioUrl, STARTED),
+    );
+    await flush(60);
+    const pending = (
+      ctx.engine as unknown as {
+        states: Map<string, { inheritedRetryTimer: unknown }>;
+      }
+    ).states.get('radio-1')!;
+    expect(pending.inheritedRetryTimer).not.toBeNull();
+    ctx.engine.onModuleDestroy();
+    expect(pending.inheritedRetryTimer).toBeNull();
+    await jest.advanceTimersByTimeAsync(120000);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps no-match and two-match answers final: no retry', async () => {
+    const none = setup([]);
+    none.engine.handleSequenceUpdated('radio-1', AUTO);
+    none.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('no-match', 'https://example.test/none.mp3', STARTED),
+    );
+    await flush(60);
+    await jest.advanceTimersByTimeAsync(120000);
+    expect(none.prisma.song.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a late lookup for a track that ended while another uncommanded track now plays', async () => {
+    const ctx = setup();
+    let releaseA!: (rows: unknown[]) => void;
+    ctx.prisma.song.findMany
+      .mockReturnValueOnce(new Promise((resolve) => (releaseA = resolve)))
+      .mockResolvedValue([]);
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('track-a', CATALOGUE_SONG.audioUrl, STARTED),
+    );
+    await flush(10);
+    // A ends (the flag clears) and Palazzo already plays another uncommanded
+    // track B: the engine's resync reads it and withholds again.
+    ctx.palazzo.state = playingAt(
+      'track-b',
+      'https://example.test/b-unknown.mp3',
+      STARTED,
+      10,
+    );
+    end(ctx, 'track-a');
+    await flush(120);
+    // A's slow answer arrives while B plays.
+    releaseA([CATALOGUE_SONG]);
+    await flush(60);
+    expect(ctx.trackEvents.filter((e) => e.type === 'track.started')).toEqual(
+      [],
+    );
+    const state = (
+      ctx.engine as unknown as {
+        states: Map<
+          string,
+          { activeSong: unknown; busyWithForeignTrack: boolean }
+        >;
+      }
+    ).states.get('radio-1')!;
+    expect(state.activeSong).toBeNull();
+    expect(state.busyWithForeignTrack).toBe(true);
+    // B is looked up on its own and reported as unidentified.
+    expect(warnSpy.mock.calls.map((c) => String(c[0])).join('\n')).toContain(
+      '"requestId":"track-b"',
+    );
+  });
+
+  it('derives the adopted position from the reported start after a slow lookup', async () => {
+    const ctx = setup();
+    let release!: (rows: unknown[]) => void;
+    ctx.prisma.song.findMany.mockReturnValue(
+      new Promise((resolve) => (release = resolve)),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    const startedAt = new Date(Date.now() - 90_000).toISOString();
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('slow-started', CATALOGUE_SONG.audioUrl, startedAt, 90),
+    );
+    await flush(10);
+    jest.setSystemTime(Date.now() + 45_000);
+    release([CATALOGUE_SONG]);
+    await flush(60);
+    const active = (
+      ctx.engine as unknown as {
+        states: Map<
+          string,
+          { activeSong: { authoritativePositionMs: number } }
+        >;
+      }
+    ).states.get('radio-1')!.activeSong;
+    // 90 s at the snapshot plus the 45 s the lookup took.
+    expect(active.authoritativePositionMs).toBe(135_000);
+  });
+
+  it('adds the lookup time to the reported position when the start is not reported', async () => {
+    const ctx = setup();
+    let release!: (rows: unknown[]) => void;
+    ctx.prisma.song.findMany.mockReturnValue(
+      new Promise((resolve) => (release = resolve)),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('slow-unstamped', CATALOGUE_SONG.audioUrl, 'not-a-date', 40),
+    );
+    await flush(10);
+    jest.setSystemTime(Date.now() + 30_000);
+    release([CATALOGUE_SONG]);
+    await flush(60);
+    const active = (
+      ctx.engine as unknown as {
+        states: Map<
+          string,
+          { activeSong: { authoritativePositionMs: number } }
+        >;
+      }
+    ).states.get('radio-1')!.activeSong;
+    expect(active.authoritativePositionMs).toBe(70_000);
   });
 
   it('drops the lookup when the track ends before it answers', async () => {

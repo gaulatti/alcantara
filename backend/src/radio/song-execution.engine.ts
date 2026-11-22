@@ -179,6 +179,13 @@ export interface PalazzoTelemetrySource {
  */
 export const COMMAND_RETRY_BASE_MS = 2_000;
 export const COMMAND_RETRY_MAX_MS = 30_000;
+/**
+ * A failed catalogue lookup for a track this process did not command is tried
+ * up to this many times in all (gaulatti/alcantara#272), 2, 4, 8, 16, 30, 30 and
+ * 30 s apart (the command-retry backoff): about two minutes while the database
+ * is unreachable or throttled, after which the track is reported once.
+ */
+export const INHERITED_LOOKUP_ATTEMPTS = 8;
 
 export const WATCHDOG_INTERVAL_MS = 10_000;
 export const NO_PLAYBACK_BOUND_MS = 45_000;
@@ -342,6 +349,11 @@ interface SongEngineState {
    * each is handled once, however many snapshots name it.
    */
   inheritedLookups: Set<string>;
+  /** The request ID of the uncommanded track now withheld, or '' (#272). */
+  withheldRequestId: string;
+  /** The pending retry of a failed catalogue lookup, and its track (#272). */
+  inheritedRetryTimer: ReturnType<typeof setTimeout> | null;
+  inheritedRetryRequestId: string;
   /** First watchdog read of Palazzo reporting no playback, or null (#230). */
   noPlaybackSince: number | null;
   /** The pending retry after a failed command, and how many in a row (#230). */
@@ -526,6 +538,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       this.stopProgress(programId);
       if (state.commandRetryTimer) clearTimeout(state.commandRetryTimer);
       state.commandRetryTimer = null;
+      this.clearInheritedRetry(state);
     }
   }
 
@@ -558,6 +571,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         reconciled: false,
         busyWithForeignTrack: false,
         inheritedLookups: new Set<string>(),
+        withheldRequestId: '',
+        inheritedRetryTimer: null,
+        inheritedRetryRequestId: '',
         noPlaybackSince: null,
         commandRetryTimer: null,
         commandRetries: 0,
@@ -2397,6 +2413,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     // its audio it is recorded as our own song, otherwise it stays withheld and
     // is reported once with what Palazzo says is playing.
     state.busyWithForeignTrack = true;
+    state.withheldRequestId = requestId;
     if (requestId && !state.inheritedLookups.has(requestId)) {
       state.inheritedLookups.add(requestId);
       if (state.inheritedLookups.size > MAX_ENDED_REQUEST_IDS) {
@@ -2410,15 +2427,21 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Looks the playing track up by its audio URL in the song catalogue (#272).
-   * Exactly one song must match, and Palazzo must still report the track and
-   * the engine still hold no active song of its own; anything else is left
-   * withheld and reported, never recorded as a guess.
+   * Exactly one song must match, and the track must still be the one withheld
+   * (not ended, not replaced by another uncommanded track, no active song of
+   * our own) when the answer arrives; anything else is left withheld and
+   * reported, never recorded as a guess. A FAILED lookup (the database
+   * unreachable or throttled) is tried again, INHERITED_LOOKUP_ATTEMPTS times
+   * in all, and reported only after the last failure; no match or several
+   * matches are final at once.
    */
   private async recogniseInheritedTrack(
     programId: string,
     state: SongEngineState,
     snapshot: PalazzoPlaybackState,
     requestId: string,
+    attempt = 1,
+    receivedAt = Date.now(),
   ): Promise<void> {
     const url = snapshot.track?.url ?? '';
     let lookupFailed = false;
@@ -2448,22 +2471,44 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         lookupFailed = true;
       }
     }
-    // The track ended, or the engine took on a song, while the lookup ran.
-    if (state.activeSong || !state.busyWithForeignTrack) return;
+    // The track ended, another uncommanded track replaced it, or the engine
+    // took on a song, while the lookup ran.
+    if (!this.stillWithheld(state, requestId)) return;
+    if (lookupFailed && attempt < INHERITED_LOOKUP_ATTEMPTS) {
+      this.scheduleInheritedRetry(
+        programId,
+        state,
+        snapshot,
+        requestId,
+        attempt,
+        receivedAt,
+      );
+      return;
+    }
     if (matches.length === 1) {
       const song = matches[0];
-      this.adoptPlayingTrack(programId, state, snapshot, requestId, {
-        token: `inherited:${song.id}:${song.audioUrl}`,
-        audioUrl: song.audioUrl,
-        artist: song.artist,
-        title: song.title,
-        coverUrl: song.coverUrl ?? '',
-        durationMs: song.durationMs ?? 300000,
-        itemId: '',
-        songId: song.id,
-        queueEntryId: null,
-        highRotation: false,
-      });
+      this.adoptPlayingTrack(
+        programId,
+        state,
+        snapshot,
+        requestId,
+        {
+          token: `inherited:${song.id}:${song.audioUrl}`,
+          audioUrl: song.audioUrl,
+          artist: song.artist,
+          title: song.title,
+          coverUrl: song.coverUrl ?? '',
+          durationMs: song.durationMs ?? 300000,
+          // Treated as a song picked from outside the playlist: it never moved
+          // the cursor, so its end advances nothing and the successor is the
+          // one the cursor already points at, never one song skipped.
+          itemId: `${CATALOG_ITEM_PREFIX}${song.id}`,
+          songId: song.id,
+          queueEntryId: null,
+          highRotation: false,
+        },
+        Date.now() - receivedAt,
+      );
       return;
     }
     this.metrics.recordTrackTransition('unidentified');
@@ -2481,6 +2526,52 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           ...(lookupFailed ? { catalogueLookup: 'failed' } : {}),
         }),
     );
+  }
+
+  /** Whether `requestId` is still the uncommanded track being withheld. */
+  private stillWithheld(state: SongEngineState, requestId: string): boolean {
+    return (
+      !state.activeSong &&
+      state.busyWithForeignTrack &&
+      state.withheldRequestId === requestId &&
+      !state.endedRequestIds.includes(requestId)
+    );
+  }
+
+  private scheduleInheritedRetry(
+    programId: string,
+    state: SongEngineState,
+    snapshot: PalazzoPlaybackState,
+    requestId: string,
+    attempt: number,
+    receivedAt: number,
+  ): void {
+    this.clearInheritedRetry(state);
+    const delay = Math.min(
+      COMMAND_RETRY_BASE_MS * 2 ** (attempt - 1),
+      COMMAND_RETRY_MAX_MS,
+    );
+    state.inheritedRetryRequestId = requestId;
+    state.inheritedRetryTimer = setTimeout(() => {
+      state.inheritedRetryTimer = null;
+      state.inheritedRetryRequestId = '';
+      if (!this.stillWithheld(state, requestId)) return;
+      void this.recogniseInheritedTrack(
+        programId,
+        state,
+        snapshot,
+        requestId,
+        attempt + 1,
+        receivedAt,
+      );
+    }, delay);
+    state.inheritedRetryTimer.unref();
+  }
+
+  private clearInheritedRetry(state: SongEngineState): void {
+    if (state.inheritedRetryTimer) clearTimeout(state.inheritedRetryTimer);
+    state.inheritedRetryTimer = null;
+    state.inheritedRetryRequestId = '';
   }
 
   private boundedText(value: string | null | undefined): string | null {
@@ -2511,9 +2602,19 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       queueEntryId: string | null;
       highRotation: boolean;
     },
+    lookupMs?: number,
   ): void {
-    const positionMs = Math.max(0, Math.round(snapshot.positionSeconds * 1000));
+    const reportedMs = Math.max(0, Math.round(snapshot.positionSeconds * 1000));
     const parsedStartedAt = Date.parse(snapshot.track?.startedAt ?? '');
+    // After a catalogue lookup the snapshot is old and Palazzo sends no further
+    // one on a healthy connection: the position is derived from the reported
+    // start, else the snapshot's position plus the time the lookup took.
+    const positionMs =
+      lookupMs === undefined
+        ? reportedMs
+        : Number.isFinite(parsedStartedAt)
+          ? Math.max(0, Date.now() - parsedStartedAt)
+          : reportedMs + Math.max(0, lookupMs);
     const authoritativeStartedAt = Number.isFinite(parsedStartedAt)
       ? parsedStartedAt
       : Date.now() - positionMs;
@@ -2662,6 +2763,9 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     state.endedRequestIds.push(requestId);
     if (state.endedRequestIds.length > MAX_ENDED_REQUEST_IDS) {
       state.endedRequestIds.shift();
+    }
+    if (state.inheritedRetryRequestId === requestId) {
+      this.clearInheritedRetry(state);
     }
 
     if (state.frozen) {

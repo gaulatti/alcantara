@@ -112,7 +112,24 @@ root playback routes.
   `alcantara_radio_track_transitions_total{result="adopted"}`. The previous play
   of the program, whose end was lost with the old process, is closed by the
   as-run log at this start, flagged `unended` for review (#241), once the
-  adopted play ends.
+  adopted play ends. A recognised song is treated as one picked from outside the
+  playlist (`catalog:<song id>`): it never moved the cursor, so its end advances
+  nothing and the next song is the one the cursor already points at, never a
+  playlist song skipped.
+- **The lookup answers late or fails.** The answer is used only if the track it
+  was asked for is still the one withheld: it must not have ended, no song of
+  Alcantara's own may be active, and no other uncommanded track may have been
+  withheld since (a slow answer for an earlier track is dropped). The adopted
+  position is derived from Palazzo's reported start (now minus that start), or
+  else the snapshot's position plus the time the lookup took, because Palazzo
+  sends no further snapshot on a healthy connection. A **failed** lookup (the
+  database unreachable or throttled) is tried again, eight attempts in all, 2, 4,
+  8, 16, 30, 30 and 30 s apart (`INHERITED_LOOKUP_ATTEMPTS`, the command-retry
+  backoff), about two minutes, with commands withheld throughout; the retry
+  stops when the track ends, is replaced or the engine shuts down, and the track
+  is reported (below) only after the last failure. An answer with no match or
+  several matches is final at once. One series per track: the same track named
+  again starts no new one.
 - A track with no URL, an unknown URL, a URL shared by several catalogue songs
   or a failed lookup stays **unidentified**: Alcantara sends no command while it
   plays, records nothing for it and does not guess a successor from its end
