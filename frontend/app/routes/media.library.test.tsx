@@ -1132,7 +1132,7 @@ it("creates, edits and deletes labels, and drops a label deleted elsewhere", asy
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   fireEvent.click(screen.getByRole("button", { name: "Delete Headlines" }));
   expect(confirm).toHaveBeenCalledWith(
-    "Delete label “Headlines”? Files will remain in the library.",
+    "Delete label “Headlines”, used by 0 assets? Files will remain in the library.",
   );
   confirm.mockReturnValue(true);
   routes["DELETE /media-labels/l1"] = () =>

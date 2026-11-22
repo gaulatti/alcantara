@@ -581,7 +581,7 @@ export default function MediaRoute() {
   const deleteLabel = async (label: MediaLabel) => {
     if (
       !window.confirm(
-        `Delete label “${label.name}”? Files will remain in the library.`,
+        `Delete label “${label.name}”, used by ${label.assetCount} asset${label.assetCount === 1 ? "" : "s"}? Files will remain in the library.`,
       )
     )
       return;
