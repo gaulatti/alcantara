@@ -35,6 +35,9 @@ export const AS_RUN_PAGE_SIZE = 1000;
 /** The export window when the request names no `from` (#237). */
 export const AS_RUN_EXPORT_DEFAULT_DAYS = 31;
 
+/** Waits before each retry of a failed play record (#256): 3 retries, 1.75 s in all. */
+export const AS_RUN_RECORD_BACKOFF_MS: readonly number[] = [250, 500, 1000];
+
 export function escapeCsvField(
   value: string | number | boolean | Date | null | undefined,
 ): string {
@@ -62,6 +65,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
   /** When this process started: open plays far older than this are history (#241). */
   private readonly bootedAt = Date.now();
   private subscription?: Subscription;
+  private readonly recordChains = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -87,14 +91,49 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
           }
         ).subscribe({
           next: (event: AsRunTrackEvent) => {
-            void this.handleTrackEvent(event).catch((err: unknown) => {
-              this.logger.error(`Failed to record track event: ${String(err)}`);
-            });
+            this.enqueueTrackEvent(event);
           },
           error: (err: unknown) => {
             this.logger.error(`Error in trackEvents$ stream: ${String(err)}`);
           },
         });
+      }
+    }
+  }
+
+  /**
+   * Records one engine event, in arrival order per program (#256). A failing
+   * write is retried with a short bounded backoff; the writes are idempotent on
+   * (programId, playbackRequestId, state), so a retry never duplicates a row.
+   * The total wait is bounded, so a later event on the program is delayed by at
+   * most AS_RUN_RECORD_BACKOFF_MS in sum, never reordered.
+   */
+  private enqueueTrackEvent(event: AsRunTrackEvent): void {
+    const key =
+      event && typeof event.programId === 'string' ? event.programId : '';
+    const previous = this.recordChains.get(key) ?? Promise.resolve();
+    const next = previous.then(() => this.recordWithRetry(event));
+    this.recordChains.set(key, next);
+    void next.finally(() => {
+      if (this.recordChains.get(key) === next) this.recordChains.delete(key);
+    });
+  }
+
+  private async recordWithRetry(event: AsRunTrackEvent): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.handleTrackEvent(event);
+        return;
+      } catch (error) {
+        const delay = AS_RUN_RECORD_BACKOFF_MS[attempt];
+        if (delay === undefined) {
+          this.logger.warn(
+            `Failed to record a ${event?.type === 'track.started' ? 'started' : 'ended'} as-run state after ${attempt + 1} attempts (${error instanceof Error ? error.name : typeof error})`,
+          );
+          this.radioMetrics?.recordRadioLogResult('record-failed');
+          return;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
       }
     }
   }

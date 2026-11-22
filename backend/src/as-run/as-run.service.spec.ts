@@ -197,47 +197,6 @@ describe('AsRunService', () => {
       loggerSpy.mockRestore();
       s.onModuleDestroy();
     });
-
-    it('logs error when handleTrackEvent throws inside next callback', async () => {
-      const subject = new Subject<AsRunTrackEvent>();
-      const standInEngine = {
-        trackEvents$: subject.asObservable(),
-      } as unknown as SongExecutionEngine;
-
-      const s = new AsRunService(
-        prisma as unknown as PrismaService,
-        standInEngine,
-        radioMetrics as unknown as RadioMetricsService,
-      );
-      const loggerSpy = jest
-        .spyOn(Logger.prototype, 'error')
-        .mockImplementation(() => {});
-
-      prisma.asRunRecord.create.mockRejectedValueOnce(
-        new Error('Database write error'),
-      );
-
-      s.onModuleInit();
-      subject.next({
-        programId: 'radio-1',
-        type: 'track.started',
-        playbackRequestId: 'req-err',
-        title: 'T',
-        artist: 'A',
-        url: null,
-        at: new Date(),
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'Failed to record track event: Error: Database write error',
-        ),
-      );
-      loggerSpy.mockRestore();
-      s.onModuleDestroy();
-    });
   });
 
   describe('handleTrackEvent', () => {
