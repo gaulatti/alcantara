@@ -11,6 +11,28 @@ import {
 } from '../media-assets/media-asset-sync';
 import { PrismaService } from '../prisma.service';
 
+/**
+ * The media-analysis columns exposed to clients. Shared with the media-assets
+ * list so both responses carry the same analysis shape.
+ */
+export const MEDIA_ANALYSIS_SELECT = {
+  assetId: true,
+  status: true,
+  cueInSeconds: true,
+  cueOutSeconds: true,
+  fadeInSeconds: true,
+  fadeOutSeconds: true,
+  overlapSeconds: true,
+  integratedLufs: true,
+  truePeakDbtp: true,
+  isrc: true,
+  musicbrainzRecordingId: true,
+  error: true,
+  attempts: true,
+  nextAttemptAt: true,
+  updatedAt: true,
+} satisfies Prisma.MediaAssetAnalysisSelect;
+
 interface SongInput {
   artist?: string;
   title?: string;
@@ -50,6 +72,11 @@ export interface SongAnalysis {
   overlapSeconds: number | null;
   integratedLufs: number | null;
   truePeakDbtp: number | null;
+  isrc: string | null;
+  musicbrainzRecordingId: string | null;
+  error: string | null;
+  attempts: number;
+  nextAttemptAt: Date | null;
   updatedAt: Date;
 }
 
@@ -157,18 +184,7 @@ export class SongsService {
     if (assetIds.length === 0) return new Map<string, SongAnalysis>();
     const rows = await this.prisma.mediaAssetAnalysis.findMany({
       where: { assetId: { in: assetIds } },
-      select: {
-        assetId: true,
-        status: true,
-        cueInSeconds: true,
-        cueOutSeconds: true,
-        fadeInSeconds: true,
-        fadeOutSeconds: true,
-        overlapSeconds: true,
-        integratedLufs: true,
-        truePeakDbtp: true,
-        updatedAt: true,
-      },
+      select: MEDIA_ANALYSIS_SELECT,
     });
     return new Map<string, SongAnalysis>(rows.map((row) => [row.assetId, row]));
   }

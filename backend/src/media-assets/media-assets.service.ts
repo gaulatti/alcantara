@@ -6,6 +6,7 @@ import {
 import { MediaAssetKind, MediaAssetType, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
+import { MEDIA_ANALYSIS_SELECT } from '../songs/songs.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import {
   assertCanManageLabels,
@@ -41,6 +42,10 @@ const MEDIA_LABEL_INCLUDE = {
 
 type MediaAssetRecord = Prisma.MediaAssetGetPayload<{
   include: typeof MEDIA_ASSET_INCLUDE;
+}>;
+
+type AnalysisRow = Prisma.MediaAssetAnalysisGetPayload<{
+  select: typeof MEDIA_ANALYSIS_SELECT;
 }>;
 
 type MediaLabelRecord = Prisma.MediaLabelGetPayload<{
@@ -134,8 +139,16 @@ export class MediaAssetsService {
       this.prisma.mediaAsset.count({ where }),
     ]);
 
+    const audioIds = assets
+      .filter((asset) => resolveMediaType(asset) === MediaAssetType.AUDIO)
+      .map((asset) => asset.id);
+    const analyses = await this.findAnalyses(audioIds);
+
     return {
-      data: assets.map((asset) => this.mapAsset(asset)),
+      data: assets.map((asset) => ({
+        ...this.mapAsset(asset),
+        analysis: analyses.get(asset.id) ?? null,
+      })),
       meta: {
         total,
         page: input.page,
@@ -552,6 +565,15 @@ export class MediaAssetsService {
       default:
         throw new BadRequestException('Unknown capability');
     }
+  }
+
+  private async findAnalyses(assetIds: string[]) {
+    if (assetIds.length === 0) return new Map<string, AnalysisRow>();
+    const rows = await this.prisma.mediaAssetAnalysis.findMany({
+      where: { assetId: { in: assetIds } },
+      select: MEDIA_ANALYSIS_SELECT,
+    });
+    return new Map<string, AnalysisRow>(rows.map((row) => [row.assetId, row]));
   }
 
   private mapAsset(asset: MediaAssetRecord) {
