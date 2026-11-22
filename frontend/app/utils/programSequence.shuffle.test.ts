@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 
-import { shuffleProgramSongSequence } from './programSequence.ts';
+import { shuffleProgramSongSequence, type ProgramSongSequence } from './programSequence';
 
-function sequence(ids, overrides = {}) {
+function sequence(ids: string[], overrides: Partial<ProgramSongSequence> = {}): ProgramSongSequence {
   return {
-    mode: 'shuffle',
-    items: ids.map((id) => ({ id, kind: 'preset', artist: id, title: id, coverUrl: '' })),
+    mode: 'shuffle' as const,
+    items: ids.map((id) => ({ id, kind: 'preset' as const, artist: id, title: id, coverUrl: '' })),
     activeItemId: ids[1] ?? null,
     loop: false,
     startedAt: 1234,
