@@ -417,6 +417,10 @@
 .console-cart-search {
   padding: 10px 12px 0;
 }
+/* Cartwall alerts share the pads' and search's inset (gaulatti/alcantara#253). */
+.radio-cartwall-alert {
+  padding: 10px 12px 0;
+}
 .console-cart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

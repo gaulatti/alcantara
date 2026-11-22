@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
+import { readFileSync } from "node:fs";
 import { RadioPanel } from "./RadioPanel";
 import * as flight from "../services/flight";
 vi.mock("../services/flight", () => ({
@@ -1108,4 +1109,38 @@ it("shows why a song could not be added to Play Next", async () => {
   fireEvent.click(playNext);
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   expect(p.onQueueSong).toHaveBeenCalledTimes(3);
+});
+
+// gaulatti/alcantara#253: the cartwall's refusal and load-error alerts share
+// the search box's and pads' inset at every width. jsdom has no layout, so the
+// contract is checked where it lives: the class on both alerts, and the
+// stylesheet giving that class the search box's padding with no width-specific
+// override of either.
+it("lines the cartwall alerts up with the search box and pads", () => {
+  mount({
+    ...props(),
+    instantError: "Could not play News opener: Fictional refusal",
+    instantsLoadError: "Fictional library is offline",
+  });
+  const cartwall = screen.getByRole("region", { name: "Cartwall" });
+  const alerts = within(cartwall).getAllByRole("alert");
+  expect(alerts.map((alert) => alert.textContent)).toEqual([
+    "Could not play News opener: Fictional refusal",
+    "Cartwall did not load: Fictional library is offline",
+  ]);
+  for (const alert of alerts) {
+    expect(alert.classList.contains("radio-cartwall-alert")).toBe(true);
+    expect(alert.className).not.toMatch(/\b(p|px|pl|pr)-\d/);
+  }
+
+  // Tests run from frontend/ (vitest.config.ts); jsdom has no file: module URL.
+  const css = readFileSync("app/components/BroadcastConsole.css", "utf8");
+  const padding = (selector: string) =>
+    [...css.matchAll(new RegExp(`(^|\\n)\\s*${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`, "g"))].map(
+      (match) => /padding:\s*([^;]+);/.exec(match[2])?.[1]?.trim() ?? null,
+    );
+  // One rule each, outside any media query, with the same padding.
+  expect(padding(".radio-cartwall-alert")).toEqual(["10px 12px 0"]);
+  expect(padding(".console-cart-search")).toEqual(["10px 12px 0"]);
+  expect(padding(".console-cart-grid")[0]).toMatch(/^10px 12px/);
 });
