@@ -126,6 +126,7 @@ export default function SongsCatalog() {
   const [selectedSongId, setSelectedSongId] = useState<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const preview = useSongPreview();
+  const [toggleNotice, setToggleNotice] = useState<{ song: SongCatalogItem; enabled: boolean } | null>(null);
   const [sortBy, setSortBy] = useState('artist');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
@@ -332,7 +333,9 @@ export default function SongsCatalog() {
     if (preview.currentId !== song.id) preview.load(song);
   };
 
-  const setSongEnabled = async (song: SongCatalogItem, enabled: boolean) => {
+  const setSongEnabled = async (song: SongCatalogItem, enabled: boolean, undoing = false) => {
+    // A change by the switch or the E key is announced, with an Undo, so a stray key is visible.
+    setToggleNotice(undoing ? null : { song, enabled });
     // The change is applied to the row at once and undone if the server refuses it.
     setSongs((current) => current.map((entry) => (entry.id === song.id ? { ...entry, enabled } : entry)));
     try {
@@ -345,9 +348,16 @@ export default function SongsCatalog() {
       await fetchSongs();
     } catch (err) {
       setSongs((current) => current.map((entry) => (entry.id === song.id ? { ...entry, enabled: song.enabled } : entry)));
+      setToggleNotice(null);
       showAlert(err instanceof Error ? err.message : 'Failed to update the song.', 'error');
     }
   };
+
+  useEffect(() => {
+    if (!toggleNotice) return;
+    const timer = setTimeout(() => setToggleNotice(null), 6_000);
+    return () => clearTimeout(timer);
+  }, [toggleNotice]);
 
   // The desk's keys on this page: / searches, and a selected row takes the arrows, Space and E.
   useEffect(() => {
@@ -566,6 +576,25 @@ export default function SongsCatalog() {
               <p className='text-xs text-text-secondary'>of {songs.length} listed on this page</p>
             </div>
           </div>
+
+          {toggleNotice ? (
+            <p role='status' className='flex items-center gap-3 rounded-lg border border-sand/30 bg-dark-sand/60 px-3 py-2 text-sm text-text-primary'>
+              <span>
+                {toggleNotice.enabled ? 'Enabled' : 'Disabled'} {formatSongTitle(toggleNotice.song)}
+              </span>
+              <button
+                type='button'
+                className='font-semibold text-sea hover:underline'
+                onClick={() => {
+                  const { song, enabled } = toggleNotice;
+                  setToggleNotice(null);
+                  void setSongEnabled(song, !enabled, true);
+                }}
+              >
+                Undo
+              </button>
+            </p>
+          ) : null}
 
           <div className='flex flex-col gap-3 md:flex-row md:items-center'>
             <div className='flex-1'>

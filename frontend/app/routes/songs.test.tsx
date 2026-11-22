@@ -481,6 +481,33 @@ it("enables and disables a song with its switch, and undoes the change when the 
   );
 });
 
+it("announces a change by the switch or the E key with an Undo that puts it back, and clears the notice", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  fetchSongsPage.mockResolvedValue(pageOf([song(1)]));
+  render(<SongsCatalog />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  fireEvent.click(document.querySelector("[role=row]")!);
+  network.mockClear();
+  fireEvent.keyDown(window, { key: "e" });
+  const notice = screen.getByRole("status");
+  expect(notice).toHaveTextContent("Disabled Artist 1 - Title 1");
+  expect(network).toHaveBeenCalledWith(apiUrl("/songs/1"), expect.objectContaining({ body: JSON.stringify({ enabled: false }) }));
+  fireEvent.click(within(notice).getByRole("button", { name: "Undo" }));
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(network).toHaveBeenLastCalledWith(apiUrl("/songs/1"), expect.objectContaining({ body: JSON.stringify({ enabled: true }) }));
+
+  // The notice goes away by itself after a few seconds.
+  fireEvent.keyDown(window, { key: "e" });
+  expect(screen.getByRole("status")).toBeInTheDocument();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6_100);
+  });
+  expect(screen.queryByRole("status")).toBeNull();
+  vi.useRealTimers();
+});
+
 it("enables the selected song with E", async () => {
   fetchSongsPage.mockResolvedValue(pageOf([song(1, { enabled: false })]));
   render(<SongsCatalog />);
