@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
 import type { McpHttpReply, McpHttpRequest } from './mcp.controller';
 import {
@@ -16,9 +16,10 @@ function formOf(body: unknown): Params {
   return out;
 }
 
-function queryOf(query: Record<string, unknown>): Params {
+function queryOf(query: unknown): Params {
   const out: Params = {};
-  for (const [key, value] of Object.entries(query ?? {}))
+  if (!query || typeof query !== 'object') return out;
+  for (const [key, value] of Object.entries(query))
     if (typeof value === 'string') out[key] = value;
   return out;
 }
@@ -44,11 +45,8 @@ export class McpOAuthProxyController {
   constructor(private readonly proxy: McpOAuthProxyService) {}
 
   @Get('authorize')
-  async authorize(
-    @Query() query: Record<string, unknown>,
-    @Res() reply: McpHttpReply,
-  ) {
-    await write(reply, this.proxy.authorize(queryOf(query)));
+  async authorize(@Req() request: McpHttpRequest, @Res() reply: McpHttpReply) {
+    await write(reply, this.proxy.authorize(queryOf(request.query)));
   }
 
   @Post('authorize')
@@ -64,11 +62,8 @@ export class McpOAuthProxyController {
   }
 
   @Get('callback')
-  async callback(
-    @Query() query: Record<string, unknown>,
-    @Res() reply: McpHttpReply,
-  ) {
-    await write(reply, await this.proxy.callback(queryOf(query)));
+  async callback(@Req() request: McpHttpRequest, @Res() reply: McpHttpReply) {
+    await write(reply, await this.proxy.callback(queryOf(request.query)));
   }
 
   @Post('token')
