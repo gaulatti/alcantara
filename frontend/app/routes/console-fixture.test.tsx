@@ -596,8 +596,19 @@ it("shows the radio desk's refused instant and failed loads, and clears each on 
   });
   press("radio: retry songs");
   expect(data("radio")).toMatchObject({ songLoadError: null, instantsLoadError: "Fictional library is offline" });
+  // A retry clears only its own list's error; the refusal stays until the
+  // next instant starts.
   press("radio: retry instants");
-  expect(data("radio")).toMatchObject({ instantError: null, instantsLoadError: null });
+  expect(data("radio")).toMatchObject({
+    instantsLoadError: null,
+    instantError: "Could not play News sting: Instant is disabled for this program",
+  });
+  press("radio: trigger");
+  expect(data("radio").instantError).toBeNull();
+  cleanup();
+  open("?state=radio-refused");
+  press("radio: stop all");
+  expect(data("radio").instantError).toBeNull();
 });
 
 it("opens the audio workspace with its mixer, music, cartwall and transport", () => {

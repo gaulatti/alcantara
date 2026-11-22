@@ -491,19 +491,21 @@ export default function ConsoleFixture() {
             instants={fixture === "radio-empty" ? [] : consoleInstants}
             instantSearch={cartSearch}
             onInstantSearchChange={setCartSearch}
-            onTriggerInstant={(id) =>
+            onTriggerInstant={(id) => {
+              // As on the console, the next instant clears the last refusal.
+              setFixtureInstantError(null);
               setCartPlayback((current) => ({
                 ...current,
                 [id]: { startedAtMs: Date.now(), endsAtMs: null },
-              }))
-            }
-            onStopAllInstants={() => setCartPlayback({})}
+              }));
+            }}
+            onStopAllInstants={() => {
+              setFixtureInstantError(null);
+              setCartPlayback({});
+            }}
             instantError={fixtureInstantError}
             instantsLoadError={fixtureInstantsLoadError}
-            onRetryInstants={() => {
-              setFixtureInstantError(null);
-              setFixtureInstantsLoadError(null);
-            }}
+            onRetryInstants={() => setFixtureInstantsLoadError(null)}
             songCatalogLoadError={fixtureSongLoadError}
             onRetrySongCatalog={() => setFixtureSongLoadError(null)}
             instantPlayback={cartPlayback}
