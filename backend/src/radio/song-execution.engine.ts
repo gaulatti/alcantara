@@ -2587,7 +2587,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             artist: song.artist,
             title: song.title,
             coverUrl: song.coverUrl ?? '',
-            durationMs: song.durationMs ?? leaf.durationMs ?? 300000,
+            durationMs: song.durationMs ?? 300000,
             itemId: leaf.id,
             songId: song.id,
             queueEntryId: null,
@@ -2743,8 +2743,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       queueEntryId: string | null;
       highRotation: boolean;
     },
-    lookupMs?: number,
-    detail?: string,
+    lookupMs: number | undefined,
+    detail: string,
   ): void {
     const reportedMs = Math.max(0, Math.round(snapshot.positionSeconds * 1000));
     const parsedStartedAt = Date.parse(snapshot.track?.startedAt ?? '');
@@ -2789,7 +2789,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     };
     state.busyWithForeignTrack = false;
     this.logger.log(
-      `Adopted inherited Palazzo playback ${requestId} on ${programId}${detail ? ` (${detail})` : ''}`,
+      `Adopted inherited Palazzo playback ${requestId} on ${programId} (${detail})`,
     );
     this.metrics.recordTrackTransition('adopted');
     this.recordHighRotationStarted(

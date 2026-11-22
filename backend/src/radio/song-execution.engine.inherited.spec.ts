@@ -993,6 +993,25 @@ describe('SongExecutionEngine after a restart keeps the rotation where it was (#
     );
   });
 
+  it('adopts by the cursor leaf with the default duration when the catalogue has none, and keeps a catalogue song when the cursor leaf has no audio', async () => {
+    const noDuration = { ...CAT_11, durationMs: null };
+    const withDefault = setup([noDuration]);
+    await adopt(withDefault, stale('l1', [L1, L2]), CAT_11.audioUrl);
+    const active = (
+      withDefault.engine as unknown as {
+        states: Map<
+          string,
+          { activeSong: { itemId: string; durationMs: number } | null }
+        >;
+      }
+    ).states.get('radio-1')!.activeSong;
+    expect(active).toMatchObject({ itemId: 'l1', durationMs: 300_000 });
+
+    const silent = setup([CAT_11]);
+    await adopt(silent, stale('no-audio', [NO_AUDIO]), CAT_11.audioUrl);
+    expect(activeItem(silent)).toBe('catalog:11');
+  });
+
   it('logs how the song on air was recognised and how many leaves matched', async () => {
     const logSpy = jest.spyOn(Logger.prototype, 'log');
     const ctx = setup([CAT_11]);
