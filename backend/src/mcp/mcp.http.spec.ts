@@ -9,6 +9,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { listenOnLoopback } from '../../test/loopback-supertest';
 import { z } from 'zod';
 import { AuthController } from '../auth/auth.controller';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
@@ -226,6 +227,7 @@ describe('MCP endpoint', () => {
     app.useGlobalGuards(app.get(PompeiiAuthorizationGuard));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    await listenOnLoopback(app.getHttpServer());
     auth = app.get(McpAuthService);
   }
 

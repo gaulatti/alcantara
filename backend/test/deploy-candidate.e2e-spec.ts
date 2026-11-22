@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { listenOnLoopback } from './loopback-supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { DEPLOY_CANDIDATE_ENV } from '../src/config/deploy-candidate';
@@ -135,6 +136,7 @@ describeWithDatabase('deploy candidate (PostgreSQL e2e)', () => {
     }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
+    await listenOnLoopback(app.getHttpServer());
   }, 60_000);
 
   afterAll(async () => {

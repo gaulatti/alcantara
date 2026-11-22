@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { listenOnLoopback } from '../../test/loopback-supertest';
 import type { App } from 'supertest/types';
 import { PompeiiAuthorizationGuard } from '../auth/pompeii-authorization.guard';
 import { PompeiiService } from '../auth/pompeii.service';
@@ -88,6 +89,7 @@ describe('/access', () => {
     app = module.createNestApplication({ logger: false });
     app.useGlobalGuards(app.get(PompeiiAuthorizationGuard));
     await app.init();
+    await listenOnLoopback(app.getHttpServer());
     return pompeii;
   }
 

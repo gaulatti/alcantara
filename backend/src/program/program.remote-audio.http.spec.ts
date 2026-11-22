@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { listenOnLoopback } from '../../test/loopback-supertest';
 import type { App } from 'supertest/types';
 import { PompeiiAuthorizationGuard } from '../auth/pompeii-authorization.guard';
 import { PompeiiService } from '../auth/pompeii.service';
@@ -76,6 +77,7 @@ describe('remote audio read through the outbound-request policy', () => {
     app = module.createNestApplication();
     app.useGlobalGuards(app.get(PompeiiAuthorizationGuard));
     await app.init();
+    await listenOnLoopback(app.getHttpServer());
   });
 
   afterEach(async () => {
