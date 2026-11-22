@@ -74,6 +74,57 @@ const EMPTY_MEASUREMENT = {
   musicbrainzRecordingId: null,
 };
 
+/** Prisma codes of a database that is slow or unreachable, not of a query or schema that is wrong. */
+const TRANSIENT_PRISMA_CODES = new Set([
+  'P1001', // cannot reach the server
+  'P1002', // the server timed out
+  'P1008', // the operation timed out
+  'P1017', // the server closed the connection
+  'P2024', // no connection available from the pool in time
+  'P2034', // a transaction conflict or deadlock
+]);
+
+/**
+ * A raw query that failed (P2010) is transient only when the database itself
+ * says so: a connection exception (SQLSTATE class 08), the server shutting
+ * down or not accepting connections (57P01-57P03), too many connections
+ * (53300) or a cancelled/timed out statement (57014). A wrong query (42xxx) or
+ * anything the database does not code stays an error.
+ */
+const TRANSIENT_SQLSTATE = /^(08[0-9A-Z]{3}|57P0[123]|53300|57014)$/;
+
+/** The SQLSTATE the database gave a failed raw query, when it is a 5-character code. */
+function rawQuerySqlState(
+  error: Prisma.PrismaClientKnownRequestError,
+): string | null {
+  const code = (error.meta as { code?: unknown } | undefined)?.code;
+  return typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code) ? code : null;
+}
+
+/** The class of a caught value, with a Prisma error's code: safe to log, never the message. */
+function errorCause(error: unknown): string {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const sqlState = error.code === 'P2010' ? rawQuerySqlState(error) : null;
+    return `${error.name} ${error.code}${sqlState ? ` ${sqlState}` : ''}`;
+  }
+  if (error instanceof Error) return error.name || 'Error';
+  return typeof error;
+}
+
+function isTransientDatabaseError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2010') {
+      const sqlState = rawQuerySqlState(error);
+      return sqlState !== null && TRANSIENT_SQLSTATE.test(sqlState);
+    }
+    return TRANSIENT_PRISMA_CODES.has(error.code);
+  }
+  return (
+    error instanceof Prisma.PrismaClientInitializationError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError
+  );
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -141,11 +192,29 @@ export class MediaAnalysisService
     let worked = false;
     try {
       worked = await this.runOnce();
-    } catch {
-      this.logger.error('Media analysis run failed before analysing a file');
+    } catch (error) {
+      this.logRunFailure(error);
     }
     this.schedule(
       worked ? dutyCycleWaitMs(Date.now() - startedAt) : IDLE_POLL_MS,
+    );
+  }
+
+  // A run that failed on a transient database error (a timeout, a dropped
+  // connection) changed nothing a later run depends on: the asset is still
+  // unanalysed or its lease runs out, and the next cycle takes it up again.
+  // That is a warning with the cause class (#276); any other failure stays an
+  // error. Never the message, which can carry a query or a host.
+  private logRunFailure(error: unknown): void {
+    const cause = errorCause(error);
+    if (isTransientDatabaseError(error)) {
+      this.logger.warn(
+        `Media analysis run failed before analysing a file (${cause}); the next run retries it`,
+      );
+      return;
+    }
+    this.logger.error(
+      `Media analysis run failed before analysing a file (${cause})`,
     );
   }
 
