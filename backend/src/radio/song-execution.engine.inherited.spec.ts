@@ -115,6 +115,7 @@ function setup(songs: Array<Record<string, unknown>> = [CATALOGUE_SONG]) {
       songSequence: AUTO,
       songQueue: [],
       songRotation: null,
+      updatedAt: new Date('2026-11-20T21:13:00.000Z'),
     },
   };
   const prisma = {
@@ -129,6 +130,12 @@ function setup(songs: Array<Record<string, unknown>> = [CATALOGUE_SONG]) {
         ),
     },
     programState: {
+      updateMany: jest
+        .fn()
+        .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+          store.current = { ...(store.current ?? {}), ...data };
+          return Promise.resolve({ count: 1 });
+        }),
       findUnique: jest
         .fn()
         .mockImplementation(() => Promise.resolve(store.current)),
@@ -157,6 +164,8 @@ function setup(songs: Array<Record<string, unknown>> = [CATALOGUE_SONG]) {
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordCursorWrite: jest.fn(),
+    recordInheritedAdoption: jest.fn(),
     recordIntroTransition: jest.fn(),
     recordSongQueueAction: jest.fn(),
     recordSongQueueDepth: jest.fn(),
@@ -876,5 +885,297 @@ describe('SongExecutionEngine recognises its own earlier announcement after a re
     ).states.get('radio-1')!.activeSong;
     expect(active.introStatus).toBe('playing');
     expect(playedUrls(ctx)).toEqual([]);
+  });
+});
+
+// gaulatti/alcantara#277: every restart of 2026-11-22 replayed the song the
+// stored cursor pointed at (song_475, stored 40 h earlier), because the cursor
+// advanced only in memory and the song on air at the restart was recorded as a
+// catalogue song, whose end moves nothing.
+describe('SongExecutionEngine after a restart keeps the rotation where it was (#277)', () => {
+  const leaf = (id: string, url: string, songId?: number) => ({
+    id,
+    kind: 'preset',
+    title: id,
+    artist: 'Fictional',
+    coverUrl: '',
+    audioUrl: url,
+    durationMs: 200_000,
+    ...(songId === undefined ? {} : { songId }),
+  });
+  const L1 = leaf('l1', 'https://example.test/old-1.mp3', 11);
+  const L2 = leaf('l2', 'https://example.test/two.mp3', 12);
+  const L3 = leaf('l3', 'https://example.test/three.mp3', 13);
+  const stale = (activeItemId: string, items: unknown[]) => ({
+    ...sequenceOf(items, 'shuffle'),
+    activeItemId,
+    startedAt: Date.now(),
+  });
+  // The catalogue's current URL of song 11; the leaf kept the old one.
+  const CAT_11 = {
+    id: 11,
+    title: 'Eleven',
+    artist: 'Fictional',
+    audioUrl: 'https://example.test/new-1.mp3',
+    coverUrl: null,
+    durationMs: 190_000,
+  };
+  const activeItem = (ctx: ReturnType<typeof setup>) =>
+    (
+      ctx.engine as unknown as {
+        states: Map<string, { activeSong: { itemId: string } | null }>;
+      }
+    ).states.get('radio-1')!.activeSong?.itemId;
+
+  async function adopt(
+    ctx: ReturnType<typeof setup>,
+    sequence: unknown,
+    url: string,
+  ) {
+    ctx.engine.handleSequenceUpdated('radio-1', sequence);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('inherited', url, STARTED),
+    );
+    await flush(80);
+  }
+
+  it('adopts the song on air by its song id when the leaf kept an old URL, and its end plays the leaf after it, not the stale cursor', async () => {
+    const ctx = setup([CAT_11]);
+    ctx.radioService.announceNext.mockResolvedValue('rejected');
+    // The cursor is stale at l3; l1 is the song on air (its URL drifted).
+    await adopt(ctx, stale('l3', [L1, L2, L3]), CAT_11.audioUrl);
+    expect(activeItem(ctx)).toBe('l1');
+    expect(ctx.metrics.recordInheritedAdoption).toHaveBeenCalledWith('leaf');
+    expect(warnSpy).not.toHaveBeenCalled();
+    ctx.palazzo.state = idle(6);
+    end(ctx, 'inherited');
+    await flush(80);
+    jest.advanceTimersByTime(2000);
+    await flush(80);
+    expect(playedUrls(ctx)).toEqual([L2.audioUrl]);
+  });
+
+  it('prefers the leaf the cursor points at when the audio is on two leaves', async () => {
+    const ctx = setup([]);
+    ctx.radioService.announceNext.mockResolvedValue('rejected');
+    const twin = leaf('l1b', L2.audioUrl, 12);
+    await adopt(ctx, stale('l1b', [L1, L2, twin, L3]), L2.audioUrl);
+    expect(activeItem(ctx)).toBe('l1b');
+    expect(ctx.metrics.recordInheritedAdoption).toHaveBeenCalledWith(
+      'cursor_leaf',
+    );
+    ctx.palazzo.state = idle(6);
+    end(ctx, 'inherited');
+    await flush(80);
+    jest.advanceTimersByTime(2000);
+    await flush(80);
+    expect(playedUrls(ctx)).toEqual([L3.audioUrl]);
+  });
+
+  it('matches the cursor leaf by song id through the catalogue when its URL drifted and the song is on two leaves', async () => {
+    const ctx = setup([CAT_11]);
+    const twin = leaf('l1b', 'https://example.test/old-1b.mp3', 11);
+    await adopt(ctx, stale('l1b', [L1, twin, L2]), CAT_11.audioUrl);
+    expect(activeItem(ctx)).toBe('l1b');
+    expect(ctx.metrics.recordInheritedAdoption).toHaveBeenCalledWith(
+      'cursor_leaf',
+    );
+  });
+
+  it('keeps a catalogue song for a song id on two leaves when neither is the cursor', async () => {
+    const ctx = setup([CAT_11]);
+    const twin = leaf('l1b', 'https://example.test/old-1b.mp3', 11);
+    await adopt(ctx, stale('l2', [L1, twin, L2]), CAT_11.audioUrl);
+    expect(activeItem(ctx)).toBe('catalog:11');
+    expect(ctx.metrics.recordInheritedAdoption).toHaveBeenCalledWith(
+      'catalogue',
+    );
+  });
+
+  it('adopts by the cursor leaf with the default duration when the catalogue has none, and keeps a catalogue song when the cursor leaf has no audio', async () => {
+    const noDuration = { ...CAT_11, durationMs: null };
+    const withDefault = setup([noDuration]);
+    await adopt(withDefault, stale('l1', [L1, L2]), CAT_11.audioUrl);
+    const active = (
+      withDefault.engine as unknown as {
+        states: Map<
+          string,
+          { activeSong: { itemId: string; durationMs: number } | null }
+        >;
+      }
+    ).states.get('radio-1')!.activeSong;
+    expect(active).toMatchObject({ itemId: 'l1', durationMs: 300_000 });
+
+    const silent = setup([CAT_11]);
+    await adopt(silent, stale('no-audio', [NO_AUDIO]), CAT_11.audioUrl);
+    expect(activeItem(silent)).toBe('catalog:11');
+  });
+
+  it('logs how the song on air was recognised and how many leaves matched', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log');
+    const ctx = setup([CAT_11]);
+    await adopt(ctx, stale('l3', [L1, L2, L3]), CAT_11.audioUrl);
+    expect(
+      logSpy.mock.calls.some((call) =>
+        /Adopted inherited Palazzo playback inherited on radio-1 \(path=leaf urlMatches=0 songIdMatches=1\)/.test(
+          String(call[0]),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  describe('the cursor write after an advance', () => {
+    async function playTwoSongs(ctx: ReturnType<typeof setup>) {
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+      await flush(60);
+      const requestId = (
+        ctx.engine as unknown as {
+          states: Map<string, { activeSong: { playbackRequestId: string } }>;
+        }
+      ).states.get('radio-1')!.activeSong.playbackRequestId;
+      ctx.engine.handlePalazzoEvent('radio-1', {
+        type: 'track.started',
+        data: { playbackRequestId: requestId },
+      });
+      await flush(40);
+      ctx.palazzo.state = idle(6);
+      end(ctx, requestId);
+      await flush(120);
+      jest.advanceTimersByTime(2000);
+      await flush(120);
+    }
+
+    it('stores the advanced cursor, after the successor command, with the row it read', async () => {
+      const ctx = setup();
+      ctx.radioService.announceNext.mockResolvedValue('rejected');
+      await playTwoSongs(ctx);
+      expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+      expect(ctx.prisma.programState.updateMany).toHaveBeenCalledTimes(1);
+      const [args] = ctx.prisma.programState.updateMany.mock.calls[0] as [
+        {
+          where: { programId: string; updatedAt: Date };
+          data: { songSequence: { activeItemId: string } };
+        },
+      ];
+      expect(args.where).toEqual({
+        programId: 'radio-1',
+        updatedAt: new Date('2026-11-20T21:13:00.000Z'),
+      });
+      expect(args.data.songSequence.activeItemId).toBe('song-b');
+      expect(
+        ctx.radioService.playSong.mock.invocationCallOrder[1],
+      ).toBeLessThan(
+        ctx.prisma.programState.updateMany.mock.invocationCallOrder[0],
+      );
+      expect(ctx.metrics.recordCursorWrite).toHaveBeenCalledWith('succeeded');
+    });
+
+    it('writes nothing when an operator changed the sequence meanwhile', async () => {
+      const ctx = setup();
+      ctx.radioService.announceNext.mockResolvedValue('rejected');
+      ctx.store.current = {
+        ...(ctx.store.current ?? {}),
+        songSequence: sequenceOf([SONG_A, SONG_B, NO_AUDIO]),
+      };
+      await playTwoSongs(ctx);
+      expect(ctx.prisma.programState.updateMany).not.toHaveBeenCalled();
+      expect(ctx.metrics.recordCursorWrite).toHaveBeenCalledWith('conflict');
+    });
+
+    it('counts a conflict when the row changed between the read and the write', async () => {
+      const ctx = setup();
+      ctx.radioService.announceNext.mockResolvedValue('rejected');
+      ctx.prisma.programState.updateMany.mockResolvedValueOnce({ count: 0 });
+      await playTwoSongs(ctx);
+      expect(ctx.metrics.recordCursorWrite).toHaveBeenCalledWith('conflict');
+    });
+
+    it('warns with the cause class when the write fails and the song change is not delayed', async () => {
+      const ctx = setup();
+      ctx.radioService.announceNext.mockResolvedValue('rejected');
+      ctx.prisma.programState.updateMany.mockRejectedValueOnce(
+        new TypeError('connection reset'),
+      );
+      await playTwoSongs(ctx);
+      expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Cursor not stored on radio-1; the next song stores it (TypeError)',
+      );
+      expect(ctx.metrics.recordCursorWrite).toHaveBeenCalledWith('failed');
+    });
+
+    it('does not write after a queue entry or a catalogue song ends: they never moved the cursor', async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      ctx.engine.handlePalazzoSnapshot(
+        'radio-1',
+        playingAt('catalogue-track', CATALOGUE_SONG.audioUrl, STARTED),
+      );
+      await flush(80);
+      ctx.palazzo.state = idle(6);
+      end(ctx, 'catalogue-track');
+      await flush(120);
+      jest.advanceTimersByTime(2000);
+      await flush(120);
+      expect(ctx.prisma.programState.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing for a manual sequence and skips a write while one is in flight', async () => {
+      const ctx = setup();
+      const engine = ctx.engine as unknown as {
+        persistCursorBestEffort: (programId: string) => Promise<void>;
+        states: Map<
+          string,
+          { sequence: unknown; cursorWriteInFlight?: boolean }
+        >;
+      };
+      ctx.engine.handleSequenceUpdated(
+        'radio-1',
+        sequenceOf([SONG_A], 'manual'),
+      );
+      await engine.persistCursorBestEffort('radio-1');
+      await engine.persistCursorBestEffort('unknown-program');
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      engine.states.get('radio-1')!.cursorWriteInFlight = true;
+      await engine.persistCursorBestEffort('radio-1');
+      expect(ctx.prisma.programState.findUnique).not.toHaveBeenCalled();
+      expect(ctx.metrics.recordCursorWrite).not.toHaveBeenCalled();
+    });
+
+    it('reacts to nothing of its own write: no sequence reload, no event to consoles or overlays', async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const states = (
+        ctx.engine as unknown as {
+          states: Map<string, { sequence: unknown }>;
+        }
+      ).states;
+      const held = states.get('radio-1')!.sequence;
+      const reload = jest.spyOn(ctx.engine, 'handleSequenceUpdated');
+      const eventsBefore = ctx.events.length;
+      await (
+        ctx.engine as unknown as {
+          persistCursorBestEffort: (programId: string) => Promise<void>;
+        }
+      ).persistCursorBestEffort('radio-1');
+      expect(ctx.prisma.programState.updateMany).toHaveBeenCalledTimes(1);
+      expect(reload).not.toHaveBeenCalled();
+      expect(ctx.events).toHaveLength(eventsBefore);
+      expect(states.get('radio-1')!.sequence).toBe(held);
+    });
+
+    it('counts a conflict when the program row is gone', async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      ctx.prisma.programState.findUnique.mockResolvedValueOnce(null);
+      await (
+        ctx.engine as unknown as {
+          persistCursorBestEffort: (programId: string) => Promise<void>;
+        }
+      ).persistCursorBestEffort('radio-1');
+      expect(ctx.metrics.recordCursorWrite).toHaveBeenCalledWith('conflict');
+    });
   });
 });

@@ -6,6 +6,34 @@ describe('RadioMetricsService coverage', () => {
     metrics = new RadioMetricsService();
   });
 
+  it('counts cursor writes and inherited adoptions with bounded labels (#277)', () => {
+    metrics.recordCursorWrite('succeeded');
+    metrics.recordCursorWrite('succeeded');
+    metrics.recordCursorWrite('conflict');
+    metrics.recordCursorWrite('failed');
+    metrics.recordCursorWrite('other' as never);
+    metrics.recordInheritedAdoption('leaf');
+    metrics.recordInheritedAdoption('cursor_leaf');
+    metrics.recordInheritedAdoption('cursor_leaf');
+    metrics.recordInheritedAdoption('somewhere' as never);
+    const lines = metrics
+      .render()
+      .split('\n')
+      .filter((line) =>
+        /^alcantara_radio_(cursor_writes|inherited_adoptions)_total\{/.test(
+          line,
+        ),
+      );
+    expect(lines).toEqual([
+      'alcantara_radio_cursor_writes_total{result="succeeded"} 2',
+      'alcantara_radio_cursor_writes_total{result="failed"} 1',
+      'alcantara_radio_cursor_writes_total{result="conflict"} 1',
+      'alcantara_radio_inherited_adoptions_total{path="leaf"} 1',
+      'alcantara_radio_inherited_adoptions_total{path="cursor_leaf"} 2',
+      'alcantara_radio_inherited_adoptions_total{path="catalogue"} 0',
+    ]);
+  });
+
   it('counts monitor sessions per result and renders them', () => {
     metrics.recordMonitor('opened');
     metrics.recordMonitor('opened');

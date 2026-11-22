@@ -28,6 +28,7 @@ import {
   RadioMetricsService,
   type EngineResyncTrigger,
   type HandoffPath,
+  type InheritedAdoptionPath,
   type SongQueueActionResult,
   type SongRequestFailureReason,
 } from './radio-metrics.service';
@@ -40,9 +41,11 @@ import {
   advanceProgramSongSequence,
   collectHighRotationProgramSongLeaves,
   collectProgramSongLeaves,
+  countProgramSongLeavesByAudioUrl,
   findUniqueProgramSongLeafById,
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
+  programSongSequenceStructure,
   resolveProgramSongLeaf,
   type ProgramSongSequence,
   type ProgramResolvedSongLeaf,
@@ -338,6 +341,8 @@ interface SongEngineState {
   similarityWaitWarned?: boolean;
   /** The one pending wait for the similarity index, for the song on air (#277). */
   similarityWait?: { timer: NodeJS.Timeout; song: ActiveSong };
+  /** A cursor write is in flight: the next advance writes after it (#277). */
+  cursorWriteInFlight?: boolean;
   sequence: ProgramSongSequence | null;
   queue: ProgramSongQueueEntry[];
   rotation: ProgramSongRotationState;
@@ -2431,29 +2436,47 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const inheritedSong = findUniqueProgramSongLeafByAudioUrl(
+    const playingUrl = snapshot.track?.url ?? '';
+    const uniqueLeaf = findUniqueProgramSongLeafByAudioUrl(
       state.sequence,
-      snapshot.track?.url ?? '',
+      playingUrl,
     );
+    // The audio is in the sequence more than once, or not as one leaf: the
+    // leaf the cursor points at is still the song on air when its audio is the
+    // one playing (#277), so its end moves the cursor like any playlist song.
+    const cursorLeaf = uniqueLeaf
+      ? null
+      : this.cursorLeafPlaying(state, playingUrl, null);
+    const inheritedSong = uniqueLeaf ?? cursorLeaf;
     if (requestId && inheritedSong?.audioUrl) {
+      const path: InheritedAdoptionPath = uniqueLeaf ? 'leaf' : 'cursor_leaf';
+      this.metrics.recordInheritedAdoption(path);
       const inheritedQueueEntry =
         state.queue[0]?.active === true &&
         state.queue[0].playbackRequestId === requestId &&
         state.queue[0].itemId === inheritedSong.id
           ? state.queue[0]
           : null;
-      this.adoptPlayingTrack(programId, state, snapshot, requestId, {
-        token: `${inheritedSong.id}:${inheritedSong.audioUrl}`,
-        audioUrl: inheritedSong.audioUrl,
-        artist: inheritedSong.artist,
-        title: inheritedSong.title,
-        coverUrl: inheritedSong.coverUrl,
-        durationMs: inheritedSong.durationMs ?? 300000,
-        itemId: inheritedSong.id,
-        songId: inheritedSong.songId ?? null,
-        queueEntryId: inheritedQueueEntry?.id ?? null,
-        highRotation: inheritedSong.highRotation === true,
-      });
+      this.adoptPlayingTrack(
+        programId,
+        state,
+        snapshot,
+        requestId,
+        {
+          token: `${inheritedSong.id}:${inheritedSong.audioUrl}`,
+          audioUrl: inheritedSong.audioUrl,
+          artist: inheritedSong.artist,
+          title: inheritedSong.title,
+          coverUrl: inheritedSong.coverUrl,
+          durationMs: inheritedSong.durationMs ?? 300000,
+          itemId: inheritedSong.id,
+          songId: inheritedSong.songId ?? null,
+          queueEntryId: inheritedQueueEntry?.id ?? null,
+          highRotation: inheritedSong.highRotation === true,
+        },
+        undefined,
+        `path=${path} urlMatches=${countProgramSongLeavesByAudioUrl(state.sequence, playingUrl)}`,
+      );
       return;
     }
 
@@ -2538,6 +2561,44 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
     if (matches.length === 1) {
       const song = matches[0];
+      // The catalogue knows the song by id: a playlist leaf keeps the audio URL
+      // it was saved with, which the catalogue may since have changed (2026-11-22:
+      // 0 URL matches for songs that did play from the playlist), so the leaf is
+      // found by song id as well. The cursor's leaf wins when it is the song;
+      // else the only leaf with that song id; two leaves and none of them the
+      // cursor's is not decided here and stays a catalogue song.
+      const byCursor = this.cursorLeafPlaying(state, song.audioUrl, song.id);
+      const byId = collectProgramSongLeaves(state.sequence).filter(
+        (candidate) => candidate.songId === song.id,
+      );
+      const leaf =
+        byCursor ??
+        (byId.length === 1 && this.isAutomatic(state) ? byId[0] : null);
+      if (leaf) {
+        this.metrics.recordInheritedAdoption(byCursor ? 'cursor_leaf' : 'leaf');
+        this.adoptPlayingTrack(
+          programId,
+          state,
+          snapshot,
+          requestId,
+          {
+            token: `${leaf.id}:${song.audioUrl}`,
+            audioUrl: song.audioUrl,
+            artist: song.artist,
+            title: song.title,
+            coverUrl: song.coverUrl ?? '',
+            durationMs: song.durationMs ?? 300000,
+            itemId: leaf.id,
+            songId: song.id,
+            queueEntryId: null,
+            highRotation: leaf.highRotation === true,
+          },
+          Date.now() - receivedAt,
+          `path=${byCursor ? 'cursor_leaf' : 'leaf'} urlMatches=${countProgramSongLeavesByAudioUrl(state.sequence, song.audioUrl)} songIdMatches=${byId.length}`,
+        );
+        return;
+      }
+      this.metrics.recordInheritedAdoption('catalogue');
       this.adoptPlayingTrack(
         programId,
         state,
@@ -2559,6 +2620,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           highRotation: false,
         },
         Date.now() - receivedAt,
+        `path=catalogue urlMatches=${countProgramSongLeavesByAudioUrl(state.sequence, song.audioUrl)} songIdMatches=${byId.length}`,
       );
       return;
     }
@@ -2636,6 +2698,34 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
    * command over it. Used for a track matching the program sequence and for
    * one recognised in the catalogue (#272).
    */
+  /**
+   * The leaf the rotation's cursor points at, when it is the song on air: the
+   * same audio, or the same catalogue song. Null for a manual sequence, no
+   * cursor leaf, or another song.
+   */
+  private cursorLeafPlaying(
+    state: SongEngineState,
+    audioUrl: string,
+    songId: number | null,
+  ): ProgramResolvedSongLeaf | null {
+    const sequence = state.sequence;
+    if (
+      !sequence ||
+      (sequence.mode !== 'autoplay' && sequence.mode !== 'shuffle')
+    )
+      return null;
+    const leaf = resolveProgramSongLeaf(sequence, sequence.startedAt);
+    if (!leaf?.audioUrl) return null;
+    if (leaf.audioUrl === audioUrl) return leaf;
+    return songId !== null && leaf.songId === songId ? leaf : null;
+  }
+
+  private isAutomatic(state: SongEngineState): boolean {
+    return (
+      state.sequence?.mode === 'autoplay' || state.sequence?.mode === 'shuffle'
+    );
+  }
+
   private adoptPlayingTrack(
     programId: string,
     state: SongEngineState,
@@ -2653,7 +2743,8 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       queueEntryId: string | null;
       highRotation: boolean;
     },
-    lookupMs?: number,
+    lookupMs: number | undefined,
+    detail: string,
   ): void {
     const reportedMs = Math.max(0, Math.round(snapshot.positionSeconds * 1000));
     const parsedStartedAt = Date.parse(snapshot.track?.startedAt ?? '');
@@ -2698,7 +2789,7 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     };
     state.busyWithForeignTrack = false;
     this.logger.log(
-      `Adopted inherited Palazzo playback ${requestId} on ${programId}`,
+      `Adopted inherited Palazzo playback ${requestId} on ${programId} (${detail})`,
     );
     this.metrics.recordTrackTransition('adopted');
     this.recordHighRotationStarted(
@@ -2858,13 +2949,23 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Authoritative end on ${programId}: source=${endedSong.queueEntryId ? 'queue' : 'playlist'} mode=${nextSequence?.mode ?? 'none'} loop=${nextSequence?.loop ?? false} cursor=${nextSequence?.activeItemId ?? 'none'} successor=${hasSuccessor}`,
     );
+    // The cursor moved at this end only for a playlist song: a queue entry or a
+    // song picked from outside the playlist never moved it.
+    const cursorAdvanced =
+      !endedSong.queueEntryId &&
+      !endedSong.itemId.startsWith(CATALOG_ITEM_PREFIX) &&
+      (nextSequence?.mode === 'autoplay' || nextSequence?.mode === 'shuffle');
     void this.continueAfterAuthoritativeEnd(
       programId,
       endedSong.queueEntryId,
       nextSequence,
       hasSuccessor,
       endedSong.playbackRequestId,
-    );
+    ).finally(() => {
+      // After the successor's command (or its promotion), never before it, and
+      // never awaited by it (#277).
+      if (cursorAdvanced) void this.persistCursorBestEffort(programId);
+    });
     return true;
   }
 
@@ -2975,6 +3076,57 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     }
 
     this.publishStopped(programId);
+  }
+
+  /**
+   * Writes where the rotation is, so a restart finds it there (#277). The
+   * cursor otherwise advances only in memory unless a queue exists, and every
+   * boot loaded whatever was stored last: song_475 on 2026-11-22, replayed
+   * after each deploy. Best effort and off the song change: a failure is a
+   * warning with the cause class and the next advance writes again. The stored
+   * sequence is written only if it is the sequence the engine holds apart from
+   * the cursor (an operator edit is never overwritten) and only if the row did
+   * not change since it was read (the update names its `updatedAt`).
+   */
+  private async persistCursorBestEffort(programId: string): Promise<void> {
+    const state = this.states.get(programId);
+    const sequence = state?.sequence;
+    if (!state || !sequence || state.cursorWriteInFlight) return;
+    if (sequence.mode !== 'autoplay' && sequence.mode !== 'shuffle') return;
+    state.cursorWriteInFlight = true;
+    try {
+      const held = normalizeProgramSongSequence(
+        JSON.parse(JSON.stringify(sequence)) as unknown,
+      );
+      const row = await this.prisma.programState.findUnique({
+        where: { programId },
+        select: { songSequence: true, updatedAt: true },
+      });
+      const stored = row
+        ? normalizeProgramSongSequence(row.songSequence)
+        : null;
+      if (
+        !row ||
+        !held ||
+        programSongSequenceStructure(stored) !==
+          programSongSequenceStructure(held)
+      ) {
+        this.metrics.recordCursorWrite('conflict');
+        return;
+      }
+      const { count } = await this.prisma.programState.updateMany({
+        where: { programId, updatedAt: row.updatedAt },
+        data: { songSequence: held as unknown as Prisma.InputJsonValue },
+      });
+      this.metrics.recordCursorWrite(count === 1 ? 'succeeded' : 'conflict');
+    } catch (error) {
+      this.metrics.recordCursorWrite('failed');
+      this.logger.warn(
+        `Cursor not stored on ${programId}; the next song stores it (${errorClass(error)})`,
+      );
+    } finally {
+      state.cursorWriteInFlight = false;
+    }
   }
 
   private async persistPlaylistCursorForQueue(

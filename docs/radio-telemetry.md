@@ -85,6 +85,18 @@ root playback routes.
   Looped playlists wrap; explicitly non-looped playlists publish stopped at
   their end. A missing song-sequence mode means autoplay, while an explicit
   `manual` mode remains an operator stop boundary.
+- The advanced cursor is stored (#277): after each playlist song's end, once the
+  successor's command or promotion is done and never before it, the engine
+  writes the sequence to `ProgramState.songSequence`, best effort (a failure is
+  a WARN with the cause class and the next advance writes again). The write is
+  skipped when the stored sequence differs from the held one apart from the
+  cursor (an operator edit wins), and names the `updatedAt` it read. A restart
+  therefore finds the cursor on the song that was playing: the song on air is
+  adopted as that leaf (`Adopted inherited Palazzo playback … (path=…
+  urlMatches=… songIdMatches=…)`) and its end advances normally. A leaf is
+  matched by audio URL, then by catalogue song id; with the audio or song id on
+  several leaves the cursor's leaf wins, and a song that is none of these stays
+  a catalogue song whose end moves nothing.
 - Play Next is a persisted FIFO queue of references to playable playlist item
   IDs. Duplicate song references are allowed as distinct queue entries. A
   normal track end advances and persists the underlying playlist cursor before
@@ -491,6 +503,14 @@ started, ended, failed, and mismatched intro lifecycle events,
 not load (`timeout`, `other`; both exposed from 0),
 `alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
 reorder, consume, cursor persistence, rejection, and persistence failure,
+`alcantara_radio_cursor_writes_total{result}` for the write of the playlist cursor
+after it advanced (`succeeded`, `failed`: the database refused or timed out and
+the next song is not delayed, `conflict`: the stored sequence was edited
+meanwhile or changed under the write, so nothing was written; all exposed from 0),
+`alcantara_radio_inherited_adoptions_total{path}` for the song on air at a restart
+by how it was recognised (`leaf`: the one sequence leaf with its audio or song
+id, `cursor_leaf`: the leaf the cursor points at when the audio or song id is on
+several leaves, `catalogue`: the song catalogue outside the cursor; all from 0),
 `alcantara_radio_song_queue_depth` for the total number of queued entries,
 `alcantara_radio_high_rotation_actions_total{result}` for selection, confirmed
 play, repeat-gap skips, unmet opportunities, and persistence failures,
