@@ -709,6 +709,21 @@ describe('MediaAnalysisService schedule', () => {
       service.onModuleDestroy();
     });
 
+    it('names an error with no name as Error', async () => {
+      jest.useFakeTimers();
+      const { service, prisma } = setup();
+      const nameless = new Error('boom');
+      nameless.name = '';
+      prisma.$queryRaw.mockRejectedValueOnce(nameless);
+
+      await service.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+      expect(Logger.prototype.error).toHaveBeenCalledWith(
+        'Media analysis run failed before analysing a file (Error)',
+      );
+      service.onModuleDestroy();
+    });
+
     it('names a thrown value that is not an Error by its type', async () => {
       jest.useFakeTimers();
       const { service, prisma } = setup();
