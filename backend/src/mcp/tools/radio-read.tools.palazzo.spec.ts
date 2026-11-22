@@ -541,7 +541,10 @@ async function build() {
     lastSnapshotAt: '2026-11-17T11:58:00.000Z',
     degraded: false,
   };
-  const telemetry = { getStatus: jest.fn(() => status) };
+  const telemetry = {
+    getStatus: jest.fn(() => status),
+    getStatusWithReason: jest.fn(async () => status),
+  };
   const principal = {
     subject: 'sub-1',
     principalId: 'principal-1',

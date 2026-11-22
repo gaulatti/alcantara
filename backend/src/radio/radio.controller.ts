@@ -103,7 +103,7 @@ export class RadioController {
 
   @Get(':programId/palazzo-status')
   async getPalazzoStatus(@Param('programId') programId: string) {
-    return this.palazzoTelemetry.getStatus(programId);
+    return this.palazzoTelemetry.getStatusWithReason(programId);
   }
 
   @Get(':programId/output-confidence')

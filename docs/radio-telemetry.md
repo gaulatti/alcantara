@@ -182,7 +182,24 @@ distinguishable from appliance unavailability.
 
 `GET /radio/:programId/palazzo-status` returns the connection state, instance
 identity, telemetry freshness, and degraded flag per program. The radio panel
-surfaces this live. `radio_leg_status` and raw `palazzo_audio_levels` remain
+surfaces this live.
+
+When the program has no telemetry client the endpoint answers an `unavailable`
+status instead of `null` (#257): `connection: "unavailable"`, `degraded: false`,
+a plain-language `detail`, an empty `palazzoUrl` (a rejected URL is never
+echoed), null instance and timestamps, and a bounded `reason`:
+`not-configured` (no radio settings, no Palazzo URL, or a program that is not
+radio or both), `disabled` (radio disabled in the program's settings),
+`url-rejected` (the URL failed the allowlist when the client was started; see
+`alcantara_palazzo_config_rejected_total`) or `deploy-candidate` (a deploy
+candidate starts no telemetry). A configured, enabled program whose client has
+not started yet answers `unavailable` with no `reason`. A live status carries no
+`reason`. The set is additive: the console shows a known reason in plain words
+("Engine unavailable: disabled in settings") and ignores an unknown, missing or
+null one, which reads exactly as before, so an old console against this backend
+(it reads only `connection`, `degraded` and `detail`) and this console against
+an old backend (a `null` body) both keep working. The `console-fixture` state
+`radio-not-configured` renders the reason. `radio_leg_status` and raw `palazzo_audio_levels` remain
 available to realtime consumers; the same Palazzo levels are also normalized
 into the existing `audio_meter_update` contract so the Radio desk's Song,
 Audio clips, and Main meters show the appliance's actual output. Playback
@@ -318,6 +335,15 @@ scrape surface is the backend's HTTP port with two routes behind the same
 bearer value never appears in metric labels, logs, build arguments or the
 container environment, and the Prometheus scrape job and its credential file
 belong to the observability repository (milano).
+
+### Rejected Palazzo configuration (#257)
+
+`alcantara_palazzo_config_rejected_total` (no labels) counts Palazzo URLs the
+allowlist rejected when a program's telemetry client was started, at startup or
+when its radio settings change. It increments once per rejection, never when the
+status is read. A program whose URL is rejected has no engine until its settings
+change; its status says `url-rejected`. The URL is neither a label nor part of
+the log line (`Palazzo URL configuration rejected for <program>`).
 
 ### Degraded engine paths (#237)
 

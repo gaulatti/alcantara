@@ -33,6 +33,7 @@ function build() {
   const metrics = {
     recordDegradedPrograms: jest.fn(),
     recordStaleTelemetryPrograms: jest.fn(),
+    recordPalazzoConfigRejected: jest.fn(),
   };
   const machineClient = {
     validateBaseUrl: jest.fn((value: string) => `approved:${value}`),
@@ -122,7 +123,7 @@ describe('PalazzoRadioTelemetryService coverage', () => {
     });
 
     it('logs and skips when the palazzo url is not approved', async () => {
-      const { service, prisma, engine, machineClient } = build();
+      const { service, prisma, engine, machineClient, metrics } = build();
       machineClient.validateBaseUrl.mockImplementation(() => {
         throw new Error('rejected');
       });
@@ -136,6 +137,7 @@ describe('PalazzoRadioTelemetryService coverage', () => {
       expect(service['logger'].error).toHaveBeenCalledWith(
         'Palazzo URL configuration rejected for r1',
       );
+      expect(metrics.recordPalazzoConfigRejected).toHaveBeenCalledTimes(1);
     });
 
     it('wires client callbacks to the engine and status tracking', async () => {

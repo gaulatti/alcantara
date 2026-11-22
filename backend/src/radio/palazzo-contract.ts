@@ -161,6 +161,32 @@ export interface PalazzoProgramStatus {
   detail: string | null;
 }
 
+/**
+ * Why a program has no Palazzo telemetry client (gaulatti/alcantara#257). A
+ * closed, additive set: a consumer ignores a value it does not know.
+ */
+export type PalazzoUnavailableReason =
+  | 'not-configured'
+  | 'disabled'
+  | 'url-rejected'
+  | 'deploy-candidate';
+
+/**
+ * What `GET /radio/:programId/palazzo-status` answers when the program has no
+ * telemetry client, in place of the former `null`. It keeps the fields an older
+ * console reads (`connection`, `degraded`, `detail`); `reason` is absent only
+ * for the brief window where the client has not started yet. `palazzoUrl` is
+ * always empty: a rejected URL is never echoed.
+ */
+export interface PalazzoUnavailableStatus extends Omit<
+  PalazzoProgramStatus,
+  'programType' | 'connection'
+> {
+  programType: PalazzoProgramType | null;
+  connection: 'unavailable';
+  reason?: PalazzoUnavailableReason;
+}
+
 export interface PalazzoTrackStartedData {
   playbackRequestId: string;
   title: string | null;

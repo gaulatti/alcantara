@@ -1144,3 +1144,60 @@ it("lines the cartwall alerts up with the search box and pads", () => {
   expect(padding(".console-cart-search")).toEqual(["10px 12px 0"]);
   expect(padding(".console-cart-grid")[0]).toMatch(/^10px 12px/);
 });
+
+// gaulatti/alcantara#257: the backend says why there is no engine.
+const unavailableStatus = (extra: Record<string, unknown>) => ({
+  programId: "radio-demo",
+  programType: "radio",
+  palazzoUrl: "",
+  instanceId: null,
+  connection: "unavailable",
+  lastEventAt: null,
+  lastSnapshotAt: null,
+  degraded: false,
+  detail: "Radio is disabled in this program’s settings",
+  ...extra,
+});
+
+async function mountLiveWith(palazzo: Answer) {
+  radioApi({
+    "/status": json({ running: true, uptime: 1000 }),
+    "/palazzo-status": palazzo,
+    "/output-confidence": json(null, 404),
+    "/recovery": json(null, 404),
+  });
+  vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
+  mount(liveProps());
+  await screen.findByText("Stream connected");
+}
+
+it.each([
+  ["not-configured", "Engine unavailable: not configured"],
+  ["disabled", "Engine unavailable: disabled in settings"],
+  ["url-rejected", "Engine unavailable: URL not allowed"],
+  ["deploy-candidate", "Engine unavailable: deploy candidate"],
+])("says why the engine is unavailable: %s", async (reason, text) => {
+  await mountLiveWith(json(unavailableStatus({ reason })));
+  expect(await screen.findByText(text)).toBeVisible();
+  // The backend's sentence is the tooltip, as with every status detail.
+  expect(screen.getByText(text)).toHaveAttribute(
+    "title",
+    "Radio is disabled in this program’s settings",
+  );
+});
+
+it("keeps today's wording for an unavailable status without a reason, with an unknown reason and for a null body", async () => {
+  await mountLiveWith(json(unavailableStatus({})));
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  cleanup();
+  await mountLiveWith(json(unavailableStatus({ reason: "from-the-future" })));
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+  cleanup();
+  await mountLiveWith(json(null));
+  expect(await screen.findByText("Engine unavailable")).toBeVisible();
+});
+
+it("renders an old backend's live status exactly as before (no reason field)", async () => {
+  await mountLiveWith(json({ ...props().fixtureData!.palazzo }));
+  expect(await screen.findByText("Engine connected")).toBeVisible();
+});
