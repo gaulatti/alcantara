@@ -1,6 +1,9 @@
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { RadioService } from './radio.service';
+import {
+  PalazzoInstantRefusedException,
+  RadioService,
+} from './radio.service';
 import { PalazzoMachineError } from './palazzo-machine.client';
 
 const BUCKET = 'media-bucket';
@@ -1238,6 +1241,29 @@ describe('RadioService coverage', () => {
       await expect(service.playInstant('p', 'u')).rejects.toThrow(
         new BadGatewayException('Palazzo rejected the instant'),
       );
+    });
+
+    it('marks only a 409 refusal as retryable', async () => {
+      const { service, palazzo } = build();
+      const outcome = async (error: unknown) => {
+        palazzo.playInstant.mockRejectedValueOnce(error);
+        return service
+          .playInstant('p', 'u')
+          .catch((e: PalazzoInstantRefusedException) => e);
+      };
+      const notReady = await outcome(new PalazzoMachineError('rejected', 409));
+      expect(notReady).toBeInstanceOf(PalazzoInstantRefusedException);
+      expect(notReady).toBeInstanceOf(BadGatewayException);
+      expect(notReady.retryable).toBe(true);
+      expect(notReady.message).toBe('Palazzo rejected the instant');
+      for (const error of [
+        new PalazzoMachineError('rejected', 400),
+        new PalazzoMachineError('rejected'),
+        new PalazzoMachineError('unavailable', 409),
+        new Error('x'),
+      ]) {
+        expect((await outcome(error)).retryable).toBe(false);
+      }
     });
 
     it('updates the mixer and maps failures', async () => {

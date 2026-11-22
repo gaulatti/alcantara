@@ -196,17 +196,19 @@ export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
  * A bumper spot by how it reached Palazzo: `announced` with the next song
  * (gaulatti/palazzo#50) or `command` (played after the end, then the song by
  * command); `sent` when Palazzo took it, `played` on Palazzo's
- * instant.started for it, `failed` when Palazzo did not take a command spot.
+ * instant.started for it, `failed` when Palazzo did not take a command spot,
+ * `retried` for each retry of a command spot Palazzo refused as not ready yet
+ * (gaulatti/alcantara#274).
  */
 export type BumperPath = 'announced' | 'command';
-export type BumperResult = 'sent' | 'played' | 'failed';
+export type BumperResult = 'sent' | 'played' | 'failed' | 'retried';
 const BUMPER_PATHS: BumperPath[] = ['announced', 'command'];
-const BUMPER_RESULTS: BumperResult[] = ['sent', 'played', 'failed'];
-/** `failed` is a command spot Palazzo did not take; an announced spot travels with its announcement, whose refusal is counted as a skip. */
+const BUMPER_RESULTS: BumperResult[] = ['sent', 'played', 'failed', 'retried'];
+/** `failed` and `retried` are command spots; an announced spot travels with its announcement, whose refusal is counted as a skip. */
 const isBumperSeries = (path: BumperPath, result: BumperResult): boolean =>
   BUMPER_PATHS.includes(path) &&
   BUMPER_RESULTS.includes(result) &&
-  !(path === 'announced' && result === 'failed');
+  !(path === 'announced' && (result === 'failed' || result === 'retried'));
 
 export type SnapshotReconciliationResult =
   | 'accepted'
@@ -897,7 +899,7 @@ export class RadioMetricsService {
       );
     }
     lines.push(
-      '# HELP alcantara_radio_bumpers_total Bumper spots by how they reached Palazzo (announced with the next song, or command after the end) and result (sent, played on Palazzo, failed: a command spot Palazzo did not take).',
+      '# HELP alcantara_radio_bumpers_total Bumper spots by how they reached Palazzo (announced with the next song, or command after the end) and result (sent, played on Palazzo, failed: a command spot Palazzo did not take, retried: a command spot Palazzo refused as not ready yet and the engine sent again).',
       '# TYPE alcantara_radio_bumpers_total counter',
     );
     for (const path of BUMPER_PATHS) {

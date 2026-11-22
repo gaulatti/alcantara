@@ -55,6 +55,19 @@ export interface RadioMixerPayload {
   instantMuted: boolean;
 }
 
+/**
+ * Palazzo refused an instant (gaulatti/alcantara#274). The answer is the same
+ * 502 as before; `retryable` is true only when Palazzo answered 409 (its
+ * `automation is not ready` answer, given until its lifecycle is ready after a
+ * restart), so a caller can retry that one case and never one whose outcome is
+ * unknown (a timeout or a network error carries no answer).
+ */
+export class PalazzoInstantRefusedException extends BadGatewayException {
+  constructor(readonly retryable: boolean) {
+    super('Palazzo rejected the instant');
+  }
+}
+
 @Injectable()
 export class RadioService {
   private readonly logger = new Logger(RadioService.name);
@@ -812,7 +825,11 @@ export class RadioService {
       });
     } catch (error) {
       this.logMachineFailure('playInstant', programId, error);
-      throw new BadGatewayException('Palazzo rejected the instant');
+      throw new PalazzoInstantRefusedException(
+        error instanceof PalazzoMachineError &&
+          error.reason === 'rejected' &&
+          error.status === 409,
+      );
     }
   }
 
