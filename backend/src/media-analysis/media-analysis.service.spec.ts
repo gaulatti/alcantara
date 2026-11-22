@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method, @typescript-eslint/require-await -- Jest mocks are intentionally loosely typed. */
 import { Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -617,11 +618,109 @@ describe('MediaAnalysisService schedule', () => {
     await service.onApplicationBootstrap();
     await jest.advanceTimersByTimeAsync(START_DELAY_MS);
     expect(Logger.prototype.error).toHaveBeenCalledWith(
-      'Media analysis run failed before analysing a file',
+      'Media analysis run failed before analysing a file (Error)',
     );
     await jest.advanceTimersByTimeAsync(IDLE_POLL_MS);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     service.onModuleDestroy();
+  });
+
+  describe('a transient database error at the start of a run (#276)', () => {
+    const transient: Array<[string, () => Error, string]> = [
+      [
+        'a timed out raw query',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('Operation has timed out', {
+            code: 'P2010',
+            clientVersion: 'test',
+          }),
+        'PrismaClientKnownRequestError P2010',
+      ],
+      [
+        'a pool timeout',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('pool timeout', {
+            code: 'P2024',
+            clientVersion: 'test',
+          }),
+        'PrismaClientKnownRequestError P2024',
+      ],
+      [
+        'a database that cannot be reached',
+        () => new Prisma.PrismaClientInitializationError('unreachable', 'test'),
+        'PrismaClientInitializationError',
+      ],
+      [
+        'an unknown request error',
+        () =>
+          new Prisma.PrismaClientUnknownRequestError('connection reset', {
+            clientVersion: 'test',
+          }),
+        'PrismaClientUnknownRequestError',
+      ],
+    ];
+
+    it.each(transient)(
+      'warns with the cause class for %s, never errors, and the next run analyses the file',
+      async (_name, make, cause) => {
+        jest.useFakeTimers();
+        const { service, prisma, analyzer } = setup([[candidate()]]);
+        prisma.$queryRaw.mockRejectedValueOnce(make());
+
+        await service.onApplicationBootstrap();
+        await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+        expect(Logger.prototype.warn).toHaveBeenCalledWith(
+          `Media analysis run failed before analysing a file (${cause}); the next run retries it`,
+        );
+        expect(Logger.prototype.error).not.toHaveBeenCalled();
+        expect(analyzer.analyze).not.toHaveBeenCalled();
+        expect(prisma.mediaAssetAnalysis.create).not.toHaveBeenCalled();
+
+        await jest.advanceTimersByTimeAsync(IDLE_POLL_MS);
+        expect(analyzer.analyze).toHaveBeenCalledWith(
+          URL_A,
+          ANALYSIS_TIMEOUT_MS,
+        );
+        expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ status: 'success' }),
+          }),
+        );
+        service.onModuleDestroy();
+      },
+    );
+
+    it('keeps ERROR for a failure that is not transient, with its class and never its message', async () => {
+      jest.useFakeTimers();
+      const { service, prisma } = setup();
+      prisma.$queryRaw.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError(
+          'The table MediaAsset does not exist',
+          { code: 'P2021', clientVersion: 'test' },
+        ),
+      );
+
+      await service.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+      expect(Logger.prototype.error).toHaveBeenCalledWith(
+        'Media analysis run failed before analysing a file (PrismaClientKnownRequestError P2021)',
+      );
+      expect(Logger.prototype.warn).not.toHaveBeenCalled();
+      service.onModuleDestroy();
+    });
+
+    it('names a thrown value that is not an Error by its type', async () => {
+      jest.useFakeTimers();
+      const { service, prisma } = setup();
+      prisma.$queryRaw.mockRejectedValueOnce('boom');
+
+      await service.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+      expect(Logger.prototype.error).toHaveBeenCalledWith(
+        'Media analysis run failed before analysing a file (string)',
+      );
+      service.onModuleDestroy();
+    });
   });
 
   it('stops cleanly when destroyed before it was scheduled, or while a run is in flight', async () => {

@@ -74,6 +74,34 @@ const EMPTY_MEASUREMENT = {
   musicbrainzRecordingId: null,
 };
 
+/** Prisma codes of a database that is slow or unreachable, not of a query or schema that is wrong. */
+const TRANSIENT_PRISMA_CODES = new Set([
+  'P1001', // cannot reach the server
+  'P1002', // the server timed out
+  'P1008', // the operation timed out
+  'P1017', // the server closed the connection
+  'P2010', // a raw query failed (the nextCandidate query)
+  'P2024', // no connection available from the pool in time
+  'P2034', // a transaction conflict or deadlock
+]);
+
+/** The class of a caught value, with a Prisma error's code: safe to log, never the message. */
+function errorCause(error: unknown): string {
+  if (error instanceof Prisma.PrismaClientKnownRequestError)
+    return `${error.name} ${error.code}`;
+  if (error instanceof Error) return error.name || 'Error';
+  return typeof error;
+}
+
+function isTransientDatabaseError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError)
+    return TRANSIENT_PRISMA_CODES.has(error.code);
+  return (
+    error instanceof Prisma.PrismaClientInitializationError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError
+  );
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -141,11 +169,29 @@ export class MediaAnalysisService
     let worked = false;
     try {
       worked = await this.runOnce();
-    } catch {
-      this.logger.error('Media analysis run failed before analysing a file');
+    } catch (error) {
+      this.logRunFailure(error);
     }
     this.schedule(
       worked ? dutyCycleWaitMs(Date.now() - startedAt) : IDLE_POLL_MS,
+    );
+  }
+
+  // A run that failed on a transient database error (a timeout, a dropped
+  // connection) changed nothing a later run depends on: the asset is still
+  // unanalysed or its lease runs out, and the next cycle takes it up again.
+  // That is a warning with the cause class (#276); any other failure stays an
+  // error. Never the message, which can carry a query or a host.
+  private logRunFailure(error: unknown): void {
+    const cause = errorCause(error);
+    if (isTransientDatabaseError(error)) {
+      this.logger.warn(
+        `Media analysis run failed before analysing a file (${cause}); the next run retries it`,
+      );
+      return;
+    }
+    this.logger.error(
+      `Media analysis run failed before analysing a file (${cause})`,
     );
   }
 
