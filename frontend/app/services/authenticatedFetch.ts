@@ -9,6 +9,9 @@ class SessionUnavailableError extends Error {}
 export const isPublicProgramRendererPath = (pathname: string): boolean =>
   /^\/program\/[^/]+\/?$/.test(pathname);
 
+/** The public MCP instructions page (gaulatti/bastille#35): it reads one public list and must not need a session. */
+export const isPublicConnectPath = (pathname: string): boolean => /^\/connect\/?$/.test(pathname);
+
 const isBackendRequest = (input: RequestInfo | URL): boolean => {
   const requestUrl =
     typeof input === "string"
@@ -77,7 +80,7 @@ export const installAuthenticatedFetch = (): void => {
 
   installed = true;
   globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) =>
-    isBackendRequest(input) && !isPublicProgramRendererPath(window.location.pathname)
+    isBackendRequest(input) && !isPublicProgramRendererPath(window.location.pathname) && !isPublicConnectPath(window.location.pathname)
       ? authenticatedBackendFetch(input, init)
       : nativeFetch(input, init);
 };

@@ -27,12 +27,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router";
 import { AppPage } from "../components/AppPage";
+import { AudioLibrary } from "../components/media/AudioLibrary";
 import { InlineLabelCreator } from "../components/media/InlineLabelCreator";
 import { MediaLibraryPage } from "../components/media/MediaLibraryPage";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { authFetch } from "../services/api";
 import { fetchAllMediaLabels } from "../services/mediaLabels";
 import type { ProgramType } from "../utils/appNavigation";
+import type { AssetAnalysisField } from "../utils/audioLibrary";
 import { getMediaLibraryView, type MediaType } from "../utils/mediaLibrary";
 import type { Route } from "./+types/media";
 
@@ -70,6 +72,8 @@ interface MediaAsset {
   } | null;
   coverForSongIds: number[];
   transition: { id: number; cutPointMs: number } | null;
+  /** Sent for audio assets once the server includes it; absent until then. */
+  analysis?: AssetAnalysisField;
   updatedAt: string;
 }
 
@@ -755,7 +759,75 @@ export default function MediaRoute() {
       visibleSections={visibleSections}
       width="full"
     >
-      {!isLabelsView ? (
+      {!isLabelsView && mediaType === "AUDIO" ? (
+        <Card className="space-y-4">
+          <AudioLibrary
+            assets={assets}
+            total={totalCount}
+            loading={isLoading}
+            capability={capability}
+            onCapabilityChange={(value) =>
+              setCapability(value as MediaCapability | "")
+            }
+            search={search}
+            onSearchChange={setSearch}
+            filtered={Boolean(debouncedSearch || capability)}
+            selectedIds={selectedAssetIds}
+            onToggleSelected={(id, checked) =>
+              setSelectedAssetIds((current) => {
+                const next = new Set(current);
+                if (checked) next.add(id);
+                else next.delete(id);
+                return next;
+              })
+            }
+            canDelete={(asset) =>
+              !asset.instant &&
+              !asset.song &&
+              asset.coverForSongIds.length === 0 &&
+              !asset.transition
+            }
+            onDelete={(asset) => void deleteStandaloneAsset(asset)}
+            bulk={
+              <div className="flex min-w-[18rem] flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={bulkLabelId}
+                    onChange={setBulkLabelId}
+                    options={[
+                      { value: "", label: "Choose label…" },
+                      ...labels.map((label) => ({
+                        value: label.id,
+                        label: label.name,
+                      })),
+                    ]}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => void applyBulkLabel()}
+                    disabled={!bulkLabelId}
+                  >
+                    <Tag size={14} />
+                    Label {selectedAssetIds.size}
+                  </Button>
+                </div>
+                <InlineLabelCreator
+                  onCreate={(name) => createInlineLabel(name, setBulkLabelId)}
+                />
+              </div>
+            }
+          />
+          {totalPages > 1 ? (
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              hasNextPage={page < totalPages}
+              hasPrevPage={page > 1}
+              onPageChange={setPage}
+            />
+          ) : null}
+        </Card>
+      ) : !isLabelsView ? (
         <Card className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="relative w-full lg:max-w-md">

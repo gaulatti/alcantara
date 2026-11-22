@@ -132,11 +132,28 @@ it("shows the radio media surface with capabilities and labels", () => {
       <MediaFixture />
     </MemoryRouter>,
   );
-  const opener = screen.getByText("Morning opener").closest("article")!;
+  const rowOf = (name: string) =>
+    within(screen.getByRole("table"))
+      .getByText(name, { selector: "p" })
+      .closest("tr")!;
+  const opener = rowOf("Morning opener");
   expect(within(opener).getByText("Instant")).toBeVisible();
-  expect(within(opener).getByText("Station IDs")).toBeVisible();
-  const bed = screen.getByText("Weather bed").closest("article")!;
-  expect(within(bed).getByText("Unlabeled")).toBeVisible();
+  expect(within(opener).getByText("Station IDs", { exact: false })).toBeVisible();
+  expect(within(opener).getByText("Measured")).toBeVisible();
+  expect(within(rowOf("Weather bed")).getByText("Unlabeled")).toBeVisible();
+  // Every state of the analysis has a row.
+  expect(within(rowOf("Slow Weather")).getByText("Measuring")).toBeVisible();
+  expect(
+    within(rowOf("Northbound")).getByText("Failed"),
+  ).toBeVisible();
+  // The failure code is in the tooltip, so the pill stays on one line.
+  expect(
+    within(rowOf("Northbound")).getByTestId("analysis-pill"),
+  ).toHaveAttribute("title", "Failed · decode-failed");
+  expect(within(rowOf("Sweep · Top of hour")).getByText("Not analysed")).toBeVisible();
+  expect(
+    within(rowOf("Legacy clip")).getByText("Analysis unavailable"),
+  ).toBeVisible();
 });
 
 it.each([

@@ -135,6 +135,19 @@ export class McpController {
     await this.methodNotAllowed(reply);
   }
 
+  /**
+   * The public catalogue of registered capabilities (bastille#35 consumers): the
+   * same information docs/mcp-capabilities.md publishes. No auth, no schemas, no
+   * data; cacheable for five minutes.
+   */
+  @Get('capabilities')
+  async capabilities(@Res() reply: McpHttpReply) {
+    await reply
+      .status(200)
+      .headers({ 'Cache-Control': 'public, max-age=300' })
+      .send({ capabilities: this.registry.publicCatalogue() });
+  }
+
   private async methodNotAllowed(reply: McpHttpReply) {
     await reply
       .status(405)

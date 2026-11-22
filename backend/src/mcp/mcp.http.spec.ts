@@ -652,6 +652,31 @@ describe('MCP endpoint', () => {
     }
   });
 
+  it('publishes the capability catalogue publicly, matching the registry, with no schemas', async () => {
+    await boot();
+    const response = await request(app.getHttpServer()).get(
+      '/mcp/capabilities',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('public, max-age=300');
+    expect(Object.keys(response.body)).toEqual(['capabilities']);
+    const expected = app.get(McpRegistry).publicCatalogue();
+    expect(response.body.capabilities).toEqual(expected);
+    expect(response.body.capabilities.length).toBeGreaterThan(0);
+    for (const entry of response.body.capabilities) {
+      expect(Object.keys(entry).sort()).toEqual([
+        'description',
+        'name',
+        'permission',
+        'tier',
+        'title',
+      ]);
+    }
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /inputSchema|"shape"|"schema"/,
+    );
+  });
+
   it('refuses an oversized body, other methods on /mcp, and a malformed request', async () => {
     await boot();
     const big = await rpc('tools/list', {
