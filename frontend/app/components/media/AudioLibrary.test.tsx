@@ -143,7 +143,15 @@ it("lists each asset with its length, loudness, peak and analysis state, reading
   expect(harbor).toHaveTextContent("Measured");
 
   expect(rowOf("Asset pending")).toHaveTextContent("Measuring");
-  expect(rowOf("Asset failed")).toHaveTextContent("Failed · decode-failed");
+  // A failure keeps its pill to one line: the code is the tooltip (and the detail panel's State row).
+  const failedPill = within(rowOf("Asset failed")).getByTestId("analysis-pill");
+  expect(failedPill).toHaveTextContent("Failed");
+  expect(failedPill).not.toHaveTextContent("decode-failed");
+  expect(failedPill).toHaveAttribute("title", "Failed · decode-failed");
+  expect(failedPill).toHaveClass("whitespace-nowrap");
+  expect(
+    within(rowOf("Asset harbor")).getByTestId("analysis-pill"),
+  ).not.toHaveAttribute("title");
   // A clip with no stored length has no timeline, and no length.
   const station = rowOf("Asset station");
   expect(station).toHaveTextContent("No duration stored");

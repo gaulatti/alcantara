@@ -95,13 +95,15 @@ const BADGE_VARIANT: Record<
 function AnalysisPill({ analysis }: { analysis: AssetAnalysisField }) {
   const view = analysisView(analysis);
   const code = view === "failed" ? (analysis as AssetAnalysis).error : null;
+  // One line, whatever the state: a failure code goes in the tooltip and the detail panel.
   return (
-    <StatusBadge
-      variant={BADGE_VARIANT[view]}
-      label={
-        code ? `${ANALYSIS_LABELS[view]} · ${code}` : ANALYSIS_LABELS[view]
-      }
-    />
+    <span
+      data-testid="analysis-pill"
+      title={code ? `${ANALYSIS_LABELS[view]} · ${code}` : undefined}
+      className="inline-flex whitespace-nowrap"
+    >
+      <StatusBadge variant={BADGE_VARIANT[view]} label={ANALYSIS_LABELS[view]} />
+    </span>
   );
 }
 

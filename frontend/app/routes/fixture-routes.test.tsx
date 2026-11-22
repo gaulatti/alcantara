@@ -144,8 +144,12 @@ it("shows the radio media surface with capabilities and labels", () => {
   // Every state of the analysis has a row.
   expect(within(rowOf("Slow Weather")).getByText("Measuring")).toBeVisible();
   expect(
-    within(rowOf("Northbound")).getByText("Failed · decode-failed"),
+    within(rowOf("Northbound")).getByText("Failed"),
   ).toBeVisible();
+  // The failure code is in the tooltip, so the pill stays on one line.
+  expect(
+    within(rowOf("Northbound")).getByTestId("analysis-pill"),
+  ).toHaveAttribute("title", "Failed · decode-failed");
   expect(within(rowOf("Sweep · Top of hour")).getByText("Not analysed")).toBeVisible();
   expect(
     within(rowOf("Legacy clip")).getByText("Analysis unavailable"),
