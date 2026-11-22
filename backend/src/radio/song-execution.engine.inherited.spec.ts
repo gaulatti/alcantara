@@ -528,4 +528,108 @@ describe('SongExecutionEngine recognises its own earlier announcement after a re
     expect(lookups.has('t-0')).toBe(false);
     expect(lookups.has('t-139')).toBe(true);
   });
+
+  it('records a catalogue song that has no cover and no duration with the defaults', async () => {
+    const ctx = setup([
+      { ...CATALOGUE_SONG, coverUrl: null, durationMs: null },
+    ]);
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playingAt('bare-song', CATALOGUE_SONG.audioUrl, STARTED),
+    );
+    await flush(60);
+    expect(ctx.trackEvents[0]).toMatchObject({
+      type: 'track.started',
+      inferred: true,
+    });
+    const active = (
+      ctx.engine as unknown as {
+        states: Map<
+          string,
+          { activeSong: { coverUrl: string; durationMs: number } }
+        >;
+      }
+    ).states.get('radio-1')!.activeSong;
+    expect(active.coverUrl).toBe('');
+    expect(active.durationMs).toBe(300000);
+    expect(playedUrls(ctx)).toEqual([]);
+  });
+
+  it('reports a playing track that names nothing about itself, with null fields', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    const base = playing('bare-track', '');
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...base,
+      track: {
+        playbackRequestId: 'bare-track',
+      } as unknown as PalazzoPlaybackState['track'],
+    });
+    await flush(60);
+    expect(ctx.prisma.song.findMany).not.toHaveBeenCalled();
+    expect(ctx.metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'unidentified',
+    );
+    const report = String(
+      warnSpy.mock.calls
+        .map((call) => String(call[0]))
+        .find((line) => line.includes('cannot identify')),
+    );
+    expect(report).toContain('"title":null');
+    expect(report).toContain('"url":null');
+    expect(report).toContain('"startedAt":null');
+    expect(ctx.trackEvents).toEqual([]);
+  });
+
+  it('never records a spot, bumper or instant as a song play', async () => {
+    // Palazzo's state has a track only for a song: a spot, bumper or instant
+    // playing alone is an idle state with instant level, so it is never looked
+    // up in the catalogue, counted or recorded.
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    const base = idle(6);
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...base,
+      levels: { ...base.levels, instant: { rms: 0.2, peak: 0.5 } },
+    });
+    await flush(60);
+    expect(ctx.prisma.song.findMany).not.toHaveBeenCalled();
+    expect(ctx.metrics.recordTrackTransition).not.toHaveBeenCalledWith(
+      'unidentified',
+    );
+    expect(ctx.trackEvents).toEqual([]);
+  });
+
+  it('records the inherited song once and treats its intro as the intro, not as a second song', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    const base = playingAt('with-intro', CATALOGUE_SONG.audioUrl, STARTED);
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...base,
+      intro: {
+        playbackId: 'with-intro:intro',
+        parentPlaybackId: 'with-intro',
+        programId: 'radio-1',
+        playbackRequestId: 'with-intro:intro',
+        url: 'https://example.test/some-voice-track.mp3',
+        startedAt: STARTED,
+        status: 'playing',
+      },
+    });
+    await flush(60);
+    const starts = ctx.trackEvents.filter((e) => e.type === 'track.started');
+    expect(starts).toHaveLength(1);
+    expect(ctx.prisma.song.findMany).toHaveBeenCalledTimes(1);
+    expect(ctx.prisma.song.findMany.mock.calls[0][0]).toMatchObject({
+      where: { audioUrl: CATALOGUE_SONG.audioUrl },
+    });
+    const active = (
+      ctx.engine as unknown as {
+        states: Map<string, { activeSong: { introStatus: string } }>;
+      }
+    ).states.get('radio-1')!.activeSong;
+    expect(active.introStatus).toBe('playing');
+    expect(playedUrls(ctx)).toEqual([]);
+  });
 });
