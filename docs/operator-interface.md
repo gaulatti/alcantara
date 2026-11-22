@@ -191,7 +191,9 @@ next instant or Stop all starts, or when the operator switches program; a
 refusal that arrives after a switch is not shown. A song library or Cartwall that did not load
 says so with **Retry song library** or **Retry cartwall** instead of looking
 empty; a later successful load replaces the error, and only the failed list
-shows one. Refusals read the server's own `message` when it answers with JSON
+shows one. A failed reload never discards a list that already loaded: the
+error and its retry sit above the still-usable pads, and stand alone only when
+nothing has loaded. Refusals read the server's own `message` when it answers with JSON
 (a string or a list of strings), as one line of at most 160 characters and as
 plain text; any other body falls back to `HTTP <status>`. The helper is
 `frontend/app/utils/responseFailure.ts`. `/console-fixture?state=radio-refused`

@@ -1046,7 +1046,8 @@ export default function Control() {
       setInstantsLoadError(null);
     } catch (err) {
       console.error("Failed to fetch instants:", err);
-      setInstants([]);
+      // The list is the same for every program (it is read without one), so
+      // a failed reload keeps the pads that loaded (gaulatti/alcantara#253).
       setInstantsLoadError(failureMessage(err));
     } finally {
       setIsLoadingInstants(false);
@@ -1064,7 +1065,7 @@ export default function Control() {
       setSongCatalogLoadError(null);
     } catch (err) {
       console.error("Failed to fetch songs catalog:", err);
-      setSongCatalog([]);
+      // The library is the station's: a failed reload keeps what it had.
       setSongCatalogLoadError(failureMessage(err));
     }
   };

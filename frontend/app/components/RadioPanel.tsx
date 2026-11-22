@@ -844,10 +844,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     {instantError}
                   </p>
                 )}
-                {instantsLoadError ? (
+                {instantsLoadError && (
                   <div
                     role="alert"
-                    className="flex flex-wrap items-center gap-2 text-sm text-terracotta"
+                    className="flex flex-wrap items-center gap-2 pb-2 text-sm text-terracotta"
                   >
                     <span>Cartwall did not load: {instantsLoadError}</span>
                     {onRetryInstants && (
@@ -861,7 +861,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                       </Button>
                     )}
                   </div>
-                ) : (
+                )}
+                {/* A failed reload keeps the pads that loaded; the error is
+                    shown alone only when there is nothing to play. */}
+                {!(instantsLoadError && instants.length === 0) && (
                   <InstantsPanel
                     isLoading={false}
                     instants={instants}

@@ -153,7 +153,9 @@ it("says the cartwall did not load instead of showing an empty one, and a retry 
   });
   const wall = await cartwall();
   expect(await within(wall).findByText("Cartwall did not load: Fictional library is offline")).toBeVisible();
+  // Nothing has loaded, so the error stands alone: no pads, no empty catalog.
   expect(within(wall).queryByText("No instants in catalog.")).toBeNull();
+  expect(within(wall).queryByRole("textbox", { name: "Search cartwall" })).toBeNull();
 
   fail = false;
   fireEvent.click(within(wall).getByRole("button", { name: "Retry cartwall" }));
@@ -249,4 +251,42 @@ it("does not show a refused instant that comes back after the operator left the 
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
   expect(screen.queryByText(/Could not play/)).toBeNull();
+});
+
+it("keeps the pads that loaded when a reload fails, with the error above them, until a retry succeeds", async () => {
+  let fail = false;
+  const view = open({
+    ...otherProgram,
+    "GET /instants": () => (fail ? new Response("down", { status: 503 }) : Response.json([bell])),
+    "POST /instants/1/play?programId=other": () => Response.json({}),
+  });
+  const wall = await cartwall();
+  expect(await within(wall).findByRole("button", { name: "Fictional bell" })).toBeVisible();
+
+  // The program switch reloads the cartwall, and the reload fails.
+  fail = true;
+  switchTo(view, "other");
+  const alert = await screen.findByText("Cartwall did not load: HTTP 503");
+  const reloaded = await cartwall();
+  const pad = within(reloaded).getByRole("button", { name: "Fictional bell" });
+  expect(pad).toBeVisible();
+  // The error sits above the pads, which still play.
+  expect(alert.compareDocumentPosition(pad) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(pad);
+  await waitFor(() => expect(server.requests("POST /instants/1/play?programId=other")).toHaveLength(1));
+
+  fail = false;
+  fireEvent.click(within(reloaded).getByRole("button", { name: "Retry cartwall" }));
+  await waitFor(() => expect(screen.queryByText(/Cartwall did not load/)).toBeNull());
+  expect(within(await cartwall()).getByRole("button", { name: /^Fictional bell/ })).toBeVisible();
+});
+
+it("loads the song library on a retry after its first load failed", async () => {
+  let answer = () => new Response("down", { status: 503 }) as Response;
+  open({ "GET /songs?limit=0": () => answer() });
+  expect(await screen.findByText("Song library did not load: HTTP 503")).toBeVisible();
+  // The library reloads only on a retry, so the retry is what brings it.
+  answer = () => Response.json({ data: [{ id: 9, enabled: true, title: "Fictional catalog song", artist: "Fictional artist", audioUrl: "https://media.example.test/c9.mp3", durationMs: 120000 }] });
+  fireEvent.click(screen.getByRole("button", { name: "Retry song library" }));
+  await waitFor(() => expect(screen.queryByText(/Song library did not load/)).toBeNull());
 });
