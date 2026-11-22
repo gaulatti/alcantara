@@ -31,6 +31,15 @@ function failureMessage(error: unknown): string {
   return handleApiError(error);
 }
 
+/** A name as the search compares it: without accents, case or surrounding space. */
+function foldForSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim();
+}
+
 function shortChecksum(value: string): string {
   return value.slice(0, 12);
 }
@@ -138,6 +147,7 @@ export function ProgramFillerPanel({
   const [mode, setMode] = useState<'ordered' | 'shuffle'>('ordered');
   const [shuffleSeed, setShuffleSeed] = useState('');
   const [busy, setBusy] = useState<FillerLegName | null>(null);
+  const [radioSearch, setRadioSearch] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -211,6 +221,11 @@ export function ProgramFillerPanel({
 
   if (!supported) return null;
   const names = new Map(assets.map((asset) => [asset.id, asset.name]));
+  const audioAssets = assets.filter((asset) => asset.mediaType === 'AUDIO');
+  const radioQuery = foldForSearch(radioSearch);
+  const visibleAudioAssets = radioQuery
+    ? audioAssets.filter((asset) => foldForSearch(asset.name).includes(radioQuery))
+    : audioAssets;
   const legs = (['television', 'radio'] as const).filter(
     (leg) => state?.legs[leg],
   );
@@ -272,12 +287,35 @@ export function ProgramFillerPanel({
           ) : null}
           {canManage && leg === 'radio' ? (
             <div className="space-y-2">
+              <Input
+                type="search"
+                aria-label="Search radio filler songs"
+                placeholder="Search songs…"
+                value={radioSearch}
+                onChange={(event) => setRadioSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' && radioSearch) {
+                    event.preventDefault();
+                    setRadioSearch('');
+                  }
+                }}
+              />
+              <p role="status" className="text-xs text-text-secondary">
+                {radioAssets.length} selected
+                {radioQuery
+                  ? ` · ${visibleAudioAssets.length} of ${audioAssets.length} match`
+                  : ` · ${audioAssets.length} songs`}
+              </p>
               <div
                 className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border-subtle p-3"
                 aria-label="Radio filler sources"
               >
-                {assets
-                  .filter((asset) => asset.mediaType === 'AUDIO')
+                {radioQuery && visibleAudioAssets.length === 0 ? (
+                  <p className="text-sm text-text-secondary">
+                    No songs match “{radioSearch.trim()}”.
+                  </p>
+                ) : null}
+                {visibleAudioAssets
                   .map((asset) => (
                     <Checkbox
                       key={asset.id}
