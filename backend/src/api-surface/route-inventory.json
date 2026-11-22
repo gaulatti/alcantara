@@ -331,6 +331,12 @@
   },
   {
     "method": "GET",
+    "path": "/mcp/capabilities",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
     "path": "/media",
     "public": false,
     "permission": "alcantara:media:read"
