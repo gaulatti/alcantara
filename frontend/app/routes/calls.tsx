@@ -1,5 +1,5 @@
-import { Button, Card, Empty, ErrorState, Field, Input, PageHeader, Select, SkeletonCard, StatePill } from '@gaulatti/bleecker';
-import { Copy, Headphones, Link2, Mic, MicOff, RefreshCw, Send, Trash2, Video, VideoOff } from 'lucide-react';
+import { Button, Card, Empty, ErrorState, Field, Input, PageHeader, Select, SkeletonCard } from '@gaulatti/bleecker';
+import { Copy, Link2, RefreshCw } from 'lucide-react';
 import { createLocalAudioTrack, Room } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { authFetch } from '../services/api';
@@ -8,6 +8,9 @@ import { useGlobalProgramId } from '../utils/globalProgram';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/calls';
 import { AppPage } from '../components/AppPage';
+import { GuestStrip } from '../components/GuestStrip';
+import { deskSlots, latestCue, stripState } from '../utils/callerDesk';
+import '../components/CallerDesk.css';
 
 type Command = {
   id: string;
@@ -78,7 +81,10 @@ export default function CallsRoute() {
   } | null>(null);
 
   const refresh = useCallback(async () => {
-    const configResponse = await fetch(apiUrl('/webrtc/config'));
+    // A network failure names the missing control plane, not "fetch failed".
+    const configResponse = await fetch(apiUrl('/webrtc/config')).catch(() => {
+      throw new Error("The guest-call control plane can't be reached. Guests can't join until it is back.");
+    });
     if (!configResponse.ok) throw new Error(await readError(configResponse));
     const config = (await configResponse.json()) as { enabled?: boolean };
     const enabled = config.enabled === true;
@@ -207,15 +213,29 @@ export default function CallsRoute() {
       if (!response.ok) throw new Error(await readError(response));
     });
 
-  const startTalkback = (participant: Participant) =>
-    run(`talkback-${participant.identity}`, async () => {
-      if (talkbackRef.current) {
-        talkbackRef.current.track.stop();
-        talkbackRef.current.room.disconnect();
-        talkbackRef.current = null;
-        setNotice('Talkback stopped.');
-        return;
-      }
+  // Hold-to-talk (alcantara#301): releasing always closes the microphone, even
+  // when the release comes before the connection is up.
+  const [talkingTo, setTalkingTo] = useState<string | null>(null);
+  const talkWanted = useRef<string | null>(null);
+  const closeTalkback = () => {
+    const talkback = talkbackRef.current;
+    talkbackRef.current = null;
+    if (talkback) {
+      talkback.track.stop();
+      talkback.room.disconnect();
+    }
+  };
+  const stopTalk = () => {
+    talkWanted.current = null;
+    setTalkingTo(null);
+    closeTalkback();
+  };
+  const startTalk = async (participant: Participant) => {
+    if (talkWanted.current) return;
+    talkWanted.current = participant.identity;
+    setTalkingTo(participant.identity);
+    setNotice('');
+    try {
       const response = await authFetch('/webrtc/operator-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -229,12 +249,19 @@ export default function CallsRoute() {
       const room = new Room();
       await room.connect(credentials.serverUrl, credentials.token);
       const track = await createLocalAudioTrack();
+      talkbackRef.current = { room, track };
+      if (talkWanted.current !== participant.identity) {
+        closeTalkback();
+        return;
+      }
       await room.localParticipant.publishTrack(track, {
         name: `talkback:${participant.invitationId}`
       });
-      talkbackRef.current = { room, track };
-      setNotice(`Private talkback is live to ${participant.name}. Select it again to stop.`);
-    });
+    } catch (error) {
+      stopTalk();
+      setNotice(error instanceof Error ? error.message : 'Talkback failed.');
+    }
+  };
 
   const activeInvitations = invitations.filter((item) => item.status !== 'revoked' && item.status !== 'expired');
   const createBlockedReason = !canOperate
@@ -249,17 +276,17 @@ export default function CallsRoute() {
       <Link2 size={15} /> Create private link
     </Button>
   );
+  const slots = deskSlots(activeInvitations, participants);
+  const waiting = slots.filter((slot) => slot.invitation && (!slot.participant || slot.participant.connectionState === 'offline'));
+  const cuedLive = participants.filter((participant) => stripState(participant.connectionState, latestCue(participant.commands)) === 'cued-live').length;
   if (livekitEnabled === false) {
     return (
       <AppPage width='wide'>
         <div>
-          <PageHeader
-            title='Guest calls'
-            description='Remote contribution is installed but not enabled on this Alcantara deployment.'
-          />
+          <PageHeader title='Guest calls' description='Remote contribution is installed but its control plane is not deployed here.' />
           <Empty
-            title='LiveKit is not configured'
-            description='Configure the backend LiveKit connection and production media service before creating guest invitations.'
+            title='Guest calls need LiveKit'
+            description='The LiveKit stack (alcantara#51) is not configured on this deployment, so no guest can join yet. Invitations, the caller desk and talkback appear once it is.'
           />
         </div>
       </AppPage>
@@ -280,6 +307,14 @@ export default function CallsRoute() {
             </Button>
           }
         />
+        <section className='caller-desk-status' aria-label='Caller desk status'>
+          <span className='caller-desk-count' data-live={cuedLive > 0}>
+            {cuedLive} {cuedLive === 1 ? 'guest' : 'guests'} cued live
+          </span>
+          <span>Room {programId}</span>
+          <span>{activeInvitations.length} of 6 slots in use</span>
+          <span>{livekitEnabled ? 'LiveKit connected' : 'Checking LiveKit…'}</span>
+        </section>
         {notice ? (
           <div role='status' aria-live='polite' className='mb-5 rounded-[var(--radius-ui)] border border-sea/20 bg-sea/[0.06] px-4 py-3 text-sm'>
             {notice}
@@ -294,36 +329,56 @@ export default function CallsRoute() {
             </Button>
           </Card>
         ) : null}
-        <div className='grid items-start gap-6 xl:grid-cols-[0.72fr_1.28fr]'>
-          <Card variant='outlined' className='p-6'>
-            <h2 className='text-xl font-medium'>Create invitation</h2>
-            <p className='mt-1 text-sm text-text-secondary'>{activeInvitations.length}/6 slots assigned</p>
-            <div className='mt-5 space-y-4'>
-              <Field label='Guest name'>
-                <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder='Fictional guest' maxLength={80} />
-              </Field>
-              <Field label='Expires after'>
-                <Select
-                  value={expiresInHours}
-                  onChange={setExpiresInHours}
-                  options={[
-                    { value: '1', label: '1 hour' },
-                    { value: '6', label: '6 hours' },
-                    { value: '24', label: '24 hours (default)' },
-                    { value: '72', label: '3 days' },
-                    { value: '168', label: '7 days' }
-                  ]}
-                />
-              </Field>
-              {createLink}
-              {createBlockedReason ? (
-                <p id='create-blocked-reason' className='text-xs text-text-secondary'>
-                  {createBlockedReason}
-                </p>
-              ) : null}
-            </div>
-          </Card>
-          <div className='space-y-4'>
+        <div className='caller-desk'>
+          <aside className='caller-desk-queue' aria-label='Waiting and invitations'>
+            <section aria-label='Waiting'>
+              <h2 className='text-sm font-semibold'>Waiting · {waiting.length}</h2>
+              {waiting.length ? (
+                <ul className='caller-desk-waiting'>
+                  {waiting.map(({ slot, invitation }) => (
+                    <li key={slot}>
+                      <strong>{invitation!.displayName}</strong>
+                      <span className='text-xs text-text-secondary'>
+                        Slot {slot} · invited, not joined · expires {new Date(invitation!.expiresAt).toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className='text-xs text-text-secondary'>No one is waiting to join.</p>
+              )}
+              <p className='caller-desk-gap'>Screening before air is not built yet: a guest who joins goes straight to their strip.</p>
+            </section>
+            <Card variant='outlined' className='p-5'>
+              <h2 className='text-base font-medium'>Create invitation</h2>
+              <p className='mt-1 text-sm text-text-secondary'>{activeInvitations.length}/6 slots assigned</p>
+              <div className='mt-4 space-y-4'>
+                <Field label='Guest name'>
+                  <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder='Fictional guest' maxLength={80} />
+                </Field>
+                <Field label='Expires after'>
+                  <Select
+                    value={expiresInHours}
+                    onChange={setExpiresInHours}
+                    options={[
+                      { value: '1', label: '1 hour' },
+                      { value: '6', label: '6 hours' },
+                      { value: '24', label: '24 hours (default)' },
+                      { value: '72', label: '3 days' },
+                      { value: '168', label: '7 days' }
+                    ]}
+                  />
+                </Field>
+                {createLink}
+                {createBlockedReason ? (
+                  <p id='create-blocked-reason' className='text-xs text-text-secondary'>
+                    {createBlockedReason}
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          </aside>
+          <section className='caller-desk-strips' aria-label='Guest slots'>
             {loadState === 'loading' ? (
               <div role='status' aria-label='Loading guest slots'>
                 <SkeletonCard rows={3} />
@@ -333,193 +388,37 @@ export default function CallsRoute() {
             ) : participants.length === 0 ? (
               <Empty title='No assigned guest slots' description='Name a guest, then create a private link to reserve the first reusable slot.' action={createLink} />
             ) : (
-              participants.map((participant) => {
-                const invitation = invitations.find((item) => item.id === participant.invitationId);
-                if (!invitation) return null;
-                const microphone = participant.tracks.find((track) => track.source.includes('microphone'));
-                const camera = participant.tracks.find((track) => track.source.includes('camera'));
-                const draft = drafts[participant.identity] || '';
-                const latest = participant.commands[0];
+              slots.map(({ slot, invitation, participant }) => {
+                if (!participant || !invitation) {
+                  return (
+                    <div key={slot} className='guest-strip guest-strip-free' aria-label={`Slot ${slot}: free`}>
+                      <span className='guest-strip-slot'>{String(slot).padStart(2, '0')}</span>
+                      <span className='text-xs text-text-secondary'>{invitation ? `${invitation.displayName} · not joined` : 'Free'}</span>
+                    </div>
+                  );
+                }
                 return (
-                  <Card key={participant.invitationId} variant='surface' className='p-5'>
-                    <div className='flex flex-wrap items-center gap-3'>
-                      <span className='flex h-9 w-9 items-center justify-center rounded-full bg-sea/10 font-semibold text-sea'>{participant.slotNumber}</span>
-                      <div className='min-w-0 flex-1'>
-                        <h3 className='truncate font-medium'>{participant.name}</h3>
-                        <p className='text-xs text-text-secondary'>
-                          Slot {participant.slotNumber} · expires {new Date(invitation.expiresAt).toLocaleString()}
-                        </p>
-                      </div>
-                      <StatePill
-                        label={participant.connectionState}
-                        tone={participant.connectionState === 'connected' ? 'ok' : participant.connectionState === 'reconnecting' ? 'warn' : 'idle'}
-                      />
-                    </div>
-                    <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-                      <Field label='Return video'>
-                        <Select
-                          value={participant.returnVideo}
-                          disabled={!canOperate}
-                          onChange={(value) => void updateReturn(invitation, 'returnVideo', value)}
-                          options={[
-                            { value: 'program', label: 'Program' },
-                            { value: 'preview', label: 'Preview' },
-                            { value: 'none', label: 'None' }
-                          ]}
-                        />
-                      </Field>
-                      <Field label='Return audio'>
-                        <Select
-                          value={participant.returnAudioBus}
-                          disabled={!canOperate}
-                          onChange={(value) => void updateReturn(invitation, 'returnAudioBus', value)}
-                          options={[
-                            { value: 'master', label: 'Program / Master' },
-                            { value: 'monitor', label: 'Operator monitor' },
-                            ...Array.from({ length: 8 }, (_, index) => ({
-                              value: `aux-${index + 1}`,
-                              label: `Aux / IFB ${index + 1}`
-                            }))
-                          ]}
-                        />
-                      </Field>
-                    </div>
-                    <div className='mt-3 grid gap-3 sm:grid-cols-3'>
-                      <Field label='Guest level in returns'>
-                        <Select
-                          value={String(participant.sourceGain)}
-                          disabled={!canOperate}
-                          onChange={(value) => void updateReturn(invitation, 'sourceGain', Number(value))}
-                          options={[0, 0.25, 0.5, 0.75, 1].map((value) => ({
-                            value: String(value),
-                            label: `${Math.round(value * 100)}%`
-                          }))}
-                        />
-                      </Field>
-                      <Field label='Guest sync delay'>
-                        <Select
-                          value={String(participant.sourceDelayMs)}
-                          disabled={!canOperate}
-                          onChange={(value) => void updateReturn(invitation, 'sourceDelayMs', Number(value))}
-                          options={[0, 50, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000].map((value) => ({
-                            value: String(value),
-                            label: `${value} ms`
-                          }))}
-                        />
-                      </Field>
-                      <Field label='Guest routing'>
-                        <Button
-                          fullWidth
-                          variant={participant.sourceMuted ? 'destructive' : 'secondary'}
-                          disabled={!canOperate}
-                          onClick={() => void updateReturn(invitation, 'sourceMuted', !participant.sourceMuted)}
-                        >
-                          {participant.sourceMuted ? <MicOff size={14} /> : <Mic size={14} />}
-                          {participant.sourceMuted ? 'Muted in returns' : 'Routed to returns'}
-                        </Button>
-                      </Field>
-                    </div>
-                    <div className='mt-4 flex flex-wrap gap-2'>
-                      <Button
-                        size='sm'
-                        variant='secondary'
-                        disabled={!canOperate || !camera || busy !== null}
-                        onClick={() =>
-                          void command(participant, {
-                            type: 'media',
-                            device: 'camera',
-                            enabled: Boolean(camera?.muted)
-                          })
-                        }
-                      >
-                        {camera?.muted ? <VideoOff size={14} /> : <Video size={14} />} {camera?.muted ? 'Request camera' : 'Mute camera'}
-                      </Button>
-                      <Button
-                        size='sm'
-                        variant='secondary'
-                        disabled={!canOperate || !microphone || busy !== null}
-                        onClick={() =>
-                          void command(participant, {
-                            type: 'media',
-                            device: 'microphone',
-                            enabled: Boolean(microphone?.muted)
-                          })
-                        }
-                      >
-                        {microphone?.muted ? <MicOff size={14} /> : <Mic size={14} />} {microphone?.muted ? 'Request mic' : 'Mute mic'}
-                      </Button>
-                      {(['standby', 'live', 'wrap'] as const).map((cue) => (
-                        <Button
-                          key={cue}
-                          size='sm'
-                          variant={cue === 'live' ? 'destructive' : 'secondary'}
-                          disabled={!canOperate || participant.connectionState !== 'connected' || busy !== null}
-                          onClick={() => void command(participant, { type: 'cue', cue })}
-                        >
-                          {cue}
-                        </Button>
-                      ))}
-                      <Button
-                        size='sm'
-                        variant='secondary'
-                        disabled={!canOperate || participant.connectionState !== 'connected' || busy !== null}
-                        onClick={() => void startTalkback(participant)}
-                      >
-                        <Headphones size={14} /> Talkback
-                      </Button>
-                    </div>
-                    <div className='mt-3 flex gap-2'>
-                      <Input
-                        aria-label={`Message ${participant.name}`}
-                        value={draft}
-                        maxLength={500}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [participant.identity]: event.target.value
-                          }))
-                        }
-                        placeholder='Private studio message'
-                      />
-                      <Button
-                        size='sm'
-                        disabled={!canOperate || !draft.trim() || busy !== null}
-                        onClick={() =>
-                          void command(participant, {
-                            type: 'message',
-                            text: draft
-                          })
-                        }
-                      >
-                        <Send size={14} />
-                      </Button>
-                    </div>
-                    {latest ? (
-                      <p className='mt-3 text-xs text-text-secondary'>
-                        Latest {latest.type}: <strong>{latest.status}</strong>
-                      </p>
-                    ) : null}
-                    <div className='mt-4 flex flex-wrap gap-2 border-t border-sand/20 pt-4'>
-                      <Button size='sm' variant='secondary' disabled={!canOperate || busy !== null} onClick={() => void mutateInvitation(invitation.id, 'replace')}>
-                        <RefreshCw size={14} /> Replace link
-                      </Button>
-                      <Button
-                        size='sm'
-                        variant='secondary'
-                        disabled={!canOperate || participant.connectionState === 'offline' || busy !== null}
-                        onClick={() => void remove(participant)}
-                      >
-                        Remove session
-                      </Button>
-                      <Button size='sm' variant='destructive' disabled={!canOperate || busy !== null} onClick={() => void mutateInvitation(invitation.id, 'revoke')}>
-                        <Trash2 size={14} /> Revoke
-                      </Button>
-                    </div>
-                  </Card>
+                  <GuestStrip
+                    key={slot}
+                    participant={participant}
+                    expiresAt={invitation.expiresAt}
+                    canOperate={canOperate}
+                    busy={busy !== null}
+                    talking={talkingTo === participant.identity}
+                    draft={drafts[participant.identity] || ''}
+                    onDraftChange={(value) => setDrafts((current) => ({ ...current, [participant.identity]: value }))}
+                    onReturn={(field, value) => void updateReturn(invitation, field, value)}
+                    onCommand={(payload) => void command(participant, payload)}
+                    onTalkStart={() => void startTalk(participant)}
+                    onTalkStop={stopTalk}
+                    onReplace={() => void mutateInvitation(invitation.id, 'replace')}
+                    onRemove={() => void remove(participant)}
+                    onRevoke={() => void mutateInvitation(invitation.id, 'revoke')}
+                  />
                 );
               })
             )}
-          </div>
+          </section>
         </div>
       </div>
     </AppPage>

@@ -156,10 +156,8 @@ function serve(
 }
 
 const status = () => screen.getByRole("status");
-const card = () =>
-  screen
-    .getByText("Ada", { selector: "h3" })
-    .closest("div.p-5, [class*='p-5']") as HTMLElement;
+// Each guest is a channel strip on the caller desk (alcantara#301).
+const card = () => screen.getByRole("article", { name: /: Ada$/ });
 const button = (name: RegExp | string) =>
   within(card()).getByRole("button", { name });
 /** The routing toggle sits inside its field label, so find it by its text. */
@@ -204,7 +202,8 @@ it("explains that LiveKit is not configured", async () => {
   config = {};
   const calls = serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("LiveKit is not configured")).toBeVisible();
+  expect(await screen.findByText("Guest calls need LiveKit")).toBeVisible();
+  expect(screen.getByText(/alcantara#51/)).toBeVisible();
   expect(calls.some((call) => call.url.includes("/invitations"))).toBe(false);
 });
 
@@ -240,6 +239,15 @@ it.each([
   },
 );
 
+it("names the control plane when it cannot be reached, not a raw fetch error", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+  render(<CallsRoute />);
+  expect(
+    await screen.findByText("The guest-call control plane can't be reached. Guests can't join until it is back."),
+  ).toBeVisible();
+  expect(screen.queryByText("fetch failed")).not.toBeInTheDocument();
+});
+
 it("explains a failure that is not an error object", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue("offline"));
@@ -263,7 +271,7 @@ it("shows this program's slots and each guest's state", async () => {
   expect(screen.getByText("1/6 slots assigned")).toBeVisible();
   // A participant without an invitation of this program is not shown.
   expect(screen.queryByText("Ghost")).not.toBeInTheDocument();
-  expect(within(card()).getByText("connected")).toBeVisible();
+  expect(within(card()).getByText("Connected")).toBeVisible();
   expect(within(card()).getByText("Latest cue:")).toBeVisible();
   expect(button(/Request camera/)).toBeEnabled();
   expect(button(/Mute mic/)).toBeEnabled();
@@ -489,14 +497,28 @@ it("sends media, cue and message commands to the guest", async () => {
     device: "microphone",
     enabled: false,
   });
-  for (const cue of ["standby", "live", "wrap"]) {
-    await waitFor(() => expect(button(cue)).toBeEnabled());
-    fireEvent.click(button(cue));
-    await waitFor(() => expect(sent().at(-1)).toEqual({ type: "cue", cue }));
-  }
+  await waitFor(() => expect(button("Standby")).toBeEnabled());
+  fireEvent.click(button("Standby"));
+  await waitFor(() => expect(sent().at(-1)).toEqual({ type: "cue", cue: "standby" }));
+  // The live cue is armed first, then sent by a second press.
+  const before = sent().length;
+  await waitFor(() => expect(button("Cue live")).toBeEnabled());
+  fireEvent.click(button("Cue live"));
+  expect(sent()).toHaveLength(before);
+  fireEvent.click(button(/Press again or Space: cue live/));
+  await waitFor(() => expect(sent().at(-1)).toEqual({ type: "cue", cue: "live" }));
+  // The wrap cue needs a hold; a short press sends nothing.
+  await waitFor(() => expect(button(/Hold · cue wrap/)).toBeEnabled());
+  const wrap = button(/Hold · cue wrap/);
+  fireEvent.pointerDown(wrap);
+  fireEvent.pointerUp(wrap);
+  const afterLive = sent().length;
+  fireEvent.pointerDown(wrap);
+  await waitFor(() => expect(sent().at(-1)).toEqual({ type: "cue", cue: "wrap" }), { timeout: 2000 });
+  expect(sent()).toHaveLength(afterLive + 1);
   const message = within(card()).getByLabelText("Message Ada");
   fireEvent.change(message, { target: { value: "You are on in 10" } });
-  const send = message.closest("div.mt-3")!.querySelector("button")!;
+  const send = button("Send message to Ada");
   await waitFor(() => expect(send).toBeEnabled());
   fireEvent.click(send);
   await waitFor(() =>
@@ -509,8 +531,8 @@ it("sends media, cue and message commands to the guest", async () => {
   serve({
     [`POST ${control}`]: () => new Response("Guest left", { status: 410 }),
   });
-  await waitFor(() => expect(button("wrap")).toBeEnabled());
-  fireEvent.click(button("wrap"));
+  await waitFor(() => expect(button("Standby")).toBeEnabled());
+  fireEvent.click(button("Standby"));
   expect(await screen.findByText("Guest left")).toBeVisible();
 });
 
@@ -521,11 +543,12 @@ it("disables controls a guest cannot take", async () => {
   serve();
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  expect(within(card()).getByText("offline")).toBeVisible();
+  expect(within(card()).getByText("Not joined")).toBeVisible();
   expect(button(/Mute camera/)).toBeDisabled();
   expect(button(/Mute mic/)).toBeDisabled();
-  expect(button("live")).toBeDisabled();
-  expect(button(/Talkback/)).toBeDisabled();
+  expect(button("Cue live")).toBeDisabled();
+  expect(button(/Hold · cue wrap/)).toBeDisabled();
+  expect(button(/Hold · talk/)).toBeDisabled();
   expect(button(/Remove session/)).toBeDisabled();
   expect(within(card()).queryByText(/Latest/)).not.toBeInTheDocument();
 });
@@ -544,7 +567,7 @@ it("shows a reconnecting guest muted in returns, with a muted microphone", async
   serve();
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  expect(within(card()).getByText("reconnecting")).toBeVisible();
+  expect(within(card()).getByText("Reconnecting")).toBeVisible();
   expect(routing(/Muted in returns/)).toBeVisible();
   expect(button(/Request mic/)).toBeVisible();
   expect(button(/Mute camera/)).toBeVisible();
@@ -609,38 +632,66 @@ it("replaces and revokes a link, and removes a guest session", async () => {
   expect(await screen.findByText("Not in room")).toBeVisible();
 });
 
-it("starts and stops private talkback, and releases it when the page closes", async () => {
+it("talks privately only while held, and releases the microphone when the page closes", async () => {
   const calls = serve();
   const view = render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  fireEvent.click(button(/Talkback/));
-  expect(
-    await screen.findByText(
-      "Private talkback is live to Ada. Select it again to stop.",
-    ),
-  ).toBeVisible();
-  expect(bodyOf(calls, "/webrtc/operator-token")).toEqual({
-    programId: "main show",
-  });
-  expect(lk.state.rooms[0].connectedTo).toEqual([
-    "wss://livekit.example",
-    "fictional-operator-token",
-  ]);
-  expect(lk.state.rooms[0].published).toEqual(["talkback:inv-1"]);
-  await waitFor(() => expect(button(/Talkback/)).toBeEnabled());
-  fireEvent.click(button(/Talkback/));
-  expect(await screen.findByText("Talkback stopped.")).toBeVisible();
+  const talk = button(/Hold · talk/);
+  fireEvent.pointerDown(talk);
+  await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
+  expect(bodyOf(calls, "/webrtc/operator-token")).toEqual({ programId: "main show" });
+  expect(lk.state.rooms[0].connectedTo).toEqual(["wss://livekit.example", "fictional-operator-token"]);
+  expect(button(/Talking… release to stop/)).toHaveAttribute("aria-pressed", "true");
+  fireEvent.pointerUp(button(/Talking… release to stop/));
   expect(lk.state.tracks[0].stopped).toBe(true);
   expect(lk.state.rooms[0].disconnected).toBe(true);
+  expect(button(/Hold · talk/)).toHaveAttribute("aria-pressed", "false");
 
-  await waitFor(() => expect(button(/Talkback/)).toBeEnabled());
-  fireEvent.click(button(/Talkback/));
-  await screen.findByText(
-    "Private talkback is live to Ada. Select it again to stop.",
-  );
-  view.unmount();
-  expect(lk.state.tracks[1].stopped).toBe(true);
+  // Holding T while the strip has focus talks too; releasing T stops.
+  card().focus();
+  fireEvent.keyDown(card(), { key: "t" });
+  await waitFor(() => expect(lk.state.rooms[1]?.published).toEqual(["talkback:inv-1"]));
+  fireEvent.keyUp(card(), { key: "t" });
   expect(lk.state.rooms[1].disconnected).toBe(true);
+
+  fireEvent.pointerDown(button(/Hold · talk/));
+  await waitFor(() => expect(lk.state.rooms[2]?.published).toEqual(["talkback:inv-1"]));
+  view.unmount();
+  expect(lk.state.tracks[2].stopped).toBe(true);
+  expect(lk.state.rooms[2].disconnected).toBe(true);
+});
+
+it("closes the microphone when talk is released before the connection is up", async () => {
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  const talk = button(/Hold · talk/);
+  fireEvent.pointerDown(talk);
+  fireEvent.pointerUp(talk);
+  await waitFor(() => expect(lk.state.rooms[0]?.disconnected).toBe(true));
+  expect(lk.state.rooms[0].published).toEqual([]);
+  expect(lk.state.tracks[0].stopped).toBe(true);
+});
+
+it("asks for a second confirmation before talking to a guest cued live", async () => {
+  participants = [
+    participant({
+      commands: [{ id: "c9", type: "cue", status: "acknowledged", payload: { cue: "live" }, createdAt: "2026-11-22T12:00:00Z" }],
+    }),
+  ];
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  expect(within(card()).getByText("Cued live")).toBeVisible();
+  expect(screen.getByText("1 guest cued live")).toBeVisible();
+  expect(within(card()).getByText(/on the output only through a scene/)).toBeVisible();
+  expect(button(/Hold · talk/)).toBeDisabled();
+  fireEvent.click(within(card()).getByRole("checkbox", { name: "Allow talk while cued live" }));
+  expect(button(/Hold · talk/)).toBeEnabled();
+  fireEvent.pointerDown(button(/Hold · talk/));
+  await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
+  fireEvent.pointerUp(button(/Talking/));
+  expect(lk.state.rooms[0].disconnected).toBe(true);
 });
 
 it("explains talkback that could not be authorized", async () => {
@@ -650,8 +701,9 @@ it("explains talkback that could not be authorized", async () => {
   });
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
-  fireEvent.click(button(/Talkback/));
+  fireEvent.pointerDown(button(/Hold · talk/));
   expect(await screen.findByText("Not allowed")).toBeVisible();
+  expect(button(/Hold · talk/)).toHaveAttribute("aria-pressed", "false");
 });
 
 it("refreshes on demand", async () => {

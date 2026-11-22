@@ -133,7 +133,37 @@ that affect Program; hidden-component warnings belong to the selected tab.
 clock, slideshow, player, background audio, and save states at desktop and phone
 widths. `hidden-component` retains explicit player restoration coverage.
 
-### Section names
+### Program return and the caller desk
+
+The PREVIEW and PROGRAM monitors are the program page rendered again in the
+director's own browser (`?confidence=preview|program`), and PROGRAM is silent
+(output gain 0). Neither is the output: they have no latency, no signal loss
+and no audio. Both headers say `local render`, PROGRAM carries a
+"Local render · not the output" ribbon, and its Listen action is disabled with
+the reason (alcantara#301). `ConfidenceMonitor` also takes a `returnSource` for
+a real return (from Alana or the Tauri pilot), which does not exist yet. When
+one does, the tile shows "Return · from <source>", how far it is behind, and
+one of Live, Delayed (more than 3 s behind), Frozen (the same frame for 2 s,
+with a timer) or Signal lost (filling the tile, with the time since the last
+frame). These thresholds are the proposal's, for the owner to set, and are not
+stored. TAKE and CUT never wait on the return.
+
+Guest calls is a caller desk. A status strip counts the guests sent the live cue
+and the slots in use. A waiting list shows invited guests who have not joined,
+and each of the six slots is a strip with the guest's connection, return video
+and bus, level, delay, mute, camera, cue, private message, replace, remove and
+revoke. The strip says "Cued live" only for the last cue the console sent. A
+guest reaches the output only through a scene that carries them, and the strip
+says so. Talk is hold-to-talk (press and hold, or hold T while the strip has
+focus). Releasing always closes the microphone, even before the connection is
+up. Talking to a guest who was cued live needs "Allow talk while cued live" to
+be ticked first. The live cue is armed by one press and sent by a second press,
+or by Space within 5 s. The wrap cue needs a 0.8 s hold. Screening before air,
+a per-guest on-air state and mic meters are not built yet, and the desk says
+so. Without LiveKit (alcantara#51) the page names that dependency, and a control
+plane that can't be reached is named instead of showing a raw fetch error.
+
+
 
 Each panel has one name. Radio and TV Audio use **Cartwall** and **Mixer** without
 the duplicate “Instant audio” and “Program mix” eyebrows. Playlist, continuous
