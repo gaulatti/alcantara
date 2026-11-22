@@ -44,7 +44,6 @@ import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import {
   ensureProgramAudioBusTrack,
-  getProgramAudioBusSignalSnapshot,
   getProgramAudioBusSnapshot,
   setProgramAudioBusMasterVolume,
   stopProgramAudioBus,
@@ -71,7 +70,6 @@ import {
   resolveProgramUpdateTopicFromType,
   readProgramTopicVersion,
   createMeterChannelBallistics,
-  createProgramMeterBallisticsState,
   createInstantAudioMeterContext,
   flattenProgramSongItems,
   normalizeProgramSongPlaylist,
@@ -110,9 +108,7 @@ import {
   type SlideshowMediaLabel,
   type AudioBusUpdateEvent,
   type MeterChannelPayload,
-  type ProgramAudioMeterPayload,
   type MeterChannelBallistics,
-  type ProgramMeterBallisticsState,
   type ProgramUpdateTopic
 } from '../utils/programRuntime';
 
@@ -211,28 +207,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       broadcastSettings: -1
     };
   }, [programId]);
-  const meterBallisticsRef = useRef<ProgramMeterBallisticsState>(createProgramMeterBallisticsState());
-  const lastMeterPayloadRef = useRef<ProgramAudioMeterPayload>({
-    song: { vu: 0, peak: 0, peakHold: 0 },
-    instants: { vu: 0, peak: 0, peakHold: 0 },
-    sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
-    main: { vu: 0, peak: 0, peakHold: 0 }
-  });
-  const lastSongPlaybackPayloadRef = useRef<{
-    token: string;
-    audioUrl: string;
-    progress: number;
-    currentTimeMs: number;
-    durationMs: number | null;
-    isPlaying: boolean;
-  }>({
-    token: '',
-    audioUrl: '',
-    progress: 0,
-    currentTimeMs: 0,
-    durationMs: null,
-    isPlaying: false
-  });
   const programMixerSettings = useMemo(
     () => (audioBusSettings?.mixerSettings ? normalizeProgramAudioMixerSettings(audioBusSettings.mixerSettings) : normalizeProgramAudioMixerSettings(null)),
     [audioBusSettings?.mixerSettings]
@@ -464,86 +438,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       runtime.meterBuffer = null;
       runtime.meterUsesMediaElementFallback = false;
     }
-  }, []);
-
-  const readInstantSignalSnapshot = useCallback((): {
-    rms: number;
-    peak: number;
-  } => {
-    let rmsPeak = 0;
-    let peak = 0;
-    for (const [audio, runtime] of activeInstantAudiosRef.current) {
-      if (audio.paused || audio.ended) {
-        continue;
-      }
-      if (!runtime.meterAnalyser || !runtime.meterBuffer) {
-        const fallbackLevel = normalizeMasterVolume(audio.volume, 0);
-        rmsPeak = Math.max(rmsPeak, fallbackLevel);
-        peak = Math.max(peak, fallbackLevel);
-        continue;
-      }
-
-      runtime.meterAnalyser.getFloatTimeDomainData(runtime.meterBuffer);
-      let sumSquares = 0;
-      let peakSample = 0;
-      for (let index = 0; index < runtime.meterBuffer.length; index += 1) {
-        const sample = runtime.meterBuffer[index];
-        sumSquares += sample * sample;
-        const absSample = Math.abs(sample);
-        if (absSample > peakSample) {
-          peakSample = absSample;
-        }
-      }
-      const rms = Math.sqrt(sumSquares / runtime.meterBuffer.length);
-      rmsPeak = Math.max(rmsPeak, rms);
-      peak = Math.max(peak, peakSample);
-    }
-
-    return {
-      rms: Math.max(0, Math.min(1, rmsPeak)),
-      peak: Math.max(0, Math.min(1, peak))
-    };
-  }, []);
-
-  const readSceneInstantSignalSnapshot = useCallback((): {
-    rms: number;
-    peak: number;
-  } => {
-    const current = activeSceneInstantAudioRef.current;
-    if (!current) {
-      return { rms: 0, peak: 0 };
-    }
-
-    const { audio, runtime } = current;
-    if (audio.paused || audio.ended) {
-      return { rms: 0, peak: 0 };
-    }
-
-    if (!runtime.meterAnalyser || !runtime.meterBuffer) {
-      const fallbackLevel = normalizeMasterVolume(audio.volume, 0);
-      return {
-        rms: fallbackLevel,
-        peak: fallbackLevel
-      };
-    }
-
-    runtime.meterAnalyser.getFloatTimeDomainData(runtime.meterBuffer);
-    let sumSquares = 0;
-    let peakSample = 0;
-    for (let index = 0; index < runtime.meterBuffer.length; index += 1) {
-      const sample = runtime.meterBuffer[index];
-      sumSquares += sample * sample;
-      const absSample = Math.abs(sample);
-      if (absSample > peakSample) {
-        peakSample = absSample;
-      }
-    }
-
-    const rms = Math.sqrt(sumSquares / runtime.meterBuffer.length);
-    return {
-      rms: Math.max(0, Math.min(1, rms)),
-      peak: Math.max(0, Math.min(1, peakSample))
-    };
   }, []);
 
   const stopSceneInstantAudio = useCallback((fadeMs = 0) => {
