@@ -39,6 +39,13 @@ it("shows the reason the radio needs attention, and nothing for an unknown or mi
   expect(await screen.findByText("Radio needs attention")).toBeVisible();
 });
 
+it("shows no engine reason for a program that has no engine (a null body)", async () => {
+  api(null);
+  render(<SimulcastStatusRail programId="tv-1" />);
+  const badge = await screen.findByText("Radio needs attention");
+  expect(badge.textContent).toBe("Radio needs attention");
+});
+
 it("says ready for a live status from an older backend", async () => {
   api({ connection: "connected", degraded: false, detail: null });
   render(<SimulcastStatusRail programId="radio-1" />);

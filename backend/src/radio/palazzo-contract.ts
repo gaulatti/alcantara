@@ -180,9 +180,8 @@ export type PalazzoUnavailableReason =
  */
 export interface PalazzoUnavailableStatus extends Omit<
   PalazzoProgramStatus,
-  'programType' | 'connection'
+  'connection'
 > {
-  programType: PalazzoProgramType | null;
   connection: 'unavailable';
   reason?: PalazzoUnavailableReason;
 }

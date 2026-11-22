@@ -9,6 +9,9 @@ function createService() {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    programState: {
+      findUnique: jest.fn().mockResolvedValue({ type: 'radio' }),
+    },
   };
   const engine = {
     setPalazzoTelemetry: jest.fn(),
@@ -136,11 +139,6 @@ describe('PalazzoRadioTelemetryService unavailable reasons', () => {
     ['no settings row', null, 'radio-1'],
     ['no Palazzo URL', setting({ palazzoUrl: null }), 'radio-1'],
     ['an empty Palazzo URL', setting({ palazzoUrl: '' }), 'radio-1'],
-    [
-      'a program that is not radio-capable',
-      setting({ programState: { type: 'tv' } }),
-      'tv-1',
-    ],
   ])('says not-configured for %s', async (_name, row, programId) => {
     const { service, prisma } = createService();
     prisma.radioSettings.findFirst.mockResolvedValue(row);
@@ -158,8 +156,26 @@ describe('PalazzoRadioTelemetryService unavailable reasons', () => {
     expect(status.detail).toEqual(expect.any(String));
   });
 
+  it.each([
+    ['a TV program', { type: 'tv' }],
+    ['a program with no state', null],
+  ])('keeps answering null for %s', async (_name, state) => {
+    const { service, prisma } = createService();
+    prisma.programState.findUnique.mockResolvedValue(state);
+    await expect(service.getStatusWithReason('tv-1')).resolves.toBeNull();
+    expect(prisma.radioSettings.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('answers null for a non-radio program even on a deploy candidate', async () => {
+    process.env.ALCANTARA_DEPLOY_CANDIDATE = 'true';
+    const { service, prisma } = createService();
+    prisma.programState.findUnique.mockResolvedValue({ type: 'tv' });
+    await expect(service.getStatusWithReason('tv-1')).resolves.toBeNull();
+  });
+
   it('keeps the program type of a radio-capable program in the status', async () => {
     const { service, prisma } = createService();
+    prisma.programState.findUnique.mockResolvedValue({ type: 'both' });
     prisma.radioSettings.findFirst.mockResolvedValue(
       setting({ programState: { type: 'both' }, palazzoUrl: null }),
     );

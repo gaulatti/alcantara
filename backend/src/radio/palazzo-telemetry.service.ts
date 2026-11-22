@@ -156,10 +156,17 @@ export class PalazzoRadioTelemetryService
    */
   async getStatusWithReason(
     programId: string,
-  ): Promise<PalazzoProgramStatus | PalazzoUnavailableStatus> {
+  ): Promise<PalazzoProgramStatus | PalazzoUnavailableStatus | null> {
     const client = this.clients.get(programId);
     if (client) return client.getStatus();
-    let programType: PalazzoProgramType | null = null;
+    // Only a program of a radio type has an engine to be unavailable. Any
+    // other program (a TV program, or none) keeps answering null, as before.
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      select: { type: true },
+    });
+    if (!state || !RADIO_PROGRAM_TYPES.includes(state.type)) return null;
+    const programType = state.type as PalazzoProgramType;
     let reason: PalazzoUnavailableReason | undefined;
     if (isDeployCandidate()) {
       reason = 'deploy-candidate';
@@ -168,23 +175,12 @@ export class PalazzoRadioTelemetryService
     } else {
       const setting = await this.prisma.radioSettings.findFirst({
         where: { programState: { programId } },
-        select: {
-          enabled: true,
-          palazzoUrl: true,
-          programState: { select: { type: true } },
-        },
+        select: { enabled: true, palazzoUrl: true },
       });
-      if (
-        !setting ||
-        !RADIO_PROGRAM_TYPES.includes(setting.programState.type) ||
-        !setting.palazzoUrl
-      ) {
+      if (!setting || !setting.palazzoUrl) {
         reason = 'not-configured';
       } else if (!setting.enabled) {
         reason = 'disabled';
-      }
-      if (setting && RADIO_PROGRAM_TYPES.includes(setting.programState.type)) {
-        programType = setting.programState.type as PalazzoProgramType;
       }
     }
     return {

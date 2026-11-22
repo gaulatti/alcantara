@@ -184,12 +184,14 @@ distinguishable from appliance unavailability.
 identity, telemetry freshness, and degraded flag per program. The radio panel
 surfaces this live.
 
-When the program has no telemetry client the endpoint answers an `unavailable`
-status instead of `null` (#257): `connection: "unavailable"`, `degraded: false`,
+When a program of a radio type (`radio` or `both`) has no telemetry client the
+endpoint answers an `unavailable` status instead of `null` (#257). A program
+that is not of a radio type (a TV program, or an unknown id) has no engine and
+keeps answering `null`, so no console shows an engine state for it. The
+unavailable status is: `connection: "unavailable"`, `degraded: false`,
 a plain-language `detail`, an empty `palazzoUrl` (a rejected URL is never
 echoed), null instance and timestamps, and a bounded `reason`:
-`not-configured` (no radio settings, no Palazzo URL, or a program that is not
-radio or both), `disabled` (radio disabled in the program's settings),
+`not-configured` (no radio settings or no Palazzo URL), `disabled` (radio disabled in the program's settings),
 `url-rejected` (the URL failed the allowlist when the client was started; see
 `alcantara_palazzo_config_rejected_total`) or `deploy-candidate` (a deploy
 candidate starts no telemetry). A configured, enabled program whose client has
