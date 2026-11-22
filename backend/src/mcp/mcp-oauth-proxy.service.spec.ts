@@ -18,7 +18,7 @@ import {
   type Params,
   type ProxyAnswer,
 } from './mcp-oauth-proxy.service';
-import { MCP_SHARED_CLIENT_ID } from './mcp.constants';
+import { COGNITO_HOSTED_DOMAIN, MCP_SHARED_CLIENT_ID } from './mcp.constants';
 
 // gaulatti/bastille#34: MCP sign-in through the API's one Cognito callback,
 // with consent for https callbacks. Credentials are placeholders built here.
@@ -69,6 +69,13 @@ function consentForm(answer: ProxyAnswer): { form: Params; cookie: string } {
   expect(answer.location).toBeUndefined();
   expect(answer.headers?.['cache-control']).toBe('no-store');
   expect(answer.headers?.['x-frame-options']).toBe('DENY');
+  // form-action names every place the form leads (bastille#34).
+  const callback = new URL(
+    /name="redirect_uri" value="([^"]*)"/.exec(answer.html ?? '')?.[1] ?? '',
+  );
+  expect(answer.headers?.['content-security-policy']).toBe(
+    `frame-ancestors 'none'; form-action 'self' ${new URL(COGNITO_HOSTED_DOMAIN).origin} ${callback.origin}`,
+  );
   const setCookie = answer.headers?.['set-cookie'] ?? '';
   expect(setCookie).toContain('SameSite=Strict');
   expect(setCookie).toContain('HttpOnly');

@@ -448,7 +448,10 @@ export class McpOAuthProxyService {
       headers: {
         'cache-control': 'no-store',
         'x-frame-options': 'DENY',
-        'content-security-policy': "frame-ancestors 'none'; form-action 'self'",
+        // Chromium applies form-action to the redirects after the POST, so it
+        // names every place the form leads: here, Cognito (Continue) and the
+        // callback's origin (Cancel) (bastille#34).
+        'content-security-policy': `frame-ancestors 'none'; form-action 'self' ${new URL(COGNITO_HOSTED_DOMAIN).origin} ${callback.origin}`,
         'set-cookie': `${CONSENT_COOKIE}=${nonce}; Path=/oauth/authorize; Max-Age=600; HttpOnly; Secure; SameSite=Strict`,
       },
     };
