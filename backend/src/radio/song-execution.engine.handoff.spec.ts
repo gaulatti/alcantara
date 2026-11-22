@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { SongExecutionEngine } from './song-execution.engine';
+import {
+  SIMILARITY_READY_WAIT_MS,
+  SongExecutionEngine,
+} from './song-execution.engine';
+import { Logger } from '@nestjs/common';
 import { RadioMetricsService } from './radio-metrics.service';
 import { AsRunService } from '../as-run/as-run.service';
 import {
@@ -1460,6 +1464,8 @@ describe('next-song announcement and handoff', () => {
 
     it('peeks with the similarity picker without recording a decision', async () => {
       const similarity = {
+        isReady: () => true,
+        whenReady: () => Promise.resolve(),
         getSettings: () => ({ mode: 'shadow' }),
         propose: jest.fn(() => ({
           result: {
@@ -2404,6 +2410,8 @@ describe('the successor chosen for the expected end, with production settings', 
    * song after the current one among the non-favourites, the first at start.
    */
   const similarityOn = () => ({
+    isReady: jest.fn(() => true),
+    whenReady: jest.fn(() => Promise.resolve()),
     getSettings: () => ({
       mode: 'on',
       pool: 'catalog',
@@ -2485,6 +2493,82 @@ describe('the successor chosen for the expected end, with production settings', 
     expect(h.palazzo.announced.at(-1)?.bumper).toBeDefined();
     expect(skipped(h)).toEqual([]);
     expect(h.metrics.snapshot().handoffs).toEqual({ preloaded: 1 });
+  });
+
+  // #277: right after a restart the similarity index is still loading, every
+  // pick falls back to the stored cursor, and that held choice aired at the
+  // end (the cursor song replayed after both restarts of 2026-11-22).
+  describe('while the similarity index is still loading (#277)', () => {
+    const notReady = () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const similarity = similarityOn();
+      let ready = false;
+      similarity.isReady.mockImplementation(() => ready);
+      similarity.whenReady.mockImplementation(() => gate);
+      return {
+        similarity,
+        becomeReady: () => {
+          ready = true;
+          release();
+        },
+      };
+    };
+
+    it('announces nothing until the index is ready, then announces the similarity pick', async () => {
+      const gate = notReady();
+      const h = production(T0 - 5 * 60_000, gate.similarity);
+      await onAir(h);
+      expect(urls(h.palazzo.commands)).toEqual([SONGS[0].url]);
+      expect(h.palazzo.announced).toEqual([]);
+      // Only the first song's own selection ran; no successor was peeked.
+      const proposals = gate.similarity.propose.mock.calls.length;
+      gate.becomeReady();
+      await settle();
+      expect(urls(h.palazzo.announced)).toEqual([SONGS[1].url]);
+      expect(gate.similarity.propose.mock.calls.length).toBeGreaterThan(
+        proposals,
+      );
+    });
+
+    it('announces from the cursor and warns once when the index is not ready after the bound', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const gate = notReady();
+      const h = production(T0 - 5 * 60_000, gate.similarity);
+      await onAir(h);
+      expect(h.palazzo.announced).toEqual([]);
+      jest.advanceTimersByTime(SIMILARITY_READY_WAIT_MS);
+      await settle();
+      expect(h.palazzo.announced.length).toBeGreaterThan(0);
+      expect(
+        warn.mock.calls.filter((call) =>
+          /Similarity index not ready after 20 s/.test(String(call[0])),
+        ),
+      ).toHaveLength(1);
+      warn.mockRestore();
+    });
+
+    it('does not delay the song change: a song that ends inside the window is commanded from the cursor with a warning', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const gate = notReady();
+      const h = production(T0 - 5 * 60_000, gate.similarity);
+      await onAir(h);
+      h.palazzo.endCurrent();
+      await settle();
+      expect(h.palazzo.commands.length).toBeGreaterThanOrEqual(2);
+      expect(
+        warn.mock.calls.some((call) =>
+          /Similarity index not ready on radio-1; the playlist cursor chooses this song/.test(
+            String(call[0]),
+          ),
+        ),
+      ).toBe(true);
+      warn.mockRestore();
+    });
   });
 
   it('chooses and announces a favourite that comes due inside the song', async () => {

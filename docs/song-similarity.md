@@ -85,6 +85,27 @@ existing cursor behavior runs and the reason is recorded. Queued songs, manual
 songs, timed blocks and Palazzo reconciliation keep their existing precedence;
 the picker only runs where the engine previously chose the next playlist song.
 
+## Start after a restart (#277)
+
+The picker works from an in-memory index (the embedding vectors) filled once
+when the backend starts. Until that load finishes nothing can be ranked, so a
+song chosen then falls back to the playlist cursor, and an announced successor
+is chosen once and held until it airs. The engine therefore does not announce a
+successor while the index is loading: it announces when the index is ready, and
+at the latest `SIMILARITY_READY_WAIT_MS` (20 s) after the first attempt it
+announces from the cursor and logs a warning. A song that ends before the index
+is ready is chosen from the cursor at once, with a warning, so the song change
+is never delayed. Nothing waits inside `onModuleInit` or the engine's
+reconciliation.
+
+Log lines to read: `Similarity index ready: <n> vectors for <m> songs in <ms> ms`
+at start; `Similarity fell back to the playlist cursor on <program>: no closing
+embedding for song <id> (index ready|loading, <n> vectors)` (a warning) or `… no
+candidate above the threshold after song <id>` (plain) for every fallback that
+airs; `Similarity index not ready after 20 s …` and `Similarity index not ready
+on <program>; the playlist cursor chooses this song` when the bound passes or a
+song ends first.
+
 ## Metrics
 
 `alcantara_radio_similarity_total{result}` on the authenticated `/metrics`

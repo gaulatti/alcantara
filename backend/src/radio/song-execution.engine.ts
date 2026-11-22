@@ -178,6 +178,8 @@ export interface PalazzoTelemetrySource {
  * could play, the first command failed and nothing followed it.
  */
 export const COMMAND_RETRY_BASE_MS = 2_000;
+/** How long the first announcement after a boot waits for the similarity index (#277). */
+export const SIMILARITY_READY_WAIT_MS = 20_000;
 
 /** Sends of one command spot: the first and one retry of a not-ready refusal (gaulatti/alcantara#274). */
 const BUMPER_COMMAND_ATTEMPTS = 2;
@@ -331,6 +333,9 @@ function restampSequence(
 }
 
 interface SongEngineState {
+  /** When the first announcement began waiting for the similarity index (#277). */
+  similarityWaitSince?: number;
+  similarityWaitWarned?: boolean;
   sequence: ProgramSongSequence | null;
   queue: ProgramSongQueueEntry[];
   rotation: ProgramSongRotationState;
@@ -1701,6 +1706,34 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
     if (!song || song.authoritativeStartedAt === null || song.asRunClosed) {
       return;
     }
+    // The successor is chosen once and held, so it is not chosen while the
+    // similarity index is still loading: right after a restart its map is
+    // empty, every pick falls back to the playlist cursor, and that choice
+    // would air at the end (#277: both restarts of 2026-11-22 replayed the
+    // stored cursor song). The announcement waits for the index, never longer
+    // than SIMILARITY_READY_WAIT_MS, and never blocks anything: it is run
+    // again when the index is ready or the bound passes.
+    if (this.similarity && !this.similarity.isReady()) {
+      const waitingSince = (state.similarityWaitSince ??= Date.now());
+      const left = SIMILARITY_READY_WAIT_MS - (Date.now() - waitingSince);
+      if (left > 0) {
+        void this.similarity
+          .whenReady()
+          .then(() => this.refreshAnnouncement(programId));
+        const timer = setTimeout(
+          () => this.refreshAnnouncement(programId),
+          left,
+        );
+        timer.unref();
+        return;
+      }
+      if (!state.similarityWaitWarned) {
+        state.similarityWaitWarned = true;
+        this.logger.warn(
+          `Similarity index not ready after ${SIMILARITY_READY_WAIT_MS / 1000} s on ${programId}; the next song is announced from the playlist cursor`,
+        );
+      }
+    }
     const found = await this.announceableSuccessor(programId, state, song);
     if (state.activeSong !== song) {
       this.countAnnouncementSkip(state, song, 'superseded');
@@ -3023,6 +3056,13 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    if (this.similarity && !this.similarity.isReady()) {
+      // A song ended before the similarity index finished loading: nothing to
+      // wait for here, so the playlist cursor chooses.
+      this.logger.warn(
+        `Similarity index not ready on ${programId}; the playlist cursor chooses this song`,
+      );
+    }
     const similarityMode =
       this.similarity?.getSettings(programId).mode ?? 'off';
     if (similarityMode === 'off') {
