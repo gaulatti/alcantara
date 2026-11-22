@@ -449,3 +449,33 @@ it("shows a spinner while loading and an empty state when nothing matches", () =
   expect(screen.getByText("No audio media found")).toBeInTheDocument();
   expect(screen.getByText("Clear the filters and try again.")).toBeInTheDocument();
 });
+
+it("unloads the playing clip when a filter unlists it, so the transport never acts on another clip", () => {
+  setup();
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset harbor" }));
+  expect(element().getAttribute("src")).toBe("https://media.test/harbor.mp3");
+  expect(
+    within(transport()).getByRole("button", { name: "Pause" }),
+  ).toBeInTheDocument();
+
+  const state = screen.getByRole("group", { name: "Analysis state" });
+  fireEvent.click(within(state).getByRole("button", { name: /^Failed/ }));
+  // The audible clip is stopped and unloaded; the transport offers the first listed clip as Play.
+  expect(pause).toHaveBeenCalled();
+  expect(element().getAttribute("src")).toBeNull();
+  expect(within(transport()).getByText("Asset failed")).toBeInTheDocument();
+  expect(
+    within(transport()).getByRole("button", { name: "Play" }),
+  ).toBeInTheDocument();
+  expect(
+    within(transport()).queryByRole("button", { name: "Pause" }),
+  ).toBeNull();
+
+  // Pressing it plays that clip, and only then does it say Pause.
+  fireEvent.click(within(transport()).getByRole("button", { name: "Play" }));
+  expect(element().getAttribute("src")).toBe("https://media.test/failed.mp3");
+  expect(
+    within(transport()).getByRole("button", { name: "Pause" }),
+  ).toBeInTheDocument();
+});
+

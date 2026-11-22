@@ -70,8 +70,10 @@ export function formatClock(seconds: number | null | undefined): string {
 
 /** A cue point as m:ss.s. */
 export function formatCue(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds - minutes * 60;
+  // Round to tenths first, so 9.96 reads 0:10.0 and 59.96 reads 1:00.0, never 0:010.0 or 0:60.0.
+  const tenths = Math.round(seconds * 10);
+  const minutes = Math.floor(tenths / 600);
+  const rest = (tenths % 600) / 10;
   return `${minutes}:${rest < 10 ? "0" : ""}${rest.toFixed(1)}`;
 }
 

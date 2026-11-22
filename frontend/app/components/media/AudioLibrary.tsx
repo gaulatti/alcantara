@@ -500,9 +500,12 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
     () => filterByAnalysis(assets, analysisFilter),
     [assets, analysisFilter],
   );
-  const current =
-    visible.find((asset) => asset.id === currentId) ?? visible[0] ?? null;
+  // The clip loaded in the audio element, when it is still listed; the transport shows and
+  // controls only that clip, or else offers the first listed one without loading it.
+  const loaded = visible.find((asset) => asset.id === currentId) ?? null;
+  const current = loaded ?? visible[0] ?? null;
   const currentIndex = current ? visible.indexOf(current) : -1;
+  const playingLoaded = playing && loaded !== null;
 
   // The audio element belongs to this tab: leaving the library stops the clip.
   useEffect(() => {
@@ -524,6 +527,12 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
     if (asset) element.src = asset.sourceUrl;
     else element.removeAttribute("src");
   }, []);
+
+  // A filter, search or page change that unlists the loaded clip stops it and unloads it, so the
+  // transport can never act on a different clip than the one that is audible.
+  useEffect(() => {
+    if (currentId !== null && loaded === null) load(null);
+  }, [currentId, loaded, load]);
 
   const toggle = useCallback(
     (asset: T) => {
@@ -680,7 +689,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                     const length = durationSeconds(asset);
                     const finished = measured(asset.analysis);
                     const isCurrent = asset.id === current?.id;
-                    const isPlaying = isCurrent && playing;
+                    const isPlaying = isCurrent && playingLoaded;
                     return (
                       <tr
                         key={asset.id}
@@ -797,11 +806,11 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                 <SkipBack size={14} />
               </IconButton>
               <IconButton
-                aria-label={playing ? "Pause" : "Play"}
+                aria-label={playingLoaded ? "Pause" : "Play"}
                 disabled={!current}
                 onClick={() => current && toggle(current)}
               >
-                {playing ? <Pause size={16} /> : <Play size={16} />}
+                {playingLoaded ? <Pause size={16} /> : <Play size={16} />}
               </IconButton>
               <IconButton
                 aria-label="Next"
