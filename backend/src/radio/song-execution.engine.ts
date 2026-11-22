@@ -3550,8 +3550,14 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
           if (retryable) {
             this.recordBumperMetric('command', 'retried');
             await new Promise((r) => setTimeout(r, COMMAND_RETRY_BASE_MS));
-            // Frozen or reset while waiting: the spot is not sent and keeps its turn.
-            if (this.states.get(programId) !== state || state.frozen) {
+            // Frozen or reset while waiting, or a song became active (an
+            // adoption or a manual play): the spot is not sent, so it can never
+            // play over a song, and it keeps its turn.
+            if (
+              this.states.get(programId) !== state ||
+              state.frozen ||
+              state.activeSong
+            ) {
               state.bumperSpotsSent?.delete(playbackRequestId);
               state.nextBumperIdx = idx;
               return;

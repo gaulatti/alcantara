@@ -2021,6 +2021,60 @@ describe('next-song announcement and handoff', () => {
         ).states.get(PROGRAM);
         expect(state?.nextBumperIdx).toBe(0);
       });
+
+      it('sends nothing more, counts no failure and restores the slot when a song became active during the wait', async () => {
+        const h = harness();
+        h.palazzo.settings = BUMPERS;
+        await onAir(h);
+        h.palazzo.endCurrent();
+        await settle();
+        h.palazzo.radioService.playInstant.mockImplementationOnce(() => {
+          const state = (
+            h.engine as unknown as {
+              states: Map<string, { activeSong: unknown }>;
+            }
+          ).states.get(PROGRAM);
+          if (state)
+            state.activeSong = {
+              token: 'adopted',
+              playbackRequestId: 'adopted',
+              audioUrl: SONGS[1].url,
+              artist: 'A',
+              title: 'T',
+              coverUrl: '',
+              durationMs: 200_000,
+              startedAt: Date.now(),
+              itemId: 'adopted',
+              songId: null,
+              introPlaybackId: null,
+              introStatus: 'none',
+              introFailureReason: null,
+              authoritativeStartedAt: Date.now(),
+              authoritativePositionMs: 0,
+              authoritativeUpdatedAt: Date.now(),
+              queueEntryId: null,
+              highRotation: false,
+            };
+          return Promise.reject(refused());
+        });
+        h.palazzo.endCurrent();
+        await settle();
+        expect(h.palazzo.radioService.playInstant).toHaveBeenCalledTimes(1);
+        expect(
+          metricLine(
+            h,
+            'alcantara_radio_bumpers_total{path="command",result="failed"}',
+          ),
+        ).toEqual([
+          'alcantara_radio_bumpers_total{path="command",result="failed"} 0',
+        ]);
+        const state = (
+          h.engine as unknown as {
+            states: Map<string, { nextBumperIdx?: number }>;
+          }
+        ).states.get(PROGRAM);
+        expect(state?.nextBumperIdx).toBe(0);
+      });
     });
 
     it('remembers at most 16 spots awaiting their start', () => {
