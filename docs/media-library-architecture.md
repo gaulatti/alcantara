@@ -204,6 +204,23 @@ busy at most a quarter of the time.
 `alcantara_media_analysis_backlog_assets` (no labels) is the number of audio
 assets still waiting at the last poll: unanalysed, stale, or due a retry. It
 falls to zero when the backfill is done.
+`alcantara_media_analysis_result_writes_total{outcome}` counts finished
+analyses whose result write the database refused (see below): `retried` (held
+for another run), `stored_after_retry`, `released` or `dropped`.
+
+**A refused result write (#278).** The asset is claimed (attempt n, a ten
+minute lease), analysed, and then the result is written. If that write fails on
+a transient database error (a timeout, a dropped connection), the finished
+measurement is kept in memory and the next runs store it before any other asset
+is taken, so ffmpeg does not run again and the attempt is not spent twice. Each
+retry is one duty-cycle run, at most `MAX_WRITE_RETRIES` (3) of them. If they
+all fail, the claim is released with the attempts the asset had before the run
+(the lost write is not an attempt) and a wait of the first retry backoff (5
+minutes), so a database that keeps refusing the write does not starve the other
+assets; if even the release fails, the lease runs out as it always did. A
+warning with the cause class is logged at each step, never the message. A write
+that fails for any other reason is logged as an error and not retried. The held
+result is lost on a restart; the lease path then applies, as before.
 
 **Rollback.** A forward fix. The job only writes `MediaAssetAnalysis`, which
 playback reads only for programs with `segueMode` `on`.

@@ -101,4 +101,39 @@ describe('MediaAnalysisMetrics', () => {
       failure: 1,
     });
   });
+
+  it('serves refused result writes on /metrics with a bounded outcome label only', async () => {
+    const managed = new ManagedMetricsService();
+    const metrics = new MediaAnalysisMetrics(managed);
+    const controller = new MetricsController(
+      new RadioMetricsService(),
+      managed,
+    );
+    const name = 'alcantara_media_analysis_result_writes_total';
+    const outcomes = ['retried', 'stored_after_retry', 'released', 'dropped'];
+
+    expect(samples(await controller.getMetrics(), name)).toEqual(
+      outcomes.map((outcome) => ({ name, labels: { outcome }, value: 0 })),
+    );
+
+    metrics.recordWrite('retried');
+    metrics.recordWrite('retried');
+    metrics.recordWrite('stored_after_retry');
+    metrics.recordWrite('released');
+    metrics.recordWrite('unexpected' as never);
+
+    const totals = samples(await controller.getMetrics(), name);
+    expect(
+      Object.fromEntries(totals.map((s) => [s.labels.outcome, s.value])),
+    ).toEqual({
+      retried: 2,
+      stored_after_retry: 1,
+      released: 1,
+      dropped: 1,
+    });
+    for (const sample of totals) {
+      expect(Object.keys(sample.labels)).toEqual(['outcome']);
+      expect(outcomes).toContain(sample.labels.outcome);
+    }
+  });
 });
