@@ -631,6 +631,39 @@ export function findUniqueProgramSongLeafByAudioUrl(
   return matches.length === 1 ? matches[0] : null;
 }
 
+/** How many leaves carry this audio URL: 0, 1, or 2 for two or more. */
+export function countProgramSongLeavesByAudioUrl(
+  sequence: ProgramSongSequence | null,
+  audioUrl: string,
+): 0 | 1 | 2 {
+  const normalizedUrl = audioUrl.trim();
+  if (!sequence || !normalizedUrl) return 0;
+  const matches: ProgramResolvedSongLeaf[] = [];
+  collectSongLeavesByAudioUrl(sequence, normalizedUrl, [], matches, 0);
+  return Math.min(matches.length, 2) as 0 | 1 | 2;
+}
+
+/**
+ * The sequence as an operator edits it: every field except the cursor
+ * (`activeItemId`, `startedAt`, at every level). Two sequences with the same
+ * structure differ only by where the rotation is.
+ */
+export function programSongSequenceStructure(
+  sequence: ProgramSongSequence | null,
+): string {
+  const strip = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(strip);
+    if (value && typeof value === 'object')
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(([key]) => key !== 'activeItemId' && key !== 'startedAt')
+          .map(([key, inner]) => [key, strip(inner)]),
+      );
+    return value;
+  };
+  return JSON.stringify(strip(sequence));
+}
+
 export function getProgramSongSequenceSelectedItemId(
   sequence: ProgramSongSequence,
   nowMs: number = Date.now(),

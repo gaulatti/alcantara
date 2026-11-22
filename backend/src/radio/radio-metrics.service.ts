@@ -202,6 +202,20 @@ export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
  * (gaulatti/alcantara#274).
  */
 export type BumperPath = 'announced' | 'command';
+/** A write of the playlist cursor after it advanced (#277). */
+export type CursorWriteResult = 'succeeded' | 'failed' | 'conflict';
+const CURSOR_WRITE_RESULTS: CursorWriteResult[] = [
+  'succeeded',
+  'failed',
+  'conflict',
+];
+/** How the song on air at a restart was recognised (#277). */
+export type InheritedAdoptionPath = 'leaf' | 'cursor_leaf' | 'catalogue';
+const INHERITED_ADOPTION_PATHS: InheritedAdoptionPath[] = [
+  'leaf',
+  'cursor_leaf',
+  'catalogue',
+];
 export type BumperResult = 'sent' | 'played' | 'failed' | 'retried';
 const BUMPER_PATHS: BumperPath[] = ['announced', 'command'];
 const BUMPER_RESULTS: BumperResult[] = ['sent', 'played', 'failed', 'retried'];
@@ -473,6 +487,8 @@ export class RadioMetricsService {
   private readonly handoffs = new Map<string, number>();
   private readonly announcementSkips = new Map<string, number>();
   private readonly bumpers = new Map<string, number>();
+  private readonly cursorWrites = new Map<string, number>();
+  private readonly inheritedAdoptions = new Map<string, number>();
   private highRotationFavorites = 0;
   private automaticPrograms = 0;
   private readonly machineRequests = new Map<string, number>();
@@ -621,6 +637,19 @@ export class RadioMetricsService {
     this.announcementSkips.set(
       reason,
       (this.announcementSkips.get(reason) ?? 0) + 1,
+    );
+  }
+
+  recordCursorWrite(result: CursorWriteResult): void {
+    if (!CURSOR_WRITE_RESULTS.includes(result)) return;
+    this.cursorWrites.set(result, (this.cursorWrites.get(result) ?? 0) + 1);
+  }
+
+  recordInheritedAdoption(path: InheritedAdoptionPath): void {
+    if (!INHERITED_ADOPTION_PATHS.includes(path)) return;
+    this.inheritedAdoptions.set(
+      path,
+      (this.inheritedAdoptions.get(path) ?? 0) + 1,
     );
   }
 
@@ -911,6 +940,24 @@ export class RadioMetricsService {
           `alcantara_radio_bumpers_total{path="${path}",result="${result}"} ${this.bumpers.get(`${path}\t${result}`) ?? 0}`,
         );
       }
+    }
+    lines.push(
+      '# HELP alcantara_radio_cursor_writes_total Writes of the playlist cursor after it advanced, by result (succeeded; failed: the database refused or timed out, the next song is not delayed; conflict: the stored sequence was edited meanwhile, or changed under the write, so nothing was written).',
+      '# TYPE alcantara_radio_cursor_writes_total counter',
+    );
+    for (const result of CURSOR_WRITE_RESULTS) {
+      lines.push(
+        `alcantara_radio_cursor_writes_total{result="${result}"} ${this.cursorWrites.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_inherited_adoptions_total Songs on air at a restart that the engine recorded as its own, by how it recognised them (leaf: the one sequence leaf with that audio; cursor_leaf: the leaf the cursor points at, when the audio is not unique in the sequence; catalogue: the song catalogue, outside the cursor).',
+      '# TYPE alcantara_radio_inherited_adoptions_total counter',
+    );
+    for (const path of INHERITED_ADOPTION_PATHS) {
+      lines.push(
+        `alcantara_radio_inherited_adoptions_total{path="${path}"} ${this.inheritedAdoptions.get(path) ?? 0}`,
+      );
     }
     lines.push(
       '# HELP alcantara_radio_high_rotation_favorites Configured high rotation playlist songs across radio-capable programs.',
