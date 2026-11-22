@@ -840,14 +840,17 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             >
               <div className="radio-cartwall-body">
                 {instantError && (
-                  <p role="alert" className="pb-2 text-sm text-terracotta">
+                  <p
+                    role="alert"
+                    className="radio-cartwall-alert text-sm text-terracotta"
+                  >
                     {instantError}
                   </p>
                 )}
                 {instantsLoadError && (
                   <div
                     role="alert"
-                    className="flex flex-wrap items-center gap-2 pb-2 text-sm text-terracotta"
+                    className="radio-cartwall-alert flex flex-wrap items-center gap-2 text-sm text-terracotta"
                   >
                     <span>Cartwall did not load: {instantsLoadError}</span>
                     {onRetryInstants && (
