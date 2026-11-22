@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({ authFetch: vi.fn() }));
 vi.mock("./api", () => ({ authFetch: mocks.authFetch }));
 import { uploadFileToMediaBucket } from "./uploads";
 
-beforeEach(() => mocks.authFetch.mockReset());
+beforeEach(() => {
+  mocks.authFetch.mockReset();
+});
 
 describe("uploadFileToMediaBucket", () => {
   const file = new File(["x"], "a.png", { type: "image/png" });

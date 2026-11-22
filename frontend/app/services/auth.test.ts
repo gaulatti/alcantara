@@ -7,7 +7,9 @@ const load = async () => {
   vi.resetModules();
   await import("./auth");
 };
-beforeEach(() => amplify.configure.mockReset());
+beforeEach(() => {
+  amplify.configure.mockReset();
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Cognito configuration", () => {
