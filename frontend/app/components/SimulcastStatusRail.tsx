@@ -2,6 +2,7 @@ import { Button, StatusBadge } from '@gaulatti/bleecker';
 import { Radio, Settings2, Tv, WifiOff } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { palazzoReasonText } from '../utils/palazzoReason';
 
 interface StreamStatus {
   running: boolean;
@@ -11,6 +12,7 @@ interface PalazzoStatus {
   connection?: string;
   degraded?: boolean;
   detail?: string | null;
+  reason?: string | null;
 }
 
 interface SimulcastStatusRailProps {
@@ -46,6 +48,7 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
     return () => window.clearInterval(interval);
   }, [refresh]);
 
+  const reasonText = palazzoReasonText(palazzo?.reason);
   const radioHealthy = stream?.running === true && (palazzo?.connection === 'connected' || palazzo?.connection === 'polling') && palazzo?.degraded !== true;
 
   return (
@@ -61,6 +64,7 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
       <span className={`flex items-center gap-1.5 font-semibold ${radioHealthy ? 'text-sea' : 'text-accent-yellow'}`} title={palazzo?.detail ?? undefined}>
         {radioHealthy ? <Radio className='h-3.5 w-3.5' aria-hidden='true' /> : <WifiOff className='h-3.5 w-3.5' aria-hidden='true' />}
         Radio {radioHealthy ? 'ready' : 'needs attention'}
+        {!radioHealthy && reasonText ? `: ${reasonText}` : ''}
       </span>
       <span className='min-w-[14rem] flex-1 text-text-secondary'>Scene actions affect TV. Songs and audio clips feed the shared program mix.</span>
       <Button as='a' href='/radio-settings' size='xs' variant='secondary'>

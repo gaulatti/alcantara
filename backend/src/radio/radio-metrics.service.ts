@@ -233,6 +233,7 @@ export interface RadioMetricsSnapshot {
   handoffs: Record<string, number>;
   highRotationFavorites: number;
   staleTelemetryPrograms: number;
+  palazzoConfigRejected: number;
   machineRequests: Record<string, number>;
   machineRetries: Record<string, number>;
   outputConfidenceTransitions: Record<string, number>;
@@ -452,6 +453,7 @@ export class RadioMetricsService {
   private readonly unknownValues = new Map<string, number>();
   private degradedPrograms = 0;
   private staleTelemetryPrograms = 0;
+  private palazzoConfigRejected = 0;
   private readonly trackTransitions = new Map<string, number>();
   private readonly engineResyncs = new Map<string, number>();
   private readonly engineDegraded = new Map<EngineDegradedSite, number>();
@@ -514,6 +516,11 @@ export class RadioMetricsService {
 
   recordStaleTelemetryPrograms(count: number): void {
     this.staleTelemetryPrograms = Math.max(0, count);
+  }
+
+  /** A Palazzo URL the allowlist rejected when a program's client was started (#257). */
+  recordPalazzoConfigRejected(): void {
+    this.palazzoConfigRejected += 1;
   }
 
   recordTrackTransition(result: TrackTransitionResult): void {
@@ -704,6 +711,7 @@ export class RadioMetricsService {
       handoffs: Object.fromEntries(this.handoffs),
       highRotationFavorites: this.highRotationFavorites,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
+      palazzoConfigRejected: this.palazzoConfigRejected,
       machineRequests: Object.fromEntries(this.machineRequests),
       machineRetries: Object.fromEntries(this.machineRetries),
       outputConfidenceTransitions: Object.fromEntries(
@@ -760,6 +768,9 @@ export class RadioMetricsService {
       '# HELP alcantara_palazzo_telemetry_stale_programs Radio programs with stale Palazzo telemetry.',
       '# TYPE alcantara_palazzo_telemetry_stale_programs gauge',
       `alcantara_palazzo_telemetry_stale_programs ${this.staleTelemetryPrograms}`,
+      '# HELP alcantara_palazzo_config_rejected_total Palazzo URLs the allowlist rejected when a program started consuming telemetry; the program has no engine until its settings change.',
+      '# TYPE alcantara_palazzo_config_rejected_total counter',
+      `alcantara_palazzo_config_rejected_total ${this.palazzoConfigRejected}`,
       '# HELP alcantara_radio_programs_degraded Radio programs currently degraded or unavailable.',
       '# TYPE alcantara_radio_programs_degraded gauge',
       `alcantara_radio_programs_degraded ${this.degradedPrograms}`,

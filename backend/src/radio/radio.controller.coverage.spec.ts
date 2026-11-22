@@ -17,7 +17,7 @@ function build() {
   const nowPlaying = { listConsumers: jest.fn(), replaceConsumers: jest.fn() };
   const telemetry = {
     handleRadioSettingsChanged: jest.fn(),
-    getStatus: jest.fn(),
+    getStatusWithReason: jest.fn(),
   };
   const confidence = { get: jest.fn() };
   const controller = new RadioController(
@@ -102,9 +102,9 @@ describe('RadioController coverage', () => {
 
   it('returns palazzo status from telemetry', async () => {
     const { controller, telemetry } = build();
-    telemetry.getStatus.mockReturnValue({ ok: 1 });
+    telemetry.getStatusWithReason.mockResolvedValue({ ok: 1 });
     await expect(controller.getPalazzoStatus('p')).resolves.toEqual({ ok: 1 });
-    expect(telemetry.getStatus).toHaveBeenCalledWith('p');
+    expect(telemetry.getStatusWithReason).toHaveBeenCalledWith('p');
   });
 
   it('checks settings then returns output confidence', async () => {

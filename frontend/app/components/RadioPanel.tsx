@@ -31,6 +31,7 @@ import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
 import { InstantsPanel } from "./panels";
 import { faderToDb } from "../utils/audioTaper";
+import { engineUnavailableLabel } from "../utils/palazzoReason";
 import {
   fetchFlightSequences,
   updateFlightSequence,
@@ -122,6 +123,8 @@ interface PalazzoStatus {
   lastSnapshotAt: string | null;
   degraded: boolean;
   detail: string | null;
+  /** Why there is no engine, when the backend says (#257); unknown values are ignored. */
+  reason?: string | null;
 }
 
 interface OutputConfidence {
@@ -448,7 +451,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             ? palazzo?.degraded
               ? "Engine degraded"
               : "Engine connected"
-            : "Engine unavailable"}
+            : engineUnavailableLabel(palazzo)}
         </span>
         <ConsoleClock />
       </header>

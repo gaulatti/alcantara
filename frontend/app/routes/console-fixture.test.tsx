@@ -489,6 +489,7 @@ it("hands the radio desk its fixture data for every radio state", () => {
       "?state=radio-offline",
       { stream: false, palazzo: "unavailable", output: "unavailable" },
     ],
+    ["?state=radio-not-configured", { palazzo: "unavailable" }],
     ["?state=radio-continuous", { logs: [] }],
     [
       "?state=radio-stale",

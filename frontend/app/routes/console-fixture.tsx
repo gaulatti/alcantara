@@ -355,14 +355,24 @@ export default function ConsoleFixture() {
               palazzo: {
                 programId: "fixture",
                 programType: "radio",
-                palazzoUrl: "http://palazzo:3100",
+                palazzoUrl:
+                  fixture === "radio-not-configured" ? "" : "http://palazzo:3100",
                 instanceId: "fixture",
                 connection:
-                  fixture === "radio-offline" ? "unavailable" : "connected",
+                  fixture === "radio-offline" ||
+                  fixture === "radio-not-configured"
+                    ? "unavailable"
+                    : "connected",
                 lastEventAt: new Date().toISOString(),
                 lastSnapshotAt: new Date().toISOString(),
                 degraded: false,
-                detail: null,
+                // #257: a program with no Palazzo URL says why there is no engine.
+                ...(fixture === "radio-not-configured"
+                  ? {
+                      reason: "not-configured",
+                      detail: "No Palazzo URL is configured for this program",
+                    }
+                  : { detail: null }),
               },
               output: {
                 state:

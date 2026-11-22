@@ -59,7 +59,7 @@ const s = {
     getPalazzoStatus: jest.fn(),
   },
   consumers: { listConsumers: jest.fn(), outboundPublishing: jest.fn() },
-  telemetry: { getStatus: jest.fn() },
+  telemetry: { getStatus: jest.fn(), getStatusWithReason: jest.fn() },
   confidence: { get: jest.fn() },
   preferences: { discover: jest.fn(), get: jest.fn() },
   pompeii: { teamId: 7 },
@@ -136,6 +136,7 @@ beforeEach(() => {
   s.consumers.listConsumers.mockResolvedValue([consumerRow]);
   s.consumers.outboundPublishing.mockReturnValue('blocked-local');
   s.telemetry.getStatus.mockReturnValue(palazzoStatus);
+  s.telemetry.getStatusWithReason.mockResolvedValue(palazzoStatus);
   s.confidence.get.mockReturnValue(confidence);
   s.preferences.discover.mockResolvedValue([sharedLayout]);
   s.preferences.get.mockResolvedValue(preferenceRow);
