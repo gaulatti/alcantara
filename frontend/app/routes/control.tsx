@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { useSSE, type SSEConnectionState } from "../hooks/useSSE";
+import { cartModifierHeld, platformIsMac } from "../utils/cartModifier";
 import {
   OVERLAY_COMPONENTS,
   getDefaultPropsForComponent as getStaticDefaultProps,
@@ -2773,12 +2774,8 @@ export default function Control() {
         return;
       }
 
-      if (!event.ctrlKey) {
-        return;
-      }
-
       const match = event.code.match(/^Digit(\d)$/);
-      if (match && Date.now() <= sceneHotkeyArmedUntil) {
+      if (event.ctrlKey && match && Date.now() <= sceneHotkeyArmedUntil) {
         const pressedDigit = Number(match[1]);
         const shortcutIndex = pressedDigit === 0 ? 9 : pressedDigit - 1;
         const shortcutScene = assignedScenes[shortcutIndex];
@@ -2793,11 +2790,12 @@ export default function Control() {
         return;
       }
 
-      if (event.metaKey || event.altKey || event.shiftKey) {
+      // A cart plays on this platform's modifier only (Ctrl on macOS, Alt elsewhere).
+      if (!cartModifierHeld(event, platformIsMac())) {
         return;
       }
 
-      const shortcutIndex = getInstantShortcutIndex(key);
+      const shortcutIndex = getInstantShortcutIndex(key, platformIsMac());
       if (shortcutIndex === -1) {
         return;
       }

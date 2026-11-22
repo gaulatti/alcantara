@@ -1,3 +1,4 @@
+import { resetPlatformForTests } from "../../utils/cartModifier";
 import {
   cleanup,
   fireEvent,
@@ -123,4 +124,11 @@ it("marks a playing cart, sweeping over its length or pulsing when the length is
   // A very short clip still sweeps for at least 200 ms.
   expect(animation("Horn · playing")).toMatch(/ 200ms linear forwards$/);
   expect(animation("Drum · playing")).toMatch(/ 1400ms ease-in-out infinite$/);
+});
+
+it("shows Alt+letter key caps on Windows and Linux", () => {
+  Object.defineProperty(window.navigator, "platform", { configurable: true, get: () => "Win32" });
+  resetPlatformForTests();
+  cartwall({ instants: [instant(10, "Applause")] });
+  expect(within(screen.getByRole("button", { name: "Applause" })).getByText("Alt+Q")).toBeInTheDocument();
 });
