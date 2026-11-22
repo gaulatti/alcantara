@@ -109,8 +109,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
    * most AS_RUN_RECORD_BACKOFF_MS in sum, never reordered.
    */
   private enqueueTrackEvent(event: AsRunTrackEvent): void {
-    const key =
-      event && typeof event.programId === 'string' ? event.programId : '';
+    const key = String(event.programId);
     const previous = this.recordChains.get(key) ?? Promise.resolve();
     const next = previous.then(() => this.recordWithRetry(event));
     this.recordChains.set(key, next);
@@ -128,7 +127,7 @@ export class AsRunService implements OnModuleInit, OnModuleDestroy {
         const delay = AS_RUN_RECORD_BACKOFF_MS[attempt];
         if (delay === undefined) {
           this.logger.warn(
-            `Failed to record a ${event?.type === 'track.started' ? 'started' : 'ended'} as-run state after ${attempt + 1} attempts (${error instanceof Error ? error.name : typeof error})`,
+            `Failed to record a ${event.type === 'track.started' ? 'started' : 'ended'} as-run state after ${attempt + 1} attempts (${error instanceof Error ? error.name : typeof error})`,
           );
           this.radioMetrics?.recordRadioLogResult('record-failed');
           return;

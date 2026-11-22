@@ -107,6 +107,15 @@ describe('AsRunService record retry (#256)', () => {
     expect(rows.map((r) => r.playbackRequestId)).toEqual(['r2']);
   });
 
+  it('names an ended state and tolerates a non-Error rejection', async () => {
+    create.mockRejectedValue('down');
+    subject.next(event('p1', 'track.ended', 'r1'));
+    await settle();
+    expect(String(warn.mock.calls[0][0])).toContain('ended');
+    expect(String(warn.mock.calls[0][0])).toContain('string');
+    expect(recordRadioLogResult).toHaveBeenCalledWith('record-failed');
+  });
+
   it('keeps one row when the same event is delivered twice', async () => {
     subject.next(event('p1', 'track.started', 'r1'));
     subject.next(event('p1', 'track.started', 'r1'));
