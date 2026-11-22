@@ -30,7 +30,8 @@ import {
  *    shows a consent page (below); otherwise it keeps a pending sign-in and
  *    sends the user to Cognito with the API's one callback, its own state and
  *    its own PKCE challenge.
- * 2. `GET /oauth/callback` takes the pending sign-in by state (once), redeems
+ * 2. `GET /oauth/callback` takes the pending sign-in by state (once), checks
+ *    that this browser started it (below), redeems
  *    Cognito's code server-side with the API's verifier, keeps the tokens under
  *    a new single-use 60 s code bound to the client's PKCE challenge, and
  *    redirects to the client's callback.
@@ -51,6 +52,10 @@ import {
  * the page and an HMAC over the nonce and the request (keyed per process), so a
  * cross-site form cannot consent and a request cannot be swapped.
  *
+ * Binding. The redirect to Cognito sets a random per-sign-in cookie
+ * (`SameSite=Lax`, since Cognito's return is a cross-site navigation), and
+ * `/oauth/callback` completes only in the browser that sends it back.
+ *
  * Pending sign-ins and tokens live only in this process's memory, never in the
  * database, a log or a metric label.
  */
@@ -67,6 +72,11 @@ export const ALLOWED_HTTPS_HOSTS = [
 /** The prefix of a client id that carries its registered callbacks. */
 export const PROXY_CLIENT_PREFIX = 'mcp-proxy.';
 export const CONSENT_COOKIE = 'alcantara_mcp_consent';
+/**
+ * The cookie that binds a pending sign-in to the browser that started it; one
+ * per pending sign-in, named by the start of its state.
+ */
+export const SIGNIN_COOKIE_PREFIX = 'alcantara_mcp_signin_';
 /** The authorize parameters a consent form carries back, in MAC order. */
 export const CONSENT_FIELDS = [
   'response_type',
@@ -102,6 +112,8 @@ interface Pending {
   state: string;
   codeChallenge: string;
   verifier: string;
+  /** Must come back in the sign-in cookie of the browser that started it. */
+  binding: string;
   created: number;
 }
 
@@ -115,6 +127,21 @@ export interface Issued {
 
 const base64url = (bytes: Buffer) => bytes.toString('base64url');
 const randomToken = () => base64url(randomBytes(32));
+
+/** The cookie that carries a pending sign-in's binding (state is base64url). */
+export function signinCookieName(state: string): string {
+  return `${SIGNIN_COOKIE_PREFIX}${state.slice(0, 16)}`;
+}
+
+/** One cookie's value from a Cookie header, or ''. */
+export function cookieOf(header: string | undefined, name: string): string {
+  return (
+    (header ?? '')
+      .split(';')
+      .map((pair) => pair.trim().split('='))
+      .find(([key]) => key === name)?.[1] ?? ''
+  );
+}
 
 export function challengeOf(verifier: string): string {
   return base64url(createHash('sha256').update(verifier).digest());
@@ -315,11 +342,7 @@ export class McpOAuthProxyService {
     form: Params,
     cookieHeader: string | undefined,
   ): ProxyAnswer {
-    const cookie =
-      (cookieHeader ?? '')
-        .split(';')
-        .map((pair) => pair.trim().split('='))
-        .find(([name]) => name === CONSENT_COOKIE)?.[1] ?? '';
+    const cookie = cookieOf(cookieHeader, CONSENT_COOKIE);
     const nonce = form.consent_nonce ?? '';
     const params: Params = {};
     for (const field of CONSENT_FIELDS)
@@ -394,6 +417,7 @@ export class McpOAuthProxyService {
       return this.consentPage(params, registered?.name);
     const nonce = randomToken();
     const verifier = randomToken();
+    const binding = randomToken();
     const now = Date.now();
     prune(this.pending, PENDING_TTL_MS, now);
     this.pending.set(nonce, {
@@ -402,6 +426,7 @@ export class McpOAuthProxyService {
       state,
       codeChallenge: challenge,
       verifier,
+      binding,
       created: now,
     });
     const target = new URL(`${COGNITO_HOSTED_DOMAIN}/oauth2/authorize`);
@@ -414,7 +439,15 @@ export class McpOAuthProxyService {
       code_challenge: challengeOf(verifier),
       code_challenge_method: 'S256',
     }).toString();
-    return redirect('proxied', target.toString());
+    // Lax, not Strict: Cognito's return to the callback is a cross-site
+    // top-level navigation, and the cookie must come with it.
+    return {
+      ...redirect('proxied', target.toString()),
+      headers: {
+        'cache-control': 'no-store',
+        'set-cookie': `${signinCookieName(nonce)}=${binding}; Path=/oauth/callback; Max-Age=600; HttpOnly; Secure; SameSite=Lax`,
+      },
+    };
   }
 
   private consentPage(params: Params, name: string | undefined): ProxyAnswer {
@@ -457,20 +490,51 @@ export class McpOAuthProxyService {
     };
   }
 
-  async callback(params: Params): Promise<ProxyAnswer> {
-    return this.observe('callback', await this.callbackInner(params));
+  async callback(
+    params: Params,
+    cookieHeader: string | undefined,
+  ): Promise<ProxyAnswer> {
+    const answer = await this.callbackInner(params, cookieHeader);
+    const state = params.state ?? '';
+    return this.observe(
+      'callback',
+      state
+        ? {
+            ...answer,
+            headers: {
+              ...answer.headers,
+              'set-cookie': `${signinCookieName(state)}=; Path=/oauth/callback; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,
+            },
+          }
+        : answer,
+    );
   }
 
-  private async callbackInner(params: Params): Promise<ProxyAnswer> {
-    const pending = this.pending.get(params.state ?? '');
-    this.pending.delete(params.state ?? '');
-    if (!pending || Date.now() - pending.created >= PENDING_TTL_MS)
+  private async callbackInner(
+    params: Params,
+    cookieHeader: string | undefined,
+  ): Promise<ProxyAnswer> {
+    const state = params.state ?? '';
+    const pending = this.pending.get(state);
+    if (!pending || Date.now() - pending.created >= PENDING_TTL_MS) {
+      this.pending.delete(state);
       return json(
         'unknown_state',
         400,
         'invalid_request',
         'This sign-in is unknown or expired; start again',
       );
+    }
+    // Refused without spending the sign-in, so a link opened elsewhere cannot
+    // cancel the one in the browser that started it.
+    if (!same(cookieOf(cookieHeader, signinCookieName(state)), pending.binding))
+      return json(
+        'unbound',
+        400,
+        'invalid_request',
+        'This sign-in was started in another browser; start again from the app',
+      );
+    this.pending.delete(state);
     if (params.error) {
       const code = /^[a-z_]{1,64}$/.test(params.error)
         ? params.error

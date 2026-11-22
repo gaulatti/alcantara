@@ -973,4 +973,64 @@ describe('MCP endpoint', () => {
     expect(token.status).toBe(400);
     expect(token.body.error).toBe('invalid_grant');
   });
+
+  // The Cognito return completes only in the browser that started the sign-in:
+  // the controller hands the browser's Cookie header to the proxy.
+  it('completes the Cognito return only in the browser that started it', async () => {
+    await boot();
+    const server = app.getHttpServer();
+    const loopback = 'http://127.0.0.1:5005/cb';
+    const begin = async () => {
+      const sent = await request(server).get(
+        `/oauth/authorize?${new URLSearchParams({
+          response_type: 'code',
+          client_id: MCP_SHARED_CLIENT_ID,
+          redirect_uri: loopback,
+          state: 'fictional-client-state',
+          code_challenge: 'c'.repeat(43),
+          code_challenge_method: 'S256',
+        })}`,
+      );
+      expect(sent.status).toBe(303);
+      return {
+        state: new URL(sent.headers.location).searchParams.get('state')!,
+        cookie: String(sent.headers['set-cookie']).split(';')[0],
+      };
+    };
+    const elsewhere = await begin();
+    expect(elsewhere.cookie).toMatch(/^alcantara_mcp_signin_/);
+    const refused = await request(server).get(
+      `/oauth/callback?${new URLSearchParams({ state: elsewhere.state, code: 'cognito-code' })}`,
+    );
+    expect(refused.status).toBe(400);
+    expect(refused.headers.location).toBeUndefined();
+    expect(String(refused.headers['set-cookie'])).toContain('Max-Age=0');
+
+    const proxy = app.get(McpOAuthProxyService);
+    const tokenCall = proxy.tokenCall;
+    proxy.tokenCall = () =>
+      Promise.resolve({
+        status: 200,
+        body: JSON.stringify({ access_token: 'fictional-access' }),
+      });
+    try {
+      const here = await begin();
+      const back = await request(server)
+        .get(
+          `/oauth/callback?${new URLSearchParams({ state: here.state, code: 'cognito-code' })}`,
+        )
+        .set('Cookie', here.cookie);
+      expect(back.status).toBe(303);
+      expect(new URL(back.headers.location).origin).toBe(
+        'http://127.0.0.1:5005',
+      );
+    } finally {
+      proxy.tokenCall = tokenCall;
+    }
+    const text = await metrics.registry.metrics();
+    for (const result of ['unbound', 'issued'])
+      expect(text).toContain(
+        `alcantara_mcp_oauth_total{step="callback",result="${result}"} 1`,
+      );
+  });
 });

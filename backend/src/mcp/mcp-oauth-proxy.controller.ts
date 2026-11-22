@@ -63,7 +63,14 @@ export class McpOAuthProxyController {
 
   @Get('callback')
   async callback(@Req() request: McpHttpRequest, @Res() reply: McpHttpReply) {
-    await write(reply, await this.proxy.callback(queryOf(request.query)));
+    const cookie = request.headers.cookie;
+    await write(
+      reply,
+      await this.proxy.callback(
+        queryOf(request.query),
+        Array.isArray(cookie) ? cookie.join(';') : cookie,
+      ),
+    );
   }
 
   @Post('token')

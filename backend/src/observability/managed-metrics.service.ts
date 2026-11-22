@@ -73,6 +73,7 @@ export const MCP_OAUTH_METRIC_RESULTS = [
   'proxied',
   'refused',
   'unknown_state',
+  'unbound',
   'provider_error',
   'exchange_failed',
   'issued',

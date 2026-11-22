@@ -38,7 +38,7 @@ describe('McpOAuthProxyService edges', () => {
     expect(proxy.consent({ consent_nonce: 'n' }, 'other=1')).toMatchObject({
       status: 400,
     });
-    expect(await proxy.callback({})).toMatchObject({
+    expect(await proxy.callback({}, undefined)).toMatchObject({
       result: 'unknown_state',
       status: 400,
     });
@@ -77,22 +77,24 @@ describe('McpOAuthProxyService edges', () => {
   it('redeems a code only with every field present', async () => {
     const { proxy } = service();
     const callback = 'http://127.0.0.1:5000/cb';
-    const sent = new URL(
-      proxy.authorize({
-        response_type: 'code',
-        client_id: MCP_SHARED_CLIENT_ID,
-        redirect_uri: callback,
-        state: 's',
-        code_challenge: challengeOf(VERIFIER),
-        code_challenge_method: 'S256',
-      }).location ?? '',
-    );
+    const toCognito = proxy.authorize({
+      response_type: 'code',
+      client_id: MCP_SHARED_CLIENT_ID,
+      redirect_uri: callback,
+      state: 's',
+      code_challenge: challengeOf(VERIFIER),
+      code_challenge_method: 'S256',
+    });
+    const sent = new URL(toCognito.location ?? '');
     const back = new URL(
       (
-        await proxy.callback({
-          code: 'cognito-code',
-          state: sent.searchParams.get('state') ?? '',
-        })
+        await proxy.callback(
+          {
+            code: 'cognito-code',
+            state: sent.searchParams.get('state') ?? '',
+          },
+          (toCognito.headers?.['set-cookie'] ?? '').split(';')[0],
+        )
       ).location ?? '',
     );
     expect(
@@ -271,8 +273,19 @@ describe('McpOAuthProxyController edges', () => {
       reply().target,
     );
     expect(proxy.authorize).toHaveBeenCalledWith({ state: 's' });
-    await controller.callback({} as McpHttpRequest, reply().target);
-    expect(proxy.callback).toHaveBeenCalledWith({});
+    await controller.callback(
+      { headers: { cookie: ['a=1', 'b=2'] } } as unknown as McpHttpRequest,
+      reply().target,
+    );
+    expect(proxy.callback).toHaveBeenCalledWith({}, 'a=1;b=2');
+    await controller.callback(
+      {
+        query: { state: 's' },
+        headers: { cookie: 'c=3' },
+      } as unknown as McpHttpRequest,
+      reply().target,
+    );
+    expect(proxy.callback).toHaveBeenLastCalledWith({ state: 's' }, 'c=3');
     await controller.consent(
       {
         body: 'not a form',

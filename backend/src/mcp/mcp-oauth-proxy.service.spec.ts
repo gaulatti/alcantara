@@ -5,6 +5,7 @@ import {
   MCP_CALLBACK_URL,
   McpOAuthProxyService,
   PROXY_CLIENT_PREFIX,
+  SIGNIN_COOKIE_PREFIX,
   challengeOf,
   consentMac,
   htmlEscape,
@@ -93,6 +94,19 @@ function consentForm(answer: ProxyAnswer): { form: Params; cookie: string } {
   return { form, cookie: setCookie.split(';')[0] };
 }
 
+/** The sign-in cookie a redirect to Cognito sets, as a Cookie header pair. */
+function signin(answer: ProxyAnswer): string {
+  return (answer.headers?.['set-cookie'] ?? '').split(';')[0];
+}
+
+/** A started loopback sign-in: the API's state and this browser's cookie. */
+function started(answer: ProxyAnswer) {
+  return {
+    state: new URL(answer.location!).searchParams.get('state')!,
+    cookie: signin(answer),
+  };
+}
+
 /** Authorize (through consent for https), Cognito's return and the redeemed code. */
 async function roundTrip(
   service: McpOAuthProxyService,
@@ -109,11 +123,14 @@ async function roundTrip(
   expect(sent.searchParams.get('redirect_uri')).toBe(MCP_CALLBACK_URL);
   expect(sent.searchParams.get('client_id')).toBe(MCP_SHARED_CLIENT_ID);
   expect(sent.searchParams.get('state')).not.toBe('fictional-client-state');
-  const back = await service.callback({
-    code: 'cognito-code',
-    state: sent.searchParams.get('state')!,
-  });
+  const back = await service.callback(
+    { code: 'cognito-code', state: sent.searchParams.get('state')! },
+    signin(toCognito),
+  );
   expect(back.result).toBe('issued');
+  expect(back.headers?.['set-cookie']).toBe(
+    `${signin(toCognito).split('=')[0]}=; Path=/oauth/callback; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,
+  );
   const returned = new URL(back.location!);
   expect(`${returned.origin}${returned.pathname}`).toBe(
     new URL(callback).origin + new URL(callback).pathname,
@@ -331,16 +348,10 @@ describe('MCP sign-in through the API (bastille#34)', () => {
     const { service } = proxy();
     const callback = 'http://127.0.0.1:5002/cb';
     const id = proxiedClientId([callback])!;
-    const sent = new URL(
-      service.authorize(authorizeParams(id, callback)).location!,
-    );
+    const sign = started(service.authorize(authorizeParams(id, callback)));
     const back = new URL(
-      (
-        await service.callback({
-          code: 'c',
-          state: sent.searchParams.get('state')!,
-        })
-      ).location!,
+      (await service.callback({ code: 'c', state: sign.state }, sign.cookie))
+        .location!,
     );
     const wrong = await service.token({
       grant_type: 'authorization_code',
@@ -380,39 +391,112 @@ describe('MCP sign-in through the API (bastille#34)', () => {
     const callback = 'http://127.0.0.1:5003/cb';
     const id = proxiedClientId([callback])!;
     const { service } = proxy(400);
-    expect((await service.callback({ state: 'unknown' })).result).toBe(
-      'unknown_state',
-    );
-    const state = () =>
-      new URL(
-        service.authorize(authorizeParams(id, callback)).location!,
-      ).searchParams.get('state')!;
-    const denied = await service.callback({
-      state: state(),
-      error: 'access_denied',
-    });
+    expect(
+      (await service.callback({ state: 'unknown' }, undefined)).result,
+    ).toBe('unknown_state');
+    const call = (extra: Params) => {
+      const sign = started(service.authorize(authorizeParams(id, callback)));
+      return service.callback({ state: sign.state, ...extra }, sign.cookie);
+    };
+    const denied = await call({ error: 'access_denied' });
     expect(new URL(denied.location!).searchParams.get('error')).toBe(
       'access_denied',
     );
-    const odd = await service.callback({
-      state: state(),
-      error: 'Not<Bounded>',
-    });
+    const odd = await call({ error: 'Not<Bounded>' });
     expect(new URL(odd.location!).searchParams.get('error')).toBe(
       'access_denied',
     );
-    expect((await service.callback({ state: state() })).json).toMatchObject({
+    expect((await call({})).json).toMatchObject({
       error_description: 'code is required',
     });
-    const failed = await service.callback({ state: state(), code: 'c' });
+    const failed = await call({ code: 'c' });
     expect(failed.result).toBe('exchange_failed');
     expect(new URL(failed.location!).searchParams.get('error')).toBe(
       'server_error',
     );
     service.tokenCall = () => Promise.reject(new Error('down'));
-    expect((await service.callback({ state: state(), code: 'c' })).result).toBe(
-      'exchange_failed',
+    expect((await call({ code: 'c' })).result).toBe('exchange_failed');
+  });
+
+  it('completes a sign-in only in the browser that started it', async () => {
+    const { service } = proxy();
+    const callback = 'https://chatgpt.com/connector/oauth/fictional-binding';
+    const id = proxiedClientId([callback])!;
+    const loopback = 'http://127.0.0.1:5004/cb';
+    const loopbackId = proxiedClientId([loopback])!;
+    /** Consent and Continue in one browser: the redirect to Cognito. */
+    const begin = () => {
+      const { form, cookie } = consentForm(
+        service.authorize(authorizeParams(id, callback)),
+      );
+      return service.consent({ ...form, decision: 'continue' }, cookie);
+    };
+    const toCognito = begin();
+    expect(toCognito.headers?.['set-cookie']).toMatch(
+      new RegExp(
+        `^${SIGNIN_COOKIE_PREFIX}[A-Za-z0-9_-]{16}=[A-Za-z0-9_-]{43}; Path=/oauth/callback; Max-Age=600; HttpOnly; Secure; SameSite=Lax$`,
+      ),
     );
+    expect(toCognito.headers?.['cache-control']).toBe('no-store');
+    expect(
+      service.authorize(authorizeParams(loopbackId, loopback)).headers?.[
+        'set-cookie'
+      ],
+    ).toMatch(new RegExp(`^${SIGNIN_COOKIE_PREFIX}`));
+
+    // The same Cognito link opened in another browser sends no cookie, another
+    // sign-in's cookie or a wrong value: refused before anything reaches the
+    // client's callback, and the sign-in still finishes where it started.
+    const other = started(
+      service.authorize(authorizeParams(loopbackId, loopback)),
+    );
+    const elsewhere = [
+      () => undefined,
+      () => other.cookie,
+      (name: string) => `${name}=${'x'.repeat(43)}`,
+      (name: string) => `${name}=`,
+    ];
+    for (const header of elsewhere) {
+      const sign = started(begin());
+      const [name] = sign.cookie.split('=');
+      const refused = await service.callback(
+        { state: sign.state, code: 'cognito-code' },
+        header(name),
+      );
+      expect(refused).toMatchObject({
+        result: 'unbound',
+        status: 400,
+        json: { error: 'invalid_request' },
+      });
+      expect(refused.location).toBeUndefined();
+      expect(
+        (
+          await service.callback(
+            { state: sign.state, code: 'cognito-code' },
+            sign.cookie,
+          )
+        ).result,
+      ).toBe('issued');
+    }
+    // A Cognito error in another browser is refused too, never relayed.
+    const failed = started(begin());
+    const relayed = await service.callback(
+      { state: failed.state, error: 'access_denied' },
+      undefined,
+    );
+    expect(relayed.result).toBe('unbound');
+    expect(relayed.location).toBeUndefined();
+
+    // Two sign-ins in one browser each finish with their own cookie.
+    const first = started(begin());
+    const second = started(begin());
+    const both = `${first.cookie}; ${second.cookie}`;
+    expect(
+      (await service.callback({ state: second.state, code: 'c' }, both)).result,
+    ).toBe('issued');
+    expect(
+      (await service.callback({ state: first.state, code: 'c' }, both)).result,
+    ).toBe('issued');
   });
 
   it('a refresh passes through to Cognito as the app client, and its failures are reported', async () => {
