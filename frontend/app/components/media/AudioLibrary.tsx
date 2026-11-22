@@ -658,7 +658,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                     <th className="w-8 px-2 py-2" aria-label="Select" />
                     <th className="w-10 px-2 py-2" aria-label="Play" />
                     <th className="px-2 py-2 font-semibold">Name</th>
-                    <th className="hidden px-2 py-2 font-semibold xl:table-cell">
+                    <th className="hidden px-2 py-2 font-semibold min-[1400px]:table-cell">
                       Timeline · cue in / out
                     </th>
                     <th className="px-2 py-2 text-right font-semibold">
@@ -730,7 +730,7 @@ export function AudioLibrary<T extends AudioLibraryAsset>({
                             </span>
                           </p>
                         </td>
-                        <td className="hidden w-48 px-2 py-2 xl:table-cell">
+                        <td className="hidden w-48 px-2 py-2 min-[1400px]:table-cell">
                           <Timeline
                             length={length}
                             analysis={asset.analysis}
