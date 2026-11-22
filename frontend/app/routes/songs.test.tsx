@@ -189,6 +189,29 @@ it("summarises the catalog and lists each song with its cover, number, duration 
   expect(screen.getByRole("button", { name: "—" })).toBeInTheDocument();
 });
 
+it("gives the wide table's action buttons their own column, so the duration is not covered", async () => {
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2, { durationMs: null })]));
+  render(<SongsCatalog />);
+  await loaded();
+  const columns =
+    "grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(0,1fr)_5rem_8.5rem]";
+  const preview = screen.getByRole("button", { name: "Preview Artist 1 - Title 1" });
+  const row = preview.closest(".group") as HTMLElement;
+  const header = row.parentElement!.previousElementSibling as HTMLElement;
+  // The header and every row share one grid, and the last column (3 icon buttons of 2.5rem
+  // and two 0.25rem gaps, 8rem) is wider than the 6rem that used to overlap the duration.
+  expect(header).toHaveClass(columns);
+  expect(row).toHaveClass(columns);
+  expect(row.children).toHaveLength(6);
+  expect(row.children[4]).toHaveTextContent("3:05");
+  expect(row.children[5]).toContainElement(preview);
+  expect(row.children[5].querySelectorAll("button")).toHaveLength(3);
+  expect(
+    screen.getByRole("button", { name: "Preview Artist 2 - Title 2" }).closest(".group")!
+      .children[4],
+  ).toHaveTextContent("Unknown");
+});
+
 it("offers the first song when the catalog is empty", async () => {
   fetchSongsPage.mockResolvedValue(pageOf([]));
   render(<SongsCatalog />);

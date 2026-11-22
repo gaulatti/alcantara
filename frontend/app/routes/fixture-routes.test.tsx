@@ -27,6 +27,13 @@ beforeEach(() => {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
 });
 
 afterEach(() => {
@@ -87,6 +94,20 @@ it("shows chyron messages on demand in the layout demo", async () => {
       screen.queryByText("ULTIMA HORA: Noticia importante en desarrollo"),
     ).not.toBeInTheDocument(),
   );
+});
+
+it("contains the layout demo's 1920x1080 stage in a frame, so its fixed widgets cannot cover the sidebar", () => {
+  render(<BroadcastLayoutExample />);
+  const frame = screen.getByTestId("layout-demo-frame");
+  const stage = screen.getByTestId("layout-demo-stage");
+  // The frame clips the stage, and the stage's transform makes the frame the containing block
+  // of the position:fixed QR widget.
+  expect(frame).toHaveClass("overflow-hidden", "w-full");
+  expect(stage.style.transform).toMatch(/^scale\(/);
+  expect(stage.style.width).toBe("1920px");
+  expect(stage.style.height).toBe("1080px");
+  expect(frame.contains(document.querySelector(".qr-widget"))).toBe(true);
+  expect(frame.contains(screen.getByText("Broadcast Layout Demo"))).toBe(true);
 });
 
 it("shows every song-intro editor state", () => {

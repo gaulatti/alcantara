@@ -91,7 +91,11 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   shows: <Boxes size={17} />,
   'radio-distribution': <Cable size={17} />,
   'component-catalog': <BookOpen size={17} />,
-  'console-fixture': <Code2 size={17} />
+  'console-fixture': <Code2 size={17} />,
+  'rundown-desk-fixture': <List size={17} />,
+  'rundown-filler-fixture': <List size={17} />,
+  'media-fixture': <Images size={17} />,
+  'access-fixture': <KeyRound size={17} />
 };
 
 interface ShellLinkProps {
@@ -796,7 +800,7 @@ function ConsoleShell() {
         <p className='mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary'>Active show</p>
         {renderHeaderProgramSelector()}
       </div>
-      <div className='flex items-center justify-between gap-2'>
+      <div className='flex flex-col items-start gap-1' data-testid='sidebar-footer-actions'>
         <Button size='sm' variant='ghost' onClick={() => setCommandOpen(true)}>
           <Search size={14} /> Commands
         </Button>

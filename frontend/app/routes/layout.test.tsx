@@ -81,7 +81,12 @@ vi.mock("@gaulatti/bleecker", async (original) => {
     const link = (item: any) =>
       p.renderLink({
         item,
-        children: item.label,
+        children: (
+          <>
+            {item.icon}
+            {item.label}
+          </>
+        ),
         className: "item",
         onClick: p.onItemClick,
       });
@@ -345,6 +350,38 @@ it("selects the first known show when the saved one is gone, and opens its telev
   expect(screen.queryByText("TEST AUTH")).toBeNull();
   fireEvent.click(within(sidebar).getByRole("button", { name: "Logout" }));
   expect(shell.logout).toHaveBeenCalled();
+});
+
+it("gives Logout its own room in the sidebar footer, and an icon to every Development item", async () => {
+  open("/songs");
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
+  const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
+  // Commands, Access and Logout used to share one row of the 256px sidebar, which clipped Logout.
+  const footer = within(sidebar).getByTestId("sidebar-footer-actions");
+  const commands = within(footer).getByRole("button", { name: /Commands/ });
+  const access = within(footer).getByRole("button", { name: "Access" });
+  const logout = within(footer).getByRole("button", { name: "Logout" });
+  expect(commands.parentElement).toBe(footer);
+  expect(access.parentElement).toBe(logout.parentElement);
+  expect(access.parentElement).not.toBe(footer);
+  expect(footer).toHaveClass("flex-col");
+
+  for (const label of [
+    "Component catalog",
+    "Console",
+    "Radio workflow",
+    "Continuous radio",
+    "Rundown desk",
+    "Rundown fillers",
+    "Media states",
+    "Access states",
+  ]) {
+    const links = within(sidebar).getAllByRole("link", { name: label });
+    expect(
+      links.some((link) => link.querySelector("svg")),
+      label,
+    ).toBe(true);
+  }
 });
 
 it("opens the Access page from the sidebar and from the mobile navigation", async () => {
