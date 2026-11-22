@@ -78,6 +78,7 @@ import type {
   SongCatalogItem,
 } from "../models/broadcast";
 import { songRequestFailureNotice } from "../utils/songRequestFailure";
+import { failureMessage, responseFailure } from "../utils/responseFailure";
 import {
   DEFAULT_MIXER_TAKE_APPLYING,
   DEFAULT_MIXER_TAKE_PRESETS_DB,
@@ -163,6 +164,16 @@ export default function Control() {
   const [isLoadingInstants, setIsLoadingInstants] = useState(false);
   const [instantSearch, setInstantSearch] = useState("");
   const [songCatalog, setSongCatalog] = useState<SongCatalogItem[]>([]);
+  // Why the song library or the cartwall did not load, shown with a retry
+  // instead of an empty list (gaulatti/alcantara#253).
+  const [songCatalogLoadError, setSongCatalogLoadError] = useState<
+    string | null
+  >(null);
+  const [instantsLoadError, setInstantsLoadError] = useState<string | null>(
+    null,
+  );
+  // The last refused instant or Stop all, cleared when the next one starts.
+  const [instantError, setInstantError] = useState<string | null>(null);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
   const [isLoadingMediaGroups, setIsLoadingMediaGroups] = useState(false);
   const [mediaLabels, setMediaLabels] = useState<MediaLabel[]>([]);
@@ -462,6 +473,8 @@ export default function Control() {
     });
     instantPlaybackTimeoutsRef.current = {};
     setInstantPlayback({});
+    // A refusal belongs to the program it was made on.
+    setInstantError(null);
     setProgramAudioMeterLevels({
       song: createEmptyMeterChannel(),
       instants: createEmptyMeterChannel(),
@@ -1026,13 +1039,16 @@ export default function Control() {
       setIsLoadingInstants(true);
       const res = await fetch(apiUrl("/instants"));
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
       const data = (await res.json()) as InstantItem[];
       setInstants(data);
+      setInstantsLoadError(null);
     } catch (err) {
       console.error("Failed to fetch instants:", err);
-      setInstants([]);
+      // The list is the same for every program (it is read without one), so
+      // a failed reload keeps the pads that loaded (gaulatti/alcantara#253).
+      setInstantsLoadError(failureMessage(err));
     } finally {
       setIsLoadingInstants(false);
     }
@@ -1042,13 +1058,15 @@ export default function Control() {
     try {
       const res = await fetch(apiUrl("/songs?limit=0"));
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
       const body = (await res.json()) as PaginatedResponse<SongCatalogItem>;
       setSongCatalog(Array.isArray(body.data) ? body.data : []);
+      setSongCatalogLoadError(null);
     } catch (err) {
       console.error("Failed to fetch songs catalog:", err);
-      setSongCatalog([]);
+      // The library is the station's: a failed reload keeps what it had.
+      setSongCatalogLoadError(failureMessage(err));
     }
   };
 
@@ -1676,7 +1694,7 @@ export default function Control() {
         },
       );
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
 
       const payload =
@@ -1739,7 +1757,7 @@ export default function Control() {
         body: JSON.stringify({ itemId }),
       },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
@@ -1749,7 +1767,7 @@ export default function Control() {
       `/program/${encodeURIComponent(targetProgramId)}/song-queue/${encodeURIComponent(entryId)}`,
       { method: "DELETE" },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
@@ -1763,7 +1781,7 @@ export default function Control() {
         body: JSON.stringify({ entryIds }),
       },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
@@ -1800,7 +1818,7 @@ export default function Control() {
         }),
       },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
   };
 
   const takeProgramSongOffAir = async (
@@ -1816,7 +1834,7 @@ export default function Control() {
       );
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
       console.log(`[Control] takeProgramSongOffAir response ${res.status}`);
     } catch (err) {
@@ -2118,6 +2136,8 @@ export default function Control() {
   };
 
   const triggerInstant = async (instantId: number) => {
+    const targetProgramId = activeProgramId;
+    setInstantError(null);
     try {
       const res = await fetch(
         apiUrl(
@@ -2129,7 +2149,7 @@ export default function Control() {
       );
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
 
       const startedAtMs = Date.now();
@@ -2166,10 +2186,18 @@ export default function Control() {
       }
     } catch (err) {
       console.error("Failed to trigger instant:", err);
+      // A refusal for a program the operator has left is not shown.
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      const name =
+        instants.find((instant) => instant.id === instantId)?.name ??
+        "the instant";
+      setInstantError(`Could not play ${name}: ${failureMessage(err)}`);
     }
   };
 
   const stopAllInstants = async () => {
+    const targetProgramId = activeProgramId;
+    setInstantError(null);
     try {
       const res = await fetch(
         apiUrl(
@@ -2181,7 +2209,7 @@ export default function Control() {
       );
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
 
       Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
@@ -2191,6 +2219,8 @@ export default function Control() {
       setInstantPlayback({});
     } catch (err) {
       console.error("Failed to stop all instants:", err);
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      setInstantError(`Could not stop all instants: ${failureMessage(err)}`);
     }
   };
 
@@ -3219,6 +3249,11 @@ export default function Control() {
         onInstantSearchChange={setInstantSearch}
         onTriggerInstant={(id) => triggerInstant(id)}
         onStopAllInstants={stopAllInstants}
+        instantError={instantError}
+        instantsLoadError={instantsLoadError}
+        onRetryInstants={() => void fetchInstants()}
+        songCatalogLoadError={songCatalogLoadError}
+        onRetrySongCatalog={() => void fetchSongCatalog()}
         instantPlayback={instantPlayback}
         mixer={{
           song: {

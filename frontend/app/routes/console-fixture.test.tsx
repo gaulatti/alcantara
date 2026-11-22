@@ -97,6 +97,9 @@ vi.mock("../components/RadioPanel", () => ({
         search: p.instantSearch,
         playing: Object.keys(p.instantPlayback),
         mixer: p.mixer,
+        instantError: p.instantError,
+        instantsLoadError: p.instantsLoadError,
+        songLoadError: p.songCatalogLoadError,
       }}
       actions={{
         save: () => p.onSaveSongSequence({ ...p.songSequence, items: [] }),
@@ -115,6 +118,8 @@ vi.mock("../components/RadioPanel", () => ({
         "main volume": () => p.onMainVolumeChange(0.6),
         "mute song": () => p.onToggleSongMuted(),
         "mute instants": () => p.onToggleInstantMuted(),
+        "retry songs": () => p.onRetrySongCatalog(),
+        "retry instants": () => p.onRetryInstants(),
       }}
     />
   ),
@@ -577,6 +582,33 @@ it("takes the radio desk's commands into its fixture state", () => {
   press("radio: off air");
   expect(data("radio").playback).toBeNull();
   vi.restoreAllMocks();
+});
+
+it("shows the radio desk's refused instant and failed loads, and clears each on retry", () => {
+  open("?state=radio-live");
+  expect(data("radio")).toMatchObject({ instantError: null, instantsLoadError: null, songLoadError: null });
+  cleanup();
+  open("?state=radio-refused");
+  expect(data("radio")).toMatchObject({
+    instantError: "Could not play News sting: Instant is disabled for this program",
+    instantsLoadError: "Fictional library is offline",
+    songLoadError: "HTTP 503",
+  });
+  press("radio: retry songs");
+  expect(data("radio")).toMatchObject({ songLoadError: null, instantsLoadError: "Fictional library is offline" });
+  // A retry clears only its own list's error; the refusal stays until the
+  // next instant starts.
+  press("radio: retry instants");
+  expect(data("radio")).toMatchObject({
+    instantsLoadError: null,
+    instantError: "Could not play News sting: Instant is disabled for this program",
+  });
+  press("radio: trigger");
+  expect(data("radio").instantError).toBeNull();
+  cleanup();
+  open("?state=radio-refused");
+  press("radio: stop all");
+  expect(data("radio").instantError).toBeNull();
 });
 
 it("opens the audio workspace with its mixer, music, cartwall and transport", () => {

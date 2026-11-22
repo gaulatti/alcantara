@@ -185,6 +185,20 @@ secondary disclosure. The development `radio-workflow` fixture now shows a log
 with both following events and fixed-time boundaries; `radio-empty`,
 `radio-offline`, and `radio-external` retain explicit empty/degraded feedback.
 
+Failures on the Radio desk are shown, never only logged (#253). A refused
+instant or **Stop all** appears above the Cartwall pads and clears when the
+next instant or Stop all starts, or when the operator switches program; a
+refusal that arrives after a switch is not shown. A song library or Cartwall that did not load
+says so with **Retry song library** or **Retry cartwall** instead of looking
+empty; a later successful load replaces the error, and only the failed list
+shows one. A failed reload never discards a list that already loaded: the
+error and its retry sit above the still-usable pads, and stand alone only when
+nothing has loaded. Refusals read the server's own `message` when it answers with JSON
+(a string or a list of strings), as one line of at most 160 characters and as
+plain text; any other body falls back to `HTTP <status>`. The helper is
+`frontend/app/utils/responseFailure.ts`. `/console-fixture?state=radio-refused`
+shows all three states.
+
 The local wall clock is labeled separately from authoritative playback timing.
 Remaining time uses reported duration and position; stale telemetry is labeled
 as last reported time. Missing output/engine data stays visibly unverified or

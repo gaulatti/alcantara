@@ -81,6 +81,14 @@ interface RadioPanelProps {
   onInstantSearchChange: (v: string) => void;
   onTriggerInstant: (id: number) => void;
   onStopAllInstants: () => void;
+  /** The last refused instant or Stop all (gaulatti/alcantara#253). */
+  instantError?: string | null;
+  /** Why the cartwall's instants did not load; shown with a retry. */
+  instantsLoadError?: string | null;
+  onRetryInstants?: () => void;
+  /** Why the song library did not load; shown with a retry. */
+  songCatalogLoadError?: string | null;
+  onRetrySongCatalog?: () => void;
   instantPlayback: Record<
     number,
     { startedAtMs: number; endsAtMs: number | null }
@@ -151,6 +159,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onInstantSearchChange,
   onTriggerInstant,
   onStopAllInstants,
+  instantError = null,
+  instantsLoadError = null,
+  onRetryInstants,
+  songCatalogLoadError = null,
+  onRetrySongCatalog,
   instantPlayback,
   mixer,
   onSongVolumeChange,
@@ -509,6 +522,24 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                 {playoutError || queueError || logLoadError}
               </p>
             )}
+            {songCatalogLoadError && (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-terracotta"
+              >
+                <span>Song library did not load: {songCatalogLoadError}</span>
+                {onRetrySongCatalog && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="secondary"
+                    onClick={onRetrySongCatalog}
+                  >
+                    Retry song library
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="radio-rundown-body">
               {timedBlockOnAir && activeLog ? (
                 <ol className="console-log" aria-label="On-air rundown">
@@ -808,14 +839,41 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               }
             >
               <div className="radio-cartwall-body">
-                <InstantsPanel
-                  isLoading={false}
-                  instants={instants}
-                  search={instantSearch}
-                  playback={instantPlayback}
-                  onSearchChange={onInstantSearchChange}
-                  onTrigger={onTriggerInstant}
-                />
+                {instantError && (
+                  <p role="alert" className="pb-2 text-sm text-terracotta">
+                    {instantError}
+                  </p>
+                )}
+                {instantsLoadError && (
+                  <div
+                    role="alert"
+                    className="flex flex-wrap items-center gap-2 pb-2 text-sm text-terracotta"
+                  >
+                    <span>Cartwall did not load: {instantsLoadError}</span>
+                    {onRetryInstants && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="secondary"
+                        onClick={onRetryInstants}
+                      >
+                        Retry cartwall
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {/* A failed reload keeps the pads that loaded; the error is
+                    shown alone only when there is nothing to play. */}
+                {!(instantsLoadError && instants.length === 0) && (
+                  <InstantsPanel
+                    isLoading={false}
+                    instants={instants}
+                    search={instantSearch}
+                    playback={instantPlayback}
+                    onSearchChange={onInstantSearchChange}
+                    onTrigger={onTriggerInstant}
+                  />
+                )}
               </div>
             </ConsolePanel>
             <ConsolePanel title="Mixer">
