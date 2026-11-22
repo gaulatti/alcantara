@@ -15,6 +15,7 @@ import SimilarityFixture from "./similarity-fixture";
 import BroadcastLayoutExample from "./layout-demo";
 import SongIntroFixture from "./song-intro-fixture";
 import MediaFixture from "./media-fixture";
+import LabelsFixture from "./labels-fixture";
 import RecordingFixture from "./recording-fixture";
 import AccessFixture from "./access-fixture";
 
@@ -154,6 +155,37 @@ it("shows the radio media surface with capabilities and labels", () => {
   expect(
     within(rowOf("Legacy clip")).getByText("Analysis unavailable"),
   ).toBeVisible();
+});
+
+it("shows the labels fixture, and lets its order be rearranged", async () => {
+  render(
+    <MemoryRouter>
+      <LabelsFixture />
+    </MemoryRouter>,
+  );
+  const table = within(screen.getByRole("table"));
+  expect(table.getByText("90s").closest("tr")).toHaveTextContent("4 audio");
+  expect(table.getByText("90s").closest("tr")).toHaveTextContent("1 video");
+  expect(table.getByText("Unused").closest("tr")).toHaveTextContent("No media");
+  const drawer = within(screen.getByRole("complementary", { name: "90s details" }));
+  expect(drawer.getByText("and 33 more")).toBeInTheDocument();
+  fireEvent.click(drawer.getByRole("button", { name: "Move Paper Satellites up" }));
+  await waitFor(() =>
+    expect(
+      drawer.getAllByRole("listitem").map((item) => item.textContent?.replace(/\d+/, "")),
+    ).toEqual([
+      "Paper Satellitesaudio",
+      "Copper Seasonaudio",
+      "Low Tide Radioaudio",
+      "Static Bloomaudio",
+      "Video · Live at Pier 9video",
+    ]),
+  );
+  fireEvent.click(drawer.getByRole("button", { name: "Remove Static Bloom from 90s" }));
+  await waitFor(() => expect(drawer.queryByText("Static Bloom")).toBeNull());
+  fireEvent.click(drawer.getByRole("button", { name: "Add assets" }));
+  fireEvent.click(table.getByText("Unused"));
+  expect(screen.getByText("No media with this label")).toBeInTheDocument();
 });
 
 it.each([
