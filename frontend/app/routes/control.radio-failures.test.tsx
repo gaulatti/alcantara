@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { controlServer, stubConsoleBrowser, type ControlServer } from "../../test/controlKit";
+import { holdControl } from "../../test/routeKit";
 
 // gaulatti/alcantara#253: the radio console shows the operator what failed. A
 // refused instant or Stop all is shown by the cartwall until the next one
@@ -134,14 +135,14 @@ it("shows a refused Stop all with the status when the server gives no reason, an
       refuse ? new Response("<html>Bad gateway</html>", { status: 502, headers: { "content-type": "text/html" } }) : Response.json({}),
   });
   const wall = await cartwall();
-  fireEvent.click(within(wall).getByRole("button", { name: "Stop all" }));
+  await holdControl(within(wall).getByRole("button", { name: "Stop all sounders" }));
   const alert = await within(wall).findByText("Could not stop all instants: HTTP 502");
   expect(alert).toBeVisible();
   // The body is never shown, as text or as markup.
   expect(screen.queryByText(/Bad gateway/)).toBeNull();
 
   refuse = false;
-  fireEvent.click(within(wall).getByRole("button", { name: "Stop all" }));
+  await holdControl(within(wall).getByRole("button", { name: "Stop all sounders" }));
   await waitFor(() => expect(server.requests("POST /instants/stop-all?programId=main")).toHaveLength(2));
   await waitFor(() => expect(within(wall).queryByText(/Could not stop all/)).toBeNull());
 });
@@ -220,7 +221,7 @@ it("does not show a refusal that comes back after the operator left the program"
       }),
   });
   const wall = await cartwall();
-  fireEvent.click(within(wall).getByRole("button", { name: "Stop all" }));
+  await holdControl(within(wall).getByRole("button", { name: "Stop all sounders" }));
   await waitFor(() => expect(server.requests("POST /instants/stop-all?programId=main")).toHaveLength(1));
   switchTo(view, "other");
   await waitFor(() => expect(server.requests("GET /program/other/state").length).toBeGreaterThan(0));

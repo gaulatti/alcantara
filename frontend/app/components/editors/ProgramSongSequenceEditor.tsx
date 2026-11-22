@@ -1,3 +1,4 @@
+import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
@@ -50,7 +51,9 @@ export function ProgramSongSequenceEditor({
   onQueueItem,
   depth = 0,
   view = 'full',
-  rotationLabel = 'Playlist'
+  rotationLabel = 'Playlist',
+  liveItemId = null,
+  nextItemId = null
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
@@ -61,6 +64,9 @@ export function ProgramSongSequenceEditor({
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
+  /** The rotation song that is on air, and the one Cue next would cue: marked in the list (#298). */
+  liveItemId?: string | null;
+  nextItemId?: string | null;
 }) {
   // Every item the editor shows is a song: the playlist type proves it.
   const sequence = useMemo(
@@ -428,8 +434,13 @@ export function ProgramSongSequenceEditor({
                                 </div>
                               )}
                               <div className='min-w-0'>
-                                <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
-                                  {titleText}
+                                <div className={`flex items-center gap-2 truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
+                                  <span className='truncate'>{titleText}</span>
+                                  {displayItem.id === liveItemId ? (
+                                    <StatePill tone='live' label='On air' pulse />
+                                  ) : displayItem.id === nextItemId ? (
+                                    <StatePill tone='info' label='Next' />
+                                  ) : null}
                                 </div>
                                 <div className='truncate text-[11px] leading-tight text-text-secondary mt-0.5'>{artistText}</div>
                               </div>

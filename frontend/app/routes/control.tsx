@@ -1821,6 +1821,27 @@ export default function Control() {
     if (!res.ok) throw await responseFailure(res);
   };
 
+  // A library song that is not in the rotation, on air now: the same command the rotation take
+  // posts, without changing the rotation (#298).
+  const playLibrarySongNow = async (song: SongCatalogItem) => {
+    const res = await fetch(
+      apiUrl(`/radio/${encodeURIComponent(activeProgramId)}/song`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: song.audioUrl,
+          title: song.title,
+          artist: song.artist,
+          coverUrl: song.coverUrl,
+          durationMs: song.durationMs,
+          songId: song.id,
+        }),
+      },
+    );
+    if (!res.ok) throw await responseFailure(res);
+  };
+
   const takeProgramSongOffAir = async (
     targetProgramId: string = activeProgramId,
   ) => {
@@ -3240,6 +3261,7 @@ export default function Control() {
         onTakeOffAir={async () => {
           await takeProgramSongOffAir(activeProgramId);
         }}
+        onPlaySongNow={playLibrarySongNow}
         instants={instants}
         instantSearch={instantSearch}
         onInstantSearchChange={setInstantSearch}
@@ -3256,15 +3278,21 @@ export default function Control() {
             volume: mixerLevels.songMasterVolume,
             muted: mixerLevels.songMuted,
             peak: programAudioMeterLevels.song.peak,
+            vu: programAudioMeterLevels.song.vu,
+            peakHold: programAudioMeterLevels.song.peakHold,
           },
           instants: {
             volume: mixerLevels.instantMasterVolume,
             muted: mixerLevels.instantMuted,
             peak: programAudioMeterLevels.instants.peak,
+            vu: programAudioMeterLevels.instants.vu,
+            peakHold: programAudioMeterLevels.instants.peakHold,
           },
           main: {
             volume: mixerLevels.mainMasterVolume,
             peak: programAudioMeterLevels.main.peak,
+            vu: programAudioMeterLevels.main.vu,
+            peakHold: programAudioMeterLevels.main.peakHold,
           },
           saving: isSavingMixerLevels,
           error: mixerSaveError,

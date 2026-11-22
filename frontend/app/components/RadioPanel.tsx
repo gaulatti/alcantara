@@ -12,7 +12,7 @@ import {
   Trash2,
   ListPlus,
 } from "lucide-react";
-import { ConsoleClock, ConsolePanel } from "./ConsoleSurface";
+import { ConsolePanel } from "./ConsoleSurface";
 import { Link } from "react-router";
 import type {
   ProgramSongPlaybackState,
@@ -29,8 +29,22 @@ import {
 } from "../utils/programSequence";
 import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
+import { useRadioMonitor } from "./RadioMonitor";
+import { HoldButton } from "./radio-desk/HoldButton";
+import { deriveOnAir } from "./radio-desk/onAir";
+import { OnAirStrip } from "./radio-desk/OnAirStrip";
+import { PlaySongNow } from "./radio-desk/PlaySongNow";
+import { PlayoutMode } from "./radio-desk/PlayoutMode";
+import { Meter } from "./radio-desk/primitives";
+import { RadioTransport } from "./radio-desk/RadioTransport";
+import {
+  nextUp,
+  onAirLeaf,
+  rotationLeaves,
+  type NextUpSong,
+} from "./radio-desk/songs";
 import { InstantsPanel } from "./panels";
-import { faderToDb } from "../utils/audioTaper";
+import { dbToFader, faderToDb } from "../utils/audioTaper";
 import { engineUnavailableLabel } from "../utils/palazzoReason";
 import {
   fetchFlightSequences,
@@ -46,6 +60,9 @@ interface RadioMixerChannelState {
   volume: number;
   muted?: boolean;
   peak: number;
+  /** The live level and its held peak from ProgramAudioMeterLevels (#298); the meter shows them when given. */
+  vu?: number;
+  peakHold?: number;
 }
 
 export interface RadioMixerState {
@@ -77,6 +94,8 @@ interface RadioPanelProps {
   onRemoveQueuedSong: (entryId: string) => Promise<void> | void;
   onReorderSongQueue: (entryIds: string[]) => Promise<void> | void;
   onTakeOffAir: () => Promise<void>;
+  /** Puts a library song on air now, without changing the rotation (#298). */
+  onPlaySongNow?: (song: SongCatalogItem) => Promise<void> | void;
   instants: InstantItem[];
   instantSearch: string;
   onInstantSearchChange: (v: string) => void;
@@ -155,6 +174,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onRemoveQueuedSong,
   onReorderSongQueue,
   onTakeOffAir,
+  onPlaySongNow,
   songCatalog,
   programSongPlayback,
   instants,
@@ -425,36 +445,60 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const engineReady =
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
+  const monitor = useRadioMonitor();
+  const [findingSong, setFindingSong] = useState(false);
+  const leaves = rotationLeaves(rotation.items);
+  const liveLeaf = onAirLeaf(
+    leaves,
+    programSongPlayback,
+    rotation.activeItemId ?? null,
+  );
+  const next = nextUp({
+    sequence: rotation,
+    queue: songQueue,
+    playback: programSongPlayback,
+  });
+  const onAirView = deriveOnAir({
+    playback: programSongPlayback,
+    next,
+    mode: rotation.mode,
+    streamRunning: stream === null ? null : isLive,
+    engine: {
+      connected: engineReady,
+      degraded: palazzo?.degraded === true,
+      unavailableLabel: engineUnavailableLabel(palazzo),
+      detail: palazzo?.detail ?? null,
+    },
+    monitor: monitor ? monitor.state : "unavailable",
+  });
+  const takeRotationSong = async (itemId: string) => {
+    const selection = { ...rotation, activeItemId: itemId, startedAt: Date.now() };
+    if (onTakeSelection) await onTakeSelection(selection);
+    else await onSaveSongSequence(selection);
+  };
+  const takeNext = (song: NextUpSong) => takeRotationSong(song.itemId);
+
+  useEffect(() => {
+    const onSlash = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey)
+        return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      )
+        return;
+      event.preventDefault();
+      setFindingSong(true);
+    };
+    window.addEventListener("keydown", onSlash);
+    return () => window.removeEventListener("keydown", onSlash);
+  }, []);
+
   return (
     <div className="broadcast-console radio-console" data-console="radio">
-      <header className="console-toolbar">
-        <div className="console-toolbar-title">
-          <span className="console-eyebrow">Radio / Live control</span>
-          {programId}
-        </div>
-        <span
-          className="console-status"
-          data-tone={stream === null ? "warning" : isLive ? "ready" : "live"}
-        >
-          {stream === null
-            ? "Stream unverified"
-            : isLive
-              ? "Stream connected"
-              : "Stream offline"}
-        </span>
-        <span
-          className="console-status"
-          data-tone={engineReady && !palazzo?.degraded ? "ready" : "warning"}
-          title={palazzo?.detail ?? undefined}
-        >
-          {engineReady
-            ? palazzo?.degraded
-              ? "Engine degraded"
-              : "Engine connected"
-            : engineUnavailableLabel(palazzo)}
-        </span>
-        <ConsoleClock />
-      </header>
+      <OnAirStrip view={onAirView} programId={programId} />
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
@@ -514,11 +558,25 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   </>
                 )}
               </div>
-              <span className="console-count">
-                {timedBlockOnAir
-                  ? `${activeLog!.items.length} events`
-                  : `${rotation.mode} · ${rotation.loop ? "Loop on" : "Loop off"}`}
-              </span>
+              {timedBlockOnAir ? (
+                <span className="console-count">{`${activeLog!.items.length} events`}</span>
+              ) : (
+                <PlayoutMode
+                  sequence={rotation}
+                  activeItemId={liveLeaf?.id ?? null}
+                  playing={programSongPlayback?.isPlaying === true}
+                  onChange={(nextSequence) => {
+                    void Promise.resolve(onSaveSongSequence(nextSequence)).catch(
+                      (cause) =>
+                        setQueueError(
+                          cause instanceof Error
+                            ? cause.message
+                            : "Rotation was not changed",
+                        ),
+                    );
+                  }}
+                />
+              )}
             </div>
             {(playoutError || queueError || logLoadError) && (
               <p role="alert" className="px-4 py-3 text-sm text-terracotta">
@@ -734,6 +792,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     }}
                     view={addingFillers ? "full" : "queue"}
                     rotationLabel="Filler rotation"
+                    liveItemId={liveLeaf?.id ?? null}
+                    nextItemId={next?.itemId ?? null}
                   />
                 </div>
               )}
@@ -831,14 +891,14 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               title="Cartwall"
               className="radio-cartwall"
               actions={
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={onStopAllInstants}
+                <HoldButton
+                  label="Stop all sounders"
+                  hint="Hold to stop every sounder (0.6 s)."
+                  tone="danger"
+                  onConfirm={onStopAllInstants}
                 >
-                  Stop all
-                </Button>
+                  Hold · stop all
+                </HoldButton>
               }
             >
               <div className="radio-cartwall-body">
@@ -964,6 +1024,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           </aside>
         </div>
       </div>
+      {timedBlockOnAir ? (
       <PlaybackBar
         sequence={rotation}
         programSongPlayback={programSongPlayback}
@@ -1006,6 +1067,35 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             : undefined
         }
       />
+      ) : (
+        <RadioTransport
+          next={next}
+          onTake={takeNext}
+          onTakeOffAir={onTakeOffAir}
+          keysEnabled={!findingSong}
+          onListen={
+            monitor
+              ? () =>
+                  monitor.state === "stopped"
+                    ? void monitor.listen()
+                    : monitor.stop()
+              : undefined
+          }
+          listening={monitor?.state === "playing"}
+        />
+      )}
+      <PlaySongNow
+        open={findingSong}
+        leaves={leaves}
+        catalog={songCatalog}
+        onClose={() => setFindingSong(false)}
+        onCueNext={(leaf) => onQueueSong(leaf.id)}
+        onTakeNow={async (candidate) => {
+          if (candidate.leaf) return takeRotationSong(candidate.leaf.id);
+          if (candidate.song && onPlaySongNow) return onPlaySongNow(candidate.song);
+          throw new Error("Playing a library song now is not available here.");
+        }}
+      />
     </div>
   );
 };
@@ -1023,7 +1113,6 @@ function RadioMixerChannel({
 }) {
   const db = faderToDb(channel.volume);
   const level = Number.isFinite(db) ? `${db.toFixed(1)} dB` : "-∞ dB";
-  const peakPercent = `${Math.max(0, Math.min(100, channel.peak * 100))}%`;
   return (
     <section className="console-channel" aria-label={`${label} mixer channel`}>
       <div className="console-channel-label">{label}</div>
@@ -1035,18 +1124,29 @@ function RadioMixerChannel({
         step={0.01}
         value={channel.volume}
         onChange={(event) => onVolumeChange(Number(event.target.value))}
+        onKeyDown={(event) => {
+          // Up and down move the fader one decibel, not one hundredth of its travel.
+          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+          event.preventDefault();
+          const current = Number.isFinite(db) ? db : -80;
+          const target = current + (event.key === "ArrowUp" ? 1 : -1);
+          onVolumeChange(Math.max(0, Math.min(1, dbToFader(target))));
+        }}
         aria-label={`${label} level`}
       />
-      <div
-        className="console-meter"
-        role="meter"
-        aria-label={`${label} live peak`}
-        aria-valuenow={Math.max(0, Math.min(100, channel.peak * 100))}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <span style={{ width: peakPercent }} />
-      </div>
+      <Meter
+        label={`${label} live peak`}
+        value={Math.max(0, Math.min(100, (channel.vu ?? channel.peak) * 100))}
+        peak={channel.vu !== undefined ? Math.min(100, channel.peak * 100) : null}
+        hold={
+          channel.peakHold !== undefined
+            ? Math.min(100, channel.peakHold * 100)
+            : null
+        }
+        min={0}
+        max={100}
+        warnFrom={90}
+      />
       {onToggleMuted ? (
         <TooltipButton
           type="button"

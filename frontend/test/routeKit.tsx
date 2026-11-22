@@ -54,3 +54,24 @@ export function routeFetch(
   };
   return { fetchMock, calls };
 }
+
+/**
+ * Holds a hold-to-confirm control past its hold time (the radio desk's Stop and Stop all, #298).
+ * Only the animation clock is faked, so promises and fetches keep their real timing.
+ */
+export async function holdControl(control: HTMLElement, ms = 700) {
+  const { act, fireEvent } = await import("@testing-library/react");
+  const { vi } = await import("vitest");
+  vi.useFakeTimers({
+    toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"],
+  });
+  try {
+    fireEvent.pointerDown(control);
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    fireEvent.pointerUp(control);
+  } finally {
+    vi.useRealTimers();
+  }
+}
