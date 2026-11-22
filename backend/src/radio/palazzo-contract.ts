@@ -114,7 +114,8 @@ export type PalazzoPlaybackEventType =
   | 'instant.ended'
   | 'playback.position'
   | 'audio.levels'
-  | 'heartbeat';
+  | 'heartbeat'
+  | 'replay.gap';
 
 /**
  * Why Palazzo dropped an announced next song (contract palazzo#40 §3). A
@@ -408,6 +409,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<PalazzoPlaybackEventType>([
   'playback.position',
   'audio.levels',
   'heartbeat',
+  'replay.gap',
 ]);
 
 /** The correlation fields every Palazzo event carries, whatever its type. */
