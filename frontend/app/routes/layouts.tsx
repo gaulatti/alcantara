@@ -151,6 +151,7 @@ export default function LayoutsAdmin() {
     } catch (err) {
       console.error('Failed to delete layout:', err);
       showAlert('Cannot delete this scene template because it may be in use by scenes.', 'error');
+      throw err;
     }
   };
 

@@ -217,6 +217,7 @@ export default function StingersAdmin() {
     } catch (err) {
       console.error('Failed to delete stinger:', err);
       showAlert('Failed to delete transition.', 'error');
+      throw err;
     }
   };
 

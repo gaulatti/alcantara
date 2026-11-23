@@ -14,6 +14,7 @@ import {
   cancelConfirmation,
   chooseFromRowMenu,
   confirmWith,
+  submitConfirmation,
   confirmation,
   rowMenuLabels,
 } from "../../test/libraryKit";
@@ -317,7 +318,10 @@ it("deletes a transition only after confirmation, and reports a failure", async 
   ]) {
     serve({ "DELETE /stingers/1": () => response });
     await chooseFromRowMenu("Old flash", "Delete");
-    await confirmWith("Delete");
+    await submitConfirmation("Delete");
     await toast("Failed to delete transition.");
+    // A failed delete keeps its confirmation open, so it cannot be mistaken for done.
+    expect(await confirmation()).toBeVisible();
+    await cancelConfirmation();
   }
 });

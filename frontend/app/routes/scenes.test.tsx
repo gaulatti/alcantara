@@ -14,6 +14,7 @@ import {
   cancelConfirmation,
   chooseFromRowMenu,
   confirmWith,
+  submitConfirmation,
   confirmation,
 } from "../../test/libraryKit";
 
@@ -299,17 +300,20 @@ it("deletes a scene only after confirmation, and reports a failure", async () =>
 
   serve({ "DELETE /scenes/1": () => new Response("In use", { status: 409 }) });
   await chooseFromRowMenu("Morning headlines", "Delete");
-  await confirmWith("Delete");
+  await submitConfirmation("Delete");
   expect(
     (await screen.findAllByText("Failed to delete scene."))[0],
   ).toBeVisible();
+  expect(await confirmation()).toBeVisible();
+  await cancelConfirmation();
 
   serve({ "DELETE /scenes/1": () => new Response("", { status: 500 }) });
   await chooseFromRowMenu("Morning headlines", "Delete");
-  await confirmWith("Delete");
+  await submitConfirmation("Delete");
   await waitFor(() =>
     expect(
       screen.getAllByText("Failed to delete scene.").length,
     ).toBeGreaterThan(0),
   );
+  expect(await confirmation()).toBeVisible();
 });

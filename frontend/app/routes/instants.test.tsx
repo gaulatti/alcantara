@@ -14,6 +14,7 @@ import {
   cancelConfirmation,
   chooseFromRowMenu,
   confirmWith,
+  submitConfirmation,
   confirmation,
   rowAction,
   rowMenuLabels,
@@ -406,7 +407,10 @@ it("deletes a clip only after confirmation, and reports a failure", async () => 
   ]) {
     serve({ "DELETE /instants/1": answer });
     await chooseFromRowMenu("Applause", "Delete");
-    await confirmWith("Delete");
+    await submitConfirmation("Delete");
     await toast("Failed to delete audio clip.");
+    // A failed delete keeps its confirmation open, so it cannot be mistaken for done.
+    expect(await confirmation()).toBeVisible();
+    await cancelConfirmation();
   }
 });

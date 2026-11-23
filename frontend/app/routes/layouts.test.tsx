@@ -13,6 +13,7 @@ import {
   cancelConfirmation,
   chooseFromRowMenu,
   confirmWith,
+  submitConfirmation,
   confirmation,
 } from "../../test/libraryKit";
 
@@ -303,8 +304,9 @@ it("deletes a template only after confirmation, and explains a template in use",
 
   serve({ "DELETE /layouts/1": () => new Response(null, { status: 409 }) });
   await chooseFromRowMenu("News desk", "Delete");
-  await confirmWith("Delete");
+  await submitConfirmation("Delete");
   await toast(
     "Cannot delete this scene template because it may be in use by scenes.",
   );
+  expect(await confirmation()).toBeVisible();
 });

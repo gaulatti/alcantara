@@ -240,6 +240,7 @@ export default function InstantsAdmin() {
     } catch (err) {
       console.error('Failed to delete instant:', err);
       showAlert('Failed to delete audio clip.', 'error');
+      throw err;
     }
   };
 

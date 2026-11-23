@@ -155,6 +155,7 @@ export default function ScenesAdmin() {
     } catch (err) {
       console.error('Failed to delete scene:', err);
       showAlert('Failed to delete scene.', 'error');
+      throw err;
     }
   };
 

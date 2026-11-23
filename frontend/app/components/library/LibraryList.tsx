@@ -39,7 +39,7 @@ export interface LibraryRowActionsProps {
   primary: LibraryRowAction;
   /** Further actions, kept in the menu above delete. */
   more?: LibraryRowAction[];
-  /** Delete is always last and always confirmed; it rejects to keep the dialog open. */
+  /** Delete is always last and always confirmed; if it rejects, the confirmation stays open. */
   onDelete: () => Promise<void> | void;
   deleteTitle: string;
   deleteDescription?: string;
@@ -53,9 +53,11 @@ export function LibraryRowActions({ name, primary, more = [], onDelete, deleteTi
     setBusy(true);
     try {
       await onDelete();
+      setConfirming(false);
+    } catch {
+      // The caller has already told the operator why; the dialog stays open so the delete is not mistaken for done.
     } finally {
       setBusy(false);
-      setConfirming(false);
     }
   };
 

@@ -48,8 +48,12 @@ const dialogButton = async (label: string) =>
     .getAllByText(label)
     .map((element) => element.closest("button"))
     .find(Boolean) as HTMLButtonElement;
-export const confirmWith = async (label: string) => {
+/** Presses the confirmation's button without expecting it to close (a delete that fails keeps it open). */
+export const submitConfirmation = async (label: string) => {
   fireEvent.click(await dialogButton(label));
+};
+export const confirmWith = async (label: string) => {
+  await submitConfirmation(label);
   await closed();
 };
 export const cancelConfirmation = async () => {
