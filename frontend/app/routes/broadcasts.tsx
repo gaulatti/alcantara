@@ -7,6 +7,7 @@ import {
   LoadingSpinner,
   Modal,
   SectionHeader,
+  StatePill,
   showAlert,
 } from "@gaulatti/bleecker";
 import {
@@ -337,22 +338,21 @@ export default function Broadcasts() {
               Executor state
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StateBadge
+              <StatePill
                 label={`Requested ${state?.downstream.requestedState ?? "unknown"}`}
-                healthy={
-                  state?.downstream.requestedState ===
-                  state?.downstream.actualState
-                }
+                tone={executorTone(state?.downstream.requestedState)}
               />
-              <StateBadge
+              <StatePill
                 label={`Actual ${state?.downstream.actualState ?? "unknown"}`}
-                healthy={isRunning || isStopped}
+                tone={
+                  state?.downstream.requestedState === state?.downstream.actualState
+                    ? executorTone(state?.downstream.actualState)
+                    : "warn"
+                }
+                pulse={isRunning}
               />
               {state?.downstream.transition ? (
-                <StateBadge
-                  label={state.downstream.transition}
-                  healthy={false}
-                />
+                <StatePill label={state.downstream.transition} tone="warn" pulse />
               ) : null}
             </div>
           </div>
@@ -681,12 +681,9 @@ export default function Broadcasts() {
   );
 }
 
-function StateBadge({ label, healthy }: { label: string; healthy: boolean }) {
-  return (
-    <span
-      className={`rounded-full border px-3 py-1 text-xs font-medium ${healthy ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600" : "border-amber-500/30 bg-amber-500/10 text-amber-600"}`}
-    >
-      {label}
-    </span>
-  );
+/** Colour is not the only signal: the label carries the state in words (gaulatti/alcantara#349). */
+function executorTone(state: string | undefined): "live" | "idle" | "warn" {
+  if (state === "running") return "live";
+  if (state === "stopped") return "idle";
+  return "warn";
 }

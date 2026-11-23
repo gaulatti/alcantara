@@ -156,15 +156,12 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      LIVEKIT_CONFIG_B64: ${{ secrets.LIVEKIT_CONFIG_B64 }}
-
     steps:
       - name: Checkout deployment definitions
         uses: actions/checkout@v4
 
       - name: Upload LiveKit deployment definition
-        if: vars.ON_PREMISES == 'true' && env.LIVEKIT_CONFIG_B64 != ''
+        if: vars.ON_PREMISES == 'true'
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -206,13 +203,33 @@ jobs:
             ghcr.io/${{ github.repository }}:latest \
             pnpm run db:migrate:deploy
 
-            if test -n "${{ secrets.LIVEKIT_CONFIG_B64 }}"; then
+            # LiveKit is configured by the runtime secret (gaulatti/alcantara#354):
+            # the script exits 0 with livekit.yaml, 3 when the secret has no
+            # LiveKit group (guest calls stay off), and 1 on any other failure.
+            livekit_config="$HOME/.alcantara/livekit.yaml"
+            mkdir -p "$HOME/.alcantara"
+            livekit_status=0
+            (
+              umask 077
+              docker run --rm \
+              -e AWS_REGION="${{ vars.AWS_REGION }}" \
+              -e ALCANTARA_CONFIG_SECRET_ID="${{ env.ALCANTARA_CONFIG_SECRET_ID }}" \
+              -v "$HOME/.aws:/root/.aws:ro" \
+              ghcr.io/${{ github.repository }}:latest \
+              node scripts/print-livekit-config.mjs > "$livekit_config.new"
+            ) || livekit_status=$?
+            if test "$livekit_status" -eq 0; then
+              chmod 600 "$livekit_config.new"
+              mv -f "$livekit_config.new" "$livekit_config"
               mkdir -p "$HOME/.alcantara/livekit-redis"
-              printf "%s" "${{ secrets.LIVEKIT_CONFIG_B64 }}" | base64 --decode > "$HOME/.alcantara/livekit.yaml"
-              chmod 600 "$HOME/.alcantara/livekit.yaml"
               ALCANTARA_SERVICE_DIR="$HOME/.alcantara" docker compose -f "$HOME/.alcantara/compose.production.yml" up -d
+            elif test "$livekit_status" -eq 3; then
+              rm -f "$livekit_config.new"
+              echo "LiveKit is not configured in the runtime secret; guest calls remain disabled"
             else
-              echo "LiveKit production configuration is absent; guest calls remain disabled"
+              rm -f "$livekit_config.new"
+              echo "LiveKit configuration could not be rendered"
+              exit 1
             fi
 
             # Resolve the scrape credential before touching the live backend.
@@ -271,12 +288,7 @@ jobs:
             -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
-            -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \
             -e LIVEKIT_API_URL="http://alcantara-livekit:7880" \
-            -e LIVEKIT_API_KEY="${{ secrets.LIVEKIT_API_KEY }}" \
-            -e LIVEKIT_API_SECRET="${{ secrets.LIVEKIT_API_SECRET }}" \
-            -e WEBRTC_SESSION_SECRET="${{ secrets.WEBRTC_SESSION_SECRET }}" \
-            -e WEBRTC_RENDERER_KEY="${{ secrets.WEBRTC_RENDERER_KEY }}" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=local \
