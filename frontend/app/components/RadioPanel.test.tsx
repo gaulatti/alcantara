@@ -1437,3 +1437,58 @@ it("holds to stop all sounders from the cartwall, and a click only explains", as
   await hold(stopAll);
   expect(p.onStopAllInstants).toHaveBeenCalledOnce();
 });
+
+// gaulatti/alcantara#404 (group B): the panel's load-error retries, a take that falls back to the
+// rotation save when the page gives no take handler, a refused take, and an armed rundown.
+
+it("shows the song library's load error and retries it", () => {
+  const p = props();
+  p.songCatalogLoadError = "offline";
+  p.onRetrySongCatalog = vi.fn();
+  mount(p);
+  expect(screen.getByText("Song library did not load: offline")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Retry song library" }));
+  expect(p.onRetrySongCatalog).toHaveBeenCalledTimes(1);
+});
+
+it("shows the cartwall's load error and retries it", () => {
+  const p = props();
+  p.instantsLoadError = "offline";
+  p.onRetryInstants = vi.fn();
+  mount(p);
+  expect(screen.getByText("Cartwall did not load: offline")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Retry cartwall" }));
+  expect(p.onRetryInstants).toHaveBeenCalledTimes(1);
+});
+
+it("takes the next song through the rotation save when the page gives no take handler", async () => {
+  const p = deskProps();
+  p.onTakeSelection = undefined;
+  p.onSaveSongSequence = vi.fn().mockResolvedValue(undefined);
+  mount(p);
+  fireEvent.keyDown(window, { key: "n" });
+  fireEvent.keyDown(window, { key: " " });
+  await waitFor(() =>
+    expect(p.onSaveSongSequence).toHaveBeenCalledWith(
+      expect.objectContaining({ activeItemId: "song-2" }),
+    ),
+  );
+});
+
+it("reports a take the page refuses", async () => {
+  const p = deskProps();
+  p.onTakeSelection = vi.fn().mockRejectedValue(new Error("Palazzo refused the take"));
+  mount(p);
+  fireEvent.keyDown(window, { key: "n" });
+  fireEvent.keyDown(window, { key: " " });
+  expect(await screen.findByRole("alert")).toHaveTextContent("Palazzo refused the take");
+});
+
+it("says a running rundown that has reached its scheduled start is on air", () => {
+  const p = props();
+  const earlier = new Date(Date.now() - 60_000).toISOString();
+  p.fixtureData!.logs = [{ ...p.fixtureData!.logs[0], scheduledAt: earlier }];
+  mount(p);
+  expect(screen.getByText(/ON AIR/)).toBeInTheDocument();
+  expect(screen.getByText("Rundown automation running")).toBeInTheDocument();
+});
