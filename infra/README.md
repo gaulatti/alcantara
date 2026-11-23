@@ -7,8 +7,8 @@ This directory defines the production deployment topology and configuration temp
 Defined in [`compose.production.yml`](compose.production.yml):
 
 - **`redis` (`redis:7.4-alpine`)**: State coordination and inter-service messaging between LiveKit Server and LiveKit Ingress.
-- **`livekit` (`livekit/livekit-server:v1.13.4`)**: Core WebRTC SFU for calls and broadcast rooms.
-- **`ingress` (`livekit/ingress:v1.5.0`)**: Ingest service normalizing external media streams (WHIP, HLS, RTMP, SRT) into LiveKit rooms.
+- **`livekit` (`livekit/livekit-server:v1.13.4`)**: Core WebRTC SFU for calls and broadcast rooms. It has a healthcheck (`wget` of its own `http://127.0.0.1:7880/`, which answers `OK`) and is limited to one CPU and 1 GiB, because the host also runs the radio engine.
+- **`ingress` (`livekit/ingress:v1.5.0`)**: Ingest service normalizing external media streams (WHIP, HLS, RTMP, SRT) into LiveKit rooms. It is behind the `ingress` compose profile: the deploy's `docker compose up -d` starts only `redis` and `livekit`. Start it with `--profile ingress` once the deploy writes its `ingress.yaml`.
 
 Configuration templates:
 - [`livekit.production.example.yaml`](livekit.production.example.yaml): LiveKit Server configuration.
@@ -20,7 +20,7 @@ All configuration files in source control use placeholder credentials (`replace-
 
 ### Public Ports (External Ingest & WebRTC Media)
 - **LiveKit Signaling & Media**:
-  - `7880/tcp`: LiveKit HTTP/WebSocket signaling (TLS terminated at ingress/reverse proxy).
+  - `7880/tcp`: LiveKit HTTP/WebSocket signaling, published on host loopback only (`127.0.0.1:7880`). The host's reverse proxy terminates TLS for the public name and forwards WebSocket upgrades to it; the backend reaches it as `alcantara-livekit:7880` on the `broadcast-control` network.
   - `7881/tcp`: LiveKit WebRTC TCP fallback.
   - `3478/udp`, `5349/tcp`: TURN server.
   - `30000-30100/udp`: TURN relay port range.

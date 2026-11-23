@@ -202,6 +202,16 @@ export function validateComposePorts(composeContent: string): void {
   }
 }
 
+/** The lines of one top-level service in a compose file, up to the next service. */
+export function serviceBlock(composeContent: string, name: string): string {
+  const lines = composeContent.split('\n');
+  const start = lines.findIndex((line) => line === `  ${name}:`);
+  if (start === -1) throw new Error(`compose.production.yml must define a ${name} service`);
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^ {2}\S/.test(line) || /^\S/.test(line));
+  return rest.slice(0, end === -1 ? rest.length : end).join('\n');
+}
+
 export function validateComposeServices(composeContent: string): void {
   // Ingress service must exist and be pinned to v1.5.0
   const hasIngressService = /ingress:\s*\n/m.test(composeContent);
@@ -239,6 +249,28 @@ describe('LiveKit Ingress Production Infrastructure Definition', () => {
 
     validateComposeServices(composeContent);
     expect(composeContent).toContain(spikeImage);
+  });
+
+  test('production compose can start: livekit has the healthcheck ingress waits for, and ingress is opt-in', () => {
+    const composeContent = fs.readFileSync(composePath, 'utf-8');
+    const livekit = serviceBlock(composeContent, 'livekit');
+    const ingress = serviceBlock(composeContent, 'ingress');
+    // ingress waits on `livekit: condition: service_healthy`; without a livekit healthcheck
+    // `docker compose up` refuses the file and the deploy stops.
+    expect(ingress).toMatch(/livekit:\s*\n\s*condition: service_healthy/);
+    expect(livekit).toMatch(/healthcheck:\s*\n\s*test: \['CMD', 'wget'.*'http:\/\/127\.0\.0\.1:7880\/'\]/);
+    // The deploy writes no ingress.yaml yet, so the default `up -d` must not start ingress.
+    expect(ingress).toMatch(/profiles: \['ingress'\]/);
+    expect(livekit).not.toMatch(/profiles:/);
+  });
+
+  test('production livekit is bounded beside the radio engine, and its signalling stays on the host', () => {
+    const composeContent = fs.readFileSync(composePath, 'utf-8');
+    const livekit = serviceBlock(composeContent, 'livekit');
+    expect(livekit).toMatch(/^\s*cpus: 1\.0$/m);
+    expect(livekit).toMatch(/^\s*mem_limit: 1g$/m);
+    expect(livekit).toContain("'127.0.0.1:7880:7880/tcp'");
+    expect(livekit).not.toMatch(/- '7880:7880/);
   });
 
   test('production compose enforces loopback/private binding for sensitive ports (redis, health, metrics)', () => {

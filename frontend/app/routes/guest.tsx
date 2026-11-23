@@ -1,5 +1,5 @@
 import { TooltipButton } from "../components/BleeckerButtons";
-import { Button, Field, Select, StatusBadge } from '@gaulatti/bleecker';
+import { Button, Checkbox, Field, Select, StatusBadge } from '@gaulatti/bleecker';
 import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Radio, Volume2 } from 'lucide-react';
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
@@ -546,21 +546,20 @@ export default function GuestRoute() {
               <strong className='block'>Network</strong>
               <small className='text-white/50'>{network}</small>
             </div>
-            <label className='flex items-center gap-3 rounded-xl border border-white/10 p-4'>
-              <input type='checkbox' checked={headphonesConfirmed} onChange={(event) => setHeadphonesConfirmed(event.target.checked)} />
-              <Headphones className='text-sky-300' />
-              <span>
-                <strong className='block'>I am wearing headphones</strong>
-                <small className='text-white/50'>Required to prevent echo.</small>
-              </span>
-            </label>
-            <label className='flex items-center gap-3 rounded-xl border border-amber-300/20 p-4'>
-              <input type='checkbox' checked={echoRiskAccepted} onChange={(event) => setEchoRiskAccepted(event.target.checked)} />
-              <span>
-                <strong className='block text-amber-200'>Operator accepted speaker risk</strong>
-                <small className='text-white/50'>Use only when headphones are impossible.</small>
-              </span>
-            </label>
+            <Checkbox
+              containerClassName='rounded-xl border border-white/10 p-4'
+              checked={headphonesConfirmed}
+              onChange={(event) => setHeadphonesConfirmed(event.target.checked)}
+              label={<span className='flex items-center gap-3'><Headphones className='text-sky-300' /><strong>I am wearing headphones</strong></span>}
+              description='Required to prevent echo.'
+            />
+            <Checkbox
+              containerClassName='rounded-xl border border-amber-300/20 p-4'
+              checked={echoRiskAccepted}
+              onChange={(event) => setEchoRiskAccepted(event.target.checked)}
+              label={<strong className='text-amber-200'>Operator accepted speaker risk</strong>}
+              description='Use only when headphones are impossible.'
+            />
           </div>
         ) : null}
       </div>
