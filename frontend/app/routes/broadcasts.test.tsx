@@ -118,6 +118,10 @@ beforeEach(() => {
       retired: false,
       secretId: "broadcast/primary",
       secretVersionId: "v-1",
+      service: null,
+      ingestUrl: null,
+      keyLast4: null,
+      keySetAt: null,
       retiredAt: null,
     },
     {
@@ -127,6 +131,10 @@ beforeEach(() => {
       retired: false,
       secretId: "broadcast/backup",
       secretVersionId: "v-2",
+      service: "youtube",
+      ingestUrl: "rtmps://a.rtmps.youtube.com:443/live2",
+      keyLast4: "7d6c",
+      keySetAt: "2026-11-23T12:00:00.000Z",
       retiredAt: null,
     },
     {
@@ -136,6 +144,10 @@ beforeEach(() => {
       retired: true,
       secretId: "broadcast/old",
       secretVersionId: "v-3",
+      service: null,
+      ingestUrl: null,
+      keyLast4: null,
+      keySetAt: null,
       retiredAt: "2026-01-01T00:00:00Z",
     },
   ];
@@ -466,14 +478,16 @@ it("refreshes every five seconds while the tab is visible, after a failed first 
   expect(api.get.mock.calls.length).toBeGreaterThan(before);
 });
 
-it("adds, edits, reorders, retires and restores catalog destinations", async () => {
+it("adds, renames, replaces keys, reorders, retires and restores catalog destinations", async () => {
   await page();
   const catalogCard = screen
     .getByText("Destination catalog")
     .closest("div")!.parentElement!;
   expect(
-    within(catalogCard).getByText("broadcast/old", { exact: false }),
-  ).toBeInTheDocument();
+    within(catalogCard).getAllByText("Secret reference (added by hand)").length,
+  ).toBe(2);
+  expect(within(catalogCard).getByText("YouTube")).toBeInTheDocument();
+  expect(within(catalogCard).getByText(/Key ••••7d6c/)).toBeInTheDocument();
   expect(within(catalogCard).getByText("(retired)")).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Move Primary platform up" }),
@@ -505,73 +519,104 @@ it("adds, edits, reorders, retires and restores catalog destinations", async () 
   );
   await toast("Access denied");
 
-  // Add.
+  // Add: a service, a name and a key; the secret name and version are never asked for.
   fireEvent.click(screen.getByRole("button", { name: /Add destination/ }));
   let dialog = await screen.findByRole("dialog", { name: "Add destination" });
-  const fill = (label: string, value: string) =>
-    fireEvent.change(within(dialog).getByRole("textbox", { name: label }), {
-      target: { value },
-    });
-  fill("Opaque destination ID", "third");
-  fill("Display name", "Third platform");
-  fill("Secrets Manager reference", "broadcast/third");
-  fill("Pinned secret version ID", "v-9");
+  expect(within(dialog).queryByText(/Secrets Manager reference/)).toBeNull();
+  const addButton = () => within(dialog).getByRole("button", { name: "Add destination" });
+  expect(addButton()).toBeDisabled();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "backup platform" },
+  });
+  expect(await within(dialog).findByText("A destination with this name already exists.")).toBeInTheDocument();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "Third platform" },
+  });
+  const key = () => within(dialog).getByLabelText("Stream key") as HTMLInputElement;
+  expect(key().type).toBe("password");
+  fireEvent.change(key(), { target: { value: "has space" } });
+  expect(await within(dialog).findByText("A stream key has no spaces.")).toBeInTheDocument();
+  fireEvent.change(key(), { target: { value: "live_Third-9f8e7d6c" } });
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "Show key" }));
+  expect(key().type).toBe("text");
+  // A custom service asks for an address and checks it inline.
+  fireEvent.click(within(dialog).getByRole("button", { name: "Custom RTMP(S)" }));
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Ingest URL/ }), {
+    target: { value: "http://example.test/live" },
+  });
+  expect(await within(dialog).findByText(/Use an rtmp:\/\/ or rtmps:\/\/ address/)).toBeInTheDocument();
+  expect(addButton()).toBeDisabled();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Ingest URL/ }), {
+    target: { value: "rtmps://ingest.example.test/live" },
+  });
+  expect(addButton()).toBeEnabled();
   let save: (value: unknown) => void = () => {};
   api.post.mockImplementationOnce(
     () => new Promise((resolve) => (save = resolve)),
   );
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: "Save destination" }),
-  );
+  fireEvent.click(addButton());
   expect(
     await within(dialog).findByRole("button", { name: "Saving…" }),
   ).toBeDisabled();
   await act(async () => save({ data: {} }));
   expect(api.post).toHaveBeenLastCalledWith("/broadcast/destinations", {
-    id: "third",
-    displayName: "Third platform",
-    secretId: "broadcast/third",
-    secretVersionId: "v-9",
+    service: "custom",
+    name: "Third platform",
+    ingestUrl: "rtmps://ingest.example.test/live",
+    streamKey: "live_Third-9f8e7d6c",
   });
-  await toast("Destination created.");
+  await toast("Destination added.");
 
-  // Edit: the id is fixed.
-  fireEvent.click(screen.getAllByRole("button", { name: /Edit/ })[0]);
-  dialog = await screen.findByRole("dialog", { name: "Edit destination" });
-  expect(
-    within(dialog).getByRole("textbox", { name: "Opaque destination ID" }),
-  ).toBeDisabled();
-  expect(
-    within(dialog).getByRole("textbox", { name: "Display name" }),
-  ).toHaveValue("Primary platform");
-  fireEvent.change(
-    within(dialog).getByRole("textbox", { name: "Display name" }),
-    { target: { value: "Main platform" } },
-  );
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: "Save destination" }),
-  );
-  await toast("Destination updated.");
-  expect(api.put).toHaveBeenLastCalledWith("/broadcast/destinations/primary", {
-    id: "primary",
-    displayName: "Main platform",
-    secretId: "broadcast/primary",
-    secretVersionId: "v-1",
-  });
-
-  // A refused save keeps the dialog open; Cancel closes it.
+  // YouTube needs no address.
   fireEvent.click(screen.getByRole("button", { name: /Add destination/ }));
   dialog = await screen.findByRole("dialog", { name: "Add destination" });
-  expect(
-    within(dialog).getByRole("textbox", { name: "Display name" }),
-  ).toHaveValue("");
-  api.post.mockRejectedValueOnce(refusal(400, { error: "That ID is taken." }));
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: "Save destination" }),
-  );
-  await toast("That ID is taken.");
+  expect(within(dialog).getByText(/rtmps:\/\/a\.rtmps\.youtube\.com:443\/live2/)).toBeInTheDocument();
+  expect(within(dialog).queryByRole("textbox", { name: /^Ingest URL/ })).toBeNull();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "Fourth" },
+  });
+  fireEvent.change(key(), { target: { value: "live_Fourth-1234" } });
+  api.post.mockRejectedValueOnce(refusal(409, { error: "A destination with this name already exists." }));
+  fireEvent.click(addButton());
+  await toast("A destination with this name already exists.");
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+  // Rename: the name only.
+  fireEvent.click(screen.getAllByRole("button", { name: /Rename/ })[0]);
+  dialog = await screen.findByRole("dialog", { name: "Rename destination" });
+  expect(within(dialog).getByRole("textbox", { name: /^Name/ })).toHaveValue("Primary platform");
+  expect(within(dialog).queryByLabelText("Stream key")).toBeNull();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /^Name/ }), {
+    target: { value: "Main platform" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+  await toast("Destination renamed.");
+  expect(api.put).toHaveBeenLastCalledWith("/broadcast/destinations/primary", {
+    displayName: "Main platform",
+  });
+
+  // Replace key on a YouTube destination: only the key is sent; the old one is never shown.
+  fireEvent.click(screen.getByRole("button", { name: /Replace key/ }));
+  dialog = await screen.findByRole("dialog", { name: "Replace key" });
+  expect(within(dialog).getByText(/ends in ••••7d6c/)).toBeInTheDocument();
+  fireEvent.change(key(), { target: { value: "live_Replaced-0000aaaa" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save key" }));
+  await toast("Key replaced. It applies from the next start.");
+  expect(api.put).toHaveBeenLastCalledWith("/broadcast/destinations/backup/key", {
+    streamKey: "live_Replaced-0000aaaa",
+  });
+
+  // A destination added by hand names its service when it gets a key.
+  fireEvent.click(screen.getAllByRole("button", { name: /Set key/ })[0]);
+  dialog = await screen.findByRole("dialog", { name: "Set key" });
+  fireEvent.change(key(), { target: { value: "live_Hand-1234abcd" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save key" }));
+  await toast("Key replaced. It applies from the next start.");
+  expect(api.put).toHaveBeenLastCalledWith("/broadcast/destinations/primary/key", {
+    streamKey: "live_Hand-1234abcd",
+    service: "youtube",
+  });
 
   // Retire is confirmed by name before it is sent; a Cancel sends nothing.
   fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
@@ -629,7 +674,7 @@ it("says so when the catalog is empty, with the next step", async () => {
     render(<Broadcasts />);
     await screen.findByText("Executor state");
     expect(await screen.findByText("No destinations yet")).toBeInTheDocument();
-    expect(screen.getByText("Add a version-pinned destination. A Start needs at least one current destination.")).toBeInTheDocument();
+    expect(screen.getByText("Add a destination with its stream key. A Start needs at least one current destination.")).toBeInTheDocument();
   } finally {
     catalog = saved;
   }
