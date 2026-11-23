@@ -1,30 +1,27 @@
-import React, { Suspense, lazy, type ComponentType } from 'react';
-// The current local renderer: the fallback until the closer deletes it (gaulatti/alcantara#381).
-import LocalFifthBellProgram, { type FifthBellProgramProps } from '../programs/fifthbell/FifthBellProgram';
+import React, { Suspense, lazy } from 'react';
 import { getApiBaseUrl } from '../utils/apiBaseUrl';
 
-type BrokawLiveProgramProps = FifthBellProgramProps & { apiBaseUrl?: string };
+/** The props the Fifth Bell scene components pass (gaulatti/alcantara#381). */
+export interface FifthBellProgramProps {
+  programId?: string;
+  embedded?: boolean;
+  sceneMetadata?: Record<string, unknown> | null;
+  activeComponents?: string[];
+  masterGain?: number;
+}
 
 /**
- * Brokaw's Fifth Bell program (`LiveProgram` from `@fifthbell/brokaw/components/live-program`)
- * when the pinned Brokaw exports it by name (0.1.80 and later: the version that takes
- * `masterGain`), otherwise the local renderer. Like Giorgia's artist bumper, the package owns
- * the presentation and Alcántara only places it; the package loads only when it is on screen.
- * Brokaw reads the program from Alcántara's API itself, so it gets this API's origin.
- * The closer bumps the pin and deletes the local renderer and this fallback.
+ * The Fifth Bell program is Brokaw's: `LiveProgram` from `@fifthbell/brokaw/components/live-program`,
+ * placed here like Giorgia's artist bumper. Brokaw reads the program from this API and loads its
+ * images and pipes cue from `/fifthbell`, which Alcántara serves (public/fifthbell). The package
+ * loads only when the program is on screen.
  */
-const FifthBellProgram = lazy(async (): Promise<{ default: ComponentType<FifthBellProgramProps> }> => {
-  const module = (await import('@fifthbell/brokaw/components/live-program')) as Record<string, unknown>;
-  const Packaged = ('LiveProgram' in module ? module.LiveProgram : undefined) as ComponentType<BrokawLiveProgramProps> | undefined;
-  if (!Packaged) return { default: LocalFifthBellProgram };
-  const apiBaseUrl = getApiBaseUrl();
-  return { default: (props: FifthBellProgramProps) => <Packaged {...props} apiBaseUrl={apiBaseUrl} /> };
-});
+const LiveProgram = lazy(async () => ({ default: (await import('@fifthbell/brokaw/components/live-program')).LiveProgram }));
 
 export default function BrokawFifthBellProgramRenderer(props: FifthBellProgramProps) {
   return (
     <Suspense fallback={null}>
-      <FifthBellProgram {...props} />
+      <LiveProgram {...props} apiBaseUrl={getApiBaseUrl()} assetBaseUrl='/fifthbell' />
     </Suspense>
   );
 }
