@@ -195,7 +195,7 @@ it("follows the TV program: snapshots, staging, scene updates, clearing, fade to
   await send({ type: "fade_to_black", state: tvState({ fadeToBlack: true }) });
   expect(await screen.findByRole("button", { name: "RESTORE PROGRAM" })).toBeVisible();
   await send({ type: "program_state_snapshot", state: tvState({ fadeToBlack: false }) });
-  expect(await screen.findByRole("button", { name: "ARM FADE TO BLACK" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Fade to black" })).toBeVisible();
   const onProgram = (name: RegExp) =>
     screen.getAllByRole("button", { name }).some((button) => /Program$/.test(button.textContent ?? ""));
   expect(onProgram(/Fictional headlines/)).toBe(true);

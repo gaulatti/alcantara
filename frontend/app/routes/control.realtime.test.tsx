@@ -207,7 +207,7 @@ it("shows a scene staged elsewhere, and a cleared Preview", async () => {
 it("marks fade to black from the link", async () => {
   const { socket } = await openLink();
   expect(
-    screen.getByRole("button", { name: "ARM FADE TO BLACK" }),
+    screen.getByRole("button", { name: "Fade to black" }),
   ).toBeInTheDocument();
   act(() =>
     socket.send({

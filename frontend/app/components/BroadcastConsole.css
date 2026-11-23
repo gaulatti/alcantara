@@ -32,10 +32,10 @@
 }
 .console-eyebrow {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--console-muted);
 }

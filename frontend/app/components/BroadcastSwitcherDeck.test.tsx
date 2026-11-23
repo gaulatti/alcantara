@@ -5,12 +5,17 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { BroadcastSwitcherDeck } from "./BroadcastSwitcherDeck";
 
+const preferenceProfile = vi.hoisted(() => ({
+  touchMode: false,
+  shortcutsEnabled: false,
+  dockWidth: 280,
+}));
 vi.mock("../contexts/ConsolePreferencesContext", () => ({
   useConsolePreferences: () => ({
-    profile: { touchMode: false, shortcutsEnabled: false, dockWidth: 280 },
+    profile: preferenceProfile,
     updateProfile: vi.fn(),
     syncState: "synced",
     deviceClass: "desktop",
@@ -81,12 +86,102 @@ it("requires a deliberate second action before fading to black", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /arm fade to black/i }));
+  // One click only arms (Bleecker ArmTake); the second press within the time takes.
+  fireEvent.click(screen.getByRole("button", { name: "Fade to black" }));
   expect(onFadeToBlack).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole("button", { name: /confirm fade to black/i }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   expect(onFadeToBlack).toHaveBeenCalledTimes(1);
+});
+
+it("shows what is on air on the Program monitor, and when it is faded to black", () => {
+  const { rerender } = render(
+    <BroadcastSwitcherDeck {...props} workspace="director" />,
+  );
+  const program = () =>
+    document.querySelector<HTMLElement>('[data-tone="program"]')!;
+  const preview = () =>
+    document.querySelector<HTMLElement>('[data-tone="preview"]')!;
+  if (props.activeScene) {
+    expect(program()).toHaveTextContent("On air");
+  } else {
+    expect(program()).not.toHaveTextContent("On air");
+  }
+  expect(preview()).not.toHaveTextContent("On air");
+
+  rerender(
+    <BroadcastSwitcherDeck {...props} workspace="director" fadeToBlack />,
+  );
+  expect(program()).toHaveTextContent("Faded to black");
+  expect(program()).not.toHaveTextContent("On air");
+  expect(screen.getByRole("button", { name: "RESTORE PROGRAM" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Fade to black" })).toBeNull();
+});
+
+it("shows the keyboard arm for fade to black, and uses console controls instead of native ones", () => {
+  preferenceProfile.shortcutsEnabled = true;
+  onTestFinished(() => {
+    preferenceProfile.shortcutsEnabled = false;
+  });
+  const onFadeToBlack = vi.fn();
+  render(
+    <BroadcastSwitcherDeck
+      {...props}
+      onFadeToBlack={onFadeToBlack}
+      workspace="director"
+    />,
+  );
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  expect(screen.getByText("Fade to black armed: Alt+B again")).toBeVisible();
+  expect(onFadeToBlack).not.toHaveBeenCalled();
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  expect(onFadeToBlack).toHaveBeenCalledTimes(1);
+
+  expect(document.querySelector("select")).toBeNull();
+  expect(screen.getByRole("combobox", { name: "Transition" })).toBeVisible();
+});
+
+it("never fades from a held Alt+B, and acts once for a held key", async () => {
+  preferenceProfile.shortcutsEnabled = true;
+  onTestFinished(() => {
+    preferenceProfile.shortcutsEnabled = false;
+  });
+  const onFadeToBlack = vi.fn();
+  const onStageScene = vi.fn();
+  render(
+    <BroadcastSwitcherDeck
+      {...props}
+      onFadeToBlack={onFadeToBlack}
+      onStageScene={onStageScene}
+      workspace="director"
+    />,
+  );
+  // Holding Alt+B: one fresh keydown, then auto-repeats. It arms, never takes.
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  for (let i = 0; i < 5; i += 1)
+    fireEvent.keyDown(window, { key: "b", altKey: true, repeat: true });
+  expect(screen.getByText("Fade to black armed: Alt+B again")).toBeVisible();
+  expect(onFadeToBlack).not.toHaveBeenCalled();
+  // A repeat is still swallowed, so it does not reach the page.
+  const repeat = new KeyboardEvent("keydown", {
+    key: "b",
+    altKey: true,
+    repeat: true,
+    cancelable: true,
+  });
+  window.dispatchEvent(repeat);
+  expect(repeat.defaultPrevented).toBe(true);
+  // A fresh second press takes it.
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  expect(onFadeToBlack).toHaveBeenCalledTimes(1);
+
+  // Holding Escape clears Preview once.
+  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.keyDown(window, { key: "Escape", repeat: true });
+  fireEvent.keyDown(window, { key: "Escape", repeat: true });
+  await waitFor(() => expect(onStageScene).toHaveBeenCalledTimes(1));
+  expect(onStageScene).toHaveBeenCalledWith(null);
 });
 
 it("filters sources and stages without taking Program", async () => {

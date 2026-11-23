@@ -65,9 +65,29 @@ The broadcast deck reserves a separate semantic action grammar:
 
 - **Stage** selects Preview only.
 - **CUT** and **TAKE** are the only controls that move Preview to Program.
-- **FADE TO BLACK** requires an arm action followed by confirmation within three
-  seconds. Restoring Program remains a single explicit action because it removes
-  the blackout.
+- **Fade to black** is a Bleecker `ArmTake`: the first press only
+  arms it, a second press within five seconds or
+  a 0.8-second hold takes it, and Esc disarms. From the keyboard, Alt+B arms and
+  a second Alt+B within three seconds takes it; a "Fade to black armed" pill
+  shows while it waits. Restoring Program remains a single explicit action
+  because it removes the blackout.
+- Program shows its state as a Bleecker `StatePill` in the monitor header: **On
+  air** (pulsing, with the on-air glow on the monitor) or **Faded to black**.
+  Preview carries no on-air state. Source rows use pills too: Program, Preview ·
+  Program, or Preview.
+- The transition, device class and preset visibility pickers are Bleecker
+  `Select`; the source panel width is a Bleecker `Slider`. No text on the deck
+  is smaller than 12 px.
+
+Keyboard shortcuts apply when the keyboard toggle in Workspace options is on. Only a fresh key press acts: a held key's repeats are ignored, so holding Alt+B arms and never takes.
+
+| Action | Mouse | Keyboard |
+|---|---|---|
+| Take Preview to Program | TAKE TO PROGRAM | Space |
+| Cut | CUT | C |
+| Clear Preview | — | Esc |
+| Fade to black | Fade to black twice within 5 s, or hold 0.8 s | Alt+B twice within 3 s |
+| Restore Program | RESTORE PROGRAM | — |
 - Red/destructive styling is reserved for a destructive or live-impacting
   action. Icon-only controls always have a visible tooltip or accessible label.
 

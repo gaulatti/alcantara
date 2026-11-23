@@ -136,10 +136,10 @@ it("fades the TV program to black after the operator confirms, and restores it",
     Response.json(state("tv", true)),
   );
   fireEvent.click(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "CONFIRM FADE TO BLACK" }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   expect(
     await screen.findByRole("button", { name: "RESTORE PROGRAM" }),
@@ -154,7 +154,7 @@ it("fades the TV program to black after the operator confirms, and restores it",
   );
   fireEvent.click(screen.getByRole("button", { name: "RESTORE PROGRAM" }));
   expect(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   ).toBeVisible();
   expect(server.requests("PUT /program/main/fade-to-black")).toEqual([
     { active: true },
@@ -169,20 +169,20 @@ it("keeps the program as it was when fade to black is refused or answered with n
     new Response("no", { status: 503 }),
   );
   fireEvent.click(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "CONFIRM FADE TO BLACK" }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   await waitFor(() =>
     expect(server.requests("PUT /program/main/fade-to-black")).toHaveLength(1),
   );
   server.answer("PUT /program/main/fade-to-black", Response.json(null));
   fireEvent.click(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "CONFIRM FADE TO BLACK" }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   await waitFor(() =>
     expect(server.requests("PUT /program/main/fade-to-black")).toHaveLength(2),
