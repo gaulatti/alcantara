@@ -70,7 +70,7 @@ describe("SourcesSubscriptionProvider", () => {
     const audio = { kind: "audio" };
     const vp = pub(video);
     const ap = pub(audio);
-    room.remoteParticipants.set("cam", { trackPublications: new Map([["1", vp], ["2", ap], ["3", pub({ kind: "data" })], ["4", pub()], ["5", null], ["6", {}]]) });
+    room.remoteParticipants.set("cam", { trackPublications: new Map<string, unknown>([["1", vp], ["2", ap], ["3", pub({ kind: "data" })], ["4", pub()], ["5", null], ["6", {}]]) });
     const { result } = ctx(room);
     let off1!: () => void;
     let off2!: () => void;
