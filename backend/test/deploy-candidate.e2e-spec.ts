@@ -3,7 +3,10 @@ jest.mock('music-metadata', () => ({ parseBuffer: jest.fn() }), {
 });
 
 import { randomUUID } from 'node:crypto';
-import { INestApplication } from '@nestjs/common';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { listenOnLoopback } from './loopback-supertest';
@@ -25,7 +28,7 @@ const describeWithDatabase = databaseUrl ? describe : describe.skip;
 describeWithDatabase('deploy candidate (PostgreSQL e2e)', () => {
   const programId = `e2e-candidate-${randomUUID()}`;
   let seed: PrismaService;
-  let app: INestApplication<App>;
+  let app: NestFastifyApplication;
   let running: number;
   let due: number;
   const snapshot = () =>
@@ -134,8 +137,12 @@ describeWithDatabase('deploy candidate (PostgreSQL e2e)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = moduleRef.createNestApplication();
+    // The HTTP metrics hook needs the Fastify adapter (the app's own, gaulatti/alcantara#331).
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
     await listenOnLoopback(app.getHttpServer());
   }, 60_000);
 

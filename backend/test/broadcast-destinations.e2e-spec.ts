@@ -10,7 +10,10 @@ import { AuthModule } from '../src/auth/auth.module';
 import { Public } from '../src/auth/public.decorator';
 import { AlanaClient } from '../src/broadcast-destinations/alana.client';
 import { BroadcastDestinationsController } from '../src/broadcast-destinations/broadcast-destinations.controller';
+import { BroadcastDestinationKeysService } from '../src/broadcast-destinations/broadcast-destination-keys.service';
 import { BroadcastDestinationsService } from '../src/broadcast-destinations/broadcast-destinations.service';
+import { BroadcastIngestService } from '../src/broadcast-destinations/broadcast-ingest.service';
+import { DestinationSecretsService } from '../src/broadcast-destinations/destination-secrets.service';
 import { FillerBindingService } from '../src/filler/filler-binding.service';
 import { ObservabilityModule } from '../src/observability/observability.module';
 import { PrismaService } from '../src/prisma.service';
@@ -37,6 +40,9 @@ class HealthController {
   controllers: [HealthController, BroadcastDestinationsController],
   providers: [
     BroadcastDestinationsService,
+    BroadcastIngestService,
+    BroadcastDestinationKeysService,
+    DestinationSecretsService,
     AlanaClient,
     FillerBindingService,
     PrismaService,
