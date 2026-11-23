@@ -34,6 +34,7 @@ async function responseError(response: Response) {
   }
 }
 
+const INVITATION_CLOSED_HINT = 'Ask the studio for a new link.';
 const IN_USE_ELSEWHERE = 'This invitation is already in use in another window. Try again in a minute.';
 const STUDIO_NOT_READY = 'The studio is not ready for guests yet. Try again in a minute.';
 const STUDIO_UNREACHABLE = 'The studio could not be reached. Check your connection and try again.';
@@ -218,7 +219,8 @@ export default function GuestRoute() {
     if (!response.ok) {
       // Revoked, expired or invalid: the same end as a refused heartbeat.
       if (response.status === 401 || response.status === 403) {
-        setError(await responseError(response));
+        // A rejoin with a revoked or expired invitation: say what to do, not the server's text (gaulatti/alcantara#353).
+        setError(`${await responseError(response)} ${INVITATION_CLOSED_HINT}`);
         setStatus('ended');
         return;
       }
@@ -463,8 +465,11 @@ export default function GuestRoute() {
             </div>
           ) : null}
           {status === 'ended' || status === 'left' ? (
-            <div className='absolute inset-0 flex items-center justify-center bg-zinc-950/95 text-xl'>
-              {status === 'left' ? 'You left the studio.' : 'The studio session ended.'}
+            <div className='absolute inset-0 flex flex-col items-center justify-center gap-4 bg-zinc-950/95 px-6 text-center text-xl'>
+              <p>{status === 'left' ? 'You left the studio.' : 'The studio session ended.'}</p>
+              {error ? <p className='max-w-md text-base text-amber-200'>{error}</p> : null}
+              {/* A rejoin asks the studio again; if the invitation is closed, the message above says to ask for a new link. */}
+              <Button onClick={() => void join()}>Rejoin the studio</Button>
             </div>
           ) : null}
           {notice ? (
