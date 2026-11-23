@@ -198,6 +198,9 @@ describe('main bootstrap', () => {
         'https://alcantara.gt',
         'https://fifthbell.com',
         'https://cdn.fifthbell.com',
+        // The desktop console (bastille#32): macOS, then Windows and Linux.
+        'tauri://localhost',
+        'http://tauri.localhost',
         'http://localhost',
         'https://localhost:5173',
         'http://127.0.0.1:3000',
@@ -206,18 +209,13 @@ describe('main bootstrap', () => {
       }
     });
 
-    it('rejects unknown origins with a descriptive error', async () => {
+    it('refuses unknown origins without an error, so they get no CORS headers rather than a server error', async () => {
       const h = await runMain({
         fastifyInstance: { server: { on: jest.fn() } },
       });
       const cb = corsOrigin(h)('https://evil.example');
       expect(cb).toHaveBeenCalledTimes(1);
-      const [error, allow] = cb.mock.calls[0] as [Error, boolean];
-      expect(error).toBeInstanceOf(Error);
-      expect(error.message).toBe(
-        'Origin https://evil.example not allowed by CORS',
-      );
-      expect(allow).toBe(false);
+      expect(cb).toHaveBeenCalledWith(null, false);
     });
 
     it('adds trimmed ALLOWED_ORIGINS entries and ignores empty ones', async () => {
@@ -243,12 +241,10 @@ describe('main bootstrap', () => {
         null,
         true,
       );
-      const refused = check('https://other.harborlight.test');
-      const [error, allow] = refused.mock.calls[0] as [Error, boolean];
-      expect(error.message).toBe(
-        'Origin https://other.harborlight.test not allowed by CORS',
+      expect(check('https://other.harborlight.test')).toHaveBeenCalledWith(
+        null,
+        false,
       );
-      expect(allow).toBe(false);
     });
 
     it('uses FRONTEND_ORIGIN when ALLOWED_ORIGINS is unset', async () => {
