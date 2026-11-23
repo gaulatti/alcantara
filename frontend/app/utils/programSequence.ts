@@ -103,7 +103,7 @@ export function shuffleProgramSongSequence(
     ...sequence,
     mode: 'shuffle',
     items: anchoredItem ? [anchoredItem, ...shuffledItems] : shuffledItems,
-    activeItemId: anchoredItem?.id ?? sequence.activeItemId ?? nextItems[0]?.id ?? null
+    activeItemId: anchoredItem?.id ?? sequence.activeItemId ?? nextItems[0].id
   };
 }
 
@@ -354,7 +354,7 @@ function getSelectedItem<TItem extends BaseSequenceItem>(
   }
 
   if (sequence.mode === 'manual') {
-    return sequence.items[baseIndex] ?? null;
+    return sequence.items[baseIndex];
   }
 
   const startedAt = sequence.startedAt ?? nowMs;
@@ -368,7 +368,7 @@ function getSelectedItem<TItem extends BaseSequenceItem>(
     nextIndex = sequence.items.length - 1;
   }
 
-  return sequence.items[nextIndex] ?? null;
+  return sequence.items[nextIndex];
 }
 
 function getSongItemPlaybackDurationMs(
@@ -400,7 +400,7 @@ function getSelectedSongItem(
   }
 
   if (sequence.mode === 'manual') {
-    return sequence.items[baseIndex] ?? null;
+    return sequence.items[baseIndex];
   }
 
   const startedAt = sequence.startedAt ?? nowMs;
@@ -408,43 +408,20 @@ function getSelectedSongItem(
   const itemDurations = sequence.items.map((item) => getSongItemPlaybackDurationMs(item));
 
   if (sequence.loop !== false) {
-    const hasUnknownDuration = itemDurations.some((durationMs) => durationMs === null);
-    if (!hasUnknownDuration) {
-      const cycleDurationMs = itemDurations.reduce<number>((sum, durationMs) => sum + (durationMs ?? 0), 0);
-      if (cycleDurationMs <= 0) {
-        return sequence.items[baseIndex] ?? null;
-      }
-
-      let remainingMs = elapsedMs % cycleDurationMs;
-      for (let step = 0; step < sequence.items.length; step += 1) {
-        const index = (baseIndex + step) % sequence.items.length;
-        const itemDurationMs = itemDurations[index];
-        if (typeof itemDurationMs !== 'number') {
-          return sequence.items[index] ?? null;
-        }
-        if (remainingMs < itemDurationMs) {
-          return sequence.items[index] ?? null;
-        }
-        remainingMs -= itemDurationMs;
-      }
-
-      return sequence.items[baseIndex] ?? null;
+    // With every length known the sequence cycles, so only the time into the current cycle counts. With
+    // an unknown length somewhere, time runs from the start until it reaches that song and stops there.
+    // Either way the walk ends: the time into a cycle is shorter than the cycle, and a song of unknown
+    // length stops it at the latest.
+    const knownCycleMs = itemDurations.every((durationMs) => durationMs !== null)
+      ? itemDurations.reduce<number>((sum, durationMs) => sum + durationMs!, 0)
+      : null;
+    let remainingMs = knownCycleMs === null ? elapsedMs : elapsedMs % knownCycleMs;
+    let cycleIndex = baseIndex;
+    while (itemDurations[cycleIndex] !== null && remainingMs >= itemDurations[cycleIndex]!) {
+      remainingMs -= itemDurations[cycleIndex]!;
+      cycleIndex = (cycleIndex + 1) % sequence.items.length;
     }
-
-    let remainingMs = elapsedMs;
-    for (let step = 0; step < sequence.items.length; step += 1) {
-      const index = (baseIndex + step) % sequence.items.length;
-      const itemDurationMs = itemDurations[index];
-      if (typeof itemDurationMs !== 'number') {
-        return sequence.items[index] ?? null;
-      }
-      if (remainingMs < itemDurationMs) {
-        return sequence.items[index] ?? null;
-      }
-      remainingMs -= itemDurationMs;
-    }
-
-    return sequence.items[baseIndex] ?? null;
+    return sequence.items[cycleIndex];
   }
 
   let index = baseIndex;
@@ -452,7 +429,7 @@ function getSelectedSongItem(
   while (index < sequence.items.length - 1) {
     const itemDurationMs = itemDurations[index];
     if (typeof itemDurationMs !== 'number') {
-      return sequence.items[index] ?? null;
+      return sequence.items[index];
     }
     if (remainingMs < itemDurationMs) {
       break;
@@ -461,19 +438,16 @@ function getSelectedSongItem(
     index += 1;
   }
 
-  return sequence.items[index] ?? null;
+  return sequence.items[index];
 }
 
 function resolveTextSequenceRecursive(
   sequence: ProgramTextSequence,
   nowMs: number,
-  depth: number,
   labels: string[]
 ): ProgramResolvedTextLeaf | null {
-  if (depth > MAX_DEPTH) {
-    return null;
-  }
-
+  // No depth guard: normalizeProgramTextSequence refuses nesting past MAX_DEPTH, so a normalized
+  // sequence is never deeper than the walk.
   const selected = getSelectedItem(sequence, nowMs);
   if (!selected) {
     return null;
@@ -481,7 +455,7 @@ function resolveTextSequenceRecursive(
 
   if (selected.kind === 'sequence') {
     const nextLabels = [...labels, selected.label];
-    return resolveTextSequenceRecursive(selected.sequence, nowMs, depth + 1, nextLabels);
+    return resolveTextSequenceRecursive(selected.sequence, nowMs, nextLabels);
   }
 
   return {
@@ -494,13 +468,9 @@ function resolveTextSequenceRecursive(
 function resolveSongSequenceRecursive(
   sequence: ProgramSongSequence,
   nowMs: number,
-  depth: number,
   labels: string[]
 ): ProgramResolvedSongLeaf | null {
-  if (depth > MAX_DEPTH) {
-    return null;
-  }
-
+  // No depth guard: normalizeProgramSongSequence refuses nesting past MAX_DEPTH (see above).
   const selected = getSelectedSongItem(sequence, nowMs);
   if (!selected) {
     return null;
@@ -508,7 +478,7 @@ function resolveSongSequenceRecursive(
 
   if (selected.kind === 'sequence') {
     const nextLabels = [...labels, selected.label];
-    return resolveSongSequenceRecursive(selected.sequence, nowMs, depth + 1, nextLabels);
+    return resolveSongSequenceRecursive(selected.sequence, nowMs, nextLabels);
   }
 
   const songLabel = [selected.artist, selected.title].filter(Boolean).join(' - ');
@@ -703,7 +673,7 @@ export function resolveProgramTextContent(
   const contentMode = normalizeTextContentMode(config.contentMode, normalizedSequence);
 
   if (contentMode === 'sequence' && normalizedSequence) {
-    const resolved = resolveTextSequenceRecursive(normalizedSequence, nowMs, 0, []);
+    const resolved = resolveTextSequenceRecursive(normalizedSequence, nowMs, []);
     if (resolved) {
       return {
         text: resolved.text,
@@ -737,7 +707,7 @@ export function resolveProgramTextLeaf(
     return null;
   }
 
-  return resolveTextSequenceRecursive(normalizedSequence, nowMs, 0, []);
+  return resolveTextSequenceRecursive(normalizedSequence, nowMs, []);
 }
 
 export function resolveProgramSongLeaf(
@@ -754,7 +724,7 @@ export function resolveProgramSongLeaf(
     return null;
   }
 
-  return resolveSongSequenceRecursive(normalizedSequence, nowMs, 0, []);
+  return resolveSongSequenceRecursive(normalizedSequence, nowMs, []);
 }
 
 export function countProgramTextSequenceLeafItems(
