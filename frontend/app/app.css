@@ -3,6 +3,8 @@
 @source "../node_modules/@gaulatti/bleecker/dist/**/*.js";
 /* The Fifth Bell program is Brokaw's (gaulatti/alcantara#381); its Tailwind classes are generated here. */
 @source "../node_modules/@fifthbell/brokaw/dist/components/live-program/**/*.js";
+/* The Modo Italiano scenes are Giorgia's (gaulatti/alcantara#382); the legacy bracket styles itself with Tailwind classes generated here. */
+@source "../node_modules/@modoitaliano/giorgia/dist/scenes/**/*.js";
 @source "./**/*.{ts,tsx}";
 
 @keyframes eq-bar1 {
