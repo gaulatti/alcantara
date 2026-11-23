@@ -1260,6 +1260,12 @@
     "permission": "alcantara:webrtc:read"
   },
   {
+    "method": "POST",
+    "path": "/webrtc/desktop-program-feed-token",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
     "method": "GET",
     "path": "/webrtc/invitations",
     "public": false,

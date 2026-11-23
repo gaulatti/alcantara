@@ -137,9 +137,14 @@ const sourceOf = (label: string) =>
   nodes.find((n) => n.label === `source:${label}`)!;
 /** The guests' mixes, each as the list of what reaches its destination. */
 function mixFor(guest: string) {
-  const published = room().published.find((p) =>
-    p.name.startsWith(`mixminus:${guest}:`),
-  )!;
+  // The live mix: a rebuild unpublishes the old track and publishes a new one.
+  const published = room()
+    .published.filter(
+      (p) =>
+        p.name.startsWith(`mixminus:${guest}:`) &&
+        !room().unpublished.includes(p.track),
+    )
+    .at(-1)!;
   const destination = nodes.find(
     (n) =>
       n.label === "destination" &&
@@ -320,6 +325,31 @@ it("explains a failure that is not an error object", async () => {
     lk.FakeRoom.prototype.connect = original;
   }
   expect(screen.getByText("Return router failed.")).toBeVisible();
+});
+
+// gaulatti/alexandria#9: the program bus takes one feed, the desktop's when it is in
+// the room and Alana's otherwise, never both, switching both ways.
+it("feeds the program bus from the desktop's feed while it is present, and from Alana's otherwise", async () => {
+  routes = [guestRoute("guest-anna", { returnAudioBus: "program" })];
+  await openRouter();
+  await settle();
+  room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+  emit("trackSubscribed", ...audioTrack("alana-feed", "t1", "program", "program-feed-main"));
+  emit("trackSubscribed", ...audioTrack("anna-mic", "t2", "mic", "guest-anna"));
+  await settle();
+  expect(sourceOf("alana-feed").feeds).toContain(mixFor("guest-anna")!);
+
+  // The desktop joins: its feed replaces Alana's on the bus.
+  emit("trackSubscribed", ...audioTrack("desktop-feed", "t3", "program", "desktop-program-feed-main"));
+  await settle();
+  const withDesktop = mixFor("guest-anna")!;
+  expect(sourceOf("desktop-feed").feeds).toContain(withDesktop);
+  expect(sourceOf("alana-feed").feeds).not.toContain(withDesktop);
+
+  // The desktop leaves: Alana's feed is back on the bus.
+  emit("trackUnsubscribed", null, { trackSid: "t3" });
+  await settle();
+  expect(sourceOf("alana-feed").feeds).toContain(mixFor("guest-anna")!);
 });
 
 it("publishes one N-1 mix per connected guest with each guest's own level and delay", async () => {

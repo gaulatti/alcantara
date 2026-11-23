@@ -1413,6 +1413,53 @@ describe('WebrtcService coverage', () => {
       expect(result.roomName).toBe('alcantara-main');
     });
 
+    // gaulatti/alexandria#9: the desktop console publishes the program it renders.
+    it('mints a publish-only desktop program feed token with a fixed identity', async () => {
+      const { service } = setup();
+      const result = await service.createDesktopProgramFeedToken(
+        operator,
+        'main',
+      );
+      const claims = jwtGrant(result.token);
+      expect(claims.sub).toBe('desktop-program-feed-main');
+      expect(result.identity).toBe('desktop-program-feed-main');
+      expect(result.roomName).toBe('alcantara-main');
+      const digest = createHash('sha256')
+        .update('principal-1')
+        .digest('hex')
+        .slice(0, 20);
+      expect(JSON.parse(claims.metadata)).toEqual({
+        role: 'desktop-program-feed',
+        programId: 'main',
+        operator: digest,
+      });
+      expect(claims.video).toMatchObject({
+        room: 'alcantara-main',
+        roomJoin: true,
+        canPublish: true,
+        canPublishSources: ['screen_share', 'screen_share_audio'],
+        canSubscribe: false,
+        canPublishData: false,
+        hidden: false,
+      });
+      // Never Alana's identity, so the two feeds never replace each other.
+      expect(claims.sub).not.toBe('program-feed-main');
+    });
+
+    it('records the subject digest on the desktop feed when the principal id is null', async () => {
+      const { service } = setup();
+      const result = await service.createDesktopProgramFeedToken(
+        { principalId: null, subject: 'pool-subject' },
+        'main',
+      );
+      const digest = createHash('sha256')
+        .update('pool-subject')
+        .digest('hex')
+        .slice(0, 20);
+      expect(JSON.parse(jwtGrant(result.token).metadata).operator).toBe(digest);
+      expect(jwtGrant(result.token).sub).toBe('desktop-program-feed-main');
+    });
+
     it('falls back to the subject when the principal id is null', async () => {
       const { service } = setup();
       const result = await service.createOperatorToken(

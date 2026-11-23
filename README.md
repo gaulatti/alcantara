@@ -101,7 +101,11 @@ Alana remains the owner of captured Program/Preview output publication. Start
 its Program renderer with `?renderer=1` so guest microphones are excluded from
 the captured base bus, and publish the output to the matching
 `alcantara-<programId>` LiveKit room as `program-feed-<programId>` (and optional
-`preview-feed-<programId>`). Run one isolated
+`preview-feed-<programId>`). A desktop console that renders the program itself
+publishes it as `desktop-program-feed-<programId>`, with a token from
+`POST /webrtc/desktop-program-feed-token`; while that participant is in the
+room, guests' program video and the router's program bus take it instead of
+`program-feed-<programId>`, and fall back to Alana's feed when it leaves. Run one isolated
 `/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>` renderer alongside it.
 The fragment is immediately moved to session storage and removed from browser
 history; it is never sent in a URL request.
