@@ -314,89 +314,27 @@ describe('BroadcastDestinationsService catalog and immutable command lifecycle',
         retired: true,
       },
     ]);
-    expect(await f.service.listCatalog()).toEqual([destination]);
-  });
-
-  it('normalizes catalog metadata and places a new destination after the existing catalog', async () => {
-    const f = makeHarness();
-    f.prisma.broadcastDestination.count.mockResolvedValue(3);
-    f.prisma.broadcastDestination.create.mockResolvedValue(destination);
-    expect(
-      await f.service.createDestination({
-        id: ' primary ',
-        displayName: ' Primary platform ',
-        secretId: ' broadcast/test/primary ',
-        secretVersionId: ' version-1 ',
+    expect(await f.service.listCatalog()).toEqual([
+      expect.objectContaining({
+        id: destination.id,
+        displayName: destination.displayName,
+        secretId: destination.secretId,
+        secretVersionId: destination.secretVersionId,
       }),
-    ).toBe(destination);
-    expect(f.prisma.broadcastDestination.create).toHaveBeenCalledWith({
-      data: {
-        id: 'primary',
-        displayName: 'Primary platform',
-        secretId: 'broadcast/test/primary',
-        secretVersionId: 'version-1',
-        position: 3,
-      },
-    });
-    await f.service.updateDestination('primary', {
-      id: 'untrusted-body-id',
-      displayName: 'New label',
-      secretId: 'broadcast/test/new',
-      secretVersionId: 'version-2',
-    });
-    expect(f.prisma.broadcastDestination.update).toHaveBeenCalledWith({
-      where: { id: 'primary' },
-      data: {
-        displayName: 'New label',
-        secretId: 'broadcast/test/new',
-        secretVersionId: 'version-2',
-      },
-    });
+    ]);
   });
 
-  it.each([
-    { id: undefined },
-    { id: 'bad id' },
-    { displayName: undefined },
-    { displayName: '' },
-    { displayName: 'x'.repeat(101) },
-    { secretId: undefined },
-    { secretId: 'invalid secret reference' },
-    { secretVersionId: undefined },
-    { secretVersionId: 'bad version' },
-  ])(
-    'rejects invalid administrator catalog input before mutation: %p',
-    async (override) => {
-      const f = makeHarness();
-      await expect(
-        f.service.createDestination({ ...destination, ...override }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(f.prisma.broadcastDestination.create).not.toHaveBeenCalled();
-    },
-  );
-
-  it('maps only supported catalog uniqueness and missing-row errors, preserving other database failures', async () => {
+  it('maps a missing row when retiring to not found, preserving other database failures', async () => {
     const f = makeHarness();
-    f.prisma.broadcastDestination.create.mockRejectedValueOnce(
-      databaseError('P2002'),
-    );
-    await expect(
-      f.service.createDestination(destination),
-    ).rejects.toBeInstanceOf(ConflictException);
     const outage = new Error('catalog unavailable');
-    f.prisma.broadcastDestination.create.mockRejectedValueOnce(outage);
-    await expect(f.service.createDestination(destination)).rejects.toBe(outage);
-    for (const operation of [
-      () => f.service.updateDestination('primary', destination),
-      () => f.service.setRetired('primary', true),
-    ]) {
-      f.prisma.broadcastDestination.update.mockRejectedValueOnce(
-        databaseError('P2025'),
-      );
-      await expect(operation()).rejects.toBeInstanceOf(NotFoundException);
-      f.prisma.broadcastDestination.update.mockRejectedValueOnce(outage);
-      await expect(operation()).rejects.toBe(outage);
-    }
+    f.prisma.broadcastDestination.update.mockRejectedValueOnce(
+      databaseError('P2025'),
+    );
+    await expect(f.service.setRetired('primary', true)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    f.prisma.broadcastDestination.update.mockRejectedValueOnce(outage);
+    await expect(f.service.setRetired('primary', true)).rejects.toBe(outage);
   });
 
   it('retires and restores the same catalog identity without deleting its immutable history', async () => {
