@@ -128,8 +128,24 @@ export async function loadRuntimeSecrets(
     // The secret is authoritative: a container leftover must not configure it.
     delete environment.POMPEII_ACCESS_CREDENTIAL;
   }
+  // gaulatti/alcantara#354: LiveKit and the WebRTC secrets come from the secret
+  // only. Absent there, a container leftover must not turn WebRTC on.
+  for (const [field, name] of LIVEKIT_ENVIRONMENT) {
+    const value = selected[field];
+    if (value !== undefined) environment[name] = value;
+    else delete environment[name];
+  }
   validateRuntimeConfiguration(environment);
 }
+
+/** Each WebRTC field of the runtime secret and the setting the backend reads. */
+const LIVEKIT_ENVIRONMENT = [
+  ['livekitWsUrl', 'LIVEKIT_WS_URL'],
+  ['livekitApiKey', 'LIVEKIT_API_KEY'],
+  ['livekitApiSecret', 'LIVEKIT_API_SECRET'],
+  ['webrtcSessionSecret', 'WEBRTC_SESSION_SECRET'],
+  ['webrtcRendererKey', 'WEBRTC_RENDERER_KEY'],
+] as const;
 
 export function validateExternalSourceEncryption(
   environment: RuntimeEnvironment = process.env,
