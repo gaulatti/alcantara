@@ -48,7 +48,11 @@ export function normalizePrivateServiceUrl(
 export function normalizeTemplateOrigin(value: string): string;
 export function parseRuntimeSecretPayload(
   secretString: string | undefined,
-): RuntimeSecretPayload;
+  options?: { strictWebrtc?: boolean },
+): RuntimeSecretPayload & {
+  /** Set only without strictWebrtc: why the WebRTC group was dropped (field names only). */
+  readonly webrtcProblem?: string;
+};
 export function validateExternalSourceEncryption(
   currentVersion: string | undefined,
   encodedKeys: string | undefined,

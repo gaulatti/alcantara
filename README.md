@@ -165,7 +165,12 @@ all be present or all absent:
 The backend copies them into `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET` and `WEBRTC_RENDERER_KEY` at
 start-up. When a field is absent from the secret, a value left in the container
-is removed, and a partial group fails start-up.
+is removed.
+
+A partial or invalid group never stops the backend, which also controls the
+radio. It starts with WebRTC off and logs the field names, never the values.
+The deploy's contract check and the LiveKit renderer do refuse such a group, so
+a deploy fails before the running container is replaced.
 
 The deploy renders the LiveKit server's `livekit.yaml` from the same fields
 (`backend/scripts/print-livekit-config.mjs`) and starts `redis` and `livekit`.

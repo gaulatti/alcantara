@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { loadRuntimeSecrets } from './runtime-secrets';
+import { parseRuntimeSecretPayload } from './runtime-secret-contract';
 import { WebrtcService } from '../webrtc/webrtc.service';
 
 // gaulatti/alcantara#354: LiveKit and the WebRTC secrets come from the runtime
@@ -103,23 +104,12 @@ describe('LiveKit configuration from the runtime secret', () => {
     expect(webrtc(environment).getPublicConfig().enabled).toBe(false);
   });
 
-  it('fails startup on a partial group, naming the missing keys and never a value', async () => {
-    const three: Record<string, string> = { ...LIVEKIT };
-    delete three.webrtcSessionSecret;
-    const failure = loadRuntimeSecrets(
-      production(),
-      secret({ ...REQUIRED, ...three }),
-    );
-    await expect(failure).rejects.toThrow(
+  const INVALID: Array<[string, Record<string, unknown>, string]> = [
+    [
+      'a partial group',
+      { webrtcSessionSecret: undefined },
       'LiveKit needs all of its keys, missing: webrtcSessionSecret',
-    );
-    await failure.catch((error: Error) => {
-      expect(error.message).not.toContain(API_SECRET);
-      expect(error.message).not.toContain('APIfictional');
-    });
-  });
-
-  it.each([
+    ],
     [
       'a ws:// address',
       { livekitWsUrl: 'ws://livekit.example.test' },
@@ -185,12 +175,91 @@ describe('LiveKit configuration from the runtime secret', () => {
       { livekitApiSecret: 42 },
       'field livekitApiSecret is malformed',
     ],
-  ])('fails startup on %s', async (_name, change, message) => {
-    await expect(
-      loadRuntimeSecrets(
+  ];
+
+  function payloadWith(change: Record<string, unknown>) {
+    const payload: Record<string, unknown> = {
+      ...REQUIRED,
+      ...LIVEKIT,
+      ...change,
+    };
+    for (const [key, value] of Object.entries(change))
+      if (value === undefined) delete payload[key];
+    return payload;
+  }
+
+  it.each(INVALID)(
+    'starts with WebRTC off on %s, removing container values and warning by field name only',
+    async (_name, change, message) => {
+      const environment = production({
+        LIVEKIT_WS_URL: 'wss://leftover.example.test',
+        LIVEKIT_API_KEY: 'leftover',
+        LIVEKIT_API_SECRET: API_SECRET,
+        WEBRTC_SESSION_SECRET: SESSION_SECRET,
+        WEBRTC_RENDERER_KEY: RENDERER_KEY,
+      });
+      const warn = jest.fn();
+      await expect(
+        loadRuntimeSecrets(environment, secret(payloadWith(change)), warn),
+      ).resolves.toBeUndefined();
+      // The rest of the configuration loaded as usual.
+      expect(environment.PALAZZO_ALLOWED_URLS).toBe('http://palazzo:3100');
+      for (const name of [
+        'LIVEKIT_WS_URL',
+        'LIVEKIT_API_KEY',
+        'LIVEKIT_API_SECRET',
+        'WEBRTC_SESSION_SECRET',
+        'WEBRTC_RENDERER_KEY',
+      ]) {
+        expect(environment).not.toHaveProperty(name);
+      }
+      expect(webrtc(environment).getPublicConfig().enabled).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const warning = String((warn.mock.calls as string[][])[0][0]);
+      expect(warning).toContain('Alcantara WebRTC is disabled');
+      expect(warning).toContain(message);
+      for (const value of [
+        API_SECRET,
+        SESSION_SECRET,
+        RENDERER_KEY,
+        'APIfictional',
+      ])
+        expect(warning).not.toContain(value);
+    },
+  );
+
+  it.each(INVALID)(
+    'fails the strict contract (the deploy gate and the renderer) on %s',
+    (_name, change, message) => {
+      expect(() =>
+        parseRuntimeSecretPayload(JSON.stringify(payloadWith(change))),
+      ).toThrow(message);
+    },
+  );
+
+  it('warns through the console by default', async () => {
+    const spy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await loadRuntimeSecrets(
         production(),
-        secret({ ...REQUIRED, ...LIVEKIT, ...change }),
-      ),
-    ).rejects.toThrow(message);
+        secret(payloadWith({ livekitApiKey: '   ' })),
+      );
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining('field livekitApiKey is malformed'),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not warn for a valid group or for none', async () => {
+    const warn = jest.fn();
+    await loadRuntimeSecrets(
+      production(),
+      secret({ ...REQUIRED, ...LIVEKIT }),
+      warn,
+    );
+    await loadRuntimeSecrets(production(), secret(REQUIRED), warn);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

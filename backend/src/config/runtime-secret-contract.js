@@ -26,6 +26,10 @@ const OPTIONAL_WEBRTC_SECRET_KEYS = Object.freeze(['webrtcRendererKey']);
 // LiveKit refuses an API secret shorter than 32 characters; the session secret
 // signs guest sessions and gets the same floor.
 const MINIMUM_WEBRTC_SECRET_LENGTH = 32;
+const WEBRTC_SECRET_FIELDS = new Set([
+  ...LIVEKIT_SECRET_KEYS,
+  ...OPTIONAL_WEBRTC_SECRET_KEYS,
+]);
 const allowedSecretFields = new Set([
   ...RUNTIME_SECRET_KEYS,
   ...ALLOWLISTED_OPTIONAL_SECRET_KEYS,
@@ -194,24 +198,31 @@ function normalizeLivekitWsUrl(value) {
   return `wss://${parsed.host}`;
 }
 
-/** Validate the LiveKit group: all four or none. Messages never carry a value. */
-function validateLivekitSecretGroup(selected) {
+/**
+ * Why the WebRTC group cannot be used, naming fields and never a value; null
+ * when it is valid or absent. All four LiveKit fields or none; the renderer key
+ * is optional but must be a non-blank string.
+ */
+function livekitSecretGroupProblem(selected, invalidFields) {
+  if (invalidFields.length) {
+    return `Alcantara runtime configuration field ${invalidFields.join(', ')} is malformed`;
+  }
   const present = LIVEKIT_SECRET_KEYS.filter(
     (key) => selected[key] !== undefined,
   );
-  if (!present.length) return;
+  if (!present.length) return null;
   const missing = LIVEKIT_SECRET_KEYS.filter(
     (key) => selected[key] === undefined,
   );
   if (missing.length) {
-    throw new Error(
-      `Alcantara runtime configuration is incomplete; LiveKit needs all of its keys, missing: ${missing.join(', ')}`,
-    );
+    return `Alcantara runtime configuration is incomplete; LiveKit needs all of its keys, missing: ${missing.join(', ')}`;
   }
-  selected.livekitWsUrl = normalizeLivekitWsUrl(selected.livekitWsUrl);
-  if (/\s/.test(selected.livekitApiKey)) {
-    throw new Error('LIVEKIT_API_KEY is invalid');
+  try {
+    selected.livekitWsUrl = normalizeLivekitWsUrl(selected.livekitWsUrl);
+  } catch (error) {
+    return error.message;
   }
+  if (/\s/.test(selected.livekitApiKey)) return 'LIVEKIT_API_KEY is invalid';
   for (const [key, name] of [
     ['livekitApiSecret', 'LIVEKIT_API_SECRET'],
     ['webrtcSessionSecret', 'WEBRTC_SESSION_SECRET'],
@@ -220,14 +231,19 @@ function validateLivekitSecretGroup(selected) {
       /\s/.test(selected[key]) ||
       selected[key].length < MINIMUM_WEBRTC_SECRET_LENGTH
     ) {
-      throw new Error(
-        `${name} must be at least ${MINIMUM_WEBRTC_SECRET_LENGTH} characters with no spaces`,
-      );
+      return `${name} must be at least ${MINIMUM_WEBRTC_SECRET_LENGTH} characters with no spaces`;
     }
   }
+  return null;
 }
 
-function parseRuntimeSecretPayload(secretString) {
+/**
+ * Parse the runtime secret. With `strictWebrtc` (the default: the deploy's
+ * contract gate and the LiveKit renderer), an invalid WebRTC group fails. Without
+ * it (backend start-up), the group is dropped and `webrtcProblem` names the fields,
+ * so a mistake in an optional feature never stops the backend.
+ */
+function parseRuntimeSecretPayload(secretString, { strictWebrtc = true } = {}) {
   let payload;
   try {
     payload = JSON.parse(secretString ?? '');
@@ -239,8 +255,16 @@ function parseRuntimeSecretPayload(secretString) {
   }
 
   const selected = {};
+  const invalidWebrtcFields = [];
   for (const [key, value] of Object.entries(payload)) {
     if (!allowedSecretFields.has(key)) continue;
+    if (WEBRTC_SECRET_FIELDS.has(key)) {
+      // Judged with the LiveKit group below, so a lenient caller can drop it.
+      if (typeof value !== 'string' || !value.trim())
+        invalidWebrtcFields.push(key);
+      else selected[key] = value.trim();
+      continue;
+    }
     if (typeof value !== 'string') {
       throw new Error(
         `Alcantara runtime configuration field ${key} is malformed`,
@@ -281,7 +305,19 @@ function parseRuntimeSecretPayload(secretString) {
     selected.externalSourceConfigCurrentVersion,
     selected.externalSourceConfigKeys,
   );
-  validateLivekitSecretGroup(selected);
+  const livekitProblem = livekitSecretGroupProblem(
+    selected,
+    invalidWebrtcFields,
+  );
+  if (livekitProblem) {
+    if (strictWebrtc) throw new Error(livekitProblem);
+    // An optional feature: drop the whole WebRTC group and report it by field name.
+    for (const key of WEBRTC_SECRET_FIELDS) delete selected[key];
+    Object.defineProperty(selected, 'webrtcProblem', {
+      value: livekitProblem,
+      enumerable: false,
+    });
+  }
   return selected;
 }
 

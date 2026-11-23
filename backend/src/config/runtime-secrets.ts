@@ -77,6 +77,7 @@ export function validateRuntimeConfiguration(
 export async function loadRuntimeSecrets(
   environment: RuntimeEnvironment = process.env,
   client?: SecretClient,
+  warn: (message: string) => void = (message) => console.warn(message),
 ): Promise<void> {
   if (environment.NODE_ENV !== 'production') return;
   const secretId = environment.ALCANTARA_CONFIG_SECRET_ID?.trim();
@@ -109,7 +110,16 @@ export async function loadRuntimeSecrets(
   } catch {
     throw new Error('Alcantara runtime configuration is unavailable');
   }
-  const selected = parseRuntimeSecretPayload(response.SecretString);
+  // WebRTC is optional: an invalid group is dropped and reported, never fatal
+  // (the backend also controls the radio).
+  const selected = parseRuntimeSecretPayload(response.SecretString, {
+    strictWebrtc: false,
+  });
+  if (selected.webrtcProblem) {
+    warn(
+      `Alcantara WebRTC is disabled: the runtime secret's LiveKit group is unusable (${selected.webrtcProblem})`,
+    );
+  }
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
   environment.ALANA_CONTROL_TOKEN = selected.alanaControlToken;
   environment.ALANA_CONTROL_URL = selected.alanaControlUrl;
