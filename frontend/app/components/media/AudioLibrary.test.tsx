@@ -479,3 +479,48 @@ it("unloads the playing clip when a filter unlists it, so the transport never ac
   ).toBeInTheDocument();
 });
 
+
+// gaulatti/alcantara#404 (group B): the edge branches of the library: a stat the analysis did not store, the
+// arrow keys at either end of the list, a clip the browser refuses after it loaded, the empty states, and the
+// singular count.
+
+it("shows a dash for a stat the analysis did not store", () => {
+  setup();
+  fireEvent.click(table().getByText("Asset pending", { selector: "p" }));
+  expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+});
+
+it("does not move past either end of the list with the arrow keys", () => {
+  setup();
+  const rows = screen.getAllByRole("row");
+  const first = rows[1];
+  const last = rows[rows.length - 1];
+  fireEvent.keyDown(first, { key: "ArrowUp" });
+  expect(element().getAttribute("src")).toBeNull();
+  fireEvent.keyDown(last, { key: "ArrowDown" });
+  expect(element().getAttribute("src")).toBeNull();
+});
+
+it("says a loaded clip cannot be played when the browser refuses it", () => {
+  setup();
+  fireEvent.click(screen.getByRole("button", { name: "Play Asset harbor" }));
+  fireEvent.error(element());
+  expect(screen.getByText("This clip cannot be played in the browser.")).toBeInTheDocument();
+});
+
+it("explains an empty library with no filter, and asks for the filters to be cleared when one is set", () => {
+  const { unmount } = render(
+    <AudioLibrary assets={[]} total={0} loading={false} capability="" onCapabilityChange={() => undefined} search="" onSearchChange={() => undefined} filtered={false} selectedIds={new Set()} onToggleSelected={() => undefined} canDelete={() => false} onDelete={() => undefined} />,
+  );
+  expect(screen.getByText("This physical media type has no assets yet.")).toBeInTheDocument();
+  unmount();
+  render(
+    <AudioLibrary assets={[]} total={6} loading={false} capability="" onCapabilityChange={() => undefined} search="zzz" onSearchChange={() => undefined} filtered selectedIds={new Set()} onToggleSelected={() => undefined} canDelete={() => false} onDelete={() => undefined} />,
+  );
+  expect(screen.getByText("Clear the filters and try again.")).toBeInTheDocument();
+});
+
+it("counts a single asset in the singular", () => {
+  setup({ assets: [ASSETS[0]], total: 1 });
+  expect(screen.getByText("1 asset")).toBeInTheDocument();
+});
