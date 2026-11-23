@@ -21,9 +21,23 @@ const fetchInstants = vi.hoisted(() => vi.fn());
 const uploadFileToMediaBucket = vi.hoisted(() => vi.fn());
 vi.mock("@gaulatti/bleecker", async (original) => {
   const kit = await import("../../test/routeKit");
-  return kit.inlineMenus(
+  const menus = await kit.inlineMenus(
     original as () => Promise<typeof import("@gaulatti/bleecker")>,
   );
+  // Radix positioning runs continuously in jsdom: keep Bleecker's string callback
+  // with a native select, as the other Bleecker-select tests do.
+  return {
+    ...menus,
+    Select: ({ options, onChange, value, ...rest }: any) => (
+      <select {...rest} value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option: any) => (
+          <option key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
+  };
 });
 vi.mock("../services/songs", () => ({ fetchSongsPage }));
 vi.mock("../services/instants", () => ({ fetchInstants }));
