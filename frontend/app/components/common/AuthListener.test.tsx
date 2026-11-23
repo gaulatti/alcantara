@@ -93,4 +93,36 @@ describe('AuthListener', () => {
     act(() => { window.dispatchEvent(new Event(SESSION_INVALID_EVENT)); });
     expect(dispatch).toHaveBeenCalledWith({ type: 'LOGOUT' });
   });
+
+  it('does not mark the user signed out when it unmounts while the rejected sign-in is being cleared', async () => {
+    let finish!: () => void;
+    checkAppSession.mockResolvedValue({ status: 'unauthorized' });
+    clearAppSession.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+    const view = render(<AuthListener />);
+    await flush();
+    view.unmount();
+    dispatch.mockClear();
+    await act(async () => finish());
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('ignores a session answer that arrives after it unmounts', async () => {
+    let answer!: (v: unknown) => void;
+    checkAppSession.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const view = render(<AuthListener />);
+    view.unmount();
+    await act(async () => answer({ status: 'signed-in', user }));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('logs a failure to clear the rejected sign-in and still signs the user out', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    checkAppSession.mockResolvedValue({ status: 'unauthorized' });
+    clearAppSession.mockRejectedValue(new Error('amplify'));
+    render(<AuthListener />);
+    await flush();
+    await flush();
+    expect(error).toHaveBeenCalledWith('Could not clear the rejected sign-in:', expect.any(Error));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'LOGOUT' });
+  });
 });
