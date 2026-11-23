@@ -42,7 +42,7 @@ const controllers = {
   groups: new MediaGroupsController(services.groups as never),
 };
 const specs = [
-  ...new ProgramMcpTools(services.programs as never, {} as never).specs(),
+  ...new ProgramMcpTools(services.programs as never, {} as never, { teamId: 7 } as never).specs(),
   ...new ScenesMcpTools(services.scenes as never, {} as never).specs(),
   ...new LayoutsMcpTools(services.layouts as never, {} as never).specs(),
   ...new MediaGroupsMcpTools(services.groups as never, {} as never).specs(),

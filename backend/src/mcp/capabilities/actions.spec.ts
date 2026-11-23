@@ -619,7 +619,7 @@ function build() {
     groups: new MediaGroupsController(f.groups as never),
   };
   const specs = [
-    ...new ProgramMcpTools(f.programs as never, f.templates as never).specs(),
+    ...new ProgramMcpTools(f.programs as never, f.templates as never, { teamId: 7 } as never).specs(),
     ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
     ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
     ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
