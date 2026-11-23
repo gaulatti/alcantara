@@ -1126,6 +1126,32 @@ describe("the song bus", () => {
   });
 });
 
+describe("a manual song without a string id", () => {
+  it("is not restarted by each audio_bus_update", async () => {
+    open();
+    await flush();
+    const item = {
+      title: "Fictional manual song",
+      artist: "Fictional artist",
+      audioUrl: "https://media.example.test/manual.mp3",
+      durationMs: 120000,
+    };
+    const update = () =>
+      emit({
+        type: "audio_bus_update",
+        programId: "main",
+        settings: { songSequence: { mode: "manual", items: [item] } },
+      });
+    update();
+    const [, track] = bus.ensure.mock.calls.at(-1) ?? [];
+    bus.ensure.mockClear();
+    bus.snapshot.mockReturnValue({ track: { token: track.token }, isPlaying: true });
+    update();
+    update();
+    expect(bus.ensure).not.toHaveBeenCalled();
+  });
+});
+
 describe("fade to black", () => {
   it("brings the instant volume down over a second and back up", async () => {
     open();

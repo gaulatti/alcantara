@@ -129,6 +129,17 @@ function asRecord(value: unknown): RecordValue | null {
   return value as RecordValue;
 }
 
+function stableSongId(parts: unknown[]): string {
+  // 32-bit FNV-1a over the JSON of the song's content: the same content, the same id.
+  const text = JSON.stringify(parts);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `song_${hash.toString(36)}`;
+}
+
 function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -202,13 +213,16 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
       ? Math.round(record.durationMs)
       : undefined;
 
+  const songId =
+    typeof record.songId === 'number' && Number.isInteger(record.songId) && record.songId > 0
+      ? record.songId
+      : undefined;
   return {
-    id: typeof record.id === 'string' && record.id ? record.id : createId('song'),
+    // A song without a string id is given one from its content, so the same song gets the same id
+    // on every normalisation. A random id would change the playback token on each audio_bus_update.
+    id: typeof record.id === 'string' && record.id ? record.id : stableSongId([songId, audioUrl, title, artist, durationMs]),
     kind: 'preset',
-    songId:
-      typeof record.songId === 'number' && Number.isInteger(record.songId) && record.songId > 0
-        ? record.songId
-        : undefined,
+    songId,
     highRotation: record.highRotation === true,
     artist,
     title,
