@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { holdControl } from "../../test/routeKit";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
@@ -365,8 +366,8 @@ it("shows a refused removal", async () => {
 it("takes the song off air, and shows it when the radio refuses", async () => {
   open("manual");
   server.answer("POST /program/main/song/off-air", Response.json({}));
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Stop / Take Off Air" }),
+  await holdControl(
+    await screen.findByRole("button", { name: "Stop the song on air" }),
   );
   await waitFor(() =>
     expect(server.requests("POST /program/main/song/off-air")).toHaveLength(1),
@@ -375,6 +376,6 @@ it("takes the song off air, and shows it when the radio refuses", async () => {
     "POST /program/main/song/off-air",
     new Response("no", { status: 503 }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
+  await holdControl(screen.getByRole("button", { name: "Stop the song on air" }));
   expect(await screen.findByText("HTTP 503")).toBeVisible();
 });

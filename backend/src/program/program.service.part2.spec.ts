@@ -457,6 +457,98 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       },
     );
 
+    // gaulatti/alcantara#280: a song goes into a playlist once. Playlists that already hold a
+    // song twice stay editable, so the data repair does not block the operators.
+    describe('a song in the playlist twice (#280)', () => {
+      const twice = (urls: string[], extra: Record<string, unknown> = {}) => ({
+        ...sequence(0),
+        items: urls.map((url, i) => ({
+          ...leaf(`d${i}`, false),
+          audioUrl: url,
+          ...extra,
+        })),
+      });
+
+      it('refuses a second leaf for the same audio address, and names the song', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a']), songQueue: [] });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).rejects.toThrow(
+          /is already in the playlist; a song can be added once/,
+        );
+        expect(prisma.programState.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses a second leaf for the same song id even when the addresses differ', async () => {
+        const { service, put } = build();
+        put('main', {
+          songSequence: twice(['u-a'], { songId: 7 }),
+          songQueue: [],
+        });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-b'], { songId: 7 }),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('refuses to add a second leaf to a playlist that is empty or null', async () => {
+        const { service, put } = build();
+        put('main', { songSequence: null, songQueue: [] });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('still saves a playlist that already holds the song twice, and a third leaf is refused', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a', 'u-a']), songQueue: [] });
+        prisma.programState.update.mockResolvedValue({
+          songSequence: twice(['u-a', 'u-a']),
+          songQueue: [],
+          audioMixer: {},
+        });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).resolves.toBeDefined();
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a', 'u-a']),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('allows removing one of the two, and leaves without a song id or address alone', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a', 'u-a']), songQueue: [] });
+        prisma.programState.update.mockResolvedValue({
+          songSequence: twice(['u-a']),
+          songQueue: [],
+          audioMixer: {},
+        });
+        await expect(
+          service.updateProgramAudioBus({ songSequence: twice(['u-a']) }),
+        ).resolves.toBeDefined();
+        const blank = {
+          ...sequence(0),
+          items: [
+            { ...leaf('x', false), audioUrl: '' },
+            { ...leaf('y', false), audioUrl: '' },
+          ],
+        };
+        await expect(
+          service.updateProgramAudioBus({ songSequence: blank }),
+        ).resolves.toBeDefined();
+      });
+    });
+
     it('rejects more than the high rotation limit', async () => {
       const { service, put } = build();
       put('main', { songQueue: [] });
@@ -1439,6 +1531,122 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect(
         internals.programSceneInstantPlaybackByProgramId.get('main').isPlaying,
       ).toBe(false);
+    });
+  });
+
+  describe('removeProgramSongLeaves (#327)', () => {
+    const outcome = (over: Row = {}) => ({
+      removed: [
+        {
+          id: 'song_x',
+          songId: 7,
+          artist: 'A',
+          title: 'T',
+          highRotation: true,
+          coverUrl: '',
+          kind: 'preset',
+        },
+      ],
+      before: 5,
+      after: 4,
+      cursorMovedTo: 'next',
+      songSequence: { mode: 'autoplay', items: [] },
+      songQueue: [{ id: 'q1' }],
+      ...over,
+    });
+
+    it('hands the removal to the engine, then broadcasts the new playlist and tells the engine the queue', async () => {
+      const { service, engine, put } = build();
+      put('radio-1', { type: 'radio', audioMixer: null });
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(outcome());
+      const broadcast = jest
+        .spyOn(service, 'broadcastUpdate')
+        .mockReturnValue({ version: 9 } as never);
+
+      const result = await service.removeProgramSongLeaves(
+        ' radio-1 ',
+        ['song_x'],
+        { keepRotation: true },
+      );
+
+      expect((engine as any).removeSongLeaves).toHaveBeenCalledWith(
+        'radio-1',
+        ['song_x'],
+        { keepRotation: true, dryRun: false },
+      );
+      expect(broadcast).toHaveBeenCalledWith(
+        'radio-1',
+        expect.objectContaining({
+          type: 'audio_bus_update',
+          programId: 'radio-1',
+          settings: expect.objectContaining({
+            songSequence: { mode: 'autoplay', items: [] },
+            songQueue: [{ id: 'q1' }],
+          }),
+        }),
+      );
+      expect(engine.handleQueueUpdated).toHaveBeenCalledWith('radio-1', [
+        { id: 'q1' },
+      ]);
+      expect(result).toEqual({
+        dryRun: false,
+        removed: [
+          {
+            id: 'song_x',
+            songId: 7,
+            artist: 'A',
+            title: 'T',
+            highRotation: true,
+          },
+        ],
+        leafCountBefore: 5,
+        leafCountAfter: 4,
+        cursorMovedTo: 'next',
+        version: 9,
+      });
+    });
+
+    it('falls back to the topic version when the broadcast carries none', async () => {
+      const { service, engine, put } = build();
+      put('radio-1', { type: 'radio' });
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(
+        outcome({
+          removed: [{ id: 'a', artist: 'A', title: 'T', kind: 'preset' }],
+        }),
+      );
+      noVersionBroadcast(service);
+      jest.spyOn(service, 'getProgramTopicVersion').mockReturnValue(3);
+      const result = await service.removeProgramSongLeaves('radio-1', ['a']);
+      expect(result.version).toBe(3);
+      expect(result.removed[0]).toEqual({
+        id: 'a',
+        songId: null,
+        artist: 'A',
+        title: 'T',
+        highRotation: false,
+      });
+    });
+
+    it('a dry run reports and neither broadcasts nor touches the engine queue', async () => {
+      const { service, engine } = build();
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(outcome());
+      const broadcast = jest.spyOn(service, 'broadcastUpdate');
+      const result = await service.removeProgramSongLeaves('radio-1', ['x'], {
+        dryRun: true,
+      });
+      expect((engine as any).removeSongLeaves).toHaveBeenCalledWith(
+        'radio-1',
+        ['x'],
+        { keepRotation: false, dryRun: true },
+      );
+      expect(result).toMatchObject({
+        dryRun: true,
+        leafCountBefore: 5,
+        leafCountAfter: 4,
+        version: null,
+      });
+      expect(broadcast).not.toHaveBeenCalled();
+      expect(engine.handleQueueUpdated).not.toHaveBeenCalled();
     });
   });
 });

@@ -71,6 +71,12 @@ const permissionOf = (key: string): string => {
     : (entry as Record<string, string>)[action];
 };
 
+// gaulatti/alcantara#300 adds two read-only radio capabilities with no route of
+// their own; appendix A's rows cover routes only, so they are left out here.
+const EXTRA_RADIO_READS = new Set([
+  'radio_get_playback_state',
+  'radio_get_audio_levels',
+]);
 const specs = [
   ...new BroadcastDestinationsMcpTools({} as never).specs(),
   ...new FillerMcpTools({} as never).specs(),
@@ -91,7 +97,7 @@ const specs = [
   ).specs(),
   ...new ExternalSourcesMcpTools({} as never, {} as never, {} as never).specs(),
   ...new WebrtcMcpTools({} as never, {} as never).specs(),
-];
+].filter((spec) => !EXTRA_RADIO_READS.has(spec.name));
 
 const controllerOf = (area: string, path: string) =>
   ({

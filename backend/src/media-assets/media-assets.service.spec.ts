@@ -274,6 +274,7 @@ describe('MediaAssetsService', () => {
         overlapSeconds: true,
         integratedLufs: true,
         truePeakDbtp: true,
+        durationSeconds: true,
         isrc: true,
         musicbrainzRecordingId: true,
         error: true,

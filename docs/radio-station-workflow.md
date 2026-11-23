@@ -2,7 +2,7 @@
 
 ## Library tags and the on-air log
 
-The base playout is a **continuous filler rotation**, shown in the Radio desk with its saved songs, existing queued overrides, actual engine feedback, and Manual/Autoplay/Shuffle/Loop controls. Loop with Autoplay or Shuffle runs indefinitely: no hourly schedule is required. Opening the desk never writes the sequence or sends a playback command. A future timed block does not hide or take ownership of the current rotation. The bottom player is the sole now-playing display.
+The base playout is a **continuous filler rotation**, shown in the Radio desk with its saved songs, existing queued overrides, actual engine feedback, and Manual/Autoplay/Shuffle/Loop controls. Loop with Autoplay or Shuffle runs indefinitely: no hourly schedule is required. Opening the desk never writes the sequence or sends a playback command. A future timed block does not hide or take ownership of the current rotation. The on-air strip at the top of the desk is the sole now-playing display.
 
 **Rundown** manages optional timed content blocks. Its persistent continuous-fillers summary links directly to the rotation and live controls. Blocks are not one-hour containers: choose any start minute, use fixed offsets beyond an hour if needed, and finish after the last content event. Do not create 24 copies of a rotation to cover a day.
 
@@ -34,7 +34,7 @@ Use **Voice** on a song row to record a link with the browser microphone. Previe
 
 ## Output confidence and recovery
 
-The Radio desk separates **STREAM CONNECTED** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
+The Radio desk separates **Stream verified** (Liquidsoap and Icecast transport) from output confidence. It shows fresh sampled output as detected, checking, silent after ten seconds below 0.001 RMS while song playback is expected, idle, unavailable, or unverified. A sample older than fifteen seconds cannot prove audio. This is a level check, not a listener-side measurement.
 
 **Engine audio detected** measures Palazzo's post-master mix before Icecast.
 **Listen** returns Icecast audio through Palazzo and Alcántara's

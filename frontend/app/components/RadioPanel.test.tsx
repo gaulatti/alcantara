@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,6 +12,7 @@ import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
 import { RadioPanel } from "./RadioPanel";
+import { faderToDb } from "../utils/audioTaper";
 import * as flight from "../services/flight";
 vi.mock("../services/flight", () => ({
   fetchFlightSequences: vi.fn(),
@@ -53,6 +55,22 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
+
+/** Holds a hold-to-confirm control for longer than its hold time. */
+async function hold(control: HTMLElement) {
+  vi.useFakeTimers({
+    toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"],
+  });
+  try {
+    fireEvent.pointerDown(control);
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
+    fireEvent.pointerUp(control);
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 function props(): ComponentProps<typeof RadioPanel> {
   const now = new Date().toISOString();
@@ -278,7 +296,7 @@ it("routes transport to log execution and presents request failures", async () =
   expect(p.onSaveSongSequence).not.toHaveBeenCalled();
 });
 
-it("keeps cartwall triggering, disabled clips, search and mixer controls wired", () => {
+it("keeps cartwall triggering, disabled clips, search and mixer controls wired", async () => {
   const p = props();
   mount(p);
   fireEvent.click(screen.getByRole("button", { name: "News opener" }));
@@ -299,7 +317,7 @@ it("keeps cartwall triggering, disabled clips, search and mixer controls wired",
     ),
   );
   expect(p.onToggleInstantMuted).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  await hold(screen.getByRole("button", { name: "Stop all sounders" }));
   expect(p.onStopAllInstants).toHaveBeenCalledOnce();
 });
 
@@ -310,8 +328,9 @@ it("presents stale timing explicitly and never turns unavailable output into hea
   p.fixtureData!.stream.running = false;
   p.fixtureData!.palazzo.connection = "unavailable";
   mount(p);
-  expect(screen.getByText("Last reported remaining")).toBeVisible();
-  expect(screen.getByText("Feedback stale")).toBeVisible();
+  // A stale report is called delayed, with no frozen clock.
+  expect(screen.getByText("Status delayed")).toBeVisible();
+  expect(screen.getByText("No live clock")).toBeVisible();
   expect(screen.getByText("Output unavailable")).toBeVisible();
   expect(screen.getByText("Stream offline")).toBeVisible();
   expect(screen.getByText("Engine unavailable")).toBeVisible();
@@ -325,7 +344,8 @@ it("shows explicit empty states without hiding transport or inventing a countdow
   p.programSongPlayback = null;
   p.fixtureData!.logs = [];
   mount(p);
-  expect(screen.getByText("Nothing on air")).toBeVisible();
+  expect(screen.getByText(/Nothing on air/)).toBeVisible();
+  expect(screen.getByText("Off air")).toBeVisible();
   expect(screen.queryByText("—:—")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "Start rundown" }),
@@ -402,9 +422,7 @@ for (const futureBlock of [false, true]) {
     expect(p.onSaveSongSequence).not.toHaveBeenCalled();
     expect(p.onTakeSelection).not.toHaveBeenCalled();
     expect(flight.activateFlightSequence).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Stop / Take Off Air" }),
-    );
+    await hold(screen.getByRole("button", { name: "Stop the song on air" }));
     await waitFor(() => expect(p.onTakeOffAir).toHaveBeenCalledOnce());
     expect(flight.stopFlight).not.toHaveBeenCalled();
   });
@@ -519,7 +537,7 @@ it("polls the live radio API when no fixture is supplied", async () => {
     { ...onAirLog(props()), isRunning: false, scheduledAt: null },
   ]);
   mount(liveProps());
-  expect(await screen.findByText("Stream connected")).toBeVisible();
+  expect(await screen.findByText("Stream verified")).toBeVisible();
   expect(await screen.findByText("Engine degraded")).toBeVisible();
   expect(await screen.findByText("Expected audio is silent")).toBeVisible();
   expect(await screen.findByText("Prepared for next session")).toBeInTheDocument();
@@ -860,7 +878,8 @@ it("shows the filler rotation with its Play Next queue, shuffle note and next ti
     screen.getByText(/Shuffle pool; row order is not the next-song order/),
   ).toBeVisible();
   expect(screen.getByText(/Next timed block: First block/)).toBeVisible();
-  expect(screen.getByText("shuffle · Loop on")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Shuffle playlist" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Loop playlist: on" })).toBeVisible();
   const queue = screen.getByRole("region", { name: "Play Next queue" });
   expect(within(queue).getByText("Playing")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Add fillers" }));
@@ -873,7 +892,8 @@ it("falls back to an empty rotation when the saved one is malformed", () => {
   p.songSequence = null;
   mount(p);
   expect(screen.getByText(/No hourly log required · 0 songs/)).toBeVisible();
-  expect(screen.getByText("manual · Loop on")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Manual" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Loop playlist: on" })).toBeVisible();
 });
 
 it("shows the last aired block when nothing runs and nothing is next", () => {
@@ -909,16 +929,10 @@ it("keeps rotation and off-air failures visible", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Rotation was not changed",
   );
-  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Engine refused off air",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Rotation command failed",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Advance" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Take refused");
+  await hold(screen.getByRole("button", { name: "Stop the song on air" }));
+  expect(await screen.findByText("Engine refused off air")).toBeVisible();
+  await hold(screen.getByRole("button", { name: "Stop the song on air" }));
+  expect(await screen.findByText("The stop was refused")).toBeVisible();
 });
 
 it("shows the mixer's saving and error states, mute state and silent faders", () => {
@@ -1168,7 +1182,7 @@ async function mountLiveWith(palazzo: Answer) {
   });
   vi.mocked(flight.fetchFlightSequences).mockResolvedValue([]);
   mount(liveProps());
-  await screen.findByText("Stream connected");
+  await screen.findByText("Stream verified");
 }
 
 it.each([
@@ -1199,5 +1213,227 @@ it("keeps today's wording for an unavailable status without a reason, with an un
 
 it("renders an old backend's live status exactly as before (no reason field)", async () => {
   await mountLiveWith(json({ ...props().fixtureData!.palazzo }));
-  expect(await screen.findByText("Engine connected")).toBeVisible();
+  expect(await screen.findByText("Engine ready")).toBeVisible();
+});
+
+// ---------------------------------------------------------------- the rebuilt desk (#298)
+
+function deskProps() {
+  const p = props();
+  p.fixtureData!.logs = [];
+  p.songSequence = {
+    ...p.songSequence,
+    mode: "autoplay",
+    loop: true,
+    activeItemId: "song-1",
+    items: [
+      ...p.songSequence.items,
+      {
+        id: "song-2",
+        kind: "preset",
+        title: "Copper Season",
+        artist: "The Paper Hours",
+        audioUrl: "https://example.test/two.mp3",
+        coverUrl: "",
+        durationMs: 241_000,
+      },
+      {
+        id: "song-3",
+        kind: "preset",
+        title: "Paper Satellites",
+        artist: "Low Tide Radio",
+        audioUrl: "https://example.test/three.mp3",
+        coverUrl: "",
+        durationMs: 198_000,
+      },
+    ],
+  };
+  p.onTakeSelection = vi.fn(async () => undefined);
+  p.onPlaySongNow = vi.fn(async () => undefined);
+  p.songCatalog = [
+    {
+      id: 77,
+      artist: "Library Artist",
+      title: "Harbor Library Cut",
+      audioUrl: "https://example.test/lib.mp3",
+      coverUrl: null,
+      durationMs: 200_000,
+      earoneSongId: null,
+      earoneRank: null,
+      earoneSpins: null,
+      enabled: true,
+    },
+  ];
+  return p;
+}
+
+it("keeps the on-air strip above the scrolling workspace, with what plays, what is next and the health chips", () => {
+  mount(deskProps());
+  const strip = screen.getByRole("region", { name: "On air" });
+  const scroll = document.querySelector(".radio-console-scroll")!;
+  expect(strip.compareDocumentPosition(scroll)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(strip.contains(scroll)).toBe(false);
+  expect(within(strip).getByText("On air")).toBeVisible();
+  expect(within(strip).getByText("City lights")).toBeVisible();
+  expect(within(strip).getByText("Next · Autoplay")).toBeVisible();
+  expect(within(strip).getByText("Copper Season")).toBeVisible();
+  expect(within(strip).getByText("Stream verified")).toBeVisible();
+  expect(within(strip).getByText("Engine ready")).toBeVisible();
+  expect(within(strip).getByText("Monitor unavailable")).toBeVisible();
+});
+
+it("marks the song on air and the next one in the rotation", () => {
+  mount(deskProps());
+  const rows = Array.from(document.querySelectorAll(".playlist-row"));
+  expect(rows).toHaveLength(3);
+  expect(within(rows[0] as HTMLElement).getByText("On air")).toBeVisible();
+  expect(within(rows[1] as HTMLElement).getByText("Next")).toBeVisible();
+  expect(within(rows[2] as HTMLElement).queryByText("Next")).toBeNull();
+});
+
+it("puts the mode above the rotation and saves it as the bottom bar used to", () => {
+  const p = deskProps();
+  mount(p);
+  const mode = screen.getByRole("group", { name: "Playback mode" });
+  const rotation = screen.getByRole("region", { name: "Continuous fillers" });
+  expect(rotation.contains(mode)).toBe(true);
+  fireEvent.click(within(mode).getByRole("button", { name: "Manual" }));
+  expect(p.onSaveSongSequence).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "manual", activeItemId: "song-1" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Loop playlist: on" }));
+  expect(p.onSaveSongSequence).toHaveBeenLastCalledWith(
+    expect.objectContaining({ loop: false }),
+  );
+});
+
+it("takes the next song with N then Space, and never on one key press", async () => {
+  const p = deskProps();
+  mount(p);
+  fireEvent.keyDown(window, { key: " " });
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(window, { key: "n" });
+  expect(screen.getByText("Cued")).toBeVisible();
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+  fireEvent.keyDown(window, { key: " " });
+  await waitFor(() => expect(p.onTakeSelection).toHaveBeenCalledTimes(1));
+  expect(p.onTakeSelection).toHaveBeenCalledWith(
+    expect.objectContaining({ activeItemId: "song-2", mode: "autoplay" }),
+  );
+});
+
+it("opens the song search with / and cues a rotation song next, or takes a library song now after confirming", async () => {
+  const p = deskProps();
+  mount(p);
+  fireEvent.keyDown(window, { key: "/" });
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  // The desk keys wait while the search owns the keyboard.
+  fireEvent.keyDown(window, { key: "n" });
+  expect(screen.queryByText("Cued")).toBeNull();
+
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+    { target: { value: "copper" } },
+  );
+  fireEvent.keyDown(dialog, { key: "Enter" });
+  await waitFor(() => expect(p.onQueueSong).toHaveBeenCalledWith("song-2"));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+  fireEvent.keyDown(window, { key: "/" });
+  const again = await screen.findByRole("dialog", { name: "Play a song now" });
+  fireEvent.change(
+    within(again).getByRole("textbox", { name: "Search the rotation and the library" }),
+    { target: { value: "harbor" } },
+  );
+  fireEvent.click(within(again).getByRole("button", { name: "Take now Harbor Library Cut" }));
+  expect(p.onPlaySongNow).not.toHaveBeenCalled();
+  fireEvent.click(within(again).getByRole("button", { name: "Confirm Harbor Library Cut" }));
+  await waitFor(() =>
+    expect(p.onPlaySongNow).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 77 }),
+    ),
+  );
+  expect(p.onTakeSelection).not.toHaveBeenCalled();
+});
+
+it("takes a rotation song now through the rotation, and does not open the search while typing", async () => {
+  const p = deskProps();
+  mount(p);
+  const search = screen.getByLabelText("Search cartwall");
+  fireEvent.keyDown(search, { key: "/" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.keyDown(window, { key: "/" });
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+    { target: { value: "paper sat" } },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Take now Paper Satellites" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Paper Satellites" }));
+  await waitFor(() =>
+    expect(p.onTakeSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ activeItemId: "song-3" }),
+    ),
+  );
+});
+
+it("says a library song cannot be played now when the page gives no way to", async () => {
+  const p = deskProps();
+  p.onPlaySongNow = undefined;
+  mount(p);
+  fireEvent.keyDown(window, { key: "/" });
+  const dialog = await screen.findByRole("dialog", { name: "Play a song now" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search the rotation and the library" }),
+    { target: { value: "library" } },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Take now Harbor Library Cut" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm Harbor Library Cut" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "Playing a library song now is not available here.",
+  );
+});
+
+it("moves a fader one decibel with the arrow keys", () => {
+  const p = deskProps();
+  mount(p);
+  const fader = screen.getByLabelText("Music level");
+  fireEvent.keyDown(fader, { key: "ArrowUp" });
+  const call = (p.onSongVolumeChange as ReturnType<typeof vi.fn>).mock
+    .calls[0][0] as number;
+  expect(faderToDb(call) - faderToDb(0.7)).toBeCloseTo(1, 1);
+  fireEvent.keyDown(fader, { key: "ArrowDown" });
+  const down = (p.onSongVolumeChange as ReturnType<typeof vi.fn>).mock
+    .calls[1][0] as number;
+  expect(faderToDb(down) - faderToDb(0.7)).toBeCloseTo(-1, 1);
+  fireEvent.keyDown(fader, { key: "ArrowLeft" });
+  expect(p.onSongVolumeChange).toHaveBeenCalledTimes(2);
+});
+
+it("shows the live level, its peak and the held peak beside a fader when the program publishes them", () => {
+  const p = deskProps();
+  p.mixer = {
+    ...p.mixer,
+    song: { volume: 0.7, peak: 0.6, vu: 0.3, peakHold: 0.95 },
+  };
+  mount(p);
+  const meter = screen.getByRole("meter", { name: "Music live peak" });
+  expect(within(meter).getByTestId("meter-fill").style.width).toBe("30%");
+  expect(within(meter).getByTestId("meter-peak")).toBeInTheDocument();
+  expect(within(meter).getByTestId("meter-hold").className).toContain("bg-terracotta");
+});
+
+it("holds to stop all sounders from the cartwall, and a click only explains", async () => {
+  const p = deskProps();
+  mount(p);
+  const stopAll = screen.getByRole("button", { name: "Stop all sounders" });
+  fireEvent.pointerDown(stopAll);
+  fireEvent.pointerUp(stopAll);
+  expect(p.onStopAllInstants).not.toHaveBeenCalled();
+  expect(screen.getByText("Hold to stop every sounder (0.6 s).")).toBeVisible();
+  await hold(stopAll);
+  expect(p.onStopAllInstants).toHaveBeenCalledOnce();
 });

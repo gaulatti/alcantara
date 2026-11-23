@@ -13,6 +13,7 @@ import { validateProgramTemplateOrigins } from './config/runtime-secret-contract
 import { assertTestAuthSafety } from './auth/test-auth.service';
 import { loadDatabaseSecret } from './config/database-secrets';
 import { assertLocalMediaSafety } from './config/local-media';
+import { MCP_PUBLIC_ORIGIN } from './mcp/mcp.constants';
 
 function getAllowedOrigins(): Set<string> {
   const configuredOrigins = (
@@ -29,6 +30,10 @@ function getAllowedOrigins(): Set<string> {
   );
 
   return new Set<string>([
+    // The API's own origin: the MCP consent page (gaulatti/bastille#34) is
+    // served from it and posts its form back to it, and a same-origin request
+    // is not a cross-origin one, so allowing it grants nothing new.
+    MCP_PUBLIC_ORIGIN,
     'https://alcantara.gaulatti.com',
     'https://alcantara.dev',
     'https://alcantara.gt',

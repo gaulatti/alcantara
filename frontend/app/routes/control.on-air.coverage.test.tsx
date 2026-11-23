@@ -13,6 +13,7 @@ import {
   stubConsoleBrowser,
   type ControlServer,
 } from "../../test/controlKit";
+import { holdControl } from "../../test/routeKit";
 
 // gaulatti/alcantara#194 group 2: on-air actions. Fade to black on the TV deck,
 // and instants on the radio cartwall: a click or its keyboard shortcut plays
@@ -240,7 +241,7 @@ it("plays an instant of unknown length until Stop all, and plays one from its ke
       server.requests("POST /instants/1/play?programId=main"),
     ).toHaveLength(1),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  await holdControl(screen.getByRole("button", { name: "Stop all sounders" }));
   await waitFor(() =>
     expect(
       screen.queryByRole("button", { name: /· playing$/ }),
@@ -297,7 +298,7 @@ it("ignores shortcuts for a disabled or missing instant, and keeps playing state
   ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Fictional sting" }));
   await screen.findByRole("button", { name: "Fictional sting · playing" });
-  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  await holdControl(screen.getByRole("button", { name: "Stop all sounders" }));
   await waitFor(() =>
     expect(
       server.requests("POST /instants/stop-all?programId=main"),

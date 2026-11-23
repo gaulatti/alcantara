@@ -19,6 +19,12 @@ import { apiUrl } from "../utils/apiBaseUrl";
 const fetchSongsPage = vi.hoisted(() => vi.fn());
 const fetchInstants = vi.hoisted(() => vi.fn());
 const uploadFileToMediaBucket = vi.hoisted(() => vi.fn());
+vi.mock("@gaulatti/bleecker", async (original) => {
+  const kit = await import("../../test/routeKit");
+  return kit.inlineMenus(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  );
+});
 vi.mock("../services/songs", () => ({ fetchSongsPage }));
 vi.mock("../services/instants", () => ({ fetchInstants }));
 vi.mock("../services/uploads", () => ({ uploadFileToMediaBucket }));
@@ -57,7 +63,7 @@ const pageOf = (data: Song[], meta: Record<string, number> = {}) => ({
 });
 
 /** jsdom cannot play or read audio: each element plays or fails as the test says. */
-class TestAudio {
+class TestAudio extends EventTarget {
   static created: TestAudio[] = [];
   static play: () => Promise<void> = () => Promise.resolve();
   static duration = Number.NaN;
@@ -66,12 +72,28 @@ class TestAudio {
   onerror: (() => void) | null = null;
   onended: (() => void) | null = null;
   preload = "";
+  paused = true;
+  currentTime = 0;
   duration = TestAudio.duration;
+  private attributes = new Map<string, string>();
   constructor(public src = "") {
+    super();
     TestAudio.created.push(this);
   }
-  play() {
-    return TestAudio.play();
+  getAttribute(name: string) {
+    return name === "src" ? (this.src || null) : (this.attributes.get(name) ?? null);
+  }
+  removeAttribute(name: string) {
+    if (name === "src") this.src = "";
+  }
+  async play() {
+    await TestAudio.play();
+    this.paused = false;
+    this.dispatchEvent(new Event("play"));
+  }
+  pause() {
+    this.paused = true;
+    this.dispatchEvent(new Event("pause"));
   }
   load() {
     queueMicrotask(() =>
@@ -112,6 +134,14 @@ const toast = async (text: string) =>
 const loaded = () =>
   waitFor(() => expect(screen.queryByText("Loading songs...")).toBeNull());
 const lastQuery = () => fetchSongsPage.mock.lastCall![0];
+/** Opens a song's row menu and chooses an action from it. */
+async function rowMenu(name: string, action: "Edit" | "Delete") {
+  fireEvent.keyDown(
+    screen.getByRole("button", { name: `Actions for ${name}` }),
+    { key: "Enter" },
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }));
+}
 
 it("names the page for the browser", () => {
   expect(meta({} as never)).toEqual([
@@ -123,7 +153,7 @@ it("names the page for the browser", () => {
   ]);
 });
 
-it("summarises the catalog and lists each song with its cover, number, duration and intro", async () => {
+it("summarises the catalog with honest counts and lists each song with its cover, length and intro", async () => {
   fetchSongsPage.mockResolvedValue(
     pageOf(
       [
@@ -154,13 +184,17 @@ it("summarises the catalog and lists each song with its cover, number, duration 
     programId: "radio one",
   });
   expect(fetchInstants).toHaveBeenCalledWith("radio one");
-  expect(screen.getByText("10")).toBeInTheDocument();
-  expect(screen.getByText("8 enabled")).toBeInTheDocument();
-  expect(screen.getByText("62:05")).toBeInTheDocument();
-  expect(screen.getByText("9 with known runtime")).toBeInTheDocument();
-  expect(
-    screen.getByText("matching current filters").previousSibling,
-  ).toHaveTextContent("3");
+
+  // The strip counts the whole catalog, and says how many songs have no stored length.
+  const strip = within(screen.getByTestId("catalog-strip"));
+  expect(strip.getByText("Songs").nextSibling).toHaveTextContent("10");
+  expect(strip.getByText("8 enabled")).toBeInTheDocument();
+  expect(strip.getByText("With length").nextSibling).toHaveTextContent("9 of 10");
+  expect(strip.getByText("1 has no stored length")).toBeInTheDocument();
+  expect(strip.getByText("Runtime").nextSibling).toHaveTextContent("1:02");
+  expect(strip.getByText("h:mm, known lengths only")).toBeInTheDocument();
+  expect(strip.getByText("With intro").nextSibling).toHaveTextContent("1");
+  expect(strip.getByText("of 3 listed on this page")).toBeInTheDocument();
 
   // The phone list.
   const cards = Array.from(document.querySelectorAll("article"));
@@ -175,48 +209,79 @@ it("summarises the catalog and lists each song with its cover, number, duration 
   expect(cards[1]).toHaveClass("opacity-60");
   expect(cards[2]).toHaveTextContent("#3 · 0:01");
 
-  // The wide table.
-  expect(screen.getByText("Song intro: Hello segue")).toBeInTheDocument();
+  // The wide table: length or "no length", the intro, the EarOne id, and the enabled switch.
+  const rows = Array.from(document.querySelectorAll("[role=row]"));
+  expect(rows).toHaveLength(3);
+  expect(rows[0]).toHaveTextContent("3:05");
+  expect(rows[0].querySelector("img")).toHaveAttribute("src", "https://media.test/1.jpg");
+  expect(within(rows[0] as HTMLElement).getByTitle("Hello segue")).toHaveTextContent("Intro");
+  expect(rows[0]).toHaveTextContent("No EarOne ID");
+  expect(rows[1]).toHaveTextContent("no length");
+  expect(rows[1]).not.toHaveTextContent("3:05");
+  expect(rows[1]).toHaveClass("opacity-60");
+  expect(rows[2]).toHaveTextContent("0:00".replace("0:00", "0:00"));
   expect(
-    screen.getByRole("button", { name: "Preview Artist 1 - Title 1" }),
-  ).toBeInTheDocument();
+    within(rows[0] as HTMLElement).getByRole("switch", { name: "Disable Artist 1 - Title 1" }),
+  ).toBeChecked();
   expect(
-    screen.getByRole("button", { name: "Edit Untitled song" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Delete Solo" }),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "—" })).toBeInTheDocument();
+    within(rows[1] as HTMLElement).getByRole("switch", { name: /^Enable / }),
+  ).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Actions for Untitled song" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Actions for Solo" })).toBeInTheDocument();
 });
 
-it("gives the wide table's action buttons their own column, so the duration is not covered", async () => {
+it("counts nothing as having a length when none is stored, and never prints a runtime for it", async () => {
+  fetchSongsPage.mockResolvedValue(
+    pageOf([song(1, { durationMs: null })], {
+      catalogTotal: 4,
+      catalogEnabled: 4,
+      catalogTotalDurationMs: 0,
+      catalogKnownDurationCount: 0,
+    }),
+  );
+  render(<SongsCatalog />);
+  await loaded();
+  const strip = within(screen.getByTestId("catalog-strip"));
+  expect(strip.getByText("With length").nextSibling).toHaveTextContent("0 of 4");
+  expect(strip.getByText("4 have no stored length")).toBeInTheDocument();
+  expect(strip.getByText("Runtime").nextSibling).toHaveTextContent("—");
+  cleanup();
+  fetchSongsPage.mockResolvedValue(
+    pageOf([song(1)], {
+      catalogTotal: 2,
+      catalogEnabled: 2,
+      catalogTotalDurationMs: 360_000,
+      catalogKnownDurationCount: 2,
+    }),
+  );
+  render(<SongsCatalog />);
+  await loaded();
+  expect(screen.getByText("Every song has a stored length")).toBeInTheDocument();
+  expect(screen.getByText("Runtime").nextSibling).toHaveTextContent("0:06");
+});
+
+it("gives the wide table one grid for its header and rows, with the length in its own column", async () => {
   fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2, { durationMs: null })]));
   render(<SongsCatalog />);
   await loaded();
   const columns =
-    "grid-cols-[2.5rem_2rem_minmax(0,1fr)_minmax(0,1fr)_5rem_8.5rem]";
-  const preview = screen.getByRole("button", { name: "Preview Artist 1 - Title 1" });
-  const row = preview.closest(".group") as HTMLElement;
-  const header = row.parentElement!.previousElementSibling as HTMLElement;
-  // The header and every row share one grid, and the last column (3 icon buttons of 2.5rem
-  // and two 0.25rem gaps, 8rem) is wider than the 6rem that used to overlap the duration.
+    "grid-cols-[2.5rem_minmax(0,1.4fr)_minmax(0,1fr)_5.5rem_5rem_3.5rem_2.5rem]";
+  const rows = Array.from(document.querySelectorAll("[role=row]")) as HTMLElement[];
+  const header = rows[0].parentElement!.previousElementSibling as HTMLElement;
   expect(header).toHaveClass(columns);
-  expect(row).toHaveClass(columns);
-  expect(row.children).toHaveLength(6);
-  expect(row.children[4]).toHaveTextContent("3:05");
-  expect(row.children[5]).toContainElement(preview);
-  expect(row.children[5].querySelectorAll("button")).toHaveLength(3);
-  expect(
-    screen.getByRole("button", { name: "Preview Artist 2 - Title 2" }).closest(".group")!
-      .children[4],
-  ).toHaveTextContent("Unknown");
+  for (const row of rows) {
+    expect(row).toHaveClass(columns);
+    expect(row.children).toHaveLength(7);
+  }
+  expect(rows[0].children[3]).toHaveTextContent("3:05");
+  expect(rows[1].children[3]).toHaveTextContent("no length");
 });
 
 it("offers the first song when the catalog is empty", async () => {
   fetchSongsPage.mockResolvedValue(pageOf([]));
   render(<SongsCatalog />);
   expect(await screen.findByText("No songs yet")).toBeInTheDocument();
-  expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+  expect(within(screen.getByTestId("catalog-strip")).getByText("With length").nextSibling).toHaveTextContent("0 of 0");
   const empty = screen.getByText("No songs yet").parentElement!.parentElement!;
   fireEvent.click(within(empty).getByRole("button", { name: "Add song" }));
   expect(
@@ -238,9 +303,12 @@ it("searches after a pause, hides disabled songs, sorts and pages, and clears fi
   await waitFor(() =>
     expect(lastQuery()).toMatchObject({ search: "amore", page: 1 }),
   );
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "Show disabled songs" }),
-  );
+  const show = within(screen.getByRole("group", { name: "Show songs" }));
+  fireEvent.click(show.getByRole("button", { name: "Enabled" }));
+  await waitFor(() => expect(lastQuery()).toMatchObject({ enabled: true }));
+  fireEvent.click(show.getByRole("button", { name: "Disabled" }));
+  await waitFor(() => expect(lastQuery()).toMatchObject({ enabled: false }));
+  fireEvent.click(show.getByRole("button", { name: "Enabled" }));
   await waitFor(() => expect(lastQuery()).toMatchObject({ enabled: true }));
 
   fireEvent.click(screen.getByRole("button", { name: /^Title/ }));
@@ -255,7 +323,7 @@ it("searches after a pause, hides disabled songs, sorts and pages, and clears fi
   await waitFor(() =>
     expect(lastQuery()).toMatchObject({ sortBy: "title", sortOrder: "asc" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: /^Duration/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Length/ }));
   await waitFor(() =>
     expect(lastQuery()).toMatchObject({
       sortBy: "durationMs",
@@ -273,7 +341,7 @@ it("searches after a pause, hides disabled songs, sorts and pages, and clears fi
   expect(document.querySelector("article")).toHaveTextContent("#51");
 
   // An artist name filters by that artist.
-  fireEvent.click(screen.getByRole("button", { name: "Artist 1" }));
+  fireEvent.click(within(document.querySelector("[role=row]") as HTMLElement).getByRole("button", { name: "Artist 1" }));
   await waitFor(() =>
     expect(lastQuery()).toMatchObject({ search: "Artist 1", page: 1 }),
   );
@@ -307,24 +375,166 @@ it("reports a catalog or a set of intro clips that cannot load", async () => {
   );
 });
 
-it("previews a song, and reports one the browser will not play", async () => {
+it("previews a song in the shared transport, and reports one the browser will not play", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2)]));
   render(<SongsCatalog />);
   await loaded();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Preview Artist 1 - Title 1" }),
-  );
+  const transport = within(screen.getByRole("group", { name: "Preview transport" }));
+  expect(transport.getByText("Nothing loaded")).toBeInTheDocument();
+  expect(transport.getByText("Preview plays in this browser only, never on air.")).toBeInTheDocument();
+
+  // Selecting a row loads it; Play previews it from one audio element.
+  fireEvent.click(document.querySelectorAll("[role=row]")[0]);
+  expect(transport.getByText("Artist 1 - Title 1")).toBeInTheDocument();
+  fireEvent.click(transport.getByRole("button", { name: "Play" }));
   await waitFor(() =>
     expect(TestAudio.created.at(-1)?.src).toBe("https://media.test/1.mp3"),
   );
-  expect(TestAudio.created.at(-1)?.preload).toBe("auto");
+  expect(TestAudio.created.at(-1)?.preload).toBe("none");
+  await waitFor(() =>
+    expect(transport.getByRole("button", { name: "Pause" })).toBeInTheDocument(),
+  );
+  expect(within(document.querySelectorAll("[role=row]")[0] as HTMLElement).getByText("Previewing")).toBeInTheDocument();
+
+  // Another row takes over the same transport.
+  fireEvent.click(transport.getByRole("button", { name: "Next" }));
+  expect(transport.getByText("Artist 2 - Title 2")).toBeInTheDocument();
+  expect(transport.getByRole("button", { name: "Play" })).toBeInTheDocument();
+  fireEvent.click(transport.getByRole("button", { name: "Previous" }));
+  expect(transport.getByText("Artist 1 - Title 1")).toBeInTheDocument();
+
+  // The phone card's Preview button uses the same player.
   TestAudio.play = () => Promise.reject(new Error("NotAllowedError"));
   fireEvent.click(
     within(document.querySelector("article")!).getByRole("button", {
       name: /Preview/,
     }),
   );
-  await toast("Failed to play song preview.");
+  expect(await screen.findByText("This song cannot be previewed in the browser.")).toBeInTheDocument();
+});
+
+it("never touches the on-air path when previewing: no request, only a local audio element", async () => {
+  render(<SongsCatalog />);
+  await loaded();
+  network.mockClear();
+  fireEvent.click(document.querySelectorAll("[role=row]")[0]);
+  fireEvent.click(
+    within(screen.getByRole("group", { name: "Preview transport" })).getByRole("button", { name: "Play" }),
+  );
+  await waitFor(() => expect(TestAudio.created.length).toBeGreaterThan(0));
+  fireEvent.keyDown(window, { key: " " });
+  fireEvent.keyDown(window, { key: "ArrowDown" });
+  expect(network).not.toHaveBeenCalled();
+  expect(TestAudio.created.every((audio) => audio.src.startsWith("https://media.test/"))).toBe(true);
+});
+
+it("moves between rows with the arrow keys, previews with Space, and focuses the search with /", async () => {
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2)]));
+  render(<SongsCatalog />);
+  await loaded();
+  const rows = () => Array.from(document.querySelectorAll("[role=row]"));
+  fireEvent.keyDown(window, { key: "ArrowDown" });
+  expect(rows()[0]).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(window, { key: "ArrowDown" });
+  expect(rows()[1]).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(window, { key: "ArrowUp" });
+  expect(rows()[0]).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(window, { key: " " });
+  await waitFor(() =>
+    expect(TestAudio.created.at(-1)?.src).toBe("https://media.test/1.mp3"),
+  );
+  fireEvent.keyDown(window, { key: "/" });
+  expect(document.activeElement).toBe(
+    screen.getByPlaceholderText("Search by artist, title, or EarOne ID"),
+  );
+  // Typing in the search does not trigger the row keys.
+  const before = TestAudio.created.length;
+  fireEvent.keyDown(document.activeElement!, { key: " " });
+  fireEvent.keyDown(document.activeElement!, { key: "e" });
+  expect(TestAudio.created.length).toBe(before);
+});
+
+it("enables and disables a song with its switch, and undoes the change when the server refuses it", async () => {
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2, { enabled: false })]));
+  render(<SongsCatalog />);
+  await loaded();
+  network.mockClear();
+  const off = screen.getByRole("switch", { name: "Disable Artist 1 - Title 1" });
+  fireEvent.click(off);
+  await waitFor(() =>
+    expect(network).toHaveBeenCalledWith(apiUrl("/songs/1"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    }),
+  );
+  // The catalog is read again so the strip's counts follow.
+  await waitFor(() => expect(fetchSongsPage.mock.calls.length).toBeGreaterThan(1));
+
+  fetchSongsPage.mockResolvedValue(pageOf([song(1), song(2, { enabled: false })]));
+  network.mockResolvedValueOnce(new Response(JSON.stringify({ message: "Locked" }), { status: 409 }));
+  fireEvent.click(screen.getByRole("switch", { name: /^Enable Artist 2 - Title 2/ }));
+  await toast("Locked");
+  await waitFor(() =>
+    expect(screen.getByRole("switch", { name: /^Enable Artist 2 - Title 2/ })).not.toBeChecked(),
+  );
+});
+
+it("announces a change by the switch or the E key with an Undo that puts it back, and clears the notice", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  fetchSongsPage.mockResolvedValue(pageOf([song(1)]));
+  render(<SongsCatalog />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  fireEvent.click(document.querySelector("[role=row]")!);
+  network.mockClear();
+  fireEvent.keyDown(window, { key: "e" });
+  const notice = screen.getByRole("status");
+  expect(notice).toHaveTextContent("Disabled Artist 1 - Title 1");
+  expect(network).toHaveBeenCalledWith(apiUrl("/songs/1"), expect.objectContaining({ body: JSON.stringify({ enabled: false }) }));
+  fireEvent.click(within(notice).getByRole("button", { name: "Undo" }));
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(network).toHaveBeenLastCalledWith(apiUrl("/songs/1"), expect.objectContaining({ body: JSON.stringify({ enabled: true }) }));
+
+  // The notice goes away by itself after a few seconds.
+  fireEvent.keyDown(window, { key: "e" });
+  expect(screen.getByRole("status")).toBeInTheDocument();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6_100);
+  });
+  expect(screen.queryByRole("status")).toBeNull();
+  vi.useRealTimers();
+});
+
+it("enables the selected song with E", async () => {
+  fetchSongsPage.mockResolvedValue(pageOf([song(1, { enabled: false })]));
+  render(<SongsCatalog />);
+  await loaded();
+  fireEvent.click(document.querySelector("[role=row]")!);
+  network.mockClear();
+  fireEvent.keyDown(window, { key: "e" });
+  await waitFor(() =>
+    expect(network).toHaveBeenCalledWith(
+      apiUrl("/songs/1"),
+      expect.objectContaining({ body: JSON.stringify({ enabled: true }) }),
+    ),
+  );
+});
+
+it("reads a song's length from its stored analysis before durationMs", async () => {
+  fetchSongsPage.mockResolvedValue(
+    pageOf([
+      song(1, { durationMs: 60_000, analysis: { durationSeconds: 200 } }),
+      song(2, { durationMs: null, analysis: { durationSeconds: 95 } }),
+    ]),
+  );
+  render(<SongsCatalog />);
+  await loaded();
+  const rows = Array.from(document.querySelectorAll("[role=row]"));
+  expect(rows[0].children[3]).toHaveTextContent("3:20");
+  expect(rows[1].children[3]).toHaveTextContent("1:35");
 });
 
 it("deletes a song after confirmation, and reports a refused delete", async () => {
@@ -332,9 +542,7 @@ it("deletes a song after confirmation, and reports a refused delete", async () =
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   render(<SongsCatalog />);
   await loaded();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Delete Artist 1 - Title 1" }),
-  );
+  await rowMenu("Artist 1 - Title 1", "Delete");
   expect(confirm).toHaveBeenCalledWith('Delete song "Artist 1 - Title 1"?');
   expect(network).not.toHaveBeenCalled();
   confirm.mockReturnValue(true);
@@ -348,9 +556,7 @@ it("deletes a song after confirmation, and reports a refused delete", async () =
     method: "DELETE",
   });
   network.mockResolvedValueOnce(new Response("gone", { status: 404 }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Delete Artist 1 - Title 1" }),
-  );
+  await rowMenu("Artist 1 - Title 1", "Delete");
   await toast("Failed to delete song.");
 });
 
@@ -358,7 +564,10 @@ async function openEdit(overrides: Song = {}) {
   fetchSongsPage.mockResolvedValue(pageOf([song(1, overrides)]));
   render(<SongsCatalog />);
   await loaded();
-  fireEvent.click(screen.getByRole("button", { name: /^Edit / }));
+  fireEvent.keyDown(screen.getAllByRole("button", { name: /^Actions for / })[0], {
+    key: "Enter",
+  });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
   return screen.findByRole("dialog", { name: "Edit song" });
 }
 const field = (dialog: HTMLElement, label: string) =>

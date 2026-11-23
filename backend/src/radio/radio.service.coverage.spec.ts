@@ -479,7 +479,7 @@ describe('RadioService coverage', () => {
           programStateId: 10,
           palazzoUrl: 'http://palazzo:3100',
           listenerUrl: null,
-          bumperEnabled: false,
+          bumperEnabled: true,
           bumperInterval: null,
           bumperInstantIds: [],
           bumperMode: 'sequential',

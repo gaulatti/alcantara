@@ -45,8 +45,59 @@ jobs:
             --output text \
             | node backend/src/config/runtime-secret-contract-cli.js
 
+  # The backend deploy waits for the repository's own tests (gaulatti/alcantara#188): the unit
+  # suite and the end-to-end specs that run standalone, against a migrated PostgreSQL. This is
+  # separate from the Clouseau coverage gate, which it does not wait for.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: alcantara_ci
+          POSTGRES_USER: alcantara
+          POSTGRES_PASSWORD: alcantara-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alcantara -d alcantara_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.5
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Generate the Prisma client and apply migrations
+        run: |
+          pnpm --dir backend run prisma:generate
+          pnpm --dir backend run db:migrate:prisma
+
+      - name: Run backend unit tests
+        run: pnpm --dir backend exec jest
+
+      - name: Run backend end-to-end tests
+        run: >-
+          pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand
+          --testPathPatterns='metrics|media-label-concurrency|filler-persistence|deploy-candidate|as-run-actor-migration|external-sources|media-analysis-duration|radio-monitor|recording'
+
   build:
-    needs: production-config-preflight
+    needs: [production-config-preflight, test]
     runs-on: ubuntu-latest
     services:
       postgres:

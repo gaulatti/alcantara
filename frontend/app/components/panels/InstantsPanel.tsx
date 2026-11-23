@@ -1,5 +1,6 @@
 import { TooltipButton } from "../BleeckerButtons";
 import { Input } from "@gaulatti/bleecker";
+import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import type { InstantItem, InstantPlaybackState } from "../../models/broadcast";
 import { cartChordLabel, platformIsMac } from "../../utils/cartModifier";
@@ -8,6 +9,12 @@ import {
   INSTANT_PLAYBACK_PULSE_ANIMATION,
   INSTANT_PLAYBACK_SWEEP_ANIMATION,
 } from "../../utils/broadcast";
+
+/** Seconds left as m:ss, never below zero. */
+function formatSecondsLeft(ms: number): string {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
 
 interface InstantsPanelProps {
   isLoading: boolean;
@@ -26,6 +33,15 @@ export function InstantsPanel({
   onSearchChange,
   onTrigger,
 }: InstantsPanelProps) {
+  // The time left of a playing sounder, redrawn each second while any plays (#298).
+  const anyPlaying = Object.keys(playback).length > 0;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!anyPlaying) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [anyPlaying]);
   return (
     <div>
       <div className="console-cart-search">
@@ -89,6 +105,14 @@ export function InstantsPanel({
                     {isPlaying && (
                       <span className="console-cart-playing">PLAYING</span>
                     )}
+                    {playbackState && playbackState.endsAtMs !== null ? (
+                      <span
+                        data-testid="cart-time-left"
+                        className="console-cart-left relative z-10 text-[10px] tabular-nums"
+                      >
+                        {formatSecondsLeft(playbackState.endsAtMs - now)} left
+                      </span>
+                    ) : null}
                     {isPlaying ? (
                       <div className="pointer-events-none absolute inset-0 overflow-hidden rounded">
                         {playbackState && playbackState.endsAtMs !== null ? (

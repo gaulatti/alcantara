@@ -131,6 +131,11 @@ export function getAppNavigationSections({
           label: "Media states",
         },
         {
+          id: "labels-fixture",
+          href: "/labels-fixture",
+          label: "Label states",
+        },
+        {
           id: "access-fixture",
           href: "/access-fixture",
           label: "Access states",

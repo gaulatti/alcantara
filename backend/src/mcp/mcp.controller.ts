@@ -28,6 +28,8 @@ export interface McpHttpRequest {
   headers: IncomingHttpHeaders;
   raw: IncomingMessage;
   body?: unknown;
+  /** The parsed query string (the OAuth sign-in routes read it). */
+  query?: unknown;
 }
 
 /** The parts of Fastify's reply the MCP controllers use (chainable). */

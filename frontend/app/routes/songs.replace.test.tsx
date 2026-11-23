@@ -14,6 +14,12 @@ import SongsCatalog from "./songs";
 // the first replacement uploaded nothing.
 
 const uploadFileToMediaBucket = vi.hoisted(() => vi.fn());
+vi.mock("@gaulatti/bleecker", async (original) => {
+  const kit = await import("../../test/routeKit");
+  return kit.inlineMenus(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  );
+});
 vi.mock("../services/uploads", () => ({ uploadFileToMediaBucket }));
 vi.mock("../services/songs", () => ({
   fetchSongsPage: vi.fn(async () => ({
@@ -81,9 +87,11 @@ it("uploads the replacement file picked in the Edit song dialog", async () => {
     }),
   );
   render(<SongsCatalog />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Edit Artist - Old take" }),
+  fireEvent.keyDown(
+    await screen.findByRole("button", { name: "Actions for Artist - Old take" }),
+    { key: "Enter" },
   );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
   const dialog = await screen.findByRole("dialog", { name: "Edit song" });
   const picker = dialog.querySelector(
     'input[type="file"][accept="audio/*"]',

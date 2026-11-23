@@ -45,6 +45,11 @@ export const RETRY_BACKOFF_MS = [5 * 60_000, 30 * 60_000];
  * store it, before the claim is released (#278).
  */
 export const MAX_WRITE_RETRIES = 3;
+/**
+ * A success row that has no stored length is measured again (#296) only if it has not been
+ * touched for this long, so a run that failed is not repeated at once.
+ */
+export const BACKFILL_RETRY_AFTER_MS = RETRY_BACKOFF_MS[1];
 const TOOL_CHECK_TIMEOUT_MS = 10_000;
 
 type FailureCode =
@@ -58,7 +63,12 @@ interface Candidate {
   analysisUpdatedAt: Date | null;
   attempts: number | null;
   sourceChanged: boolean;
+  /** True when the asset is analysed and only lacks a stored length (#296). */
+  backfill?: boolean;
+  /** Assets that need a first, a repeated or a retried analysis. */
   remaining: bigint | number;
+  /** Analysed assets still without a stored length that can be measured now. */
+  backfillRemaining?: bigint | number;
 }
 
 /** The wait after a run that took `elapsedMs`, whatever its outcome. */
@@ -141,6 +151,12 @@ interface HeldResult {
   /** How long the analysis itself took, for the duration metric. */
   analysisMs: number;
   retries: number;
+}
+
+/** The decoded length, when it is a usable one. */
+function storedDuration(analysis: AudioAnalysis): number | null {
+  const seconds = analysis.durationSeconds;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
 function isHttpUrl(value: string): boolean {
@@ -252,6 +268,9 @@ export class MediaAnalysisService
       }
       const candidate = await this.nextCandidate(now);
       this.metrics.setBacklog(candidate ? Number(candidate.remaining) : 0);
+      this.metrics.setDurationBackfill(
+        candidate ? Number(candidate.backfillRemaining ?? 0) : 0,
+      );
       if (!candidate) return false;
       await this.handle(candidate, now);
       return true;
@@ -262,23 +281,45 @@ export class MediaAnalysisService
 
   // The newest audio asset that has no analysis, whose analysis describes another
   // source URL, or whose retry or lease time has come, with how many such assets remain.
+  // After all of those come the assets that were analysed but have no stored length
+  // (#296), newest first, which are measured again one at a time at the same duty cycle:
+  // new uploads and retries always go first, and nothing is updated in bulk. A row that
+  // was touched in the last BACKFILL_RETRY_AFTER_MS, or that has used its attempts, is left alone.
   private async nextCandidate(now: Date): Promise<Candidate | null> {
+    const backfillBefore = new Date(now.getTime() - BACKFILL_RETRY_AFTER_MS);
     const rows = await this.prisma.$queryRaw<Candidate[]>(Prisma.sql`
-      SELECT a."id" AS "assetId",
-             a."sourceUrl" AS "sourceUrl",
-             m."updatedAt" AS "analysisUpdatedAt",
-             m."attempts" AS "attempts",
-             (m."assetId" IS NOT NULL AND m."sourceUrl" IS DISTINCT FROM a."sourceUrl") AS "sourceChanged",
-             COUNT(*) OVER () AS "remaining"
-      FROM "MediaAsset" a
-      LEFT JOIN "MediaAssetAnalysis" m ON m."assetId" = a."id"
-      WHERE a."mediaType" = 'AUDIO'
-        AND (
-          m."assetId" IS NULL
-          OR m."sourceUrl" IS DISTINCT FROM a."sourceUrl"
-          OR m."nextAttemptAt" <= CAST(${now.toISOString()} AS TIMESTAMP(3))
-        )
-      ORDER BY a."createdAt" DESC, a."id" ASC
+      WITH audio AS (
+        SELECT a."id" AS "assetId",
+               a."sourceUrl" AS "sourceUrl",
+               a."createdAt" AS "createdAt",
+               m."updatedAt" AS "analysisUpdatedAt",
+               m."attempts" AS "attempts",
+               (m."assetId" IS NOT NULL AND m."sourceUrl" IS DISTINCT FROM a."sourceUrl") AS "sourceChanged",
+               COALESCE(
+                 m."assetId" IS NULL
+                 OR m."sourceUrl" IS DISTINCT FROM a."sourceUrl"
+                 OR m."nextAttemptAt" <= CAST(${now.toISOString()} AS TIMESTAMP(3)),
+                 FALSE
+               ) AS "due",
+               COALESCE(
+                 m."status" = 'success'
+                 AND m."durationSeconds" IS NULL
+                 AND m."nextAttemptAt" IS NULL
+                 AND m."attempts" < ${MAX_ATTEMPTS}
+                 AND m."updatedAt" <= CAST(${backfillBefore.toISOString()} AS TIMESTAMP(3)),
+                 FALSE
+               ) AS "needsDuration"
+        FROM "MediaAsset" a
+        LEFT JOIN "MediaAssetAnalysis" m ON m."assetId" = a."id"
+        WHERE a."mediaType" = 'AUDIO'
+      )
+      SELECT "assetId", "sourceUrl", "analysisUpdatedAt", "attempts", "sourceChanged",
+             NOT "due" AS "backfill",
+             COUNT(*) FILTER (WHERE "due") OVER () AS "remaining",
+             COUNT(*) FILTER (WHERE NOT "due") OVER () AS "backfillRemaining"
+      FROM audio
+      WHERE "due" OR "needsDuration"
+      ORDER BY "due" DESC, "createdAt" DESC, "assetId" ASC
       LIMIT 1
     `);
     return rows[0] ?? null;
@@ -286,6 +327,10 @@ export class MediaAnalysisService
 
   private async handle(candidate: Candidate, now: Date): Promise<void> {
     const startedAt = Date.now();
+    if (candidate.backfill) {
+      await this.backfillDuration(candidate, startedAt);
+      return;
+    }
     const previousAttempts = candidate.sourceChanged
       ? 0
       : (candidate.attempts ?? 0);
@@ -356,6 +401,7 @@ export class MediaAnalysisService
         overlapSeconds: null,
         integratedLufs: analysis.integratedLufs,
         truePeakDbtp: analysis.truePeakDbtp,
+        durationSeconds: storedDuration(analysis),
         isrc: analysis.isrc,
         musicbrainzRecordingId: analysis.musicbrainzRecordingId,
         error: null,
@@ -449,6 +495,55 @@ export class MediaAnalysisService
     this.logger.warn(
       `Media analysis gave up storing a finished result (${cause}) after ${MAX_WRITE_RETRIES} retries; the file is analysed again without spending an attempt`,
     );
+  }
+
+  // Measures an analysed asset again only to store its length (#296). The row stays a
+  // success and keeps its cue points and loudness whatever happens: a run that fails changes
+  // nothing but the attempt count, and touching the row also keeps every instance from taking
+  // it again before BACKFILL_RETRY_AFTER_MS.
+  private async backfillDuration(
+    candidate: Candidate,
+    startedAt: number,
+  ): Promise<void> {
+    const { count } = await this.prisma.mediaAssetAnalysis.updateMany({
+      where: {
+        assetId: candidate.assetId,
+        updatedAt: candidate.analysisUpdatedAt!,
+        status: 'success',
+        durationSeconds: null,
+      },
+      data: { attempts: (candidate.attempts ?? 0) + 1 },
+    });
+    if (count !== 1) return;
+
+    let analysis: AudioAnalysis | null = null;
+    let code: FailureCode = 'unsupported-source';
+    if (isHttpUrl(candidate.sourceUrl)) {
+      try {
+        analysis = await this.analyzer.analyze(
+          candidate.sourceUrl,
+          ANALYSIS_TIMEOUT_MS,
+        );
+      } catch (error) {
+        code =
+          error instanceof AudioAnalysisError ? error.code : 'decode-failed';
+      }
+    }
+    const seconds = analysis ? storedDuration(analysis) : null;
+    if (seconds === null) {
+      this.finish(candidate, 'retry', startedAt, code);
+      return;
+    }
+    await this.prisma.mediaAssetAnalysis.updateMany({
+      where: {
+        assetId: candidate.assetId,
+        sourceUrl: candidate.sourceUrl,
+        status: 'success',
+        durationSeconds: null,
+      },
+      data: { durationSeconds: seconds },
+    });
+    this.finish(candidate, 'success', startedAt);
   }
 
   // A failed row keeps no measurement. It is retried after the backoff when one

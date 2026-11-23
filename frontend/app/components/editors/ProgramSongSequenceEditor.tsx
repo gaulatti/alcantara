@@ -1,3 +1,4 @@
+import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
@@ -6,6 +7,7 @@ import {
   createProgramSongSequenceItem,
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
+  songIdsInProgramSongSequence,
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
   type ProgramSongSequenceLeafItem
@@ -50,7 +52,9 @@ export function ProgramSongSequenceEditor({
   onQueueItem,
   depth = 0,
   view = 'full',
-  rotationLabel = 'Playlist'
+  rotationLabel = 'Playlist',
+  liveItemId = null,
+  nextItemId = null
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
@@ -61,6 +65,9 @@ export function ProgramSongSequenceEditor({
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
+  /** The rotation song that is on air, and the one Cue next would cue: marked in the list (#298). */
+  liveItemId?: string | null;
+  nextItemId?: string | null;
 }) {
   // Every item the editor shows is a song: the playlist type proves it.
   const sequence = useMemo(
@@ -102,6 +109,9 @@ export function ProgramSongSequenceEditor({
         ),
     [songCatalog]
   );
+
+  // A song goes into a playlist once (gaulatti/alcantara#280): the picker says so and the server refuses a repeat.
+  const songIdsInPlaylist = useMemo(() => songIdsInProgramSongSequence(sequence), [sequence]);
 
   const catalogOptions = useMemo(
     () => availableSongCatalog.map((s) => ({ value: String(s.id), label: [s.artist, s.title].filter(Boolean).join(' - ') || `Song #${s.id}` })),
@@ -181,7 +191,7 @@ export function ProgramSongSequenceEditor({
   const addItemFromCatalog = useCallback(
     (songId: number) => {
       const selectedSong = availableSongCatalog.find((s) => s.id === songId);
-      if (!selectedSong) return;
+      if (!selectedSong || songIdsInPlaylist.has(songId)) return;
       const nextItem = createProgramSongSequenceItem('preset');
       if (nextItem.kind !== 'preset') return;
       const filled = {
@@ -205,7 +215,7 @@ export function ProgramSongSequenceEditor({
         activeItemId: isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? filled.id) : editorActiveItemId
       });
     },
-    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence]
+    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence, songIdsInPlaylist]
   );
 
   const removeItem = useCallback(
@@ -428,8 +438,13 @@ export function ProgramSongSequenceEditor({
                                 </div>
                               )}
                               <div className='min-w-0'>
-                                <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
-                                  {titleText}
+                                <div className={`flex items-center gap-2 truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
+                                  <span className='truncate'>{titleText}</span>
+                                  {displayItem.id === liveItemId ? (
+                                    <StatePill tone='live' label='On air' pulse />
+                                  ) : displayItem.id === nextItemId ? (
+                                    <StatePill tone='info' label='Next' />
+                                  ) : null}
                                 </div>
                                 <div className='truncate text-[11px] leading-tight text-text-secondary mt-0.5'>{artistText}</div>
                               </div>
@@ -563,10 +578,11 @@ export function ProgramSongSequenceEditor({
                     </div>
                     <Button
                       type='button'
+                      disabled={songIdsInPlaylist.has(song.id)}
                       onClick={() => addItemFromCatalog(song.id)}
                       className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary opacity-0 shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
-                      title='Add to queue'
-                      aria-label='Add to queue'
+                      title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
+                      aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
                     >
                       <Plus size={14} />
                     </Button>

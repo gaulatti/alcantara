@@ -58,6 +58,11 @@ const RADIO_TOOLS: Record<string, [string, McpTier]> = {
  */
 const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
   import_media_from_url: ['upload.create', 'W'],
+  // gaulatti/alcantara#300: read-only radio capabilities with no route of their own.
+  // gaulatti/alcantara#327: remove playlist leaves by id against the live cursor.
+  program_remove_program_song_leaves_by_id: ['program.operate', 'A'],
+  radio_get_playback_state: ['radio.read', 'R'],
+  radio_get_audio_levels: ['radio.read', 'R'],
 };
 
 function permissionKey(short: string): string {

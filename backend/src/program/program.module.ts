@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma.service';
 import { ProgramTemplateService } from './program-template.service';
 import { FlightMcpTools } from '../mcp/capabilities/flight';
 import { ProgramMcpTools } from '../mcp/capabilities/program';
+import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 
 @Global()
 @Module({
@@ -17,6 +18,7 @@ import { ProgramMcpTools } from '../mcp/capabilities/program';
     FlightService,
     ProgramTemplateService,
     ProgramMcpTools,
+    SongLeavesMcpTools,
     FlightMcpTools,
     PrismaService,
   ],

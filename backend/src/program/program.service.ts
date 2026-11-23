@@ -40,6 +40,7 @@ import {
 } from '../radio/song-queue.utils';
 import {
   collectHighRotationProgramSongLeaves,
+  countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
@@ -1753,6 +1754,22 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         `High rotation is limited to ${MAX_HIGH_ROTATION_SONGS} songs`,
       );
     }
+    if (hasSongSequenceUpdate) {
+      // A song is added to a playlist once (gaulatti/alcantara#280). A playlist that already
+      // holds a song twice stays editable: only a write that raises a song's leaf count
+      // above what is stored (and above one) is refused.
+      const stored = countProgramSongLeavesBySong(
+        normalizeProgramSongSequence(currentState.songSequence),
+      );
+      for (const [key, next] of countProgramSongLeavesBySong(
+        normalizedNextSongSequence,
+      )) {
+        if (next.count > Math.max(1, stored.get(key)?.count ?? 0))
+          throw new BadRequestException(
+            `${next.label} is already in the playlist; a song can be added once`,
+          );
+      }
+    }
     const currentSongQueue = normalizeProgramSongQueue(currentState.songQueue);
     const nextSongQueue = hasSongSequenceUpdate
       ? filterProgramSongQueueForSequence(
@@ -1821,6 +1838,67 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...nextSettings,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
+  /**
+   * Removes exactly these leaves from a program's playlist (gaulatti/alcantara#327): the engine
+   * does the compare-and-swap write against the live cursor, then this broadcasts the same
+   * `audio_bus_update` the normal path does. A dry run reports and changes nothing.
+   */
+  async removeProgramSongLeaves(
+    programId: string,
+    leafIds: string[],
+    options: { keepRotation?: boolean; dryRun?: boolean } = {},
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const dryRun = options.dryRun === true;
+    const outcome = await this.songExecutionEngine.removeSongLeaves(
+      normalizedProgramId,
+      leafIds,
+      { keepRotation: options.keepRotation === true, dryRun },
+    );
+    const summary = {
+      removed: outcome.removed.map((leaf) => ({
+        id: leaf.id,
+        songId: leaf.songId ?? null,
+        artist: leaf.artist,
+        title: leaf.title,
+        highRotation: leaf.highRotation === true,
+      })),
+      leafCountBefore: outcome.before,
+      leafCountAfter: outcome.after,
+      cursorMovedTo: outcome.cursorMovedTo,
+    };
+    if (dryRun) return { dryRun, ...summary, version: null };
+
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { audioMixer: true },
+    });
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'audio_bus_update',
+      programId: normalizedProgramId,
+      settings: {
+        songSequence: outcome.songSequence,
+        songQueue: outcome.songQueue,
+        mixerSettings: this.withResolvedProgramAudioMixerSettings(
+          state?.audioMixer,
+        ),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    this.songExecutionEngine.handleQueueUpdated(
+      normalizedProgramId,
+      outcome.songQueue,
+    );
+    return {
+      dryRun,
+      ...summary,
       version:
         broadcastPayload && typeof broadcastPayload.version === 'number'
           ? broadcastPayload.version

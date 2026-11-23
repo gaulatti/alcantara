@@ -331,6 +331,12 @@
   },
   {
     "method": "GET",
+    "path": "/mcp/capabilities",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
     "path": "/media",
     "public": false,
     "permission": "alcantara:media:read"
@@ -470,6 +476,30 @@
   {
     "method": "GET",
     "path": "/metrics/palazzo",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/oauth/callback",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/token",
     "public": true,
     "permission": null
   },

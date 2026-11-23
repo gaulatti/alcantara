@@ -354,7 +354,7 @@ export class RadioService {
         programStateId: state.id,
         palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
         listenerUrl: listenerUrl ?? null,
-        bumperEnabled: data.bumperEnabled ?? false,
+        bumperEnabled: data.bumperEnabled ?? true,
         bumperInterval: bumperInterval ?? null,
         bumperInstantIds: bumperInstantIds ?? [],
         bumperMode: bumperMode ?? 'sequential',

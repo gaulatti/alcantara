@@ -22,7 +22,7 @@ jobs:
       - name: Use Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 22.23.4
+          node-version: 22.23.5
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.0.2
@@ -63,6 +63,13 @@ jobs:
     needs: build
 
     steps:
+      # First, because checkout cleans the workspace: only the prune script is needed here.
+      - name: Check out the prune script
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/prune-old-assets.sh
+          sparse-checkout-cone-mode: false
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.0.2
         with:
@@ -96,6 +103,14 @@ jobs:
           aws s3 sync frontend-dist/ s3://${{ vars.BUCKET_NAME }} \
             --exclude "assets/*" --exclude "index.html" --delete --size-only \
             --cache-control "public,max-age=300"
+
+      - name: Prune old hashed assets
+        # Best effort: a failure here never fails the deploy (gaulatti/alcantara#229).
+        continue-on-error: true
+        run: |
+          # Delete assets/ objects that are not in this build and are older than 14 days. Old files
+          # younger than that stay so a console already open keeps loading its chunks.
+          bash scripts/prune-old-assets.sh "${{ vars.BUCKET_NAME }}" frontend-dist 14
 
       - name: Invalidate CloudFront cache
         run: |

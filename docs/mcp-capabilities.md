@@ -513,6 +513,34 @@ proceeds after the confirm, as the console does.
 - Metrics: the area adds no metric. The executor counts every call under
   `alcantara_mcp_requests_total{tool,tier,result}`.
 
+### Remove playlist leaves (`program_remove_program_song_leaves_by_id`, #327)
+
+File: `backend/src/mcp/capabilities/song-leaves.ts`; the work is
+`ProgramService.removeProgramSongLeaves` and `SongExecutionEngine.removeSongLeaves`.
+An A capability with `program.operate`, taking `program_id`, `leaf_ids` (1 to 200),
+and optional `keep_rotation` and `dry_run`. It has no route of its own: the console
+removes a leaf by sending the whole edited playlist, and
+`program_update_program_audio_bus_by_id` does the same with a whole `songSequence`,
+cursor (`activeItemId`, `startedAt`) included. That cursor changes with every song, so a
+whole-playlist write races the rotation.
+
+- **What it writes.** Under the engine's queue-mutation lock it reads the row, takes the
+  sequence the engine holds when that differs from the stored one only by the cursor
+  (so the cursor is the live one), removes exactly those leaves at any depth, keeps every
+  other field as stored, filters the Play Next queue with `filterProgramSongQueueForSequence`
+  and stores both with one compare-and-swap on the row's `updatedAt`. A row that moved is
+  re-read and the removal retried (4 attempts, then a conflict and nothing written).
+  It then broadcasts the same `audio_bus_update` as the normal path. A song that ends
+  between the read and the write is not undone: the engine's in-memory cursor is kept.
+- **Refusals.** An unknown leaf id (nothing changes); a program with no playlist; the
+  leaf on air, unless `keep_rotation` is set, which moves the rotation to the next leaf
+  the way a song ending does (a refusal if no other leaf is left).
+- **Dry run.** Returns the leaves that would be removed (id, song id, artist, title,
+  high rotation) and the leaf count before and after, and writes nothing.
+- **Metrics.** None new: it does not use the engine's best-effort cursor write, so
+  its cursor-write result counts are unchanged; a retry exhausted is a visible
+  conflict error, not a metric.
+
 ## The rows no ticket owned (#226)
 
 Appendix A is 167 rows: 154 are capabilities, 6 are `covered by` another tool
@@ -632,6 +660,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `program_inspect_template` | `backend/src/mcp/capabilities/program.ts:201` | No | - | Fetches and reports a manifest; nothing is stored. |
 | `program_create_program` | `backend/src/mcp/capabilities/program.ts:213` | No | - | Its plan: the program starts empty and off air. |
 | `program_rename_program` | `backend/src/mcp/capabilities/program.ts:244` | Live output | No record to write (see below) | Declares `onAir` while the program has a scene, fade, song, queue, flight sequence or scene instant live (program.ts:269); players lose the old id. |
+| `program_remove_program_song_leaves_by_id` | `alcantara:program:operate` | A | Removes exactly the playlist leaves with these ids (1 to 200, nested blocks included) against the live rotation cursor; the leaf on air is refused unless keep_rotation is set; dry_run lists what would go. |
 | `program_remove_queued_program_song_by_id` | `backend/src/mcp/capabilities/program.ts:466` | Queue | Yes, through the executor's attribution wrap | Removes a Play Next entry: `ProgramService.removeQueuedProgramSong` -> `SongExecutionEngine.removeQueuedSong` (song-execution.engine.ts:682) reads the actor and emits `song_queue_update` with it. |
 | `program_add_scene_to_program` | `backend/src/mcp/capabilities/program.ts:498` | No | - | Assignment only; its plan: nothing goes on air. |
 | `program_add_media_group_to_program` | `backend/src/mcp/capabilities/program.ts:513` | No | - | Assignment only; takes effect when a scene or page reads it. |
@@ -731,6 +760,10 @@ are wrapped and a dry run is not.
 | `radio_get_recovery` | `alcantara:radio:read` | R | Reads the recovery (filler) session of a radio program: the selected songs, the prepared version and Palazzo's automation state; `connection` is "unavailable" when Palazzo cannot be reached. |
 | `radio_get_settings` | `alcantara:radio:read` | R | Reads the radio settings of a program (Palazzo address, listener address, bumpers, recovery playlist, segue and similarity settings); null when the program has none yet. |
 | `radio_get_status` | `alcantara:radio:read` | R | Reads whether the radio engine of a program is running (liquidsoap and icecast connected). |
+| `radio_get_playback_state` | `alcantara:radio:read` | R | Reads what the radio is playing now in a program: the song on air (elapsed and duration in milliseconds, progress, intro status, whether telemetry is stale), the song announced next, and the rotation mode and frozen flag; `on_air` is null when nothing plays. |
+
+`radio_get_playback_state` and `get_on_air` both read what is on air, but differ: `radio_get_playback_state` is a capability of the registry and returns the song's elapsed time, duration and progress with the next song, the mode and the frozen flag; `get_on_air` is the radio tool and adds the Palazzo connection and the output confidence. Both answer `not_found` for an unknown program and `on_air: null` when nothing plays. Title and artist are user-entered and are returned only under `untrusted`.
+| `radio_get_audio_levels` | `alcantara:radio:read` | R | Reads the latest audio levels of a program per channel (song, instants, scene_instant, main): vu, peak and peak_hold, each from 0 to 1, with the time they were last updated. |
 | `radio_list_now_playing_consumers` | `alcantara:radio:read` | R | Lists the endpoints that are told what is playing: name, address, method, enabled and position. |
 | `radio_now_playing_publishing` | `alcantara:radio:read` | R | Says whether now-playing updates are published ("enabled") or held back on a local stack ("blocked-local"). |
 | `radio_play_instant` | `alcantara:radio:operate` | A | Plays an instant (a short sound) at an audio address over a radio program, at an optional volume from 0 to 1. |

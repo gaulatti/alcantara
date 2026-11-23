@@ -5,6 +5,7 @@ export * from '@gaulatti/bleecker/components/button';
 export * from '@gaulatti/bleecker/components/card';
 export * from '@gaulatti/bleecker/components/checkbox';
 export * from '@gaulatti/bleecker/components/command-spotlight';
+export * from '@gaulatti/bleecker/components/dropdown-menu';
 export * from '@gaulatti/bleecker/components/empty';
 export * from '@gaulatti/bleecker/components/field';
 export * from '@gaulatti/bleecker/components/file-input';
