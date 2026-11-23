@@ -3,7 +3,6 @@ import {
   fireEvent,
   render,
   screen,
-  within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ComponentPropsFields } from "./ComponentPropsFields";
@@ -61,51 +60,42 @@ function picker(componentType: string, props: Record<string, unknown>) {
   return updateProp;
 }
 
+// The zone list holds about 600 options. Testing Library's role queries compute the accessibility
+// tree of every one of them, which took seconds per render and timed out on a loaded runner, so
+// the options are read straight from the select element instead.
+const optionsOf = (select: HTMLSelectElement) => Array.from(select.options);
+const selectedOption = (select: HTMLSelectElement) => select.selectedOptions[0];
+
 function zoneSelect() {
-  return screen
-    .getAllByRole("combobox")
-    .find(
-      (select) =>
-        within(select).queryAllByRole("option", { name: /\(GMT/ }).length > 0,
-    ) as HTMLSelectElement;
+  return Array.from(document.querySelectorAll("select")).find((select) =>
+    optionsOf(select).some((option) => /\(GMT/.test(option.textContent ?? "")),
+  ) as HTMLSelectElement;
 }
 
-it("keeps the Buenos Aires default selected in every picker that defaults to it", () => {
-  for (const type of ["clock-widget", "reloj-clock", "broadcast-layout"]) {
+// One render per test: a picker renders about 600 options, so a loop over several pickers in a single
+// test used the whole 5 s budget on a loaded runner.
+it.each(["clock-widget", "reloj-clock", "broadcast-layout"])(
+  "keeps the Buenos Aires default selected in the %s picker",
+  (type) => {
     const updateProp = picker(type, {});
     const zone = zoneSelect();
     expect(zone).toHaveValue("America/Argentina/Buenos_Aires");
-    expect(
-      within(zone).getByRole("option", {
-        name: /^Buenos Aires \(GMT/,
-        selected: true,
-      }),
-    ).toBeInTheDocument();
+    expect(selectedOption(zone).textContent).toMatch(/^Buenos Aires \(GMT/);
     expect(updateProp).not.toHaveBeenCalled();
-    cleanup();
-  }
-});
+  },
+);
 
-it("keeps a saved zone the browser lists under another name, without rewriting it", () => {
-  for (const [type, prop] of [
-    ["clock-widget", "timezone"],
-    ["reloj-loop-clock", "timezone"],
-    ["broadcast-layout", "clockTimezone"],
-    ["reloj-digital-loop-clock", "timezone"],
-  ]) {
-    const updateProp = picker(type, { [prop]: "Asia/Kolkata" });
-    const zone = zoneSelect();
-    expect(zone).toHaveValue("Asia/Kolkata");
-    expect(
-      within(zone)
-        .getAllByRole("option")
-        .filter(
-          (option) => (option as HTMLOptionElement).value === "Asia/Kolkata",
-        ),
-    ).toHaveLength(1);
-    expect(updateProp).not.toHaveBeenCalled();
-    cleanup();
-  }
+it.each([
+  ["clock-widget", "timezone"],
+  ["reloj-loop-clock", "timezone"],
+  ["broadcast-layout", "clockTimezone"],
+  ["reloj-digital-loop-clock", "timezone"],
+])("keeps a saved zone the browser lists under another name in the %s picker, without rewriting it", (type, prop) => {
+  const updateProp = picker(type, { [prop]: "Asia/Kolkata" });
+  const zone = zoneSelect();
+  expect(zone).toHaveValue("Asia/Kolkata");
+  expect(optionsOf(zone).filter((option) => option.value === "Asia/Kolkata")).toHaveLength(1);
+  expect(updateProp).not.toHaveBeenCalled();
 });
 
 it("does not add a listed zone twice", () => {
@@ -113,7 +103,7 @@ it("does not add a listed zone twice", () => {
   const zone = zoneSelect();
   expect(zone).toHaveValue("Europe/Rome");
   const listed = Intl.supportedValuesOf("timeZone").length;
-  expect(within(zone).getAllByRole("option")).toHaveLength(listed);
+  expect(optionsOf(zone)).toHaveLength(listed);
 });
 
 it("adds nothing for an empty value", () => {
@@ -169,8 +159,7 @@ it.each(STEP0_ALIASES)(
 
     const updateProp = picker("clock-widget", { timezone: saved });
     const zone = zoneSelect();
-    const values = within(zone)
-      .getAllByRole("option")
+    const values = optionsOf(zone)
       .map((option) => (option as HTMLOptionElement).value);
     expect(zone).toHaveValue(saved);
     expect(values.filter((value) => value === saved)).toHaveLength(1);
@@ -184,7 +173,7 @@ it.each(STEP0_ALIASES)(
         ? cityOf(resolved)
         : cityOf(saved);
     expect(
-      within(zone).getByRole("option", { selected: true }).textContent,
+      selectedOption(zone).textContent,
     ).toMatch(new RegExp(`^${name} \\(GMT`));
 
     // Saving the selection without a change stores the id that was saved.
@@ -300,15 +289,14 @@ it.each(WEBKIT_LISTED_AS)(
     stubWebKit(zones);
     const updateProp = picker("clock-widget", { timezone: saved });
     const zone = zoneSelect();
-    const values = within(zone)
-      .getAllByRole("option")
+    const values = optionsOf(zone)
       .map((option) => (option as HTMLOptionElement).value);
     expect(zone).toHaveValue(saved);
     expect(values.filter((value) => value === saved)).toHaveLength(1);
     expect(values).not.toContain(listed);
     expect(values).toHaveLength(zones.length);
     expect(
-      within(zone).getByRole("option", { selected: true }).textContent,
+      selectedOption(zone).textContent,
     ).toMatch(new RegExp(`^${cityOf(saved)} \\(GMT`));
     expect(updateProp).not.toHaveBeenCalled();
     fireEvent.change(zone, { target: { value: saved } });
@@ -327,8 +315,7 @@ it("replaces the old spelling, not another place in the same zone (Yangon, not C
   stubWebKit(zones);
   picker("clock-widget", { timezone: "Asia/Yangon" });
   const zone = zoneSelect();
-  const options = within(zone)
-    .getAllByRole("option")
+  const options = optionsOf(zone)
     .map((option) => [(option as HTMLOptionElement).value, option.textContent]);
   expect(zone).toHaveValue("Asia/Yangon");
   expect(options.map(([value]) => value).sort()).toEqual(
@@ -347,8 +334,7 @@ it("folds every listed name of the saved zone into the one saved option", () => 
     "Europe/Rome",
   ]);
   picker("clock-widget", { timezone: "Europe/Kyiv" });
-  const values = within(zoneSelect())
-    .getAllByRole("option")
+  const values = optionsOf(zoneSelect())
     .map((option) => (option as HTMLOptionElement).value);
   expect(values.sort()).toEqual(["Europe/Kyiv", "Europe/Rome"]);
 });

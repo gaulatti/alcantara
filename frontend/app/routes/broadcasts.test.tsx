@@ -11,6 +11,11 @@ import { AxiosError } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Broadcasts, { meta } from "./broadcasts";
 
+// These tests are long operator flows (many awaited steps over a large DOM) that take 1-3 s on an idle
+// machine, so a loaded CI runner exceeded the 5 s default. They assert behaviour, not timing: give the
+// flow room instead of letting load decide the result.
+vi.setConfig({ testTimeout: 30_000 });
+
 // gaulatti/alcantara#187, group G4: the television broadcast destinations
 // page, through the API it calls. The filler panel belongs to
 // gaulatti/alcantara#184, so it is a stand-in here.
