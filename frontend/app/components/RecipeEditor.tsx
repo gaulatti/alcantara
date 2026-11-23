@@ -249,13 +249,14 @@ export function RecipeEditor({
     setNotice(null);
     setError(null);
     try {
-      const saved = await updateRecipe(programId, recipeDraft);
+      const { recipe: saved, rebuilt } = await updateRecipe(programId, recipeDraft);
       setRecipes((current) => current!.map((recipe) => (recipe.id === saved.id ? saved : recipe)));
       setConfirming(false);
+      // The count is the backend's: how many uses it rebuilt from the saved recipe.
       setNotice(
-        toRebuild === 0
+        rebuilt === 0
           ? "Recipe saved. No upcoming use needed a rebuild."
-          : `Recipe saved. ${plural(toRebuild, "upcoming use")} will follow it.`,
+          : `Recipe saved. ${plural(rebuilt, "upcoming use")} ${rebuilt === 1 ? "was" : "were"} rebuilt from it.`,
       );
     } catch (saveError) {
       if (saveError instanceof RecipeConflictError) {

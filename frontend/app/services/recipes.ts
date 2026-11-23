@@ -61,11 +61,17 @@ export async function fetchRecipes(programId: string): Promise<Recipe[] | null> 
   return payload as Recipe[];
 }
 
+/** The saved recipe, and how many uses of it that had not aired followed the change (the backend rebuilt them). */
+export interface RecipeSaved {
+  recipe: Recipe;
+  rebuilt: number;
+}
+
 /** Saves a recipe with the revision it was loaded at; the backend compares and sets on it. */
 export async function updateRecipe(
   programId: string,
   recipe: Recipe,
-): Promise<Recipe> {
+): Promise<RecipeSaved> {
   const response = await fetch(`${base(programId)}/${recipe.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -82,7 +88,9 @@ export async function updateRecipe(
   });
   if (response.status === 409) throw new RecipeConflictError();
   if (!response.ok) throw await recipeError(response);
-  return (await response.json()) as Recipe;
+  // The answer is the recipe as saved plus `rebuilt`; the count is not part of the recipe.
+  const { rebuilt, ...saved } = (await response.json()) as Recipe & { rebuilt?: number };
+  return { recipe: saved, rebuilt: typeof rebuilt === "number" ? rebuilt : 0 };
 }
 
 /** A preview of the cues a use for this song would be written as. It saves nothing. */
