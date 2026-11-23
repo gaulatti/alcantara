@@ -55,10 +55,15 @@ export function ProgramTextSequenceEditor({
 
   // Only called for top-level text items (see the items map below).
   const toSequenceItem = (item: Extract<ProgramTextSequenceItem, { kind: 'preset' }>): ProgramTextSequenceItem => {
-    // A new sequence item is always a sequence, and a new sequence always seeds one preset leaf.
-    const nextItem = createProgramTextSequenceItem('sequence', { includeMarquee }) as Extract<ProgramTextSequenceItem, { kind: 'sequence' }>;
-    const nestedFirstItem = nextItem.sequence.items[0] as Extract<ProgramTextSequenceItem, { kind: 'preset' }>;
-    const nextLeaf = { ...nestedFirstItem, text: item.text, useMarquee: includeMarquee ? item.useMarquee : undefined };
+    const nextItem = createProgramTextSequenceItem('sequence', { includeMarquee });
+    if (nextItem.kind !== 'sequence') {
+      return { id: item.id, label: item.text.trim() || 'Sequence', kind: 'sequence', sequence: createProgramTextSequence('manual', { includeMarquee }) };
+    }
+    const nestedFirstItem = nextItem.sequence.items[0];
+    const nextLeaf =
+      nestedFirstItem && nestedFirstItem.kind === 'preset'
+        ? { ...nestedFirstItem, text: item.text, useMarquee: includeMarquee ? item.useMarquee : undefined }
+        : createProgramTextSequenceItem('preset', { includeMarquee });
     return {
       ...nextItem,
       id: item.id,
@@ -69,12 +74,13 @@ export function ProgramTextSequenceEditor({
 
   const addItem = () => {
     const nextItem = createProgramTextSequenceItem('sequence', { includeMarquee });
+    if (nextItem.kind !== 'sequence') return;
     applySequence({ ...sequence, items: [...sequence.items, nextItem], activeItemId: sequence.activeItemId ?? nextItem.id, startedAt: Date.now() });
   };
 
   const removeItem = (index: number) => {
-    // Called only from the items map, so index always names an existing item.
     const removed = sequence.items[index];
+    if (!removed) return;
     const nextItems = sequence.items.filter((_, i) => i !== index);
     applySequence({
       ...sequence,
@@ -130,7 +136,7 @@ export function ProgramTextSequenceEditor({
               type='number'
               min={500}
               step={500}
-              value={sequence.intervalMs}
+              value={sequence.intervalMs ?? 4000}
               onChange={(e) => applySequence({ ...sequence, intervalMs: Math.max(500, Number(e.target.value) || 4000), startedAt: Date.now() })}
               className='w-28 px-2 py-1 text-xs border rounded focus:ring-2 focus:ring-sea/50'
             />

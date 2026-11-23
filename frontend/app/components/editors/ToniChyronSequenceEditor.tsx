@@ -3,6 +3,7 @@ import { Field, Checkbox, Button, Input } from '@gaulatti/bleecker';
 import { GripVertical } from 'lucide-react';
 import {
   countSequenceLeafItems,
+  createToniChyronSequence,
   createToniChyronSequenceItem,
   getToniChyronContentMode,
   getToniChyronSequenceSelectedItemId,
@@ -47,23 +48,28 @@ export function ToniChyronSequenceEditor({
 
   // Only called for top-level chyron items (see the items map below).
   const toSequenceItem = (item: Extract<ToniChyronSequenceItem, { kind: 'preset' }>): ToniChyronSequenceItem => {
-    // A new sequence item is always a sequence, and a new sequence always seeds one preset leaf.
-    const nextItem = createToniChyronSequenceItem('sequence') as Extract<ToniChyronSequenceItem, { kind: 'sequence' }>;
-    const nestedFirstItem = nextItem.sequence.items[0] as Extract<ToniChyronSequenceItem, { kind: 'preset' }>;
+    const nextItem = createToniChyronSequenceItem('sequence');
+    if (nextItem.kind !== 'sequence') {
+      return { id: item.id, label: item.text.trim() || 'Sequence', kind: 'sequence', sequence: createToniChyronSequence('manual') };
+    }
+    const nestedFirstItem = nextItem.sequence.items[0];
     // Carry every field of the saved chyron (text, marquee and chart values),
     // keeping the new leaf's own id (gaulatti/alcantara#197).
-    const nextLeaf = { ...nestedFirstItem, ...item, id: nestedFirstItem.id };
+    const nextLeaf = nestedFirstItem && nestedFirstItem.kind === 'preset'
+      ? { ...nestedFirstItem, ...item, id: nestedFirstItem.id }
+      : createToniChyronSequenceItem('preset');
     return { ...nextItem, id: item.id, label: item.text.trim() || 'Sequence', sequence: { ...nextItem.sequence, items: [nextLeaf], activeItemId: nextLeaf.id } };
   };
 
   const addItem = () => {
     const nextItem = createToniChyronSequenceItem('sequence');
+    if (nextItem.kind !== 'sequence') return;
     applySequence({ ...sequence, items: [...sequence.items, nextItem], activeItemId: sequence.activeItemId ?? nextItem.id, startedAt: Date.now() });
   };
 
   const removeItem = (index: number) => {
-    // Called only from the items map, so index always names an existing item.
     const removed = sequence.items[index];
+    if (!removed) return;
     const nextItems = sequence.items.filter((_, i) => i !== index);
     applySequence({ ...sequence, items: nextItems, activeItemId: sequence.activeItemId === removed.id ? (nextItems[0]?.id ?? null) : sequence.activeItemId, startedAt: Date.now() });
   };

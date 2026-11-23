@@ -233,9 +233,8 @@ export function ComponentPropsFields({
               max={4}
               value={typeof props.maxStreams === 'number' ? props.maxStreams : 4}
               onChange={(e) => {
-                // A number input's value is "" or a finite number, and Number("") is 0, so raw is always finite.
                 const raw = Number(e.target.value);
-                const normalized = Math.max(1, Math.min(4, Math.round(raw)));
+                const normalized = Number.isFinite(raw) ? Math.max(1, Math.min(4, Math.round(raw))) : 4;
                 updateProp(componentType, 'maxStreams', normalized);
               }}
             />

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Input, Switch } from '@gaulatti/bleecker';
-import { normalizeProgramTextSequence, createProgramTextSequence, createProgramTextSequenceItem, type ProgramTextSequence, type ProgramTextSequenceItem } from '../../utils/programSequence';
+import { normalizeProgramTextSequence, createProgramTextSequence, createProgramTextSequenceItem, type ProgramTextSequence } from '../../utils/programSequence';
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 
 export function ProgramChyronEditorFields({
@@ -30,12 +30,11 @@ export function ProgramChyronEditorFields({
     if (!legacyMainText.trim() && !legacyUseMarquee) return base;
     if (seqHasText(base)) return base;
     const first = base.items[0];
-    // A new preset item is always a preset, so the fallback needs no kind check.
-    const fallback = createProgramTextSequenceItem('preset', { includeMarquee: true }) as Extract<ProgramTextSequenceItem, { kind: 'preset' }>;
+    const fallback = createProgramTextSequenceItem('preset', { includeMarquee: true });
     const seeded = first && first.kind === 'preset'
       ? { ...first, text: legacyMainText, useMarquee: legacyUseMarquee }
-      : { ...fallback, text: legacyMainText, useMarquee: legacyUseMarquee };
-    return { ...base, items: [seeded], activeItemId: base.activeItemId ?? seeded.id, startedAt: base.startedAt };
+      : { ...(fallback.kind === 'preset' ? fallback : createProgramTextSequenceItem('preset', { includeMarquee: true })), text: legacyMainText, useMarquee: legacyUseMarquee };
+    return { ...base, items: [seeded], activeItemId: base.activeItemId ?? seeded.id, startedAt: base.startedAt ?? Date.now() };
   }, [normalizedText, legacyMainText, legacyUseMarquee]);
 
   const ctaSequenceForEditor = useMemo<ProgramTextSequence>(() => {
@@ -43,12 +42,11 @@ export function ProgramChyronEditorFields({
     if (!legacyCtaText.trim()) return base;
     if (seqHasText(base)) return base;
     const first = base.items[0];
-    // A new preset item is always a preset, so the fallback needs no kind check.
-    const fallback = createProgramTextSequenceItem('preset') as Extract<ProgramTextSequenceItem, { kind: 'preset' }>;
+    const fallback = createProgramTextSequenceItem('preset');
     const seeded = first && first.kind === 'preset'
       ? { ...first, text: legacyCtaText }
-      : { ...fallback, text: legacyCtaText };
-    return { ...base, items: [seeded], activeItemId: base.activeItemId ?? seeded.id, startedAt: base.startedAt };
+      : { ...(fallback.kind === 'preset' ? fallback : createProgramTextSequenceItem('preset')), text: legacyCtaText };
+    return { ...base, items: [seeded], activeItemId: base.activeItemId ?? seeded.id, startedAt: base.startedAt ?? Date.now() };
   }, [normalizedCta, legacyCtaText]);
 
   const buildSequenceProps = (t: ProgramTextSequence, c: ProgramTextSequence) => ({ ...props, textSequence: t, ctaSequence: c, text: '', useMarquee: false, cta: '' });

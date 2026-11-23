@@ -135,8 +135,8 @@ export function ProgramSongSequenceEditor({
   );
 
   const previewItem = useCallback(async (item: ProgramSongSequenceLeafItem) => {
-    // The preview button is disabled while the item has no audio URL, so this runs only with one.
-    const audioUrl = (item.audioUrl as string).trim();
+    const audioUrl = item.audioUrl?.trim() ?? '';
+    if (!audioUrl) return;
 
     if (previewingItemId === item.id) {
       previewAudioRef.current?.pause();
@@ -178,8 +178,8 @@ export function ProgramSongSequenceEditor({
     if (!programSongPlayback) return now;
     const targetId = editorActiveItemId ?? sequence.activeItemId;
     if (!targetId) return now;
-    // activeItemId is normalized to an existing row or null, and editorActiveItemId only returns row ids.
-    const target = sequence.items.find((i) => i.id === targetId) as ProgramSongSequenceLeafItem;
+    const target = sequence.items.find((i) => i.id === targetId);
+    if (!target) return now;
     const itemUrl = target.audioUrl?.trim() || '';
     const pbUrl = programSongPlayback.audioUrl?.trim() || '';
     const pbToken = programSongPlayback.token || '';
@@ -189,17 +189,18 @@ export function ProgramSongSequenceEditor({
   }, [editorActiveItemId, programSongPlayback, sequence.activeItemId, sequence.items]);
 
   const addItemFromCatalog = useCallback(
-    (selectedSong: SongCatalogItem) => {
-      // The add button is rendered per catalog song and disabled once the song is in the playlist.
-      // A new preset item is always a preset.
-      const nextItem = createProgramSongSequenceItem('preset') as Extract<ProgramSongSequenceLeafItem, { kind: 'preset' }>;
+    (songId: number) => {
+      const selectedSong = availableSongCatalog.find((s) => s.id === songId);
+      if (!selectedSong || songIdsInPlaylist.has(songId)) return;
+      const nextItem = createProgramSongSequenceItem('preset');
+      if (nextItem.kind !== 'preset') return;
       const filled = {
         ...nextItem,
         songId: selectedSong.id,
         artist: selectedSong.artist || '',
         title: selectedSong.title || '',
         coverUrl: selectedSong.coverUrl || '',
-        audioUrl: selectedSong.audioUrl,
+        audioUrl: selectedSong.audioUrl || '',
         durationMs:
           typeof selectedSong.durationMs === 'number' && Number.isFinite(selectedSong.durationMs) && selectedSong.durationMs > 0
             ? Math.round(selectedSong.durationMs)
@@ -214,21 +215,20 @@ export function ProgramSongSequenceEditor({
         activeItemId: isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? filled.id) : editorActiveItemId
       });
     },
-    [applySequence, editorActiveItemId, isAutomatic, sequence]
+    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence, songIdsInPlaylist]
   );
 
   const removeItem = useCallback(
     (index: number) => {
-      // Called only from the items map, so index always names an existing item.
       const removed = sequence.items[index];
+      if (!removed) return;
       const nextItems = sequence.items.filter((_, i) => i !== index);
       const current = editorActiveItemId ?? sequence.activeItemId;
       const removedCurrent = current !== null && current === removed.id;
       let nextActive: string | null;
       if (nextItems.length === 0) nextActive = null;
-      // nextItems is non-empty past the first branch, and the index is clamped to it.
-      else if (removedCurrent) nextActive = nextItems[Math.min(index, nextItems.length - 1)].id;
-      else nextActive = current && nextItems.some((i) => i.id === current) ? current : nextItems[0].id;
+      else if (removedCurrent) nextActive = nextItems[Math.min(index, nextItems.length - 1)]?.id ?? null;
+      else nextActive = current && nextItems.some((i) => i.id === current) ? current : (nextItems[0]?.id ?? null);
       applySequence({
         ...sequence,
         items: nextItems,
@@ -249,10 +249,10 @@ export function ProgramSongSequenceEditor({
 
   const toggleHighRotation = useCallback(
     (index: number, item: ProgramSongSequenceLeafItem) => {
-      // The button is disabled at the 12-song limit, so this only adds below it.
+      if (!item.highRotation && highRotationCount >= 12) return;
       updateItem(index, { ...item, highRotation: !item.highRotation });
     },
-    [updateItem]
+    [highRotationCount, updateItem]
   );
 
   const reorderItems = useCallback(
@@ -274,7 +274,7 @@ export function ProgramSongSequenceEditor({
         artist: song.artist || item.artist,
         title: song.title || item.title,
         coverUrl: song.coverUrl || item.coverUrl,
-        audioUrl: song.audioUrl,
+        audioUrl: song.audioUrl || item.audioUrl,
         durationMs:
           typeof song.durationMs === 'number' && Number.isFinite(song.durationMs) && song.durationMs > 0 ? Math.round(song.durationMs) : item.durationMs,
         earoneSongId: song.earoneSongId || item.earoneSongId,
@@ -579,7 +579,7 @@ export function ProgramSongSequenceEditor({
                     <Button
                       type='button'
                       disabled={songIdsInPlaylist.has(song.id)}
-                      onClick={() => addItemFromCatalog(song)}
+                      onClick={() => addItemFromCatalog(song.id)}
                       className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary opacity-0 shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
                       title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
                       aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
