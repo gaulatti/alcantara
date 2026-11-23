@@ -1,4 +1,5 @@
 import {
+  countProgramSongLeavesBySong,
   findUniqueProgramSongLeafById,
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
@@ -155,5 +156,56 @@ describe('program song sequence catalog identity', () => {
         'https://media.test/duplicate.mp3',
       ),
     ).toBeNull();
+  });
+});
+
+describe('countProgramSongLeavesBySong (#280)', () => {
+  const leaf = (id: string, fields: Record<string, unknown>) => ({
+    id,
+    kind: 'preset',
+    artist: '',
+    title: '',
+    coverUrl: '',
+    ...fields,
+  });
+
+  it('counts leaves per song id, else per audio address, across nested sequences, with a label', () => {
+    const sequence = normalizeProgramSongSequence({
+      mode: 'manual',
+      items: [
+        leaf('a', {
+          songId: 7,
+          artist: 'Artist',
+          title: 'Song',
+          audioUrl: 'https://m.test/1.mp3',
+        }),
+        leaf('b', { songId: 7, audioUrl: 'https://m.test/2.mp3' }),
+        {
+          id: 'n',
+          kind: 'sequence',
+          label: 'Block',
+          sequence: {
+            mode: 'manual',
+            items: [
+              leaf('c', { audioUrl: ' https://m.test/3.mp3 ' }),
+              leaf('d', { audioUrl: 'https://m.test/3.mp3' }),
+            ],
+            activeItemId: null,
+            loop: false,
+          },
+        },
+        leaf('e', { audioUrl: '' }),
+      ],
+      activeItemId: null,
+      loop: false,
+    });
+    const counts = countProgramSongLeavesBySong(sequence);
+    expect(counts.get('song:7')).toEqual({ count: 2, label: 'Artist - Song' });
+    expect(counts.get('url:https://m.test/3.mp3')).toEqual({
+      count: 2,
+      label: 'url:https://m.test/3.mp3',
+    });
+    expect(counts.size).toBe(2);
+    expect(countProgramSongLeavesBySong(null).size).toBe(0);
   });
 });

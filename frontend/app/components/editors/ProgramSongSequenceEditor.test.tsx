@@ -733,6 +733,18 @@ describe("ProgramSongSequenceEditor catalog", () => {
       .getAllByLabelText("Add to queue")
       .map((button) => button.parentElement as HTMLElement);
 
+  it("will not add a song the playlist already holds (#280)", () => {
+    editor({
+      sequence: { items: [{ ...preset("held"), songId: 1 }] },
+      songCatalog: catalog,
+      view: "catalog",
+    });
+    expect(screen.getAllByLabelText("Add to queue")).toHaveLength(3);
+    const held = screen.getByLabelText("Already in the playlist");
+    expect(held).toBeDisabled();
+    fireEvent.click(held);
+  });
+
   it("lists only enabled songs with audio, sorted by artist and title, and searches them", () => {
     editor({ sequence: { items: [] }, songCatalog: catalog, view: "catalog" });
     expect(screen.queryByText("Playlist is empty")).toBeNull();
