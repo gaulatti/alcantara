@@ -97,6 +97,25 @@ describe('ProgramService branding and program creation', () => {
     );
   });
 
+  it('stores no team for team 0, the test-mode value', async () => {
+    const programUpsert = jest.fn().mockResolvedValue({});
+    const transaction = jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations));
+    const service = Object.assign(serviceWith({
+      programState: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+      program: { upsert: programUpsert },
+      $transaction: transaction,
+    }), {
+      getProgramStateWithScenes: jest.fn().mockResolvedValue({}),
+      programTemplateUpdateData: () => ({}),
+      createDefaultProgramAudioMixerSettings: () => ({}),
+      normalizeProgramId: (id: string) => id,
+    });
+    await service.createProgram('test-mode', 'tv', null, 0);
+    expect(programUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: { programId: 'test-mode', teamId: null } }),
+    );
+  });
+
   it('creates the Program row in the same transaction as the ProgramState', async () => {
     const programUpsert = jest.fn().mockResolvedValue({});
     const stateCreate = jest.fn().mockResolvedValue({});

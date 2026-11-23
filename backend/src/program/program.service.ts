@@ -1463,7 +1463,8 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction([
       this.prisma.program.upsert({
         where: { programId: normalized },
-        create: { programId: normalized, teamId: teamId ?? null },
+        // Team 0 is the test-mode value, not a team: it is stored as no team.
+        create: { programId: normalized, teamId: teamId && teamId > 0 ? teamId : null },
         update: {},
       }),
       this.prisma.programState.create({
