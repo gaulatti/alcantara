@@ -8,6 +8,16 @@ key or publish URL held by those references, and the television playout path
 operator-facing ingest route below, which reads a key for the desktop studio and
 returns it to a signed-in operator without keeping it.
 
+## The operator page
+
+The **Broadcast destinations** page (Live → TV destinations) lists the catalog
+first. Those are the destinations the desktop studio's **Go live** streams to:
+Alcántara stores each key and hands it only to the signed-in desktop studio,
+through the ingest route. Alana's executor controls (state, destination
+selection, **Confirm Start** and **Confirm Stop**) sit below, under **Server
+playout (v2, not active)**. That server-side playout isn't in use yet, so
+Confirm Start there doesn't put the desktop studio on air.
+
 ## Ownership and command flow
 
 1. A user with `broadcast.manage` creates, edits, retires, restores, or reorders

@@ -424,7 +424,7 @@ export default function Broadcasts() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <SectionHeader
           title="Broadcast destinations"
-          description={`Choose the public destinations for the television leg of ${programId}. Stream keys remain in Secrets Manager and Croccante.`}
+          description={`Destinations for the television leg of ${programId}. The desktop studio's Go live streams to the ones chosen there; Alcántara stores each stream key and never shows it again.`}
         />
         {canManage ? (
           <Button onClick={() => openDialog({ kind: "add" })}>
@@ -432,141 +432,6 @@ export default function Broadcasts() {
           </Button>
         ) : null}
       </div>
-
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-              Executor state
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatePill
-                label={`Requested ${state?.downstream.requestedState ?? "unknown"}`}
-                tone={executorTone(state?.downstream.requestedState)}
-              />
-              <StatePill
-                label={`Actual ${state?.downstream.actualState ?? "unknown"}`}
-                tone={
-                  state?.downstream.requestedState === state?.downstream.actualState
-                    ? executorTone(state?.downstream.actualState)
-                    : "warn"
-                }
-                pulse={isRunning}
-              />
-              {state?.downstream.transition ? (
-                <StatePill label={state.downstream.transition} tone="warn" pulse />
-              ) : null}
-            </div>
-          </div>
-          <div className="text-right text-sm text-text-secondary">
-            <p>{state?.available ? "Alana reachable" : "Alana unavailable"}</p>
-            <p>
-              {state?.downstream.readiness
-                ? "Pipeline ready"
-                : "Pipeline not ready"}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">
-              Confirmed destination selection
-            </h2>
-            <p className="mt-1 text-sm text-text-secondary">
-              A Start requires at least one current destination. Reload is
-              available only while stopped.
-            </p>
-          </div>
-          {validatedSelectionVersion ? (
-            <span className="rounded-full border border-sea/30 bg-sea/10 px-3 py-1 text-xs text-sea">
-              Validated {validatedSelectionVersion}
-            </span>
-          ) : null}
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {selectableDestinations.map((destination) => {
-            const relay = state?.downstream.destinations.find(
-              (item) => item.id === destination.id,
-            );
-            return (
-              <label
-                key={destination.id}
-                className="flex cursor-pointer items-start gap-3 rounded-xl border border-sand/20 bg-white/70 p-4 dark:border-sand/40 dark:bg-dark-sand/50"
-              >
-                <Checkbox
-                  checked={selectedIds.includes(destination.id)}
-                  onChange={() => toggleDestination(destination.id)}
-                  disabled={!canOperate || isRunning || busyAction !== null}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-text-primary">
-                    {destination.displayName}
-                  </span>
-                  <span className="block text-xs text-text-secondary">
-                    {destination.id}
-                  </span>
-                  {relay ? (
-                    <span className="mt-2 block text-xs text-text-secondary">
-                      {relay.mode} · supervisor{" "}
-                      {relay.supervisorHealthy ? "healthy" : "unhealthy"} ·
-                      publisher{" "}
-                      {relay.publisherProcessHealthy ? "healthy" : "unhealthy"}
-                    </span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
-          {selectableDestinations.length === 0 ? (
-            <p className="text-sm text-text-secondary">
-              No configured destinations are available.
-            </p>
-          ) : null}
-        </div>
-        {canOperate ? (
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => void command("reload")}
-              disabled={
-                !isStopped ||
-                selectedIds.length === 0 ||
-                busyAction !== null ||
-                !state?.available
-              }
-            >
-              <RotateCw size={15} />{" "}
-              {busyAction === "reload" ? "Validating…" : "Reload while stopped"}
-            </Button>
-            <Button
-              onClick={() => setConfirmedAction("start")}
-              disabled={
-                isRunning ||
-                selectedIds.length === 0 ||
-                busyAction !== null ||
-                !state?.available
-              }
-            >
-              <RadioTower size={15} /> Confirm Start
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => setConfirmedAction("stop")}
-              disabled={!isRunning || busyAction !== null || !state?.available}
-            >
-              <Square size={15} /> Confirm Stop
-            </Button>
-          </div>
-        ) : (
-          <p className="mt-5 text-sm text-text-secondary">
-            You can inspect state, but broadcast.operate is required to change
-            it.
-          </p>
-        )}
-      </Card>
 
       {canManage ? (
         <Card>
@@ -664,6 +529,152 @@ export default function Broadcasts() {
           </div>
         </Card>
       ) : null}
+
+      <section aria-labelledby="server-playout-title" className="space-y-4">
+        <div>
+          <h2 id="server-playout-title" className="text-lg font-semibold text-text-primary">
+            Server playout (v2, not active)
+          </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Alana&apos;s server-side playout is not in use yet. Going live happens from the desktop
+            studio&apos;s Go live; Confirm Start below does not put the desktop studio on air.
+          </p>
+        </div>
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                Executor state
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StatePill
+                  label={`Requested ${state?.downstream.requestedState ?? "unknown"}`}
+                  tone={executorTone(state?.downstream.requestedState)}
+                />
+                <StatePill
+                  label={`Actual ${state?.downstream.actualState ?? "unknown"}`}
+                  tone={
+                    state?.downstream.requestedState === state?.downstream.actualState
+                      ? executorTone(state?.downstream.actualState)
+                      : "warn"
+                  }
+                  pulse={isRunning}
+                />
+                {state?.downstream.transition ? (
+                  <StatePill label={state.downstream.transition} tone="warn" pulse />
+                ) : null}
+              </div>
+            </div>
+            <div className="text-right text-sm text-text-secondary">
+              <p>{state?.available ? "Alana reachable" : "Alana unavailable"}</p>
+              <p>
+                {state?.downstream.readiness
+                  ? "Pipeline ready"
+                  : "Pipeline not ready"}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">
+                Confirmed destination selection
+              </h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                A Start requires at least one current destination. Reload is
+                available only while stopped.
+              </p>
+            </div>
+            {validatedSelectionVersion ? (
+              <span className="rounded-full border border-sea/30 bg-sea/10 px-3 py-1 text-xs text-sea">
+                Validated {validatedSelectionVersion}
+              </span>
+            ) : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {selectableDestinations.map((destination) => {
+              const relay = state?.downstream.destinations.find(
+                (item) => item.id === destination.id,
+              );
+              return (
+                <label
+                  key={destination.id}
+                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-sand/20 bg-white/70 p-4 dark:border-sand/40 dark:bg-dark-sand/50"
+                >
+                  <Checkbox
+                    checked={selectedIds.includes(destination.id)}
+                    onChange={() => toggleDestination(destination.id)}
+                    disabled={!canOperate || isRunning || busyAction !== null}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-text-primary">
+                      {destination.displayName}
+                    </span>
+                    <span className="block text-xs text-text-secondary">
+                      {destination.id}
+                    </span>
+                    {relay ? (
+                      <span className="mt-2 block text-xs text-text-secondary">
+                        {relay.mode} · supervisor{" "}
+                        {relay.supervisorHealthy ? "healthy" : "unhealthy"} ·
+                        publisher{" "}
+                        {relay.publisherProcessHealthy ? "healthy" : "unhealthy"}
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+            {selectableDestinations.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                No configured destinations are available.
+              </p>
+            ) : null}
+          </div>
+          {canOperate ? (
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => void command("reload")}
+                disabled={
+                  !isStopped ||
+                  selectedIds.length === 0 ||
+                  busyAction !== null ||
+                  !state?.available
+                }
+              >
+                <RotateCw size={15} />{" "}
+                {busyAction === "reload" ? "Validating…" : "Reload while stopped"}
+              </Button>
+              <Button
+                onClick={() => setConfirmedAction("start")}
+                disabled={
+                  isRunning ||
+                  selectedIds.length === 0 ||
+                  busyAction !== null ||
+                  !state?.available
+                }
+              >
+                <RadioTower size={15} /> Confirm Start
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setConfirmedAction("stop")}
+                disabled={!isRunning || busyAction !== null || !state?.available}
+              >
+                <Square size={15} /> Confirm Stop
+              </Button>
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-text-secondary">
+              You can inspect state, but broadcast.operate is required to change
+              it.
+            </p>
+          )}
+        </Card>
+      </section>
 
       <Modal
         isOpen={retireTarget !== null}

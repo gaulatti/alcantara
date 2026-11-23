@@ -209,6 +209,21 @@ it("names the page for the browser", () => {
   ]);
 });
 
+it("presents the destinations as the desktop studio's, and Alana's playout as inactive", async () => {
+  await page();
+  expect(
+    screen.getByText(/The desktop studio's Go live streams to the ones chosen there; Alcántara stores each stream key/),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Secrets Manager and Croccante/)).toBeNull();
+  const playout = screen.getByRole("region", { name: "Server playout (v2, not active)" });
+  expect(playout).toHaveTextContent("Confirm Start below does not put the desktop studio on air.");
+  expect(within(playout).getByText("Executor state")).toBeInTheDocument();
+  expect(within(playout).getByRole("button", { name: /Confirm Start/ })).toBeInTheDocument();
+  // The catalog the desktop uses comes first; the inactive server playout follows it.
+  const catalog = screen.getByRole("heading", { name: "Destination catalog" });
+  expect(catalog.compareDocumentPosition(playout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 it("waits for permissions, and refuses an operator without broadcast.view", async () => {
   features.loading = true;
   const { rerender } = render(<Broadcasts />);
