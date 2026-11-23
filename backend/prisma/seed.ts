@@ -224,15 +224,18 @@ async function main() {
     });
   }
 
-  // One fictional artist linked to a seeded label, to exercise the artist label picker offline.
+  // One fictional artist linked to a seeded label, to exercise the artist label picker offline. The
+  // link belongs to the team the local stack is configured for (none when the variable is unset).
+  const seedTeamId = Number(process.env.POMPEII_TEAM_ID) || null;
   if (
     !(await prisma.artistLabel.findFirst({
-      where: { artistKey: 'seed artist', teamId: null },
+      where: { artistKey: 'seed artist', teamId: seedTeamId },
     }))
   ) {
     await prisma.artistLabel.create({
       data: {
         artistKey: 'seed artist',
+        teamId: seedTeamId,
         artist: 'Seed Artist',
         labelId: demoMusicTag.id,
       },
