@@ -77,7 +77,7 @@ const permissionOf = (key: string): string => {
 };
 
 const specs = [
-  ...new ProgramMcpTools({} as never, {} as never).specs(),
+  ...new ProgramMcpTools({} as never, {} as never, { teamId: 7 } as never).specs(),
   ...new ScenesMcpTools({} as never, {} as never).specs(),
   ...new LayoutsMcpTools({} as never, {} as never).specs(),
   ...new MediaGroupsMcpTools({} as never, {} as never).specs(),

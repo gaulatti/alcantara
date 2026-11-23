@@ -1438,6 +1438,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     type?: string,
     template?: ProgramTemplateRegistration | null,
+    teamId?: number,
   ) {
     const normalized = this.normalizeProgramId(programId);
     const programType =
@@ -1457,15 +1458,25 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Program already exists');
     }
 
-    await this.prisma.programState.create({
-      data: {
-        programId: normalized,
-        type: programType,
-        ...this.programTemplateUpdateData(template ?? null),
-        activeSceneId: null,
-        audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
-      },
-    });
+    // gaulatti/alcantara#335: the Program row (which carries the team and owns branding) is created
+    // in the same transaction as the ProgramState, so a new program never lacks one.
+    await this.prisma.$transaction([
+      this.prisma.program.upsert({
+        where: { programId: normalized },
+        // Team 0 is the test-mode value, not a team: it is stored as no team.
+        create: { programId: normalized, teamId: teamId && teamId > 0 ? teamId : null },
+        update: {},
+      }),
+      this.prisma.programState.create({
+        data: {
+          programId: normalized,
+          type: programType,
+          ...this.programTemplateUpdateData(template ?? null),
+          activeSceneId: null,
+          audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+        },
+      }),
+    ]);
     return this.getProgramStateWithScenes(normalized);
   }
 
@@ -1629,6 +1640,33 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       },
     });
     return states.map((state) => this.withStagedSceneState(state));
+  }
+
+  /** gaulatti/alcantara#335: the public station marks of a program, or null when it has none. */
+  async getBranding(programId: string) {
+    const row = await this.prisma.programBranding.findUnique({
+      where: { programId: this.normalizeProgramId(programId) },
+    });
+    return row ? publicBranding(row) : null;
+  }
+
+  /** gaulatti/alcantara#335: create or update a program's station marks (program.manage). */
+  async putBranding(programId: string, input: unknown) {
+    const normalized = this.normalizeProgramId(programId);
+    const marks = parseBrandingInput(input);
+    const program = await this.prisma.program.findUnique({
+      where: { programId: normalized },
+      select: { programId: true },
+    });
+    if (!program) {
+      throw new NotFoundException('Program not found');
+    }
+    const row = await this.prisma.programBranding.upsert({
+      where: { programId: normalized },
+      create: { programId: normalized, ...marks },
+      update: marks,
+    });
+    return publicBranding(row);
   }
 
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
@@ -4031,4 +4069,81 @@ function isActiveTimeOverride(
   settings: unknown,
 ): settings is Record<string, unknown> {
   return isObjectRecord(settings) && settings.timeOverrideEnabled === true;
+}
+
+/** Station marks a program can carry (gaulatti/alcantara#335). Each is an optional string. */
+const BRANDING_FIELDS = [
+  'displayName',
+  'callsign',
+  'subtitle',
+  'logoUrl',
+  'hashtag',
+  'siteUrl',
+  'defaultChyron',
+] as const;
+type BrandingField = (typeof BRANDING_FIELDS)[number];
+type ProgramBrandingMarks = Partial<Record<BrandingField, string | null>>;
+
+const BRANDING_MAX_LENGTH: Record<BrandingField, number> = {
+  displayName: 120,
+  callsign: 32,
+  subtitle: 120,
+  logoUrl: 2048,
+  hashtag: 64,
+  siteUrl: 2048,
+  defaultChyron: 240,
+};
+
+/**
+ * Validates a branding write. Only the known fields are accepted; each is a string up to its
+ * length (or null to clear it). `logoUrl` must be an absolute https URL, so a program cannot point
+ * an overlay at an arbitrary scheme. An empty string is stored as null.
+ */
+export function parseBrandingInput(input: unknown): ProgramBrandingMarks {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new BadRequestException('branding must be an object');
+  }
+  const record = input as Record<string, unknown>;
+  const unknown = Object.keys(record).filter(
+    (key) => !(BRANDING_FIELDS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new BadRequestException(`unknown branding field: ${unknown[0]}`);
+  }
+  const marks: ProgramBrandingMarks = {};
+  for (const field of BRANDING_FIELDS) {
+    if (!(field in record)) continue;
+    const value = record[field];
+    if (value === null) {
+      marks[field] = null;
+      continue;
+    }
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${field} must be a string or null`);
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > BRANDING_MAX_LENGTH[field]) {
+      throw new BadRequestException(
+        `${field} is longer than ${BRANDING_MAX_LENGTH[field]} characters`,
+      );
+    }
+    if (field === 'logoUrl' && trimmed !== '' && !isHttpsUrl(trimmed)) {
+      throw new BadRequestException('logoUrl must be an absolute https URL');
+    }
+    marks[field] = trimmed === '' ? null : trimmed;
+  }
+  return marks;
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** The public marks of a branding row: never the program's team or any internal column. */
+function publicBranding(row: Record<BrandingField, string | null>) {
+  return Object.fromEntries(BRANDING_FIELDS.map((field) => [field, row[field] ?? null]));
 }

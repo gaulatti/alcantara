@@ -97,11 +97,14 @@ const ROWS: Row[] = [
       { args: { program_id: 'news', type: 'tv', template_url: URL } },
     ],
     rest: (c, a) =>
-      c.program.createProgram({
-        programId: a.program_id as string,
-        type: a.type as string,
-        templateUrl: a.template_url as string,
-      }),
+      c.program.createProgram(
+        {
+          programId: a.program_id as string,
+          type: a.type as string,
+          templateUrl: a.template_url as string,
+        },
+        { user: { authorization: { teamId: 7 } } } as never,
+      ),
     service: (f) => f.programs.createProgram,
     expected: stateIds,
   },
@@ -619,7 +622,7 @@ function build() {
     groups: new MediaGroupsController(f.groups as never),
   };
   const specs = [
-    ...new ProgramMcpTools(f.programs as never, f.templates as never).specs(),
+    ...new ProgramMcpTools(f.programs as never, f.templates as never, { teamId: 7 } as never).specs(),
     ...new ScenesMcpTools(f.scenes as never, f.programs as never).specs(),
     ...new LayoutsMcpTools(f.layouts as never, f.programs as never).specs(),
     ...new MediaGroupsMcpTools(f.groups as never, f.programs as never).specs(),
