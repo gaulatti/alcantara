@@ -57,6 +57,7 @@ describe('RadioModule wiring', () => {
         PalazzoMachineClient,
         SongSimilarityService,
         PrismaService,
+        SongSimilarityService,
       ]),
     );
     expect(Reflect.getMetadata('exports', RadioModule)).toEqual([

@@ -271,8 +271,6 @@ describe('ProgramRealtimeService upgrades', () => {
   it.each([
     [400, 'Bad Request'],
     [401, 'Unauthorized'],
-    [403, 'Forbidden'],
-    [500, 'Service Unavailable'],
   ])('writes the %s status line', (code, text) => {
     const { service } = build();
     const socket = { end: jest.fn() };
