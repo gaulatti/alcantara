@@ -6,7 +6,18 @@ import { RecipesService } from './recipes.service';
 // gaulatti/alcantara#424: the branches the behaviour specs do not reach on their own, for the
 // backend's 100% line and branch gate.
 
-const ROW = {
+const ROW: {
+  id: number;
+  programStateId: number;
+  name: string;
+  revision: number;
+  bumperSceneId: number | null;
+  slideshowSceneId: number | null;
+  returnSceneId: number | null;
+  transitionId: string;
+  holdMs: number;
+  steps: string[];
+} = {
   id: 7,
   programStateId: 1,
   name: 'Song',
