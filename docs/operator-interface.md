@@ -411,12 +411,35 @@ only `flight.manage` edits. Radio's timed blocks have no recipes.
   first names how many uses that have not aired yet will be rebuilt (uses in a sequence that is not running, and
   uses entirely after the cue on air), including hand edits to them. A 409 shows "Changed elsewhere" with a
   **Reload** button; any other refusal shows its reason.
-- **Preview a use:** pick a song and **Preview** calls `POST /programs/:id/recipes/:recipeId/expand` with
+- **Preview a use:** pick a song and **Preview** calls `POST /program/:id/recipes/:recipeId/expand` with
   `{params: {songId}}` and lists the cues it would write and the issues (`song_unavailable`,
   `artist_label_missing`, `label_empty`, `scene_not_assigned`, `scene_shared`). It uses the saved recipe and
   writes nothing.
-- **Empty states:** "Recipes are not available yet" while `GET /programs/:id/recipes` answers 404, and "No
+- **Empty states:** "Recipes are not available yet" while `GET /program/:id/recipes` answers 404, and "No
   recipes in this show yet" for an empty list.
+
+### Recipe uses in the operator cues (gaulatti/alcantara#425)
+
+The **Cues** tab has the rundown library (search, Songs, Clips; select and press Enter or double-click to
+add at the end). When the show has recipes it also has a **Recipes** tab: choose the recipe, pick a song, and
+press Enter. The console calls `expand`, and adds the use's cues in one save. When the use reports issues,
+a dialog lists them first; **Add anyway** adds it, **Cancel** adds nothing.
+
+- **One row per use:** "Song: *title* · *recipe*", the step count, **On air** while one of its cues is the
+  one running. The chevron shows its steps read-only, with the cue on air highlighted.
+- **Move up/down** moves the whole use past the neighbouring row (a cue or another use), so a use is never
+  split by a move.
+- **Change the label** builds the use again with another media label (or the artist's), in place and with
+  the same cue ids.
+- **Detach** removes the use's tag from its cues; they stay where they are as ordinary cues to edit by hand,
+  and the recipe no longer rebuilds them.
+- **Remove** deletes all of the use's cues.
+- A use split by a hand edit shows as its parts, each marked **Partial use**, offering Detach (not Change
+  the label).
+- Without recipes on the backend (404) or when they cannot be loaded, there is no Recipes tab and the rest of
+  the rundown works as before.
+
+Visual fixture: `/console-fixture?state=rundown-recipe`.
 
 The `rundown-recipes` console fixture shows one recipe with two uses and a preview with one issue.
 

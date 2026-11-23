@@ -15,27 +15,43 @@ const FILTERS = [
 
 /**
  * The rundown's searchable library (gaulatti/alcantara#299). Drag a row onto
- * the timeline, or select it and press Enter to add it at the end. Recipes
- * appear here once #222's model exists; until then there is no Recipes tab.
+ * the timeline, or select it and press Enter to add it at the end. With
+ * `recipes` (gaulatti/alcantara#425), a Recipes tab adds a song through the
+ * chosen recipe: the bumper, the song, its slideshow and back, as one use.
  */
 export function RundownLibrary({
   songs,
   clips,
   disabled,
   onAdd,
+  recipes,
+  onAddRecipe,
+  footnote = "Drag onto the timeline, or select and press Enter to add at the end.",
 }: {
   songs: SongCatalogItem[];
   clips: InstantItem[];
   disabled: boolean;
   onAdd: (entry: LibraryEntry) => void;
+  /** The program's recipes; a Recipes tab appears when there is at least one. */
+  recipes?: { id: number; name: string }[] | null;
+  onAddRecipe?: (recipeId: number, songId: number) => void;
+  footnote?: string;
 }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "song" | "clip">("all");
+  const [filter, setFilter] = useState<"all" | "song" | "clip" | "recipe">("all");
   const [active, setActive] = useState(0);
+  const [recipeId, setRecipeId] = useState<number | null>(null);
   const search = useRef<HTMLInputElement>(null);
+  const hasRecipes = Boolean(recipes?.length && onAddRecipe);
+  const recipeMode = hasRecipes && filter === "recipe";
+  const chosenRecipe =
+    recipes?.find((recipe) => recipe.id === recipeId) ?? recipes?.[0] ?? null;
   const rows = useMemo(
-    () => libraryRows(songs, clips, query, filter),
-    [songs, clips, query, filter],
+    () =>
+      recipeMode
+        ? libraryRows(songs, [], query, "song")
+        : libraryRows(songs, clips, query, filter === "recipe" ? "all" : filter),
+    [songs, clips, query, filter, recipeMode],
   );
   const current = rows[Math.min(active, rows.length - 1)];
 
@@ -58,7 +74,13 @@ export function RundownLibrary({
   }, []);
 
   const add = (entry: LibraryEntry | undefined) => {
-    if (entry && !disabled) onAdd(entry);
+    if (!entry || disabled) return;
+    if (recipeMode) {
+      if (entry.type === "song" && chosenRecipe)
+        onAddRecipe?.(chosenRecipe.id, entry.id);
+      return;
+    }
+    onAdd(entry);
   };
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -96,20 +118,38 @@ export function RundownLibrary({
         role="group"
         aria-label="Library filter"
       >
-        {FILTERS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={filter === id}
-            onClick={() => {
-              setFilter(id);
-              setActive(0);
-            }}
-          >
-            {label}
-          </button>
-        ))}
+        {[...FILTERS, ...(hasRecipes ? ([["recipe", "Recipes"]] as const) : [])].map(
+          ([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={filter === id}
+              onClick={() => {
+                setFilter(id);
+                setActive(0);
+              }}
+            >
+              {label}
+            </button>
+          ),
+        )}
       </div>
+      {recipeMode && recipes ? (
+        <label className="rundown-library-recipe">
+          <span>Recipe</span>
+          <select
+            aria-label="Recipe"
+            value={chosenRecipe?.id ?? ""}
+            onChange={(event) => setRecipeId(Number(event.target.value))}
+          >
+            {recipes.map((recipe) => (
+              <option key={recipe.id} value={recipe.id}>
+                {recipe.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <ul
         className="rundown-library-list"
         role="listbox"
@@ -126,7 +166,7 @@ export function RundownLibrary({
             role="option"
             aria-selected={row === current}
             data-group={row.group}
-            draggable={!disabled}
+            draggable={!disabled && !recipeMode}
             onClick={() => setActive(index)}
             onDoubleClick={() => add(row.entry)}
             onDragStart={(event) => {
@@ -155,7 +195,9 @@ export function RundownLibrary({
         )}
       </ul>
       <p className="rundown-library-foot">
-        Drag onto the timeline, or select and press Enter to add at the end.
+        {recipeMode
+          ? `Select a song and press Enter to add it with ${chosenRecipe?.name ?? "the recipe"}.`
+          : footnote}
       </p>
     </section>
   );

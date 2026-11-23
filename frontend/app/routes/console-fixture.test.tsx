@@ -243,6 +243,9 @@ vi.mock("../components/AppLoading", () => ({
 vi.mock("../components/RecipeEditorFixture", () => ({
   RecipeEditorFixture: () => <Box name="rundown recipes" data={null} />,
 }));
+vi.mock("../components/RundownRecipeFixture", () => ({
+  RundownRecipeFixture: () => <Box name="rundown recipe" data={null} />,
+}));
 vi.mock("../components/RundownFixture", () => ({
   RundownFixture: () => <Box name="rundown desk" data={null} />,
 }));
@@ -380,6 +383,7 @@ it("opens the single-component fixtures", () => {
   const single: [string, string, unknown][] = [
     ["?state=rundown-desk", "rundown desk", null],
     ["?state=rundown-recipes", "rundown recipes", null],
+    ["?state=rundown-recipe", "rundown recipe", null],
     ["?state=program-return", "program return", null],
     ["?state=caller-desk", "caller desk", null],
     ["?state=loading", "loading", null],

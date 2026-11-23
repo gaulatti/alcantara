@@ -98,11 +98,13 @@ export async function expandRecipe(
   programId: string,
   recipeId: number,
   params: { songId: number; labelId?: string | null },
+  /** Builds the same use again (its cues keep their ids), as when its label changes (gaulatti/alcantara#425). */
+  useId?: string,
 ): Promise<RecipeExpansion> {
   const response = await fetch(`${base(programId)}/${recipeId}/expand`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ params }),
+    body: JSON.stringify(useId ? { params, useId } : { params }),
   });
   if (!response.ok) throw await recipeError(response);
   const payload = (await response.json()) as Partial<RecipeExpansion>;

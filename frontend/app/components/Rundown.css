@@ -397,6 +397,31 @@
   border: 1px solid var(--console-border);
   border-radius: 3px;
 }
+/* gaulatti/alcantara#425: the recipe a Recipes-tab song is added with. */
+.rundown-library-recipe {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--console-border);
+  color: var(--console-muted);
+  font-size: 12px;
+}
+.rundown-library-recipe select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--console-border);
+  border-radius: var(--radius-ui);
+  background: var(--console-canvas);
+  color: var(--console-text);
+  font-size: 12px;
+}
+.rundown-library-recipe select:focus-visible {
+  outline: none;
+  border-color: var(--console-ready);
+}
 .rundown-library-tabs {
   display: flex;
   gap: 4px;
