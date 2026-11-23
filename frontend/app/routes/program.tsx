@@ -556,6 +556,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
   const takeSceneInstantAudio = useCallback(
     (event: SceneInstantTakeEvent) => {
+      if (!event.instant) {
+        // A take with no instant has nothing to play. Refuse it before it cancels a take in progress.
+        console.warn(`Scene instant take ignored: no instant on scene ${event.sceneId}`);
+        return;
+      }
       sceneInstantTakeSequenceRef.current += 1;
       const takeSequence = sceneInstantTakeSequenceRef.current;
       const sceneId = normalizeSceneInstantNumericId(event.sceneId);
