@@ -534,9 +534,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     <small className="block">
                       {new Date(activeLog.scheduledAt!).toLocaleString()} ·{" "}
                       {/* timedBlockOnAir means activeLog is the running log. */}
+                      {/* v8 ignore start -- timedBlockOnAir already requires scheduledAt <= now in the same render, so "ARMED" is unreachable here */}
                       {Date.parse(activeLog.scheduledAt!) > Date.now()
                         ? "ARMED"
                         : "ON AIR"}{" "}
+                      {/* v8 ignore stop */}
                       · Revision {activeLog.revision}
                     </small>
                   </>
@@ -1056,10 +1058,12 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   Date.parse(runningLog.scheduledAt!) <= Date.now() &&
                   currentLogIndex < runningLog.items.length - 1,
                 busy: logBusy,
+                /* v8 ignore start -- timedBlockOnAir already requires scheduledAt <= now in the same render, so "armed" is unreachable here */
                 label:
                   Date.parse(runningLog!.scheduledAt!) > Date.now()
                     ? "Rundown armed for scheduled start"
                     : "Rundown automation running",
+                /* v8 ignore stop */
                 onStart: () => void commandLog("start"),
                 onStop: () => void commandLog("stop"),
                 onAdvance: () => void commandLog("advance"),
