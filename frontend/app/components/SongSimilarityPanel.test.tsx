@@ -347,3 +347,47 @@ it("reports a clean upload with no rejections, then reloads coverage", async () 
   expect(await screen.findByText("2 stored, 0 rejected.")).toBeTruthy();
   await waitFor(() => expect(coverageCalls()).toBe(before + 1));
 });
+
+// gaulatti/alcantara#392 (audit of #350): the Bleecker controls submit what the native ones did.
+it("saves the mode, candidates, threshold and window together in one payload", async () => {
+  const fetchMock = radioApi({
+    settings: () =>
+      new Response(
+        JSON.stringify({ similarityMode: "off", similarityThreshold: 0.8, similarityWindowSeconds: 30, similarityPool: "sequence" }),
+      ),
+    save: () => new Response("{}"),
+  });
+  render(<SongSimilarityPanel programId="radio-1" />);
+  await screen.findByText(/4 of 10/);
+  fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "on" } });
+  fireEvent.change(screen.getByLabelText("Candidates"), { target: { value: "catalog" } });
+  fireEvent.change(screen.getByLabelText("Threshold (−1 to 1)"), { target: { value: "0.6" } });
+  fireEvent.change(screen.getByLabelText("Window (seconds)"), { target: { value: "45" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(true));
+  const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")!;
+  expect(JSON.parse(String(put[1]!.body))).toEqual({
+    similarityMode: "on",
+    similarityPool: "catalog",
+    similarityThreshold: 0.6,
+    similarityWindowSeconds: 45,
+  });
+});
+
+it("exports only the songs without embeddings by default and every song once the box is cleared", async () => {
+  const fetchMock = radioApi({ export: () => new Response(JSON.stringify({ songs: [] })) });
+  vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL: () => undefined }));
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  render(<SongSimilarityPanel programId="radio-1" />);
+  await screen.findByText(/4 of 10/);
+  const exportButton = screen.getByRole("button", { name: "Export songs to analyze" });
+  fireEvent.click(exportButton);
+  await waitFor(() =>
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/similarity/export?scope=sequence&missingOnly=true"))).toBe(true),
+  );
+  fireEvent.click(screen.getByLabelText("Only songs without embeddings"));
+  fireEvent.click(exportButton);
+  await waitFor(() =>
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/similarity/export?scope=sequence&missingOnly=false"))).toBe(true),
+  );
+});

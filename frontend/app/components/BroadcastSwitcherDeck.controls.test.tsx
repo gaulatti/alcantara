@@ -97,15 +97,20 @@ describe("workspace toolbar", () => {
     expect(mocks.prefs.updateProfile).toHaveBeenCalledWith({ touchMode: false });
     fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
     expect(document.documentElement.requestFullscreen).toHaveBeenCalled();
-    fireEvent.change(screen.getByRole("slider"), { target: { value: "400" } });
-    expect(mocks.prefs.updateProfile).toHaveBeenCalledWith({ dockWidth: 400 });
+    // gaulatti/alcantara#392: the source panel width is Bleecker's Fader, not a native range input.
+    expect(document.querySelector('input[type="range"]')).toBeNull();
+    const width = screen.getByRole("slider", { name: /Source panel width/ });
+    fireEvent.keyDown(width, { key: "ArrowRight" });
+    expect(mocks.prefs.updateProfile).toHaveBeenCalledWith({ dockWidth: 310 });
+    fireEvent.keyDown(width, { key: "End" });
+    expect(mocks.prefs.updateProfile).toHaveBeenCalledWith({ dockWidth: 520 });
     expect(screen.getByTitle("Live updates disconnected")).toBeInTheDocument();
   });
   it("tolerates a browser without fullscreen and uses the default dock width", () => {
     document.documentElement.requestFullscreen = undefined as any;
     render(<BroadcastSwitcherDeck {...baseProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
-    expect((screen.getByRole("slider") as HTMLInputElement).value).toBe("300");
+    expect(screen.getByRole("slider", { name: /Source panel width/ })).toHaveAttribute("aria-valuenow", "300");
   });
   it("labels the sources as preview, program, both or staged and the ready line", () => {
     render(<BroadcastSwitcherDeck {...baseProps()} scenes={[scene, other, { id: 3, name: "Three" } as any]} />);
