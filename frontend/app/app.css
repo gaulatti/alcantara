@@ -1,6 +1,8 @@
 @import "@gaulatti/bleecker/styles.base.css";
 @import "./components/BroadcastConsole.css";
 @source "../node_modules/@gaulatti/bleecker/dist/**/*.js";
+/* The Fifth Bell program is Brokaw's (gaulatti/alcantara#381); its Tailwind classes are generated here. */
+@source "../node_modules/@fifthbell/brokaw/dist/components/live-program/**/*.js";
 @source "./**/*.{ts,tsx}";
 
 @keyframes eq-bar1 {

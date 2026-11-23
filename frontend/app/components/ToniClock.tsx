@@ -2,8 +2,8 @@ import React from 'react';
 import { BellRing } from 'lucide-react';
 import './ToniClock.css';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
-import { WorldClocks } from '../programs/fifthbell/components/WorldClocks';
-import type { SupportedLanguage } from '../programs/fifthbell/i18n';
+import { WorldClocks } from './WorldClocks';
+import type { SupportedLanguage } from './worldClockI18n';
 
 export interface ToniClockCity {
   city: string;

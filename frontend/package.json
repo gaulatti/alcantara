@@ -11,7 +11,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
-    "@fifthbell/brokaw": "0.1.79",
+    "@fifthbell/brokaw": "0.1.81",
     "@gaulatti/bleecker": "0.1.49",
     "@modoitaliano/giorgia": "0.1.106",
     "@react-router/node": "7.12.0",
