@@ -245,10 +245,8 @@ function payloadFor(url: string, key: unknown) {
   try {
     return payloadFromIngestUrl(url, key);
   } catch (error) {
-    if (error instanceof IngestPayloadError) {
-      throw new BadRequestException(error.message);
-    }
-    throw error;
+    // payloadFromIngestUrl only throws IngestPayloadError, whose text is safe to show.
+    throw new BadRequestException((error as IngestPayloadError).message);
   }
 }
 

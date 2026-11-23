@@ -167,7 +167,7 @@ describe('appendix A rows of ticket #219', () => {
     const tiers = ROWS.map((row) => row[6]);
     for (const [tier, n] of [
       ['R', 19],
-      ['W', 13],
+      ['W', 12],
       ['A', 19],
       ['D', 6],
     ] as const)
@@ -193,6 +193,7 @@ describe('appendix A rows of ticket #219', () => {
     // both guest-link rows, the operator token, the desktop program feed token and
     // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
+      'addDestination',
       'createInvitation',
       'desktopProgramFeedToken',
       'issue',
@@ -200,6 +201,7 @@ describe('appendix A rows of ticket #219', () => {
       'issueIngest',
       'operatorToken',
       'replaceInvitation',
+      'replaceKey',
       'rotate',
     ]);
     for (const row of excludedRows) expect(row[5]).toBe('—');

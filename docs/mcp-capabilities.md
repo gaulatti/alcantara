@@ -422,13 +422,15 @@ from `appendix-a.tsv` and asserts, for each, the capability's name, permission
 (and that it is the controller handler's own), tier, a dry run for every W, A
 and D, and a confirm target for every A and D.
 
-**Not capabilities.** Appendix A marks ten rows excluded (capability
+**Not capabilities.** Appendix A marks twelve rows excluded (capability
 column `—`) because they return or produce a credential:
 `POST /auth/realtime-ticket`, `POST /radio/:programId/monitor-ticket`,
 `POST /program/:programId/recording/download-ticket`,
 `POST /external-sources/:id/credentials/rotate`, `POST /webrtc/operator-token`,
 `POST /webrtc/desktop-program-feed-token`,
 `POST /broadcast/destinations/:destinationId/ingest` (a destination's ingest key),
+`POST /broadcast/destinations` (adds one with its stream key) and
+`PUT /broadcast/destinations/:destinationId/key` (replaces the key),
 and the two routes whose whole product is a guest link,
 `POST /webrtc/invitations` (create) and
 `POST /webrtc/invitations/:id/replace` (replace; it also disconnects the
@@ -636,9 +638,8 @@ Every W capability, and whether it changes what is on air or queued:
 
 | Capability | Defined at | Changes on air or queued | Actor recorded | Why |
 |---|---|---|---|---|
-| `destination_create_destination` | `backend/src/mcp/capabilities/destinations.ts:108` | No | - | Adds a catalog entry; nothing is selected or started. |
 | `destination_reorder_destinations` | `backend/src/mcp/capabilities/destinations.ts:134` | No | - | Catalog order only; a running stream keeps its destinations. |
-| `destination_update_destination` | `backend/src/mcp/capabilities/destinations.ts:155` | No | - | Display name and secret reference are read at the next start (an A row). |
+| `destination_rename_destination` | `backend/src/mcp/capabilities/destinations.ts:155` | No | - | Display name only; a running stream keeps the selection it started with. |
 | `destination_retire_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Blocks future selection; a stream already out is not touched. |
 | `destination_restore_destination` | `backend/src/mcp/capabilities/destinations.ts:` | No | - | Re-enables selection for a later start. |
 | `filler_prepare_television` | `backend/src/mcp/capabilities/filler.ts:36` | No | - | Its description: it does not change what is on air; the version is pending for the next session. |
@@ -698,7 +699,6 @@ are wrapped and a dry run is not.
 
 | Capability | Permission | Tier | What it does |
 |---|---|---|---|
-| `destination_create_destination` | `broadcast.manage` | W | Adds a destination to the end of the catalog: an id, a display name and the Secrets Manager reference (secret id and pinned version id) of its stream key. |
 | `destination_get_program_state` | `broadcast.view` | R | Reads the television broadcast state of a program: its selectable destinations and what the executor reports (requested and actual state, transition, readiness, active and pending destinations). |
 | `destination_list_catalog` | `broadcast.manage` | R | Lists the full destination catalog with the Secrets Manager reference (not the key) each destination streams with, and its retirement and update times. |
 | `destination_list_destinations` | `broadcast.view` | R | Lists the broadcast destinations an operator may select (id, display name, position, retired), in catalog order. |
@@ -708,7 +708,7 @@ are wrapped and a dry run is not.
 | `destination_retire_destination` | `broadcast.manage` | W | Retires a destination: it can no longer be selected for a start (a replay of an older selection that includes it is refused too). |
 | `destination_start` | `broadcast.operate` | A | Starts the television broadcast of a program to the selected destinations: the stream goes out live to every one of them. |
 | `destination_stop` | `broadcast.operate` | A | Stops the television broadcast of a program: the stream ends for every destination. |
-| `destination_update_destination` | `broadcast.manage` | W | Replaces the display name and the Secrets Manager reference of a destination (all three are required, as the console sends them). |
+| `destination_rename_destination` | `broadcast.manage` | W | Changes the display name of a destination. Its stream key and Secrets Manager reference are not touched; adding a destination and replacing a key are console-only because they carry a credential. |
 | `external_source_create` | `alcantara:webrtc:operate` | A | Creates an external source of the team for one to 16 programs. |
 | `external_source_get` | `alcantara:webrtc:read` | R | Reads one external source: transport, lifecycle, health, programs, credential version, ingress and participant identity. |
 | `external_source_list` | `alcantara:webrtc:read` | R | Lists the external sources of the team (name, transport, lifecycle, health, programs, credential version), active ones first. |

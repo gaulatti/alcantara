@@ -174,7 +174,9 @@ describe('read capabilities return what the controller returns', () => {
 
   it('destination_list_catalog', async () => {
     const result = await same('destination_list_catalog', {}, () =>
-      controllers.destinations.listCatalog(),
+      controllers.destinations.listCatalog({
+        user: { sub: 'u', authorization: { teamId: 0 } },
+      }),
     );
     expect(JSON.stringify(result)).toContain('"untrusted"');
   });
