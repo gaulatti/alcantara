@@ -4,7 +4,11 @@
 # unchanged files, so an asset the current build still uses keeps its old date.
 #
 # usage: prune-old-assets.sh BUCKET BUILD_DIR [DAYS=14]
-# BUILD_DIR is the uploaded build; its assets/ files are never deleted whatever their age.
+# Two rules decide what may be deleted; an object must pass both to go:
+#   1. Protected set: never delete a file of the uploaded build (BUILD_DIR/assets), nor any
+#      assets/ file the LIVE index.html in the bucket references, whatever its age.
+#   2. Retention window: never delete an object modified within the last DAYS days.
+# If the live index.html cannot be read or references no assets/ file, nothing is deleted.
 # Exits non-zero if listing or any delete fails; the deploy step tolerates that.
 set -euo pipefail
 
@@ -15,6 +19,10 @@ days="${3:-14}"
 
 keep="$(cd "$build" && find assets -type f | sort)"
 [ -n "$keep" ] || { echo "the build has no assets: refusing to prune" >&2; exit 2; }
+live_index="$(aws s3 cp "s3://$bucket/index.html" -)" || { echo "cannot read the live index.html: refusing to prune" >&2; exit 2; }
+referenced="$(grep -oE 'assets/[A-Za-z0-9._~%+@/-]+' <<<"$live_index" | sort -u || true)"
+[ -n "$referenced" ] || { echo "the live index.html references no assets/ file: refusing to prune" >&2; exit 2; }
+keep="$(printf '%s\n%s\n' "$keep" "$referenced" | sort -u)"
 cutoff="$(python3 -c 'import sys,datetime as d;print((d.datetime.now(d.timezone.utc)-d.timedelta(days=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%S"))' "$days")"
 
 listing="$(aws s3api list-objects-v2 --bucket "$bucket" --prefix assets/ \
