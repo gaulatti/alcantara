@@ -200,7 +200,7 @@ describe('PompeiiChannel against a restarted Pompeii', () => {
     cleanup.push(() => slow.server.forceShutdown());
     const resets: string[] = [];
     const channel = channelTo(slow.port, resets, 5_000);
-    const results = [];
+    const results: unknown[] = [];
     for (let attempt = 0; attempt < 4; attempt += 1) {
       results.push(
         await channel.authorize(request, 200).then(

@@ -13,7 +13,7 @@ const deliver = (service: NowPlayingPublisherService, host: string) => {
 };
 
 describe('NowPlayingPublisherService logging', () => {
-  const playback: SongPlaybackData = {
+  const playback = {
     token: '1',
     audioUrl: 'https://example.test/song.mp3',
     title: 'Test song',
@@ -26,7 +26,7 @@ describe('NowPlayingPublisherService logging', () => {
     startedAt: '2026-08-22T03:00:00.000Z',
     updatedAt: '2026-08-22T03:00:00.000Z',
     telemetryStale: false,
-  };
+  } as SongPlaybackData;
 
   afterEach(() => {
     jest.restoreAllMocks();

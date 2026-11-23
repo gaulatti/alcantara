@@ -113,7 +113,7 @@ describe('branding coverage (gaulatti/alcantara#335)', () => {
           createDefaultProgramAudioMixerSettings: () => ({}),
           normalizeProgramId: (id: string) => id,
         },
-      );
+      ) as unknown as ProgramService;
       return { service, upsert, teamId };
     };
     const positive = make(9);
@@ -176,7 +176,7 @@ describe('ProgramService branding and program creation', () => {
       programTemplateUpdateData: () => ({}),
       createDefaultProgramAudioMixerSettings: () => ({}),
       normalizeProgramId: (id: string) => id,
-    });
+    }) as unknown as ProgramService;
     await service.createProgram('team-owned', 'tv', null, 9);
     expect(programUpsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: { programId: 'team-owned', teamId: 9 } }),
@@ -195,7 +195,7 @@ describe('ProgramService branding and program creation', () => {
       programTemplateUpdateData: () => ({}),
       createDefaultProgramAudioMixerSettings: () => ({}),
       normalizeProgramId: (id: string) => id,
-    });
+    }) as unknown as ProgramService;
     await service.createProgram('test-mode', 'tv', null, 0);
     expect(programUpsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: { programId: 'test-mode', teamId: null } }),
@@ -215,7 +215,7 @@ describe('ProgramService branding and program creation', () => {
       programTemplateUpdateData: () => ({}),
       createDefaultProgramAudioMixerSettings: () => ({}),
       normalizeProgramId: (id: string) => id,
-    });
+    }) as unknown as ProgramService;
     await service.createProgram('fresh');
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(programUpsert).toHaveBeenCalledWith(

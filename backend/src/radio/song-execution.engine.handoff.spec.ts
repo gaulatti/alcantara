@@ -1963,7 +1963,7 @@ describe('next-song announcement and handoff', () => {
           'alcantara_radio_bumpers_total{path="command",result="failed"} 1',
         ]);
         expect(
-          warn.mock.calls.filter((c) => /^Bumper failed/.test(String(c[0]))),
+          warn.mock.calls.filter((c) => /^Bumper failed/.test(String((c as unknown[])[0]))),
         ).toHaveLength(1);
         expect(urls(h.palazzo.commands).at(-1)).toBe(SONGS[2].url);
       });

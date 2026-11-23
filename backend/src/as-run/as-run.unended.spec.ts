@@ -64,11 +64,6 @@ function table() {
             ),
           );
         const row: Row = {
-          songId: null,
-          assetId: null,
-          inferred: false,
-          reviewFlag: null,
-          endReason: null,
           ...data,
           id: rows.length + 1,
         } as Row;

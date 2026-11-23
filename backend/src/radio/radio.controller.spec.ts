@@ -18,6 +18,7 @@ it('does not reconnect Palazzo when only listener configuration changes', async 
     {} as any,
     telemetry,
     {} as any,
+    undefined as never,
   );
   await controller.updateSettings('radio', {
     listenerUrl: 'https://radio.example/stream',

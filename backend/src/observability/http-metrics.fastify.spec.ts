@@ -60,7 +60,7 @@ function series(exposition: string, name: string): { labels: Record<string, stri
 }
 
 describe('HTTP metrics through the Fastify adapter', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let metrics: ManagedMetricsService;
 
   beforeAll(async () => {
