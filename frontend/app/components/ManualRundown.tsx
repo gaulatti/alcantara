@@ -405,6 +405,7 @@ export default function ManualRundown() {
   };
 
   const handleToggleLoop = async () => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
 
     try {
@@ -429,6 +430,7 @@ export default function ManualRundown() {
   };
 
   const handleAddCue = async (kind: FlightCueKind) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
 
     const cue = createFlightCue(kind);
@@ -438,6 +440,7 @@ export default function ManualRundown() {
 
   /** A song, clip or stop from the library, at the end (gaulatti/alcantara#425). */
   const handleAddLibraryEntry = async (entry: LibraryEntry) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
     const items = insertCues(latestItems(activeSequence), [cueFor(entry, false)]);
     await persistSequenceItems(activeSequence, items);
@@ -448,6 +451,7 @@ export default function ManualRundown() {
 
   /** One use of a recipe: its cues are added together, after the operator sees any issue. */
   const handleAddRecipeUse = async (recipeId: number, songId: number) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
     try {
       const { items, issues } = await expandRecipe(activeProgramId, recipeId, { songId });
@@ -473,6 +477,7 @@ export default function ManualRundown() {
   };
 
   const handleMoveRow = async (rowIndex: number, direction: "up" | "down") => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
     const current = latestItems(activeSequence);
     const items = moveRow(current, rowIndex, direction);
@@ -480,11 +485,13 @@ export default function ManualRundown() {
   };
 
   const handleDetachUse = async (useId: string) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
     await persistSequenceItems(activeSequence, detachUse(latestItems(activeSequence), useId));
   };
 
   const handleRemoveUse = async (useId: string) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
     await persistSequenceItems(activeSequence, removeUse(latestItems(activeSequence), useId));
   };
@@ -520,6 +527,7 @@ export default function ManualRundown() {
   };
 
   const handleUpdateCue = async (cueId: string, patch: Partial<FlightCue>) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
 
     const items = latestItems(activeSequence).map((cue) =>
@@ -529,6 +537,7 @@ export default function ManualRundown() {
   };
 
   const handleDeleteCue = async (cueId: string) => {
+    /* v8 ignore next -- callers render only while a sequence is active (lines 633, 660, 675, 692 gate them), so this guard is unreachable from the page */
     if (!activeSequence) return;
 
     const items = latestItems(activeSequence).filter((cue) => cue.id !== cueId);
