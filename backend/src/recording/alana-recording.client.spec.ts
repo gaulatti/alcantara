@@ -51,15 +51,17 @@ function config(values: Record<string, string> = {}) {
 
 describe('AlanaRecordingClient', () => {
   it('reads the exact program-scoped Alana status and keeps only bounded fields', async () => {
-    const transport = jest.fn<RecordingFetch>().mockResolvedValue(
-      Response.json(
-        status({
-          operationId: 'private-operation',
-          path: '/var/lib/alana/private.mp4',
-          finalSha256: 'private-artifact-hash',
-        }),
-      ),
-    );
+    const transport = jest
+      .fn<ReturnType<RecordingFetch>, Parameters<RecordingFetch>>()
+      .mockResolvedValue(
+        Response.json(
+          status({
+            operationId: 'private-operation',
+            path: '/var/lib/alana/private.mp4',
+            finalSha256: 'private-artifact-hash',
+          }),
+        ),
+      );
     const metrics = new ManagedMetricsService();
     const client = new AlanaRecordingClient(config(), metrics, transport);
 
@@ -82,19 +84,21 @@ describe('AlanaRecordingClient', () => {
   });
 
   it('forwards one bounded idempotency key with no command body', async () => {
-    const transport = jest.fn<RecordingFetch>().mockResolvedValue(
-      Response.json(
-        status({
-          state: 'requested',
-          commandResult: {
-            action: 'start',
-            status: 202,
-            result: 'accepted',
-          },
-        }),
-        { status: 202 },
-      ),
-    );
+    const transport = jest
+      .fn<ReturnType<RecordingFetch>, Parameters<RecordingFetch>>()
+      .mockResolvedValue(
+        Response.json(
+          status({
+            state: 'requested',
+            commandResult: {
+              action: 'start',
+              status: 202,
+              result: 'accepted',
+            },
+          }),
+          { status: 202 },
+        ),
+      );
     const metrics = new ManagedMetricsService();
     const client = new AlanaRecordingClient(config(), metrics, transport);
 
@@ -124,20 +128,22 @@ describe('AlanaRecordingClient', () => {
   });
 
   it('returns only bounded Alana rejection evidence', async () => {
-    const transport = jest.fn<RecordingFetch>().mockResolvedValue(
-      Response.json(
-        status({
-          state: 'failed',
-          error: '/private/path/provider-detail',
-          commandResult: {
-            action: 'stop',
-            status: 500,
-            result: '/private/path/provider-detail',
-          },
-        }),
-        { status: 500 },
-      ),
-    );
+    const transport = jest
+      .fn<ReturnType<RecordingFetch>, Parameters<RecordingFetch>>()
+      .mockResolvedValue(
+        Response.json(
+          status({
+            state: 'failed',
+            error: '/private/path/provider-detail',
+            commandResult: {
+              action: 'stop',
+              status: 500,
+              result: '/private/path/provider-detail',
+            },
+          }),
+          { status: 500 },
+        ),
+      );
     const client = new AlanaRecordingClient(
       config(),
       new ManagedMetricsService(),
@@ -160,14 +166,14 @@ describe('AlanaRecordingClient', () => {
       config(),
       new ManagedMetricsService(),
       jest
-        .fn<RecordingFetch>()
+        .fn<ReturnType<RecordingFetch>, Parameters<RecordingFetch>>()
         .mockRejectedValue(new Error('private provider detail')),
     );
     const malformed = new AlanaRecordingClient(
       config(),
       new ManagedMetricsService(),
       jest
-        .fn<RecordingFetch>()
+        .fn<ReturnType<RecordingFetch>, Parameters<RecordingFetch>>()
         .mockResolvedValue(Response.json({ state: 'active' })),
     );
 
