@@ -604,6 +604,18 @@ describe("scene instants", () => {
     expect(FakeAudio.instances[0].loop).toBe(false);
   });
 
+  it("ignores a take with no instant: no audio, a logged line, and no throw", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    open();
+    await flush();
+    expect(() =>
+      emit({ type: "scene_instant_take", programId: "main", sceneId: 7, triggeredAt: "2026-11-22T10:00:00.000Z" }),
+    ).not.toThrow();
+    expect(FakeAudio.instances).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no instant on scene 7"));
+    warn.mockRestore();
+  });
+
   it("ignores a take for another program or on a confidence monitor", async () => {
     open("?confidence=program");
     await flush();
