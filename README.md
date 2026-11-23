@@ -143,14 +143,12 @@ exercise Preview and TAKE deliberately. Restart one guest and verify its slot
 is held for 60 seconds. The machine-only return router requires the local
 `WEBRTC_RENDERER_KEY` from Compose.
 
-Production owns LiveKit, Redis, TLS, TURN/TLS, firewall rules, health checks,
-and secrets through Alcantara deployment infrastructure. Start from
-`infra/livekit.production.example.yaml`, generate real API/session/renderer
-secrets in the application-scoped secret. Route public LiveKit HTTPS/WSS through
-the existing port-443 edge, and expose WebRTC TCP 7881, TURN/TLS 5349, TURN UDP
-3478, and the configured UDP media/relay ranges. Validate TURN
-from a restrictive external network before scheduling remote guests. Never use
-the committed local credentials outside Compose.
+In production, LiveKit runs on Helix, the on-premises host, not on the backend's
+service host (#354). `infra/helix/livekit-up.sh` starts it there, and
+[`infra/README.md`](infra/README.md) has the ports, the nginx server block and
+the one-time host setup. Validate TURN from a restrictive external network
+before scheduling remote guests. Never use the committed local credentials
+outside Compose.
 
 In production, LiveKit is configured only by the runtime secret
 (`broadcast/production/config`, #354). The secret holds four fields that must
@@ -172,8 +170,10 @@ radio. It starts with WebRTC off and logs the field names, never the values.
 The deploy's contract check and the LiveKit renderer do refuse such a group, so
 a deploy fails before the running container is replaced.
 
-The deploy renders the LiveKit server's `livekit.yaml` from the same fields
-(`backend/scripts/print-livekit-config.mjs`) and starts `redis` and `livekit`.
+`infra/helix/livekit-up.sh` renders the LiveKit server's `livekit.yaml` from the
+same fields (`backend/scripts/print-livekit-config.mjs`) and starts `redis` and
+`livekit` on Helix. The backend calls LiveKit's API at the `https://` form of
+`livekitWsUrl`, so both go through the same public name.
 Without the group, the Calls console reports the feature as unavailable, and
 unrelated deployments are unaffected.
 

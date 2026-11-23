@@ -1,12 +1,14 @@
 // gaulatti/alcantara#354: the LiveKit server configuration, rendered from the
 // runtime secret's LiveKit group so the keys live in one place.
 
-/** The LiveKit server's ports; infra/compose.production.yml publishes the same. */
+/**
+ * The LiveKit server's ports. infra/helix/compose.livekit.yml publishes signal
+ * (on loopback), rtcTcp, rtcUdp and turnUdp; the relay range stays inside the container.
+ */
 const LIVEKIT_PORTS = Object.freeze({
   signal: 7880,
   rtcTcp: 7881,
-  rtcUdpStart: 50000,
-  rtcUdpEnd: 50100,
+  rtcUdp: 7882,
   turnUdp: 3478,
   relayStart: 30000,
   relayEnd: 30100,
@@ -24,8 +26,9 @@ function renderLivekitServerConfig(selected) {
     `port: ${LIVEKIT_PORTS.signal}`,
     'rtc:',
     `  tcp_port: ${LIVEKIT_PORTS.rtcTcp}`,
-    `  port_range_start: ${LIVEKIT_PORTS.rtcUdpStart}`,
-    `  port_range_end: ${LIVEKIT_PORTS.rtcUdpEnd}`,
+    // One muxed UDP port for every participant, so the router forwards one port;
+    // LiveKit ignores udp_port when port_range_start/end are set, so they are not.
+    `  udp_port: ${LIVEKIT_PORTS.rtcUdp}`,
     '  use_external_ip: true',
     'redis:',
     '  address: redis:6379',

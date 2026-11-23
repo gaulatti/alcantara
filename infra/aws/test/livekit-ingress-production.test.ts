@@ -206,7 +206,7 @@ export function validateComposePorts(composeContent: string): void {
 export function serviceBlock(composeContent: string, name: string): string {
   const lines = composeContent.split('\n');
   const start = lines.findIndex((line) => line === `  ${name}:`);
-  if (start === -1) throw new Error(`compose.production.yml must define a ${name} service`);
+  if (start === -1) throw new Error(`the LiveKit compose file must define a ${name} service`);
   const rest = lines.slice(start + 1);
   const end = rest.findIndex((line) => /^ {2}\S/.test(line) || /^\S/.test(line));
   return rest.slice(0, end === -1 ? rest.length : end).join('\n');
@@ -216,21 +216,21 @@ export function validateComposeServices(composeContent: string): void {
   // Ingress service must exist and be pinned to v1.5.0
   const hasIngressService = /ingress:\s*\n/m.test(composeContent);
   if (!hasIngressService) {
-    throw new Error('compose.production.yml must define an ingress service');
+    throw new Error('the LiveKit compose file must define an ingress service');
   }
   const hasPinnedImage = /image:\s*['"]?livekit\/ingress:v1\.5\.0['"]?/m.test(
     composeContent,
   );
   if (!hasPinnedImage) {
     throw new Error(
-      'ingress service in compose.production.yml must use pinned image livekit/ingress:v1.5.0 matching spike',
+      'ingress service in the LiveKit compose file must use pinned image livekit/ingress:v1.5.0 matching spike',
     );
   }
 }
 
 describe('LiveKit Ingress Production Infrastructure Definition', () => {
   const infraDir = path.resolve(__dirname, '../..');
-  const composePath = path.join(infraDir, 'compose.production.yml');
+  const composePath = path.join(infraDir, 'helix', 'compose.livekit.yml');
   const ingressYamlPath = path.join(infraDir, 'ingress.production.example.yaml');
   const spikeComposePath = path.resolve(
     infraDir,
@@ -264,7 +264,7 @@ describe('LiveKit Ingress Production Infrastructure Definition', () => {
     expect(livekit).not.toMatch(/profiles:/);
   });
 
-  test('production livekit is bounded beside the radio engine, and its signalling stays on the host', () => {
+  test('production livekit is bounded on its shared host, and its signalling stays on the host', () => {
     const composeContent = fs.readFileSync(composePath, 'utf-8');
     const livekit = serviceBlock(composeContent, 'livekit');
     expect(livekit).toMatch(/^\s*cpus: 1\.0$/m);

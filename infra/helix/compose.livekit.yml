@@ -1,4 +1,7 @@
-name: alcantara-media
+# gaulatti/alcantara#354: LiveKit for production runs on Helix, the on-premises
+# host behind helix.gaulatti.com. infra/helix/livekit-up.sh renders livekit.yaml
+# and starts this project as `alcantara-livekit`; the backend workflow does not.
+name: alcantara-livekit
 
 services:
   redis:
@@ -7,6 +10,9 @@ services:
     command: ['redis-server', '--save', '60', '1', '--appendonly', 'yes']
     volumes:
       - ${ALCANTARA_SERVICE_DIR:-/services/alcantara}/livekit-redis:/data
+    # Never published: LiveKit reaches it as redis:6379 on this project's network.
+    cpus: 0.5
+    mem_limit: 512m
     restart: always
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
@@ -20,16 +26,17 @@ services:
     command: ['--config', '/etc/livekit.yaml']
     volumes:
       - ${ALCANTARA_SERVICE_DIR:-/services/alcantara}/livekit.yaml:/etc/livekit.yaml:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
     ports:
-      # Signalling stays on the host: nginx terminates TLS for the public name
-      # and proxies WebSocket upgrades here. The backend reaches it on the network.
+      # Signalling stays on the host: nginx terminates TLS for
+      # livekit.alcantara.gaulatti.com and proxies here, for browsers, the pilot
+      # and the backend's API calls alike.
       - '127.0.0.1:7880:7880/tcp'
+      # The three ports the router forwards: WebRTC over TCP, the single muxed
+      # WebRTC UDP port, and the built-in TURN. The TURN relay range only carries
+      # traffic from TURN to the SFU inside this container, so it is not published.
       - '7881:7881/tcp'
+      - '7882:7882/udp'
       - '3478:3478/udp'
-      - '5349:5349/tcp'
-      - '30000-30100:30000-30100/udp'
-      - '50000-50100:50000-50100/udp'
     depends_on:
       redis:
         condition: service_healthy
@@ -38,7 +45,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    # The host also runs the radio engine: LiveKit gets at most one CPU and 1 GiB.
+    # Helix also runs other services: LiveKit gets at most one CPU and 1 GiB.
     cpus: 1.0
     mem_limit: 1g
     restart: always
@@ -64,8 +71,3 @@ services:
       redis:
         condition: service_healthy
     restart: always
-
-networks:
-  default:
-    external: true
-    name: broadcast-control

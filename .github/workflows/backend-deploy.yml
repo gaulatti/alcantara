@@ -160,17 +160,6 @@ jobs:
       - name: Checkout deployment definitions
         uses: actions/checkout@v4
 
-      - name: Upload LiveKit deployment definition
-        if: vars.ON_PREMISES == 'true'
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: infra/compose.production.yml
-          target: /home/${{ secrets.DEPLOY_USER }}/.alcantara
-          strip_components: 1
-
       - name: Deploy to on-premises host
         if: vars.ON_PREMISES == 'true'
         uses: appleboy/ssh-action@v1.2.0
@@ -203,34 +192,9 @@ jobs:
             ghcr.io/${{ github.repository }}:latest \
             pnpm run db:migrate:deploy
 
-            # LiveKit is configured by the runtime secret (gaulatti/alcantara#354):
-            # the script exits 0 with livekit.yaml, 3 when the secret has no
-            # LiveKit group (guest calls stay off), and 1 on any other failure.
-            livekit_config="$HOME/.alcantara/livekit.yaml"
-            mkdir -p "$HOME/.alcantara"
-            livekit_status=0
-            (
-              umask 077
-              docker run --rm \
-              -e AWS_REGION="${{ vars.AWS_REGION }}" \
-              -e ALCANTARA_CONFIG_SECRET_ID="${{ env.ALCANTARA_CONFIG_SECRET_ID }}" \
-              -v "$HOME/.aws:/root/.aws:ro" \
-              ghcr.io/${{ github.repository }}:latest \
-              node scripts/print-livekit-config.mjs > "$livekit_config.new"
-            ) || livekit_status=$?
-            if test "$livekit_status" -eq 0; then
-              chmod 600 "$livekit_config.new"
-              mv -f "$livekit_config.new" "$livekit_config"
-              mkdir -p "$HOME/.alcantara/livekit-redis"
-              ALCANTARA_SERVICE_DIR="$HOME/.alcantara" docker compose -f "$HOME/.alcantara/compose.production.yml" up -d
-            elif test "$livekit_status" -eq 3; then
-              rm -f "$livekit_config.new"
-              echo "LiveKit is not configured in the runtime secret; guest calls remain disabled"
-            else
-              rm -f "$livekit_config.new"
-              echo "LiveKit configuration could not be rendered"
-              exit 1
-            fi
+            # LiveKit runs on Helix, not on this host (gaulatti/alcantara#354):
+            # infra/helix/livekit-up.sh starts it there. The backend reaches it
+            # through its public name, derived from the secret's LIVEKIT_WS_URL.
 
             # Resolve the scrape credential before touching the live backend.
             metrics_token_file="$HOME/.alcantara/metrics-token"
@@ -288,7 +252,6 @@ jobs:
             -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
-            -e LIVEKIT_API_URL="http://alcantara-livekit:7880" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=local \
