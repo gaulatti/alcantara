@@ -234,8 +234,8 @@ it("shows the executor and the relays to a viewer who cannot change them", async
   });
   await page();
   expect(api.get).toHaveBeenCalledTimes(1);
-  expect(screen.getByText("Requested running")).toHaveClass("text-amber-600");
-  expect(screen.getByText("Actual starting")).toHaveClass("text-amber-600");
+  expect(screen.getByText("Requested running")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
+  expect(screen.getByText("Actual starting")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("starting")).toBeInTheDocument();
   expect(screen.getByText("Alana unavailable")).toBeInTheDocument();
   expect(screen.getByText("Pipeline not ready")).toBeInTheDocument();
@@ -264,8 +264,8 @@ it("reads an unknown executor and an empty selection without failing", async () 
     actualState: undefined,
   });
   await page();
-  expect(screen.getByText("Requested unknown")).toHaveClass("text-emerald-600");
-  expect(screen.getByText("Actual unknown")).toHaveClass("text-amber-600");
+  expect(screen.getByText("Requested unknown")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
+  expect(screen.getByText("Actual unknown")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(
     screen.getByText("No configured destinations are available."),
   ).toBeInTheDocument();
@@ -287,8 +287,8 @@ it("validates a stopped selection, then starts with that validated version", asy
     "00000000-0000-4000-8000-000000000001",
   );
   await page();
-  expect(screen.getByText("Requested stopped")).toHaveClass("text-emerald-600");
-  expect(screen.getByText("Actual stopped")).toHaveClass("text-emerald-600");
+  expect(screen.getByText("Requested stopped")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
+  expect(screen.getByText("Actual stopped")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("Alana reachable")).toBeInTheDocument();
   expect(screen.getByText("Pipeline ready")).toBeInTheDocument();
   const reload = screen.getByRole("button", { name: /Reload while stopped/ });
@@ -397,7 +397,7 @@ it("stops a running broadcast, and reports a refused command", async () => {
     activeDestinations: { version: "v1", destinationIds: ["primary"] },
   });
   await page();
-  expect(screen.getByText("Actual running")).toHaveClass("text-emerald-600");
+  expect(screen.getByText("Actual running")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(checkbox("Primary platform")).toBeDisabled();
   expect(screen.getByRole("button", { name: /Confirm Start/ })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: /Confirm Stop/ }));
