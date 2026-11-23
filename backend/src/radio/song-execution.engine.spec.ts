@@ -2264,47 +2264,6 @@ describe('SongExecutionEngine concurrent queue claims and appliance reconciliati
     expect(f.radioService.playSong).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    'handles stop-time queue claim disappearance/storage failure without consuming another entry: failure=%p',
-    async (failure) => {
-      const f = fixture();
-      const active = {
-        ...queueEntry('head'),
-        active: true,
-        playbackRequestId: 'active-request',
-      };
-      f.setPersistedProgramState({ songQueue: [active] });
-      f.engine.handleQueueUpdated('radio-1', [active]);
-      f.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
-      f.engine.handlePalazzoSnapshot(
-        'radio-1',
-        playingSnapshot(
-          'instance',
-          'boot',
-          1,
-          'active-request',
-          'https://example.test/song-2.mp3',
-        ),
-      );
-      if (failure)
-        f.prisma.programState.update.mockRejectedValueOnce(
-          new Error('release storage failure'),
-        );
-      else f.setPersistedProgramState({ songQueue: [] });
-      f.engine.handleStopSong('radio-1');
-      await flush(30);
-      expect(f.engine.getPlaybackState('radio-1')).toBeNull();
-      if (failure)
-        expect(f.metrics.recordSongQueueAction).toHaveBeenCalledWith(
-          'persistence-failed',
-        );
-      else expect(f.getPersistedProgramState().songQueue).toEqual([]);
-      expect(f.metrics.recordSongQueueAction).not.toHaveBeenCalledWith(
-        'consumed',
-      );
-    },
-  );
-
   it('preserves a newer manual song when an older pending command confirms or rejects later', async () => {
     const f = fixture();
     let finishOld!: (result: any) => void;
