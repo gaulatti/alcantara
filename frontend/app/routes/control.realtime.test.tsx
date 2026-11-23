@@ -257,8 +257,8 @@ it("clears Program when the show says so", async () => {
   const { socket } = await openLink();
   expect(statusOf("Fictional headlines")).toBe("Program");
   act(() => socket.send({ type: "scene_cleared", programId: "main" }));
-  // The active scene id is cleared; the program monitor keeps its last scene.
-  expect(statusOf("Fictional headlines")).toBe("Program");
+  // Clearing Program leaves no source tagged Program (#251).
+  expect(statusOf("Fictional headlines")).toBe("Stage");
 });
 
 it("ignores updates for another show, unreadable messages and stale versions", async () => {
