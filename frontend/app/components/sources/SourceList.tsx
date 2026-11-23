@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Button, Card, Empty } from '@gaulatti/bleecker';
+import { Button, Card, Empty, ErrorState, SkeletonTable, StatePill } from '@gaulatti/bleecker';
+import type { StatePillTone } from '@gaulatti/bleecker';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { SourceRow } from './SourceRow';
 import type { ExternalSource } from '../../services/externalSources';
@@ -13,8 +14,19 @@ export interface SourceListProps {
   /** Page-level reason preview is unavailable (media service, permission, connection); null when ready. */
   previewUnavailableReason?: string | null;
   isLoading?: boolean;
+  /** False until the first list has arrived: the card shows skeleton rows, or an error state with retry. */
+  hasLoaded?: boolean;
   error?: string | null;
+  /** Preview availability as a state with its reason; null when there is nothing to report. */
+  preview?: SourcePreviewStatus | null;
   className?: string;
+}
+
+export interface SourcePreviewStatus {
+  tone: StatePillTone;
+  label: string;
+  reason: string | null;
+  onRetry?: () => void;
 }
 
 export function SourceList({
@@ -25,7 +37,9 @@ export function SourceList({
   onRefresh,
   previewUnavailableReason = null,
   isLoading = false,
+  hasLoaded = true,
   error = null,
+  preview = null,
   className = '',
 }: SourceListProps) {
   const lastFocusedIdRef = useRef<string | null>(null);
@@ -59,6 +73,7 @@ export function SourceList({
       <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
         <div className="flex items-center gap-3">
           <h3 className="font-semibold text-sm text-zinc-100">Managed External Sources</h3>
+          {preview ? <StatePill tone={preview.tone} label={preview.label} title={preview.reason ?? undefined} /> : null}
           <span className="text-xs text-zinc-400 font-mono">
             Program: <span className="text-zinc-200">{currentProgramId}</span> (
             {programSources.length})
@@ -79,8 +94,19 @@ export function SourceList({
         </Button>
       </div>
 
+      {preview?.reason ? (
+        <div role="status" data-testid="preview-availability" className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2 text-xs text-zinc-200">
+          <span>{preview.reason}</span>
+          {preview.onRetry ? (
+            <Button type="button" variant="secondary" size="sm" onClick={preview.onRetry}>
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Non-destructive Error Banner (kept while previous list is visible) */}
-      {error && (
+      {error && hasLoaded && (
         <div
           role="alert"
           data-testid="source-list-error"
@@ -92,7 +118,15 @@ export function SourceList({
       )}
 
       {/* Sources Table */}
-      {programSources.length === 0 ? (
+      {!hasLoaded && error ? (
+        <div className="p-8" data-testid="source-list-load-error">
+          <ErrorState title="External sources could not be loaded" description={error} onRetry={onRefresh} retryLabel="Retry loading sources" />
+        </div>
+      ) : !hasLoaded ? (
+        <div className="p-4" role="status" aria-label="Loading external sources" data-testid="source-list-loading">
+          <SkeletonTable rows={4} columns={5} />
+        </div>
+      ) : programSources.length === 0 ? (
         <div className="p-8">
           <Empty
             title="No external sources assigned"
@@ -103,7 +137,7 @@ export function SourceList({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse" role="table" aria-label="External sources">
             <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-900/30 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+              <tr className="border-b border-zinc-800 bg-zinc-900/30 text-xs font-medium uppercase tracking-wider text-zinc-400">
                 <th scope="col" className="w-12 px-3 py-2 text-center">
                   Preview
                 </th>

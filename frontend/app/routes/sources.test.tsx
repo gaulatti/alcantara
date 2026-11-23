@@ -212,4 +212,31 @@ describe('SourcesRoute (/sources)', () => {
     expect(screen.queryByRole('button', { name: /take/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /stage/i })).not.toBeInTheDocument();
   });
+
+  it('shows loading, then an error state whose retry loads the list', async () => {
+    vi.mocked(authFetch).mockRejectedValueOnce(new Error('Network down'));
+    render(<SourcesRoute />);
+    expect(screen.getByTestId('source-list-loading')).toBeInTheDocument();
+    expect(await screen.findByText('External sources could not be loaded')).toBeInTheDocument();
+    vi.mocked(authFetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'src-retry',
+            name: 'Retried Source',
+            transport: 'rtmp',
+            lifecycle: 'connected',
+            health: 'healthy',
+            participantIdentity: 'retry-part',
+            lastConnectedAt: null,
+            revokedAt: null,
+            programIds: ['main'],
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading sources' }));
+    expect(await screen.findByText('Retried Source')).toBeInTheDocument();
+  });
 });

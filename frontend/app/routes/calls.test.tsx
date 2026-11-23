@@ -262,11 +262,86 @@ it("shows this program's slots and each guest's state", async () => {
   expect(routing(/Routed to returns/)).toBeEnabled();
 });
 
-it("shows an empty room", async () => {
+it("shows an empty room with the create action inside it, and says why it is disabled", async () => {
   participants = [];
+  invitations = [];
   serve();
   render(<CallsRoute />);
-  expect(await screen.findByText("No assigned guest slots")).toBeVisible();
+  const empty = (await screen.findByText("No assigned guest slots")).closest(
+    "div",
+  )!.parentElement as HTMLElement;
+  const create = within(empty).getByRole("button", {
+    name: /Create private link/,
+  });
+  expect(create).toBeDisabled();
+  expect(
+    screen.getAllByText("Enter a guest name to create a private link.")[0],
+  ).toBeVisible();
+  fireEvent.change(screen.getByPlaceholderText("Fictional guest"), {
+    target: { value: "Grace" },
+  });
+  expect(create).toBeEnabled();
+  expect(
+    screen.queryByText("Enter a guest name to create a private link."),
+  ).not.toBeInTheDocument();
+});
+
+it("says why creating a link is disabled: no permission, or every slot assigned", async () => {
+  permissions.operate = false;
+  serve();
+  const { unmount } = render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  expect(
+    screen.getByText("You do not have permission to create guest links."),
+  ).toBeVisible();
+  unmount();
+  permissions.operate = true;
+  invitations = Array.from({ length: 6 }, (_, index) =>
+    invitation({ id: `inv-${index + 1}` }),
+  );
+  render(<CallsRoute />);
+  await screen.findByText("6/6 slots assigned");
+  expect(
+    screen.getByText("All 6 guest slots are assigned. Revoke a link to free one."),
+  ).toBeVisible();
+});
+
+it("shows loading as skeletons until the first list arrives", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { fetchMock } = routeFetch(async (url) => {
+    await gate;
+    if (url.endsWith("/webrtc/config")) return Response.json(config);
+    if (url.endsWith("/webrtc/invitations")) return Response.json(invitations);
+    return Response.json({ participants });
+  });
+  vi.stubGlobal("fetch", vi.fn(fetchMock));
+  api.handler = fetchMock;
+  render(<CallsRoute />);
+  expect(screen.getByLabelText("Loading guest slots")).toBeVisible();
+  release();
+  expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
+  expect(screen.queryByLabelText("Loading guest slots")).not.toBeInTheDocument();
+});
+
+it("offers a retry when the first load fails, and shows the list after it", async () => {
+  serve({ "GET /webrtc/config": () => new Response("", { status: 503 }) });
+  render(<CallsRoute />);
+  expect(await screen.findByText("Guest calls could not be loaded")).toBeVisible();
+  serve();
+  fireEvent.click(screen.getByText("Retry").closest("button")!);
+  expect(await screen.findByText("Ada", { selector: "h3" })).toBeVisible();
+});
+
+it("reports a manual refresh that fails", async () => {
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  serve({ "GET /webrtc/config": () => new Response("down", { status: 500 }) });
+  fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));
+  await waitFor(() => expect(status()).toHaveTextContent("down"));
 });
 
 it("creates a private link for a named guest and copies it", async () => {
