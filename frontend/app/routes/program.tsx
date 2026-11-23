@@ -1574,11 +1574,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       return (
         <BroadcastLayout
           headerTitle={props.headerTitle || ''}
-          hashtag={props.hashtag || '#ModoSanremoMR'}
-          url={props.url || 'modoradio.cl'}
+          hashtag={props.hashtag || ''}
+          url={props.url || ''}
           chyronText={props.chyronText || ''}
           showChyron={Boolean(props.showChyron ?? !!props.chyronText)}
-          qrCodeContent={props.qrCodeContent || 'https://modoradio.cl'}
+          qrCodeContent={props.qrCodeContent || ''}
           clockTimezone={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
           showLiveIndicator={true}
           timeOverride={globalTimeOverride}
@@ -1699,7 +1699,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'reloj-clock':
-                return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
+                return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} logoUrl={props.logoUrl} timeOverride={globalTimeOverride} />;
               case 'reloj-loop-clock':
                 return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
               case 'reloj-digital-loop-clock':
@@ -1889,7 +1889,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'toni-logo':
-                return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
+                return <ToniLogo key={componentType} callsign={props.callsign || ''} subtitle={props.subtitle} />;
               case 'earone': {
                 const realtimeChart = realtimeChartValues(chartLookup, {
                   id: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf),
