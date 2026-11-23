@@ -468,6 +468,42 @@ describe("the layouts that stack several components", () => {
     expect(streamOf("https://x.example/eight.m3u8")).toBe(warm);
   });
 
+  it("moves no layer in the page across a cut, the swap back, or a new staged scene", async () => {
+    // A media element removed from the document pauses, and React moves a keyed node by
+    // removing and inserting it, so a persisting layer must never appear in a removal.
+    const streamScene = (id: number, url: string) =>
+      sceneOf(["video-stream"], { "video-stream": { sourceUrl: url } }, id);
+    const a = streamScene(7, "https://x.example/seven.m3u8");
+    const b = streamScene(8, "https://x.example/eight.m3u8");
+    const c = streamScene(9, "https://x.example/nine.m3u8");
+    await show(a, { staged: b });
+    const parent = view.container.querySelector("[data-scene-layer]")!.parentElement!;
+    const layerFor = (url: string) =>
+      [...parent.querySelectorAll("[data-scene-layer]")].find((layer) =>
+        layer.querySelector(`[data-props*='${url}']`),
+      )!;
+    const layerA = layerFor("seven");
+    const layerB = layerFor("eight");
+    const removed: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) removed.push(...record.removedNodes);
+    });
+    observer.observe(parent, { childList: true });
+
+    await emit({ type: "scene_change", transitionId: "cut", state: stateOf(b, a) }); // cut to b
+    await emit({ type: "scene_change", transitionId: "cut", state: stateOf(a, b) }); // cut back to a
+    await emit({ type: "scene_staged", programId: "main", stagedSceneId: 9, scene: c }); // stage c
+    await act(async () => {});
+    observer.disconnect();
+
+    expect(removed).not.toContain(layerA);
+    // b left the page only when c replaced it as the staged scene, never during a cut.
+    expect(removed.filter((node) => node === layerB)).toHaveLength(1);
+    expect(layerA.isConnected).toBe(true);
+    expect(layerFor("nine")).toBeTruthy();
+
+  });
+
   it("falls back to an empty wall and a four-stream limit", async () => {
     await show(
       sceneOf(["stream-wall"], {
