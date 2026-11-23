@@ -153,7 +153,7 @@ export class RecipesService {
     programId: string,
     recipeId: number,
     input: RecipeInput,
-  ): Promise<{ recipe: RecipeView; rebuilt: number }> {
+  ): Promise<RecipeView & { rebuilt: number }> {
     const state = await this.program(programId, true);
     const existing = await this.recipe(state.id, recipeId);
     if (input.revision !== existing.revision)
@@ -198,7 +198,8 @@ export class RecipesService {
     }
     const recipe = toView(row);
     const rebuilt = await this.rebuild(programId, state.id, recipe);
-    return { recipe, rebuilt };
+    // The recipe as saved, plus how many uses followed it (the console reads the recipe fields).
+    return { ...recipe, rebuilt };
   }
 
   /**

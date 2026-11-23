@@ -228,10 +228,15 @@ describe('RecipesService (gaulatti/alcantara#424)', () => {
           revision: { increment: 1 },
         },
       });
-      expect(result).toEqual({
-        recipe: expect.objectContaining({ revision: 3 }),
-        rebuilt: 0,
-      });
+      // The recipe as saved (what the console's editor reads), plus the count of rebuilt uses.
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: 7,
+          name: 'Song',
+          revision: 3,
+          rebuilt: 0,
+        }),
+      );
     });
 
     it('refuses a stale revision before and during the write', async () => {

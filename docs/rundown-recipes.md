@@ -45,7 +45,7 @@ gaulatti/alcantara#427 binds it). Otherwise the use has none.
 |---|---|---|
 | `GET /program/:programId/recipes` | | The recipes: `{id, name, revision, bumperSceneId, slideshowSceneId, returnSceneId, transitionId, holdMs, steps}` |
 | `POST /program/:programId/recipes` | `name` and any of the fields | The recipe. Scenes must be assigned to the program. A `radio` program gets 400 |
-| `PUT /program/:programId/recipes/:recipeId` | `revision` and the fields to change | `{recipe, rebuilt}`. A stale revision gets 409 `{statusCode: 409, message, error: "Conflict"}` |
+| `PUT /program/:programId/recipes/:recipeId` | `revision` and the fields to change | The recipe as saved, plus `rebuilt` (the count of uses rebuilt). A stale revision gets 409 `{statusCode: 409, message, error: "Conflict"}` |
 | `POST /program/:programId/recipes/:recipeId/expand` | `{params: {songId, labelId?}, useId?}` | `{items, issues}`. A preview: nothing is written |
 
 **Issue codes:**
