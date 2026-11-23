@@ -1254,15 +1254,15 @@ describe('RadioService coverage', () => {
       const notReady = await outcome(new PalazzoMachineError('rejected', 409));
       expect(notReady).toBeInstanceOf(PalazzoInstantRefusedException);
       expect(notReady).toBeInstanceOf(BadGatewayException);
-      expect(notReady.retryable).toBe(true);
-      expect(notReady.message).toBe('Palazzo rejected the instant');
+      expect((notReady as PalazzoInstantRefusedException).retryable).toBe(true);
+      expect((notReady as PalazzoInstantRefusedException).message).toBe('Palazzo rejected the instant');
       for (const error of [
         new PalazzoMachineError('rejected', 400),
         new PalazzoMachineError('rejected'),
         new PalazzoMachineError('unavailable', 409),
         new Error('x'),
       ]) {
-        expect((await outcome(error)).retryable).toBe(false);
+        expect(((await outcome(error)) as PalazzoInstantRefusedException).retryable).toBe(false);
       }
     });
 

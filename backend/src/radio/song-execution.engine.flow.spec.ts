@@ -220,6 +220,9 @@ interface EngineState {
   queueBlocked: boolean;
   songCount: number;
   nextBumperIdx: number;
+  noPlaybackSince: number | null;
+  commandRetryTimer: ReturnType<typeof setTimeout> | null;
+  commandRetries: number;
 }
 
 interface EngineInternals {
@@ -758,7 +761,7 @@ describe('SongExecutionEngine authoritative track end', () => {
     ctx.palazzo.state = playing('inherited', 'https://example.test/b.mp3', 3);
     end(ctx, 'inherited');
     await flush(80);
-    expect(ctx.engine.getPlaybackState('radio-1')?.playbackRequestId).not.toBe(
+    expect((ctx.engine.getPlaybackState('radio-1') as { playbackRequestId?: string } | null)?.playbackRequestId).not.toBe(
       'inherited',
     );
     expect(playedUrls(ctx)).toHaveLength(1);
@@ -795,7 +798,7 @@ describe('SongExecutionEngine authoritative track end', () => {
       'resumed',
     );
     expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
-    expect(ctx.engine.getPlaybackState('radio-1')?.playbackRequestId).not.toBe(
+    expect((ctx.engine.getPlaybackState('radio-1') as { playbackRequestId?: string } | null)?.playbackRequestId).not.toBe(
       'inherited',
     );
   });
@@ -1663,8 +1666,10 @@ describe('SongExecutionEngine after a failed song command', () => {
       sequenceOf([SONG_A, SONG_B], 'manual'),
     );
     manual.engine.handlePalazzoSnapshot('radio-1', idle());
-    await manual.engine.playNow?.('radio-1');
+    await manual.engine.checkPlayback();
     await flush(80);
+    // Manual mode stands down: the automatic check must not start a song.
+    expect(manual.radioService.playSong).not.toHaveBeenCalled();
     jest.advanceTimersByTime(COMMAND_RETRY_MAX_MS);
     await flush(80);
     expect(stateOf(manual.engine).commandRetryTimer).toBeNull();

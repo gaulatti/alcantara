@@ -140,6 +140,9 @@ jobs:
         run: |
           pnpm --dir backend run prisma:generate
           pnpm --dir backend run db:migrate:prisma
+      - name: Typecheck backend source and specs
+        if: *verify-code
+        run: pnpm --dir backend exec tsc --noEmit -p tsconfig.json
       - name: Run backend tests with source coverage
         if: *verify-code
         id: coverage

@@ -107,7 +107,7 @@ describe('appendix A rows of ticket #216', () => {
         scenes: ScenesController,
         layouts: LayoutsController,
         'media-groups': MediaGroupsController,
-      }[area] as { prototype: Record<string, unknown> };
+      }[area] as unknown as { prototype: Record<string, unknown> };
       const required =
         (Reflect.getMetadata(
           REQUIRED_PERMISSION_KEY,

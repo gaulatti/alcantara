@@ -30,6 +30,7 @@ describe('MediaAnalysisMetrics', () => {
     const controller = new MetricsController(
       new RadioMetricsService(),
       managed,
+      undefined as never,
     );
 
     const before = samples(
@@ -108,6 +109,7 @@ describe('MediaAnalysisMetrics', () => {
     const controller = new MetricsController(
       new RadioMetricsService(),
       managed,
+      undefined as never,
     );
     const name = 'alcantara_media_analysis_result_writes_total';
     const outcomes = ['retried', 'stored_after_retry', 'released', 'dropped'];
@@ -143,6 +145,7 @@ describe('MediaAnalysisMetrics', () => {
     const controller = new MetricsController(
       new RadioMetricsService(),
       managed,
+      undefined as never,
     );
     const name = 'alcantara_media_analysis_duration_backfill_assets';
     expect(samples(await controller.getMetrics(), name)).toEqual([

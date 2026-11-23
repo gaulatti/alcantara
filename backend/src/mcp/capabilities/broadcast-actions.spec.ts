@@ -170,6 +170,7 @@ function build() {
     destinations: new BroadcastDestinationsController(
       s.destinations as never,
       {} as never,
+      undefined as never,
     ),
     filler: new FillerController(s.fillers as never),
     recording: new RecordingController(s.recording as never),

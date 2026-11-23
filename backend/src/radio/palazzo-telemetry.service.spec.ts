@@ -153,7 +153,7 @@ describe('PalazzoRadioTelemetryService unavailable reasons', () => {
       lastEventAt: null,
       lastSnapshotAt: null,
     });
-    expect(status.detail).toEqual(expect.any(String));
+    expect(status!.detail).toEqual(expect.any(String));
   });
 
   it.each([
@@ -200,7 +200,7 @@ describe('PalazzoRadioTelemetryService unavailable reasons', () => {
     prisma.radioSettings.findFirst.mockResolvedValue(setting());
     const status = await service.getStatusWithReason('radio-1');
     expect(status).toMatchObject({ connection: 'unavailable' });
-    expect('reason' in status).toBe(false);
+    expect('reason' in status!).toBe(false);
   });
 
   it('says deploy-candidate without reading settings', async () => {
@@ -275,7 +275,7 @@ describe('PalazzoRadioTelemetryService unavailable reasons', () => {
       programId: 'radio-1',
       palazzoUrl: expect.any(String),
     });
-    expect('reason' in live).toBe(false);
+    expect('reason' in live!).toBe(false);
     expect(metrics.snapshot().palazzoConfigRejected).toBe(1);
     service.onModuleDestroy();
   });
@@ -322,6 +322,6 @@ describe('PalazzoRadioTelemetryService unavailable reasons', () => {
     );
     const status = await service.getStatusWithReason('radio-1');
     expect(status).toBe(live);
-    expect('reason' in status).toBe(false);
+    expect('reason' in status!).toBe(false);
   });
 });

@@ -1026,8 +1026,8 @@ describe('a database error on the result write (#278)', () => {
     }) as never);
   }
   const resultWrites = (prisma: ReturnType<typeof setup>['prisma']) =>
-    prisma.mediaAssetAnalysis.updateMany.mock.calls.filter(([args]) =>
-      isResultWrite(args as never),
+    prisma.mediaAssetAnalysis.updateMany.mock.calls.filter((call) =>
+      isResultWrite((call as unknown[])[0] as never),
     );
 
   it('keeps the finished measurement and stores it on the next run, without a second analysis or attempt', async () => {
@@ -1052,7 +1052,7 @@ describe('a database error on the result write (#278)', () => {
     });
     const writes = resultWrites(prisma);
     expect(writes).toHaveLength(2);
-    expect(writes[1][0]).toEqual(
+    expect((writes[1] as unknown[])[0]).toEqual(
       expect.objectContaining({
         where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
         data: expect.objectContaining({
@@ -1136,7 +1136,7 @@ describe('a database error on the result write (#278)', () => {
     }
 
     const writtenData = prisma.mediaAssetAnalysis.updateMany.mock.calls.map(
-      ([args]) => (args as { data: Record<string, unknown> }).data,
+      (call) => ((call as unknown[])[0] as { data: Record<string, unknown> }).data,
     );
     expect(writtenData.some((data) => data.error === 'interrupted')).toBe(
       false,

@@ -1617,7 +1617,7 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         }),
       );
       noVersionBroadcast(service);
-      jest.spyOn(service, 'getProgramTopicVersion').mockReturnValue(3);
+      jest.spyOn(service as unknown as { getProgramTopicVersion: () => number }, 'getProgramTopicVersion').mockReturnValue(3);
       const result = await service.removeProgramSongLeaves('radio-1', ['a']);
       expect(result.version).toBe(3);
       expect(result.removed[0]).toEqual({
