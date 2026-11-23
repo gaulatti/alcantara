@@ -12,3 +12,5 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@modoitaliano/giorgia@0.1.106'
   - '@modoitaliano/giorgia@0.1.117'
+  - '@modoitaliano/giorgia@0.1.119'
+  - '@fifthbell/brokaw@0.1.82'

@@ -15,8 +15,6 @@ export default defineConfig({
     watch: usePolling ? { usePolling: true, interval: 300 } : undefined
   },
   resolve: {
-    // @modoitaliano/giorgia depends on its own React; two copies break hooks in its components.
-    dedupe: ['react', 'react-dom'],
     alias: [
       {
         find: /^@gaulatti\/bleecker$/,
