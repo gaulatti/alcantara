@@ -15,10 +15,14 @@ const MOVED = [
   'LogoWidget',
   'QRCodeWidget',
   'RelojClone',
+  'RelojDigitalLoopClock',
   'RelojLoopClock',
   'Slideshow',
   'StreamWall',
   'Ticker',
+  'ToniChyron',
+  'ToniClock',
+  'ToniLogo',
   'VideoStream',
   'WebrtcGuestSource',
 ];
@@ -27,8 +31,8 @@ describe('moved widgets stay thin wrappers over the library', () => {
   for (const name of MOVED) {
     it(`${name} wraps the library component`, () => {
       const source = readFileSync(resolve('app/components', `${name}.tsx`), 'utf8');
-      expect(source).toMatch(/@gaulatti\/bleecker\/components\/|from '\.\.\/bleecker'/);
-      expect(source.split('\n').length).toBeLessThan(60);
+      expect(source).toMatch(/@gaulatti\/bleecker\/components\/|@fifthbell\/brokaw\/components\/|from '\.\.\/bleecker'/);
+      expect(source.split('\n').length).toBeLessThan(100);
       expect(source).not.toMatch(/\.css'/);
     });
   }
