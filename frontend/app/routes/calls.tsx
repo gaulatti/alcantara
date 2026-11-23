@@ -72,7 +72,6 @@ export default function CallsRoute() {
   const [busy, setBusy] = useState<string | null>(null);
   const [livekitEnabled, setLivekitEnabled] = useState<boolean | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [loadError, setLoadError] = useState('');
   const talkbackRef = useRef<{
     room: Room;
     track: Awaited<ReturnType<typeof createLocalAudioTrack>>;
@@ -108,7 +107,7 @@ export default function CallsRoute() {
     return refresh().then(
       () => setLoadState('ready'),
       (error) => {
-        setLoadError(error instanceof Error ? error.message : 'Unable to load calls.');
+        console.error('Unable to load guest calls:', error);
         setLoadState('error');
       }
     );
@@ -273,7 +272,10 @@ export default function CallsRoute() {
           title='Guest calls'
           description={`Six reusable remote-contributor slots for ${programId}. Guests never enter Preview or Program automatically.`}
           actions={
-            <Button variant='secondary' onClick={() => void refresh().catch((error) => setNotice(error instanceof Error ? error.message : 'Unable to refresh calls.'))}>
+            <Button variant='secondary' onClick={() => void refresh().catch((error) => {
+                console.error('Unable to refresh guest calls:', error);
+                setNotice('Guest calls could not be refreshed.');
+              })}>
               <RefreshCw size={15} /> Refresh
             </Button>
           }
@@ -327,7 +329,7 @@ export default function CallsRoute() {
                 <SkeletonCard rows={3} />
               </div>
             ) : loadState === 'error' ? (
-              <ErrorState title='Guest calls could not be loaded' description={loadError} onRetry={() => void load()} retryLabel='Retry' />
+              <ErrorState title='Guest calls could not be loaded' description='The guest-call list could not be loaded. Check the connection and try again.' onRetry={() => void load()} retryLabel='Retry' />
             ) : participants.length === 0 ? (
               <Empty title='No assigned guest slots' description='Name a guest, then create a private link to reserve the first reusable slot.' action={createLink} />
             ) : (

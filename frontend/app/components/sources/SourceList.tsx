@@ -120,7 +120,7 @@ export function SourceList({
       {/* Sources Table */}
       {!hasLoaded && error ? (
         <div className="p-8" data-testid="source-list-load-error">
-          <ErrorState title="External sources could not be loaded" description={error} onRetry={onRefresh} retryLabel="Retry loading sources" />
+          <ErrorState title="External sources could not be loaded" description="The list could not be loaded. Check the connection and try again." onRetry={onRefresh} retryLabel="Retry loading sources" />
         </div>
       ) : !hasLoaded ? (
         <div className="p-4" role="status" aria-label="Loading external sources" data-testid="source-list-loading">

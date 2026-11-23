@@ -172,7 +172,8 @@ describe('SourceList', () => {
     const onRefresh = vi.fn();
     render(<SourceList {...props} sources={[]} onRefresh={onRefresh} hasLoaded={false} error="HTTP 503" />);
     expect(screen.getByText('External sources could not be loaded')).toBeInTheDocument();
-    expect(screen.getByText('HTTP 503')).toBeInTheDocument();
+    expect(screen.getByText('The list could not be loaded. Check the connection and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('HTTP 503')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry loading sources' }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('source-list-error')).not.toBeInTheDocument();

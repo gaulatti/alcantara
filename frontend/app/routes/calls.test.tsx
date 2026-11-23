@@ -225,18 +225,26 @@ it.each([
     "Request failed (502)",
   ],
 ])(
-  "explains a call list that cannot be loaded (%s)",
-  async (route, answer, message) => {
+  "explains a call list that cannot be loaded without showing the server's text (%s)",
+  async (route, answer, serverText) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     serve({ [route]: answer });
     render(<CallsRoute />);
-    expect(await screen.findByText(message)).toBeVisible();
+    expect(await screen.findByText("Guest calls could not be loaded")).toBeVisible();
+    expect(
+      screen.getByText(
+        "The guest-call list could not be loaded. Check the connection and try again.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(serverText)).not.toBeInTheDocument();
   },
 );
 
 it("explains a failure that is not an error object", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue("offline"));
   render(<CallsRoute />);
-  expect(await screen.findByText("Unable to load calls.")).toBeVisible();
+  expect(await screen.findByText("Guest calls could not be loaded")).toBeVisible();
 });
 
 it("shows this program's slots and each guest's state", async () => {
@@ -339,9 +347,13 @@ it("reports a manual refresh that fails", async () => {
   serve();
   render(<CallsRoute />);
   await screen.findByText("Ada", { selector: "h3" });
+  vi.spyOn(console, "error").mockImplementation(() => {});
   serve({ "GET /webrtc/config": () => new Response("down", { status: 500 }) });
   fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));
-  await waitFor(() => expect(status()).toHaveTextContent("down"));
+  await waitFor(() =>
+    expect(status()).toHaveTextContent("Guest calls could not be refreshed."),
+  );
+  expect(status()).not.toHaveTextContent("down");
 });
 
 it("creates a private link for a named guest and copies it", async () => {
