@@ -36,6 +36,7 @@ vi.mock("../contexts/ConsolePreferencesContext", async (original) => {
 });
 
 import Control from "./control";
+import { resetPlatformForTests } from "../utils/cartModifier";
 
 let server: ControlServer;
 
@@ -131,4 +132,42 @@ it("still plays the cartwall instant for a mapped chord, so the handler is live"
       server.requests("POST /instants/1/play?programId=main"),
     ).toHaveLength(1),
   );
+});
+
+// gaulatti/alcantara#308: on Windows and Linux a cart plays on Alt+letter, so the
+// browser and OS shortcuts (Ctrl+C, V, X, Z, A, F, P) never fire a cart on air.
+function setPlatform(platform: string) {
+  Object.defineProperty(window.navigator, "platform", { configurable: true, get: () => platform });
+  resetPlatformForTests();
+}
+
+it("on Windows, Ctrl+C plays nothing and Alt+Q plays slot 1", async () => {
+  setPlatform("Win32");
+  open();
+  server.answer("POST /instants/1/play?programId=main", Response.json({}));
+  await screen.findByRole("button", { name: "Fictional clip 1" });
+
+  fireEvent.keyDown(document, { key: "c", code: "KeyC", ctrlKey: true });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(playRequests()).toEqual([]);
+
+  fireEvent.keyDown(document, { key: "q", code: "KeyQ", altKey: true });
+  await waitFor(() =>
+    expect(server.requests("POST /instants/1/play?programId=main")).toHaveLength(1),
+  );
+});
+
+it("on Windows, Alt+F, Alt+E and Alt+D play nothing: those are the browser's menu letters", async () => {
+  setPlatform("Win32");
+  open();
+  await screen.findByRole("button", { name: "Fictional clip 1" });
+  for (const key of ["f", "e", "d"]) {
+    fireEvent.keyDown(document, { key, code: `Key${key.toUpperCase()}`, altKey: true });
+  }
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(playRequests()).toEqual([]);
 });

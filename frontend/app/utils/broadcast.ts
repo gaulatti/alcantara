@@ -29,7 +29,17 @@ export const SONG_PROGRESS_FILL_ANIMATION = 'alcantaraSongProgressFill';
 // Ctrl+letter chords for the cartwall, in slot order. k, w, t, n, l, r and s are
 // left out: Ctrl+K belongs to the command palette, Ctrl+S is the scene hotkey, and
 // the others are browser or palette chords. Slots past the end get no key cap.
+// Cart letters by platform (gaulatti/alcantara#308). On macOS a cart is Ctrl+letter
+// and the full map applies. On Windows and Linux a cart is Alt+letter, and the
+// browser's Alt menu letters are removed, since pages cannot reliably cancel them:
+// Chrome and Edge use Alt+F, Alt+E and Alt+D; Firefox's Alt menu adds V (View),
+// B (Bookmarks) and H (Help), plus F, E, S and T (dropped already).
 export const INSTANT_SHORTCUT_KEYS = 'qeyuiopadfghjzxcvbm';
+export const INSTANT_SHORTCUT_KEYS_ALT = 'qyuiopagjzxcm';
+
+function shortcutKeys(isMac: boolean): string {
+  return isMac ? INSTANT_SHORTCUT_KEYS : INSTANT_SHORTCUT_KEYS_ALT;
+}
 
 export const DEFAULT_MIXER_TAKE_PRESETS_DB: MixerTakePresetDbMap = {
   song: { aDb: -15, bDb: -30 },
@@ -63,15 +73,16 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
 }
 
-export function getInstantShortcutLetter(index: number): string | null {
-  if (index < 0 || index >= INSTANT_SHORTCUT_KEYS.length) return null;
-  return INSTANT_SHORTCUT_KEYS[index].toUpperCase();
+export function getInstantShortcutLetter(index: number, isMac: boolean): string | null {
+  const keys = shortcutKeys(isMac);
+  if (index < 0 || index >= keys.length) return null;
+  return keys[index].toUpperCase();
 }
 
 // The cartwall slot a pressed key plays, or -1 when the key has no slot.
-export function getInstantShortcutIndex(key: string): number {
+export function getInstantShortcutIndex(key: string, isMac: boolean): number {
   if (!/^[a-z]$/.test(key)) return -1;
-  return INSTANT_SHORTCUT_KEYS.indexOf(key);
+  return shortcutKeys(isMac).indexOf(key);
 }
 
 export function normalizeMasterVolume(value: unknown, fallback: number = 1): number {

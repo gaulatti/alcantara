@@ -3,6 +3,7 @@ import { Input } from "@gaulatti/bleecker";
 import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import type { InstantItem, InstantPlaybackState } from "../../models/broadcast";
+import { cartChordLabel, platformIsMac } from "../../utils/cartModifier";
 import {
   getInstantShortcutLetter,
   INSTANT_PLAYBACK_PULSE_ANIMATION,
@@ -61,6 +62,7 @@ export function InstantsPanel({
         </p>
       ) : (
         (() => {
+          const isMac = platformIsMac();
           const filtered = instants.filter(
             (i) =>
               !search.trim() ||
@@ -76,7 +78,7 @@ export function InstantsPanel({
                 const originalIndex = instants.indexOf(instant);
                 const playbackState = playback[instant.id] ?? null;
                 const isPlaying = playbackState !== null;
-                const shortcutLetter = getInstantShortcutLetter(originalIndex);
+                const shortcutLetter = getInstantShortcutLetter(originalIndex, isMac);
 
                 return (
                   <TooltipButton
@@ -84,7 +86,7 @@ export function InstantsPanel({
                     type="button"
                     onClick={() => onTrigger(instant.id)}
                     disabled={!instant.enabled}
-                    title={`${instant.name}${shortcutLetter ? ` (Ctrl+${shortcutLetter})` : ""}`}
+                    title={`${instant.name}${shortcutLetter ? ` (${cartChordLabel(shortcutLetter, isMac)})` : ""}`}
                     className="console-cart"
                     data-playing={isPlaying}
                     aria-label={`${instant.name}${isPlaying ? " · playing" : ""}`}
@@ -92,7 +94,7 @@ export function InstantsPanel({
                     <span className="console-cart-top">
                       <span>{String(originalIndex + 1).padStart(2, "0")}</span>
                       {shortcutLetter ? (
-                        <kbd>Ctrl+{shortcutLetter}</kbd>
+                        <kbd>{cartChordLabel(shortcutLetter, isMac)}</kbd>
                       ) : (
                         <Play size={10} />
                       )}
