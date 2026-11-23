@@ -94,7 +94,7 @@ jobs:
       - name: Run backend end-to-end tests
         run: >-
           pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand
-          --testPathPatterns='metrics|media-label-concurrency|filler-persistence|deploy-candidate|as-run-actor-migration|external-sources|media-analysis-duration|radio-monitor|recording'
+          --testPathPatterns='metrics|media-label-concurrency|filler-persistence|deploy-candidate|as-run-actor-migration|external-sources|media-analysis-duration|radio-monitor|recording|app.e2e-spec|broadcast-destinations'
 
   build:
     needs: [production-config-preflight, test]
