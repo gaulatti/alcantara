@@ -47,10 +47,10 @@ const sequence = (overrides: Partial<FlightSequence> = {}): FlightSequence =>
     id: 1,
     name: "Evening",
     items: [
-      cue("use_a.show", { ...tag("use_a", "show-bumper") }),
+      cue("use_a.show", { ...tag("use_a", "bumper") }),
       cue("use_a.back", { ...tag("use_a", "back") }),
       cue("plain"),
-      cue("use_b.show", { ...tag("use_b", "show-bumper") }),
+      cue("use_b.show", { ...tag("use_b", "bumper") }),
     ],
     loop: false,
     isRunning: false,
@@ -126,7 +126,7 @@ it("saves an edit with the revision it was loaded at, after naming how many uses
   fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
   await screen.findByText("Recipe saved. 2 upcoming uses will follow it.");
   const put = calls.find((call) => call.method === "PUT")!;
-  expect(put.url).toContain("/programs/tv-main/recipes/5");
+  expect(put.url).toContain("/program/tv-main/recipes/5");
   expect(put.body).toEqual({
     name: "Song",
     steps: keys,
@@ -149,7 +149,7 @@ it("turns a step off by leaving it out of the saved steps, and back on in its pl
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
   await screen.findByText(/Recipe saved/);
-  expect(calls.find((call) => call.method === "PUT")!.body!.steps).toEqual(keys.filter((key) => key !== "hold-bumper"));
+  expect(calls.find((call) => call.method === "PUT")!.body!.steps).toEqual(keys.filter((key) => key !== "hold"));
   fireEvent.click(screen.getByRole("switch", { name: "Hold the bumper" }));
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
@@ -347,7 +347,7 @@ it("picks a scene by id, and says nothing was rebuilt when no upcoming use follo
 });
 
 it("names one use in the singular", async () => {
-  stubApi({ sequences: [sequence({ items: [cue("use_a.show", { ...tag("use_a", "show-bumper") })] })] });
+  stubApi({ sequences: [sequence({ items: [cue("use_a.show", { ...tag("use_a", "bumper") })] })] });
   await open();
   expect(screen.getByText("Revision 3 · 1 use")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Transition"), { target: { value: "cut" } });

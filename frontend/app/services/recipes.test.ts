@@ -11,7 +11,7 @@ const answer = (response: Response) => vi.stubGlobal("fetch", vi.fn(async () => 
 it("reads the recipes of a program, and null while the API answers 404", async () => {
   answer(new Response(JSON.stringify([recipe])));
   await expect(fetchRecipes("tv main")).resolves.toEqual([recipe]);
-  expect((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain("/programs/tv%20main/recipes");
+  expect((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain("/program/tv%20main/recipes");
   answer(new Response("{}", { status: 404 }));
   await expect(fetchRecipes("tv")).resolves.toBeNull();
 });
@@ -33,7 +33,7 @@ it("saves with the revision, and tells a stale revision from any other refusal",
   answer(new Response(JSON.stringify({ ...recipe, revision: 4 })));
   await expect(updateRecipe("tv", recipe)).resolves.toMatchObject({ revision: 4 });
   const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-  expect(url).toContain("/programs/tv/recipes/5");
+  expect(url).toContain("/program/tv/recipes/5");
   expect(init.method).toBe("PUT");
   expect(JSON.parse(init.body)).toEqual({
     name: "Song", steps: ["a"], returnSceneId: null, bumperSceneId: 1, slideshowSceneId: 2, transitionId: "cut", holdMs: 3000, revision: 3,
@@ -51,7 +51,7 @@ it("previews the cues and issues of a use, tolerating an answer that lacks eithe
     issues: [{ code: "label_empty", message: "m" }],
   });
   const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-  expect(url).toContain("/programs/tv/recipes/5/expand");
+  expect(url).toContain("/program/tv/recipes/5/expand");
   expect(JSON.parse(init.body)).toEqual({ params: { songId: 7 } });
   answer(new Response("{}"));
   await expect(expandRecipe("tv", 5, { songId: 7 })).resolves.toEqual({ items: [], issues: [] });

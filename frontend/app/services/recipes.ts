@@ -49,7 +49,7 @@ async function recipeError(response: Response): Promise<Error> {
 }
 
 const base = (programId: string) =>
-  apiUrl(`/programs/${encodeURIComponent(programId)}/recipes`);
+  apiUrl(`/program/${encodeURIComponent(programId)}/recipes`);
 
 /** The program's recipes, or null while the API answers 404 (recipes are not on this backend yet). */
 export async function fetchRecipes(programId: string): Promise<Recipe[] | null> {
