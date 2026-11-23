@@ -53,8 +53,7 @@ export function SimulcastStatusRail({ programId }: SimulcastStatusRailProps) {
 
   return (
     <section aria-label='Simulcast output status' className='flex flex-wrap items-center gap-3 border-b border-sand/20 bg-deep-sea px-3 py-2 text-xs'>
-      {/* StatusBadge sets 11px on its inner span and takes no size; the child selector raises it to 12px. */}
-      <StatusBadge className='[&>span:first-child]:text-xs' label='SIMULCAST' variant='info' />
+      <StatusBadge label='SIMULCAST' variant='info' />
       <span className='flex items-center gap-1.5 font-semibold text-text-primary'>
         <Tv className='h-3.5 w-3.5' aria-hidden='true' />
         TV scene controls
