@@ -11,3 +11,4 @@ allowBuilds:
   unrs-resolver: true
 minimumReleaseAgeExclude:
   - '@modoitaliano/giorgia@0.1.106'
+  - '@modoitaliano/giorgia@0.1.117'
