@@ -15,7 +15,7 @@ module.exports = {
       readFileSync(__filename),
       readFileSync(require.resolve('./source-coverage.cjs')),
       require.resolve('istanbul-lib-instrument'),
-      require.resolve('@ampproject/remapping'),
+      require.resolve('@jridgewell/remapping'),
     ].join('\n');
     return {
       canInstrument: true,

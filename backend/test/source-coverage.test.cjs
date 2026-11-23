@@ -218,3 +218,171 @@ test('actual Node child compilation uses identical source maps and standard nati
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('jest transformer instruments authored source and defers to ts-jest otherwise', () => {
+  const transformer = require('../scripts/jest-source-coverage-transformer.cjs');
+  const root = resolve(__dirname, '..');
+  const config = {
+    cwd: root,
+    rootDir: root,
+    globals: {},
+    extensionsToTreatAsEsm: [],
+    transform: [],
+    moduleFileExtensions: ['ts', 'js'],
+    setupFiles: [],
+    testMatch: [],
+    testRegex: [],
+    fakeTimers: {},
+    snapshotSerializers: [],
+  };
+  const created = transformer.createTransformer(config);
+  const source = 'export const pick = (x: boolean) => (x ? 1 : 2);';
+  const filename = join(root, 'src/pick.ts');
+  const options = (instrument) => ({
+    config,
+    instrument,
+    supportsStaticESM: false,
+    configString: '{}',
+    cacheFS: new Map(),
+    transformerConfig: {},
+  });
+  assert.equal(created.canInstrument, true);
+  assert.match(created.process(source, filename, options(true)).code, /cov_/);
+  assert.doesNotMatch(
+    created.process(source, filename, options(false)).code,
+    /cov_/,
+  );
+  const key = created.getCacheKey(source, filename, options(true));
+  assert.match(key, /^[0-9a-f]{64}$/);
+  assert.notEqual(
+    key,
+    created.getCacheKey(source + ' ', filename, options(true)),
+  );
+});
+
+test('child coverage capture validates its destination and flushes only real counters', () => {
+  const modulePath = require.resolve('../scripts/capture-child-coverage.cjs');
+  const previousFile = process.env.ALCANTARA_CHILD_COVERAGE_FILE;
+  delete process.env.ALCANTARA_CHILD_COVERAGE_FILE;
+  delete require.cache[modulePath];
+  assert.throws(
+    () => require('../scripts/capture-child-coverage.cjs'),
+    /explicit output path/,
+  );
+  const before = {
+    exit: process.listeners('exit'),
+    term: process.listeners('SIGTERM'),
+  };
+  process.env.ALCANTARA_CHILD_COVERAGE_FILE = join(
+    tmpdir(),
+    'unused-child.json',
+  );
+  delete require.cache[modulePath];
+  const { install } = require('../scripts/capture-child-coverage.cjs');
+  for (const [event, kept] of [
+    ['exit', before.exit],
+    ['SIGTERM', before.term],
+  ]) {
+    for (const listener of process.listeners(event)) {
+      if (!kept.includes(listener)) process.removeListener(event, listener);
+    }
+  }
+  if (previousFile === undefined)
+    delete process.env.ALCANTARA_CHILD_COVERAGE_FILE;
+  else process.env.ALCANTARA_CHILD_COVERAGE_FILE = previousFile;
+  assert.throws(() => install(undefined), /explicit output path/);
+  const directory = mkdtempSync(join(tmpdir(), 'alcantara-child-capture-'));
+  try {
+    const handlers = {};
+    const killed = [];
+    const target = {
+      pid: 7,
+      once: (event, handler) => (handlers[event] = handler),
+      kill: (pid, signal) => killed.push([pid, signal]),
+    };
+    const destination = join(directory, 'out.json');
+    let counters = {};
+    install(destination, target, () => counters);
+    assert.throws(() => handlers.exit(), /no Istanbul coverage/);
+    counters = undefined;
+    assert.throws(() => handlers.exit(), /no Istanbul coverage/);
+    counters = { '/a.ts': { path: '/a.ts' } };
+    handlers.SIGTERM();
+    assert.deepEqual(JSON.parse(readFileSync(destination, 'utf8')), counters);
+    assert.deepEqual(killed, [[7, 'SIGTERM']]);
+    globalThis.__coverage__ = { '/b.ts': { path: '/b.ts' } };
+    try {
+      install(destination, target)();
+      assert.deepEqual(
+        Object.keys(JSON.parse(readFileSync(destination, 'utf8'))),
+        ['/b.ts'],
+      );
+    } finally {
+      delete globalThis.__coverage__;
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('source coverage runner builds, then runs jest natively, and propagates failures', () => {
+  const { run } = require('../scripts/run-source-coverage.cjs');
+  const calls = [];
+  const spawn = (command, args, options) => {
+    calls.push([command, args, options]);
+    return { status: 0 };
+  };
+  let built = 0;
+  assert.equal(
+    run(['--runInBand'], spawn, () => (built += 1)),
+    0,
+  );
+  assert.equal(built, 1);
+  assert.deepEqual(calls[0][1], ['run', 'build']);
+  assert.equal(calls[1][1].at(-1), '--runInBand');
+  assert.equal(calls[1][2].env.ALCANTARA_NATIVE_COVERAGE, '1');
+  assert.equal(
+    run(
+      [],
+      () => ({ status: 3 }),
+      () => assert.fail(),
+    ),
+    3,
+  );
+  assert.equal(
+    run(
+      [],
+      () => ({ status: null }),
+      () => assert.fail(),
+    ),
+    1,
+  );
+  let step = 0;
+  assert.equal(
+    run(
+      [],
+      () => ({ status: step++ === 0 ? 0 : null }),
+      () => {},
+    ),
+    1,
+  );
+  assert.throws(
+    () =>
+      run(
+        [],
+        () => ({ error: new Error('no pnpm') }),
+        () => {},
+      ),
+    /no pnpm/,
+  );
+  step = 0;
+  assert.throws(
+    () =>
+      run(
+        [],
+        () => (step++ === 0 ? { status: 0 } : { error: new Error('jest') }),
+        () => {},
+      ),
+    /jest/,
+  );
+});
