@@ -232,3 +232,44 @@ it('does nothing when it closes before the HLS player loads, or fails after clos
   await act(async () => {});
   expect(errors).toHaveBeenCalled();
 });
+
+// A host that moves the element's volume on its own (WebKitGTK under PipeWire reflects the level
+// the system restored for the app's last stream: 0 after a muted, staged scene) must not leave the
+// program silent after a take: the channel gain is applied again.
+it('keeps the channel gain when the host moves the volume, on every new element', () => {
+  const { container, rerender } = render(<VideoStream sourceUrl='https://media.example.test/card.mp4' channelGain={1} />);
+  let element = video(container);
+  element.volume = 0;
+  fireEvent(element, new Event('volumechange'));
+  expect(element.volume).toBe(1);
+  expect(element.muted).toBe(false);
+
+  // A take to another source makes a new element, with the same gain: it is applied there too.
+  rerender(<VideoStream sourceUrl='https://media.example.test/next.mp4' channelGain={1} />);
+  const next = video(container);
+  expect(next).not.toBe(element);
+  next.volume = 0;
+  fireEvent(next, new Event('playing'));
+  expect(next.volume).toBe(1);
+
+  // A muted channel stays muted however the host flips it.
+  rerender(<VideoStream sourceUrl='https://media.example.test/next.mp4' channelGain={0} />);
+  element = video(container);
+  element.muted = false;
+  fireEvent(element, new Event('volumechange'));
+  expect(element.muted).toBe(true);
+  expect(element.volume).toBe(0);
+});
+
+it('leaves a host-rounded volume alone and stops following the element once unmounted', () => {
+  const { container, unmount } = render(<VideoStream sourceUrl='https://media.example.test/card.mp4' channelGain={0.5} />);
+  const element = video(container);
+  element.volume = 0.495;
+  fireEvent(element, new Event('volumechange'));
+  expect(element.volume).toBe(0.495);
+
+  unmount();
+  element.volume = 0;
+  fireEvent(element, new Event('volumechange'));
+  expect(element.volume).toBe(0);
+});
