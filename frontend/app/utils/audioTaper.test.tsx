@@ -98,3 +98,23 @@ it("ramps between two gains on a decibel scale", () => {
   expect(interpolateGainLog(0, 1, 0.5)).toBeCloseTo(dbToGain(-40), 10);
   expect(interpolateGainLog(1, 0, 0.25)).toBeCloseTo(dbToGain(-20), 10);
 });
+
+// gaulatti/alcantara#438: the taper sits on the on-air audio path, so a value that is not a usable
+// number must come out as a safe level, never as an error.
+it("turns a fader or decibel value that is out of range or not a number into a safe level", () => {
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, 7, -3, Number.NEGATIVE_INFINITY]) {
+    const db = faderToDb(bad);
+    expect(Number.isNaN(db)).toBe(false);
+    expect(db).toBeLessThanOrEqual(0);
+    const fader = dbToFader(bad);
+    expect(fader).toBeGreaterThanOrEqual(0);
+    expect(fader).toBeLessThanOrEqual(1);
+    expect(Number.isNaN(faderToGain(bad))).toBe(false);
+  }
+  expect(faderToDb(1.5)).toBe(0);
+  expect(faderToDb(Number.NaN)).toBe(0);
+  expect(faderToDb(-3)).toBe(Number.NEGATIVE_INFINITY);
+  expect(dbToFader(1.5)).toBe(1);
+  expect(dbToFader(Number.NaN)).toBe(0);
+  expect(dbToFader(-500)).toBe(0);
+});

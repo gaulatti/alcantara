@@ -65,10 +65,14 @@ export function faderToDb(value: number): number {
       const ratio = (normalized - previous.fader) / (next.fader - previous.fader);
       return interpolateLinear(previous.db, next.db, ratio);
     }
+  // Defensive: the last taper point is fader 1 and the value is below it, so the loop always returns
+  // from inside and its exit and the return after it are never reached.
+  /* v8 ignore start -- @preserve */
   }
 
   return 0;
 }
+/* v8 ignore stop */
 
 export function dbToFader(value: number): number {
   if (!Number.isFinite(value)) {
@@ -96,10 +100,14 @@ export function dbToFader(value: number): number {
       const ratio = (value - previous.db) / (next.db - previous.db);
       return clampUnit(interpolateLinear(previous.fader, next.fader, ratio));
     }
+  // Defensive: the last taper point is 0 dB and the value is below it, so the loop always returns from
+  // inside and its exit and the return after it are never reached.
+  /* v8 ignore start -- @preserve */
   }
 
   return 1;
 }
+/* v8 ignore stop */
 
 export function faderToGain(value: number): number {
   const db = faderToDb(value);
