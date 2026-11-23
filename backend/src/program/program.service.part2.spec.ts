@@ -1533,4 +1533,120 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       ).toBe(false);
     });
   });
+
+  describe('removeProgramSongLeaves (#327)', () => {
+    const outcome = (over: Row = {}) => ({
+      removed: [
+        {
+          id: 'song_x',
+          songId: 7,
+          artist: 'A',
+          title: 'T',
+          highRotation: true,
+          coverUrl: '',
+          kind: 'preset',
+        },
+      ],
+      before: 5,
+      after: 4,
+      cursorMovedTo: 'next',
+      songSequence: { mode: 'autoplay', items: [] },
+      songQueue: [{ id: 'q1' }],
+      ...over,
+    });
+
+    it('hands the removal to the engine, then broadcasts the new playlist and tells the engine the queue', async () => {
+      const { service, engine, put } = build();
+      put('radio-1', { type: 'radio', audioMixer: null });
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(outcome());
+      const broadcast = jest
+        .spyOn(service, 'broadcastUpdate')
+        .mockReturnValue({ version: 9 } as never);
+
+      const result = await service.removeProgramSongLeaves(
+        ' radio-1 ',
+        ['song_x'],
+        { keepRotation: true },
+      );
+
+      expect((engine as any).removeSongLeaves).toHaveBeenCalledWith(
+        'radio-1',
+        ['song_x'],
+        { keepRotation: true, dryRun: false },
+      );
+      expect(broadcast).toHaveBeenCalledWith(
+        'radio-1',
+        expect.objectContaining({
+          type: 'audio_bus_update',
+          programId: 'radio-1',
+          settings: expect.objectContaining({
+            songSequence: { mode: 'autoplay', items: [] },
+            songQueue: [{ id: 'q1' }],
+          }),
+        }),
+      );
+      expect(engine.handleQueueUpdated).toHaveBeenCalledWith('radio-1', [
+        { id: 'q1' },
+      ]);
+      expect(result).toEqual({
+        dryRun: false,
+        removed: [
+          {
+            id: 'song_x',
+            songId: 7,
+            artist: 'A',
+            title: 'T',
+            highRotation: true,
+          },
+        ],
+        leafCountBefore: 5,
+        leafCountAfter: 4,
+        cursorMovedTo: 'next',
+        version: 9,
+      });
+    });
+
+    it('falls back to the topic version when the broadcast carries none', async () => {
+      const { service, engine, put } = build();
+      put('radio-1', { type: 'radio' });
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(
+        outcome({
+          removed: [{ id: 'a', artist: 'A', title: 'T', kind: 'preset' }],
+        }),
+      );
+      noVersionBroadcast(service);
+      jest.spyOn(service, 'getProgramTopicVersion').mockReturnValue(3);
+      const result = await service.removeProgramSongLeaves('radio-1', ['a']);
+      expect(result.version).toBe(3);
+      expect(result.removed[0]).toEqual({
+        id: 'a',
+        songId: null,
+        artist: 'A',
+        title: 'T',
+        highRotation: false,
+      });
+    });
+
+    it('a dry run reports and neither broadcasts nor touches the engine queue', async () => {
+      const { service, engine } = build();
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(outcome());
+      const broadcast = jest.spyOn(service, 'broadcastUpdate');
+      const result = await service.removeProgramSongLeaves('radio-1', ['x'], {
+        dryRun: true,
+      });
+      expect((engine as any).removeSongLeaves).toHaveBeenCalledWith(
+        'radio-1',
+        ['x'],
+        { keepRotation: false, dryRun: true },
+      );
+      expect(result).toMatchObject({
+        dryRun: true,
+        leafCountBefore: 5,
+        leafCountAfter: 4,
+        version: null,
+      });
+      expect(broadcast).not.toHaveBeenCalled();
+      expect(engine.handleQueueUpdated).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -761,38 +761,6 @@ export class ProgramMcpTools {
         }),
       }),
       this.onProgram({
-        name: 'program_remove_program_song_leaves_by_id',
-        title: 'Remove songs from the playlist of a program by leaf id',
-        description:
-          'Removes exactly the playlist leaves with these ids (1 to 200, nested blocks included) and changes nothing else: the rotation cursor is the live one, never rewritten from an old read. An unknown id is refused. Removing the leaf on air is refused unless keep_rotation is set, which moves the rotation to the next leaf. With dry_run the leaves that would go and the leaf counts before and after are returned and nothing is written.',
-        permission: permissions.operate,
-        tier: 'A',
-        shape: {
-          program_id: programIdArg,
-          leaf_ids: z.array(z.string().min(1)).min(1).max(200),
-          keep_rotation: z.boolean().optional(),
-          dry_run: z.boolean().optional(),
-        },
-        summary: (args, live) =>
-          args.dry_run === true
-            ? `Lists the ${args.leaf_ids.length} playlist leaf(s) of program ${args.program_id} that would be removed; nothing is written. Live now: ${live.liveText}.`
-            : `Removes ${args.leaf_ids.length} leaf(s) from the playlist of program ${args.program_id}; the rotation keeps its place${args.keep_rotation ? ' (moved on if the leaf on air is among them)' : ''}. Live now: ${live.liveText}. Removed leaves are not kept: a dry run lists them first.`,
-        recoverable: false,
-        call: (args) =>
-          this.programs.removeProgramSongLeaves(
-            args.program_id,
-            args.leaf_ids,
-            {
-              keepRotation: args.keep_rotation,
-              dryRun: args.dry_run,
-            },
-          ),
-        result: (raw, args) => ({
-          program_id: args.program_id,
-          ...(raw as object),
-        }),
-      }),
-      this.onProgram({
         name: 'program_reload_program_by_id',
         title: 'Reload the live pages of a program',
         description:
