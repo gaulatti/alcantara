@@ -676,14 +676,15 @@ describe("the chyron and logo of the news program", () => {
     expect(stub("FifthBellChyron").contentMode).toBe("text");
   });
 
-  it("shows the logo with its callsign, or the default one", async () => {
+  it("shows the logo with its callsign, or none when the scene supplies none", async () => {
     await show(
       sceneOf(["toni-logo"], { "toni-logo": { callsign: "ZZ", subtitle: "Fictional" } }),
     );
     expect(stub("ToniLogo")).toMatchObject({ callsign: "ZZ", subtitle: "Fictional" });
     cleanup();
     await show(sceneOf(["toni-logo"]));
-    expect(stub("ToniLogo").callsign).toBe("MR");
+    // The console hardcodes no station mark: without a configured callsign there is none (#334).
+    expect(stub("ToniLogo").callsign).toBe("");
   });
 
   it("shows the news program once, for the first of its component types, with the scene's settings", async () => {
