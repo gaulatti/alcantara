@@ -3,6 +3,24 @@ import { afterEach, expect, it, vi } from "vitest";
 import { SongSimilarityPanel } from "./SongSimilarityPanel";
 import { UPLOAD_BATCH_SIZE, uploadSimilarityEmbeddings } from "../services/similarity";
 
+// Radix positioning runs continuously in jsdom; keep Bleecker's string callback
+// contract with a native select, as the other Bleecker-select tests in this repo do.
+vi.mock("@gaulatti/bleecker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaulatti/bleecker")>();
+  return {
+    ...actual,
+    Select: ({ options, onChange, value, ...rest }: any) => (
+      <select {...rest} value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option: any) => (
+          <option key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    ),
+  };
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

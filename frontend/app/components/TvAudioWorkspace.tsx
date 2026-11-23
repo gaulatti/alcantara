@@ -1,12 +1,12 @@
 import { TooltipButton } from "./BleeckerButtons";
-import { Button, Input } from "@gaulatti/bleecker";
+import { Button, Fader, formatFaderValue, Input } from "@gaulatti/bleecker";
 import type { ComponentProps, ReactNode } from "react";
 import type {
   MixerTakeChannelKey,
   MixerTakePresetSide,
   Scene,
 } from "../models/broadcast";
-import { dbToFader } from "../utils/audioTaper";
+import { CONSOLE_SILENCE_DB, dbToFader, faderToDb } from "../utils/audioTaper";
 import {
   formatMixerLevelInputValue,
   formatTakePresetDbInputValue,
@@ -38,6 +38,15 @@ export interface TvAudioMixerProps {
   loading: boolean;
   saving: boolean;
   error: string | null;
+}
+
+/** The console fader's travel: the taper the mixer has always used (utils/audioTaper). */
+const CONSOLE_TAPER = { toPosition: dbToFader, fromPosition: faderToDb };
+/** The scale the mixer has always drawn, with silence as −∞. */
+const CONSOLE_MARKS = [0, -8, -15, -28, -45, { value: CONSOLE_SILENCE_DB, label: "−∞" }];
+
+function formatConsoleDb(db: number): string {
+  return db <= CONSOLE_SILENCE_DB ? "−∞ dB" : formatFaderValue(db, "db");
 }
 
 function AudioChannel({
@@ -84,26 +93,20 @@ function AudioChannel({
         )}
       </div>
       <div className="tv-audio-fader-bank">
-        <div className="tv-audio-fader-scale" aria-hidden="true">
-          {[0, -8, -15, -28, -45].map((db) => (
-            <span key={db} style={{ bottom: `${dbToFader(db) * 100}%` }}>
-              {db}
-            </span>
-          ))}
-          <span style={{ bottom: 0 }}>−∞</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.005}
-          value={channel.volume}
+        <Fader
+          className="tv-audio-fader"
+          label={`${channel.label} fader`}
+          unit="db"
+          min={CONSOLE_SILENCE_DB}
+          max={0}
+          value={Math.max(CONSOLE_SILENCE_DB, faderToDb(channel.volume))}
+          taper={CONSOLE_TAPER}
+          marks={CONSOLE_MARKS}
+          format={formatConsoleDb}
+          length="clamp(150px, 26vh, 280px)"
           disabled={loading}
-          aria-label={`${channel.label} fader`}
-          aria-orientation="vertical"
-          aria-valuetext={`${level} dB`}
-          onChange={(event) =>
-            channel.onVolumeChange(Number(event.target.value))
+          onValueChange={(db) =>
+            channel.onVolumeChange(db <= CONSOLE_SILENCE_DB ? 0 : dbToFader(db))
           }
         />
         {channel.meter ? (

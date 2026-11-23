@@ -7,11 +7,31 @@ export type MediaAnalysisResult = 'success' | 'retry' | 'failure';
 
 const RESULTS = new Set<string>(['success', 'retry', 'failure']);
 
+/**
+ * What became of a finished result whose write the database refused (#278):
+ * retried (held for another run), stored_after_retry, released (the claim was
+ * given back with its attempt) or dropped (it cannot be stored; the lease runs out).
+ */
+export type MediaAnalysisWriteOutcome =
+  | 'retried'
+  | 'stored_after_retry'
+  | 'released'
+  | 'dropped';
+
+const WRITE_OUTCOMES = new Set<string>([
+  'retried',
+  'stored_after_retry',
+  'released',
+  'dropped',
+]);
+
 @Injectable()
 export class MediaAnalysisMetrics {
   private readonly analyses: Counter<string>;
   private readonly duration: Histogram<string>;
   private readonly backlog: Gauge<string>;
+  private readonly writes: Counter<string>;
+  private readonly durationBackfill: Gauge<string>;
 
   constructor(managed: ManagedMetricsService) {
     this.analyses = new Counter({
@@ -32,6 +52,20 @@ export class MediaAnalysisMetrics {
       help: 'Audio assets waiting for analysis (unanalysed, stale or due a retry) at the last poll.',
       registers: [managed.registry],
     });
+    this.writes = new Counter({
+      name: 'alcantara_media_analysis_result_writes_total',
+      help: 'Finished audio analyses whose result write the database refused, by bounded outcome.',
+      labelNames: ['outcome'],
+      registers: [managed.registry],
+    });
+    for (const outcome of WRITE_OUTCOMES) {
+      this.writes.inc({ outcome }, 0);
+    }
+    this.durationBackfill = new Gauge({
+      name: 'alcantara_media_analysis_duration_backfill_assets',
+      help: 'Analysed audio assets still without a stored length that can be measured now, at the last poll (#296).',
+      registers: [managed.registry],
+    });
     for (const result of RESULTS) {
       this.analyses.inc({ result }, 0);
     }
@@ -39,6 +73,16 @@ export class MediaAnalysisMetrics {
 
   setBacklog(assets: number): void {
     this.backlog.set(Math.max(0, assets));
+  }
+
+  recordWrite(outcome: MediaAnalysisWriteOutcome): void {
+    this.writes.inc({
+      outcome: WRITE_OUTCOMES.has(outcome) ? outcome : 'dropped',
+    });
+  }
+
+  setDurationBackfill(assets: number): void {
+    this.durationBackfill.set(Math.max(0, assets));
   }
 
   record(result: MediaAnalysisResult, seconds: number): void {

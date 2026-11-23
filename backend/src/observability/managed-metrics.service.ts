@@ -59,6 +59,29 @@ export const MCP_AUTH_METRIC_RESULTS = [
   'rate_limited',
 ] as const;
 
+/** Steps of alcantara_mcp_oauth_total (gaulatti/bastille#34). */
+export const MCP_OAUTH_METRIC_STEPS = [
+  'authorize',
+  'callback',
+  'token',
+  'refresh',
+] as const;
+/** Results of alcantara_mcp_oauth_total (gaulatti/bastille#34). */
+export const MCP_OAUTH_METRIC_RESULTS = [
+  'consent',
+  'cancelled',
+  'proxied',
+  'refused',
+  'unknown_state',
+  'unbound',
+  'provider_error',
+  'exchange_failed',
+  'issued',
+  'passed_through',
+  'upstream_refused',
+  'upstream_unavailable',
+] as const;
+
 /** Results of alcantara_mcp_requests_total (gaulatti/alcantara#212); mirrors MCP_REQUEST_RESULTS. */
 export const MCP_REQUEST_METRIC_RESULTS = [
   'ok',
@@ -294,6 +317,7 @@ export class ManagedMetricsService {
   private readonly palazzoMetricsScrapes: Counter<string>;
   private readonly palazzoMetricsScrapeDuration: Histogram<string>;
   private readonly mcpAuth: Counter<string>;
+  private readonly mcpOAuth: Counter<string>;
   private readonly mcpRequests: Counter<string>;
   private mcpToolNames = new Set<string>();
   private readonly sourceInventory: Gauge<string>;
@@ -455,6 +479,12 @@ export class ManagedMetricsService {
     });
     for (const result of MCP_AUTH_METRIC_RESULTS)
       this.mcpAuth.labels(result).inc(0);
+    this.mcpOAuth = new Counter({
+      name: 'alcantara_mcp_oauth_total',
+      help: 'MCP sign-in steps through the API (bastille#34) by bounded step and result.',
+      labelNames: ['step', 'result'],
+      registers: [this.registry],
+    });
     this.mcpRequests = new Counter({
       name: 'alcantara_mcp_requests_total',
       help: 'MCP tool calls by registered tool, tier and bounded result.',
@@ -610,7 +640,7 @@ export class ManagedMetricsService {
   }
 
   recordBroadcastDestination(action: string, result: string): void {
-    const actions = new Set(['reload', 'start', 'stop', 'command']);
+    const actions = new Set(['reload', 'start', 'stop', 'command', 'ingest']);
     const results = new Set(['succeeded', 'failed', 'conflict']);
     this.broadcastDestinationOperations.inc({
       action: bounded(action, actions),
@@ -648,6 +678,16 @@ export class ManagedMetricsService {
       return;
     this.palazzoMetricsScrapes.inc({ result });
     this.palazzoMetricsScrapeDuration.observe(Math.max(0, seconds));
+  }
+
+  /** One MCP sign-in step; any value outside the closed sets is not counted. */
+  recordMcpOAuth(step: string, result: string): void {
+    if (
+      !(MCP_OAUTH_METRIC_STEPS as readonly string[]).includes(step) ||
+      !(MCP_OAUTH_METRIC_RESULTS as readonly string[]).includes(result)
+    )
+      return;
+    this.mcpOAuth.inc({ step, result });
   }
 
   recordMcpAuth(result: string): void {

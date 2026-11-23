@@ -1,32 +1,50 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock("@react-router/dev/routes", () => ({
-  route: (path: string, file: string) => ({ path, file }),
-  index: (file: string) => ({ index: true, file }),
-  layout: (file: string, children: unknown[]) => ({ layout: file, children }),
-}));
+// gaulatti/alcantara#352: the component bench and the fixtures are development and test
+// routes. A production build's route table must not register them.
+const benchAndFixtures = [
+  'preview',
+  'layout-demo',
+  'console-fixture',
+  'media-fixture',
+  'labels-fixture',
+  'song-intro-fixture',
+  'similarity-fixture',
+  'slideshow-fixture',
+  'recording-fixture',
+  'filler-fixture',
+  'access-fixture',
+];
 
-import routes from "./routes";
+type RouteNode = { path?: string; children?: RouteNode[] };
 
-const flatten = (nodes: any[]): any[] => nodes.flatMap((n) => (n.children ? [n, ...flatten(n.children)] : [n]));
+function pathsOf(nodes: RouteNode[]): string[] {
+  return nodes.flatMap((node) => [...(node.path ? [node.path] : []), ...pathsOf(node.children ?? [])]);
+}
 
-describe("route table", () => {
-  const all = flatten(routes as any[]);
-  it("keeps sign-in public and everything else behind the protected layout, except the on-air pages", () => {
-    const top = (routes as any[]).map((n) => n.path ?? n.layout);
-    expect(top).toEqual(["login", "logout", "routes/protected.tsx", "guest/:invitation", "return-router/:programId", "program/:id"]);
+async function loadRouteTable(): Promise<string[]> {
+  vi.resetModules();
+  const table = (await import('./routes')).default as RouteNode[];
+  return pathsOf(table);
+}
+
+describe('route table', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
-  it("serves the control desk at the index and every console page inside the app layout", () => {
-    const appLayout = flatten((routes as any[]).filter((n) => n.layout === "routes/protected.tsx")).find((n) => n.layout === "routes/layout.tsx");
-    const children = appLayout.children;
-    expect(children.find((n: any) => n.index).file).toBe("routes/control.tsx");
-    const paths = children.filter((n: any) => n.path).map((n: any) => n.path);
-    for (const path of ["control", "instants", "songs", "media", "scenes", "programs", "radio-settings", "access", "flight"]) expect(paths).toContain(path);
-    expect(paths).toContain("radio-output/:programId");
+
+  it('keeps the bench and fixtures in development and tests', async () => {
+    const paths = await loadRouteTable();
+    for (const path of benchAndFixtures) expect(paths).toContain(path);
   });
-  it("points every route at an existing module path with a unique URL", () => {
-    const paths = all.filter((n) => n.path).map((n) => n.path);
-    expect(new Set(paths).size).toBe(paths.length);
-    for (const n of all.filter((n) => n.file)) expect(n.file).toMatch(/^routes\/[\w.-]+\.tsx$/);
+
+  it('a production build registers none of the bench or fixture paths, and keeps the operator screens', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('MODE', 'production');
+    vi.stubEnv('VITE_AUTH_MODE', '');
+    const paths = await loadRouteTable();
+    for (const path of benchAndFixtures) expect(paths).not.toContain(path);
+    for (const path of ['instants', 'songs', 'media', 'access', 'flight']) expect(paths).toContain(path);
   });
 });

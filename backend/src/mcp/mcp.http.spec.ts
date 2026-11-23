@@ -9,6 +9,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { listenOnLoopback } from '../../test/loopback-supertest';
 import { z } from 'zod';
 import { AuthController } from '../auth/auth.controller';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
@@ -29,6 +30,8 @@ import { McpActionExecutor as ActionExecutor } from './mcp-action.executor';
 import { McpAuthService } from './mcp-auth.service';
 import { McpController } from './mcp.controller';
 import { McpOAuthController } from './mcp-oauth.controller';
+import { McpOAuthProxyController } from './mcp-oauth-proxy.controller';
+import { McpOAuthProxyService } from './mcp-oauth-proxy.service';
 import { McpRegistry } from './mcp-registry.service';
 import {
   COGNITO_ISSUER,
@@ -166,7 +169,12 @@ describe('MCP endpoint', () => {
       : undefined;
     @Module({
       imports: [DiscoveryModule],
-      controllers: [AuthController, McpController, McpOAuthController],
+      controllers: [
+        AuthController,
+        McpController,
+        McpOAuthController,
+        McpOAuthProxyController,
+      ],
       providers: [
         Reflector,
         RealtimeTicketService,
@@ -212,6 +220,7 @@ describe('MCP endpoint', () => {
         PompeiiAuthorizationGuard,
         McpAuthService,
         McpRegistry,
+        McpOAuthProxyService,
         SampleTools,
       ],
     })
@@ -226,6 +235,7 @@ describe('MCP endpoint', () => {
     app.useGlobalGuards(app.get(PompeiiAuthorizationGuard));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    await listenOnLoopback(app.getHttpServer());
     auth = app.get(McpAuthService);
   }
 
@@ -642,6 +652,31 @@ describe('MCP endpoint', () => {
     }
   });
 
+  it('publishes the capability catalogue publicly, matching the registry, with no schemas', async () => {
+    await boot();
+    const response = await request(app.getHttpServer()).get(
+      '/mcp/capabilities',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('public, max-age=300');
+    expect(Object.keys(response.body)).toEqual(['capabilities']);
+    const expected = app.get(McpRegistry).publicCatalogue();
+    expect(response.body.capabilities).toEqual(expected);
+    expect(response.body.capabilities.length).toBeGreaterThan(0);
+    for (const entry of response.body.capabilities) {
+      expect(Object.keys(entry).sort()).toEqual([
+        'description',
+        'name',
+        'permission',
+        'tier',
+        'title',
+      ]);
+    }
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /inputSchema|"shape"|"schema"/,
+    );
+  });
+
   it('refuses an oversized body, other methods on /mcp, and a malformed request', async () => {
     await boot();
     const big = await rpc('tools/list', {
@@ -811,8 +846,9 @@ describe('MCP endpoint', () => {
       // The issuer is the address the document is served for, not the pool
       // that issues tokens (the pool's issuer and keys are checked by Pompeii).
       issuer: MCP_PUBLIC_ORIGIN,
-      authorization_endpoint: 'https://buendia.gaulatti.com/oauth2/authorize',
-      token_endpoint: 'https://buendia.gaulatti.com/oauth2/token',
+      authorization_endpoint:
+        'https://api.alcantara.gaulatti.com/oauth/authorize',
+      token_endpoint: 'https://api.alcantara.gaulatti.com/oauth/token',
       jwks_uri: `${COGNITO_ISSUER}/.well-known/jwks.json`,
       registration_endpoint: 'https://api.alcantara.gaulatti.com/register',
       code_challenge_methods_supported: ['S256'],
@@ -889,5 +925,137 @@ describe('MCP endpoint', () => {
     expect((await request(app.getHttpServer()).get('/register')).status).toBe(
       405,
     );
+  });
+
+  // gaulatti/bastille#34 through the real Fastify app, the global guard and
+  // the form parser: public routes, consent first for an https callback.
+  it('signs MCP clients in through its own routes, consent first for https', async () => {
+    await boot();
+    const server = app.getHttpServer();
+    const chatgpt = 'https://chatgpt.com/connector/oauth/h4X9kq2';
+    const registered = await request(server)
+      .post('/register')
+      .send({ redirect_uris: [chatgpt], client_name: 'Fixture plugin' });
+    expect(registered.status).toBe(201);
+    expect(registered.body.client_id).toMatch(/^mcp-proxy\./);
+    const query = new URLSearchParams({
+      response_type: 'code',
+      client_id: registered.body.client_id as string,
+      redirect_uri: chatgpt,
+      state: 'fictional-client-state',
+      code_challenge: 'c'.repeat(43),
+      code_challenge_method: 'S256',
+    });
+    const consent = await request(server).get(`/oauth/authorize?${query}`);
+    expect(consent.status).toBe(200);
+    expect(consent.headers['content-type']).toMatch(/^text\/html/);
+    expect(consent.headers['x-frame-options']).toBe('DENY');
+    expect(consent.headers['set-cookie']?.[0]).toContain('SameSite=Strict');
+    expect(consent.headers.location).toBeUndefined();
+    expect(consent.text).toContain(
+      'Fixture plugin (a name the app chose) at <b>chatgpt.com</b>',
+    );
+    const fields = Object.fromEntries(
+      [
+        ...consent.text.matchAll(
+          /<input type="hidden" name="([^"]+)" value="([^"]*)">/g,
+        ),
+      ].map((m) => [m[1], m[2]]),
+    );
+    const form = new URLSearchParams({
+      ...fields,
+      decision: 'continue',
+    }).toString();
+    const crossSite = await request(server)
+      .post('/oauth/authorize')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send(form);
+    expect(crossSite.status).toBe(400);
+    const continued = await request(server)
+      .post('/oauth/authorize')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .set('Cookie', consent.headers['set-cookie'][0].split(';')[0])
+      .send(form);
+    expect(continued.status).toBe(303);
+    const sent = new URL(continued.headers.location);
+    expect(sent.origin).toBe('https://buendia.gaulatti.com');
+    expect(sent.searchParams.get('redirect_uri')).toBe(
+      'https://api.alcantara.gaulatti.com/oauth/callback',
+    );
+    const unlisted = await request(server).get(
+      `/oauth/authorize?${new URLSearchParams({ ...Object.fromEntries(query), client_id: MCP_SHARED_CLIENT_ID, redirect_uri: 'https://evil.example.test/cb' })}`,
+    );
+    expect(unlisted.status).toBe(400);
+    expect(unlisted.text).toContain('not accepted');
+    const callback = await request(server).get(
+      '/oauth/callback?state=unknown&code=c',
+    );
+    expect(callback.status).toBe(400);
+    const token = await request(server)
+      .post('/oauth/token')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send('grant_type=authorization_code&code=unknown');
+    expect(token.status).toBe(400);
+    expect(token.body.error).toBe('invalid_grant');
+  });
+
+  // The Cognito return completes only in the browser that started the sign-in:
+  // the controller hands the browser's Cookie header to the proxy.
+  it('completes the Cognito return only in the browser that started it', async () => {
+    await boot();
+    const server = app.getHttpServer();
+    const loopback = 'http://127.0.0.1:5005/cb';
+    const begin = async () => {
+      const sent = await request(server).get(
+        `/oauth/authorize?${new URLSearchParams({
+          response_type: 'code',
+          client_id: MCP_SHARED_CLIENT_ID,
+          redirect_uri: loopback,
+          state: 'fictional-client-state',
+          code_challenge: 'c'.repeat(43),
+          code_challenge_method: 'S256',
+        })}`,
+      );
+      expect(sent.status).toBe(303);
+      return {
+        state: new URL(sent.headers.location).searchParams.get('state')!,
+        cookie: String(sent.headers['set-cookie']).split(';')[0],
+      };
+    };
+    const elsewhere = await begin();
+    expect(elsewhere.cookie).toMatch(/^alcantara_mcp_signin_/);
+    const refused = await request(server).get(
+      `/oauth/callback?${new URLSearchParams({ state: elsewhere.state, code: 'cognito-code' })}`,
+    );
+    expect(refused.status).toBe(400);
+    expect(refused.headers.location).toBeUndefined();
+    expect(String(refused.headers['set-cookie'])).toContain('Max-Age=0');
+
+    const proxy = app.get(McpOAuthProxyService);
+    const tokenCall = proxy.tokenCall;
+    proxy.tokenCall = () =>
+      Promise.resolve({
+        status: 200,
+        body: JSON.stringify({ access_token: 'fictional-access' }),
+      });
+    try {
+      const here = await begin();
+      const back = await request(server)
+        .get(
+          `/oauth/callback?${new URLSearchParams({ state: here.state, code: 'cognito-code' })}`,
+        )
+        .set('Cookie', here.cookie);
+      expect(back.status).toBe(303);
+      expect(new URL(back.headers.location).origin).toBe(
+        'http://127.0.0.1:5005',
+      );
+    } finally {
+      proxy.tokenCall = tokenCall;
+    }
+    const text = await metrics.registry.metrics();
+    for (const result of ['unbound', 'issued'])
+      expect(text).toContain(
+        `alcantara_mcp_oauth_total{step="callback",result="${result}"} 1`,
+      );
   });
 });

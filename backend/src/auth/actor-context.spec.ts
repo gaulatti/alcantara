@@ -9,6 +9,7 @@ import { Test } from '@nestjs/testing';
 import { APP_GUARD, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { lastValueFrom, of } from 'rxjs';
 import request from 'supertest';
+import { listenOnLoopback } from '../../test/loopback-supertest';
 import type { App } from 'supertest/types';
 import { MCP_ATTRIBUTION } from '../mcp/contract';
 import { ActorContext } from './actor-context';
@@ -189,6 +190,7 @@ describe('console requests through the real guard and the interceptor', () => {
     }).compile();
     app = module.createNestApplication({ logger: false });
     await app.init();
+    await listenOnLoopback(app.getHttpServer());
   });
 
   afterEach(() => app.close());

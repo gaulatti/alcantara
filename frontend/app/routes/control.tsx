@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { useSSE, type SSEConnectionState } from "../hooks/useSSE";
+import { cartModifierHeld, platformIsMac } from "../utils/cartModifier";
 import {
   OVERLAY_COMPONENTS,
   getDefaultPropsForComponent as getStaticDefaultProps,
@@ -87,12 +88,12 @@ import {
   FIFTHBELL_AVAILABLE_WEATHER_CITIES,
   INSTANT_PLAYBACK_PULSE_ANIMATION,
   INSTANT_PLAYBACK_SWEEP_ANIMATION,
-  INSTANT_SHORTCUT_KEYS,
   MIXER_TAKE_CHANNELS,
   SONG_PROGRESS_FILL_ANIMATION,
   TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS,
   createEmptyMeterChannel,
   defaultMixerChannelsFromScalars,
+  getInstantShortcutIndex,
   getInstantShortcutLetter,
   isEditableTarget,
   meterLevelToFill,
@@ -805,6 +806,7 @@ export default function Control() {
             return {
               ...prev,
               activeSceneId: null,
+              activeScene: null,
             };
           });
           return;
@@ -1821,6 +1823,27 @@ export default function Control() {
     if (!res.ok) throw await responseFailure(res);
   };
 
+  // A library song that is not in the rotation, on air now: the same command the rotation take
+  // posts, without changing the rotation (#298).
+  const playLibrarySongNow = async (song: SongCatalogItem) => {
+    const res = await fetch(
+      apiUrl(`/radio/${encodeURIComponent(activeProgramId)}/song`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: song.audioUrl,
+          title: song.title,
+          artist: song.artist,
+          coverUrl: song.coverUrl,
+          durationMs: song.durationMs,
+          songId: song.id,
+        }),
+      },
+    );
+    if (!res.ok) throw await responseFailure(res);
+  };
+
   const takeProgramSongOffAir = async (
     targetProgramId: string = activeProgramId,
   ) => {
@@ -2773,12 +2796,8 @@ export default function Control() {
         return;
       }
 
-      if (!event.ctrlKey) {
-        return;
-      }
-
       const match = event.code.match(/^Digit(\d)$/);
-      if (match && Date.now() <= sceneHotkeyArmedUntil) {
+      if (event.ctrlKey && match && Date.now() <= sceneHotkeyArmedUntil) {
         const pressedDigit = Number(match[1]);
         const shortcutIndex = pressedDigit === 0 ? 9 : pressedDigit - 1;
         const shortcutScene = assignedScenes[shortcutIndex];
@@ -2793,15 +2812,12 @@ export default function Control() {
         return;
       }
 
-      if (event.metaKey || event.altKey || event.shiftKey) {
+      // A cart plays on this platform's modifier only (Ctrl on macOS, Alt elsewhere).
+      if (!cartModifierHeld(event, platformIsMac())) {
         return;
       }
 
-      if (!/^[a-z]$/.test(key)) {
-        return;
-      }
-
-      const shortcutIndex = INSTANT_SHORTCUT_KEYS.indexOf(key);
+      const shortcutIndex = getInstantShortcutIndex(key, platformIsMac());
       if (shortcutIndex === -1) {
         return;
       }
@@ -2927,6 +2943,7 @@ export default function Control() {
           return {
             ...prev,
             activeSceneId: null,
+            activeScene: null,
           };
         });
         return;
@@ -3244,6 +3261,7 @@ export default function Control() {
         onTakeOffAir={async () => {
           await takeProgramSongOffAir(activeProgramId);
         }}
+        onPlaySongNow={playLibrarySongNow}
         instants={instants}
         instantSearch={instantSearch}
         onInstantSearchChange={setInstantSearch}
@@ -3260,15 +3278,21 @@ export default function Control() {
             volume: mixerLevels.songMasterVolume,
             muted: mixerLevels.songMuted,
             peak: programAudioMeterLevels.song.peak,
+            vu: programAudioMeterLevels.song.vu,
+            peakHold: programAudioMeterLevels.song.peakHold,
           },
           instants: {
             volume: mixerLevels.instantMasterVolume,
             muted: mixerLevels.instantMuted,
             peak: programAudioMeterLevels.instants.peak,
+            vu: programAudioMeterLevels.instants.vu,
+            peakHold: programAudioMeterLevels.instants.peakHold,
           },
           main: {
             volume: mixerLevels.mainMasterVolume,
             peak: programAudioMeterLevels.main.peak,
+            vu: programAudioMeterLevels.main.vu,
+            peakHold: programAudioMeterLevels.main.peakHold,
           },
           saving: isSavingMixerLevels,
           error: mixerSaveError,

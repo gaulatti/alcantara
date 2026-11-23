@@ -733,6 +733,18 @@ describe("ProgramSongSequenceEditor catalog", () => {
       .getAllByLabelText("Add to queue")
       .map((button) => button.parentElement as HTMLElement);
 
+  it("will not add a song the playlist already holds (#280)", () => {
+    editor({
+      sequence: { items: [{ ...preset("held"), songId: 1 }] },
+      songCatalog: catalog,
+      view: "catalog",
+    });
+    expect(screen.getAllByLabelText("Add to queue")).toHaveLength(3);
+    const held = screen.getByLabelText("Already in the playlist");
+    expect(held).toBeDisabled();
+    fireEvent.click(held);
+  });
+
   it("lists only enabled songs with audio, sorted by artist and title, and searches them", () => {
     editor({ sequence: { items: [] }, songCatalog: catalog, view: "catalog" });
     expect(screen.queryByText("Playlist is empty")).toBeNull();
@@ -896,5 +908,50 @@ describe("ProgramSongSequenceEditor catalog", () => {
       />,
     );
     expect(screen.queryByLabelText("Swap song...")).toBeNull();
+  });
+});
+
+describe("ProgramSongSequenceEditor remove edge cases (gaulatti/alcantara#186)", () => {
+  it("leaves no active song when the last remaining row is removed", () => {
+    vi.spyOn(Date, "now").mockReturnValue(5_000);
+    const { onChange } = editor({
+      sequence: {
+        mode: "manual",
+        activeItemId: "only",
+        items: [preset("only")],
+      },
+      view: "queue",
+    });
+    fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+    expect(onChange.mock.lastCall![0]).toEqual(
+      expect.objectContaining({ items: [], activeItemId: null }),
+    );
+  });
+
+  it("keeps the autoplay clock on the playing song when a row before it is removed", () => {
+    vi.spyOn(Date, "now").mockReturnValue(9_000);
+    const { onChange } = editor({
+      sequence: {
+        mode: "shuffle",
+        loop: true,
+        activeItemId: "ghost",
+        items: [preset("a"), preset("b")],
+      },
+      programSongPlayback: {
+        audioUrl: "https://example.test/a.mp3",
+        token: "a:1",
+        currentTimeMs: 1_000,
+        isPlaying: false,
+      },
+      view: "queue",
+    });
+    fireEvent.click(within(rows()[1]).getByLabelText("Remove"));
+    expect(onChange.mock.lastCall![0]).toEqual(
+      expect.objectContaining({
+        items: [expect.objectContaining({ id: "a" })],
+        activeItemId: "a",
+        startedAt: 8_000,
+      }),
+    );
   });
 });

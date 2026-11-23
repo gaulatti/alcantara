@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
 import { ProgramTemplateService } from '../../program/program-template.service';
 import { ProgramService } from '../../program/program.service';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
 import { loadProgramLive, whyNot, type ProgramLive } from './on-air';
 import {
@@ -109,6 +110,8 @@ export class ProgramMcpTools {
   constructor(
     private readonly programs: ProgramService,
     private readonly templates: ProgramTemplateService,
+    // gaulatti/alcantara#337: the deployment's team, the same one the HTTP guard resolves.
+    private readonly pompeii: PompeiiService,
   ) {}
 
   /** A W or A row on one program: planned and confirmed from its live state. */
@@ -236,6 +239,7 @@ export class ProgramMcpTools {
             args.program_id,
             args.type,
             template,
+            this.pompeii.teamId,
           );
         },
         result: stateSummary,

@@ -10,11 +10,22 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ScenesAdmin, { meta } from "./scenes";
 import { routeFetch } from "../../test/routeKit";
+import {
+  cancelConfirmation,
+  chooseFromRowMenu,
+  confirmWith,
+  submitConfirmation,
+  confirmation,
+} from "../../test/libraryKit";
 
 vi.mock("@gaulatti/bleecker", async (original) => {
   const kit = await import("../../test/routeKit");
+  const { libraryBleecker } = await import("../../test/libraryKit");
   return kit.nativeSelect(
-    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+    () =>
+      libraryBleecker(
+        original as () => Promise<typeof import("@gaulatti/bleecker")>,
+      ) as Promise<typeof import("@gaulatti/bleecker")>,
   );
 });
 
@@ -132,7 +143,7 @@ it("shows loading until the scenes arrive", async () => {
     }),
   );
   renderPage();
-  expect(await screen.findByText("Loading scenes...")).toBeVisible();
+  expect(await screen.findByLabelText("Loading Scenes")).toBeVisible();
   release();
   expect(await screen.findByText("Morning headlines")).toBeVisible();
 });
@@ -150,28 +161,20 @@ it("asks for a layout first and links to the templates", async () => {
   expect(await screen.findByText("Scene templates page")).toBeVisible();
 });
 
-it("explains a load failure", async () => {
+it("explains a load failure with a retry", async () => {
   serve({ "GET /scenes": () => new Response(null, { status: 500 }) });
   renderPage();
-  expect(
-    (
-      await screen.findAllByText(
-        "Failed to load scenes. Please refresh and try again.",
-      )
-    )[0],
-  ).toBeVisible();
+  expect(await screen.findByText("Failed to load scenes")).toBeVisible();
+  expect(screen.queryByText("Create a layout first")).not.toBeInTheDocument();
+  serve();
+  fireEvent.click(screen.getByText("Retry").closest("button")!);
+  expect(await screen.findByText("Morning headlines")).toBeVisible();
 });
 
 it("explains a layout load failure", async () => {
   serve({ "GET /layouts": () => new Response(null, { status: 503 }) });
   renderPage();
-  expect(
-    (
-      await screen.findAllByText(
-        "Failed to load scenes. Please refresh and try again.",
-      )
-    )[0],
-  ).toBeVisible();
+  expect(await screen.findByText("Failed to load scenes")).toBeVisible();
 });
 
 it("offers to create the first scene", async () => {
@@ -279,36 +282,38 @@ it("reports a save that fails without a message", async () => {
 
 it("deletes a scene only after confirmation, and reports a failure", async () => {
   serve();
-  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
-  vi.stubGlobal("confirm", confirm);
   renderPage();
   await screen.findByText("Morning headlines");
-  fireEvent.click(screen.getByRole("button", { name: "Delete Afternoon" }));
-  expect(confirm).toHaveBeenCalledWith('Delete scene "Afternoon"?');
+  await chooseFromRowMenu("Afternoon", "Delete");
+  expect(
+    within(await confirmation()).getByText('Delete scene "Afternoon"?'),
+  ).toBeVisible();
+  await cancelConfirmation();
   expect(screen.getByText("Afternoon")).toBeVisible();
 
-  fireEvent.click(screen.getByRole("button", { name: "Delete Afternoon" }));
+  await chooseFromRowMenu("Afternoon", "Delete");
+  await confirmWith("Delete");
   expect((await screen.findAllByText("Scene deleted."))[0]).toBeVisible();
   await waitFor(() =>
     expect(screen.queryByText("Afternoon")).not.toBeInTheDocument(),
   );
 
   serve({ "DELETE /scenes/1": () => new Response("In use", { status: 409 }) });
-  vi.stubGlobal("confirm", () => true);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Delete Morning headlines" }),
-  );
+  await chooseFromRowMenu("Morning headlines", "Delete");
+  await submitConfirmation("Delete");
   expect(
     (await screen.findAllByText("Failed to delete scene."))[0],
   ).toBeVisible();
+  expect(await confirmation()).toBeVisible();
+  await cancelConfirmation();
 
   serve({ "DELETE /scenes/1": () => new Response("", { status: 500 }) });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Delete Morning headlines" }),
-  );
+  await chooseFromRowMenu("Morning headlines", "Delete");
+  await submitConfirmation("Delete");
   await waitFor(() =>
     expect(
       screen.getAllByText("Failed to delete scene.").length,
     ).toBeGreaterThan(0),
   );
+  expect(await confirmation()).toBeVisible();
 });

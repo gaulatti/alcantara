@@ -6,7 +6,7 @@ interface TickerProps {
   url?: string;
 }
 
-export const Ticker: React.FC<TickerProps> = ({ hashtag = '#ModoitalianoMR', url = 'modoradio.cl' }) => {
+export const Ticker: React.FC<TickerProps> = ({ hashtag = '', url = '' }) => {
   return (
     <div className='ticker'>
       <div className='ticker-content'>

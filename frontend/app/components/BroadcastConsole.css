@@ -32,10 +32,10 @@
 }
 .console-eyebrow {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--console-muted);
 }
@@ -942,39 +942,26 @@
   cursor: default;
 }
 .tv-audio-fader-bank {
-  display: grid;
-  grid-template-columns: 21px minmax(24px, 1fr) 8px;
-  gap: 4px;
-  height: 220px;
-  flex: 1;
-  min-height: 170px;
-  max-height: 300px;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 0;
 }
-.tv-audio-fader-bank input[type="range"] {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  height: 100%;
-  width: 100%;
-  min-height: 0;
-  margin: 0;
-  accent-color: var(--console-ready);
-  cursor: ns-resize;
-  touch-action: none;
-}
-.tv-audio-fader-scale {
-  position: relative;
-  font-size: 9px;
-  color: var(--console-muted);
-  font-variant-numeric: tabular-nums;
-}
-.tv-audio-fader-scale span {
+/* The Bleecker Fader's own label and readout: the strip's heading and its dB box
+   already show them, so they stay for screen readers only. */
+.tv-audio-fader > span:first-child,
+.tv-audio-fader > output {
   position: absolute;
-  right: 0;
-  transform: translateY(50%);
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .tv-audio-meter {
   position: relative;
+  width: 8px;
   background: var(--console-canvas);
   border-radius: 3px;
   overflow: hidden;
@@ -1173,10 +1160,6 @@
   .tv-audio-strips {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     row-gap: 20px;
-  }
-  .tv-audio-fader-bank {
-    flex: none;
-    height: 170px;
   }
   .tv-audio-utility {
     display: flex;

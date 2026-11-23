@@ -5,11 +5,14 @@ import { getOverrideClockParts } from '../utils/broadcastTime';
 
 interface RelojCloneProps {
   timezone?: string;
+  /** The station's logo under the clock, from the scene; none is drawn when it is not given. */
+  logoUrl?: string;
   timeOverride?: GlobalTimeOverride | null;
 }
 
 export default function RelojClone({
   timezone = 'America/Argentina/Buenos_Aires',
+  logoUrl,
   timeOverride = null,
 }: RelojCloneProps) {
   const hourHandRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +88,7 @@ export default function RelojClone({
             <div ref={secondHandRef} className='hand second-hand'></div>
           </div>
         </div>
-        <img style={{ width: '640px' }} src='/reloj-modoradio_full_negro.svg' alt='Modo Radio' />
+        {logoUrl ? <img style={{ width: '640px' }} src={logoUrl} alt='' /> : null}
       </div>
     </div>
   );

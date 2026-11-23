@@ -101,7 +101,13 @@ Alana remains the owner of captured Program/Preview output publication. Start
 its Program renderer with `?renderer=1` so guest microphones are excluded from
 the captured base bus, and publish the output to the matching
 `alcantara-<programId>` LiveKit room as `program-feed-<programId>` (and optional
-`preview-feed-<programId>`). Run one isolated
+`preview-feed-<programId>`). A desktop console that renders the program itself
+publishes it as `desktop-program-feed-<programId>`, with a token from
+`POST /webrtc/desktop-program-feed-token` (the program's picture as a screen-share
+track and its sound as a microphone-source track named `program-audio`, the only app-audio
+track LiveKit's Swift SDK publishes); while that participant is in the
+room, guests' program video and the router's program bus take it instead of
+`program-feed-<programId>`, and fall back to Alana's feed when it leaves. Run one isolated
 `/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>` renderer alongside it.
 The fragment is immediately moved to session storage and removed from browser
 history; it is never sent in a URL request.
@@ -137,18 +143,39 @@ exercise Preview and TAKE deliberately. Restart one guest and verify its slot
 is held for 60 seconds. The machine-only return router requires the local
 `WEBRTC_RENDERER_KEY` from Compose.
 
-Production owns LiveKit, Redis, TLS, TURN/TLS, firewall rules, health checks,
-and secrets through Alcantara deployment infrastructure. Start from
-`infra/livekit.production.example.yaml`, generate real API/session/renderer
-secrets in the application-scoped secret. Route public LiveKit HTTPS/WSS through
-the existing port-443 edge, and expose WebRTC TCP 7881, TURN/TLS 5349, TURN UDP
-3478, and the configured UDP media/relay ranges. Validate TURN
-from a restrictive external network before scheduling remote guests. Never use
-the committed local credentials outside Compose. The Calls console reports the
-feature as unavailable until `LIVEKIT_CONFIG_B64`, `LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET`, `WEBRTC_RENDERER_KEY`, and the
-public `LIVEKIT_WS_URL` deployment variable are configured; their absence does
-not block unrelated Alcantara deployments.
+In production, LiveKit runs on Helix, the on-premises host, not on the backend's
+service host (#354). `infra/helix/livekit-up.sh` starts it there, and
+[`infra/README.md`](infra/README.md) has the ports, the nginx server block and
+the one-time host setup. Validate TURN from a restrictive external network
+before scheduling remote guests. Never use the committed local credentials
+outside Compose.
+
+In production, LiveKit is configured only by the runtime secret
+(`broadcast/production/config`, #354). The secret holds four fields that must
+all be present or all absent:
+- `livekitWsUrl`: the public `wss://` origin;
+- `livekitApiKey`;
+- `livekitApiSecret`: at least 32 characters;
+- `webrtcSessionSecret`: at least 32 characters.
+
+`webrtcRendererKey` is optional.
+
+The backend copies them into `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET` and `WEBRTC_RENDERER_KEY` at
+start-up. When a field is absent from the secret, a value left in the container
+is removed.
+
+A partial or invalid group never stops the backend, which also controls the
+radio. It starts with WebRTC off and logs the field names, never the values.
+The deploy's contract check and the LiveKit renderer do refuse such a group, so
+a deploy fails before the running container is replaced.
+
+`infra/helix/livekit-up.sh` renders the LiveKit server's `livekit.yaml` from the
+same fields (`backend/scripts/print-livekit-config.mjs`) and starts `redis` and
+`livekit` on Helix. The backend calls LiveKit's API at the `https://` form of
+`livekitWsUrl`, so both go through the same public name.
+Without the group, the Calls console reports the feature as unavailable, and
+unrelated deployments are unaffected.
 
 ### Radio automation
 

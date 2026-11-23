@@ -7,37 +7,12 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import { corsOptions } from './cors';
 import { ProgramRealtimeService } from './program/program.realtime.service';
 import { loadRuntimeSecrets } from './config/runtime-secrets';
-import { validateProgramTemplateOrigins } from './config/runtime-secret-contract';
 import { assertTestAuthSafety } from './auth/test-auth.service';
 import { loadDatabaseSecret } from './config/database-secrets';
 import { assertLocalMediaSafety } from './config/local-media';
-
-function getAllowedOrigins(): Set<string> {
-  const configuredOrigins = (
-    process.env.ALLOWED_ORIGINS ??
-    process.env.FRONTEND_ORIGIN ??
-    ''
-  )
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  const templateOrigins = validateProgramTemplateOrigins(
-    process.env.PROGRAM_TEMPLATE_ORIGINS ?? '',
-  );
-
-  return new Set<string>([
-    'https://alcantara.gaulatti.com',
-    'https://alcantara.dev',
-    'https://alcantara.gt',
-    'https://fifthbell.com',
-    'https://cdn.fifthbell.com',
-    ...configuredOrigins,
-    ...templateOrigins,
-  ]);
-}
 
 async function bootstrap() {
   assertTestAuthSafety();
@@ -62,31 +37,7 @@ async function bootstrap() {
     },
   });
 
-  const allowedOrigins = getAllowedOrigins();
-
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        origin === 'null' ||
-        allowedOrigins.has(origin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
-      ) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error(`Origin ${origin} not allowed by CORS`), false);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Idempotency-Key',
-      'X-Renderer-Key',
-    ],
-  });
+  app.enableCors(corsOptions());
 
   await app.listen(port, '0.0.0.0');
 

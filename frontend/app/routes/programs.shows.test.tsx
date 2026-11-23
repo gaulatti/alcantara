@@ -17,6 +17,12 @@ import { apiUrl } from "../utils/apiBaseUrl";
 // template inspection, deleting, and each refusal.
 
 const selection = vi.hoisted(() => ({ current: "news", set: vi.fn() }));
+vi.mock("@gaulatti/bleecker", async (original) => {
+  const kit = await import("../../test/routeKit");
+  return kit.inlineMenus(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  );
+});
 vi.mock("../utils/globalProgram", () => ({
   useGlobalProgramId: () => [selection.current, selection.set],
 }));
@@ -83,8 +89,6 @@ beforeEach(() => {
         { id: 2, name: "Close", layout: null },
         { id: 3, name: "Anchor", layout: { name: "Desk" } },
       ]),
-    "GET /media-groups?limit=0": () =>
-      json({ data: [{ id: 3, name: "Stills" }] }),
     "GET /stingers": () =>
       json([
         { id: 7, name: "Swoosh" },
@@ -157,11 +161,7 @@ it("reports shows that cannot load, and offers the first show when there are non
   open();
   await toast("Failed to load programs. Please refresh and try again.");
   cleanup();
-  for (const failing of [
-    "GET /program",
-    "GET /scenes",
-    "GET /media-groups?limit=0",
-  ]) {
+  for (const failing of ["GET /program", "GET /scenes"]) {
     routes = {
       ...routes,
       "GET /stingers": () => json([]),
@@ -173,7 +173,6 @@ it("reports shows that cannot load, and offers the first show when there are non
   }
   routes["GET /program"] = () => json([]);
   routes["GET /scenes"] = () => json([]);
-  routes["GET /media-groups?limit=0"] = () => json({ data: [] });
   open();
   expect(await screen.findByText("No shows yet")).toBeInTheDocument();
   fireEvent.click(
@@ -206,13 +205,12 @@ it("lists shows by id with their type, assets, renderer and selection", async ()
   ).toEqual(["legacy", "news", "radio one", "sim", "templated"]);
   const news = card("news");
   expect(news).toHaveTextContent("TV");
-  expect(news).toHaveTextContent("Selected");
+  expect(news).toHaveTextContent("Active");
   expect(news).toHaveTextContent(
     "Scenes assigned: 1 · Media labels are available globally · Stingers assigned: 1 · Active scene: 1",
   );
-  expect(news).toHaveTextContent(
-    "Transitional Alcantara renderer · no external template registered",
-  );
+  expect(news).toHaveTextContent("No template");
+  expect(news).toHaveTextContent("no external template is registered");
   expect(card("radio one")).toHaveTextContent("Radio");
   expect(card("radio one")).toHaveTextContent(
     "Audio-only show · Songs, audio clips, mixer, and Radio distribution",
@@ -652,30 +650,41 @@ it("opens the scene and stinger managers, and says when there are none", async (
   );
 });
 
+// Delete is confirmed in a named dialog before the request is sent (gaulatti/alcantara#349).
+const confirmDelete = async () =>
+  fireEvent.click(
+    within(await screen.findByRole("dialog", { name: "Confirm delete" })).getByRole("button", { name: "Delete show" }),
+  );
+
 it("deletes a show after confirmation and moves the selection off it", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   open();
   await loaded();
-  fireEvent.click(screen.getByRole("button", { name: "Delete news" }));
-  expect(confirm).toHaveBeenCalledWith(
-    'Delete program "news"? This removes its scene assignments and active scene state.',
-  );
+  fireEvent.click(within(card("news")).getByRole("button", { name: "Actions for news" }));
+  fireEvent.click(within(card("news")).getByText("Delete show"));
+  const dialog = await screen.findByRole("dialog", { name: "Confirm delete" });
+  expect(dialog).toHaveTextContent('Delete show “news”?');
   expect(calls("DELETE")).toEqual([]);
-  confirm.mockReturnValue(true);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).toBeNull());
+  expect(calls("DELETE")).toEqual([]);
 
   // The selected show: the first remaining one is selected.
   routes["DELETE /program/news"] = () => {
     shows = shows.filter((entry) => entry.programId !== "news");
     return json({});
   };
-  fireEvent.click(screen.getByRole("button", { name: "Delete news" }));
+  fireEvent.click(within(card("news")).getByRole("button", { name: "Actions for news" }));
+  fireEvent.click(within(card("news")).getByText("Delete show"));
+  await confirmDelete();
   await toast("Show deleted.");
   expect(selection.set).toHaveBeenLastCalledWith("radio one");
 
   // Another show: the selection stays.
   selection.set.mockClear();
-  fireEvent.click(screen.getByRole("button", { name: "Delete sim" }));
+  fireEvent.click(within(card("sim")).getByRole("button", { name: "Actions for sim" }));
+  fireEvent.click(within(card("sim")).getByText("Delete show"));
+  await confirmDelete();
   await waitFor(() =>
     expect(calls("DELETE")).toContainEqual(["/program/sim", null]),
   );
@@ -692,7 +701,9 @@ it("deletes a show after confirmation and moves the selection off it", async () 
   };
   open();
   await loaded();
-  fireEvent.click(screen.getByRole("button", { name: "Delete radio one" }));
+  fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+  fireEvent.click(within(card("radio one")).getByText("Delete show"));
+  await confirmDelete();
   await waitFor(() => expect(selection.set).toHaveBeenCalledWith("main"));
 
   shows = [show("radio one", { type: "radio" })];
@@ -704,7 +715,9 @@ it("deletes a show after confirmation and moves the selection off it", async () 
     cleanup();
     open();
     await loaded();
-    fireEvent.click(screen.getByRole("button", { name: "Delete radio one" }));
+    fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+  fireEvent.click(within(card("radio one")).getByText("Delete show"));
+    await confirmDelete();
     await toast("Failed to delete show.");
   }
 });

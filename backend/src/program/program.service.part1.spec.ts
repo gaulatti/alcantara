@@ -46,6 +46,8 @@ describe('ProgramService part 1 (settings, versions, state lookup)', () => {
         findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({}),
       },
+      program: { upsert: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
       broadcastSettings: { upsert: jest.fn() },
     };
     const engine = { setBroadcastHandler: jest.fn(), trackEvents$: EMPTY };

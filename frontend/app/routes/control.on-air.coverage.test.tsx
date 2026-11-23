@@ -13,6 +13,7 @@ import {
   stubConsoleBrowser,
   type ControlServer,
 } from "../../test/controlKit";
+import { holdControl } from "../../test/routeKit";
 
 // gaulatti/alcantara#194 group 2: on-air actions. Fade to black on the TV deck,
 // and instants on the radio cartwall: a click or its keyboard shortcut plays
@@ -135,10 +136,10 @@ it("fades the TV program to black after the operator confirms, and restores it",
     Response.json(state("tv", true)),
   );
   fireEvent.click(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "CONFIRM FADE TO BLACK" }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   expect(
     await screen.findByRole("button", { name: "RESTORE PROGRAM" }),
@@ -153,7 +154,7 @@ it("fades the TV program to black after the operator confirms, and restores it",
   );
   fireEvent.click(screen.getByRole("button", { name: "RESTORE PROGRAM" }));
   expect(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   ).toBeVisible();
   expect(server.requests("PUT /program/main/fade-to-black")).toEqual([
     { active: true },
@@ -168,20 +169,20 @@ it("keeps the program as it was when fade to black is refused or answered with n
     new Response("no", { status: 503 }),
   );
   fireEvent.click(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "CONFIRM FADE TO BLACK" }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   await waitFor(() =>
     expect(server.requests("PUT /program/main/fade-to-black")).toHaveLength(1),
   );
   server.answer("PUT /program/main/fade-to-black", Response.json(null));
   fireEvent.click(
-    await screen.findByRole("button", { name: "ARM FADE TO BLACK" }),
+    await screen.findByRole("button", { name: "Fade to black" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "CONFIRM FADE TO BLACK" }),
+    screen.getByRole("button", { name: /^Fade to black: armed/ }),
   );
   await waitFor(() =>
     expect(server.requests("PUT /program/main/fade-to-black")).toHaveLength(2),
@@ -240,7 +241,7 @@ it("plays an instant of unknown length until Stop all, and plays one from its ke
       server.requests("POST /instants/1/play?programId=main"),
     ).toHaveLength(1),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  await holdControl(screen.getByRole("button", { name: "Stop all sounders" }));
   await waitFor(() =>
     expect(
       screen.queryByRole("button", { name: /· playing$/ }),
@@ -263,10 +264,10 @@ it("ignores shortcuts for a disabled or missing instant, and keeps playing state
     new Response("no", { status: 500 }),
   );
   await screen.findByRole("button", { name: "Fictional sting" });
-  // Ctrl+E is the third (disabled) instant, Ctrl+R names none, Ctrl+1 is
+  // Ctrl+Y is the third (disabled) instant, Ctrl+R names none, Ctrl+1 is
   // not armed, a plain Q is not a shortcut, Ctrl+Shift+Q and Ctrl+5 are not
   // instant keys, and nothing typed in a field is a shortcut.
-  fireEvent.keyDown(window, { key: "e", code: "KeyE", ctrlKey: true });
+  fireEvent.keyDown(window, { key: "y", code: "KeyY", ctrlKey: true });
   fireEvent.keyDown(window, { key: "r", code: "KeyR", ctrlKey: true });
   fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true });
   fireEvent.keyDown(window, { key: "q", code: "KeyQ" });
@@ -297,7 +298,7 @@ it("ignores shortcuts for a disabled or missing instant, and keeps playing state
   ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Fictional sting" }));
   await screen.findByRole("button", { name: "Fictional sting · playing" });
-  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  await holdControl(screen.getByRole("button", { name: "Stop all sounders" }));
   await waitFor(() =>
     expect(
       server.requests("POST /instants/stop-all?programId=main"),

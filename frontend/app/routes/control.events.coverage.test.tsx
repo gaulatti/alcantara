@@ -162,9 +162,9 @@ it("applies the rotation, queue and mixer the audio bus sends", async () => {
     songQueue: [],
     songSequence: { ...rotation, items: [song("s4", "Fictional coda")], activeItemId: "s4" },
   });
-  expect(await screen.findByText("Fictional coda")).toBeVisible();
+  expect((await screen.findAllByText("Fictional coda"))[0]).toBeVisible();
   await send({ type: "song_queue_update", songQueue: [], songSequence: "corrupt" });
-  await waitFor(() => expect(screen.queryByText("Fictional coda")).toBeNull());
+  await waitFor(() => expect(screen.queryAllByText("Fictional coda")).toHaveLength(0));
   // A queue entry the rotation does not hold is shown as unavailable.
   await send({ type: "song_queue_update", songQueue: [{ id: "q9", itemId: "s9", enqueuedAt: 1 }] });
   expect(await screen.findByText("Unavailable playlist item")).toBeVisible();
@@ -177,10 +177,10 @@ it("shows what is playing, and takes it off air", async () => {
     type: "song_playback_update",
     playback: { token: "t1", audioUrl: "https://media.example.test/s2.mp3", isPlaying: true, title: "Fictional closer", artist: "Fictional artist", currentTimeMs: 1000, durationMs: 180000 },
   });
-  const player = screen.getByLabelText("On-air player");
+  const player = screen.getByRole("region", { name: "On air" });
   expect(await within(player).findByText("Fictional closer")).toBeVisible();
   await send({ type: "song_off_air", playback: { token: "t1" }, triggeredAt: new Date().toISOString() });
-  expect(await within(player).findByText("Nothing on air")).toBeVisible();
+  expect(await within(player).findByText(/^Nothing on air/)).toBeVisible();
 });
 
 it("follows the TV program: snapshots, staging, scene updates, clearing, fade to black and media groups", async () => {
@@ -195,7 +195,7 @@ it("follows the TV program: snapshots, staging, scene updates, clearing, fade to
   await send({ type: "fade_to_black", state: tvState({ fadeToBlack: true }) });
   expect(await screen.findByRole("button", { name: "RESTORE PROGRAM" })).toBeVisible();
   await send({ type: "program_state_snapshot", state: tvState({ fadeToBlack: false }) });
-  expect(await screen.findByRole("button", { name: "ARM FADE TO BLACK" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Fade to black" })).toBeVisible();
   const onProgram = (name: RegExp) =>
     screen.getAllByRole("button", { name }).some((button) => /Program$/.test(button.textContent ?? ""));
   expect(onProgram(/Fictional headlines/)).toBe(true);
@@ -210,6 +210,9 @@ it("follows the TV program: snapshots, staging, scene updates, clearing, fade to
   await waitFor(() =>
     expect(screen.queryByText("This scene is on Program. Saved changes appear live.")).toBeNull(),
   );
+  // The switcher agrees: no source is tagged Program once Program is cleared (#251).
+  expect(onProgram(/Fictional desk/)).toBe(false);
+  expect(onProgram(/Fictional headlines/)).toBe(false);
   const groupReads = () => server.calls.filter((call) => call.path === "/program/main/media-groups").length;
   const before = groupReads();
   await send({ type: "program_media_groups_changed", state: tvState() });
@@ -276,7 +279,7 @@ it("keeps a scene staged or cleared before the program has loaded from creating 
 it("moves the TV audio desk's faders and meters with the audio bus and meter events", async () => {
   prefs.workspace = "audio";
   open("tv");
-  const fader = () => screen.getByRole("slider", { name: "Music fader" }) as HTMLInputElement;
+  const fader = () => ({ value: screen.getByRole("slider", { name: "Music fader" }).getAttribute("aria-valuenow") });
   const meter = () => Number(screen.getByRole("meter", { name: "Music live level" }).getAttribute("aria-valuenow"));
   await screen.findByRole("slider", { name: "Music fader" });
   const before = fader().value;

@@ -54,7 +54,7 @@ export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
       />
 
       {/* QR Code - Middle Left */}
-      <QRCodeWidget qrCodeUrl={qrCodeUrl} content={qrCodeContent} />
+      {qrCodeUrl || qrCodeContent ? <QRCodeWidget qrCodeUrl={qrCodeUrl} content={qrCodeContent} /> : null}
 
       {/* Live Indicator - Top Right */}
       {showLiveIndicator && <LiveIndicator />}

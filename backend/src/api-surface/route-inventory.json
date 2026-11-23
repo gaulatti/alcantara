@@ -127,6 +127,12 @@
   },
   {
     "method": "POST",
+    "path": "/broadcast/destinations/:destinationId/ingest",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "POST",
     "path": "/broadcast/destinations/:destinationId/restore",
     "public": false,
     "permission": "broadcast.manage"
@@ -331,6 +337,12 @@
   },
   {
     "method": "GET",
+    "path": "/mcp/capabilities",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
     "path": "/media",
     "public": false,
     "permission": "alcantara:media:read"
@@ -474,6 +486,30 @@
     "permission": null
   },
   {
+    "method": "GET",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/oauth/callback",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/token",
+    "public": true,
+    "permission": null
+  },
+  {
     "method": "DELETE",
     "path": "/operator-preferences",
     "public": false,
@@ -580,6 +616,18 @@
     "path": "/program/:programId/audio-meter",
     "public": true,
     "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/branding",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/branding",
+    "public": false,
+    "permission": "alcantara:program:manage"
   },
   {
     "method": "POST",
@@ -1216,6 +1264,12 @@
     "path": "/webrtc/config",
     "public": true,
     "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/desktop-program-feed-token",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
   },
   {
     "method": "GET",

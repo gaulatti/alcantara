@@ -15,6 +15,7 @@ import { McpRegistry } from '../mcp-registry.service';
 import { fakeServices, principalWith, stateOf } from './capabilities.testing';
 import { LayoutsMcpTools } from './layouts';
 import { MediaGroupsMcpTools } from './media-groups';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { ProgramMcpTools } from './program';
 import { ScenesMcpTools } from './scenes';
 
@@ -54,6 +55,7 @@ async function connect(principal: ReturnType<typeof principalWith>) {
       ManagedMetricsService,
       { provide: ProgramService, useValue: f.programs },
       { provide: ProgramTemplateService, useValue: f.templates },
+      { provide: PompeiiService, useValue: { teamId: 7 } },
       { provide: ScenesService, useValue: f.scenes },
       { provide: LayoutsService, useValue: f.layouts },
       { provide: MediaGroupsService, useValue: f.groups },

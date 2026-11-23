@@ -1,3 +1,4 @@
+import { resetPlatformForTests } from "../../utils/cartModifier";
 import {
   cleanup,
   fireEvent,
@@ -62,10 +63,10 @@ it("plays a cart, numbered and with its Ctrl shortcut, and not a disabled one", 
   expect(onTrigger).toHaveBeenCalledWith(10);
   const horn = screen.getByRole("button", { name: "Horn" });
   expect(horn).toBeDisabled();
-  expect(within(horn).getByText("Ctrl+W")).toBeInTheDocument();
+  expect(within(horn).getByText("Ctrl+E")).toBeInTheDocument();
 });
 
-it("shows carts past the 26th without a shortcut", () => {
+it("shows carts past the nineteenth without a shortcut", () => {
   const instants = Array.from({ length: 27 }, (_, index) =>
     instant(index + 1, `Cart ${index + 1}`),
   );
@@ -75,8 +76,11 @@ it("shows carts past the 26th without a shortcut", () => {
   expect(last.textContent).not.toMatch(/Ctrl\+/);
   expect(last.querySelector("svg")).not.toBeNull();
   expect(
-    within(screen.getByRole("button", { name: "Cart 26" })).getByText("Ctrl+M"),
+    within(screen.getByRole("button", { name: "Cart 19" })).getByText("Ctrl+M"),
   ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Cart 20" }).textContent,
+  ).not.toMatch(/Ctrl\+/);
 });
 
 it("filters by name and keeps each cart's own number and shortcut", () => {
@@ -91,7 +95,7 @@ it("filters by name and keeps each cart's own number and shortcut", () => {
   expect(screen.queryByRole("button", { name: "Applause" })).toBeNull();
   const big = screen.getByRole("button", { name: "Big laugh" });
   expect(big).toHaveTextContent("03");
-  expect(within(big).getByText("Ctrl+E")).toBeInTheDocument();
+  expect(within(big).getByText("Ctrl+Y")).toBeInTheDocument();
   expect(screen.getAllByRole("button")).toHaveLength(2);
   cleanup();
   cartwall({ instants: [instant(1, "Applause")], search: "drum" });
@@ -120,4 +124,47 @@ it("marks a playing cart, sweeping over its length or pulsing when the length is
   // A very short clip still sweeps for at least 200 ms.
   expect(animation("Horn · playing")).toMatch(/ 200ms linear forwards$/);
   expect(animation("Drum · playing")).toMatch(/ 1400ms ease-in-out infinite$/);
+});
+
+it("shows Alt+letter key caps on Windows and Linux", () => {
+  Object.defineProperty(window.navigator, "platform", { configurable: true, get: () => "Win32" });
+  resetPlatformForTests();
+  cartwall({ instants: [instant(10, "Applause")] });
+  expect(within(screen.getByRole("button", { name: "Applause" })).getByText("Alt+Q")).toBeInTheDocument();
+});
+
+it("keeps each cart's key cap and number when a search filters the wall", () => {
+  cartwall({
+    instants: [
+      instant(10, "Applause"),
+      instant(11, "Horn"),
+      instant(12, "Weather sting"),
+    ],
+    search: "sting",
+  });
+  expect(screen.queryByRole("button", { name: "Applause" })).toBeNull();
+  const sting = screen.getByRole("button", { name: "Weather sting" });
+  // Its place in the whole wall, not in the filtered list: third, so Y (#307 keeps the chord off the browser).
+  expect(sting).toHaveTextContent("03");
+  expect(within(sting).getByText("Ctrl+Y")).toBeInTheDocument();
+});
+
+it("shows the time left of a playing cart, and nothing when its length is unknown", () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+  vi.setSystemTime(new Date("2026-11-22T12:00:00Z"));
+  const now = Date.now();
+  try {
+    cartwall({
+      instants: [instant(10, "Applause"), instant(11, "Horn")],
+      playback: {
+        10: { startedAtMs: now - 3_000, endsAtMs: now + 4_000 },
+        11: { startedAtMs: now - 1_000, endsAtMs: null },
+      },
+    });
+    expect(screen.getByTestId("cart-time-left")).toHaveTextContent("0:04 left");
+    expect(screen.getAllByTestId("cart-time-left")).toHaveLength(1);
+    expect(screen.getAllByText("PLAYING")).toHaveLength(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -45,8 +45,59 @@ jobs:
             --output text \
             | node backend/src/config/runtime-secret-contract-cli.js
 
+  # The backend deploy waits for the repository's own tests (gaulatti/alcantara#188): the unit
+  # suite and the end-to-end specs that run standalone, against a migrated PostgreSQL. This is
+  # separate from the Clouseau coverage gate, which it does not wait for.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: alcantara_ci
+          POSTGRES_USER: alcantara
+          POSTGRES_PASSWORD: alcantara-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alcantara -d alcantara_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.5
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Generate the Prisma client and apply migrations
+        run: |
+          pnpm --dir backend run prisma:generate
+          pnpm --dir backend run db:migrate:prisma
+
+      - name: Run backend unit tests
+        run: pnpm --dir backend exec jest
+
+      - name: Run backend end-to-end tests
+        run: >-
+          pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand
+          --testPathPatterns='metrics|media-label-concurrency|filler-persistence|deploy-candidate|as-run-actor-migration|external-sources|media-analysis-duration|radio-monitor|recording'
+
   build:
-    needs: production-config-preflight
+    needs: [production-config-preflight, test]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -105,23 +156,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      LIVEKIT_CONFIG_B64: ${{ secrets.LIVEKIT_CONFIG_B64 }}
-
     steps:
       - name: Checkout deployment definitions
         uses: actions/checkout@v4
-
-      - name: Upload LiveKit deployment definition
-        if: vars.ON_PREMISES == 'true' && env.LIVEKIT_CONFIG_B64 != ''
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: infra/compose.production.yml
-          target: /home/${{ secrets.DEPLOY_USER }}/.alcantara
-          strip_components: 1
 
       - name: Deploy to on-premises host
         if: vars.ON_PREMISES == 'true'
@@ -155,14 +192,9 @@ jobs:
             ghcr.io/${{ github.repository }}:latest \
             pnpm run db:migrate:deploy
 
-            if test -n "${{ secrets.LIVEKIT_CONFIG_B64 }}"; then
-              mkdir -p "$HOME/.alcantara/livekit-redis"
-              printf "%s" "${{ secrets.LIVEKIT_CONFIG_B64 }}" | base64 --decode > "$HOME/.alcantara/livekit.yaml"
-              chmod 600 "$HOME/.alcantara/livekit.yaml"
-              ALCANTARA_SERVICE_DIR="$HOME/.alcantara" docker compose -f "$HOME/.alcantara/compose.production.yml" up -d
-            else
-              echo "LiveKit production configuration is absent; guest calls remain disabled"
-            fi
+            # LiveKit runs on Helix, not on this host (gaulatti/alcantara#354):
+            # infra/helix/livekit-up.sh starts it there. The backend reaches it
+            # through its public name, derived from the secret's LIVEKIT_WS_URL.
 
             # Resolve the scrape credential before touching the live backend.
             metrics_token_file="$HOME/.alcantara/metrics-token"
@@ -220,12 +252,6 @@ jobs:
             -e PALAZZO_ALLOWED_URLS=http://palazzo:3100 \
             -e POMPEII_TEAM_ID=1 \
             -e MEDIA_S3_BUCKET="${{ secrets.MEDIA_S3_BUCKET }}" \
-            -e LIVEKIT_WS_URL="${{ vars.LIVEKIT_WS_URL }}" \
-            -e LIVEKIT_API_URL="http://alcantara-livekit:7880" \
-            -e LIVEKIT_API_KEY="${{ secrets.LIVEKIT_API_KEY }}" \
-            -e LIVEKIT_API_SECRET="${{ secrets.LIVEKIT_API_SECRET }}" \
-            -e WEBRTC_SESSION_SECRET="${{ secrets.WEBRTC_SESSION_SECRET }}" \
-            -e WEBRTC_RENDERER_KEY="${{ secrets.WEBRTC_RENDERER_KEY }}" \
             -e CONTAINERIZED=true \
             --restart=always \
             --log-driver=local \

@@ -17,6 +17,7 @@ describe('BroadcastDestinationsController coverage', () => {
   };
   const controller = new BroadcastDestinationsController(
     service as unknown as BroadcastDestinationsService,
+    {} as never,
   );
   const request = { user: { sub: 'operator-1' } };
 
@@ -29,12 +30,22 @@ describe('BroadcastDestinationsController coverage', () => {
     service.reorderDestinations.mockResolvedValue(['ordered']);
     service.updateDestination.mockResolvedValue({ id: 'updated' });
 
-    await expect(controller.listDestinations()).resolves.toEqual(['list']);
+    await expect(
+      controller.listDestinations({
+        user: { sub: 'operator-1', authorization: { teamId: 7 } },
+      }),
+    ).resolves.toEqual(['list']);
+    expect(service.listDestinations).toHaveBeenCalledWith(7);
     await expect(controller.listCatalog()).resolves.toEqual(['catalog']);
-    await expect(controller.createDestination({ id: 'x' })).resolves.toEqual({
+    await expect(
+      controller.createDestination(
+        { id: 'x' },
+        { user: { sub: 'operator-1', authorization: { teamId: 7 } } },
+      ),
+    ).resolves.toEqual({
       id: 'created',
     });
-    expect(service.createDestination).toHaveBeenCalledWith({ id: 'x' });
+    expect(service.createDestination).toHaveBeenCalledWith({ id: 'x' }, 7);
     await expect(
       controller.reorderDestinations({ destinationIds: ['b', 'a'] }),
     ).resolves.toEqual(['ordered']);
@@ -85,11 +96,15 @@ describe('BroadcastDestinationsController coverage', () => {
       jest.doMock('./broadcast-destinations.service', () => ({
         BroadcastDestinationsService: undefined,
       }));
+      jest.doMock('./broadcast-ingest.service', () => ({
+        BroadcastIngestService: undefined,
+      }));
       const { BroadcastDestinationsController: Isolated } =
         require('./broadcast-destinations.controller') as {
           BroadcastDestinationsController: new (...args: never[]) => unknown;
         };
       expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
+        Object,
         Object,
       ]);
       expect(
@@ -98,7 +113,7 @@ describe('BroadcastDestinationsController coverage', () => {
           Isolated.prototype,
           'createDestination',
         ),
-      ).toEqual([Object]);
+      ).toEqual([Object, Object]);
     });
     jest.resetModules();
   });

@@ -95,6 +95,29 @@ export class McpRegistry implements OnModuleInit {
     this.metrics.registerMcpTools([...names]);
   }
 
+  /**
+   * The public catalogue (GET /mcp/capabilities): name, title, description, tier
+   * and permission of every registered capability, sorted by name. Input schemas
+   * and data are never included.
+   */
+  publicCatalogue(): {
+    name: string;
+    title: string;
+    description: string;
+    tier: string;
+    permission: string;
+  }[] {
+    return [...this.specs]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((spec) => ({
+        name: spec.name,
+        title: spec.title,
+        description: spec.description,
+        tier: spec.tier,
+        permission: spec.permission,
+      }));
+  }
+
   /** Every spec the registry holds (for the integrator's registry test). */
   all(): readonly McpToolSpec[] {
     return this.specs;

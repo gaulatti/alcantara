@@ -26,9 +26,10 @@ import { WebrtcMcpTools } from './webrtc';
 // now-playing consumers, manual song and instant), operator preferences,
 // external sources and guests (webrtc). Two groups of rows are not this
 // ticket's: the radio similarity rows (ticket 218) and the rows marked
-// excluded because they return or produce a credential (seven rows in all:
+// excluded because they return or produce a credential (ten rows in all:
 // the realtime, monitor and download tickets, the source credential rotation,
-// the guest link of create and replace invitation, and the operator token).
+// the guest link of create and replace invitation, the operator token and the
+// desktop program feed token).
 
 const AREAS = new Set([
   'broadcast-destinations',
@@ -71,8 +72,17 @@ const permissionOf = (key: string): string => {
     : (entry as Record<string, string>)[action];
 };
 
+// gaulatti/alcantara#300 adds two read-only radio capabilities with no route of
+// their own; appendix A's rows cover routes only, so they are left out here.
+const EXTRA_RADIO_READS = new Set([
+  'radio_get_playback_state',
+  'radio_get_audio_levels',
+]);
 const specs = [
-  ...new BroadcastDestinationsMcpTools({} as never).specs(),
+  ...new BroadcastDestinationsMcpTools(
+    {} as never,
+    { teamId: 0 } as never,
+  ).specs(),
   ...new FillerMcpTools({} as never).specs(),
   ...new RecordingMcpTools({} as never).specs(),
   ...new RadioMcpTools(
@@ -91,7 +101,7 @@ const specs = [
   ).specs(),
   ...new ExternalSourcesMcpTools({} as never, {} as never, {} as never).specs(),
   ...new WebrtcMcpTools({} as never, {} as never).specs(),
-];
+].filter((spec) => !EXTRA_RADIO_READS.has(spec.name));
 
 const controllerOf = (area: string, path: string) =>
   ({
@@ -178,13 +188,16 @@ describe('appendix A rows of ticket #219', () => {
       expect(spec.description.endsWith(UNTRUSTED_NOTE)).toBe(true);
   });
 
-  it('keeps the seven excluded rows out', () => {
+  it('keeps the excluded rows out', () => {
     // In this ticket's areas: the monitor and download tickets, the rotation,
-    // both guest-link rows and the operator token.
+    // both guest-link rows, the operator token, the desktop program feed token and
+    // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
       'createInvitation',
+      'desktopProgramFeedToken',
       'issue',
       'issue',
+      'issueIngest',
       'operatorToken',
       'replaceInvitation',
       'rotate',

@@ -58,6 +58,11 @@ const RADIO_TOOLS: Record<string, [string, McpTier]> = {
  */
 const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
   import_media_from_url: ['upload.create', 'W'],
+  // gaulatti/alcantara#300: read-only radio capabilities with no route of their own.
+  // gaulatti/alcantara#327: remove playlist leaves by id against the live cursor.
+  program_remove_program_song_leaves_by_id: ['program.operate', 'A'],
+  radio_get_playback_state: ['radio.read', 'R'],
+  radio_get_audio_levels: ['radio.read', 'R'],
 };
 
 function permissionKey(short: string): string {
@@ -132,10 +137,10 @@ describe('MCP registry against appendix A', () => {
   // The three bracket rows keep their capability names; their path and
   // handler columns are written neutrally, so this file carries no brand
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
-  it('reads all of appendix A: capabilities, covered rows and the 8 exclusions', () => {
+  it('reads all of appendix A: capabilities, covered rows and the 10 exclusions', () => {
     const { rows, excluded, covered } = appendix();
     expect(rows.size + covered.size).toBe(170);
-    expect(excluded).toBe(8);
+    expect(excluded).toBe(10);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity), as is access_my_permissions (the caller's own keys); the
     // five uploads are import_media_from_url's kinds.

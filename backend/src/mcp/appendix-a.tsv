@@ -7,6 +7,7 @@ broadcast-destinations	GET	/broadcast/destinations/catalog	broadcast.manage	list
 broadcast-destinations	POST	/broadcast/destinations	broadcast.manage	createDestination	destination_create_destination	W
 broadcast-destinations	PUT	/broadcast/destinations/order	broadcast.manage	reorderDestinations	destination_reorder_destinations	W
 broadcast-destinations	PUT	/broadcast/destinations/:destinationId	broadcast.manage	updateDestination	destination_update_destination	W
+broadcast-destinations	POST	/broadcast/destinations/:destinationId/ingest	broadcast.manage	issueIngest	—	excluded: returns a credential
 broadcast-destinations	POST	/broadcast/destinations/:destinationId/retire	broadcast.manage	retireDestination	destination_retire_destination	W
 broadcast-destinations	POST	/broadcast/destinations/:destinationId/restore	broadcast.manage	restoreDestination	destination_restore_destination	W
 broadcast-destinations	GET	/broadcast/programs/:programId	broadcast.view	getProgramState	destination_get_program_state	R
@@ -161,6 +162,7 @@ webrtc	DELETE	/webrtc/invitations/:id	webrtc.operate	revokeInvitation	webrtc_rev
 webrtc	PATCH	/webrtc/invitations/:id/return	webrtc.operate	updateReturn	webrtc_update_return	A
 webrtc	GET	/webrtc/rooms/:programId/participants	webrtc.read	listParticipants	webrtc_list_participants	R
 webrtc	POST	/webrtc/operator-token	webrtc.operate	operatorToken	—	excluded: returns a credential
+webrtc	POST	/webrtc/desktop-program-feed-token	webrtc.operate	desktopProgramFeedToken	—	excluded: returns a credential
 webrtc	POST	/webrtc/rooms/:programId/participants/:identity/control	webrtc.operate	controlParticipant	webrtc_control_participant	A
 webrtc	DELETE	/webrtc/rooms/:programId/participants/:identity	webrtc.operate	removeParticipant	webrtc_remove_participant	D
 scenes	POST	/scenes/:id/(bracket)/draw	scene.operate	drawBracket	scene_draw_modo_italiano_bracket	A

@@ -204,6 +204,42 @@ busy at most a quarter of the time.
 `alcantara_media_analysis_backlog_assets` (no labels) is the number of audio
 assets still waiting at the last poll: unanalysed, stale, or due a retry. It
 falls to zero when the backfill is done.
+`alcantara_media_analysis_result_writes_total{outcome}` counts finished
+analyses whose result write the database refused (see below): `retried` (held
+for another run), `stored_after_retry`, `released` or `dropped`.
+
+**A refused result write (#278).** The asset is claimed (attempt n, a ten
+minute lease), analysed, and then the result is written. If that write fails on
+a transient database error (a timeout, a dropped connection), the finished
+measurement is kept in memory and the next runs store it before any other asset
+is taken, so ffmpeg does not run again and the attempt is not spent twice. Each
+retry is one duty-cycle run, at most `MAX_WRITE_RETRIES` (3) of them. If they
+all fail, the claim is released with the attempts the asset had before the run
+(the lost write is not an attempt) and a wait of the first retry backoff (5
+minutes), so a database that keeps refusing the write does not starve the other
+assets; if even the release fails, the lease runs out as it always did. A
+warning with the cause class is logged at each step, never the message. A write
+that fails for any other reason is logged as an error and not retried. The held
+result is lost on a restart; the lease path then applies, as before.
+
+**Stored length (#296).** The pass that measures the cue points also decodes the
+file, so its length is stored as `MediaAssetAnalysis.durationSeconds` (null until
+measured, and never a value that is not a positive number). The Audio tab and the
+songs list read it, and the media list uses it for assets that have no song length.
+Assets analysed before the column existed are filled in by the job itself, with no
+bulk write and no script: after every asset that needs a first, repeated or retried
+analysis (new uploads always go first), the candidate query also takes an analysed
+asset (`status = 'success'`, no `durationSeconds`, no retry time), newest first, one at
+a time at the same duty cycle (a wait of three times the run, 5 seconds to 10 minutes).
+That run only stores the length: the row stays a success and keeps its cue points and
+loudness whatever happens, so a file that can no longer be read costs an attempt and
+nothing else. Each such row is tried at most `MAX_ATTEMPTS` times counting the attempts
+it already has, and not again within 30 minutes of its last change (the attempt count
+update is what keeps another instance from taking it at the same time). A row whose
+length is stored is never selected again. Progress is
+`alcantara_media_analysis_duration_backfill_assets` (no labels): the analysed assets
+that still lack a length and can be measured now, at the last poll. It falls to zero
+when the library is done.
 
 **Rollback.** A forward fix. The job only writes `MediaAssetAnalysis`, which
 playback reads only for programs with `segueMode` `on`.

@@ -10,9 +10,23 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import InstantsAdmin, { meta } from "./instants";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { routeFetch } from "../../test/routeKit";
+import {
+  cancelConfirmation,
+  chooseFromRowMenu,
+  confirmWith,
+  submitConfirmation,
+  confirmation,
+  rowAction,
+  rowMenuLabels,
+} from "../../test/libraryKit";
 
 // The audio clips page: list, play, stop, create, edit and delete clips.
 
+vi.mock("@gaulatti/bleecker", async (original) =>
+  (await import("../../test/libraryKit")).libraryBleecker(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  ),
+);
 vi.mock("../services/uploads", () => ({ uploadFileToMediaBucket: vi.fn() }));
 vi.mock("../utils/globalProgram", () => ({
   useGlobalProgramId: () => ["night radio"],
@@ -125,19 +139,14 @@ it("has a page title and description", () => {
   ]);
 });
 
-it("lists clips by position in cards and a sortable table", async () => {
+it("lists clips by position in one dense, sortable table", async () => {
   serve();
   render(<InstantsAdmin />);
-  expect(screen.getByText("Loading audio clips...")).toBeVisible();
-  const cards = await screen.findAllByRole("article");
-  expect(within(cards[0]).getByText("Applause")).toBeVisible();
-  expect(
-    within(cards[0]).getByText("Position 1 · Volume 1.00 · Disabled"),
-  ).toBeVisible();
-  expect(
-    within(cards[1]).getByText("Position 2 · Volume 0.80 · Enabled"),
-  ).toBeVisible();
-  expect(tableRows()[0]).toMatch(/^1Applause1\.00Disabled/);
+  expect(screen.getByLabelText("Loading Audio clips")).toBeVisible();
+  await screen.findByRole("table");
+  expect(tableRows()[0]).toMatch(/^1Applause100%Disabled/);
+  expect(tableRows()[1]).toMatch(/^2Station ID80%Enabled/);
+  expect(screen.queryByRole("article")).not.toBeInTheDocument();
 
   const header = (label: string) =>
     within(screen.getByRole("table")).getByText(label).closest("button")!;
@@ -146,44 +155,57 @@ it("lists clips by position in cards and a sortable table", async () => {
   fireEvent.click(header("Name"));
   expect(tableRows()[0]).toMatch(/Station ID/);
   fireEvent.click(header("Volume"));
-  expect(tableRows()[0]).toMatch(/0\.80/);
+  expect(tableRows()[0]).toMatch(/80%/);
   fireEvent.click(header("Volume"));
-  expect(tableRows()[0]).toMatch(/1\.00/);
+  expect(tableRows()[0]).toMatch(/100%/);
   fireEvent.click(header("Status"));
   expect(tableRows()[0]).toMatch(/Disabled/);
   fireEvent.click(header("Status"));
   expect(tableRows()[0]).toMatch(/Enabled/);
 });
 
-it("explains a load failure, then offers to create the first clip", async () => {
-  serve({ "GET /instants": () => new Response(null, { status: 500 }) });
+it("keeps one visible action per row, delete last in the menu", async () => {
+  serve();
   render(<InstantsAdmin />);
-  await toast("Failed to load audio clips.");
-  expect(screen.getByText("No audio clips yet")).toBeVisible();
+  await screen.findByRole("table");
+  expect(rowAction("Play", "Station ID")).toBeVisible();
+  expect(screen.queryByLabelText("Delete Station ID")).not.toBeInTheDocument();
+  expect(await rowMenuLabels("Station ID")).toEqual(["Edit", "Delete"]);
 });
 
-it("plays a clip on the selected program and stops all clips", async () => {
+it("explains a load failure with a retry, then offers to create the first clip", async () => {
+  serve({ "GET /instants": () => new Response(null, { status: 500 }) });
+  render(<InstantsAdmin />);
+  expect(await screen.findByText("Failed to load audio clips")).toBeVisible();
+  clips = [];
+  serve();
+  fireEvent.click(screen.getByText("Retry").closest("button")!);
+  expect(await screen.findByText("No audio clips yet")).toBeVisible();
+});
+
+it("plays a clip on the selected program, and stops all only after confirmation", async () => {
   const calls = serve();
   render(<InstantsAdmin />);
-  await screen.findAllByRole("article");
-  fireEvent.click(screen.getByLabelText("Play Station ID"));
+  await screen.findByRole("table");
+  fireEvent.click(rowAction("Play", "Station ID"));
   await toast("Audio clip triggered.");
   expect(
     calls.some((call) =>
       call.url.endsWith("/instants/2/play?programId=night%20radio"),
     ),
   ).toBe(true);
-  fireEvent.click(
-    within(screen.getAllByRole("article")[0])
-      .getByText("Play")
-      .closest("button")!,
-  );
+  fireEvent.click(rowAction("Play", "Applause"));
   await waitFor(() =>
     expect(calls.some((call) => call.url.includes("/instants/1/play"))).toBe(
       true,
     ),
   );
   fireEvent.click(screen.getByText("Stop all").closest("button")!);
+  expect(await confirmation()).toBeVisible();
+  await cancelConfirmation();
+  expect(calls.some((call) => call.url.includes("stop-all"))).toBe(false);
+  fireEvent.click(screen.getByText("Stop all").closest("button")!);
+  await confirmWith("Stop all");
   await toast("Stop command sent.");
   expect(
     calls.some((call) =>
@@ -203,10 +225,11 @@ it.each([
       "POST /instants/stop-all": failure,
     });
     render(<InstantsAdmin />);
-    await screen.findAllByRole("article");
-    fireEvent.click(screen.getByLabelText("Play Station ID"));
+    await screen.findByRole("table");
+    fireEvent.click(rowAction("Play", "Station ID"));
     await toast("Failed to trigger audio clip.");
     fireEvent.click(screen.getByText("Stop all").closest("button")!);
+    await confirmWith("Stop all");
     await toast("Failed to stop audio clips.");
   },
 );
@@ -272,7 +295,7 @@ it("uploads a new clip and creates it, validating its name, volume and audio", a
 it("clears a file choice that picked nothing, and cancels", async () => {
   serve();
   render(<InstantsAdmin />);
-  await screen.findAllByRole("article");
+  await screen.findByRole("table");
   openCreate();
   fireEvent.change(fileInput(), { target: { files: [audio] } });
   expect(within(dialog()).getByText("Selected: sweep.ogg")).toBeVisible();
@@ -284,8 +307,8 @@ it("clears a file choice that picked nothing, and cancels", async () => {
 it("edits a clip, keeping its uploaded audio, and shows each kind of refusal", async () => {
   const calls = serve();
   render(<InstantsAdmin />);
-  await screen.findAllByRole("article");
-  fireEvent.click(screen.getByLabelText("Edit Station ID"));
+  await screen.findByRole("table");
+  await chooseFromRowMenu("Station ID", "Edit");
   expect(
     within(dialog()).getByText("Using existing uploaded audio."),
   ).toBeVisible();
@@ -301,11 +324,7 @@ it("edits a clip, keeping its uploaded audio, and shows each kind of refusal", a
   );
   expect(uploadFileToMediaBucket).not.toHaveBeenCalled();
 
-  fireEvent.click(
-    within(screen.getAllByRole("article")[0])
-      .getByText("Edit")
-      .closest("button")!,
-  );
+  await chooseFromRowMenu("Applause", "Edit");
   expect(within(dialog()).getByLabelText("Enabled")).not.toBeChecked();
   for (const [answer, message] of [
     [
@@ -349,7 +368,7 @@ it("reports a failed upload and shows the upload in progress", async () => {
       }) as never,
     );
   render(<InstantsAdmin />);
-  await screen.findAllByRole("article");
+  await screen.findByRole("table");
   openCreate();
   fireEvent.change(nameInput(), { target: { value: "Sweep" } });
   fireEvent.change(fileInput(), { target: { files: [audio] } });
@@ -367,13 +386,16 @@ it("reports a failed upload and shows the upload in progress", async () => {
 
 it("deletes a clip only after confirmation, and reports a failure", async () => {
   serve();
-  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
-  vi.stubGlobal("confirm", confirm);
   render(<InstantsAdmin />);
-  await screen.findAllByRole("article");
-  fireEvent.click(screen.getByLabelText("Delete Station ID"));
-  expect(confirm).toHaveBeenCalledWith('Delete instant "Station ID"?');
-  fireEvent.click(screen.getByLabelText("Delete Station ID"));
+  await screen.findByRole("table");
+  await chooseFromRowMenu("Station ID", "Delete");
+  expect(
+    within(await confirmation()).getByText('Delete audio clip "Station ID"?'),
+  ).toBeVisible();
+  await cancelConfirmation();
+  expect(screen.getByText("Station ID")).toBeVisible();
+  await chooseFromRowMenu("Station ID", "Delete");
+  await confirmWith("Delete");
   await toast("Audio clip deleted.");
   await waitFor(() =>
     expect(screen.queryByText("Station ID")).not.toBeInTheDocument(),
@@ -384,11 +406,11 @@ it("deletes a clip only after confirmation, and reports a failure", async () => 
     () => new Response("", { status: 500 }),
   ]) {
     serve({ "DELETE /instants/1": answer });
-    fireEvent.click(
-      within(screen.getAllByRole("article")[0])
-        .getByText("Delete")
-        .closest("button")!,
-    );
+    await chooseFromRowMenu("Applause", "Delete");
+    await submitConfirmation("Delete");
     await toast("Failed to delete audio clip.");
+    // A failed delete keeps its confirmation open, so it cannot be mistaken for done.
+    expect(await confirmation()).toBeVisible();
+    await cancelConfirmation();
   }
 });

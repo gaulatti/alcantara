@@ -1,6 +1,6 @@
 import { TooltipButton } from "../components/BleeckerButtons";
-import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
-import { ExternalLink, Link2, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
+import { AlertContainer, Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, StatePill, showAlert } from '@gaulatti/bleecker';
+import { ExternalLink, Link2, MoreHorizontal, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/programs';
@@ -71,7 +71,6 @@ export default function ProgramsAdmin() {
 
   const [programs, setPrograms] = useState<ProgramState[]>([]);
   const [allScenes, setAllScenes] = useState<SceneSummary[]>([]);
-  const [allMediaGroups, setAllMediaGroups] = useState<MediaGroupSummary[]>([]);
   const [allStingers, setAllStingers] = useState<StingerSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -83,12 +82,8 @@ export default function ProgramsAdmin() {
   const [isInspectingTemplate, setIsInspectingTemplate] = useState(false);
   const [templateError, setTemplateError] = useState('');
   const [selectedSceneIds, setSelectedSceneIds] = useState<number[]>([]);
-  const [selectedMediaGroupIds, setSelectedMediaGroupIds] = useState<number[]>(
-    [],
-  );
   const [selectedStingerIds, setSelectedStingerIds] = useState<number[]>([]);
   const [sceneSearch, setSceneSearch] = useState('');
-  const [mediaGroupSearch, setMediaGroupSearch] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedType, setSelectedType] = useState<'tv' | 'radio' | 'both'>('tv');
@@ -109,16 +104,6 @@ export default function ProgramsAdmin() {
     return data;
   };
 
-  const fetchMediaGroups = async (): Promise<MediaGroupSummary[]> => {
-    const res = await fetch(apiUrl('/media-groups?limit=0'));
-    if (!res.ok) {
-      throw new Error(`Failed to fetch media groups: ${res.status}`);
-    }
-    const body = (await res.json()) as { data: MediaGroupSummary[] };
-    setAllMediaGroups(body.data);
-    return body.data;
-  };
-
   const fetchStingers = async (): Promise<StingerSummary[]> => {
     const res = await fetch(apiUrl('/stingers'));
     if (!res.ok) {
@@ -133,7 +118,7 @@ export default function ProgramsAdmin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([fetchPrograms(), fetchScenes(), fetchMediaGroups(), fetchStingers()]);
+        await Promise.all([fetchPrograms(), fetchScenes(), fetchStingers()]);
       } catch (err) {
         console.error(err);
         showAlert('Failed to load programs. Please refresh and try again.', 'error');
@@ -152,10 +137,6 @@ export default function ProgramsAdmin() {
     return [...allScenes].sort((a, b) => a.name.localeCompare(b.name));
   }, [allScenes]);
 
-  const sortedMediaGroups = useMemo(() => {
-    return [...allMediaGroups].sort((a, b) => a.name.localeCompare(b.name));
-  }, [allMediaGroups]);
-
   const sortedStingers = useMemo(() => {
     return [...allStingers].sort((a, b) => a.name.localeCompare(b.name));
   }, [allStingers]);
@@ -168,14 +149,6 @@ export default function ProgramsAdmin() {
     );
   }, [sceneSearch, sortedScenes]);
 
-  const filteredMediaGroups = useMemo(() => {
-    const query = mediaGroupSearch.trim().toLocaleLowerCase();
-    if (!query) return sortedMediaGroups;
-    return sortedMediaGroups.filter((mediaGroup) =>
-      [mediaGroup.name, mediaGroup.description].some((value) => value?.toLocaleLowerCase().includes(query))
-    );
-  }, [mediaGroupSearch, sortedMediaGroups]);
-
   const openCreateModal = () => {
     setEditingProgramId(null);
     setProgramIdInput('');
@@ -183,10 +156,8 @@ export default function ProgramsAdmin() {
     setTemplatePreview(null);
     setTemplateError('');
     setSelectedSceneIds([]);
-    setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
     setSceneSearch('');
-    setMediaGroupSearch('');
     setSelectedType('tv');
     setError('');
     setShowModal(true);
@@ -199,15 +170,11 @@ export default function ProgramsAdmin() {
     setTemplatePreview(program.templateManifest || null);
     setTemplateError('');
     setSelectedSceneIds(program.scenes.map((entry) => entry.sceneId));
-    setSelectedMediaGroupIds(
-      (program.mediaGroups || []).map((entry) => entry.mediaGroupId),
-    );
     setSelectedStingerIds(
       (program.stingers || []).map((entry) => entry.stingerId),
     );
     setSelectedType(program.type || 'tv');
     setSceneSearch('');
-    setMediaGroupSearch('');
     setError('');
     setShowModal(true);
   };
@@ -220,10 +187,8 @@ export default function ProgramsAdmin() {
     setTemplatePreview(null);
     setTemplateError('');
     setSelectedSceneIds([]);
-    setSelectedMediaGroupIds([]);
     setSelectedStingerIds([]);
     setSceneSearch('');
-    setMediaGroupSearch('');
     setSelectedType('tv');
     setError('');
   };
@@ -234,15 +199,6 @@ export default function ProgramsAdmin() {
         return current.filter((id) => id !== sceneId);
       }
       return [...current, sceneId];
-    });
-  };
-
-  const toggleMediaGroupSelection = (mediaGroupId: number) => {
-    setSelectedMediaGroupIds((current) => {
-      if (current.includes(mediaGroupId)) {
-        return current.filter((id) => id !== mediaGroupId);
-      }
-      return [...current, mediaGroupId];
     });
   };
 
@@ -281,56 +237,6 @@ export default function ProgramsAdmin() {
       });
       if (!res.ok) {
         throw new Error(`Failed to add scene ${sceneId} to ${programId} (${res.status})`);
-      }
-    }
-  };
-
-  const syncProgramMediaGroups = async (
-    programId: string,
-    currentMediaGroupIds: number[],
-    nextMediaGroupIds: number[],
-  ) => {
-    const currentSet = new Set(currentMediaGroupIds);
-    const nextSet = new Set(nextMediaGroupIds);
-
-    const mediaGroupIdsToRemove = currentMediaGroupIds.filter(
-      (mediaGroupId) => !nextSet.has(mediaGroupId),
-    );
-    const mediaGroupIdsToAdd = nextMediaGroupIds.filter(
-      (mediaGroupId) => !currentSet.has(mediaGroupId),
-    );
-
-    await Promise.all(
-      mediaGroupIdsToRemove.map(async (mediaGroupId) => {
-        const res = await fetch(
-          apiUrl(
-            `/program/${encodeURIComponent(programId)}/media-groups/${mediaGroupId}`,
-          ),
-          {
-            method: 'DELETE',
-          },
-        );
-        if (!res.ok) {
-          throw new Error(
-            `Failed to remove media group ${mediaGroupId} from ${programId} (${res.status})`,
-          );
-        }
-      }),
-    );
-
-    for (const mediaGroupId of mediaGroupIdsToAdd) {
-      const res = await fetch(
-        apiUrl(`/program/${encodeURIComponent(programId)}/media-groups`),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaGroupId }),
-        },
-      );
-      if (!res.ok) {
-        throw new Error(
-          `Failed to add media group ${mediaGroupId} to ${programId} (${res.status})`,
-        );
       }
     }
   };
@@ -446,14 +352,10 @@ export default function ProgramsAdmin() {
         savedProgram = (await res.json()) as ProgramState;
 
         const currentSceneIds = editingProgram?.scenes.map((entry) => entry.sceneId) || [];
-        const currentMediaGroupIds = editingProgram?.mediaGroups.map((entry) => entry.mediaGroupId) || [];
         const currentStingerIds = editingProgram?.stingers.map((entry) => entry.stingerId) || [];
         if (isVisualProgram) {
           if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration')) {
             await syncProgramScenes(nextProgramId, currentSceneIds, selectedSceneIds);
-          }
-          if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups')) {
-            await syncProgramMediaGroups(nextProgramId, currentMediaGroupIds, selectedMediaGroupIds);
           }
           if (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions')) {
             await syncProgramStingers(nextProgramId, currentStingerIds, selectedStingerIds);
@@ -477,9 +379,6 @@ export default function ProgramsAdmin() {
 
         if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'scene.configuration'))) {
           await syncProgramScenes(nextProgramId, [], selectedSceneIds);
-        }
-        if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'media.groups'))) {
-          await syncProgramMediaGroups(nextProgramId, [], selectedMediaGroupIds);
         }
         if (isVisualProgram && (!savedProgram.templateManifest || hasProgramCapability(savedProgram.templateManifest, 'stinger.transitions'))) {
           await syncProgramStingers(nextProgramId, [], selectedStingerIds);
@@ -505,13 +404,11 @@ export default function ProgramsAdmin() {
   };
 
   const supportsSceneConfiguration = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'scene.configuration'));
-  // Labels are global media organization; legacy program media-group assignments
-  // remain persisted for compatibility but are no longer edited here.
-  const supportsMediaGroups = false;
   const supportsStingers = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'stinger.transitions'));
 
+  // Delete is confirmed by name in a dialog before it is sent (gaulatti/alcantara#349).
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const deleteProgram = async (programId: string) => {
-    if (!confirm(`Delete program "${programId}"? This removes its scene assignments and active scene state.`)) return;
 
     try {
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(programId)}`), {
@@ -578,14 +475,11 @@ export default function ProgramsAdmin() {
                       <div className='min-w-0 flex-1'>
                         <div className='flex flex-wrap items-center gap-2'>
                           <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{program.programId}</h3>
-                          <span className='inline-flex items-center gap-1 rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15'>
-                            {program.type === 'radio' ? <><Radio size={12} /> Radio</> : program.type === 'both' ? <><Tv size={12} /><Radio size={12} /> Simulcast</> : <><Tv size={12} /> TV</>}
-                          </span>
-                          {isSelected ? (
-                            <span className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea   '>
-                              Selected
-                            </span>
-                          ) : null}
+                          <StatePill
+                            tone='info'
+                            label={program.type === 'radio' ? 'Radio' : program.type === 'both' ? 'Simulcast' : 'TV'}
+                          />
+                          {isSelected ? <StatePill tone='live' label='Active' /> : null}
                         </div>
                         {program.type === 'radio' ? (
                           <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Audio-only show · Songs, audio clips, mixer, and Radio distribution</p>
@@ -597,6 +491,7 @@ export default function ProgramsAdmin() {
                         )}
                         {program.type !== 'radio' && program.templateManifest ? (
                           <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
+                            <StatePill tone='ok' label='Renderer ready' />
                             <Link2 size={13} />
                             <span>
                               {program.templateManifest.name} · {program.templateManifest.bundleVersion}
@@ -606,7 +501,10 @@ export default function ProgramsAdmin() {
                             </a>
                           </div>
                         ) : program.type !== 'radio' ? (
-                          <p className='mt-3 text-xs text-terracotta'>Transitional Alcantara renderer · no external template registered</p>
+                          <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
+                            <StatePill tone='idle' label='No template' />
+                            <span>Uses the built-in Alcantara renderer; no external template is registered.</span>
+                          </div>
                         ) : null}
 
                       </div>
@@ -622,16 +520,18 @@ export default function ProgramsAdmin() {
                         >
                           <Pencil size={16} />
                         </IconButton>
-                        <IconButton
-                          onClick={() => {
-                            void deleteProgram(program.programId);
-                          }}
-                          className='text-terracotta'
-                          title={`Delete ${program.programId}`}
-                          aria-label={`Delete ${program.programId}`}
-                        >
-                          <Trash2 size={16} />
-                        </IconButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton title={`Actions for ${program.programId}`} aria-label={`Actions for ${program.programId}`}>
+                              <MoreHorizontal size={16} />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align='end'>
+                            <DropdownMenuItem onSelect={() => setPendingDelete(program.programId)}>
+                              <Trash2 size={14} className='mr-2' /> Delete show
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </article>
@@ -640,6 +540,27 @@ export default function ProgramsAdmin() {
             </div>
           )}
         </Card>
+
+        <Modal isOpen={pendingDelete !== null} onClose={() => setPendingDelete(null)} title='Confirm delete'>
+          <div className='space-y-4'>
+            <p className='text-sm text-text-secondary'>
+              Delete show &ldquo;{pendingDelete}&rdquo;? This removes its scene assignments and active scene state.
+            </p>
+            <div className='flex justify-end gap-2'>
+              <Button variant='ghost' onClick={() => setPendingDelete(null)}>Cancel</Button>
+              <Button
+                variant='destructive'
+                onClick={() => {
+                  const target = pendingDelete;
+                  setPendingDelete(null);
+                  if (target) void deleteProgram(target);
+                }}
+              >
+                Delete show
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'}>
           <div className='space-y-5'>
@@ -760,37 +681,6 @@ export default function ProgramsAdmin() {
               </div>
             ) : selectedType !== 'radio' ? (
               <p className='rounded-xl border border-sand/20 bg-white/60 p-3 text-sm text-text-secondary dark:bg-dark-sand/50'>Scene assignment is unavailable because this template does not declare scene configuration.</p>
-            ) : null}
-
-            {supportsMediaGroups ? (
-              <div>
-                <div className='mb-2 flex items-center justify-between'>
-                  <label className='block text-sm font-medium text-text-primary dark:text-text-primary'>Program Media Groups</label>
-                  <Button size='sm' variant='ghost' onClick={() => navigate('/media')}>
-                    Manage Media
-                  </Button>
-                </div>
-                {sortedMediaGroups.length === 0 ? (
-                  <p className='text-sm text-text-secondary dark:text-text-secondary'>No media groups available. Create media groups first.</p>
-                ) : (
-                  <div className='max-h-64 space-y-2 overflow-y-auto rounded-xl border border-sand/20 bg-white/70 p-3 dark:border-sand/40 dark:bg-dark-sand/50'>
-                    <Input type='search' value={mediaGroupSearch} onChange={(event) => setMediaGroupSearch(event.target.value)} placeholder='Search media groups by name or description…' aria-label='Search program media groups' className='sticky top-0 z-10 w-full border-sand/30 bg-white/95 px-3 py-2 text-sm dark:bg-dark-sand/95' />
-                    {filteredMediaGroups.map((mediaGroup) => {
-                      const checked = selectedMediaGroupIds.includes(mediaGroup.id);
-                      return (
-                        <label key={mediaGroup.id} className='flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-sand/10 dark:hover:bg-sand/15'>
-                          <Checkbox checked={checked} onChange={() => toggleMediaGroupSelection(mediaGroup.id)} />
-                          <span className='min-w-0'>
-                            <span className='block text-sm font-medium text-text-primary dark:text-text-primary'>{mediaGroup.name}</span>
-                            <span className='block text-xs text-text-secondary dark:text-text-secondary'>{mediaGroup.description || 'No description'}</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                    {filteredMediaGroups.length === 0 ? <p className='px-2 py-4 text-center text-sm text-text-secondary'>No media groups match “{mediaGroupSearch}”.</p> : null}
-                  </div>
-                )}
-              </div>
             ) : null}
 
             {supportsStingers ? (

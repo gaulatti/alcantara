@@ -40,6 +40,7 @@ import {
 } from '../radio/song-queue.utils';
 import {
   collectHighRotationProgramSongLeaves,
+  countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
@@ -1437,6 +1438,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     type?: string,
     template?: ProgramTemplateRegistration | null,
+    teamId?: number,
   ) {
     const normalized = this.normalizeProgramId(programId);
     const programType =
@@ -1456,15 +1458,25 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Program already exists');
     }
 
-    await this.prisma.programState.create({
-      data: {
-        programId: normalized,
-        type: programType,
-        ...this.programTemplateUpdateData(template ?? null),
-        activeSceneId: null,
-        audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
-      },
-    });
+    // gaulatti/alcantara#335: the Program row (which carries the team and owns branding) is created
+    // in the same transaction as the ProgramState, so a new program never lacks one.
+    await this.prisma.$transaction([
+      this.prisma.program.upsert({
+        where: { programId: normalized },
+        // Team 0 is the test-mode value, not a team: it is stored as no team.
+        create: { programId: normalized, teamId: teamId && teamId > 0 ? teamId : null },
+        update: {},
+      }),
+      this.prisma.programState.create({
+        data: {
+          programId: normalized,
+          type: programType,
+          ...this.programTemplateUpdateData(template ?? null),
+          activeSceneId: null,
+          audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+        },
+      }),
+    ]);
     return this.getProgramStateWithScenes(normalized);
   }
 
@@ -1630,6 +1642,33 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return states.map((state) => this.withStagedSceneState(state));
   }
 
+  /** gaulatti/alcantara#335: the public station marks of a program, or null when it has none. */
+  async getBranding(programId: string) {
+    const row = await this.prisma.programBranding.findUnique({
+      where: { programId: this.normalizeProgramId(programId) },
+    });
+    return row ? publicBranding(row) : null;
+  }
+
+  /** gaulatti/alcantara#335: create or update a program's station marks (program.manage). */
+  async putBranding(programId: string, input: unknown) {
+    const normalized = this.normalizeProgramId(programId);
+    const marks = parseBrandingInput(input);
+    const program = await this.prisma.program.findUnique({
+      where: { programId: normalized },
+      select: { programId: true },
+    });
+    if (!program) {
+      throw new NotFoundException('Program not found');
+    }
+    const row = await this.prisma.programBranding.upsert({
+      where: { programId: normalized },
+      create: { programId: normalized, ...marks },
+      update: marks,
+    });
+    return publicBranding(row);
+  }
+
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.getProgramStateWithScenes(normalizedProgramId);
@@ -1753,6 +1792,22 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
         `High rotation is limited to ${MAX_HIGH_ROTATION_SONGS} songs`,
       );
     }
+    if (hasSongSequenceUpdate) {
+      // A song is added to a playlist once (gaulatti/alcantara#280). A playlist that already
+      // holds a song twice stays editable: only a write that raises a song's leaf count
+      // above what is stored (and above one) is refused.
+      const stored = countProgramSongLeavesBySong(
+        normalizeProgramSongSequence(currentState.songSequence),
+      );
+      for (const [key, next] of countProgramSongLeavesBySong(
+        normalizedNextSongSequence,
+      )) {
+        if (next.count > Math.max(1, stored.get(key)?.count ?? 0))
+          throw new BadRequestException(
+            `${next.label} is already in the playlist; a song can be added once`,
+          );
+      }
+    }
     const currentSongQueue = normalizeProgramSongQueue(currentState.songQueue);
     const nextSongQueue = hasSongSequenceUpdate
       ? filterProgramSongQueueForSequence(
@@ -1821,6 +1876,67 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...nextSettings,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
+  /**
+   * Removes exactly these leaves from a program's playlist (gaulatti/alcantara#327): the engine
+   * does the compare-and-swap write against the live cursor, then this broadcasts the same
+   * `audio_bus_update` the normal path does. A dry run reports and changes nothing.
+   */
+  async removeProgramSongLeaves(
+    programId: string,
+    leafIds: string[],
+    options: { keepRotation?: boolean; dryRun?: boolean } = {},
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const dryRun = options.dryRun === true;
+    const outcome = await this.songExecutionEngine.removeSongLeaves(
+      normalizedProgramId,
+      leafIds,
+      { keepRotation: options.keepRotation === true, dryRun },
+    );
+    const summary = {
+      removed: outcome.removed.map((leaf) => ({
+        id: leaf.id,
+        songId: leaf.songId ?? null,
+        artist: leaf.artist,
+        title: leaf.title,
+        highRotation: leaf.highRotation === true,
+      })),
+      leafCountBefore: outcome.before,
+      leafCountAfter: outcome.after,
+      cursorMovedTo: outcome.cursorMovedTo,
+    };
+    if (dryRun) return { dryRun, ...summary, version: null };
+
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { audioMixer: true },
+    });
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'audio_bus_update',
+      programId: normalizedProgramId,
+      settings: {
+        songSequence: outcome.songSequence,
+        songQueue: outcome.songQueue,
+        mixerSettings: this.withResolvedProgramAudioMixerSettings(
+          state?.audioMixer,
+        ),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    this.songExecutionEngine.handleQueueUpdated(
+      normalizedProgramId,
+      outcome.songQueue,
+    );
+    return {
+      dryRun,
+      ...summary,
       version:
         broadcastPayload && typeof broadcastPayload.version === 'number'
           ? broadcastPayload.version
@@ -3953,4 +4069,81 @@ function isActiveTimeOverride(
   settings: unknown,
 ): settings is Record<string, unknown> {
   return isObjectRecord(settings) && settings.timeOverrideEnabled === true;
+}
+
+/** Station marks a program can carry (gaulatti/alcantara#335). Each is an optional string. */
+const BRANDING_FIELDS = [
+  'displayName',
+  'callsign',
+  'subtitle',
+  'logoUrl',
+  'hashtag',
+  'siteUrl',
+  'defaultChyron',
+] as const;
+type BrandingField = (typeof BRANDING_FIELDS)[number];
+type ProgramBrandingMarks = Partial<Record<BrandingField, string | null>>;
+
+const BRANDING_MAX_LENGTH: Record<BrandingField, number> = {
+  displayName: 120,
+  callsign: 32,
+  subtitle: 120,
+  logoUrl: 2048,
+  hashtag: 64,
+  siteUrl: 2048,
+  defaultChyron: 240,
+};
+
+/**
+ * Validates a branding write. Only the known fields are accepted; each is a string up to its
+ * length (or null to clear it). `logoUrl` must be an absolute https URL, so a program cannot point
+ * an overlay at an arbitrary scheme. An empty string is stored as null.
+ */
+export function parseBrandingInput(input: unknown): ProgramBrandingMarks {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new BadRequestException('branding must be an object');
+  }
+  const record = input as Record<string, unknown>;
+  const unknown = Object.keys(record).filter(
+    (key) => !(BRANDING_FIELDS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new BadRequestException(`unknown branding field: ${unknown[0]}`);
+  }
+  const marks: ProgramBrandingMarks = {};
+  for (const field of BRANDING_FIELDS) {
+    if (!(field in record)) continue;
+    const value = record[field];
+    if (value === null) {
+      marks[field] = null;
+      continue;
+    }
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${field} must be a string or null`);
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > BRANDING_MAX_LENGTH[field]) {
+      throw new BadRequestException(
+        `${field} is longer than ${BRANDING_MAX_LENGTH[field]} characters`,
+      );
+    }
+    if (field === 'logoUrl' && trimmed !== '' && !isHttpsUrl(trimmed)) {
+      throw new BadRequestException('logoUrl must be an absolute https URL');
+    }
+    marks[field] = trimmed === '' ? null : trimmed;
+  }
+  return marks;
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** The public marks of a branding row: never the program's team or any internal column. */
+function publicBranding(row: Record<BrandingField, string | null>) {
+  return Object.fromEntries(BRANDING_FIELDS.map((field) => [field, row[field] ?? null]));
 }

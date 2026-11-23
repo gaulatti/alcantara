@@ -233,8 +233,9 @@ export function ComponentPropsFields({
               max={4}
               value={typeof props.maxStreams === 'number' ? props.maxStreams : 4}
               onChange={(e) => {
+                // A number input's value is "" or a finite number, and Number("") is 0, so raw is always finite.
                 const raw = Number(e.target.value);
-                const normalized = Number.isFinite(raw) ? Math.max(1, Math.min(4, Math.round(raw))) : 4;
+                const normalized = Math.max(1, Math.min(4, Math.round(raw)));
                 updateProp(componentType, 'maxStreams', normalized);
               }}
             />
@@ -429,13 +430,23 @@ export function ComponentPropsFields({
       );
     case 'reloj-clock':
       return (
-        <Field label='Timezone'>
-          <Select
-            value={props.timezone || 'America/Argentina/Buenos_Aires'}
-            onChange={(v) => updateProp(componentType, 'timezone', v)}
-            options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
-          />
-        </Field>
+        <div className='space-y-3'>
+          <Field label='Timezone'>
+            <Select
+              value={props.timezone || 'America/Argentina/Buenos_Aires'}
+              onChange={(v) => updateProp(componentType, 'timezone', v)}
+              options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
+            />
+          </Field>
+          <Field label='Logo URL (optional)'>
+            <Input
+              type='text'
+              value={props.logoUrl || ''}
+              onChange={(e) => updateProp(componentType, 'logoUrl', e.target.value)}
+              placeholder='https://example.com/logo.svg'
+            />
+          </Field>
+        </div>
       );
     case 'reloj-loop-clock':
       return (

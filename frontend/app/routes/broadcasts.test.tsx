@@ -234,8 +234,8 @@ it("shows the executor and the relays to a viewer who cannot change them", async
   });
   await page();
   expect(api.get).toHaveBeenCalledTimes(1);
-  expect(screen.getByText("Requested running")).toHaveClass("text-amber-600");
-  expect(screen.getByText("Actual starting")).toHaveClass("text-amber-600");
+  expect(screen.getByText("Requested running")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
+  expect(screen.getByText("Actual starting")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("starting")).toBeInTheDocument();
   expect(screen.getByText("Alana unavailable")).toBeInTheDocument();
   expect(screen.getByText("Pipeline not ready")).toBeInTheDocument();
@@ -264,8 +264,8 @@ it("reads an unknown executor and an empty selection without failing", async () 
     actualState: undefined,
   });
   await page();
-  expect(screen.getByText("Requested unknown")).toHaveClass("text-emerald-600");
-  expect(screen.getByText("Actual unknown")).toHaveClass("text-amber-600");
+  expect(screen.getByText("Requested unknown")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
+  expect(screen.getByText("Actual unknown")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(
     screen.getByText("No configured destinations are available."),
   ).toBeInTheDocument();
@@ -287,8 +287,8 @@ it("validates a stopped selection, then starts with that validated version", asy
     "00000000-0000-4000-8000-000000000001",
   );
   await page();
-  expect(screen.getByText("Requested stopped")).toHaveClass("text-emerald-600");
-  expect(screen.getByText("Actual stopped")).toHaveClass("text-emerald-600");
+  expect(screen.getByText("Requested stopped")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
+  expect(screen.getByText("Actual stopped")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(screen.getByText("Alana reachable")).toBeInTheDocument();
   expect(screen.getByText("Pipeline ready")).toBeInTheDocument();
   const reload = screen.getByRole("button", { name: /Reload while stopped/ });
@@ -397,7 +397,7 @@ it("stops a running broadcast, and reports a refused command", async () => {
     activeDestinations: { version: "v1", destinationIds: ["primary"] },
   });
   await page();
-  expect(screen.getByText("Actual running")).toHaveClass("text-emerald-600");
+  expect(screen.getByText("Actual running")).toBeInTheDocument(); // StatePill tone, not colour alone (#349)
   expect(checkbox("Primary platform")).toBeDisabled();
   expect(screen.getByRole("button", { name: /Confirm Start/ })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: /Confirm Stop/ }));
@@ -446,7 +446,8 @@ it("refreshes every five seconds while the tab is visible, after a failed first 
   }) as never);
   api.get.mockRejectedValueOnce(refusal(500));
   render(<Broadcasts />);
-  await screen.findByText("Executor state");
+  // A failed first load shows the error state with a retry (gaulatti/alcantara#349).
+  await screen.findByText("Broadcasts could not be loaded");
   expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 5000);
   const before = api.get.mock.calls.length;
   Object.defineProperty(document, "visibilityState", {
@@ -572,8 +573,15 @@ it("adds, edits, reorders, retires and restores catalog destinations", async () 
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-  // Retire and restore.
+  // Retire is confirmed by name before it is sent; a Cancel sends nothing.
   fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  const retireDialog = await screen.findByRole("dialog", { name: "Confirm retire" });
+  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
+  fireEvent.click(within(retireDialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm retire" })).toBeNull());
+  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
+  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
   await toast("Destination retired. Active sessions are unchanged.");
   expect(api.post).toHaveBeenLastCalledWith(
     "/broadcast/destinations/primary/retire",
@@ -585,5 +593,44 @@ it("adds, edits, reorders, retires and restores catalog destinations", async () 
   );
   api.post.mockRejectedValueOnce(refusal(404));
   fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
   await toast("Resource not found");
+});
+
+it("retries a failed first load from the error state, and recovers", async () => {
+  api.get.mockRejectedValueOnce(refusal(500));
+  render(<Broadcasts />);
+  expect(await screen.findByText("Broadcasts could not be loaded")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Executor state")).toBeInTheDocument();
+  expect(screen.queryByText("Broadcasts could not be loaded")).toBeNull();
+});
+
+it("shows a skeleton while the first load is pending, not an empty page", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = api.get.getMockImplementation();
+  api.get.mockImplementation(async (...args: unknown[]) => {
+    await gate;
+    return original!(...(args as Parameters<typeof api.get>));
+  });
+  render(<Broadcasts />);
+  expect(screen.getByLabelText("Loading broadcasts")).toHaveAttribute("aria-busy", "true");
+  release();
+  expect(await screen.findByText("Executor state")).toBeInTheDocument();
+});
+
+it("says so when the catalog is empty, with the next step", async () => {
+  const saved = catalog;
+  catalog = [];
+  try {
+    render(<Broadcasts />);
+    await screen.findByText("Executor state");
+    expect(await screen.findByText("No destinations yet")).toBeInTheDocument();
+    expect(screen.getByText("Add a version-pinned destination. A Start needs at least one current destination.")).toBeInTheDocument();
+  } finally {
+    catalog = saved;
+  }
 });

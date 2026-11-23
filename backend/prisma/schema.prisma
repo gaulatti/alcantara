@@ -48,7 +48,24 @@ model Program {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  branding  ProgramBranding?
+
   @@index([teamId])
+}
+
+// gaulatti/alcantara#335: per-program station marks, one row per Program. Owned through the Program
+// row (which carries the team), and written through the program.manage permission.
+model ProgramBranding {
+  programId     String   @id
+  program       Program  @relation(fields: [programId], references: [programId], onDelete: Cascade)
+  displayName   String?
+  callsign      String?
+  subtitle      String?
+  logoUrl       String?
+  hashtag       String?
+  siteUrl       String?
+  defaultChyron String?
+  updatedAt     DateTime     @updatedAt
 }
 
 model ProgramState {
@@ -143,6 +160,22 @@ model BroadcastDestinationCommand {
   @@unique([programId, sequence])
   @@index([programId, createdAt])
   @@index([selectionId])
+}
+
+/// One row per request for a destination's ingest credential (gaulatti/carmencita#4). Audit only:
+/// who asked, for which destination, when, and the outcome. The credential itself is never stored.
+model BroadcastIngestAccess {
+  id            String   @id @default(uuid())
+  /// The destination's team (null when the destination id is unknown).
+  teamId        Int?
+  destinationId String
+  subject       String
+  outcome       String
+  createdAt     DateTime @default(now())
+
+  @@index([teamId])
+  @@index([destinationId, createdAt])
+  @@index([subject, createdAt])
 }
 
 model BroadcastDestinationRuntime {
@@ -551,7 +584,7 @@ model RadioSettings {
   programState     ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
   palazzoUrl       String       @default("http://palazzo:3100")
   listenerUrl      String?
-  bumperEnabled    Boolean      @default(false)
+  bumperEnabled    Boolean      @default(true)
   bumperInterval   Int?
   bumperInstantIds Int[]        @default([])
   bumperMode       String       @default("sequential")
@@ -561,7 +594,7 @@ model RadioSettings {
   segueMode        String       @default("on")
   /// segueMode before #180 turned it on for existing programs; null when it was already on. Kept for a put-back.
   segueModeBeforeDefaultOn String?
-  similarityMode          String @default("off")
+  similarityMode          String @default("on")
   similarityThreshold     Float  @default(0.8)
   similarityWindowSeconds Int    @default(30)
   similarityPool          String @default("sequence")
@@ -694,6 +727,8 @@ model MediaAssetAnalysis {
   overlapSeconds         Float?
   integratedLufs         Float?
   truePeakDbtp           Float?
+  /// The decoded length of the file, from the same pass that measures the cue points; null until measured.
+  durationSeconds        Float?
   isrc                   String?
   musicbrainzRecordingId String?
   error                  String?

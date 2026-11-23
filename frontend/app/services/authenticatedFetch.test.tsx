@@ -29,6 +29,24 @@ describe('authenticated fetch installation', () => {
     expect(nativeFetch).toHaveBeenNthCalledWith(2, 'https://api.alcantara.test/media-groups/34', undefined);
   });
 
+  it('leaves the public MCP instructions page without a session', async () => {
+    const nativeFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    const getAppSession = vi.fn().mockResolvedValue({});
+    vi.stubGlobal('fetch', nativeFetch);
+    vi.doMock('../utils/apiBaseUrl', () => ({ getApiBaseUrl: () => 'https://api.alcantara.test' }));
+    vi.doMock('./session', () => ({ getAppSession }));
+    vi.doMock('./session-events', () => ({ reportInvalidSession: vi.fn() }));
+    window.history.replaceState({}, '', '/connect');
+
+    const { installAuthenticatedFetch } = await import('./authenticatedFetch');
+    installAuthenticatedFetch();
+
+    await fetch('https://api.alcantara.test/mcp/capabilities');
+
+    expect(getAppSession).not.toHaveBeenCalled();
+    expect(nativeFetch).toHaveBeenCalledWith('https://api.alcantara.test/mcp/capabilities', undefined);
+  });
+
   it('continues authenticating protected Control requests', async () => {
     const nativeFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     const getAppSession = vi.fn().mockResolvedValue({ token: 'operator-token' });

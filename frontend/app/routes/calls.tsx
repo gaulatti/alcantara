@@ -1,4 +1,4 @@
-import { Button, Card, Empty, Field, Input, PageHeader, Select, StatusBadge } from '@gaulatti/bleecker';
+import { Button, Card, Empty, ErrorState, Field, Input, PageHeader, Select, SkeletonCard, StatePill } from '@gaulatti/bleecker';
 import { Copy, Headphones, Link2, Mic, MicOff, RefreshCw, Send, Trash2, Video, VideoOff } from 'lucide-react';
 import { createLocalAudioTrack, Room } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -71,6 +71,7 @@ export default function CallsRoute() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [livekitEnabled, setLivekitEnabled] = useState<boolean | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const talkbackRef = useRef<{
     room: Room;
     track: Awaited<ReturnType<typeof createLocalAudioTrack>>;
@@ -101,8 +102,19 @@ export default function CallsRoute() {
     setParticipants(room.participants);
   }, [programId]);
 
+  const load = useCallback(() => {
+    setLoadState('loading');
+    return refresh().then(
+      () => setLoadState('ready'),
+      (error) => {
+        console.error('Unable to load guest calls:', error);
+        setLoadState('error');
+      }
+    );
+  }, [refresh]);
+
   useEffect(() => {
-    void refresh().catch((error) => setNotice(error instanceof Error ? error.message : 'Unable to load calls.'));
+    void load();
     const timer = window.setInterval(() => void refresh().catch(() => undefined), 3000);
     return () => {
       window.clearInterval(timer);
@@ -112,7 +124,7 @@ export default function CallsRoute() {
         talkback.room.disconnect();
       }
     };
-  }, [refresh]);
+  }, [refresh, load]);
 
   const run = async (key: string, action: () => Promise<void>) => {
     setBusy(key);
@@ -225,6 +237,18 @@ export default function CallsRoute() {
     });
 
   const activeInvitations = invitations.filter((item) => item.status !== 'revoked' && item.status !== 'expired');
+  const createBlockedReason = !canOperate
+    ? 'You do not have permission to create guest links.'
+    : activeInvitations.length >= 6
+      ? 'All 6 guest slots are assigned. Revoke a link to free one.'
+      : !displayName.trim()
+        ? 'Enter a guest name to create a private link.'
+        : null;
+  const createLink = (
+    <Button fullWidth disabled={createBlockedReason !== null} aria-describedby={createBlockedReason ? 'create-blocked-reason' : undefined} loading={busy === 'create'} onClick={() => void createInvitation()}>
+      <Link2 size={15} /> Create private link
+    </Button>
+  );
   if (livekitEnabled === false) {
     return (
       <AppPage width='wide'>
@@ -248,7 +272,10 @@ export default function CallsRoute() {
           title='Guest calls'
           description={`Six reusable remote-contributor slots for ${programId}. Guests never enter Preview or Program automatically.`}
           actions={
-            <Button variant='secondary' onClick={() => void refresh()}>
+            <Button variant='secondary' onClick={() => void refresh().catch((error) => {
+                console.error('Unable to refresh guest calls:', error);
+                setNotice('Guest calls could not be refreshed.');
+              })}>
               <RefreshCw size={15} /> Refresh
             </Button>
           }
@@ -288,14 +315,23 @@ export default function CallsRoute() {
                   ]}
                 />
               </Field>
-              <Button fullWidth disabled={!canOperate || !displayName.trim() || activeInvitations.length >= 6} loading={busy === 'create'} onClick={() => void createInvitation()}>
-                <Link2 size={15} /> Create private link
-              </Button>
+              {createLink}
+              {createBlockedReason ? (
+                <p id='create-blocked-reason' className='text-xs text-text-secondary'>
+                  {createBlockedReason}
+                </p>
+              ) : null}
             </div>
           </Card>
           <div className='space-y-4'>
-            {participants.length === 0 ? (
-              <Empty title='No assigned guest slots' description='Create an invitation to reserve the first reusable slot.' />
+            {loadState === 'loading' ? (
+              <div role='status' aria-label='Loading guest slots'>
+                <SkeletonCard rows={3} />
+              </div>
+            ) : loadState === 'error' ? (
+              <ErrorState title='Guest calls could not be loaded' description='The guest-call list could not be loaded. Check the connection and try again.' onRetry={() => void load()} retryLabel='Retry' />
+            ) : participants.length === 0 ? (
+              <Empty title='No assigned guest slots' description='Name a guest, then create a private link to reserve the first reusable slot.' action={createLink} />
             ) : (
               participants.map((participant) => {
                 const invitation = invitations.find((item) => item.id === participant.invitationId);
@@ -314,9 +350,9 @@ export default function CallsRoute() {
                           Slot {participant.slotNumber} · expires {new Date(invitation.expiresAt).toLocaleString()}
                         </p>
                       </div>
-                      <StatusBadge
+                      <StatePill
                         label={participant.connectionState}
-                        variant={participant.connectionState === 'connected' ? 'live' : participant.connectionState === 'reconnecting' ? 'offline' : 'default'}
+                        tone={participant.connectionState === 'connected' ? 'ok' : participant.connectionState === 'reconnecting' ? 'warn' : 'idle'}
                       />
                     </div>
                     <div className='mt-4 grid gap-3 sm:grid-cols-2'>

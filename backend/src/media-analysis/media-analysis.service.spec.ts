@@ -15,9 +15,13 @@ import {
   dutyCycleWaitMs,
   DUTY_CYCLE_MULTIPLE,
   MAX_WAIT_MS,
+  MAX_WRITE_RETRIES,
+  RETRY_BACKOFF_MS,
   MIN_WAIT_MS,
   IDLE_POLL_MS,
   LEASE_MS,
+  MAX_ATTEMPTS,
+  BACKFILL_RETRY_AFTER_MS,
   MediaAnalysisService,
   START_DELAY_MS,
 } from './media-analysis.service';
@@ -69,7 +73,12 @@ function setup(rows: unknown[][] = [[candidate()]]) {
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
   };
-  const metrics = { record: jest.fn(), setBacklog: jest.fn() };
+  const metrics = {
+    record: jest.fn(),
+    setBacklog: jest.fn(),
+    recordWrite: jest.fn(),
+    setDurationBackfill: jest.fn(),
+  };
   const analyzer = {
     available: jest.fn(async () => true),
     lowPriority: true,
@@ -107,10 +116,23 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(query.sql).toContain('m."assetId" IS NULL');
     expect(query.sql).toContain('m."sourceUrl" IS DISTINCT FROM a."sourceUrl"');
     expect(query.sql).toContain('m."nextAttemptAt" <= CAST(');
-    expect(query.sql).toContain('ORDER BY a."createdAt" DESC');
+    // Analysed assets without a stored length come after every pending or retryable asset.
+    expect(query.sql).toContain(`m."status" = 'success'`);
+    expect(query.sql).toContain('m."durationSeconds" IS NULL');
+    expect(query.sql).toContain('WHERE "due" OR "needsDuration"');
+    expect(query.sql).toContain('ORDER BY "due" DESC, "createdAt" DESC');
     expect(query.sql).toContain('LIMIT 1');
-    expect(query.sql).toContain('COUNT(*) OVER () AS "remaining"');
-    expect(query.values).toEqual([NOW.toISOString()]);
+    expect(query.sql).toContain(
+      'COUNT(*) FILTER (WHERE "due") OVER () AS "remaining"',
+    );
+    expect(query.sql).toContain(
+      'COUNT(*) FILTER (WHERE NOT "due") OVER () AS "backfillRemaining"',
+    );
+    expect(query.values).toEqual([
+      NOW.toISOString(),
+      MAX_ATTEMPTS,
+      new Date(NOW.getTime() - BACKFILL_RETRY_AFTER_MS).toISOString(),
+    ]);
     expect(analyzer.analyze).not.toHaveBeenCalled();
     expect(prisma.mediaAssetAnalysis.create).not.toHaveBeenCalled();
   });
@@ -141,6 +163,7 @@ describe('MediaAnalysisService.runOnce', () => {
         overlapSeconds: null,
         integratedLufs: -14.2,
         truePeakDbtp: -0.8,
+        durationSeconds: 240,
         isrc: 'USRC17607839',
         musicbrainzRecordingId: null,
         error: null,
@@ -816,6 +839,412 @@ describe('MediaAnalysisService schedule', () => {
     release(ANALYSIS);
     await jest.advanceTimersByTimeAsync(IDLE_POLL_MS * 2);
     expect(busy.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('storing the decoded length (#296)', () => {
+  const backfillRow = (overrides: Record<string, unknown> = {}) =>
+    candidate({
+      analysisUpdatedAt: ROW_UPDATED_AT,
+      attempts: 1,
+      backfill: true,
+      backfillRemaining: BigInt(4),
+      remaining: BigInt(0),
+      ...overrides,
+    });
+
+  it('stores the length of a file with every successful result', async () => {
+    const { service, prisma } = setup();
+    await service.runOnce(NOW);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+      where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
+      data: expect.objectContaining({
+        status: 'success',
+        durationSeconds: 240,
+        cueInSeconds: 1.5,
+      }),
+    });
+  });
+
+  it('stores no length that is not a positive number', async () => {
+    const { service, prisma, analyzer } = setup();
+    analyzer.analyze.mockResolvedValueOnce({
+      ...ANALYSIS,
+      durationSeconds: Number.NaN,
+    });
+    await service.runOnce(NOW);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'success',
+          durationSeconds: null,
+        }),
+      }),
+    );
+  });
+
+  it('measures an analysed asset again only to store its length, keeping the row a success', async () => {
+    const { service, prisma, analyzer, metrics } = setup([[backfillRow()]]);
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+
+    expect(prisma.mediaAssetAnalysis.create).not.toHaveBeenCalled();
+    expect(prisma.mediaAssetAnalysis.updateMany.mock.calls).toEqual([
+      [
+        {
+          where: {
+            assetId: 'song:1',
+            updatedAt: ROW_UPDATED_AT,
+            status: 'success',
+            durationSeconds: null,
+          },
+          data: { attempts: 2 },
+        },
+      ],
+      [
+        {
+          where: {
+            assetId: 'song:1',
+            sourceUrl: URL_A,
+            status: 'success',
+            durationSeconds: null,
+          },
+          data: { durationSeconds: 240 },
+        },
+      ],
+    ]);
+    // Nothing else of the measurement is written, and the run counts as a success.
+    expect(analyzer.analyze).toHaveBeenCalledWith(URL_A, ANALYSIS_TIMEOUT_MS);
+    expect(metrics.record).toHaveBeenCalledWith('success', expect.any(Number));
+    expect(metrics.setDurationBackfill).toHaveBeenCalledWith(4);
+    expect(metrics.setBacklog).toHaveBeenCalledWith(0);
+  });
+
+  it('leaves the measurement alone when the length cannot be measured, and counts the attempt', async () => {
+    const { service, prisma, analyzer, metrics } = setup([[backfillRow()]]);
+    analyzer.analyze.mockRejectedValueOnce(new AudioAnalysisError('timeout'));
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { attempts: 2 } }),
+    );
+    expect(metrics.record).toHaveBeenCalledWith('retry', expect.any(Number));
+    expect(Logger.prototype.warn).toHaveBeenCalledWith({
+      event: 'media_analysis.failed',
+      assetId: 'song:1',
+      result: 'retry',
+      error: 'timeout',
+    });
+  });
+
+  it('records an unexpected analyzer error as decode-failed and counts the attempt', async () => {
+    const { service, prisma, analyzer } = setup([[backfillRow()]]);
+    analyzer.analyze.mockRejectedValueOnce(new Error('unexpected'));
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { attempts: 2 } }),
+    );
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'media_analysis.failed',
+        assetId: 'song:1',
+        error: 'decode-failed',
+      }),
+    );
+  });
+
+  it('does not run a tool for a source that is not a URL, and does not wipe the row', async () => {
+    const { service, prisma, analyzer } = setup([
+      [backfillRow({ sourceUrl: 'file:///etc/passwd' })],
+    ]);
+    await service.runOnce(NOW);
+    expect(analyzer.analyze).not.toHaveBeenCalled();
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips an asset another instance took first, and stores nothing for a length that is not usable', async () => {
+    const taken = setup([[backfillRow()]]);
+    taken.prisma.mediaAssetAnalysis.updateMany.mockResolvedValueOnce({
+      count: 0,
+    });
+    await taken.service.runOnce(NOW);
+    expect(taken.analyzer.analyze).not.toHaveBeenCalled();
+
+    const unusable = setup([[backfillRow({ attempts: null })]]);
+    unusable.analyzer.analyze.mockResolvedValueOnce({
+      ...ANALYSIS,
+      durationSeconds: 0,
+    });
+    await unusable.service.runOnce(NOW);
+    expect(unusable.prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(unusable.prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { attempts: 1 } }),
+    );
+  });
+
+  it('reports no backfill when nothing is waiting', async () => {
+    const { service, metrics } = setup([[]]);
+    await service.runOnce(NOW);
+    expect(metrics.setDurationBackfill).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('a database error on the result write (#278)', () => {
+  const transientError = () =>
+    new Prisma.PrismaClientKnownRequestError('connection failure', {
+      code: 'P2010',
+      clientVersion: 'test',
+      meta: { code: '08006', message: 'terminating connection' },
+    });
+  const CAUSE = 'PrismaClientKnownRequestError P2010 08006';
+
+  // The write of a result is the update that matches the row by asset, source and 'pending';
+  // the claim and the release are other updates.
+  const isResultWrite = (args: { data: { status?: string } }) =>
+    args.data.status === 'success' || args.data.status === 'failed';
+
+  function failResultWrites(
+    prisma: ReturnType<typeof setup>['prisma'],
+    error: () => Error,
+    times: number,
+  ) {
+    let failures = 0;
+    prisma.mediaAssetAnalysis.updateMany.mockImplementation((async (
+      args: never,
+    ) => {
+      if (isResultWrite(args) && failures < times) {
+        failures += 1;
+        throw error();
+      }
+      return { count: 1 };
+    }) as never);
+  }
+  const resultWrites = (prisma: ReturnType<typeof setup>['prisma']) =>
+    prisma.mediaAssetAnalysis.updateMany.mock.calls.filter(([args]) =>
+      isResultWrite(args as never),
+    );
+
+  it('keeps the finished measurement and stores it on the next run, without a second analysis or attempt', async () => {
+    const { service, prisma, analyzer, metrics } = setup([[candidate()]]);
+    failResultWrites(prisma, transientError, 1);
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      `Media analysis could not store a finished result (${CAUSE}); retrying on the next run (1 of ${MAX_WRITE_RETRIES})`,
+    );
+    expect(Logger.prototype.error).not.toHaveBeenCalled();
+    expect(metrics.record).not.toHaveBeenCalled();
+    expect(metrics.recordWrite).toHaveBeenCalledWith('retried');
+
+    // The next run stores the held result before it takes another candidate.
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(analyzer.analyze).toHaveBeenCalledTimes(1);
+    expect(prisma.mediaAssetAnalysis.create).toHaveBeenCalledTimes(1);
+    expect(prisma.mediaAssetAnalysis.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ attempts: 1 }),
+    });
+    const writes = resultWrites(prisma);
+    expect(writes).toHaveLength(2);
+    expect(writes[1][0]).toEqual(
+      expect.objectContaining({
+        where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
+        data: expect.objectContaining({
+          status: 'success',
+          cueInSeconds: 1.5,
+          integratedLufs: -14.2,
+        }),
+      }),
+    );
+    expect(metrics.record).toHaveBeenCalledTimes(1);
+    expect(metrics.record).toHaveBeenCalledWith('success', expect.any(Number));
+    expect(metrics.recordWrite).toHaveBeenLastCalledWith('stored_after_retry');
+
+    // Nothing is held any more: the next run takes the next candidate.
+    await expect(service.runOnce(NOW)).resolves.toBe(false);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes no other candidate while a result waits, so the retries are bounded and nothing is analysed twice', async () => {
+    const { service, prisma, analyzer } = setup([
+      [candidate()],
+      [candidate({ assetId: 'song:2' })],
+    ]);
+    failResultWrites(prisma, transientError, 99);
+
+    // The failed write and each of its retries.
+    for (let run = 0; run <= MAX_WRITE_RETRIES; run += 1) {
+      await expect(service.runOnce(NOW)).resolves.toBe(true);
+    }
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(analyzer.analyze).toHaveBeenCalledTimes(1);
+    expect(resultWrites(prisma)).toHaveLength(1 + MAX_WRITE_RETRIES);
+
+    // Retries exhausted: the next run moves on to another asset.
+    await service.runOnce(NOW);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(analyzer.analyze).toHaveBeenLastCalledWith(
+      URL_A,
+      ANALYSIS_TIMEOUT_MS,
+    );
+  });
+
+  it('releases the claim with the attempt it had when the retries run out, and warns with the cause class', async () => {
+    const { service, prisma, metrics } = setup([
+      [
+        candidate({
+          analysisUpdatedAt: ROW_UPDATED_AT,
+          attempts: 1,
+        }),
+      ],
+    ]);
+    failResultWrites(prisma, transientError, 99);
+
+    for (let run = 0; run <= MAX_WRITE_RETRIES; run += 1) {
+      await service.runOnce(NOW);
+    }
+
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+      where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
+      data: {
+        attempts: 1,
+        nextAttemptAt: new Date(NOW.getTime() + RETRY_BACKOFF_MS[0]),
+      },
+    });
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      `Media analysis gave up storing a finished result (${CAUSE}) after ${MAX_WRITE_RETRIES} retries; the file is analysed again without spending an attempt`,
+    );
+    expect(Logger.prototype.error).not.toHaveBeenCalled();
+    expect(metrics.recordWrite).toHaveBeenLastCalledWith('released');
+    expect(metrics.record).not.toHaveBeenCalled();
+  });
+
+  it('does not end a file as interrupted when the write fails at the third attempt', async () => {
+    const { service, prisma } = setup([
+      [candidate({ analysisUpdatedAt: ROW_UPDATED_AT, attempts: 2 })],
+    ]);
+    failResultWrites(prisma, transientError, 99);
+
+    for (let run = 0; run <= MAX_WRITE_RETRIES; run += 1) {
+      await service.runOnce(NOW);
+    }
+
+    const writtenData = prisma.mediaAssetAnalysis.updateMany.mock.calls.map(
+      ([args]) => (args as { data: Record<string, unknown> }).data,
+    );
+    expect(writtenData.some((data) => data.error === 'interrupted')).toBe(
+      false,
+    );
+    // The row is released with the two attempts it had before this run, not three.
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: {
+          attempts: 2,
+          nextAttemptAt: new Date(NOW.getTime() + RETRY_BACKOFF_MS[0]),
+        },
+      }),
+    );
+  });
+
+  it('stores a failed analysis that the database dropped, without running the tool again', async () => {
+    const { service, prisma, analyzer, metrics } = setup([[candidate()]]);
+    analyzer.analyze.mockRejectedValueOnce(
+      new AudioAnalysisError('decode-failed'),
+    );
+    failResultWrites(prisma, transientError, 1);
+
+    await service.runOnce(NOW);
+    expect(metrics.record).not.toHaveBeenCalled();
+    await service.runOnce(NOW);
+
+    expect(analyzer.analyze).toHaveBeenCalledTimes(1);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'failed',
+          error: 'decode-failed',
+          nextAttemptAt: new Date(NOW.getTime() + RETRY_BACKOFF_MS[0]),
+        }),
+      }),
+    );
+    expect(metrics.record).toHaveBeenCalledWith('retry', expect.any(Number));
+  });
+
+  it('logs an error with the cause class for a write that cannot succeed, and does not retry it', async () => {
+    const { service, prisma, analyzer, metrics } = setup([
+      [candidate()],
+      [candidate({ assetId: 'song:2' })],
+    ]);
+    failResultWrites(
+      prisma,
+      () =>
+        new Prisma.PrismaClientKnownRequestError('constraint', {
+          code: 'P2003',
+          clientVersion: 'test',
+        }),
+      99,
+    );
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      'Media analysis could not store the result of a file (PrismaClientKnownRequestError P2003)',
+    );
+    expect(Logger.prototype.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('retrying on the next run'),
+    );
+    expect(metrics.recordWrite).toHaveBeenCalledWith('dropped');
+
+    // The next run takes the next candidate: nothing is held and nothing loops.
+    await service.runOnce(NOW);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(analyzer.analyze).toHaveBeenCalledTimes(2);
+    expect(resultWrites(prisma)).toHaveLength(2);
+  });
+
+  it('lets the lease run out when even the release cannot be written', async () => {
+    const { service, prisma } = setup([
+      [candidate({ analysisUpdatedAt: ROW_UPDATED_AT, attempts: 0 })],
+    ]);
+    prisma.mediaAssetAnalysis.updateMany.mockImplementation((async (
+      args: never,
+    ) => {
+      if ((args as { data: { status?: string } }).data.status === 'pending') {
+        return { count: 1 };
+      }
+      throw transientError();
+    }) as never);
+
+    for (let run = 0; run <= MAX_WRITE_RETRIES; run += 1) {
+      await expect(service.runOnce(NOW)).resolves.toBe(true);
+    }
+
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      `Media analysis could not release the claim of a finished result (${CAUSE}); the lease runs out and the file is analysed again`,
+    );
+    expect(Logger.prototype.error).not.toHaveBeenCalled();
+    await expect(service.runOnce(NOW)).resolves.toBe(false);
+  });
+
+  it('keeps the schedule going: a held write waits for the duty cycle like any run', async () => {
+    jest.useFakeTimers();
+    const { service, prisma, analyzer } = setup([[candidate()]]);
+    failResultWrites(prisma, transientError, 1);
+
+    await service.onApplicationBootstrap();
+    await jest.advanceTimersByTimeAsync(START_DELAY_MS);
+    expect(analyzer.analyze).toHaveBeenCalledTimes(1);
+    expect(resultWrites(prisma)).toHaveLength(1);
+
+    await jest.advanceTimersByTimeAsync(MIN_WAIT_MS);
+    expect(resultWrites(prisma)).toHaveLength(2);
+    expect(analyzer.analyze).toHaveBeenCalledTimes(1);
+    service.onModuleDestroy();
   });
 });
 

@@ -263,9 +263,12 @@ it("searches after a pause, filters audio by use, and clears the search", async 
   expect(
     await screen.findByText("Clear the filters and try again."),
   ).toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox"), {
-    target: { value: "INSTANT" },
-  });
+  fireEvent.click(
+    within(screen.getByRole("group", { name: "Capability" })).getByRole(
+      "button",
+      { name: "Instant" },
+    ),
+  );
   await waitFor(() =>
     expect(authFetch).toHaveBeenCalledWith(
       "/media-assets?page=1&limit=50&mediaType=AUDIO&search=bed&capability=INSTANT",
@@ -310,6 +313,74 @@ it("reports a library that cannot load", async () => {
   routes["GET /media-assets"] = () => json({ data: "nope" });
   open();
   expect(await screen.findByText("No image media found")).toBeInTheDocument();
+});
+
+it("lists audio as rows with the stored analysis and one shared transport, and labels or deletes from them", async () => {
+  assets = [
+    asset("song", {
+      mediaType: "AUDIO",
+      capabilities: ["SONG"],
+      song: {
+        id: 1,
+        artist: "A",
+        title: "T",
+        coverUrl: null,
+        durationMs: 200_000,
+      },
+      analysis: {
+        status: "success",
+        cueInSeconds: 1,
+        cueOutSeconds: 190,
+        fadeInSeconds: null,
+        fadeOutSeconds: null,
+        overlapSeconds: null,
+        integratedLufs: -11.5,
+        truePeakDbtp: -1.2,
+      },
+    }),
+    asset("bed", { mediaType: "AUDIO", capabilities: ["BACKGROUND"] }),
+  ];
+  labels = [label("l1", "Headlines")];
+  meta2 = { total: 2, totalPages: 1 };
+  open("/media?type=AUDIO");
+  await waitFor(() => expect(screen.getByText("2 assets")).toBeInTheDocument());
+  const table = within(screen.getByRole("table"));
+  const song = table.getByText("Asset song").closest("tr")!;
+  expect(song).toHaveTextContent("3:20");
+  expect(song).toHaveTextContent("-11.5");
+  expect(song).toHaveTextContent("Measured");
+  // A response with no analysis says so; it is not shown as a file that was never analysed.
+  expect(table.getByText("Asset bed").closest("tr")).toHaveTextContent(
+    "Analysis unavailable",
+  );
+  expect(document.querySelectorAll("audio")).toHaveLength(1);
+  expect(
+    within(screen.getByRole("group", { name: "Audio transport" })).getByText(
+      "Asset song",
+    ),
+  ).toBeInTheDocument();
+
+  // Bulk labelling works from the rows, as it did from the cards.
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Asset bed" }));
+  fireEvent.change(screen.getAllByRole("combobox").at(-1)!, {
+    target: { value: "l1" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Label 1/ }));
+  await toast("Label added to selected media.");
+  expect(requests("PUT")).toEqual([
+    ["/media-assets/bed/labels", { labelIds: ["l1"] }],
+  ]);
+
+  // A standalone clip can be deleted from its detail panel; a song cannot.
+  fireEvent.click(table.getByText("Asset bed").closest("tr")!);
+  routes["DELETE /media-assets/bed"] = () => json({});
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "Delete Asset bed" }));
+  await waitFor(() =>
+    expect(requests("DELETE")).toContainEqual(["/media-assets/bed", null]),
+  );
+  fireEvent.click(table.getByText("Asset song").closest("tr")!);
+  expect(screen.queryByRole("button", { name: "Delete Asset song" })).toBeNull();
 });
 
 it("labels the selected media in bulk, creating a label on the way", async () => {
@@ -829,6 +900,9 @@ it("adds background audio from a file or a URL, with labels and a default volume
   );
 });
 
+const labelRow = (name: string) =>
+  within(screen.getByRole("table")).getByText(name).closest("tr")!;
+
 it("manages labels: search, create, edit, delete, and the ordered media in each", async () => {
   const a = asset("a", { name: "Alpha" });
   const b = asset("b", { name: "Beta", mediaType: "AUDIO" });
@@ -844,43 +918,56 @@ it("manages labels: search, create, edit, delete, and the ordered media in each"
     "/media-assets?page=1&limit=200",
     undefined,
   );
-  expect(screen.getByText("2 assets")).toBeInTheDocument();
-  expect(screen.getByText("0 assets")).toBeInTheDocument();
+  // The management table: each label's media mix and count.
+  expect(labelRow("Headlines")).toHaveTextContent("1 audio");
+  expect(labelRow("Headlines")).toHaveTextContent("1 image");
+  expect(labelRow("Headlines")).toHaveTextContent("Front page photos");
+  expect(within(labelRow("Headlines")).getByRole("img")).toHaveAttribute(
+    "aria-label",
+    "1 audio, 1 image",
+  );
+  expect(labelRow("Headlines").cells[2]).toHaveTextContent("2");
+  expect(labelRow("Sponsors")).toHaveTextContent("No media");
+  expect(labelRow("Sponsors").cells[2]).toHaveTextContent("0");
   fireEvent.change(screen.getByPlaceholderText("Search labels…"), {
     target: { value: "spon" },
   });
-  await waitFor(() => expect(screen.queryByText("Headlines")).toBeNull());
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole("table")).queryByText("Headlines"),
+    ).toBeNull(),
+  );
   fireEvent.change(screen.getByPlaceholderText("Search labels…"), {
     target: { value: "" },
   });
-  await waitFor(() =>
-    expect(screen.getByText("Headlines")).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(labelRow("Headlines")).toBeInTheDocument());
 
-  fireEvent.click(screen.getByText("Sponsors").closest("button")!);
+  fireEvent.click(labelRow("Sponsors"));
   expect(
     await screen.findByText("No media with this label"),
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Headlines").closest("button")!);
+  fireEvent.click(labelRow("Headlines"));
   expect(
     screen.getByRole("heading", { name: "Headlines" }),
   ).toBeInTheDocument();
-  expect(screen.getByText("Front page photos")).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("complementary", { name: "Headlines details" })).getByText(
+      "Front page photos",
+    ),
+  ).toBeInTheDocument();
   const rows = () =>
-    screen
-      .getAllByRole("button", { name: "Remove label from media" })
-      .map((button) => button.parentElement!);
+    Array.from(document.querySelectorAll<HTMLElement>("aside ol li"));
   expect(rows().map((row) => row.textContent)).toEqual([
     "1Alphaimage",
     "2Betaaudio",
   ]);
-  expect(rows()[0].querySelector("img")).not.toBeNull();
   expect(
-    within(rows()[0]).getByRole("button", { name: "Move up" }),
+    within(rows()[0]).getByRole("button", { name: /^Move .* up$/ }),
   ).toBeDisabled();
   expect(
-    within(rows()[1]).getByRole("button", { name: "Move down" }),
+    within(rows()[1]).getByRole("button", { name: /^Move .* down$/ }),
   ).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Add assets" }));
   const chooser = screen.getAllByRole("combobox").at(-1) as HTMLSelectElement;
   expect(
     within(chooser)
@@ -899,14 +986,14 @@ it("manages labels: search, create, edit, delete, and the ordered media in each"
     );
     return json(labels[0]);
   };
-  fireEvent.click(within(rows()[0]).getByRole("button", { name: "Move down" }));
+  fireEvent.click(within(rows()[0]).getByRole("button", { name: /^Move .* down$/ }));
   await waitFor(() =>
     expect(rows().map((row) => row.textContent)).toEqual([
       "1Betaaudio",
       "2Alphaimage",
     ]),
   );
-  fireEvent.click(within(rows()[1]).getByRole("button", { name: "Move up" }));
+  fireEvent.click(within(rows()[1]).getByRole("button", { name: /^Move .* up$/ }));
   await waitFor(() =>
     expect(rows().map((row) => row.textContent)).toEqual([
       "1Alphaimage",
@@ -921,7 +1008,7 @@ it("manages labels: search, create, edit, delete, and the ordered media in each"
   await waitFor(() => expect(rows()).toHaveLength(3));
   expect(screen.getAllByRole("combobox").at(-1)).toHaveValue("");
   fireEvent.click(
-    within(rows()[1]).getByRole("button", { name: "Remove label from media" }),
+    within(rows()[1]).getByRole("button", { name: /^Remove .* from Headlines$/ }),
   );
   await waitFor(() =>
     expect(rows().map((row) => row.textContent)).toEqual([
@@ -939,15 +1026,15 @@ it("manages labels: search, create, edit, delete, and the ordered media in each"
   // Each order change can be refused.
   routes["PUT /media-labels/l1/assets"] = () =>
     new Response("Label is locked", { status: 423 });
-  fireEvent.click(within(rows()[0]).getByRole("button", { name: "Move down" }));
+  fireEvent.click(within(rows()[0]).getByRole("button", { name: /^Move .* down$/ }));
   await toast("Label is locked");
   routes["PUT /media-labels/l1/assets"] = () => {
     throw "offline";
   };
-  fireEvent.click(within(rows()[0]).getByRole("button", { name: "Move down" }));
+  fireEvent.click(within(rows()[0]).getByRole("button", { name: /^Move .* down$/ }));
   await toast("Failed to reorder label.");
   fireEvent.click(
-    within(rows()[0]).getByRole("button", { name: "Remove label from media" }),
+    within(rows()[0]).getByRole("button", { name: /^Remove .* from Headlines$/ }),
   );
   await toast("Failed to remove label.");
   fireEvent.change(screen.getAllByRole("combobox").at(-1)!, {
@@ -958,7 +1045,7 @@ it("manages labels: search, create, edit, delete, and the ordered media in each"
   routes["PUT /media-labels/l1/assets"] = () =>
     new Response("Too many", { status: 400 });
   fireEvent.click(
-    within(rows()[0]).getByRole("button", { name: "Remove label from media" }),
+    within(rows()[0]).getByRole("button", { name: /^Remove .* from Headlines$/ }),
   );
   await toast("Too many");
   fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -980,7 +1067,7 @@ it("creates, edits and deletes labels, and drops a label deleted elsewhere", asy
     return json(labels[0]);
   };
   open("/media?view=labels");
-  fireEvent.click(await screen.findByRole("button", { name: /Create label/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /New label/ }));
   let dialog = await screen.findByRole("dialog", { name: "Create label" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Create label" }));
   await toast("Label name is required.");
@@ -1011,8 +1098,8 @@ it("creates, edits and deletes labels, and drops a label deleted elsewhere", asy
     await screen.findByRole("heading", { name: "Sponsors" }),
   ).toBeInTheDocument();
 
-  fireEvent.click(screen.getByText("Headlines").closest("button")!);
-  fireEvent.click(screen.getByRole("button", { name: "Edit Headlines" }));
+  fireEvent.click(labelRow("Headlines"));
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }));
   dialog = await screen.findByRole("dialog", { name: "Edit label" });
   expect(dialog.querySelector("textarea")).toHaveValue("Old description");
   fireEvent.change(dialog.querySelector("textarea")!, {
@@ -1026,7 +1113,7 @@ it("creates, edits and deletes labels, and drops a label deleted elsewhere", asy
   ]);
 
   // A refused save, then Cancel.
-  fireEvent.click(screen.getByRole("button", { name: "Edit Headlines" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }));
   dialog = await screen.findByRole("dialog", { name: "Edit label" });
   routes["PUT /media-labels/l1"] = () => json({ message: "Name taken" }, 409);
   fireEvent.click(within(dialog).getByRole("button", { name: "Save label" }));
@@ -1045,7 +1132,7 @@ it("creates, edits and deletes labels, and drops a label deleted elsewhere", asy
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   fireEvent.click(screen.getByRole("button", { name: "Delete Headlines" }));
   expect(confirm).toHaveBeenCalledWith(
-    "Delete label “Headlines”? Files will remain in the library.",
+    "Delete label “Headlines”, used by 0 assets? Files will remain in the library.",
   );
   confirm.mockReturnValue(true);
   routes["DELETE /media-labels/l1"] = () =>
@@ -1066,7 +1153,7 @@ it("creates, edits and deletes labels, and drops a label deleted elsewhere", asy
   expect(await screen.findByText("Select a label")).toBeInTheDocument();
 
   // Deleting a label that is not selected keeps the selection.
-  fireEvent.click(screen.getByText("Sponsors").closest("button")!);
+  fireEvent.click(labelRow("Sponsors"));
   routes["DELETE /media-labels/l2"] = () => json({});
   labels.push(label("l3", "Other"));
   fireEvent.click(screen.getByRole("button", { name: "Delete Sponsors" }));
@@ -1088,15 +1175,21 @@ it("counts a single asset, edits a label without a description, and drops a labe
     return json(labels[0]);
   };
   open("/media?view=labels");
-  expect(await screen.findByText("1 asset")).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Headlines").closest("button")!);
-  fireEvent.click(screen.getByRole("button", { name: "Edit Headlines" }));
+  await screen.findByRole("table");
+  expect(labelRow("Headlines").cells[2]).toHaveTextContent("1");
+  expect(labelRow("Headlines")).toHaveTextContent("1 image");
+  fireEvent.click(labelRow("Headlines"));
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }));
   const dialog = await screen.findByRole("dialog", { name: "Edit label" });
   expect(dialog.querySelector("textarea")).toHaveValue("");
-  fireEvent.click(screen.getByText("Sponsors").closest("button")!);
+  fireEvent.click(labelRow("Sponsors"));
   fireEvent.click(within(dialog).getByRole("button", { name: "Save label" }));
   await toast("Label updated.");
-  await waitFor(() => expect(screen.queryByText("Sponsors")).toBeNull());
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole("table")).queryByText("Sponsors"),
+    ).toBeNull(),
+  );
   expect(
     screen.getByRole("heading", { name: "Headlines" }),
   ).toBeInTheDocument();
@@ -1106,5 +1199,5 @@ it("counts a single asset, edits a label without a description, and drops a labe
   fireEvent.change(screen.getByPlaceholderText("Search labels…"), {
     target: { value: "head" },
   });
-  expect(await screen.findByText("Select a label")).toBeInTheDocument();
+  expect(await screen.findByText("No labels yet")).toBeInTheDocument();
 });

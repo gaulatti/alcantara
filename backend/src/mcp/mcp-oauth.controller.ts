@@ -2,7 +2,6 @@ import { Controller, Get, Post, Req, Res } from '@nestjs/common';
 import type { McpHttpReply, McpHttpRequest } from './mcp.controller';
 import { Public } from '../auth/public.decorator';
 import {
-  COGNITO_HOSTED_DOMAIN,
   COGNITO_ISSUER,
   MCP_LIMITS,
   MCP_OAUTH_SCOPES,
@@ -11,6 +10,12 @@ import {
   MCP_RESOURCE_URL,
   MCP_SHARED_CLIENT_ID,
 } from './mcp.constants';
+import {
+  MCP_AUTHORIZE_URL,
+  MCP_TOKEN_URL,
+  isProxiedCallback,
+  proxiedClientId,
+} from './mcp-oauth-proxy.service';
 
 const PROTECTED_RESOURCE = {
   resource: MCP_RESOURCE_URL,
@@ -23,8 +28,10 @@ const AUTHORIZATION_SERVER = {
   // RFC 8414: the issuer is the address this document is served for. Tokens
   // are still issued by the pool (COGNITO_ISSUER); Pompeii verifies them.
   issuer: MCP_PUBLIC_ORIGIN,
-  authorization_endpoint: `${COGNITO_HOSTED_DOMAIN}/oauth2/authorize`,
-  token_endpoint: `${COGNITO_HOSTED_DOMAIN}/oauth2/token`,
+  // The API's own sign-in routes (bastille#34): Cognito's exact callback list
+  // cannot hold MCP clients' callbacks, so the API proxies them through its one.
+  authorization_endpoint: MCP_AUTHORIZE_URL,
+  token_endpoint: MCP_TOKEN_URL,
   jwks_uri: `${COGNITO_ISSUER}/.well-known/jwks.json`,
   registration_endpoint: MCP_REGISTRATION_URL,
   response_types_supported: ['code'],
@@ -59,9 +66,10 @@ function acceptableRedirect(uri: unknown): uri is string {
  * OAuth discovery for MCP clients. Cognito authenticates; Pompeii
  * authorizes. /register is a stateless facade over the console's public
  * Cognito app client: it checks the shape of the redirect URIs and reflects
- * them. The only list of allowed callbacks is the app client's own in
- * Cognito, so there is no second list here to drift from it; a callback the
- * app client does not allow is refused by Cognito at authorization time.
+ * them. A registration whose callbacks are all accepted ones (loopback or an
+ * allowlisted https host) gets a client id naming them, so /oauth/authorize
+ * delivers only to those (bastille#34); any other keeps the shared client and
+ * is refused at /oauth/authorize unless its callback is accepted.
  */
 @Controller()
 @Public()
@@ -110,8 +118,11 @@ export class McpOAuthController {
       });
       return;
     }
+    const proxied = uris.every(isProxiedCallback)
+      ? proxiedClientId(uris, typeof name === 'string' ? name : undefined)
+      : null;
     await reply.status(201).send({
-      client_id: MCP_SHARED_CLIENT_ID,
+      client_id: proxied ?? MCP_SHARED_CLIENT_ID,
       client_id_issued_at: Math.floor(Date.now() / 1000),
       redirect_uris: uris,
       grant_types: ['authorization_code', 'refresh_token'],

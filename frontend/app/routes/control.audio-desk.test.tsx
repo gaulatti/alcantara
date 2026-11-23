@@ -133,8 +133,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const fader = (label: string) =>
-  screen.getByRole("slider", { name: `${label} fader` }) as HTMLInputElement;
+const faderControl = (label: string) =>
+  screen.getByRole("slider", { name: `${label} fader` });
+/** The channel's stored fader position (0..1), read back from the Fader's dB value through the console taper. */
+const fader = (label: string) => {
+  const db = Number(faderControl(label).getAttribute("aria-valuenow"));
+  return { value: String(Number(dbToFader(db).toFixed(6))) };
+};
+const press = (label: string, key: string, times = 1) => {
+  for (let index = 0; index < times; index += 1)
+    fireEvent.keyDown(faderControl(label), { key });
+};
+/** Where a key press leaves a fader that sits at `position`, as the stored position. */
+const positionAfter = (db: number) => Number(dbToFader(db).toFixed(6));
 const meter = (label: string) =>
   Number(
     screen
@@ -275,13 +286,13 @@ it("saves a fader move once, after the debounce, and applies the acknowledged mi
     }),
   );
   await openDesk();
-  fireEvent.change(fader("Music"), { target: { value: "0.5" } });
-  fireEvent.change(fader("Music"), { target: { value: "0.45" } });
-  expect(fader("Music").value).toBe("0.45");
+  // Music sits at 0.6 (about −11.8 dB): two presses down land on −12.0 and −12.5 dB.
+  press("Music", "ArrowDown", 2);
+  expect(fader("Music").value).toBe(String(positionAfter(-12.5)));
   expect(puts()).toHaveLength(0);
   await waitFor(() => expect(puts()).toHaveLength(1));
   expect(puts()[0].mixerSettings.mainMasterVolume).toBe(0.8);
-  expect(channelIn(puts()[0], "song").volume).toBe(0.45);
+  expect(channelIn(puts()[0], "song").volume).toBeCloseTo(dbToFader(-12.5), 6);
   await waitFor(() => expect(fader("Music").value).toBe("0.4"));
   expect(screen.getByText("Levels in dB")).toBeInTheDocument();
 
@@ -289,21 +300,21 @@ it("saves a fader move once, after the debounce, and applies the acknowledged mi
   server.answer("PUT /program/main/audio-bus", () =>
     Response.json({ version: 2, mixerSettings: { mainMasterVolume: 0.1 } }),
   );
-  fireEvent.change(fader("Main mix"), { target: { value: "0.7" } });
+  press("Main mix", "End");
   await waitFor(() => expect(puts()).toHaveLength(2));
   await waitFor(() =>
     expect(screen.getByText("Levels in dB")).toBeInTheDocument(),
   );
-  expect(fader("Main mix").value).toBe("0.7");
+  expect(fader("Main mix").value).toBe("1");
 
   // An acknowledgement without a mix keeps the levels that were sent.
   server.answer("PUT /program/main/audio-bus", () => Response.json(null));
-  fireEvent.change(fader("Cartwall"), { target: { value: "0.3" } });
+  press("Cartwall", "Home");
   await waitFor(() => expect(puts()).toHaveLength(3));
   await waitFor(() =>
     expect(screen.getByText("Levels in dB")).toBeInTheDocument(),
   );
-  expect(fader("Cartwall").value).toBe("0.3");
+  expect(fader("Cartwall").value).toBe("0");
 });
 
 it("explains a mix the server did not apply", async () => {
@@ -312,7 +323,7 @@ it("explains a mix the server did not apply", async () => {
     () => new Response("no", { status: 502 }),
   );
   await openDesk();
-  fireEvent.change(fader("Scene audio"), { target: { value: "0.2" } });
+  press("Scene audio", "ArrowDown");
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Mixer change was not applied to Palazzo. Try again.",
   );

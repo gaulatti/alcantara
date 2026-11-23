@@ -12,7 +12,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'Ticker',
     description: 'Bottom ticker bar with hashtag and URL',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { hashtag: '#ModoSanremoMR', url: 'modoradio.cl' }
+    defaultProps: { hashtag: '', url: '' }
   },
   {
     id: 'chyron',
@@ -44,7 +44,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'QR Code',
     description: 'QR code widget',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { content: 'https://modoradio.cl' }
+    defaultProps: { content: '' }
   },
   {
     id: 'live-indicator',
@@ -133,9 +133,9 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     hasConfigurableSceneAttributes: true,
     defaultProps: {
       headerTitle: '',
-      hashtag: '#ModoSanremoMR',
-      url: 'modoradio.cl',
-      qrCodeContent: 'https://modoradio.cl',
+      hashtag: '',
+      url: '',
+      qrCodeContent: '',
       clockTimezone: 'America/Argentina/Buenos_Aires',
       showChyron: false,
       chyronText: ''
@@ -146,7 +146,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'Reloj Clock',
     description: 'Analog clock with timezone support',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { timezone: 'America/Argentina/Buenos_Aires' }
+    defaultProps: { timezone: 'America/Argentina/Buenos_Aires', logoUrl: '' }
   },
   {
     id: 'reloj-loop-clock',

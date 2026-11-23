@@ -121,6 +121,80 @@ export class RadioMcpTools {
     const programArg = { program_id: programIdArg };
     return [
       readSpec({
+        name: 'radio_get_playback_state',
+        title: 'Read what is on air in a program',
+        description:
+          'Reads what the radio is playing now in a program: the song on air (elapsed and duration in milliseconds, progress, intro status, whether telemetry is stale), the song announced next, and the rotation mode and frozen flag; `on_air` is null when nothing plays.',
+        permission: permissions.read,
+        shape: programArg,
+        // Title and artist are user-entered: the read isolates them under `untrusted`.
+        untrusted: ['title', 'artist'],
+        run: async (args) => {
+          // An unknown program is not_found, as get_on_air answers (requireProgram).
+          await this.radio.getRadioSettings(args.program_id);
+          const view = this.engine.getOnAirView(args.program_id);
+          const playback = this.engine.getPlaybackState(args.program_id);
+          return {
+            program_id: args.program_id,
+            on_air:
+              playback && view.playbackRequestId
+                ? {
+                    playback_request_id: view.playbackRequestId,
+                    elapsed_ms: playback.positionMs,
+                    duration_ms: playback.durationMs,
+                    progress: playback.progress,
+                    intro_status: playback.introStatus,
+                    telemetry_stale: playback.telemetryStale,
+                    title: playback.title,
+                    artist: playback.artist,
+                  }
+                : null,
+            next: view.next
+              ? {
+                  playback_id: view.next.playbackId,
+                  status: view.next.status,
+                  title: view.next.title,
+                  artist: view.next.artist,
+                }
+              : null,
+            mode: view.mode,
+            frozen: view.frozen,
+          };
+        },
+      }),
+      readSpec({
+        name: 'radio_get_audio_levels',
+        title: 'Read the program audio levels',
+        description:
+          'Reads the latest audio levels of a program per channel (song, instants, scene_instant, main): vu, peak and peak_hold, each from 0 to 1, with the time they were last updated.',
+        permission: permissions.read,
+        shape: programArg,
+        run: async (args) => {
+          const meter = await this.programs.getProgramAudioMeter(
+            args.program_id,
+          );
+          const channel = (levels: {
+            vu: number;
+            peak: number;
+            peakHold: number;
+          }) => ({
+            vu: levels.vu,
+            peak: levels.peak,
+            peak_hold: levels.peakHold,
+          });
+          return {
+            program_id: args.program_id,
+            updated_at: meter.updatedAt,
+            channels: {
+              song: channel(meter.song),
+              instants: channel(meter.instants),
+              scene_instant: channel(meter.sceneInstant),
+              main: channel(meter.main),
+            },
+          };
+        },
+      }),
+      readSpec({
         name: 'radio_get_settings',
         title: 'Read the radio settings of a program',
         description:

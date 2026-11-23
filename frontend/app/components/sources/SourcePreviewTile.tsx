@@ -47,7 +47,7 @@ export function SourcePreviewTile({
           <span className="font-semibold text-xs text-zinc-100 truncate" title={source.name}>
             {source.name}
           </span>
-          <span className="text-[10px] font-mono uppercase text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded">
+          <span className="text-xs font-mono uppercase text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded">
             {source.transport}
           </span>
           <StatusBadge
@@ -105,14 +105,14 @@ export function SourcePreviewTile({
       {/* Footer controls: Audio Meter & Metadata */}
       <div className="flex items-center justify-between border-t border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-xs">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-400">Audio:</span>
+          <span className="text-xs text-zinc-400">Audio:</span>
           <AudioMeter
             level={audioLevel}
             audioTrack={audioTrack}
             label={`Audio meter for ${source.name}`}
           />
         </div>
-        <div className="text-[10px] text-zinc-500 font-mono">
+        <div className="text-xs text-zinc-500 font-mono">
           Health: <span className="text-zinc-400 capitalize">{source.health}</span>
         </div>
       </div>

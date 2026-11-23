@@ -1,3 +1,4 @@
+import { StatePill } from '../radio-desk/primitives';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@gaulatti/bleecker';
 import { Clock, GripVertical, Headphones, ListPlus, Music2, Plus, Star } from 'lucide-react';
@@ -6,6 +7,7 @@ import {
   createProgramSongSequenceItem,
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
+  songIdsInProgramSongSequence,
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
   type ProgramSongSequenceLeafItem
@@ -50,7 +52,9 @@ export function ProgramSongSequenceEditor({
   onQueueItem,
   depth = 0,
   view = 'full',
-  rotationLabel = 'Playlist'
+  rotationLabel = 'Playlist',
+  liveItemId = null,
+  nextItemId = null
 }: {
   sequence: ProgramSongSequence;
   songCatalog?: SongCatalogItem[];
@@ -61,6 +65,9 @@ export function ProgramSongSequenceEditor({
   depth?: number;
   view?: 'full' | 'catalog' | 'queue';
   rotationLabel?: string;
+  /** The rotation song that is on air, and the one Cue next would cue: marked in the list (#298). */
+  liveItemId?: string | null;
+  nextItemId?: string | null;
 }) {
   // Every item the editor shows is a song: the playlist type proves it.
   const sequence = useMemo(
@@ -103,6 +110,9 @@ export function ProgramSongSequenceEditor({
     [songCatalog]
   );
 
+  // A song goes into a playlist once (gaulatti/alcantara#280): the picker says so and the server refuses a repeat.
+  const songIdsInPlaylist = useMemo(() => songIdsInProgramSongSequence(sequence), [sequence]);
+
   const catalogOptions = useMemo(
     () => availableSongCatalog.map((s) => ({ value: String(s.id), label: [s.artist, s.title].filter(Boolean).join(' - ') || `Song #${s.id}` })),
     [availableSongCatalog]
@@ -125,8 +135,8 @@ export function ProgramSongSequenceEditor({
   );
 
   const previewItem = useCallback(async (item: ProgramSongSequenceLeafItem) => {
-    const audioUrl = item.audioUrl?.trim() ?? '';
-    if (!audioUrl) return;
+    // The preview button is disabled while the item has no audio URL, so this runs only with one.
+    const audioUrl = (item.audioUrl as string).trim();
 
     if (previewingItemId === item.id) {
       previewAudioRef.current?.pause();
@@ -179,11 +189,10 @@ export function ProgramSongSequenceEditor({
   }, [editorActiveItemId, programSongPlayback, sequence.activeItemId, sequence.items]);
 
   const addItemFromCatalog = useCallback(
-    (songId: number) => {
-      const selectedSong = availableSongCatalog.find((s) => s.id === songId);
-      if (!selectedSong) return;
-      const nextItem = createProgramSongSequenceItem('preset');
-      if (nextItem.kind !== 'preset') return;
+    (selectedSong: SongCatalogItem) => {
+      // The add button is rendered per catalog song and disabled once the song is in the playlist.
+      // A new preset item is always a preset.
+      const nextItem = createProgramSongSequenceItem('preset') as Extract<ProgramSongSequenceLeafItem, { kind: 'preset' }>;
       const filled = {
         ...nextItem,
         songId: selectedSong.id,
@@ -205,20 +214,21 @@ export function ProgramSongSequenceEditor({
         activeItemId: isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? filled.id) : editorActiveItemId
       });
     },
-    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence]
+    [applySequence, editorActiveItemId, isAutomatic, sequence]
   );
 
   const removeItem = useCallback(
     (index: number) => {
+      // Called only from the items map, so index always names an existing item.
       const removed = sequence.items[index];
-      if (!removed) return;
       const nextItems = sequence.items.filter((_, i) => i !== index);
       const current = editorActiveItemId ?? sequence.activeItemId;
       const removedCurrent = current !== null && current === removed.id;
       let nextActive: string | null;
       if (nextItems.length === 0) nextActive = null;
-      else if (removedCurrent) nextActive = nextItems[Math.min(index, nextItems.length - 1)]?.id ?? null;
-      else nextActive = current && nextItems.some((i) => i.id === current) ? current : (nextItems[0]?.id ?? null);
+      // nextItems is non-empty past the first branch, and the index is clamped to it.
+      else if (removedCurrent) nextActive = nextItems[Math.min(index, nextItems.length - 1)].id;
+      else nextActive = current && nextItems.some((i) => i.id === current) ? current : nextItems[0].id;
       applySequence({
         ...sequence,
         items: nextItems,
@@ -239,10 +249,10 @@ export function ProgramSongSequenceEditor({
 
   const toggleHighRotation = useCallback(
     (index: number, item: ProgramSongSequenceLeafItem) => {
-      if (!item.highRotation && highRotationCount >= 12) return;
+      // The button is disabled at the 12-song limit, so this only adds below it.
       updateItem(index, { ...item, highRotation: !item.highRotation });
     },
-    [highRotationCount, updateItem]
+    [updateItem]
   );
 
   const reorderItems = useCallback(
@@ -428,8 +438,13 @@ export function ProgramSongSequenceEditor({
                                 </div>
                               )}
                               <div className='min-w-0'>
-                                <div className={`truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
-                                  {titleText}
+                                <div className={`flex items-center gap-2 truncate text-[13px] font-medium leading-tight ${isActive ? 'text-sea' : 'text-text-primary'}`}>
+                                  <span className='truncate'>{titleText}</span>
+                                  {displayItem.id === liveItemId ? (
+                                    <StatePill tone='live' label='On air' pulse />
+                                  ) : displayItem.id === nextItemId ? (
+                                    <StatePill tone='info' label='Next' />
+                                  ) : null}
                                 </div>
                                 <div className='truncate text-[11px] leading-tight text-text-secondary mt-0.5'>{artistText}</div>
                               </div>
@@ -563,10 +578,11 @@ export function ProgramSongSequenceEditor({
                     </div>
                     <Button
                       type='button'
-                      onClick={() => addItemFromCatalog(song.id)}
+                      disabled={songIdsInPlaylist.has(song.id)}
+                      onClick={() => addItemFromCatalog(song)}
                       className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary opacity-0 shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
-                      title='Add to queue'
-                      aria-label='Add to queue'
+                      title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
+                      aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
                     >
                       <Plus size={14} />
                     </Button>

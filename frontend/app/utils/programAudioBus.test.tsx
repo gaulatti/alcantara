@@ -137,6 +137,10 @@ class EventAudio {
   static created: EventAudio[] = [];
   static playResult: () => Promise<void> | undefined = () => Promise.resolve();
   src: string;
+  // A real element reports null until crossOrigin is set; "anonymous" models a
+  // source loaded in CORS mode, which Web Audio may read.
+  static crossOriginMode: string | null = null;
+  crossOrigin: string | null = EventAudio.crossOriginMode;
   volume = 1;
   muted = false;
   paused = true;
@@ -526,6 +530,7 @@ describe("program audio bus: level meter", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     EventAudio.created = [];
+    EventAudio.crossOriginMode = null;
     EventAudio.playResult = () => Promise.resolve();
     vi.stubGlobal("Audio", EventAudio);
     vi.stubGlobal(
@@ -617,6 +622,7 @@ describe("program audio bus: level meter", () => {
   });
 
   it("routes the element through the meter when the stream cannot be captured, and unmutes it after", () => {
+    EventAudio.crossOriginMode = "anonymous";
     const { Context, made } = audioContextClass({
       state: "running",
       samples: [0.3],
@@ -633,6 +639,7 @@ describe("program audio bus: level meter", () => {
   });
 
   it("attaches the element once a suspended context resumes, unless the track moved on", async () => {
+    EventAudio.crossOriginMode = "anonymous";
     const { Context, made } = audioContextClass({
       state: "suspended",
       samples: [0.4],
@@ -653,6 +660,38 @@ describe("program audio bus: level meter", () => {
     made[0].state = "running";
     await vi.advanceTimersByTimeAsync(0);
     expect(EventAudio.created[1].muted).toBe(false);
+  });
+
+  it("plays a song from another origin without CORS on its own, never muted through the meter", async () => {
+    // The production song store sends no CORS headers. Web Audio outputs
+    // silence for such a source, so routing it would play the song silent.
+    const { Context, made } = audioContextClass({
+      state: "running",
+      samples: [0.3],
+    });
+    vi.stubGlobal("AudioContext", Context);
+    ensureProgramAudioBusTrack(programId, busTrack("one"));
+    const audio = EventAudio.created[0];
+    expect(audio.crossOrigin).toBeNull();
+    expect(audio.muted).toBe(false);
+    expect(made[0].sources.some((node: any) => node.kind === "element")).toBe(
+      false,
+    );
+
+    stopProgramAudioBus(programId);
+
+    // Nor once a suspended context resumes.
+    const resumingProgram = `${programId}-resume`;
+    const suspended = audioContextClass({ state: "suspended", samples: [0.3] });
+    vi.stubGlobal("AudioContext", suspended.Context);
+    ensureProgramAudioBusTrack(resumingProgram, busTrack("two"));
+    suspended.made[0].state = "running";
+    await vi.advanceTimersByTimeAsync(0);
+    expect(EventAudio.created[1].muted).toBe(false);
+    expect(
+      suspended.made[0].sources.some((node: any) => node.kind === "element"),
+    ).toBe(false);
+    stopProgramAudioBus(resumingProgram);
   });
 
   it("keeps the bus playing when the meter cannot attach", async () => {

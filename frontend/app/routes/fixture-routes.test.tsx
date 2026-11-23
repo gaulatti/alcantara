@@ -15,8 +15,11 @@ import SimilarityFixture from "./similarity-fixture";
 import BroadcastLayoutExample from "./layout-demo";
 import SongIntroFixture from "./song-intro-fixture";
 import MediaFixture from "./media-fixture";
+import LabelsFixture from "./labels-fixture";
+import SourcesFixture from "./sources-fixture";
 import RecordingFixture from "./recording-fixture";
 import AccessFixture from "./access-fixture";
+import LibraryFixture from "./library-fixture";
 
 // The visual fixture routes: each opens its fictional states with the real
 // components, as a reviewer sees them.
@@ -27,6 +30,13 @@ beforeEach(() => {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
 });
 
 afterEach(() => {
@@ -34,9 +44,53 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("shows the broadcast overlay's welcome chyron", () => {
-  render(<Overlay />);
-  expect(screen.getByText("Bienvenidos a Modoradio")).toBeInTheDocument();
+it("draws no station marks on the overlay when none are given", () => {
+  window.history.replaceState(null, "", "/overlay");
+  const { container } = render(<Overlay />);
+  expect(container.querySelector(".toni-logo")).toBeNull();
+  expect(container.textContent).not.toMatch(/bienvenidos|modoradio/i);
+});
+
+it("draws exactly the station marks the overlay URL gives", () => {
+  window.history.replaceState(null, "", "/overlay?callsign=XY&subtitle=STATION&logo=/x.png&chyron=Welcome%20to%20XY");
+  const { container } = render(<Overlay />);
+  expect(screen.getByText("Welcome to XY")).toBeInTheDocument();
+  const logo = container.querySelector(".toni-logo img");
+  expect(logo?.getAttribute("src")).toBe("/x.png");
+  expect(logo?.getAttribute("alt")).toBe("XY STATION");
+  window.history.replaceState(null, "", "/");
+});
+
+it("draws the program's own marks from its active scene, with URL marks overriding them", async () => {
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+    new Response(
+      JSON.stringify({
+        activeScene: {
+          chyronText: "From the program",
+          metadata: JSON.stringify({ "toni-logo": { callsign: "PG", subtitle: "PROGRAM" } }),
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/overlay?program=tv-one&subtitle=OVERRIDE");
+  const { container } = render(<Overlay />);
+  expect(await screen.findByText("From the program")).toBeInTheDocument();
+  expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/program\/tv-one\/state$/);
+  expect(container.querySelector(".toni-logo img")?.getAttribute("alt")).toBe("PG OVERRIDE");
+  window.history.replaceState(null, "", "/");
+});
+
+it("draws no marks when the program cannot be read", async () => {
+  const fetchMock = vi.fn(async () => new Response("", { status: 404 }));
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/overlay?program=missing");
+  const { container } = render(<Overlay />);
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(container.querySelector(".toni-logo")).toBeNull();
+  expect(container.querySelector(".fifthbell-chyron, [class*=chyron]")).toBeNull();
+  window.history.replaceState(null, "", "/");
 });
 
 it("shows the slideshow fixture frames", () => {
@@ -74,7 +128,7 @@ it("shows chyron messages on demand in the layout demo", async () => {
   render(<BroadcastLayoutExample />);
   expect(screen.getByText("Broadcast Layout Demo")).toBeVisible();
   for (const [button, text] of [
-    ["Show Title Message", "LAS INTROS DEL FESTIVAL DE SANREMO"],
+    ["Show Title Message", "PROGRAM TITLE MESSAGE"],
     ["Show Now Playing", "Ahora suena: Beautiful Song - Amazing Artist"],
     ["Show Breaking News", "ULTIMA HORA: Noticia importante en desarrollo"],
   ]) {
@@ -87,6 +141,20 @@ it("shows chyron messages on demand in the layout demo", async () => {
       screen.queryByText("ULTIMA HORA: Noticia importante en desarrollo"),
     ).not.toBeInTheDocument(),
   );
+});
+
+it("contains the layout demo's 1920x1080 stage in a frame, so its fixed widgets cannot cover the sidebar", () => {
+  render(<BroadcastLayoutExample />);
+  const frame = screen.getByTestId("layout-demo-frame");
+  const stage = screen.getByTestId("layout-demo-stage");
+  // The frame clips the stage, and the stage's transform makes the frame the containing block
+  // of the position:fixed QR widget.
+  expect(frame).toHaveClass("overflow-hidden", "w-full");
+  expect(stage.style.transform).toMatch(/^scale\(/);
+  expect(stage.style.width).toBe("1920px");
+  expect(stage.style.height).toBe("1080px");
+  expect(frame.contains(document.querySelector(".qr-widget"))).toBe(true);
+  expect(frame.contains(screen.getByText("Broadcast Layout Demo"))).toBe(true);
 });
 
 it("shows every song-intro editor state", () => {
@@ -111,11 +179,59 @@ it("shows the radio media surface with capabilities and labels", () => {
       <MediaFixture />
     </MemoryRouter>,
   );
-  const opener = screen.getByText("Morning opener").closest("article")!;
+  const rowOf = (name: string) =>
+    within(screen.getByRole("table"))
+      .getByText(name, { selector: "p" })
+      .closest("tr")!;
+  const opener = rowOf("Morning opener");
   expect(within(opener).getByText("Instant")).toBeVisible();
-  expect(within(opener).getByText("Station IDs")).toBeVisible();
-  const bed = screen.getByText("Weather bed").closest("article")!;
-  expect(within(bed).getByText("Unlabeled")).toBeVisible();
+  expect(within(opener).getByText("Station IDs", { exact: false })).toBeVisible();
+  expect(within(opener).getByText("Measured")).toBeVisible();
+  expect(within(rowOf("Weather bed")).getByText("Unlabeled")).toBeVisible();
+  // Every state of the analysis has a row.
+  expect(within(rowOf("Slow Weather")).getByText("Measuring")).toBeVisible();
+  expect(
+    within(rowOf("Northbound")).getByText("Failed"),
+  ).toBeVisible();
+  // The failure code is in the tooltip, so the pill stays on one line.
+  expect(
+    within(rowOf("Northbound")).getByTestId("analysis-pill"),
+  ).toHaveAttribute("title", "Failed · decode-failed");
+  expect(within(rowOf("Sweep · Top of hour")).getByText("Not analysed")).toBeVisible();
+  expect(
+    within(rowOf("Legacy clip")).getByText("Analysis unavailable"),
+  ).toBeVisible();
+});
+
+it("shows the labels fixture, and lets its order be rearranged", async () => {
+  render(
+    <MemoryRouter>
+      <LabelsFixture />
+    </MemoryRouter>,
+  );
+  const table = within(screen.getByRole("table"));
+  expect(table.getByText("90s").closest("tr")).toHaveTextContent("4 audio");
+  expect(table.getByText("90s").closest("tr")).toHaveTextContent("1 video");
+  expect(table.getByText("Unused").closest("tr")).toHaveTextContent("No media");
+  const drawer = within(screen.getByRole("complementary", { name: "90s details" }));
+  expect(drawer.getByText("and 33 more")).toBeInTheDocument();
+  fireEvent.click(drawer.getByRole("button", { name: "Move Paper Satellites up" }));
+  await waitFor(() =>
+    expect(
+      drawer.getAllByRole("listitem").map((item) => item.textContent?.replace(/\d+/, "")),
+    ).toEqual([
+      "Paper Satellitesaudio",
+      "Copper Seasonaudio",
+      "Low Tide Radioaudio",
+      "Static Bloomaudio",
+      "Video · Live at Pier 9video",
+    ]),
+  );
+  fireEvent.click(drawer.getByRole("button", { name: "Remove Static Bloom from 90s" }));
+  await waitFor(() => expect(drawer.queryByText("Static Bloom")).toBeNull());
+  fireEvent.click(drawer.getByRole("button", { name: "Add assets" }));
+  fireEvent.click(table.getByText("Unused"));
+  expect(screen.getByText("No media with this label")).toBeInTheDocument();
 });
 
 it.each([
@@ -167,6 +283,31 @@ it.each([
   expect(screen.getByText("Studio laptop")).toBeInTheDocument();
 });
 
+it.each([
+  ["ready", "Studio camera"],
+  ["empty", "No external sources assigned"],
+  ["error", "External sources could not be loaded"],
+  ["preview-failed", "Live preview could not connect."],
+  ["preview-unconfigured", "Preview unavailable"],
+  ["nonsense", "Preview ready"],
+])("opens the sources fixture in its %s state", (state, text) => {
+  render(
+    <MemoryRouter initialEntries={[`/sources-fixture?state=${state}`]}>
+      <SourcesFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(text)).toBeInTheDocument();
+});
+
+it("opens the sources fixture while loading", () => {
+  render(
+    <MemoryRouter initialEntries={["/sources-fixture?state=loading"]}>
+      <SourcesFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByTestId("source-list-loading")).toBeInTheDocument();
+});
+
 it("opens the access fixture with the service not available yet, and a manager by default", async () => {
   const { unmount } = render(
     <MemoryRouter initialEntries={["/access-fixture?state=unavailable"]}>
@@ -183,4 +324,27 @@ it("opens the access fixture with the service not available yet, and a manager b
     </MemoryRouter>,
   );
   expect(await screen.findByRole("tab", { name: "People" })).toBeInTheDocument();
+});
+
+it.each([
+  ["ready", "Station ident"],
+  ["empty", "No audio clips yet"],
+  ["error", "Failed to load audio clips"],
+  ["nonsense", "Station ident"],
+])("opens the library fixture in its %s state", (state, text) => {
+  render(
+    <MemoryRouter initialEntries={[`/library-fixture?state=${state}`]}>
+      <LibraryFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(text)).toBeInTheDocument();
+});
+
+it("opens the library fixture while loading", () => {
+  render(
+    <MemoryRouter initialEntries={["/library-fixture?state=loading"]}>
+      <LibraryFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByLabelText("Loading Audio clips")).toBeInTheDocument();
 });

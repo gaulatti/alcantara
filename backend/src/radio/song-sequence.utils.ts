@@ -509,6 +509,34 @@ export function collectProgramSongLeaves(
   return leaves;
 }
 
+/**
+ * How many leaves each song has in a sequence, keyed by the song id (else by the audio
+ * address), with a label for messages. A song airs once per leaf in a rotation, so a
+ * second leaf for the same song doubles its share (gaulatti/alcantara#280).
+ */
+export function countProgramSongLeavesBySong(
+  sequence: ProgramSongSequence | null,
+): Map<string, { count: number; label: string }> {
+  const counts = new Map<string, { count: number; label: string }>();
+  for (const leaf of collectProgramSongLeaves(sequence)) {
+    const key =
+      typeof leaf.songId === 'number'
+        ? `song:${leaf.songId}`
+        : leaf.audioUrl?.trim()
+          ? `url:${leaf.audioUrl.trim()}`
+          : null;
+    if (!key) continue;
+    const seen = counts.get(key);
+    if (seen) seen.count += 1;
+    else
+      counts.set(key, {
+        count: 1,
+        label: [leaf.artist, leaf.title].filter(Boolean).join(' - ') || key,
+      });
+  }
+  return counts;
+}
+
 export function collectHighRotationProgramSongLeaves(
   sequence: ProgramSongSequence | null,
 ): ProgramResolvedSongLeaf[] {
@@ -669,4 +697,53 @@ export function getProgramSongSequenceSelectedItemId(
   nowMs: number = Date.now(),
 ): string | null {
   return getSelectedSongItem(sequence, nowMs)?.id ?? null;
+}
+
+/** The id of the leaf the cursor points at, following the cursor down through nested blocks. */
+export function activeProgramSongLeafId(
+  sequence: ProgramSongSequence | null,
+): string | null {
+  let current: ProgramSongSequence | null = sequence;
+  for (let depth = 0; current && depth <= MAX_DEPTH; depth += 1) {
+    const item: ProgramSongSequenceItem | undefined = current.items.find(
+      (candidate) => candidate.id === current!.activeItemId,
+    );
+    if (!item) return null;
+    if (item.kind === 'preset') return item.id;
+    current = item.sequence;
+  }
+  return null;
+}
+
+/**
+ * Removes the leaves with these ids (nested blocks included) from the sequence in place and
+ * returns them. Nothing else changes, except a cursor that pointed at a removed item, which
+ * moves to the first remaining item of its block (gaulatti/alcantara#327).
+ */
+export function removeProgramSongLeavesInPlace(
+  sequence: ProgramSongSequence,
+  leafIds: ReadonlySet<string>,
+  depth = 0,
+): ProgramSongSequenceLeafItem[] {
+  if (depth > MAX_DEPTH) return [];
+  const removed: ProgramSongSequenceLeafItem[] = [];
+  const kept: ProgramSongSequenceItem[] = [];
+  for (const item of sequence.items) {
+    if (item.kind === 'preset' && leafIds.has(item.id)) {
+      removed.push(item);
+      continue;
+    }
+    if (item.kind === 'sequence')
+      removed.push(
+        ...removeProgramSongLeavesInPlace(item.sequence, leafIds, depth + 1),
+      );
+    kept.push(item);
+  }
+  sequence.items = kept;
+  if (
+    sequence.activeItemId !== null &&
+    !kept.some((item) => item.id === sequence.activeItemId)
+  )
+    resetSequenceCursor(sequence);
+  return removed;
 }

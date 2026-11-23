@@ -10,7 +10,20 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import StingersAdmin, { meta } from "./stingers";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { routeFetch } from "../../test/routeKit";
+import {
+  cancelConfirmation,
+  chooseFromRowMenu,
+  confirmWith,
+  submitConfirmation,
+  confirmation,
+  rowMenuLabels,
+} from "../../test/libraryKit";
 
+vi.mock("@gaulatti/bleecker", async (original) =>
+  (await import("../../test/libraryKit")).libraryBleecker(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  ),
+);
 vi.mock("../services/uploads", () => ({ uploadFileToMediaBucket: vi.fn() }));
 
 type Stinger = {
@@ -105,24 +118,28 @@ it("has a page title and description", () => {
   ]);
 });
 
-it("lists transitions in creation order, marking disabled ones", async () => {
+it("lists transitions in creation order with a status pill", async () => {
   serve();
   render(<StingersAdmin />);
-  expect(screen.getByText("Loading transitions...")).toBeVisible();
-  const cards = await screen.findAllByRole("article");
-  expect(
-    cards.map((card) => within(card).getByRole("heading").textContent),
-  ).toEqual(["Old flash", "Wipe"]);
-  expect(within(cards[0]).getByText("Disabled")).toBeVisible();
-  expect(within(cards[1]).getByText("Cut point: 800ms")).toBeVisible();
-  expect(within(cards[1]).queryByText("Disabled")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Loading Transitions")).toBeVisible();
+  await screen.findByRole("table");
+  const rows = within(screen.getByRole("table"))
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => row.textContent);
+  expect(rows[0]).toMatch(/^Old flash—Disabled/);
+  expect(rows[1]).toMatch(/^Wipe800 msEnabled/);
+  expect(await rowMenuLabels("Wipe")).toEqual(["Delete"]);
 });
 
-it("explains a load failure, then offers to create the first transition", async () => {
+it("explains a load failure with a retry, then offers to create the first transition", async () => {
   serve({ "GET /stingers": () => new Response(null, { status: 500 }) });
   render(<StingersAdmin />);
-  await toast("Failed to load stingers.");
-  expect(screen.getByText("No transitions yet")).toBeVisible();
+  expect(await screen.findByText("Failed to load transitions")).toBeVisible();
+  stingers = [];
+  serve();
+  fireEvent.click(screen.getByText("Retry").closest("button")!);
+  expect(await screen.findByText("No transitions yet")).toBeVisible();
 });
 
 it("uploads a new transition video and creates it", async () => {
@@ -184,7 +201,7 @@ it("uploads a new transition video and creates it", async () => {
 it("clears a file choice that picked nothing", async () => {
   serve();
   render(<StingersAdmin />);
-  await screen.findAllByRole("article");
+  await screen.findByRole("table");
   openCreate();
   fireEvent.change(fileInput(), { target: { files: [video] } });
   expect(within(dialog()).getByText("Selected: wipe.webm")).toBeVisible();
@@ -196,7 +213,7 @@ it("clears a file choice that picked nothing", async () => {
 it("edits a transition, keeping its uploaded video, and shows a refusal", async () => {
   const calls = serve();
   render(<StingersAdmin />);
-  await screen.findAllByRole("article");
+  await screen.findByRole("table");
   fireEvent.click(screen.getByLabelText("Edit Wipe"));
   expect(
     within(dialog()).getByText("Using existing uploaded video."),
@@ -247,7 +264,7 @@ it("reports a failed video upload", async () => {
     .mockRejectedValueOnce(new Error("Upload refused"))
     .mockRejectedValueOnce("offline");
   render(<StingersAdmin />);
-  await screen.findAllByRole("article");
+  await screen.findByRole("table");
   openCreate();
   fireEvent.change(nameInput(), { target: { value: "Flash" } });
   fireEvent.change(fileInput(), { target: { files: [video] } });
@@ -268,7 +285,7 @@ it("shows the upload in progress", async () => {
     }) as never,
   );
   render(<StingersAdmin />);
-  await screen.findAllByRole("article");
+  await screen.findByRole("table");
   openCreate();
   fireEvent.change(nameInput(), { target: { value: "Flash" } });
   fireEvent.change(fileInput(), { target: { files: [video] } });
@@ -280,13 +297,16 @@ it("shows the upload in progress", async () => {
 
 it("deletes a transition only after confirmation, and reports a failure", async () => {
   serve();
-  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
-  vi.stubGlobal("confirm", confirm);
   render(<StingersAdmin />);
-  await screen.findAllByRole("article");
-  fireEvent.click(screen.getByLabelText("Delete Wipe"));
-  expect(confirm).toHaveBeenCalledWith('Delete stinger "Wipe"?');
-  fireEvent.click(screen.getByLabelText("Delete Wipe"));
+  await screen.findByRole("table");
+  await chooseFromRowMenu("Wipe", "Delete");
+  expect(
+    within(await confirmation()).getByText('Delete transition "Wipe"?'),
+  ).toBeVisible();
+  await cancelConfirmation();
+  expect(screen.getByText("Wipe")).toBeVisible();
+  await chooseFromRowMenu("Wipe", "Delete");
+  await confirmWith("Delete");
   await toast("Transition deleted.");
   await waitFor(() =>
     expect(screen.queryByText("Wipe")).not.toBeInTheDocument(),
@@ -297,7 +317,11 @@ it("deletes a transition only after confirmation, and reports a failure", async 
     new Response("", { status: 500 }),
   ]) {
     serve({ "DELETE /stingers/1": () => response });
-    fireEvent.click(screen.getByLabelText("Delete Old flash"));
+    await chooseFromRowMenu("Old flash", "Delete");
+    await submitConfirmation("Delete");
     await toast("Failed to delete transition.");
+    // A failed delete keeps its confirmation open, so it cannot be mistaken for done.
+    expect(await confirmation()).toBeVisible();
+    await cancelConfirmation();
   }
 });

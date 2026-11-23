@@ -23,7 +23,31 @@ test('validates the production secret contract before build, push, or host mutat
   assert.ok(preflight >= 0);
   assert.ok(build > preflight);
   assert.ok(deploy > build);
-  assert.match(workflow, /build:\n    needs: production-config-preflight/);
+  // gaulatti/alcantara#188: the build (and so the deploy) waits for the preflight and for the
+  // repository's own unit and end-to-end tests.
+  assert.match(
+    workflow,
+    /build:\n    needs: \[production-config-preflight, test\]/,
+  );
+  const tests = workflow.slice(
+    workflow.indexOf('\n  test:'),
+    workflow.indexOf('\n  build:'),
+  );
+  assert.match(tests, /pnpm --dir backend exec jest\n/);
+  assert.match(tests, /--config \.\/test\/jest-e2e\.json --runInBand/);
+  for (const spec of [
+    'metrics',
+    'media-label-concurrency',
+    'filler-persistence',
+    'deploy-candidate',
+    'as-run-actor-migration',
+    'external-sources',
+    'media-analysis-duration',
+    'radio-monitor',
+    'recording',
+  ])
+    assert.match(tests, new RegExp(`[|']${spec}[|']`));
+  assert.doesNotMatch(tests, /clouseau|coverage/i);
   assert.match(
     workflow,
     /deploy:\n    runs-on: ubuntu-latest\n    needs: build/,
