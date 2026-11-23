@@ -314,3 +314,20 @@ describe('ManagedMetricsService coverage', () => {
     expect(output).not.toMatch(/\n\n\s*radio_metric/);
   });
 });
+
+describe('Palazzo metrics passthrough metrics', () => {
+  it('exposes bounded zero-valued series and ignores unknown results', async () => {
+    const metrics = new ManagedMetricsService();
+    metrics.recordPalazzoMetricsScrape('not-a-result', 1);
+    metrics.recordPalazzoMetricsScrape('timeout', -5);
+    const output = await metrics.render('');
+    for (const result of ['ok', 'unavailable', 'timeout', 'too_large', 'error'])
+      expect(
+        sample(output, 'alcantara_palazzo_metrics_scrape_total', { result }),
+      ).toBe(result === 'timeout' ? 1 : 0);
+    expect(output).not.toContain('not-a-result');
+    expect(output).toContain(
+      'alcantara_palazzo_metrics_scrape_duration_seconds_count 1',
+    );
+  });
+});

@@ -4,9 +4,12 @@ import {
   Card,
   Checkbox,
   Input,
-  LoadingSpinner,
+  Empty,
+  ErrorState,
+  SkeletonCard,
   Modal,
   SectionHeader,
+  StatePill,
   showAlert,
 } from "@gaulatti/bleecker";
 import {
@@ -25,6 +28,7 @@ import { useFeatures } from "../hooks/useFeatures";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import type { Route } from "./+types/broadcasts";
 import { AppPage } from "../components/AppPage";
+import { ProgramFillerPanel } from "../components/ProgramFillerPanel";
 
 const VIEW_PERMISSION = "broadcast.view";
 const OPERATE_PERMISSION = "broadcast.operate";
@@ -101,6 +105,8 @@ export default function Broadcasts() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction>(null);
+  // Retire is confirmed by name before it is sent (gaulatti/alcantara#349); Restore is direct.
+  const [retireTarget, setRetireTarget] = useState<CatalogDestination | null>(null);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [editingDestination, setEditingDestination] =
     useState<CatalogDestination | null>(null);
@@ -136,11 +142,17 @@ export default function Broadcasts() {
     );
   }, [canManage, canView, programId]);
 
+  // The first load's failure has no data to show, so it gets an ErrorState with a retry (gaulatti/alcantara#349).
+  const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     if (permissionsLoading) return;
     setLoading(true);
     void load()
-      .catch((error) => showAlert(handleApiError(error), "error"))
+      .then(() => setLoadFailed(false))
+      .catch((error) => {
+        setLoadFailed(true);
+        showAlert(handleApiError(error), "error");
+      })
       .finally(() => setLoading(false));
   }, [load, permissionsLoading]);
 
@@ -295,8 +307,33 @@ export default function Broadcasts() {
 
   if (permissionsLoading || loading) {
     return (
-      <AppPage className="flex min-h-[50vh] items-center justify-center">
-        <LoadingSpinner />
+      <AppPage>
+        <div aria-busy="true" aria-label="Loading broadcasts" className="space-y-4">
+          <SkeletonCard rows={3} />
+          <SkeletonCard rows={4} />
+        </div>
+      </AppPage>
+    );
+  }
+  if (loadFailed && !state) {
+    return (
+      <AppPage>
+        <AlertContainer />
+        <ErrorState
+          title="Broadcasts could not be loaded"
+          description="The executor state and destination catalog did not load. Nothing was changed."
+          onRetry={() => {
+            setLoading(true);
+            void load()
+              .then(() => setLoadFailed(false))
+              .catch((error) => {
+                setLoadFailed(true);
+                showAlert(handleApiError(error), "error");
+              })
+              .finally(() => setLoading(false));
+          }}
+          retryLabel="Try again"
+        />
       </AppPage>
     );
   }
@@ -334,22 +371,21 @@ export default function Broadcasts() {
               Executor state
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StateBadge
+              <StatePill
                 label={`Requested ${state?.downstream.requestedState ?? "unknown"}`}
-                healthy={
-                  state?.downstream.requestedState ===
-                  state?.downstream.actualState
-                }
+                tone={executorTone(state?.downstream.requestedState)}
               />
-              <StateBadge
+              <StatePill
                 label={`Actual ${state?.downstream.actualState ?? "unknown"}`}
-                healthy={isRunning || isStopped}
+                tone={
+                  state?.downstream.requestedState === state?.downstream.actualState
+                    ? executorTone(state?.downstream.actualState)
+                    : "warn"
+                }
+                pulse={isRunning}
               />
               {state?.downstream.transition ? (
-                <StateBadge
-                  label={state.downstream.transition}
-                  healthy={false}
-                />
+                <StatePill label={state.downstream.transition} tone="warn" pulse />
               ) : null}
             </div>
           </div>
@@ -473,6 +509,13 @@ export default function Broadcasts() {
             Manager references. Secret values are never retrieved.
           </p>
           <div className="mt-4 space-y-3">
+            {catalog.length === 0 ? (
+              <Empty
+                title="No destinations yet"
+                description="Add a version-pinned destination. A Start needs at least one current destination."
+                action={canManage ? <Button onClick={() => openCatalogModal()}>Add destination</Button> : undefined}
+              />
+            ) : null}
             {catalog.map((destination, index) => (
               <div
                 key={destination.id}
@@ -519,7 +562,9 @@ export default function Broadcasts() {
                   size="sm"
                   variant={destination.retiredAt ? "ghost" : "destructive"}
                   onClick={() =>
-                    void setRetired(destination, !destination.retiredAt)
+                    destination.retiredAt
+                      ? void setRetired(destination, false)
+                      : setRetireTarget(destination)
                   }
                   disabled={busyAction !== null}
                 >
@@ -531,6 +576,35 @@ export default function Broadcasts() {
           </div>
         </Card>
       ) : null}
+
+      <Modal
+        isOpen={retireTarget !== null}
+        onClose={() => setRetireTarget(null)}
+        title="Confirm retire"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Retire {retireTarget?.displayName ?? "this destination"}? It leaves
+            the catalog for new broadcasts. Active sessions are unchanged.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRetireTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busyAction !== null}
+              onClick={() => {
+                const target = retireTarget;
+                setRetireTarget(null);
+                if (target) void setRetired(target, true);
+              }}
+            >
+              Retire destination
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={confirmedAction !== null}
@@ -642,16 +716,14 @@ export default function Broadcasts() {
           </div>
         </div>
       </Modal>
+      <ProgramFillerPanel programId={programId} canManage={canManage} />
     </AppPage>
   );
 }
 
-function StateBadge({ label, healthy }: { label: string; healthy: boolean }) {
-  return (
-    <span
-      className={`rounded-full border px-3 py-1 text-xs font-medium ${healthy ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600" : "border-amber-500/30 bg-amber-500/10 text-amber-600"}`}
-    >
-      {label}
-    </span>
-  );
+/** Colour is not the only signal: the label carries the state in words (gaulatti/alcantara#349). */
+function executorTone(state: string | undefined): "live" | "idle" | "warn" {
+  if (state === "running") return "live";
+  if (state === "stopped") return "idle";
+  return "warn";
 }

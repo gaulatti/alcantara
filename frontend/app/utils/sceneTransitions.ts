@@ -87,7 +87,7 @@ const SCENE_TRANSITION_REGISTRY: Record<SceneTransitionId, SceneTransitionPreset
   'hit-parade': {
     id: 'hit-parade',
     name: 'Hit Parade',
-    description: 'Chrome marquee bars, electric color blocks, and stage-flash reveals for chart-show and entertainment segments.',
+    description: 'The Modo Italiano transition in the Giorgia look: a navy field led by the magenta signal bar wipes across, holds the MI mark over the cut, and wipes away.',
     durationMs: 1420,
     cutPointMs: 710
   },

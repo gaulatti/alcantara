@@ -25,8 +25,24 @@ describe('PrismaService', () => {
     new PrismaService();
     expect(createPostgresAdapter).toHaveBeenCalledWith(
       'postgres://u:p@h:5432/db',
+      { readOnly: false },
     );
     expect(mockCtor).toHaveBeenCalledWith({ adapter: mockAdapter });
+  });
+
+  // gaulatti/alcantara#223: a deploy candidate opens read-only sessions.
+  it('asks for a read-only adapter in deploy candidate mode', () => {
+    process.env.DATABASE_URL = 'postgres://u:p@h:5432/db';
+    process.env.ALCANTARA_DEPLOY_CANDIDATE = '1';
+    try {
+      new PrismaService();
+    } finally {
+      delete process.env.ALCANTARA_DEPLOY_CANDIDATE;
+    }
+    expect(createPostgresAdapter).toHaveBeenLastCalledWith(
+      'postgres://u:p@h:5432/db',
+      { readOnly: true },
+    );
   });
 
   it('connects on module init and disconnects on destroy', async () => {

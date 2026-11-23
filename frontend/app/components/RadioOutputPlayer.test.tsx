@@ -241,3 +241,90 @@ it("refreshes on return to an idle tab and keeps active audio intact on return",
     expect.stringContaining("grant-2"),
   );
 });
+
+it("follows the native audio element's waiting and playing events only while a stream is attached", async () => {
+  const { container } = render(<RadioOutputPlayer listenerUrl={url} />);
+  const audio = container.querySelector("audio")!;
+  // Before Listen there is no stream: native events do not change the status.
+  fireEvent.waiting(audio);
+  fireEvent.playing(audio);
+  fireEvent.error(audio);
+  expect(screen.getByRole("status")).toHaveTextContent("Monitor stopped");
+  expect(screen.queryByRole("alert")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Listening to broadcast",
+    ),
+  );
+  fireEvent.waiting(audio);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Connecting to broadcast…",
+  );
+  fireEvent.playing(audio);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Listening to broadcast",
+  );
+});
+
+it("does nothing on Listen when no listener stream is configured", () => {
+  const { container } = render(<RadioOutputPlayer />);
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  expect(container.querySelector("audio")).not.toHaveAttribute("src");
+  expect(screen.getByRole("status")).toHaveTextContent("Monitor stopped");
+});
+
+it("drops a play failure that arrives after the listener already stopped", async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(HTMLMediaElement.prototype.play).mockImplementationOnce(
+    () =>
+      new Promise<void>((_done, fail) => {
+        reject = fail;
+      }),
+  );
+  render(<RadioOutputPlayer listenerUrl={url} />);
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  fireEvent.click(screen.getByRole("button", { name: "Stop listening" }));
+  reject(new Error("aborted"));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent("Monitor stopped"),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("focuses the monitor when the page is opened at its anchor", () => {
+  window.location.hash = "#radio-monitor";
+  try {
+    render(<RadioOutputPlayer listenerUrl={url} />);
+    expect(document.activeElement).toHaveAttribute("id", "radio-monitor");
+  } finally {
+    window.location.hash = "";
+  }
+});
+
+it("ignores a return to the tab while it is still hidden, and a grant that lands after unmount", async () => {
+  let answer!: (response: Response) => void;
+  const transport = vi.spyOn(globalThis, "fetch").mockImplementation(
+    () =>
+      new Promise<Response>((done) => {
+        answer = done;
+      }),
+  );
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  const { unmount } = render(<RadioOutputPlayer programId="station" />);
+  fireEvent(document, new Event("visibilitychange"));
+  expect(transport).toHaveBeenCalledTimes(1);
+  unmount();
+  answer(
+    new Response(
+      JSON.stringify({
+        streamPath: "/radio/station/monitor-audio?ticket=late",
+        expiresInMs: 60000,
+      }),
+      { status: 201 },
+    ),
+  );
+  await new Promise((settle) => setTimeout(settle, 0));
+  expect(transport).toHaveBeenCalledTimes(1);
+});

@@ -1,0 +1,1358 @@
+[
+  {
+    "method": "GET",
+    "path": "/",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/__test/session",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/.well-known/oauth-authorization-server",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/.well-known/oauth-protected-resource",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/.well-known/oauth-protected-resource/mcp",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/access/grants",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "POST",
+    "path": "/access/grants",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "DELETE",
+    "path": "/access/grants/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/access/history",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/access/my-permissions",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/access/roles",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/access/token-switch",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "PUT",
+    "path": "/access/token-switch",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/access/tokens",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "POST",
+    "path": "/access/tokens",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "DELETE",
+    "path": "/access/tokens/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/realtime-ticket",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/broadcast/destinations",
+    "public": false,
+    "permission": "broadcast.view"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/destinations",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/broadcast/destinations/:destinationId",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/destinations/:destinationId/ingest",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/destinations/:destinationId/restore",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/destinations/:destinationId/retire",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "GET",
+    "path": "/broadcast/destinations/catalog",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/broadcast/destinations/order",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "GET",
+    "path": "/broadcast/programs/:programId",
+    "public": false,
+    "permission": "broadcast.view"
+  },
+  {
+    "method": "GET",
+    "path": "/broadcast/programs/:programId/fillers",
+    "public": false,
+    "permission": "broadcast.view"
+  },
+  {
+    "method": "PUT",
+    "path": "/broadcast/programs/:programId/fillers/radio",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/broadcast/programs/:programId/fillers/television",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/programs/:programId/reload",
+    "public": false,
+    "permission": "broadcast.operate"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/programs/:programId/start",
+    "public": false,
+    "permission": "broadcast.operate"
+  },
+  {
+    "method": "POST",
+    "path": "/broadcast/programs/:programId/stop",
+    "public": false,
+    "permission": "broadcast.operate"
+  },
+  {
+    "method": "GET",
+    "path": "/charts/realtime",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/external-sources",
+    "public": false,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/external-sources",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "DELETE",
+    "path": "/external-sources/:id",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/external-sources/:id",
+    "public": false,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "PATCH",
+    "path": "/external-sources/:id",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/external-sources/:id/credentials/rotate",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/external-sources/:id/reconcile",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/external-sources/:id/redirects/validate",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/instants",
+    "public": false,
+    "permission": "alcantara:instant:read"
+  },
+  {
+    "method": "POST",
+    "path": "/instants",
+    "public": false,
+    "permission": "alcantara:instant:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/instants/:instantId",
+    "public": false,
+    "permission": "alcantara:instant:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/instants/:instantId",
+    "public": false,
+    "permission": "alcantara:instant:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/instants/:instantId/play",
+    "public": false,
+    "permission": "alcantara:instant:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/instants/stop-all",
+    "public": false,
+    "permission": "alcantara:instant:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/layouts",
+    "public": false,
+    "permission": "alcantara:layout:read"
+  },
+  {
+    "method": "POST",
+    "path": "/layouts",
+    "public": false,
+    "permission": "alcantara:layout:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/layouts/:id",
+    "public": false,
+    "permission": "alcantara:layout:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/layouts/:id",
+    "public": false,
+    "permission": "alcantara:layout:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/layouts/:id",
+    "public": false,
+    "permission": "alcantara:layout:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/mcp",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/mcp",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/mcp",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/mcp/capabilities",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/media",
+    "public": false,
+    "permission": "alcantara:media:read"
+  },
+  {
+    "method": "POST",
+    "path": "/media",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/media-assets",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "DELETE",
+    "path": "/media-assets/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/media-assets/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "PUT",
+    "path": "/media-assets/:id/labels",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "POST",
+    "path": "/media-assets/background-audio",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/media-groups",
+    "public": false,
+    "permission": "alcantara:media:read"
+  },
+  {
+    "method": "POST",
+    "path": "/media-groups",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/media-groups/:id",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/media-groups/:id",
+    "public": true,
+    "permission": "alcantara:media:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/media-groups/:id",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/media-labels",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "POST",
+    "path": "/media-labels",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "DELETE",
+    "path": "/media-labels/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/media-labels/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "PUT",
+    "path": "/media-labels/:id",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "PUT",
+    "path": "/media-labels/:id/assets",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/media-labels/:id/images",
+    "public": true,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "DELETE",
+    "path": "/media/:id",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/media/:id",
+    "public": false,
+    "permission": "alcantara:media:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/media/:id",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/metrics",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/metrics/palazzo",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/authorize",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/oauth/callback",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/oauth/token",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "DELETE",
+    "path": "/operator-preferences",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "DELETE",
+    "path": "/operator-preferences/:deviceClass",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/operator-preferences/:deviceClass",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "PUT",
+    "path": "/operator-preferences/:deviceClass",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/operator-preferences/shared",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "POST",
+    "path": "/operator-preferences/shared",
+    "public": false,
+    "permission": "alcantara:layout:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/operator-preferences/shared/:id",
+    "public": false,
+    "permission": "alcantara:layout:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/operator-preferences/shared/:id/load",
+    "public": false,
+    "permission": "alcantara:access"
+  },
+  {
+    "method": "GET",
+    "path": "/program",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/activate",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/as-run",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/audio-bus",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/audio-bus",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/audio-meter",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/audio-meter",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/branding",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/branding",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/countdown/complete",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/events",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/fade-to-black",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/flight",
+    "public": false,
+    "permission": "alcantara:flight:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId/flight/:sequenceId",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/flight/:sequenceId",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/:sequenceId/activate",
+    "public": false,
+    "permission": "alcantara:flight:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/:sequenceId/fill",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/:sequenceId/generate",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/flight/:sequenceId/preflight",
+    "public": false,
+    "permission": "alcantara:flight:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/:sequenceId/publish",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/deactivate",
+    "public": false,
+    "permission": "alcantara:flight:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/go",
+    "public": false,
+    "permission": "alcantara:flight:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/reset",
+    "public": false,
+    "permission": "alcantara:flight:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/start",
+    "public": false,
+    "permission": "alcantara:flight:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/flight/stop",
+    "public": false,
+    "permission": "alcantara:flight:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/media-groups",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/media-groups",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId/media-groups/:mediaGroupId",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/off-air",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/recording",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/recording/download-ticket",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/recording/file",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/recording/start",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/recording/stop",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/reload",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/scene-instant",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/scene-instant/stop",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/scene-instant/take",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/scenes",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId/scenes/:sceneId",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/song-playback",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/song-playback",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/song-queue",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/song-queue",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId/song-queue/:entryId",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/song/off-air",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/stage",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/stage",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/state",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/stingers",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/stingers",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/program/:programId/stingers/:stingerId",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/program/:programId/tape",
+    "public": false,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/tape/start",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/tape/stop",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/activate",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/audio-proxy",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "GET",
+    "path": "/program/broadcast-settings",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/broadcast-settings",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/events",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/off-air",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/reload",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/program/song/off-air",
+    "public": false,
+    "permission": "alcantara:program:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/program/state",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/template/inspect",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/instant",
+    "public": false,
+    "permission": "alcantara:radio:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/instant/stop",
+    "public": false,
+    "permission": "alcantara:radio:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/monitor-audio",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/monitor-ticket",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/now-playing-consumers",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/radio/:programId/now-playing-consumers",
+    "public": false,
+    "permission": "alcantara:radio:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/now-playing-publishing",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/output-confidence",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/palazzo-status",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/recovery",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/recovery/prepare",
+    "public": false,
+    "permission": "alcantara:radio:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/recovery/start",
+    "public": false,
+    "permission": "alcantara:radio:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/recovery/stop",
+    "public": false,
+    "permission": "alcantara:radio:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/settings",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/radio/:programId/settings",
+    "public": false,
+    "permission": "alcantara:radio:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/similarity/coverage",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/similarity/decisions",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/similarity/embeddings",
+    "public": false,
+    "permission": "alcantara:radio:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/similarity/export",
+    "public": false,
+    "permission": "alcantara:radio:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/song",
+    "public": false,
+    "permission": "alcantara:radio:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/radio/:programId/song/stop",
+    "public": false,
+    "permission": "alcantara:radio:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/radio/:programId/status",
+    "public": false,
+    "permission": "alcantara:radio:read"
+  },
+  {
+    "method": "GET",
+    "path": "/register",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "POST",
+    "path": "/register",
+    "public": true,
+    "permission": null
+  },
+  {
+    "method": "GET",
+    "path": "/scenes",
+    "public": false,
+    "permission": "alcantara:scene:read"
+  },
+  {
+    "method": "POST",
+    "path": "/scenes",
+    "public": false,
+    "permission": "alcantara:scene:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/scenes/:id",
+    "public": false,
+    "permission": "alcantara:scene:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/scenes/:id",
+    "public": false,
+    "permission": "alcantara:scene:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/scenes/:id",
+    "public": false,
+    "permission": "alcantara:scene:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/scenes/:id/chyron",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/scenes/:id/modo-italiano-bracket/draw",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/scenes/:id/modo-italiano-bracket/vote",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/scenes/:id/modo-italiano-bracket/voting/open",
+    "public": false,
+    "permission": "alcantara:scene:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/songs",
+    "public": false,
+    "permission": "alcantara:song:read"
+  },
+  {
+    "method": "POST",
+    "path": "/songs",
+    "public": false,
+    "permission": "alcantara:song:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/songs/:id",
+    "public": false,
+    "permission": "alcantara:song:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/songs/:id",
+    "public": false,
+    "permission": "alcantara:song:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/songs/:id",
+    "public": false,
+    "permission": "alcantara:song:manage"
+  },
+  {
+    "method": "GET",
+    "path": "/stingers",
+    "public": false,
+    "permission": "alcantara:stinger:read"
+  },
+  {
+    "method": "POST",
+    "path": "/stingers",
+    "public": false,
+    "permission": "alcantara:stinger:manage"
+  },
+  {
+    "method": "DELETE",
+    "path": "/stingers/:stingerId",
+    "public": false,
+    "permission": "alcantara:stinger:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/stingers/:stingerId",
+    "public": false,
+    "permission": "alcantara:stinger:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/uploads/artwork",
+    "public": false,
+    "permission": "alcantara:upload:create"
+  },
+  {
+    "method": "POST",
+    "path": "/uploads/background",
+    "public": false,
+    "permission": "alcantara:upload:create"
+  },
+  {
+    "method": "POST",
+    "path": "/uploads/instant",
+    "public": false,
+    "permission": "alcantara:upload:create"
+  },
+  {
+    "method": "POST",
+    "path": "/uploads/song",
+    "public": false,
+    "permission": "alcantara:upload:create"
+  },
+  {
+    "method": "POST",
+    "path": "/uploads/stinger",
+    "public": false,
+    "permission": "alcantara:upload:create"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/commands/:commandId/ack",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "GET",
+    "path": "/webrtc/config",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/desktop-program-feed-token",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "GET",
+    "path": "/webrtc/invitations",
+    "public": false,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/invitations",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "DELETE",
+    "path": "/webrtc/invitations/:id",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/invitations/:id/replace",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "PATCH",
+    "path": "/webrtc/invitations/:id/return",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/join",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/operator-token",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/renderer-source-token",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/renderer-state",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/renderer-token",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "GET",
+    "path": "/webrtc/rooms/:programId/participants",
+    "public": false,
+    "permission": "alcantara:webrtc:read"
+  },
+  {
+    "method": "DELETE",
+    "path": "/webrtc/rooms/:programId/participants/:identity",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/rooms/:programId/participants/:identity/control",
+    "public": false,
+    "permission": "alcantara:webrtc:operate"
+  },
+  {
+    "method": "POST",
+    "path": "/webrtc/session/heartbeat",
+    "public": true,
+    "permission": "alcantara:webrtc:read"
+  }
+]

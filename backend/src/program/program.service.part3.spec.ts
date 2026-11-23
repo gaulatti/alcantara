@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { MediaAssetKind } from '@prisma/client';
+import { EMPTY } from 'rxjs';
 import { ProgramService } from './program.service';
 import {
   deleteMediaAsset,
@@ -81,6 +82,11 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
       findUniqueOrThrow: jest.fn(),
     },
     $transaction: jest.fn(),
+    // A v2 snapshot reads the broadcast settings (gaulatti/alcantara#177).
+    $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+    broadcastSettings: {
+      upsert: jest.fn().mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
+    },
   };
   prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
   const radio: any = {
@@ -94,6 +100,7 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
     handleSequenceUpdated: jest.fn(),
     handleStopSong: jest.fn(),
     setBroadcastHandler: jest.fn(),
+    trackEvents$: EMPTY,
   };
   const metrics: any = {
     recordSceneHandoff: jest.fn(),
@@ -723,6 +730,65 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
     });
   });
 
+  describe('completeSceneCountdown', () => {
+    const onAir = (metadata: unknown) =>
+      makeState({
+        scenes: [{ sceneId: 5 }],
+        activeScene: { id: 11, metadata },
+      });
+    const countdown = (extra: Record<string, unknown> = {}) => ({
+      'reloj-digital-loop-clock': {
+        mode: 'countdown',
+        countdownTargetSceneId: 5,
+        ...extra,
+      },
+    });
+
+    it('takes the scene the countdown on air points to, with its transition', async () => {
+      const { service } = build({
+        state: onAir(
+          JSON.stringify(countdown({ countdownTransitionId: 'hit-parade' })),
+        ),
+      });
+      const activate = jest
+        .spyOn(service, 'activateScene')
+        .mockResolvedValue('taken' as any);
+      await expect(service.completeSceneCountdown('main')).resolves.toBe(
+        'taken',
+      );
+      expect(activate).toHaveBeenCalledWith(5, 'main', 'hit-parade');
+    });
+
+    it('cuts when the countdown names no transition, on the default program', async () => {
+      const { service } = build({ state: onAir(countdown()) });
+      const activate = jest
+        .spyOn(service, 'activateScene')
+        .mockResolvedValue('taken' as any);
+      await service.completeSceneCountdown();
+      expect(activate).toHaveBeenCalledWith(5, 'main', 'cut');
+    });
+
+    it.each([
+      ['no scene is on air', null],
+      ['the settings cannot be read', '{not json'],
+      ['the scene has no countdown clock', { slideshow: {} }],
+      ['the clock is not counting down', countdown({ mode: 'clock' })],
+      [
+        'the countdown has no target',
+        countdown({ countdownTargetSceneId: null }),
+      ],
+    ])('refuses when %s', async (_name, metadata) => {
+      const { service } = build({
+        state: metadata === null ? makeState() : onAir(metadata),
+      });
+      const activate = jest.spyOn(service, 'activateScene');
+      await expect(service.completeSceneCountdown('main')).rejects.toThrow(
+        'The scene on air has no countdown that switches scenes',
+      );
+      expect(activate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setFadeToBlack', () => {
     it('throws for a missing program', async () => {
       const { service, prisma } = build();
@@ -878,7 +944,9 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(prisma.programState.update).not.toHaveBeenCalled();
       expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
       expect(radio.stopSong).not.toHaveBeenCalled();
-      expect(engine.handleStopSong).toHaveBeenCalledWith('main');
+      expect(engine.handleStopSong).toHaveBeenCalledWith('main', {
+        keepSequence: true,
+      });
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('forwardStopSongToRadio skipped'),
       );
@@ -1304,6 +1372,32 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       expect(prisma.programState.upsert).toHaveBeenCalledTimes(1);
     });
 
+    it('broadcasts a song Palazzo could not load to the control room (#175)', async () => {
+      const { service, engine } = build();
+      await service.onModuleInit();
+      const handler = engine.setBroadcastHandler.mock.calls[0][0];
+      const events: any[] = [];
+      service.addEventListener((e) => events.push(e.data));
+      handler({
+        type: 'song_request_failed',
+        programId: ' main ',
+        playbackRequestId: 'req-9',
+        title: 'Track 01',
+        artist: 'Artist 1',
+        reason: 'timeout',
+        failedAt: '2026-11-17T12:00:00.000Z',
+      });
+      expect(events[0]).toEqual({
+        type: 'song_request_failed',
+        programId: 'main',
+        playbackRequestId: 'req-9',
+        title: 'Track 01',
+        artist: 'Artist 1',
+        reason: 'timeout',
+        failedAt: '2026-11-17T12:00:00.000Z',
+      });
+    });
+
     it.each(['playback_update', 'song_playback_active'])(
       'maps %s to a song_playback_update',
       (type) => {
@@ -1325,6 +1419,33 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
         ).toEqual(expectedPlayback);
       },
     );
+
+    it('keeps the acting identity off the public program stream', () => {
+      const { service } = build();
+      const events: any[] = [];
+      service.addEventListener((e) => events.push(e.data));
+      const actor = {
+        actorPrincipalId: 'principal-1',
+        actorVia: 'mcp',
+        actorClient: 'claude-desktop',
+      };
+      (service as any).handleEngineEvent({
+        type: 'song_off_air',
+        programId: 'main',
+        triggeredAt: 'now',
+        ...actor,
+      });
+      (service as any).handleEngineEvent({
+        type: 'song_queue_update',
+        programId: 'main',
+        songQueue: [],
+        ...actor,
+      });
+      expect(events).toHaveLength(2);
+      expect(JSON.stringify(events)).not.toMatch(
+        /principal-1|claude-desktop|actor/,
+      );
+    });
 
     it('derives the off-air playback from the previous playback', () => {
       const { service } = build();
@@ -1567,6 +1688,49 @@ describe('ProgramService part 3 (scene/media/stinger/instant/stream)', () => {
       sub.unsubscribe();
       await jest.advanceTimersByTimeAsync(30_000);
       expect(out).toHaveLength(2);
+    });
+
+    it('emits schemaVersion 2 on the snapshot, state and signals of a v2 registration', async () => {
+      jest.useFakeTimers();
+      const { service } = build();
+      jest.spyOn(service, 'getState').mockResolvedValue(
+        stateOf({
+          templateManifest: {
+            ...templateManifest,
+            contractVersion: 2,
+            schemaVersion: 2,
+            control: { signals: ['scene_change', 'chyron_update'] },
+          },
+        }),
+      );
+      const out: any[] = [];
+      const sub = service
+        .getEventStream('main')
+        .subscribe((m) => out.push(JSON.parse(m.data)));
+      await flush();
+      expect(out[0]).toMatchObject({
+        type: 'program_state_snapshot',
+        schemaVersion: 2,
+        state: { schemaVersion: 2 },
+      });
+      service.broadcastUpdate('main', {
+        type: 'chyron_update',
+        programId: 'main',
+        sceneId: 1,
+        chyronText: 'Headline',
+      });
+      service.broadcastUpdate('main', {
+        type: 'scene_change',
+        programId: 'main',
+        state: { id: 1, programId: 'main' },
+      });
+      expect(out[1]).toMatchObject({ type: 'chyron_update', schemaVersion: 2 });
+      expect(out[2]).toMatchObject({
+        type: 'scene_change',
+        schemaVersion: 2,
+        state: { schemaVersion: 2 },
+      });
+      sub.unsubscribe();
     });
 
     it('does not start a heartbeat when the manifest lacks the signal', async () => {

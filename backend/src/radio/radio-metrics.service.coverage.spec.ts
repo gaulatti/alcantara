@@ -6,6 +6,34 @@ describe('RadioMetricsService coverage', () => {
     metrics = new RadioMetricsService();
   });
 
+  it('counts cursor writes and inherited adoptions with bounded labels (#277)', () => {
+    metrics.recordCursorWrite('succeeded');
+    metrics.recordCursorWrite('succeeded');
+    metrics.recordCursorWrite('conflict');
+    metrics.recordCursorWrite('failed');
+    metrics.recordCursorWrite('other' as never);
+    metrics.recordInheritedAdoption('leaf');
+    metrics.recordInheritedAdoption('cursor_leaf');
+    metrics.recordInheritedAdoption('cursor_leaf');
+    metrics.recordInheritedAdoption('somewhere' as never);
+    const lines = metrics
+      .render()
+      .split('\n')
+      .filter((line) =>
+        /^alcantara_radio_(cursor_writes|inherited_adoptions)_total\{/.test(
+          line,
+        ),
+      );
+    expect(lines).toEqual([
+      'alcantara_radio_cursor_writes_total{result="succeeded"} 2',
+      'alcantara_radio_cursor_writes_total{result="failed"} 1',
+      'alcantara_radio_cursor_writes_total{result="conflict"} 1',
+      'alcantara_radio_inherited_adoptions_total{path="leaf"} 1',
+      'alcantara_radio_inherited_adoptions_total{path="cursor_leaf"} 2',
+      'alcantara_radio_inherited_adoptions_total{path="catalogue"} 0',
+    ]);
+  });
+
   it('counts monitor sessions per result and renders them', () => {
     metrics.recordMonitor('opened');
     metrics.recordMonitor('opened');
@@ -146,6 +174,16 @@ describe('RadioMetricsService coverage', () => {
     expect(metrics.snapshot().outputSilentPrograms).toBe(2);
     metrics.recordOutputSilentPrograms(-4);
     expect(metrics.snapshot().outputSilentPrograms).toBe(0);
+  });
+
+  it('renders the automatic programs gauge the deploy radio check reads (#230)', () => {
+    expect(metrics.render()).toContain('alcantara_radio_automatic_programs 0');
+    metrics.recordAutomaticPrograms(1.9);
+    expect(metrics.render()).toContain(
+      '# TYPE alcantara_radio_automatic_programs gauge\nalcantara_radio_automatic_programs 1',
+    );
+    metrics.recordAutomaticPrograms(-2);
+    expect(metrics.render()).toContain('alcantara_radio_automatic_programs 0');
   });
 
   it('records radio log and recovery preparation results in render output', () => {

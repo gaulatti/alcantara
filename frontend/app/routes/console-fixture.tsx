@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, IconButton } from "@gaulatti/bleecker";
 import { TooltipButton } from "../components/BleeckerButtons";
 import { useSearchParams } from "react-router";
+import { songRequestFailureNotice } from "../utils/songRequestFailure";
 import {
   BroadcastSwitcherDeck,
   type ConsoleWorkspace,
@@ -140,6 +141,18 @@ export default function ConsoleFixture() {
         : previewScene,
   );
   const [ftb, setFtb] = useState(fixture === "ftb");
+  // radio-refused: a refused instant, and a song library and cartwall that
+  // did not load; a retry clears its own error (gaulatti/alcantara#253).
+  const refused = fixture === "radio-refused";
+  const [fixtureInstantError, setFixtureInstantError] = useState<
+    string | null
+  >(refused ? "Could not play News sting: Instant is disabled for this program" : null);
+  const [fixtureSongLoadError, setFixtureSongLoadError] = useState<
+    string | null
+  >(refused ? "HTTP 503" : null);
+  const [fixtureInstantsLoadError, setFixtureInstantsLoadError] = useState<
+    string | null
+  >(refused ? "Fictional library is offline" : null);
   const [onAirScene, setOnAirScene] = useState<Scene | null>(programScene);
   const takeFixtureScene = () => {
     if (!staged || fixture === "take-failed") return;
@@ -308,6 +321,7 @@ export default function ConsoleFixture() {
   if (fixture === "rundown-desk") return <RundownFixture />;
   if (fixture === "loading") return <AppLoading />;
   if (fixture === "hidden-component") return <ScenePreparationFixture />;
+  if (fixture === "prepare-timezone") return <ScenePreparationFixture timezone />;
   if (fixture.startsWith("prepare-")) return (
     <ScenePreparationFixture clock error={fixture === "prepare-error"} saving={fixture === "prepare-saving"} />
   );
@@ -341,14 +355,24 @@ export default function ConsoleFixture() {
               palazzo: {
                 programId: "fixture",
                 programType: "radio",
-                palazzoUrl: "http://palazzo:3100",
+                palazzoUrl:
+                  fixture === "radio-not-configured" ? "" : "http://palazzo:3100",
                 instanceId: "fixture",
                 connection:
-                  fixture === "radio-offline" ? "unavailable" : "connected",
+                  fixture === "radio-offline" ||
+                  fixture === "radio-not-configured"
+                    ? "unavailable"
+                    : "connected",
                 lastEventAt: new Date().toISOString(),
                 lastSnapshotAt: new Date().toISOString(),
                 degraded: false,
-                detail: null,
+                // #257: a program with no Palazzo URL says why there is no engine.
+                ...(fixture === "radio-not-configured"
+                  ? {
+                      reason: "not-configured",
+                      detail: "No Palazzo URL is configured for this program",
+                    }
+                  : { detail: null }),
               },
               output: {
                 state:
@@ -464,16 +488,36 @@ export default function ConsoleFixture() {
               )
             }
             onTakeOffAir={async () => setPlaybackOnAir(false)}
+            playoutError={
+              fixture === "radio-song-failed"
+                ? songRequestFailureNotice({
+                    type: "song_request_failed",
+                    title: "Harbor Light",
+                    artist: "The Lighthouse Keepers",
+                    reason: "timeout",
+                  })
+                : null
+            }
             instants={fixture === "radio-empty" ? [] : consoleInstants}
             instantSearch={cartSearch}
             onInstantSearchChange={setCartSearch}
-            onTriggerInstant={(id) =>
+            onTriggerInstant={(id) => {
+              // As on the console, the next instant clears the last refusal.
+              setFixtureInstantError(null);
               setCartPlayback((current) => ({
                 ...current,
                 [id]: { startedAtMs: Date.now(), endsAtMs: null },
-              }))
-            }
-            onStopAllInstants={() => setCartPlayback({})}
+              }));
+            }}
+            onStopAllInstants={() => {
+              setFixtureInstantError(null);
+              setCartPlayback({});
+            }}
+            instantError={fixtureInstantError}
+            instantsLoadError={fixtureInstantsLoadError}
+            onRetryInstants={() => setFixtureInstantsLoadError(null)}
+            songCatalogLoadError={fixtureSongLoadError}
+            onRetrySongCatalog={() => setFixtureSongLoadError(null)}
             instantPlayback={cartPlayback}
             mixer={{ ...fixtureMixer, saving: false, error: null }}
             onSongVolumeChange={(volume) =>

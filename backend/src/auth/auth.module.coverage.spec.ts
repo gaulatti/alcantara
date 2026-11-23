@@ -1,5 +1,6 @@
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { MCP_ATTRIBUTION } from '../mcp/contract';
 import { AuthModule } from './auth.module';
 import { AuthController } from './auth.controller';
 import { TestAuthController } from './test-auth.controller';
@@ -32,6 +33,7 @@ describe('AuthModule wiring', () => {
       PompeiiService,
       RealtimeTicketService,
       TestAuthService,
+      MCP_ATTRIBUTION,
     ]);
   });
 });

@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
   Injectable,
@@ -81,6 +82,18 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
   private catalog = new Map<number, CatalogSong>();
   private readonly insertCounts = new Map<string, number>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  // Set once the first load of settings and embeddings has finished, whether
+  // it worked or failed (a failed load leaves similarity off): until then the
+  // vector map is empty, and a pick made from it falls back for a reason that
+  // is not the song's (#277, 2026-11-22: both restarts replayed the cursor).
+  private ready = false;
+  private markReady!: () => void;
+  private readonly readyPromise = new Promise<void>((resolve) => {
+    this.markReady = () => {
+      this.ready = true;
+      resolve();
+    };
+  });
 
   constructor(
     private readonly prisma: PrismaService,
@@ -88,6 +101,7 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const startedAt = Date.now();
     try {
       await this.reloadSettings();
       if (this.anyActive()) await this.reloadEmbeddings();
@@ -96,6 +110,16 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Similarity state could not be loaded; similarity stays off: ${String(error)}`,
       );
+    }
+    this.markReady();
+    this.logger.log(
+      `Similarity index ready: ${this.vectors.size} vectors for ${this.catalog.size} songs in ${Date.now() - startedAt} ms${this.anyActive() ? '' : ' (similarity is off)'}`,
+    );
+    if (isDeployCandidate()) {
+      this.logger.log(
+        'Deploy candidate: the similarity catalog is not refreshed',
+      );
+      return;
     }
     this.refreshTimer = setInterval(() => {
       if (!this.anyActive()) return;
@@ -108,6 +132,16 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
+  }
+
+  /** Whether the first load of settings and embeddings has finished. */
+  isReady(): boolean {
+    return this.ready;
+  }
+
+  /** Resolves when the first load has finished (also if it failed). */
+  whenReady(): Promise<void> {
+    return this.readyPromise;
   }
 
   getSettings(programId: string): SimilaritySettings {
@@ -319,6 +353,18 @@ export class SongSimilarityService implements OnModuleInit, OnModuleDestroy {
       runnerUps: { songId: number; score: number }[];
     },
   ): void {
+    // A fallback is the playlist cursor playing instead of the picker. With no
+    // embedding for the song that just played it is not a normal outcome (787
+    // of 792 songs are embedded), so it says what the index held (#277).
+    if (decision.outcome === 'fallback-no-embedding') {
+      this.logger.warn(
+        `Similarity fell back to the playlist cursor on ${programId}: no closing embedding for song ${decision.currentSongId ?? 'none'} (index ${this.ready ? 'ready' : 'loading'}, ${this.vectors.size} vectors)`,
+      );
+    } else if (decision.outcome === 'fallback-no-candidate') {
+      this.logger.log(
+        `Similarity fell back to the playlist cursor on ${programId}: no candidate above the threshold after song ${decision.currentSongId ?? 'none'}`,
+      );
+    }
     void (async () => {
       try {
         await this.prisma.similarityDecision.create({

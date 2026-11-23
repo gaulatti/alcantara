@@ -1,6 +1,48 @@
 import { RadioMetricsService } from './radio-metrics.service';
 
 describe('RadioMetricsService', () => {
+  it('counts analysis drops by bounded reason only and ignores unknown reasons', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordAnalysisDrop('segue-invalid');
+    metrics.recordAnalysisDrop('segue-invalid');
+    metrics.recordAnalysisDrop('loudness-invalid');
+    metrics.recordAnalysisDrop('https://media.example/song.mp3' as never);
+
+    const rendered = metrics.render();
+    expect(rendered).toContain('# TYPE alcantara_radio_analysis_dropped_total counter');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-invalid"} 2');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="loudness-invalid"} 1');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-beyond-duration"} 0');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="ambiguous-match"} 0');
+    expect(rendered).toContain('alcantara_radio_analysis_dropped_total{result="segue-edge-bound"} 0');
+    // gaulatti/alcantara#255: a song sent with no analysis at all, exported at 0.
+    for (const result of ['no-asset', 'not-analyzed', 'lookup-failed']) {
+      expect(rendered).toContain(`alcantara_radio_analysis_dropped_total{result="${result}"} 0`);
+    }
+    expect(rendered.split('\n').filter((line) => line.startsWith('alcantara_radio_analysis_dropped_total{'))).toHaveLength(8);
+    expect(rendered).not.toContain('media.example');
+    expect(metrics.snapshot().analysisDrops).toEqual({ 'segue-invalid': 2, 'loudness-invalid': 1 });
+  });
+
+  // gaulatti/alcantara#234: cue groups by shape, bounded, exported at 0.
+  it('counts cue groups by bounded shape only', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordCueGroup('head_filled');
+    metrics.recordCueGroup('head_filled');
+    metrics.recordCueGroup('both');
+    metrics.recordCueGroup('bogus' as never);
+    const lines = metrics
+      .render()
+      .split('\n')
+      .filter((line) => line.startsWith('alcantara_radio_cue_groups_total{'));
+    expect(lines).toEqual([
+      'alcantara_radio_cue_groups_total{shape="both"} 1',
+      'alcantara_radio_cue_groups_total{shape="head_filled"} 2',
+      'alcantara_radio_cue_groups_total{shape="tail_filled"} 0',
+      'alcantara_radio_cue_groups_total{shape="none"} 0',
+    ]);
+  });
+
   it('renders bounded-cardinality Prometheus output', () => {
     const metrics = new RadioMetricsService();
     metrics.recordConnectionState('connected', 1);
@@ -120,5 +162,75 @@ describe('RadioMetricsService', () => {
     expect(metrics.snapshot().connectionsByState).toEqual({ polling: 1 });
     metrics.recordConnectionState('polling', -1);
     expect(metrics.snapshot().connectionsByState).toEqual({});
+  });
+});
+
+// gaulatti/alcantara#230: the engine's own reads of Palazzo's state.
+describe('RadioMetricsService engine resyncs', () => {
+  it('counts resyncs by bounded trigger and result, with every series present', () => {
+    const metrics = new RadioMetricsService();
+    metrics.recordEngineResync('foreign_ended', 'resumed');
+    metrics.recordEngineResync('watchdog', 'resumed');
+    metrics.recordEngineResync('watchdog', 'resumed');
+    metrics.recordEngineResync('watchdog', 'unavailable');
+    const rendered = metrics.render();
+    expect(rendered).toContain(
+      '# TYPE alcantara_radio_engine_resyncs_total counter',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="foreign_ended",result="resumed"} 1',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="resumed"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_resyncs_total{trigger="watchdog",result="playing"} 0',
+    );
+    const series = rendered
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_radio_engine_resyncs_total{'),
+      );
+    expect(series).toHaveLength(13);
+    expect(metrics.snapshot().engineResyncs).toEqual({
+      'foreign_ended:resumed': 1,
+      'watchdog:resumed': 2,
+      'watchdog:unavailable': 1,
+    });
+  });
+});
+
+// gaulatti/alcantara#237: engine paths that degrade instead of failing.
+describe('RadioMetricsService engine degraded paths', () => {
+  it('renders every site from zero and counts each by its bounded site', () => {
+    const metrics = new RadioMetricsService();
+    const fresh = metrics.render();
+    expect(fresh).toContain(
+      '# TYPE alcantara_radio_engine_degraded_total counter',
+    );
+    for (const site of [
+      'telemetry_state',
+      'bumper_settings',
+      'bumper_attempt',
+      'radio_settings_missing',
+    ])
+      expect(fresh).toContain(
+        `alcantara_radio_engine_degraded_total{site="${site}"} 0`,
+      );
+    metrics.recordEngineDegraded('bumper_attempt');
+    metrics.recordEngineDegraded('bumper_attempt');
+    metrics.recordEngineDegraded('telemetry_state');
+    metrics.recordEngineDegraded('unbounded' as never);
+    const rendered = metrics.render();
+    expect(rendered).toContain(
+      'alcantara_radio_engine_degraded_total{site="bumper_attempt"} 2',
+    );
+    expect(rendered).toContain(
+      'alcantara_radio_engine_degraded_total{site="telemetry_state"} 1',
+    );
+    expect(rendered).not.toContain('unbounded');
+    expect(
+      rendered.match(/^alcantara_radio_engine_degraded_total\{/gm),
+    ).toHaveLength(4);
   });
 });

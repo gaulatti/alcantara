@@ -1,13 +1,14 @@
 name: Alcantara CI
 run-name: >-
   ${{ github.event_name == 'pull_request' && format('Verify PR #{0}', github.event.pull_request.number) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('Verify main {0}', github.sha) ||
       inputs.check_provider && 'Verify AI provider' ||
       inputs.check_author && 'Verify repair author' ||
       format('PR intent review ({0})', github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref_name) }}
 
 on:
   push:
-    branches: ['policy-install/**']
+    branches: [main, 'policy-install/**']
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -38,7 +39,9 @@ permissions: {}
 
 concurrency:
   group: alcantara-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
-  cancel-in-progress: true
+  # A push to main is never cancelled by the next push: every commit on main
+  # gets a complete verification. Pull request and review runs still cancel.
+  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   resolve-clouseau:
@@ -58,6 +61,7 @@ jobs:
     # Step and service guards keep those events from running contributor code.
     name: >-
       ${{ (github.event_name == 'pull_request' ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'workflow_dispatch' && inputs.pull_request == '' && !inputs.check_provider && !inputs.check_author)) && 'verify' || 'metadata-only' }}
     env:
       CLOUSEAU_ENGINE_SHA: ${{ needs.resolve-clouseau.outputs.sha }}
@@ -71,6 +75,7 @@ jobs:
       - uses: actions/checkout@v4
         if: &verify-code >-
           github.event_name == 'pull_request' ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'workflow_dispatch' && inputs.pull_request == '' && !inputs.check_provider && !inputs.check_author)
         with:
           persist-credentials: false
@@ -86,7 +91,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: *verify-code
         with:
-          node-version: 22
+          node-version: 22.23.5
       - name: Install dependencies
         if: *verify-code
         run: |
@@ -152,7 +157,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://alcantara:alcantara-ci-password@127.0.0.1:5432/alcantara_ci?schema=public
           METRICS_SCRAPE_OUTPUT: /tmp/alcantara.prom
-        run: pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns='metrics|media-label-concurrency'
+        run: pnpm --dir backend exec jest --config ./test/jest-e2e.json --runInBand --testPathPatterns='metrics|media-label-concurrency|filler-persistence|deploy-candidate|as-run-actor-migration|external-sources|media-analysis-duration|radio-monitor|recording'
       - name: Parse the actual authenticated scrape
         if: *verify-code
         run: |
@@ -172,6 +177,7 @@ jobs:
       - name: Retain coverage evidence
         if: >-
           always() && (github.event_name == 'pull_request' ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'workflow_dispatch' && inputs.pull_request == '' && !inputs.check_provider && !inputs.check_author)) &&
           steps.coverage.outcome == 'success'
         uses: actions/upload-artifact@v4

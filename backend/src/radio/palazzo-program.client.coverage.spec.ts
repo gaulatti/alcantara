@@ -463,6 +463,7 @@ describe('PalazzoProgramClient coverage', () => {
         URL,
         PROGRAM,
         undefined,
+        undefined,
       );
       expect(callbacks.onSnapshot).toHaveBeenCalledWith(PROGRAM, s);
     });
@@ -645,6 +646,7 @@ describe('PalazzoProgramClient coverage', () => {
         URL,
         PROGRAM,
         abort.signal,
+        undefined,
       );
       expect(callbacks.onSnapshot).not.toHaveBeenCalled();
       expect(client.getStatus().connection).toBe('instance-mismatch');
@@ -887,6 +889,7 @@ describe('PalazzoProgramClient coverage', () => {
         URL,
         PROGRAM,
         client['abort'].signal,
+        undefined,
       );
     });
 
@@ -1044,5 +1047,41 @@ describe('PalazzoProgramClient coverage', () => {
       const accepted = await run(`id:abc\nevent:message\ndata:${body}`);
       expect(accepted).toMatchObject({ id: 'abc', type: 'heartbeat' });
     });
+  });
+});
+
+// gaulatti/alcantara#175: Palazzo's playout.request_failed (palazzo#42) is a
+// known event: parsed, forwarded to the engine, never a dropped connection.
+describe('PalazzoProgramClient: playout.request_failed', () => {
+  const failed = (sequence: number) =>
+    event('playout.request_failed' as PalazzoPlaybackEventType, sequence, {
+      data: {
+        playbackRequestId: 'req-9',
+        playbackId: 'play-9',
+        programId: PROGRAM,
+        reason: 'timeout',
+        liquidsoapSequence: 41,
+      },
+    });
+
+  it('parses the frame and forwards it to the engine', async () => {
+    const { client, callbacks } = primed();
+    await client['handleFrame'](`data: ${JSON.stringify(failed(6))}`);
+    expect(callbacks.onEvent).toHaveBeenCalledWith(
+      PROGRAM,
+      expect.objectContaining({
+        type: 'playout.request_failed',
+        data: expect.objectContaining({ playbackRequestId: 'req-9' }),
+      }),
+    );
+  });
+
+  it('rejects one without a playback request id', async () => {
+    const { client } = primed();
+    const bad = failed(6);
+    bad.data = { reason: 'other' };
+    await expect(
+      client['handleFrame'](`data: ${JSON.stringify(bad)}`),
+    ).rejects.toThrow('malformed Palazzo event');
   });
 });

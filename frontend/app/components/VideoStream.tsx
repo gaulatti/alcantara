@@ -32,6 +32,9 @@ function normalizeUrl(value: unknown): string {
   return value.trim();
 }
 
+/** How far an element's volume may differ from the channel gain (hosts round it) before it is set again. */
+const VOLUME_TOLERANCE = 0.01;
+
 function normalizeGain(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -40,11 +43,7 @@ function normalizeGain(value: unknown, fallback: number): number {
 }
 
 function isLikelyHlsSource(url: string): boolean {
-  const normalizedUrl = url.trim().toLowerCase();
-  if (!normalizedUrl) {
-    return false;
-  }
-  return normalizedUrl.includes('.m3u8');
+  return url.trim().toLowerCase().includes('.m3u8');
 }
 
 function isNonFatalPlayError(error: unknown): boolean {
@@ -170,9 +169,27 @@ export function VideoStream({
     if (!video) {
       return;
     }
-    video.volume = resolvedChannelGain;
-    video.muted = resolvedMuted;
-  }, [resolvedChannelGain, resolvedMuted]);
+    // The scene's channel gain decides the program's level, on every new element too. Some hosts
+    // move the element's volume on their own once it plays: WebKitGTK under PipeWire reflects the
+    // level the system restored for the app's last stream (0 after a muted, staged scene), which
+    // left a video scene silent after a take. So the gain is applied again when the element plays
+    // and whenever its volume changes away from it.
+    const applyGain = () => {
+      if (Math.abs(video.volume - resolvedChannelGain) > VOLUME_TOLERANCE) {
+        video.volume = resolvedChannelGain;
+      }
+      if (video.muted !== resolvedMuted) {
+        video.muted = resolvedMuted;
+      }
+    };
+    applyGain();
+    video.addEventListener('playing', applyGain);
+    video.addEventListener('volumechange', applyGain);
+    return () => {
+      video.removeEventListener('playing', applyGain);
+      video.removeEventListener('volumechange', applyGain);
+    };
+  }, [resolvedChannelGain, resolvedMuted, videoKey]);
 
   if (!resolvedSourceUrl) {
     return null;

@@ -1,13 +1,14 @@
 import './SceneTransitionOverlay.css';
 import type { SceneTransitionPreset } from '../utils/sceneTransitions';
+import { GiorgiaMark } from './giorgiaBroadcast';
 
 interface SceneTransitionOverlayProps {
   transition: SceneTransitionPreset;
 }
 
-type TransitionFinishTone = 'warm' | 'cool' | 'alert' | 'neon';
-type TransitionVectorVariant = 'election' | 'market' | 'world' | 'festival' | 'hit';
-type TransitionSolidVariant = 'election' | 'market' | 'world' | 'festival' | 'hit';
+type TransitionFinishTone = 'warm' | 'cool' | 'alert';
+type TransitionVectorVariant = 'election' | 'market' | 'world' | 'festival';
+type TransitionSolidVariant = 'election' | 'market' | 'world' | 'festival';
 
 function TransitionFinishLayer({ tone }: { tone: TransitionFinishTone }) {
   return (
@@ -92,46 +93,22 @@ function TransitionVectorLayer({ variant }: { variant: TransitionVectorVariant }
     );
   }
 
-  if (variant === 'festival') {
-    return (
-      <svg className='scene-transition-overlay__vector scene-transition-overlay__vector--festival' viewBox='0 0 1920 1080' preserveAspectRatio='none' aria-hidden='true'>
-        <defs>
-          <linearGradient id='transitionFestivalRunway' x1='0%' y1='100%' x2='100%' y2='0%'>
-            <stop offset='0%' stopColor='rgba(255,120,214,0.12)' />
-            <stop offset='50%' stopColor='rgba(255,228,168,0.42)' />
-            <stop offset='100%' stopColor='rgba(255,255,255,0.1)' />
-          </linearGradient>
-        </defs>
-        <path d='M560 940 L860 420 H1060 L1360 940 Z' fill='url(#transitionFestivalRunway)' stroke='rgba(255,244,214,0.18)' strokeWidth='2' />
-        <path d='M700 940 L900 420' stroke='rgba(255,255,255,0.14)' strokeWidth='2' />
-        <path d='M1220 940 L1020 420' stroke='rgba(255,255,255,0.14)' strokeWidth='2' />
-        <path d='M240 240 L840 420' stroke='rgba(255,180,214,0.14)' strokeWidth='4' />
-        <path d='M1680 220 L1080 420' stroke='rgba(255,208,108,0.16)' strokeWidth='4' />
-        <circle cx='360' cy='210' r='14' fill='rgba(255,255,255,0.84)' />
-        <circle cx='1560' cy='190' r='14' fill='rgba(255,255,255,0.84)' />
-      </svg>
-    );
-  }
-
   return (
-    <svg className='scene-transition-overlay__vector scene-transition-overlay__vector--hit' viewBox='0 0 1920 1080' preserveAspectRatio='none' aria-hidden='true'>
+    <svg className='scene-transition-overlay__vector scene-transition-overlay__vector--festival' viewBox='0 0 1920 1080' preserveAspectRatio='none' aria-hidden='true'>
       <defs>
-        <linearGradient id='transitionHitMarquee' x1='0%' y1='0%' x2='100%' y2='0%'>
-          <stop offset='0%' stopColor='rgba(255,96,186,0.18)' />
-          <stop offset='50%' stopColor='rgba(255,230,168,0.58)' />
-          <stop offset='100%' stopColor='rgba(120,180,255,0.18)' />
+        <linearGradient id='transitionFestivalRunway' x1='0%' y1='100%' x2='100%' y2='0%'>
+          <stop offset='0%' stopColor='rgba(255,120,214,0.12)' />
+          <stop offset='50%' stopColor='rgba(255,228,168,0.42)' />
+          <stop offset='100%' stopColor='rgba(255,255,255,0.1)' />
         </linearGradient>
       </defs>
-      <rect x='190' y='170' width='1540' height='740' rx='42' fill='none' stroke='url(#transitionHitMarquee)' strokeWidth='6' />
-      <rect x='270' y='250' width='1380' height='580' rx='30' fill='rgba(255,255,255,0.02)' stroke='rgba(255,255,255,0.12)' strokeWidth='2' />
-      <path d='M330 320 H1590' stroke='rgba(255,255,255,0.08)' strokeWidth='2' />
-      <path d='M330 760 H1590' stroke='rgba(255,255,255,0.08)' strokeWidth='2' />
-      <g fill='rgba(255,244,214,0.3)'>
-        <circle cx='340' cy='200' r='6' /><circle cx='392' cy='200' r='6' /><circle cx='444' cy='200' r='6' />
-        <circle cx='1476' cy='200' r='6' /><circle cx='1528' cy='200' r='6' /><circle cx='1580' cy='200' r='6' />
-        <circle cx='340' cy='880' r='6' /><circle cx='392' cy='880' r='6' /><circle cx='444' cy='880' r='6' />
-        <circle cx='1476' cy='880' r='6' /><circle cx='1528' cy='880' r='6' /><circle cx='1580' cy='880' r='6' />
-      </g>
+      <path d='M560 940 L860 420 H1060 L1360 940 Z' fill='url(#transitionFestivalRunway)' stroke='rgba(255,244,214,0.18)' strokeWidth='2' />
+      <path d='M700 940 L900 420' stroke='rgba(255,255,255,0.14)' strokeWidth='2' />
+      <path d='M1220 940 L1020 420' stroke='rgba(255,255,255,0.14)' strokeWidth='2' />
+      <path d='M240 240 L840 420' stroke='rgba(255,180,214,0.14)' strokeWidth='4' />
+      <path d='M1680 220 L1080 420' stroke='rgba(255,208,108,0.16)' strokeWidth='4' />
+      <circle cx='360' cy='210' r='14' fill='rgba(255,255,255,0.84)' />
+      <circle cx='1560' cy='190' r='14' fill='rgba(255,255,255,0.84)' />
     </svg>
   );
 }
@@ -167,21 +144,11 @@ function TransitionSolidLayer({ variant }: { variant: TransitionSolidVariant }) 
     );
   }
 
-  if (variant === 'festival') {
-    return (
-      <>
-        <div className='scene-transition-overlay__solid scene-transition-overlay__solid--festival-runway' />
-        <div className='scene-transition-overlay__solid scene-transition-overlay__solid--festival-left' />
-        <div className='scene-transition-overlay__solid scene-transition-overlay__solid--festival-right' />
-      </>
-    );
-  }
-
   return (
     <>
-      <div className='scene-transition-overlay__solid scene-transition-overlay__solid--hit-frame' />
-      <div className='scene-transition-overlay__solid scene-transition-overlay__solid--hit-band-left' />
-      <div className='scene-transition-overlay__solid scene-transition-overlay__solid--hit-band-right' />
+      <div className='scene-transition-overlay__solid scene-transition-overlay__solid--festival-runway' />
+      <div className='scene-transition-overlay__solid scene-transition-overlay__solid--festival-left' />
+      <div className='scene-transition-overlay__solid scene-transition-overlay__solid--festival-right' />
     </>
   );
 }
@@ -383,24 +350,16 @@ export function SceneTransitionOverlay({ transition }: SceneTransitionOverlayPro
         style={{ ['--scene-transition-duration' as string]: `${transition.durationMs}ms` }}
         aria-hidden='true'
       >
-        <div className='scene-transition-overlay__hit-wash' />
-        <div className='scene-transition-overlay__hit-marquee scene-transition-overlay__hit-marquee--top' />
-        <div className='scene-transition-overlay__hit-marquee scene-transition-overlay__hit-marquee--bottom' />
-        <TransitionSolidLayer variant='hit' />
-        <div className='scene-transition-overlay__hit-bar scene-transition-overlay__hit-bar--one' />
-        <div className='scene-transition-overlay__hit-bar scene-transition-overlay__hit-bar--two' />
-        <div className='scene-transition-overlay__hit-bar scene-transition-overlay__hit-bar--three' />
-        <div className='scene-transition-overlay__hit-bar scene-transition-overlay__hit-bar--four' />
-        <TransitionVectorLayer variant='hit' />
-        <div className='scene-transition-overlay__hit-pop scene-transition-overlay__hit-pop--left' />
-        <div className='scene-transition-overlay__hit-pop scene-transition-overlay__hit-pop--center' />
-        <div className='scene-transition-overlay__hit-pop scene-transition-overlay__hit-pop--right' />
-        <div className='scene-transition-overlay__hit-logo-shell'>
-          <img className='scene-transition-overlay__hit-logo' src='/mi.svg' alt='' />
+        <div className='scene-transition-overlay__giorgia-panel'>
+          <div className='scene-transition-overlay__giorgia-light scene-transition-overlay__giorgia-light--blue' />
+          <div className='scene-transition-overlay__giorgia-light scene-transition-overlay__giorgia-light--magenta' />
+          <div className='scene-transition-overlay__giorgia-light scene-transition-overlay__giorgia-light--violet' />
+          <div className='scene-transition-overlay__giorgia-shade' />
+          <div className='scene-transition-overlay__giorgia-mark'>
+            <GiorgiaMark width={340} />
+          </div>
         </div>
-        <div className='scene-transition-overlay__hit-shine' />
-        <div className='scene-transition-overlay__hit-flash' />
-        <TransitionFinishLayer tone='neon' />
+        <div className='scene-transition-overlay__giorgia-bar' />
       </div>
     );
   }

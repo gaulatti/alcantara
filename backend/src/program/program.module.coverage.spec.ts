@@ -1,6 +1,10 @@
 import { Global, Injectable, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
+import { FlightMcpTools } from '../mcp/capabilities/flight';
+import { ProgramMcpTools } from '../mcp/capabilities/program';
+import { PompeiiService } from '../auth/pompeii.service';
+import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 import { PrismaService } from '../prisma.service';
 import { FlightService } from './flight.service';
 import { ProgramController } from './program.controller';
@@ -28,6 +32,14 @@ class ProgramConsumer {
 @Module({ providers: [ProgramConsumer] })
 class ConsumerModule {}
 
+// The deployment team the program MCP tools read (gaulatti/alcantara#337), as the auth module provides it.
+@Global()
+@Module({
+  providers: [{ provide: PompeiiService, useValue: { teamId: 7 } }],
+  exports: [PompeiiService],
+})
+class PompeiiStubModule {}
+
 describe('ProgramModule wiring', () => {
   const removeListener = jest.fn();
   const fakeProgramService = {
@@ -43,7 +55,7 @@ describe('ProgramModule wiring', () => {
 
   async function compile() {
     return Test.createTestingModule({
-      imports: [TicketsModule, ProgramModule, ConsumerModule],
+      imports: [TicketsModule, ProgramModule, ConsumerModule, PompeiiStubModule],
     })
       .overrideProvider(ProgramService)
       .useValue(fakeProgramService)
@@ -120,6 +132,9 @@ describe('ProgramModule wiring', () => {
       ProgramRealtimeService,
       FlightService,
       ProgramTemplateService,
+      ProgramMcpTools,
+      SongLeavesMcpTools,
+      FlightMcpTools,
       PrismaService,
     ]);
   });

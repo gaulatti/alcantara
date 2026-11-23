@@ -22,3 +22,22 @@
         height: 4px;
     }
 }
+
+/*
+ * gaulatti/alcantara#191: Bleecker's overlay layer sits above the app chrome.
+ * Bleecker (0.1.42 and later) renders Modal, Sheet, Drawer, AlertDialog and
+ * CommandSpotlight inside a fixed `[data-bleecker-modal-overlay]` at z-50 (the
+ * spotlight at z-9999), and Select, Popover, DropdownMenu and Tooltip inside
+ * Radix `[data-radix-popper-content-wrapper]` portals at z-50 or z-180.
+ * Alcantara's fixed header (layout.tsx, z-[1200]) and mobile navigation
+ * (z-[1190]) sit above program overlays (z-[900] and z-[950]), so they would
+ * otherwise cover every modal below the xl width. Both layers share one level
+ * above the chrome; the one opened last is painted on top, because each
+ * portal is appended to <body> when it opens, so a Select or Tooltip opened
+ * inside a modal stays above that modal. Radix sets the popper wrapper's
+ * z-index inline, hence !important.
+ */
+[data-bleecker-modal-overlay],
+[data-radix-popper-content-wrapper] {
+    z-index: 1300 !important;
+}

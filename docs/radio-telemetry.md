@@ -35,6 +35,34 @@ root playback routes.
 - A cursor gap aborts that SSE stream and reconciles the authenticated state
   snapshot before another lifecycle event can mutate the engine. Malformed and
   explicitly cross-program state/events are rejected.
+- An event whose `type` Alcantara does not know (gaulatti/ariston#217) is
+  skipped, never a reason to drop the stream: a well-formed frame of a new
+  type is counted in
+  `alcantara_palazzo_events_ignored_total{reason="unknown-type"}` (the label
+  is that fixed reason, never the type), and when it is the next event of the
+  accepted boot it advances the cursor so the known event after it is not a
+  gap. A known event missing its required fields or a bad envelope is still
+  malformed and reconnects the stream.
+- `schemaVersion` is an integer and is the major version of the event and
+  state contracts. Additive changes within major 1 (new fields, event types or
+  enum values) carry no version bump, so they are the "minor" changes and are
+  accepted by the rules here. An event whose `schemaVersion` is any other
+  integer is skipped without reading any other field and counted in
+  `alcantara_palazzo_events_ignored_total{reason="unsupported-version"}`; the
+  stream stays up, and a later known event past its sequence is handled as a
+  gap. A non-integer `schemaVersion` is malformed. A playback state of another
+  major is still rejected.
+- Within major 1, a state value Alcantara does not know degrades safely
+  instead of rejecting the state (gaulatti/ariston#217): an unknown
+  `availability` reads as `degraded`, an unknown `status` keeps the program's
+  last accepted status (or `idle` before one, and on the operator state read),
+  and an intro with an unknown `status` reads as no intro. An unknown
+  `playout.next_withdrawn` reason keeps the event with reason `other` (the
+  engine acts only on `not_ready`). Each is counted in
+  `alcantara_palazzo_unknown_values_total{field}` with `field` one of
+  `availability`, `status`, `intro-status` or `withdrawn-reason`, all exposed
+  from 0; the unknown value is never a label. A missing, empty or mistyped
+  value is still malformed.
 - `track.started` with a matching request ID establishes authoritative start
   time and position.
 - `track.ended` with a matching request ID advances the sequence exactly
@@ -45,12 +73,30 @@ root playback routes.
   and `intro.failed` events update operator state only; they never advance,
   stop, or replace the parent song. Cross-program and mismatched-parent intro
   events are ignored.
+- `playout.request_failed` (Palazzo 2d16d83 and later) for the active song
+  that has not started marks it failed: it gets no as-run record, the control
+  room's Radio desk shows the song, artist and reason (`timeout` or `other`;
+  any other reason counts as `other`), and the sequence advances exactly once
+  as at a natural end. An unknown request ID, a duplicate or a song already on
+  air is ignored. An older Palazzo never sends the event, so nothing changes.
 - Autoplay and Shuffle advance the in-memory playlist cursor to the next item
   after that authoritative end. Shuffle operates on its persisted randomized
   order, so it does not repeat an item before the current pass is exhausted.
   Looped playlists wrap; explicitly non-looped playlists publish stopped at
   their end. A missing song-sequence mode means autoplay, while an explicit
   `manual` mode remains an operator stop boundary.
+- The advanced cursor is stored (#277): after each playlist song's end, once the
+  successor's command or promotion is done and never before it, the engine
+  writes the sequence to `ProgramState.songSequence`, best effort (a failure is
+  a WARN with the cause class and the next advance writes again). The write is
+  skipped when the stored sequence differs from the held one apart from the
+  cursor (an operator edit wins), and names the `updatedAt` it read. A restart
+  therefore finds the cursor on the song that was playing: the song on air is
+  adopted as that leaf (`Adopted inherited Palazzo playback … (path=…
+  urlMatches=… songIdMatches=…)`) and its end advances normally. A leaf is
+  matched by audio URL, then by catalogue song id; with the audio or song id on
+  several leaves the cursor's leaf wins, and a song that is none of these stays
+  a catalogue song whose end moves nothing.
 - Play Next is a persisted FIFO queue of references to playable playlist item
   IDs. Duplicate song references are allowed as distinct queue entries. A
   normal track end advances and persists the underlying playlist cursor before
@@ -65,10 +111,82 @@ root playback routes.
   the configured sequence. Adoption preserves Palazzo's request ID, start time,
   and position, sends no competing play command, and advances from that exact
   leaf when its authoritative end arrives.
-- An unknown URL, or a URL reused by multiple sequence leaves, remains foreign:
-  Alcantara sends no command while it plays and does not guess a successor from
-  its end event. It waits for an authoritative idle snapshot before normal
-  automatic recovery. Explicit manual mode remains idle.
+- A track that is not a unique leaf of the configured sequence (a catalogue
+  pick, or the successor an earlier process announced, which Palazzo started by
+  itself while no backend was running) is looked up by its audio URL in the song
+  catalogue (gaulatti/alcantara#272). Palazzo is commanded only by Alcantara, so a
+  track this process did not command is one an earlier process commanded or
+  announced. Commands are withheld at once, while the lookup runs. Exactly one
+  catalogue song with that audio URL (enabled or not: it aired) makes the track
+  the engine's own: it is adopted as above (an inferred as-run start at
+  Palazzo's reported start time, now-playing published, its successor announced,
+  a command only after its authoritative end), counted as
+  `alcantara_radio_track_transitions_total{result="adopted"}`. The previous play
+  of the program, whose end was lost with the old process, is closed by the
+  as-run log at this start, flagged `unended` for review (#241), once the
+  adopted play ends. A recognised song is treated as one picked from outside the
+  playlist (`catalog:<song id>`): it never moved the cursor, so its end advances
+  nothing and the next song is the one the cursor already points at, never a
+  playlist song skipped.
+- **The lookup answers late or fails.** The answer is used only if the track it
+  was asked for is still the one withheld: it must not have ended, no song of
+  Alcantara's own may be active, and no other uncommanded track may have been
+  withheld since (a slow answer for an earlier track is dropped). The adopted
+  position is derived from Palazzo's reported start (now minus that start), or
+  else the snapshot's position plus the time the lookup took, because Palazzo
+  sends no further snapshot on a healthy connection. A **failed** lookup (the
+  database unreachable or throttled) is tried again, eight attempts in all, 2, 4,
+  8, 16, 30, 30 and 30 s apart (`INHERITED_LOOKUP_ATTEMPTS`, the command-retry
+  backoff), about two minutes, with commands withheld throughout; the retry
+  stops when the track ends, is replaced or the engine shuts down, and the track
+  is reported (below) only after the last failure. An answer with no match or
+  several matches is final at once. One series per track: the same track named
+  again starts no new one.
+- A track with no URL, an unknown URL, a URL shared by several catalogue songs
+  or a failed lookup stays **unidentified**: Alcantara sends no command while it
+  plays, records nothing for it and does not guess a successor from its end
+  event. It is counted once in
+  `alcantara_radio_track_transitions_total{result="unidentified"}` (a new label
+  value on the existing counter; the label is that fixed word, never the title)
+  and logged once at warn level with what Palazzo says is playing (request id,
+  title, artist and url, each cut at 200 characters, start time, position,
+  the number of catalogue matches and whether the lookup failed), so the play can
+  be reconstructed by hand. When that track ends, the engine reads Palazzo's
+  current state (`GET .../playback/state`) and reconciles from it as from a
+  snapshot: idle resumes normal automatic recovery. Explicit manual mode
+  remains idle. (Palazzo sends a `snapshot` only when a stream connects, so
+  waiting for one on a healthy connection stalled the rotation until the next
+  reconnect: gaulatti/alcantara#230, ten hours on 2026-11-20.)
+- **Playback watchdog (#230).** In autoplay or shuffle, every 10 s
+  (`WATCHDOG_INTERVAL_MS`) the engine reads Palazzo's state. When Palazzo reports
+  nothing on the air on reads at least 45 s apart (`NO_PLAYBACK_BOUND_MS`), the
+  engine reconciles from that report: a song it still believes is on air is
+  ended and the next one starts, and an empty engine starts the sequence.
+  - **Nothing on the air** means `status` is `idle`, no intro is playing, the
+    instant level is zero and `live.onAir` is false. An intro, an instant or a
+    live show is never read as a stall.
+  - **Why 45 s.** Palazzo's `status` reads `idle` while a commanded song is
+    still loading, up to its request limit (`SONG_REQUEST_TIMEOUT_MS`, 29 s by
+    default). Every song command restarts the bound, so a load either starts or
+    fails inside it. Production since 2026-11-19: the longest load was 1 s and
+    the longest instant 11 s.
+  - **It holds** (counted as `undecided`) while Palazzo reports itself
+    `degraded`, or when its state has no `live` field (a Palazzo older than
+    gaulatti/palazzo#48): with no way to rule a live show out, it starts no song
+    under one.
+  - It never acts in manual mode, while frozen, or while the stream is not
+    reconciled, and never on elapsed time alone. A deploy candidate (#223) runs
+    no watchdog.
+- **After a failed song command (#230).** In autoplay or shuffle, a song
+  command that Palazzo rejects no longer leaves the rotation quiet: after 2 s
+  (`COMMAND_RETRY_BASE_MS`) the engine reads Palazzo's state and resumes from
+  it, doubling the wait up to 30 s (`COMMAND_RETRY_MAX_MS`) while commands keep
+  failing. Palazzo playing a song resets the wait. The retry stands down when a
+  song or a command is already in flight, the engine is frozen, or the stream is
+  not reconciled. Manual mode stays an operator boundary. On 2026-11-20 every
+  Palazzo restart unfroze automation about 6 s before Palazzo could play, the
+  first command failed, and the radio stayed silent until a person restarted
+  the backend.
 
 ## Transports and failure behavior
 
@@ -80,6 +198,18 @@ URL-free lifecycle events by request ID and hydrates a redacted playing
 snapshot from the private `/playback/state` endpoint before it reaches
 the execution engine. This keeps media URLs out of the event stream without
 mistaking a healthy stream for malformed telemetry.
+A reconnect whose `Last-Event-ID` Palazzo can no longer replay (outside its
+512-event window, or from another boot) gets a `replay.gap` event right after the
+snapshot (palazzo#56; its data is `{reason: "cursor_not_in_replay", replayEvents}`,
+and its id, boot and sequence are the snapshot's). Alcantara knows the type
+(gaulatti/alcantara#240): the snapshot just hydrated and applied the current
+state, so nothing more is fetched; the gap is counted under the existing
+`alcantara_palazzo_events_ignored_total{reason="sequence-gap"}` and logged once at
+warn level with the replay window size, the cursor stays at the snapshot, and the
+event is not forwarded to the song engine, so what airs does not change. Its data
+must be an object like every event's (otherwise `malformed`); a reason or field
+it does not know is ignored. It is not shown on the console: it records that
+events were missed, while the snapshot already carries the present state.
 Current Palazzo preflight and playout-observation events advance the replay
 cursor but are not forwarded into the song engine; only track, intro,
 position, and level events may change Alcantara playback state. This prevents
@@ -114,7 +244,26 @@ distinguishable from appliance unavailability.
 
 `GET /radio/:programId/palazzo-status` returns the connection state, instance
 identity, telemetry freshness, and degraded flag per program. The radio panel
-surfaces this live. `radio_leg_status` and raw `palazzo_audio_levels` remain
+surfaces this live.
+
+When a program of a radio type (`radio` or `both`) has no telemetry client the
+endpoint answers an `unavailable` status instead of `null` (#257). A program
+that is not of a radio type (a TV program, or an unknown id) has no engine and
+keeps answering `null`, so no console shows an engine state for it. The
+unavailable status is: `connection: "unavailable"`, `degraded: false`,
+a plain-language `detail`, an empty `palazzoUrl` (a rejected URL is never
+echoed), null instance and timestamps, and a bounded `reason`:
+`not-configured` (no radio settings or no Palazzo URL), `disabled` (radio disabled in the program's settings),
+`url-rejected` (the URL failed the allowlist when the client was started; see
+`alcantara_palazzo_config_rejected_total`) or `deploy-candidate` (a deploy
+candidate starts no telemetry). A configured, enabled program whose client has
+not started yet answers `unavailable` with no `reason`. A live status carries no
+`reason`. The set is additive: the console shows a known reason in plain words
+("Engine unavailable: disabled in settings") and ignores an unknown, missing or
+null one, which reads exactly as before, so an old console against this backend
+(it reads only `connection`, `degraded` and `detail`) and this console against
+an old backend (a `null` body) both keep working. The `console-fixture` state
+`radio-not-configured` renders the reason. `radio_leg_status` and raw `palazzo_audio_levels` remain
 available to realtime consumers; the same Palazzo levels are also normalized
 into the existing `audio_meter_update` contract so the Radio desk's Song,
 Audio clips, and Main meters show the appliance's actual output. Playback
@@ -163,6 +312,8 @@ history and is moved behind less-recently-played favorites.
 
 Automation settings, Palazzo URL, bumper eligibility, and now-playing consumers
 live at `/radio-settings`; they are deliberately separate from live playout.
+A now-playing consumer URL must use https, and every delivery follows the
+outbound-request policy in [outbound-requests.md](outbound-requests.md).
 For a `both` program, the TV control adds a radio-leg status rail. Scene actions
 remain TV-only while Songs and Audio clips flow through the shared program mix.
 
@@ -227,6 +378,99 @@ from `METRICS_TOKEN_FILE` (default
 `503`; absent or incorrect bearer values return `401`. Never publish or pass the
 credential as a build argument or ordinary environment value.
 
+Deployment provisioning: the production secret `broadcast/production/config`
+carries a `metrics_bearer_token` field (ignored by the runtime secret contract).
+After the candidate check passes and before the running backend is stopped,
+`deploy/cumulus.sh` runs `scripts/print-metrics-token.mjs` inside the new image.
+The script writes only the trimmed field to stdout; the deploy pipes it into a
+root-owned `0400` file (`/etc/alcantara/metrics-token`), which is mounted
+read-only at `/run/secrets/alcantara-metrics-token` on the live backend with
+`METRICS_TOKEN_FILE` set. The script never logs the token or the secret payload,
+and a missing, blank or non-string field, or an unreadable secret, fails the
+deploy before the live backend is touched. The deploy candidate does not get the
+mount: its health check calls `GET /` and never `/metrics`. Rotate by changing
+the secret field and redeploying, then updating the scraper's token file.
+The on-premises workflow path (`.github/workflows/backend-deploy.yml`) is wired
+separately.
+
+Boundary: the provisioning itself adds no metric family or label. The
+scrape surface is the backend's HTTP port with two routes behind the same
+`MetricsTokenGuard` (`GET /metrics` and `GET /metrics/palazzo`, below), the
+bearer value never appears in metric labels, logs, build arguments or the
+container environment, and the Prometheus scrape job and its credential file
+belong to the observability repository (milano).
+
+### Rejected Palazzo configuration (#257)
+
+`alcantara_palazzo_config_rejected_total` (no labels) counts Palazzo URLs the
+allowlist rejected when a program's telemetry client was started, at startup or
+when its radio settings change. It increments once per rejection, never when the
+status is read. A program whose URL is rejected has no engine until its settings
+change; its status says `url-rejected`. The URL is neither a label nor part of
+the log line (`Palazzo URL configuration rejected for <program>`).
+
+### Degraded engine paths (#237)
+
+`alcantara_radio_engine_degraded_total{site}` counts the engine paths that carry
+on in a degraded way instead of failing. Each one also logs one warning naming
+the program and the error class, never the error message:
+
+- `telemetry_state`: a resync could not read Palazzo's state (`Resync could not
+  read Palazzo state for <program> (<class>)`); the resync then records
+  `unavailable`.
+- `bumper_settings`: the radio settings could not be read when an announced
+  bumper ended, so the bumper sequence stays where it was.
+- `bumper_attempt`: the bumper path failed before its send, for example
+  because the settings or the instant could not be read. No spot plays.
+- `radio_settings_missing`: a song command for a program without radio
+  settings, answered `ok: false` (`Radio settings missing for program <id>`).
+
+Every site is rendered from zero.
+
+### Engine resyncs (#230)
+
+`alcantara_radio_engine_resyncs_total{trigger,result}` counts the times the song
+engine read Palazzo's state itself. `trigger` is `foreign_ended` (a foreign
+track ended), `watchdog` (Palazzo reported nothing on the air past the bound)
+or `command_failed` (the retry after a failed song command). `result` is
+`resumed` (Palazzo was idle and the engine reconciled from it, which for the
+watchdog means it commanded a song or advanced past an end),
+`resumed_no_command` (watchdog only, gaulatti/alcantara#233: the watchdog
+resumed but nothing was commanded or advanced; the log line `Watchdog resume
+commanded nothing on <program>: <reason>` names `held_song`, `queue_blocked`,
+`clocked_log`, `foreign_track` or `no_successor`), `playing` (Palazzo was
+playing; nothing to do), `unavailable` (no state could be read) or `undecided`
+(the watchdog held: Palazzo degraded or not reporting its live input). All
+thirteen series are always present. Any `watchdog,resumed_no_command` is worth
+paging on: the radio is silent and the engine's recovery did nothing (the
+2026-11-21 00:28Z stall looked like a healthy `resumed`). A rising `watchdog,resumed` or `command_failed,resumed` means the
+rotation stalled and recovered on its own; a rising `unavailable` means the
+engine could not read Palazzo; a steady `watchdog,undecided` means the watchdog
+cannot act (check Palazzo's version and availability).
+
+### Palazzo metrics passthrough
+
+`GET /metrics/palazzo` lets the single authenticated scrape reach Palazzo's own
+`/metrics` without publishing Palazzo. It is authenticated by the metrics token
+exactly like `GET /metrics` (`503` credential unavailable, `401` absent or wrong
+bearer; Palazzo is never contacted in those cases). The outbound request is a
+fixed `GET <origin>/metrics`, where the origin is the one entry of the existing
+`PALAZZO_ALLOWED_URLS` (no new variable, no fallback host; zero, several or an
+invalid entry fail closed and log one warning without the value). Nothing from
+the incoming request is used: the scrape bearer is never forwarded, redirects
+are not followed (a redirect counts as a failure), and the whole exchange,
+including the body read, has a 2 second budget and a 5 MiB body cap. A `200`
+returns Palazzo's text unchanged as `text/plain; version=0.0.4`. Palazzo
+unreachable, timing out, answering non-2xx, or answering an oversized body
+returns `502` with an empty body, so the scrape never hangs.
+
+| Metric family                                       | Bounded labels                                       | Operational meaning                         |
+| --------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------- |
+| `alcantara_palazzo_metrics_scrape_total`            | `result`: `ok`, `unavailable`, `timeout`, `too_large`, `error` | Outcome of each passthrough (`unavailable`: unconfigured or connection failure; `error`: non-2xx, redirect or body read failure) |
+| `alcantara_palazzo_metrics_scrape_duration_seconds` | none                                                 | Wall time of each passthrough, up to the 2 s budget |
+
+The HTTP metrics label the route as the existing `metrics` group.
+
 | Metric family                                  | Bounded labels                      | Operational meaning                            |
 | ---------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
 | `alcantara_service_info`                       | `service`, `runtime`, `version`     | Service/build identity                         |
@@ -237,6 +481,17 @@ credential as a build argument or ordinary environment value.
 | `alcantara_dependency_duration_seconds`        | `dependency`, `operation`           | Dependency latency                             |
 | `alcantara_jobs_total`                         | `job`, `result`                     | Background chart refresh outcomes              |
 | `alcantara_job_last_success_timestamp_seconds` | `job`                               | Last successful chart refresh                  |
+| `alcantara_media_analyses_total`               | `result`                            | Audio asset analysis runs                      |
+| `alcantara_outbound_fetch_total`               | `path`, `result`                    | Fetches of supplied URLs under the outbound-request policy ([outbound-requests.md](outbound-requests.md)) |
+| `alcantara_media_analysis_duration_seconds`    | `result`                            | Wall time of one audio asset analysis          |
+| `alcantara_media_analysis_backlog_assets`      | none                                | Audio assets still waiting for analysis        |
+
+`alcantara_media_analyses_total{result}` counts audio asset analysis runs:
+`success` (measurements stored), `retry` (failed and scheduled again) and
+`failure` (failed for good). All three are exported from startup at zero.
+`alcantara_media_analysis_backlog_assets` shows how many audio assets still
+wait for analysis and reaches zero when the backfill is done. See
+[media-library-architecture.md](media-library-architecture.md#audio-analysis).
 
 The existing radio families remain unchanged:
 `alcantara_palazzo_sse_connections{state}`, reconnect attempts/failures,
@@ -244,17 +499,37 @@ snapshot reconciliation results, ignored-event reasons, stale-telemetry and
 degraded program gauges, track transition results,
 `alcantara_radio_intro_transitions_total{result}` for submitted, accepted,
 started, ended, failed, and mismatched intro lifecycle events,
+`alcantara_radio_song_request_failures_total{reason}` for songs Palazzo could
+not load (`timeout`, `other`; both exposed from 0),
 `alcantara_radio_song_queue_actions_total{result}` for enqueue, claim, release, remove,
 reorder, consume, cursor persistence, rejection, and persistence failure,
+`alcantara_radio_cursor_writes_total{result}` for the write of the playlist cursor
+after it advanced (`succeeded`, `failed`: the database refused or timed out and
+the next song is not delayed, `conflict`: the stored sequence was edited
+meanwhile or changed under the write, so nothing was written; all exposed from 0),
+`alcantara_radio_inherited_adoptions_total{path}` for the song on air at a restart
+by how it was recognised (`leaf`: the one sequence leaf with its audio or song
+id, `cursor_leaf`: the leaf the cursor points at when the audio or song id is on
+several leaves, `catalogue`: the song catalogue outside the cursor; all from 0),
 `alcantara_radio_song_queue_depth` for the total number of queued entries,
 `alcantara_radio_high_rotation_actions_total{result}` for selection, confirmed
 play, repeat-gap skips, unmet opportunities, and persistence failures,
 `alcantara_radio_high_rotation_favorites` for the bounded configured favorite
 count across radio-capable programs,
+`alcantara_radio_automatic_programs` for the radio-capable programs in autoplay
+or shuffle (read by the deploy's radio check, [deploy-candidate.md](deploy-candidate.md)),
 `alcantara_palazzo_machine_requests_total{operation,result}`, and
 `alcantara_palazzo_machine_retries_total{operation}`. The operation/result
 sets are closed enums covering success, deduplication, authentication,
-rejection, unavailability, malformed responses, and cross-program rejection.
+rejection, unavailability, malformed responses, cross-program rejection, and
+`unknown-value` (gaulatti/ariston#217): Palazzo answered with a value
+Alcantara does not know and the answer was read safely. For `next-announce`
+an unknown `state` (with the exact `playbackRequestId` echo) is read as
+`rejected`, so the song is not announced and the engine treats it like any
+refusal; for `filler-prepare` an unknown `status` with `ready: true` and the
+exact version echo counts as a prepared filler. Palazzo's not-ready filler
+statuses (`unprepared`, `preparing`, `failed`) next to `ready: true`, and a
+missing or mistyped state or status, stay malformed.
 Program IDs, playback
 request IDs, URLs, consumer names, song titles, artists, tokens, raw errors,
 and other external identifiers are never used as label values.
@@ -286,3 +561,72 @@ an already-playing queue head and resume without losing or duplicating it.
 ## Song similarity metric
 
 `alcantara_radio_similarity_total{result}` counts similarity picker outcomes with the bounded results `selected`, `fallback-no-candidate`, `fallback-no-embedding`, `shadow-recorded` and `decision-persistence-failed`. It is silent while every station is `off`. Labels never include songs, artists, URLs or program IDs. See [song-similarity.md](song-similarity.md).
+
+## Song analysis drop metric
+
+`alcantara_radio_analysis_dropped_total{result}` counts analysis-derived segue or loudness that the radio service left off a song command or next-song announcement, with `segueMode` on, because Palazzo would reject it or because the song had no analysis to send. The song still plays without the dropped group. `result` is one of `segue-invalid` (cue, fade or overlap values outside Palazzo's bounds), `segue-beyond-duration` (cue-out after the song's duration), `segue-edge-bound` (one cue edge would trim more than 10 s, or is negative or not finite; the other edge is still sent, gaulatti/alcantara#234), `loudness-invalid` (integrated loudness outside -70 to 0 LUFS, true peak above +6 dBTP, or a non-finite value), `ambiguous-match` (the command named no song and more than one song shares its audio URL, so no analysis was applied), or, for a song sent with no analysis at all (gaulatti/alcantara#255): `no-asset` (no library song matches, or the song has no media asset), `not-analyzed` (the asset's analysis is missing, pending or failed) or `lookup-failed` (the song or analysis lookup itself failed). In these last three cases the song is still sent, unchanged, without segue or loudness normalization. The counter counts commands, not aired songs: the same check runs for a song command and for a next-song announcement, so one song can count twice (announced, then commanded after a refused or replaced announcement), and a withdrawn announcement counts a song that never aired. Read it as an upper bound on songs sent without analysis, by reason. Not counted here: an analysis that succeeded but measured no loudness (it airs without normalization; its cue group is counted as `none` only when it also has no cues). Every result is exported at 0 from start-up. Labels never include songs, URLs or program IDs. Each song with a drop is also logged once as `radio.song_analysis_dropped`. See [program-playout.md](program-playout.md).
+
+`alcantara_radio_cue_groups_total{shape}` counts the cue groups the radio service resolved for a song command or a next-song announcement (gaulatti/alcantara#234):
+- `both`: both edges measured;
+- `head_filled`: only the tail was measured, cue-in sent as 0;
+- `tail_filled`: only the head was measured, cue-out sent as the duration;
+- `none`: no edge left to trim, or the group was dropped.
+
+A caller-supplied segue is not counted. A song is counted once per command or announcement, so a re-announced song counts again.
+
+## Next-song announcement metrics
+
+Contract: gaulatti/palazzo#40 §5.
+
+- `alcantara_radio_next_announcements_total{result}` counts what Palazzo
+  answered to each next-song announcement: `accepted` (200), `not_ready` (422),
+  `rejected` (409, 400, or any request failure: not announced) and
+  `unsupported` (404, an older Palazzo). `withdrawn` counts successful
+  `DELETE …/playback/next` calls.
+- `alcantara_radio_handoffs_total{path}` counts each song-to-song handoff at an
+  accepted end: `preloaded` (the announced song was promoted, no command sent),
+  `command` (today's song command) and `race_replaced` (an accepted
+  announcement was no longer the successor, so the selected song was commanded
+  and the announced one preempted).
+- `alcantara_radio_announcement_skipped_total{reason}` counts, once per song,
+  why a started song was left without an announced successor:
+  - `bumper_slot`: a slot while Palazzo does not list `next.bumper`;
+  - `bumper_unavailable`: a slot whose spot was not found or has no audio
+    (counted as `bumper_slot` before this reason existed);
+  - `intro`;
+  - `clocked_log`;
+  - `no_successor`: the sequence has no successor, the queue head does not
+    resolve, or nothing resolves at the expected end; the engine log line
+    `Next song not announced on <program>: <reason> (<detail>)` says which;
+  - `queue_head_active`: the queue head is already on air;
+  - `not_autoplay`;
+  - `unsupported`: a 404 Palazzo;
+  - `superseded`: the song changed while the successor was worked out;
+  - `refused`: Palazzo did not accept the announcement.
+
+  A handoff counted `command` with no skip for its song had its announcement
+  refused or never reached Palazzo (for example across a Palazzo restart).
+- `alcantara_radio_bumpers_total{path,result}` counts bumper spots.
+  - `path`: `announced` with the next song (gaulatti/palazzo#50), or `command`
+    (after the end, then the song by command).
+  - `result`: `sent` when the engine used the slot (for a command spot, once
+    Palazzo took it), `played` on Palazzo's `instant.started` for that spot,
+    and `failed` for a command spot Palazzo did not take. `failed` exists only
+    for `path="command"`: an announced spot travels with its announcement,
+    whose refusal is counted as a `refused` skip.
+    `retried` exists only for `path="command"` too: Palazzo refused the spot
+    as not ready yet (the answer a freshly restarted Palazzo gives until its
+    lifecycle is ready), so the engine waited 2 s and sent it once more with
+    the same playback id. The retry happens at most once per spot, and only
+    for that refusal; any other failure, including a timeout whose outcome is
+    unknown, is not retried, so a spot is never played twice. A retried spot
+    that Palazzo then takes is counted `sent` (and `played`) as usual; one
+    refused again is counted `failed` and its slot is consumed. The song is
+    delayed by at most those 2 s. If Palazzo freezes or the program resets
+    during the wait, nothing more is sent and the slot is kept for later.
+- The machine requests `next-announce` and `next-withdraw` appear in
+  `alcantara_palazzo_machine_requests_total` and
+  `alcantara_palazzo_machine_retries_total`.
+
+Every series is exported at 0 from start-up, and no label carries a song, URL,
+program or request ID.

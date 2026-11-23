@@ -46,7 +46,10 @@ metric totals.
 
 ## Rollback
 
-The deployment scripts keep the previous container until the replacement
+The Cumulus deployment first requires a read-only candidate of the new image
+to answer ([deploy-candidate.md](./deploy-candidate.md)); a failed candidate
+stops the deployment before the running backend is touched. The deployment
+scripts keep the previous container until the replacement
 passes its startup check. A failed replacement automatically removes the new
 container, renames the previous container back to `alcantara-backend`, starts
 it, and checks recovery where the host path supports that check. Because the

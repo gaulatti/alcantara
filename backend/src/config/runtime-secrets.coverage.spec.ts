@@ -4,6 +4,10 @@ import {
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import {
+  DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+  getApprovedTemplateOrigins,
+} from '../program/program-template.service';
+import {
   loadRuntimeSecrets,
   normalizePalazzoBaseUrl,
   normalizePrivateServiceUrl,
@@ -261,6 +265,163 @@ describe('runtime-secrets coverage', () => {
           send: jest.fn().mockResolvedValue({}),
         }),
       ).rejects.toThrow('runtime configuration is malformed');
+
+      const envWithOrigins: Record<string, string> = {
+        NODE_ENV: 'production',
+        ALCANTARA_CONFIG_SECRET_ID: 'id',
+        AWS_REGION: 'us-east-1',
+      };
+      await loadRuntimeSecrets(envWithOrigins, {
+        send: jest.fn().mockResolvedValue({
+          SecretString: JSON.stringify({
+            palazzoAllowedUrls: 'http://palazzo:3100',
+            alanaControlToken: TOKEN,
+            alanaControlUrl: 'http://alana:8080',
+            externalSourceConfigCurrentVersion: '1',
+            externalSourceConfigKeys: KEYS,
+            programTemplateOrigins: 'https://template.harborlight.test',
+          }),
+        }),
+      });
+      expect(envWithOrigins.PROGRAM_TEMPLATE_ORIGINS).toBe(
+        'https://template.harborlight.test',
+      );
+    });
+  });
+
+  describe('POMPEII_ACCESS_CREDENTIAL: optional, and the secret is authoritative in production', () => {
+    const CREDENTIAL = `pmp_svc_${'c'.repeat(43)}`;
+    const load = async (
+      credential: unknown,
+      environment: Record<string, string>,
+    ) =>
+      loadRuntimeSecrets(
+        {
+          NODE_ENV: 'production',
+          ALCANTARA_CONFIG_SECRET_ID: 'id',
+          AWS_REGION: 'us-east-1',
+          ...environment,
+        },
+        {
+          send: jest.fn().mockResolvedValue({
+            SecretString: JSON.stringify({
+              ...JSON.parse(secretString()),
+              ...(credential === undefined
+                ? {}
+                : { POMPEII_ACCESS_CREDENTIAL: credential }),
+            }),
+          }),
+        },
+      );
+
+    it('loads the credential from the secret into the process environment', async () => {
+      const environment: Record<string, string> = {
+        NODE_ENV: 'production',
+        ALCANTARA_CONFIG_SECRET_ID: 'id',
+        AWS_REGION: 'us-east-1',
+      };
+      await loadRuntimeSecrets(environment, {
+        send: jest.fn().mockResolvedValue({
+          SecretString: JSON.stringify({
+            ...JSON.parse(secretString()),
+            POMPEII_ACCESS_CREDENTIAL: ` ${CREDENTIAL} `,
+          }),
+        }),
+      });
+      expect(environment.POMPEII_ACCESS_CREDENTIAL).toBe(CREDENTIAL);
+    });
+
+    it('does not fail startup when the key is absent or blank, and drops a leftover', async () => {
+      for (const credential of [undefined, '', '  ']) {
+        const environment: Record<string, string> = {
+          NODE_ENV: 'production',
+          ALCANTARA_CONFIG_SECRET_ID: 'id',
+          AWS_REGION: 'us-east-1',
+          POMPEII_ACCESS_CREDENTIAL: 'leftover',
+        };
+        await expect(
+          loadRuntimeSecrets(environment, {
+            send: jest.fn().mockResolvedValue({
+              SecretString: JSON.stringify({
+                ...JSON.parse(secretString()),
+                ...(credential === undefined
+                  ? {}
+                  : { POMPEII_ACCESS_CREDENTIAL: credential }),
+              }),
+            }),
+          }),
+        ).resolves.toBeUndefined();
+        expect(environment.POMPEII_ACCESS_CREDENTIAL).toBeUndefined();
+      }
+    });
+
+    it('fails startup on a malformed value without echoing it', async () => {
+      await expect(load(12345, {})).rejects.toThrow(
+        'Alcantara runtime configuration field POMPEII_ACCESS_CREDENTIAL is malformed',
+      );
+    });
+
+    it('keeps the local environment value outside production', async () => {
+      const environment: Record<string, string> = {
+        NODE_ENV: 'development',
+        POMPEII_ACCESS_CREDENTIAL: CREDENTIAL,
+      };
+      await loadRuntimeSecrets(environment);
+      expect(environment.POMPEII_ACCESS_CREDENTIAL).toBe(CREDENTIAL);
+    });
+  });
+
+  describe('template origins: the secret is authoritative in production', () => {
+    it('drops a leftover PROGRAM_TEMPLATE_ORIGINS when the production secret omits the key', async () => {
+      const environment: Record<string, string> = {
+        NODE_ENV: 'production',
+        ALCANTARA_CONFIG_SECRET_ID: 'id',
+        AWS_REGION: 'us-east-1',
+        PROGRAM_TEMPLATE_ORIGINS: 'https://leftover.harborlight.test',
+      };
+      await loadRuntimeSecrets(environment, {
+        send: jest.fn().mockResolvedValue({ SecretString: secretString() }),
+      });
+      expect(environment.PROGRAM_TEMPLATE_ORIGINS).toBeUndefined();
+      expect(getApprovedTemplateOrigins(environment)).toEqual(
+        new Set(DEFAULT_PRODUCTION_TEMPLATE_ORIGINS),
+      );
+    });
+
+    it('keeps the local environment value outside production', async () => {
+      const environment: Record<string, string> = {
+        NODE_ENV: 'development',
+        PROGRAM_TEMPLATE_ORIGINS: 'https://local.harborlight.test',
+      };
+      await loadRuntimeSecrets(environment);
+      expect(environment.PROGRAM_TEMPLATE_ORIGINS).toBe(
+        'https://local.harborlight.test',
+      );
+      expect(getApprovedTemplateOrigins(environment)).toEqual(
+        new Set([
+          ...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+          'https://local.harborlight.test',
+        ]),
+      );
+    });
+  });
+
+  describe('validateRuntimeConfiguration with template origins', () => {
+    it('validates PROGRAM_TEMPLATE_ORIGINS when present', () => {
+      expect(() =>
+        validateRuntimeConfiguration(
+          validEnvironment({
+            PROGRAM_TEMPLATE_ORIGINS: 'https://valid.test',
+          }),
+        ),
+      ).not.toThrow();
+      expect(() =>
+        validateRuntimeConfiguration(
+          validEnvironment({
+            PROGRAM_TEMPLATE_ORIGINS: 'http://insecure.test',
+          }),
+        ),
+      ).toThrow('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
     });
   });
 });

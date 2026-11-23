@@ -2,6 +2,17 @@ import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import type { PrismaService } from '../prisma.service';
 import type { ManagedMetricsService } from '../observability/managed-metrics.service';
 import type { SongPlaybackData } from './song-execution.engine';
+import {
+  scriptedTransport,
+  type ScriptedResponse,
+} from '../outbound/safe-fetch.testing';
+
+const PUBLIC = ['93.184.216.34'];
+const names = {
+  'c1.example.test': PUBLIC,
+  'a.test': PUBLIC,
+  'b.test': PUBLIC,
+};
 
 const basePlayback = (
   overrides: Partial<SongPlaybackData> = {},
@@ -51,7 +62,18 @@ function build(prismaOverrides: Record<string, unknown> = {}, metrics?: any) {
   jest.spyOn(service['logger'], 'log').mockImplementation();
   jest.spyOn(service['logger'], 'warn').mockImplementation();
   jest.spyOn(service['logger'], 'error').mockImplementation();
-  return { service, prisma };
+  const answer = (script: Record<string, ScriptedResponse>) => {
+    const transport = scriptedTransport(names, script);
+    service.outboundDeps = transport;
+    return transport;
+  };
+  // Every consumer in these tests answers 200 unless a test scripts it.
+  const transport = answer({
+    'c1.example.test/np': { status: 200 },
+    'a.test/': { status: 200 },
+    'b.test/': { status: 200 },
+  });
+  return { service, prisma, transport, answer };
 }
 
 describe('NowPlayingPublisherService coverage', () => {
@@ -81,6 +103,76 @@ describe('NowPlayingPublisherService coverage', () => {
   });
 
   describe('replaceConsumers', () => {
+    const save = async (
+      consumers: Array<{ url: string }>,
+      stored: string[] = [],
+    ) => {
+      const { service, prisma } = build();
+      prisma.programState.findUnique.mockResolvedValue({ id: 7 });
+      prisma.nowPlayingConsumer.findMany.mockResolvedValue(
+        stored.map((url) => ({ url })),
+      );
+      const outcome = await service.replaceConsumers('main', consumers).then(
+        () => 'saved',
+        (error: Error) => error.message,
+      );
+      return { outcome, prisma };
+    };
+
+    it('refuses a new consumer whose URL is plain http', async () => {
+      const { outcome, prisma } = await save([
+        { url: 'https://ok.example.test/np' },
+        { url: 'http://new.example.test/np' },
+      ]);
+      expect(outcome).toBe('Consumer 2: the URL must use https.');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses an update that changes a stored http URL to another http URL', async () => {
+      const { outcome } = await save(
+        [{ url: 'http://legacy.example.test/other' }],
+        ['http://legacy.example.test/np'],
+      );
+      expect(outcome).toBe('Consumer 1: the URL must use https.');
+    });
+
+    it('refuses any other scheme', async () => {
+      const { outcome } = await save([{ url: 'ftp://files.example.test/np' }]);
+      expect(outcome).toBe('Consumer 1: the URL must use https.');
+    });
+
+    it('refuses a URL that is not absolute', async () => {
+      const { outcome } = await save([{ url: 'now-playing/update' }]);
+      expect(outcome).toBe('Consumer 1: the URL is not a valid absolute URL.');
+    });
+
+    it('refuses a URL that carries a user name or password', async () => {
+      const { outcome } = await save([
+        { url: 'https://user:pass@hook.example.test/np' },
+      ]);
+      expect(outcome).toBe(
+        'Consumer 1: the URL must not include a user name or password.',
+      );
+      expect(
+        (await save([{ url: 'https://:pass@hook.example.test/np' }])).outcome,
+      ).toBe('Consumer 1: the URL must not include a user name or password.');
+    });
+
+    it('keeps a stored http consumer that is submitted again unchanged', async () => {
+      const { outcome, prisma } = await save(
+        [{ url: 'http://legacy.example.test/np' }],
+        ['http://legacy.example.test/np'],
+      );
+      expect(outcome).toBe('saved');
+      expect(prisma.nowPlayingConsumer.findMany).toHaveBeenCalledWith({
+        where: { programStateId: 7 },
+        select: { url: true },
+      });
+      expect(prisma.$transaction.mock.calls[0][0][1].arg.data.url).toBe(
+        'http://legacy.example.test/np',
+      );
+    });
+
     it('throws when the program state does not exist', async () => {
       const { service, prisma } = build();
       prisma.programState.findUnique.mockResolvedValue(null);
@@ -146,10 +238,9 @@ describe('NowPlayingPublisherService coverage', () => {
 
   describe('publishPlayback', () => {
     it('skips publishing and warns when there are no enabled consumers', async () => {
-      const { service, prisma } = build();
-      const fetchSpy = jest.spyOn(global, 'fetch');
+      const { service, prisma, transport } = build();
       await service.publishPlayback('main', basePlayback());
-      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(transport.sent).toEqual([]);
       expect(service['logger'].warn).toHaveBeenCalledWith(
         'Now-playing publish skipped for main: no enabled consumers',
       );
@@ -160,31 +251,32 @@ describe('NowPlayingPublisherService coverage', () => {
     });
 
     it('sends only the populated fields when playback is empty', async () => {
-      const { service, prisma } = build();
+      const { service, prisma, transport } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([
         consumerRow({ method: 'PATCH', headers: { Authorization: 'tok' } }),
       ]);
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishPlayback('main', basePlayback());
-      const [url, init] = fetchSpy.mock.calls[0];
-      expect(url).toBe('https://c1.example.test/np');
-      expect(init?.method).toBe('PATCH');
-      expect(init?.headers).toEqual({
+      const [sent] = transport.sent;
+      expect(sent).toMatchObject({
+        scheme: 'https:',
+        hostname: 'c1.example.test',
+        path: '/np',
+        method: 'PATCH',
+        connectedTo: '93.184.216.34',
+      });
+      expect(sent.headers).toEqual({
         'Content-Type': 'application/json',
         Authorization: 'tok',
+        host: 'c1.example.test',
+        'content-length': 2,
       });
-      expect(JSON.parse(String(init?.body))).toEqual({});
+      expect(JSON.parse(sent.body)).toEqual({});
       expect(prisma.song.findFirst).not.toHaveBeenCalled();
     });
 
     it('sends all fields and rounds the duration to seconds', async () => {
-      const { service, prisma } = build();
+      const { service, prisma, transport } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishPlayback(
         'main',
         basePlayback({
@@ -195,7 +287,7 @@ describe('NowPlayingPublisherService coverage', () => {
           durationMs: 1500,
         }),
       );
-      expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toEqual({
+      expect(JSON.parse(transport.sent[0].body)).toEqual({
         title: 'T',
         artist: 'A',
         artworkUrl: 'https://cover.test/c.jpg',
@@ -205,12 +297,9 @@ describe('NowPlayingPublisherService coverage', () => {
     });
 
     it('omits artwork when the catalog song has no cover', async () => {
-      const { service, prisma } = build();
+      const { service, prisma, transport } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
       prisma.song.findFirst.mockResolvedValue({ coverUrl: '  ' });
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishPlayback(
         'main',
         basePlayback({ audioUrl: ' https://a.test/s.mp3 ' }),
@@ -219,34 +308,28 @@ describe('NowPlayingPublisherService coverage', () => {
         where: { audioUrl: 'https://a.test/s.mp3' },
         select: { coverUrl: true },
       });
-      expect(
-        JSON.parse(String(fetchSpy.mock.calls[0][1]?.body)),
-      ).not.toHaveProperty('artworkUrl');
+      expect(JSON.parse(transport.sent[0].body)).not.toHaveProperty(
+        'artworkUrl',
+      );
     });
 
     it('omits artwork when the catalog has no matching song', async () => {
-      const { service, prisma } = build();
+      const { service, prisma, transport } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
       prisma.song.findFirst.mockResolvedValue(null);
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishPlayback(
         'main',
         basePlayback({ audioUrl: 'https://a.test/s.mp3' }),
       );
-      expect(
-        JSON.parse(String(fetchSpy.mock.calls[0][1]?.body)),
-      ).not.toHaveProperty('artworkUrl');
+      expect(JSON.parse(transport.sent[0].body)).not.toHaveProperty(
+        'artworkUrl',
+      );
     });
 
     it('warns and continues when the artwork lookup fails (with title)', async () => {
       const { service, prisma } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
       prisma.song.findFirst.mockRejectedValue(new Error('db down'));
-      jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishPlayback(
         'main',
         basePlayback({ audioUrl: 'https://a.test/s.mp3', title: 'Named' }),
@@ -260,9 +343,6 @@ describe('NowPlayingPublisherService coverage', () => {
       const { service, prisma } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
       prisma.song.findFirst.mockRejectedValue(new Error('db down'));
-      jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishPlayback(
         'main',
         basePlayback({ audioUrl: 'https://a.test/s.mp3' }),
@@ -275,84 +355,89 @@ describe('NowPlayingPublisherService coverage', () => {
 
   describe('publishStopped', () => {
     it('skips when there are no enabled consumers', async () => {
-      const { service } = build();
-      const fetchSpy = jest.spyOn(global, 'fetch');
+      const { service, transport } = build();
       await service.publishStopped('main');
-      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(transport.sent).toEqual([]);
       expect(service['logger'].warn).toHaveBeenCalledWith(
         'Now-playing publish skipped for main: no enabled consumers',
       );
     });
 
     it('posts the stopped payload to every consumer', async () => {
-      const { service, prisma } = build();
+      const { service, prisma, transport } = build();
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([
         consumerRow({ name: 'a', url: 'https://a.test', headers: [] }),
         consumerRow({ name: 'b', url: 'https://b.test', headers: null }),
       ]);
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(new Response(null, { status: 200 }));
       await service.publishStopped('main');
-      expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual([
-        'https://a.test',
-        'https://b.test',
+      expect(transport.sent.map((sent) => sent.hostname).sort()).toEqual([
+        'a.test',
+        'b.test',
       ]);
-      for (const call of fetchSpy.mock.calls) {
-        expect(JSON.parse(String(call[1]?.body))).toEqual({
-          status: 'stopped',
-        });
-        expect(call[1]?.headers).toEqual({
-          'Content-Type': 'application/json',
-        });
+      for (const sent of transport.sent) {
+        expect(sent.method).toBe('POST');
+        expect(JSON.parse(sent.body)).toEqual({ status: 'stopped' });
+        expect(sent.headers['Content-Type']).toBe('application/json');
       }
     });
   });
 
   describe('delivery results and metrics', () => {
     const run = async (
-      fetchImpl: () => Promise<Response>,
-      metrics?: { recordDependency: jest.Mock },
+      response: ScriptedResponse | undefined,
+      metrics?: { recordDependency: jest.Mock; recordOutboundFetch: jest.Mock },
     ) => {
-      const { service, prisma } = build({}, metrics);
+      const { service, prisma, answer } = build({}, metrics);
       prisma.nowPlayingConsumer.findMany.mockResolvedValue([consumerRow()]);
-      jest.spyOn(global, 'fetch').mockImplementation(fetchImpl);
+      answer(response ? { 'c1.example.test/np': response } : {});
       await service.publishStopped('main');
       return service;
     };
+    const metricsMock = () => ({
+      recordDependency: jest.fn(),
+      recordOutboundFetch: jest.fn(),
+    });
 
     it('records success metrics when metrics are provided', async () => {
-      const metrics = { recordDependency: jest.fn() };
-      await run(async () => new Response(null, { status: 200 }), metrics);
+      const metrics = metricsMock();
+      const service = await run({ status: 200 }, metrics);
       expect(metrics.recordDependency).toHaveBeenCalledWith(
         'now-playing',
         'publish',
         'success',
         expect.any(Number),
       );
+      expect(metrics.recordOutboundFetch).toHaveBeenCalledWith(
+        'now_playing',
+        'ok',
+      );
+      expect(service['logger'].log).toHaveBeenCalledWith(
+        'Now-playing publish succeeded for main/c1: 200',
+      );
     });
 
-    it('records unavailable and logs when fetch throws', async () => {
-      const metrics = { recordDependency: jest.fn() };
-      const service = await run(async () => {
-        throw new Error('ECONNRESET');
-      }, metrics);
+    it('records unavailable and logs the reason when the consumer cannot be reached', async () => {
+      const metrics = metricsMock();
+      const service = await run(undefined, metrics);
       expect(metrics.recordDependency).toHaveBeenCalledWith(
         'now-playing',
         'publish',
         'unavailable',
         expect.any(Number),
       );
+      expect(metrics.recordOutboundFetch).toHaveBeenCalledWith(
+        'now_playing',
+        'network',
+      );
       expect(service['logger'].error).toHaveBeenCalledWith(
-        'Now-playing publish failed for main/c1: Error: ECONNRESET',
+        'Now-playing publish failed for main/c1: network',
       );
     });
 
-    it('records http-error and logs the response body on non-ok status', async () => {
-      const metrics = { recordDependency: jest.fn() };
+    it('records http-error and logs only the status on a non-2xx answer', async () => {
+      const metrics = metricsMock();
       const service = await run(
-        async () =>
-          new Response('nope', { status: 500, statusText: 'Server Error' }),
+        { status: 500, body: Buffer.from('upstream detail') },
         metrics,
       );
       expect(metrics.recordDependency).toHaveBeenCalledWith(
@@ -361,21 +446,19 @@ describe('NowPlayingPublisherService coverage', () => {
         'http-error',
         expect.any(Number),
       );
+      expect(metrics.recordOutboundFetch).toHaveBeenCalledWith(
+        'now_playing',
+        'http_status',
+      );
       expect(service['logger'].error).toHaveBeenCalledWith(
-        'Now-playing publish failed for main/c1: 500 Server Error nope',
+        'Now-playing publish failed for main/c1: http_status 500',
       );
     });
 
-    it('logs a placeholder when the error body cannot be read', async () => {
-      const response = {
-        ok: false,
-        status: 502,
-        statusText: 'Bad Gateway',
-        text: jest.fn().mockRejectedValue(new Error('boom')),
-      } as unknown as Response;
-      const service = await run(async () => response);
-      expect(service['logger'].error).toHaveBeenCalledWith(
-        'Now-playing publish failed for main/c1: 502 Bad Gateway <failed to read response body>',
+    it('delivers without metrics configured', async () => {
+      const service = await run({ status: 204 });
+      expect(service['logger'].log).toHaveBeenCalledWith(
+        'Now-playing publish succeeded for main/c1: 204',
       );
     });
   });

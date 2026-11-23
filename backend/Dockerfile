@@ -1,10 +1,10 @@
-FROM node:22-alpine AS builder
+FROM node:22.23.5-alpine AS builder
 
 ARG ALCANTARA_BUILD_VERSION=dev
 
 WORKDIR /app
 
-RUN apk add --no-cache postgresql17-client \
+RUN apk add --no-cache postgresql17-client ffmpeg \
     && pg_dump --version | grep -Eq ' 17\.'
 
 # Install pnpm (v9 avoids interactive approve-builds flow in CI)
@@ -25,7 +25,7 @@ RUN pnpm install --no-frozen-lockfile
 COPY . .
 RUN pnpm run prisma:generate
 RUN pnpm run build
-RUN test -f /app/dist/src/proto/authorization.proto
+RUN test -f /app/dist/src/proto/authorization.proto && test -f /app/dist/src/proto/application_access.proto
 
 ENV ALCANTARA_BUILD_VERSION=${ALCANTARA_BUILD_VERSION}
 

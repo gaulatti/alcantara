@@ -138,11 +138,12 @@ it("routes faders, exact dB inputs, mute, solo and A/B takes to each channel ind
   const data = props();
   render(<TvAudioWorkspace {...data} />);
   for (const channel of data.mixer.channels) {
-    fireEvent.change(
-      screen.getByRole("slider", { name: `${channel.label} fader` }),
-      { target: { value: ".5" } },
-    );
-    expect(channel.onVolumeChange).toHaveBeenLastCalledWith(0.5);
+    // The console fader: End is 0 dB (the top of the taper), Home is silence (position 0).
+    const fader = screen.getByRole("slider", { name: `${channel.label} fader` });
+    fireEvent.keyDown(fader, { key: "End" });
+    expect(channel.onVolumeChange).toHaveBeenLastCalledWith(1);
+    fireEvent.keyDown(fader, { key: "Home" });
+    expect(channel.onVolumeChange).toHaveBeenLastCalledWith(0);
     fireEvent.blur(
       screen.getByRole("textbox", { name: `${channel.label} level in dB` }),
       { target: { value: "-15" } },
@@ -205,7 +206,7 @@ it("shows loading and failed persistence explicitly and reflects acknowledged mu
   data.mixer.channels[0].solo = true;
   const { rerender } = render(<TvAudioWorkspace {...data} />);
   expect(screen.getByRole("status")).toHaveTextContent("Loading mixer");
-  expect(screen.getByRole("slider", { name: "Music fader" })).toBeDisabled();
+  expect(screen.getByRole("slider", { name: "Music fader" })).toHaveAttribute("aria-disabled", "true");
   expect(screen.getByRole("button", { name: "Mute Music" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -223,4 +224,22 @@ it("shows loading and failed persistence explicitly and reflects acknowledged mu
     ),
   ).toHaveTextContent("not applied");
   expect(screen.queryByText("Mix settings saved")).not.toBeInTheDocument();
+});
+
+it("shows a mix being saved and a preset take in progress", () => {
+  const data = props();
+  data.mixer.saving = true;
+  data.mixer.channels[0].taking = true;
+  render(<TvAudioWorkspace {...data} />);
+  expect(
+    within(screen.getByRole("region", { name: "Audio mixer" })).getByRole(
+      "status",
+    ),
+  ).toHaveTextContent("Saving mix…");
+  const takeA = screen.getByRole("button", { name: "Take Music preset A" });
+  expect(takeA).toHaveTextContent("…");
+  expect(takeA).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Take Stream preset A" })).toHaveTextContent(
+    "TAKE A",
+  );
 });

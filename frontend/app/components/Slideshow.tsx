@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+/** Which image is showing, and which one is still fading out underneath it. */
+interface SlideshowFrame {
+  active: number;
+  /** Counts image changes; it also picks the Ken Burns animation name, so a returning image restarts its motion. */
+  serial: number;
+  leaving: number | null;
+  leavingSerial: number;
+}
+
+function showImage(frame: SlideshowFrame, next: number): SlideshowFrame {
+  if (next === frame.active) return frame;
+  return { active: next, serial: frame.serial + 1, leaving: frame.active, leavingSerial: frame.serial };
+}
+
 interface SlideshowProps {
   images?: unknown;
   intervalMs?: unknown;
@@ -126,7 +140,10 @@ export function Slideshow({
   const shouldShuffle = toBoolean(shuffle, false);
   const shouldKenBurns = toBoolean(kenBurns, true);
   const imageFit = fitMode === 'contain' ? 'contain' : 'cover';
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [frame, setFrame] = useState<SlideshowFrame>({ active: 0, serial: 0, leaving: null, leavingSerial: 0 });
+  const activeIndex = frame.active;
+  // Until the first image is on screen there is nothing to fade from, so it appears at once instead of fading up from black.
+  const [started, setStarted] = useState(false);
   const [loadedUrls, setLoadedUrls] = useState<Set<string>>(() => new Set());
   const imageUrlsKey = imageUrls.join('\u0000');
   const loadedIndices = useMemo(
@@ -158,17 +175,18 @@ export function Slideshow({
 
   useEffect(() => {
     if (!imageUrls.length) {
-      setActiveIndex(0);
+      setFrame({ active: 0, serial: 0, leaving: null, leavingSerial: 0 });
+      setStarted(false);
       setLoadedUrls(new Set());
       return;
     }
-    setActiveIndex((current) => Math.min(current, imageUrls.length - 1));
+    setFrame((current) => showImage(current, Math.min(current.active, imageUrls.length - 1)));
     setLoadedUrls((current) => new Set([...current].filter((url) => imageUrls.includes(url))));
   }, [imageUrlsKey]);
 
   useEffect(() => {
     if (loadedIndices.length > 0 && !loadedIndices.includes(activeIndex)) {
-      setActiveIndex(loadedIndices[0]);
+      setFrame((current) => showImage(current, loadedIndices[0]));
     }
   }, [activeIndex, loadedIndices]);
 
@@ -178,13 +196,37 @@ export function Slideshow({
     }
 
     const timer = window.setInterval(() => {
-      setActiveIndex((current) => pickNextLoadedIndex(current, loadedIndices, shouldShuffle));
+      setFrame((current) => showImage(current, pickNextLoadedIndex(current.active, loadedIndices, shouldShuffle)));
     }, displayMs);
 
     return () => {
       window.clearInterval(timer);
     };
   }, [imageUrlsKey, loadedIndices, displayMs, shouldShuffle]);
+
+  const activeUrl = imageUrls[activeIndex];
+  const activeIsShowing = activeUrl !== undefined && loadedUrls.has(activeUrl);
+  useEffect(() => {
+    if (!activeIsShowing || started) return;
+    // Two frames, so the first image has painted before fades are switched on.
+    let second = 0;
+    const first = window.requestAnimationFrame(() => {
+      second = window.requestAnimationFrame(() => setStarted(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(first);
+      window.cancelAnimationFrame(second);
+    };
+  }, [activeIsShowing, started]);
+
+  // The outgoing image keeps its motion while it fades out; once it is invisible the motion is dropped.
+  useEffect(() => {
+    if (frame.leaving === null) return;
+    const timer = window.setTimeout(() => {
+      setFrame((current) => (current.serial === frame.serial ? { ...current, leaving: null } : current));
+    }, fadeMs);
+    return () => window.clearTimeout(timer);
+  }, [frame.serial, frame.leaving, fadeMs]);
 
   if (!imageUrls.length) {
     return null;
@@ -200,11 +242,18 @@ export function Slideshow({
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: '#000'
+        backgroundColor: '#000',
+        // Keep the images' own stacking order inside the slideshow. Without this their z-index competed with
+        // the components layered over the slideshow and hid any that set none, such as the countdown clock.
+        isolation: 'isolate'
       }}
     >
       <style>{`
-        @keyframes slideshowKenBurns {
+        @keyframes slideshowKenBurns0 {
+          0% { transform: scale(1) translate3d(0, 0, 0); }
+          100% { transform: scale(1.08) translate3d(-1.25%, -1.25%, 0); }
+        }
+        @keyframes slideshowKenBurns1 {
           0% { transform: scale(1) translate3d(0, 0, 0); }
           100% { transform: scale(1.08) translate3d(-1.25%, -1.25%, 0); }
         }
@@ -212,6 +261,13 @@ export function Slideshow({
 
       {imageUrls.map((url, index) => {
         const isActive = index === activeIndex && loadedUrls.has(url);
+        // An image that stops being active keeps the same animation until its fade-out ends. Dropping it at the
+        // switch snapped the image back to its unscaled size while it was still visible.
+        const motionSerial = isActive ? frame.serial : index === frame.leaving ? frame.leavingSerial : null;
+        // When images fill the frame, the outgoing one stays fully opaque underneath while the next fades in over it.
+        // Fading both at once let the black background show through halfway, a visible dip between photos.
+        // Images that do not fill the frame still cross-fade, or the old one would show around the new one.
+        const holdsUnderneath = imageFit === 'cover' && index === frame.leaving && !isActive;
         return (
           <img
             key={url}
@@ -227,11 +283,11 @@ export function Slideshow({
               width: '100%',
               height: '100%',
               objectFit: imageFit,
-              opacity: isActive ? 1 : 0,
+              opacity: isActive || holdsUnderneath ? 1 : 0,
               zIndex: isActive ? 2 : 1,
-              transition: `opacity ${fadeMs}ms ease-in-out`,
+              transition: started ? `opacity ${fadeMs}ms ease-in-out` : 'none',
               willChange: 'opacity, transform',
-              animation: isActive && shouldKenBurns ? `slideshowKenBurns ${motionDurationMs}ms ease-out both` : undefined
+              animation: motionSerial !== null && shouldKenBurns ? `slideshowKenBurns${motionSerial % 2} ${motionDurationMs}ms ease-out both` : undefined
             }}
           />
         );

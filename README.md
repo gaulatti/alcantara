@@ -74,11 +74,18 @@ joining. A documented acoustic-risk override is available when headphones are
 impossible. Each invitation permits one active browser session. A signed
 session lease refreshed every 20 seconds preserves the stable slot for a
 60-second network-reconnect window; a second browser fails closed. Revocation
-disconnects the guest and prevents future credentials.
+disconnects the guest and prevents future credentials. A join refused as
+revoked, expired or invalid (401 or 403) ends the guest's session; any other
+refusal (the invitation in use in another window, the studio not ready, a
+network or room-connection failure) keeps the preflight and lets the guest
+press Join again. A refused camera or microphone permission keeps Join locked.
 
 Operator mute is immediate. Camera/microphone enable is delivered as a request
 that the guest accepts or rejects. Standby/live/wrap cues and private messages
-persist requested, delivered, acknowledged/read, rejected, or failed state.
+persist requested, delivered, acknowledged/read, rejected, or failed state. A
+message is marked read as soon as the guest's page shows it and stays on screen
+until the guest presses Acknowledge, so operators see read and then
+acknowledged.
 Private talkback publishes only to the target guest's N-1 route and never to the
 Program feed. Removing or disconnecting a guest does not mutate Preview or
 Program.
@@ -94,7 +101,13 @@ Alana remains the owner of captured Program/Preview output publication. Start
 its Program renderer with `?renderer=1` so guest microphones are excluded from
 the captured base bus, and publish the output to the matching
 `alcantara-<programId>` LiveKit room as `program-feed-<programId>` (and optional
-`preview-feed-<programId>`). Run one isolated
+`preview-feed-<programId>`). A desktop console that renders the program itself
+publishes it as `desktop-program-feed-<programId>`, with a token from
+`POST /webrtc/desktop-program-feed-token` (the program's picture as a screen-share
+track and its sound as a microphone-source track named `program-audio`, the only app-audio
+track LiveKit's Swift SDK publishes); while that participant is in the
+room, guests' program video and the router's program bus take it instead of
+`program-feed-<programId>`, and fall back to Alana's feed when it leaves. Run one isolated
 `/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>` renderer alongside it.
 The fragment is immediately moved to session storage and removed from browser
 history; it is never sent in a URL request.
@@ -130,18 +143,39 @@ exercise Preview and TAKE deliberately. Restart one guest and verify its slot
 is held for 60 seconds. The machine-only return router requires the local
 `WEBRTC_RENDERER_KEY` from Compose.
 
-Production owns LiveKit, Redis, TLS, TURN/TLS, firewall rules, health checks,
-and secrets through Alcantara deployment infrastructure. Start from
-`infra/livekit.production.example.yaml`, generate real API/session/renderer
-secrets in the application-scoped secret. Route public LiveKit HTTPS/WSS through
-the existing port-443 edge, and expose WebRTC TCP 7881, TURN/TLS 5349, TURN UDP
-3478, and the configured UDP media/relay ranges. Validate TURN
-from a restrictive external network before scheduling remote guests. Never use
-the committed local credentials outside Compose. The Calls console reports the
-feature as unavailable until `LIVEKIT_CONFIG_B64`, `LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET`, `WEBRTC_RENDERER_KEY`, and the
-public `LIVEKIT_WS_URL` deployment variable are configured; their absence does
-not block unrelated Alcantara deployments.
+In production, LiveKit runs on Helix, the on-premises host, not on the backend's
+service host (#354). `infra/helix/livekit-up.sh` starts it there, and
+[`infra/README.md`](infra/README.md) has the ports, the nginx server block and
+the one-time host setup. Validate TURN from a restrictive external network
+before scheduling remote guests. Never use the committed local credentials
+outside Compose.
+
+In production, LiveKit is configured only by the runtime secret
+(`broadcast/production/config`, #354). The secret holds four fields that must
+all be present or all absent:
+- `livekitWsUrl`: the public `wss://` origin;
+- `livekitApiKey`;
+- `livekitApiSecret`: at least 32 characters;
+- `webrtcSessionSecret`: at least 32 characters.
+
+`webrtcRendererKey` is optional.
+
+The backend copies them into `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET` and `WEBRTC_RENDERER_KEY` at
+start-up. When a field is absent from the secret, a value left in the container
+is removed.
+
+A partial or invalid group never stops the backend, which also controls the
+radio. It starts with WebRTC off and logs the field names, never the values.
+The deploy's contract check and the LiveKit renderer do refuse such a group, so
+a deploy fails before the running container is replaced.
+
+`infra/helix/livekit-up.sh` renders the LiveKit server's `livekit.yaml` from the
+same fields (`backend/scripts/print-livekit-config.mjs`) and starts `redis` and
+`livekit` on Helix. The backend calls LiveKit's API at the `https://` form of
+`livekitWsUrl`, so both go through the same public name.
+Without the group, the Calls console reports the feature as unavailable, and
+unrelated deployments are unaffected.
 
 ### Radio automation
 
@@ -263,6 +297,35 @@ configurable via `.env`:
   it is not a deployment or a substitute for production Alana/Croccante proof.
 
 Source directories are mounted so changes are reflected immediately.
+
+The local stack never reaches real AWS or another real outside service
+(gaulatti/alcantara#206):
+
+- **Media store.** Uploads, song and artwork playback, radio recovery audio and
+  filler digests use a localstack S3 (`localstack/localstack:4.0.3`, port
+  `LOCALSTACK_PORT`, default 4566) with the bucket `alcantara-local-only`,
+  created by `infra/localstack-init/01-bucket.sh`. Objects are served at
+  `http://localstack.localhost:4566/alcantara-local-only/…`, which the browser
+  and the backend both resolve to the host's published port.
+- **Credentials.** Compose overrides every AWS name `backend/.env` could hold
+  with local placeholders or empty values, does not mount `~/.aws`, and empties
+  `ARAUCO_SECRET_ID`, so no Secrets Manager secret is read. The frontend gets
+  empty `VITE_COGNITO_*` and `VITE_FQDN`; TEST AUTH needs none of them.
+- **Start-up refusal.** Outside production the backend refuses to start when
+  `MEDIA_S3_BUCKET` is set without `MEDIA_S3_ENDPOINT`, or when
+  `MEDIA_S3_ENDPOINT` or `LOCAL_MEDIA_PUBLIC_BASE_URL` points anywhere but a
+  local host (loopback, `*.localhost` or a Compose service name). Production
+  refuses to start with either of those two variables set. Each error names the
+  variable, never its value.
+- **Now-playing and charts.** Outside production no now-playing consumer is
+  contacted (Radio settings says so, and the backend logs how many were
+  skipped), and the two third-party chart feeds are not polled.
+- **Check.** `scripts/check-compose-local.sh` confirms from
+  `docker compose config` that every one of these names resolves to its local
+  value, without printing any value.
+
+This README is the only description of the local media store; the repository
+wiki has no page for it yet.
 
 Local browser authentication is visibly marked `TEST AUTH`. It uses short-lived
 tokens with a local-only issuer and these deterministic identities:
@@ -407,8 +470,31 @@ Pompeii mapping, and audit attribution is never rewritten. See
 [`docs/canonical-principals.md`](docs/canonical-principals.md) for the inventory,
 the dry-run report, and the rollback and reconciliation procedure.
 
+The API accepts only interactive session tokens. The authorization guard
+answers `401` with `{"error":"UNAUTHENTICATED","reason":"DENY_UNSUPPORTED_CREDENTIAL"}`
+for a bearer whose credential starts with `pmp_pat_` (bare or after a `Bearer`
+scheme in any letter case), before any authorization call, and counts it in
+`alcantara_auth_refusals_total{reason="unsupported_credential"}`. Every other
+bearer is handled exactly as before.
+
+Authorization decisions use one long-lived gRPC channel to Pompeii. A Pompeii
+deploy replaces its container, and a connection through the old path can stop
+carrying bytes without an error, so calls on it only time out. When an
+authorization call ends in `DEADLINE_EXCEEDED` or `UNAVAILABLE`, the backend
+replaces the channel (each channel has its own subchannel pool, so the
+replacement dials a new connection) and the next call reaches the live Pompeii.
+The failed call still answers `503` with
+`{"error":"AUTHORIZATION_SERVICE_UNAVAILABLE"}`; nothing is allowed on a
+failure. Replacements happen at most once every 5 seconds, so a Pompeii slower
+than the deadline is not redialled on every request. Each replacement logs
+`Pompeii channel replaced after <reason>` and counts
+`alcantara_pompeii_channel_resets_total{reason="deadline_exceeded"|"unavailable"}`
+(gaulatti/alcantara#225).
+
 ## Architecture
 
+- [Access](docs/access.md) is the page where a signed-in person manages their tokens and, with `alcantara:access:manage`, the token switch and grants; [Access: backend, configuration and metrics](docs/access-api.md) documents its `/access` routes, the optional `POMPEII_ACCESS_CREDENTIAL` secret and `alcantara_access_requests_total`.
+- [MCP endpoint](docs/mcp.md) documents `/mcp`, its OAuth discovery documents, who can reach it, and the registered tools.
 - [External source registry](docs/external-source-registry.md) documents stable source identity, encrypted transport configuration, SSRF controls, one-time credentials, quotas, lifecycle, and metrics.
 
 Production places the backend on the external `broadcast-control` Docker

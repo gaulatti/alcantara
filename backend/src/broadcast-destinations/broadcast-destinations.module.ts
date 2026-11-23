@@ -3,9 +3,19 @@ import { PrismaService } from '../prisma.service';
 import { AlanaClient } from './alana.client';
 import { BroadcastDestinationsController } from './broadcast-destinations.controller';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
+import { BroadcastIngestService } from './broadcast-ingest.service';
+import { FillerBindingService } from '../filler/filler-binding.service';
+import { BroadcastDestinationsMcpTools } from '../mcp/capabilities/destinations';
 
 @Module({
   controllers: [BroadcastDestinationsController],
-  providers: [BroadcastDestinationsService, AlanaClient, PrismaService],
+  providers: [
+    BroadcastDestinationsMcpTools,
+    BroadcastDestinationsService,
+    BroadcastIngestService,
+    AlanaClient,
+    FillerBindingService,
+    PrismaService,
+  ],
 })
 export class BroadcastDestinationsModule {}

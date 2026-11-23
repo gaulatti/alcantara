@@ -105,11 +105,11 @@ export class ScenesService {
   }
 
   async drawModoItalianoBracket(id: number, data: { componentType?: string; seed?: number }) {
-    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
     const scene = await this.findOne(id);
     if (!scene) {
       throw new BadRequestException('Scene not found');
     }
+    const componentType = this.resolveBracketComponentType(data.componentType, scene);
 
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
@@ -148,6 +148,14 @@ export class ScenesService {
         durationSeconds,
         songIds: shuffledSongIds,
       });
+      this.programService.broadcastUpdate(programId, {
+        type: 'audience_interaction_draw_start',
+        sceneId: id,
+        componentType,
+        drawId: now,
+        durationSeconds,
+        songIds: shuffledSongIds,
+      });
     }
 
     const timer = setTimeout(() => {
@@ -158,12 +166,12 @@ export class ScenesService {
   }
 
   async voteModoItalianoBracket(id: number, data: { componentType?: string; matchId?: number; voterId?: string; songId?: number | null }) {
-    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
     const matchId = Number(data.matchId);
     const voterId = typeof data.voterId === 'string' ? data.voterId.trim() : '';
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15 || !voterId) throw new BadRequestException('Invalid vote');
     const scene = await this.findOne(id);
     if (!scene) throw new BadRequestException('Scene not found');
+    const componentType = this.resolveBracketComponentType(data.componentType, scene);
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
     const voters = Array.isArray(bracket.voters) ? bracket.voters.filter((voter): voter is { id: string; name: string } => Boolean(voter && typeof voter === 'object' && typeof (voter as any).id === 'string' && typeof (voter as any).name === 'string')) : [];
@@ -192,12 +200,37 @@ export class ScenesService {
     return this.persistSceneMetadata(id, { ...metadata, [componentType]: nextBracket });
   }
 
+  // Neutrally named entry points for callers outside this module (the MCP
+  // capabilities), so they need not carry the brand-bearing method names.
+  drawBracket(id: number, data: { componentType?: string; seed?: number }) {
+    return this.drawModoItalianoBracket(id, data);
+  }
+
+  voteBracket(
+    id: number,
+    data: {
+      componentType?: string;
+      matchId?: number;
+      voterId?: string;
+      songId?: number | null;
+    },
+  ) {
+    return this.voteModoItalianoBracket(id, data);
+  }
+
+  openBracketVoting(
+    id: number,
+    data: { componentType?: string; matchId?: number },
+  ) {
+    return this.openModoItalianoBracketVoting(id, data);
+  }
+
   async openModoItalianoBracketVoting(id: number, data: { componentType?: string; matchId?: number }) {
-    const componentType = data.componentType === 'modoitaliano-bracket' ? data.componentType : 'modoitaliano-bracket';
     const matchId = Number(data.matchId);
     if (!Number.isInteger(matchId) || matchId < 1 || matchId > 15) throw new BadRequestException('Invalid match');
     const scene = await this.findOne(id);
     if (!scene) throw new BadRequestException('Scene not found');
+    const componentType = this.resolveBracketComponentType(data.componentType, scene);
     const metadata = this.parseMetadata(scene.metadata);
     const bracket = metadata[componentType] && typeof metadata[componentType] === 'object' ? metadata[componentType] as Record<string, unknown> : {};
     const match = this.normalizeBracketMatches(bracket.matches)[matchId - 1];
@@ -213,7 +246,12 @@ export class ScenesService {
     });
   }
 
-  private async completeModoItalianoBracketDraw(sceneId: number, componentType: string, drawId: number, selectedSongId: number) {
+  private async completeModoItalianoBracketDraw(
+    sceneId: number,
+    componentType: string,
+    drawId: number,
+    selectedSongId: number,
+  ) {
     const activeDraw = this.modoItalianoBracketDraws.get(sceneId);
     if (!activeDraw || activeDraw.drawId !== drawId) return;
     this.modoItalianoBracketDraws.delete(sceneId);
@@ -234,7 +272,36 @@ export class ScenesService {
     const programIds = await this.programService.getProgramIdsByAssignedScene(sceneId);
     for (const programId of programIds) {
       this.programService.broadcastUpdate(programId, { type: 'modoitaliano_bracket_draw_end', sceneId, componentType, drawId });
+      this.programService.broadcastUpdate(programId, {
+        type: 'audience_interaction_draw_end',
+        sceneId,
+        componentType,
+        drawId,
+      });
     }
+  }
+
+  // The requested component type when it declares audience interaction, else the scene's own when it does, else the
+  // legacy bracket key. An unrecognized request falls back as it always did, so existing callers keep working.
+  private resolveBracketComponentType(
+    requestedType: string | undefined,
+    scene?: { layout?: { componentType?: string } } | null,
+  ): string {
+    if (this.isAudienceInteractionComponent(requestedType)) return requestedType.trim();
+    const sceneType = scene?.layout?.componentType;
+    if (this.isAudienceInteractionComponent(sceneType)) return sceneType.trim();
+    return 'modoitaliano-bracket';
+  }
+
+  private isAudienceInteractionComponent(
+    type?: string | null,
+  ): type is string {
+    if (typeof type !== 'string' || !type.trim()) return false;
+    const normalized = type.trim().toLowerCase();
+    return (
+      normalized.includes('bracket') ||
+      normalized.includes('audience.interaction')
+    );
   }
 
   private cancelModoItalianoBracketDraw(sceneId: number) {

@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { CachedChartsResponse, ChartsService } from './charts.service';
+import { ChartFeedEntry, ChartsService } from './charts.service';
 import { Public } from '../auth/public.decorator';
 
 @Controller('charts')
@@ -7,8 +7,9 @@ import { Public } from '../auth/public.decorator';
 export class ChartsController {
   constructor(private readonly chartsService: ChartsService) {}
 
-  @Get('sanremo-realtime')
-  async getSanremoRealtime(): Promise<CachedChartsResponse> {
-    return this.chartsService.getSanremoRealtime();
+  /** Provider-neutral chart feed; public, for the program page in the renderer. */
+  @Get('realtime')
+  async getRealtimeFeed(): Promise<ChartFeedEntry[]> {
+    return this.chartsService.getRealtimeFeed();
   }
 }

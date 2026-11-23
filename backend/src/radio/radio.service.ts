@@ -1,19 +1,29 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import { RadioMetricsService } from './radio-metrics.service';
+import {
+  RadioMetricsService,
+  type AnalysisDropResult,
+  type CueGroupShape,
+} from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
 import {
   PalazzoMachineClient,
   PalazzoMachineError,
   type PalazzoIntroCommand,
+  type PalazzoSongSegue,
+  type PalazzoSongLoudness,
+  validateSongLoudness,
+  validateSongSegue,
 } from './palazzo-machine.client';
+import { isLocalMediaUrl, localMediaEnvironment } from '../config/local-media';
 import type { PalazzoPlaybackState } from './palazzo-contract';
 import {
   MAX_WINDOW_SECONDS,
@@ -30,6 +40,7 @@ export interface RadioSettingsPayload {
   bumperInstantIds?: number[];
   bumperMode?: 'sequential' | 'random';
   enabled?: boolean;
+  segueMode?: string;
   similarityMode?: string;
   similarityThreshold?: number;
   similarityWindowSeconds?: number;
@@ -42,6 +53,19 @@ export interface RadioMixerPayload {
   instantVolume: number;
   songMuted: boolean;
   instantMuted: boolean;
+}
+
+/**
+ * Palazzo refused an instant (gaulatti/alcantara#274). The answer is the same
+ * 502 as before; `retryable` is true only when Palazzo answered 409 (its
+ * `automation is not ready` answer, given until its lifecycle is ready after a
+ * restart), so a caller can retry that one case and never one whose outcome is
+ * unknown (a timeout or a network error carries no answer).
+ */
+export class PalazzoInstantRefusedException extends BadGatewayException {
+  constructor(readonly retryable: boolean) {
+    super('Palazzo rejected the instant');
+  }
 }
 
 @Injectable()
@@ -106,6 +130,14 @@ export class RadioService {
     ) {
       throw new BadRequestException('select 1 to 100 distinct catalog songs');
     }
+    // Once the program radio filler (gaulatti/alcantara#126) is configured,
+    // it alone writes the radio filler; this legacy writer stays as before
+    // for every program without one.
+    if (await this.programRadioFillerVersion(programId)) {
+      throw new ConflictException(
+        'the radio filler is managed by the program filler configuration',
+      );
+    }
     const settings = await this.requireRadioSettings(programId);
     const songs = await this.prisma.song.findMany({
       where: { id: { in: songIds } },
@@ -133,15 +165,20 @@ export class RadioService {
       } catch {
         throw new BadRequestException('recovery song has an invalid URL');
       }
-      if (
-        url.protocol !== 'https:' ||
-        ![
+      const isManagedBucketUrl =
+        url.protocol === 'https:' &&
+        [
           `${bucket}.s3.amazonaws.com`,
           `${bucket}.s3.${this.config.get<string>('AWS_REGION')}.amazonaws.com`,
-        ].includes(url.hostname) ||
-        url.username ||
-        url.password ||
-        url.port
+        ].includes(url.hostname) &&
+        !url.username &&
+        !url.password &&
+        !url.port;
+      // Outside production only, the Compose stack's local media store
+      // (gaulatti/alcantara#206).
+      if (
+        !isManagedBucketUrl &&
+        !isLocalMediaUrl(url, localMediaEnvironment(this.config))
       ) {
         throw new BadRequestException(
           'recovery audio must use the managed media bucket',
@@ -199,7 +236,10 @@ export class RadioService {
 
   async setRecoveryAutomation(programId: string, action: 'start' | 'stop') {
     const settings = await this.requireRadioSettings(programId);
-    if (action === 'start' && !settings.fillerVersion)
+    // A configured program radio filler is the exact version Start binds to.
+    const programFiller = await this.programRadioFillerVersion(programId);
+    const fillerVersion = programFiller ?? settings.fillerVersion;
+    if (action === 'start' && !fillerVersion)
       throw new BadRequestException('prepare a recovery playlist first');
     let current: Awaited<ReturnType<PalazzoMachineClient['getAutomation']>>;
     try {
@@ -217,14 +257,39 @@ export class RadioService {
         action,
         current.lastSequence + 1,
         randomUUID(),
-        action === 'start' ? settings.fillerVersion! : undefined,
+        action === 'start' ? fillerVersion! : undefined,
       );
     } catch {
       throw new BadGatewayException(
         `Palazzo could not ${action} the recovery session`,
       );
     }
+    if (action === 'start' && programFiller) {
+      // The session's filler is now that version; it stops being pending
+      // only if it still is. Each statement is atomic.
+      const where = { programId, leg: 'radio' };
+      const promoted = await this.prisma.fillerLeg.updateMany({
+        where: { ...where, pendingVersionId: programFiller },
+        data: { activeVersionId: programFiller, pendingVersionId: null },
+      });
+      if (promoted.count === 0) {
+        await this.prisma.fillerLeg.updateMany({
+          where,
+          data: { activeVersionId: programFiller },
+        });
+      }
+    }
     return this.getRecoveryStatus(programId);
+  }
+
+  /** The program radio filler version a Start binds to, if one is configured. */
+  private async programRadioFillerVersion(
+    programId: string,
+  ): Promise<string | null> {
+    const leg = await this.prisma.fillerLeg.findUnique({
+      where: { programId_leg: { programId, leg: 'radio' } },
+    });
+    return leg?.pendingVersionId ?? leg?.activeVersionId ?? null;
   }
 
   async getRadioSettings(programId: string) {
@@ -268,6 +333,7 @@ export class RadioService {
     );
     const bumperMode = this.normalizeBumperMode(data.bumperMode);
     const listenerUrl = this.normalizeListenerUrl(data.listenerUrl);
+    const segueMode = this.normalizeSegueMode(data.segueMode);
     const similarity = this.normalizeSimilarityPayload(data);
     const result = await this.prisma.radioSettings.upsert({
       where: { programStateId: state.id },
@@ -281,21 +347,31 @@ export class RadioService {
         ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
         ...(data.bumperMode !== undefined && { bumperMode }),
         ...(data.enabled !== undefined && { enabled: data.enabled }),
+        ...(segueMode !== undefined && { segueMode }),
         ...similarity,
       },
       create: {
         programStateId: state.id,
         palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
         listenerUrl: listenerUrl ?? null,
-        bumperEnabled: data.bumperEnabled ?? false,
+        bumperEnabled: data.bumperEnabled ?? true,
         bumperInterval: bumperInterval ?? null,
         bumperInstantIds: bumperInstantIds ?? [],
         bumperMode: bumperMode ?? 'sequential',
         enabled: data.enabled ?? false,
+        segueMode: segueMode ?? 'on',
         ...similarity,
       },
     });
     return result;
+  }
+
+  private normalizeSegueMode(value?: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (value !== 'off' && value !== 'on') {
+      throw new BadRequestException('segueMode must be off or on');
+    }
+    return value;
   }
 
   /** Rejects invalid similarity fields explicitly; absent fields stay untouched. */
@@ -435,14 +511,47 @@ export class RadioService {
     playbackRequestId?: string,
     coverUrl?: string,
     intro?: PalazzoIntroCommand,
+    songId?: number,
+    duration?: number,
+    segue?: PalazzoSongSegue,
+    loudness?: PalazzoSongLoudness,
   ): Promise<{
     ok: boolean;
     playbackRequestId?: string;
     introPlaybackId?: string | null;
   }> {
     const settings = await this.getRadioSettings(programId);
-    if (!settings) return { ok: false };
+    if (!settings) {
+      // #237: a song command for a program with no radio settings is refused;
+      // say so instead of answering ok:false silently.
+      this.logger.warn(`Radio settings missing for program ${programId}`);
+      this.metrics.recordEngineDegraded('radio_settings_missing');
+      return { ok: false };
+    }
     const requestId = playbackRequestId?.trim() || randomUUID();
+
+    const {
+      segue: resolvedSegue,
+      loudness: resolvedLoudness,
+      durationSeconds: resolvedDuration,
+    } = settings.segueMode === 'on'
+      ? await this.resolveSongAnalysis(
+          programId,
+          requestId,
+          audioUrl,
+          songId,
+          duration,
+          segue,
+          loudness,
+        )
+      : { segue: undefined, loudness: undefined, durationSeconds: undefined };
+    // With a cue group, the duration it was checked against (the caller's,
+    // else the stored Song.durationMs), so Palazzo bounds and counts the tail
+    // trim on the command path as it does for an announced song. Without
+    // one, the command is unchanged.
+    const sentDuration =
+      duration ?? (resolvedSegue ? resolvedDuration : undefined);
+
     try {
       const result = await this.palazzo.playSong(
         this.palazzoUrl(settings),
@@ -454,6 +563,9 @@ export class RadioService {
           artist,
           coverUrl,
           intro,
+          ...(sentDuration !== undefined && { duration: sentDuration }),
+          ...(resolvedSegue && { segue: resolvedSegue }),
+          ...(resolvedLoudness && { loudness: resolvedLoudness }),
         },
       );
       return {
@@ -465,6 +577,226 @@ export class RadioService {
       this.logMachineFailure('playSong', programId, error);
       return { ok: false, playbackRequestId: requestId };
     }
+  }
+
+  /**
+   * Announces the next song to Palazzo while the current one plays (contract
+   * palazzo#40 §1). Segue and loudness are resolved exactly as for the song
+   * command the engine would otherwise send, and only when segueMode is on.
+   * Returns `accepted`, `not_ready`, `rejected` (not announced) or
+   * `unsupported` (an older Palazzo); any other failure is `rejected`.
+   */
+  async announceNext(
+    programId: string,
+    song: {
+      playbackId: string;
+      url: string;
+      title?: string;
+      artist?: string;
+      coverUrl?: string;
+    },
+    bumper?: { playbackId: string; url: string },
+  ): Promise<'accepted' | 'not_ready' | 'rejected' | 'unsupported'> {
+    const settings = await this.getRadioSettings(programId);
+    if (!settings) {
+      this.metrics.recordNextAnnouncement('rejected');
+      return 'rejected';
+    }
+    const { segue, loudness } =
+      settings.segueMode === 'on'
+        ? await this.resolveSongAnalysis(
+            programId,
+            song.playbackId,
+            song.url,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+          )
+        : { segue: undefined, loudness: undefined };
+    let result: 'accepted' | 'not_ready' | 'rejected' | 'unsupported';
+    try {
+      result = (
+        await this.palazzo.announceNext(this.palazzoUrl(settings), programId, {
+          playbackId: song.playbackId,
+          url: song.url,
+          title: song.title,
+          artist: song.artist,
+          coverUrl: song.coverUrl,
+          ...(segue && { segue }),
+          ...(loudness && { loudness }),
+          ...(bumper && { bumper }),
+        })
+      ).result;
+    } catch (error) {
+      this.logMachineFailure('announceNext', programId, error);
+      result = 'rejected';
+    }
+    this.metrics.recordNextAnnouncement(result);
+    return result;
+  }
+
+  /**
+   * Withdraws the announced next song. Returns whether Palazzo removed one
+   * (false when it was already on air, "too late to replace"), or null when
+   * the request failed; a failure is logged.
+   */
+  async withdrawNext(programId: string): Promise<boolean | null> {
+    const settings = await this.getRadioSettings(programId);
+    if (!settings) return null;
+    try {
+      const { withdrawn } = await this.palazzo.withdrawNext(
+        this.palazzoUrl(settings),
+        programId,
+      );
+      this.metrics.recordNextAnnouncement('withdrawn');
+      return withdrawn;
+    } catch (error) {
+      this.logMachineFailure('withdrawNext', programId, error);
+      return null;
+    }
+  }
+
+  // Segue and loudness for a song command when segueMode is on: the caller's values, else the song's stored analysis.
+  // Each field group is checked with the bounds Palazzo's client enforces (validateSongSegue, validateSongLoudness)
+  // plus cue-out within the song's duration, and an invalid group is dropped so the song still plays without it.
+  // Analysis is never applied from an audio URL that more than one song shares. Every drop is counted and logged
+  // once per song, without the audio URL.
+  private async resolveSongAnalysis(
+    programId: string,
+    playbackRequestId: string,
+    audioUrl: string,
+    songId: number | undefined,
+    duration: number | undefined,
+    segue: PalazzoSongSegue | undefined,
+    loudness: PalazzoSongLoudness | undefined,
+  ): Promise<{
+    segue?: PalazzoSongSegue;
+    loudness?: PalazzoSongLoudness;
+    durationSeconds?: number;
+  }> {
+    const drops: AnalysisDropResult[] = [];
+    let durationSeconds = duration;
+    // The cue group's shape, counted once the group is final (#234); a
+    // caller-supplied segue is not an analysis group and is not counted.
+    let shape: CueGroupShape | null = null;
+    if (!segue && !loudness) {
+      try {
+        const song = await this.findSongForAnalysis(audioUrl, songId, drops);
+        // A song sent without its analysis is counted too (gaulatti/alcantara#255):
+        // no library song with a media asset, or an asset not (yet) analysed.
+        if (!song?.assetId && !drops.includes('ambiguous-match')) {
+          drops.push('no-asset');
+        }
+        if (song?.assetId) {
+          if (
+            durationSeconds === undefined &&
+            typeof song.durationMs === 'number'
+          ) {
+            durationSeconds = song.durationMs / 1000;
+          }
+          const analysis = await this.prisma.mediaAssetAnalysis.findUnique({
+            where: { assetId: song.assetId },
+          });
+          if (analysis && analysis.status === 'success') {
+            const cues = cueGroupFrom(
+              analysis.cueInSeconds,
+              analysis.cueOutSeconds,
+              durationSeconds,
+              drops,
+            );
+            shape = cues?.shape ?? 'none';
+            if (cues) {
+              segue = {
+                cueInSeconds: cues.cueInSeconds,
+                cueOutSeconds: cues.cueOutSeconds,
+                fadeInSeconds: analysis.fadeInSeconds ?? 0,
+                fadeOutSeconds: analysis.fadeOutSeconds ?? 0,
+                overlapSeconds: analysis.overlapSeconds ?? 0,
+              };
+            }
+            if (
+              analysis.integratedLufs !== null &&
+              analysis.truePeakDbtp !== null
+            ) {
+              loudness = {
+                integratedLufs: analysis.integratedLufs,
+                truePeakDbtp: analysis.truePeakDbtp,
+              };
+            }
+          } else {
+            // Missing, pending or failed analysis.
+            drops.push('not-analyzed');
+          }
+        }
+      } catch {
+        // A failed analysis lookup never blocks playback: the song plays without segue and loudness.
+        drops.push('lookup-failed');
+      }
+    }
+    if (segue) {
+      try {
+        validateSongSegue(segue);
+        if (
+          durationSeconds !== undefined &&
+          segue.cueOutSeconds > durationSeconds
+        ) {
+          segue = undefined;
+          drops.push('segue-beyond-duration');
+        }
+      } catch {
+        segue = undefined;
+        drops.push('segue-invalid');
+      }
+    }
+    if (loudness) {
+      try {
+        validateSongLoudness(loudness);
+      } catch {
+        loudness = undefined;
+        drops.push('loudness-invalid');
+      }
+    }
+    if (shape !== null) this.metrics.recordCueGroup(segue ? shape : 'none');
+    for (const drop of drops) this.metrics.recordAnalysisDrop(drop);
+    if (drops.length) {
+      this.logger.warn({
+        event: 'radio.song_analysis_dropped',
+        programId,
+        playbackRequestId,
+        ...(songId !== undefined && { songId }),
+        reasons: drops,
+      });
+    }
+    return {
+      ...(segue && { segue }),
+      ...(loudness && { loudness }),
+      ...(durationSeconds !== undefined && { durationSeconds }),
+    };
+  }
+
+  // The song whose analysis applies: by id when given, else by audio URL only when exactly one song has it.
+  private async findSongForAnalysis(
+    audioUrl: string,
+    songId: number | undefined,
+    drops: AnalysisDropResult[],
+  ): Promise<{ assetId: string | null; durationMs: number | null } | null> {
+    if (songId) {
+      return this.prisma.song.findUnique({
+        where: { id: songId },
+        select: { assetId: true, durationMs: true },
+      });
+    }
+    const songs = await this.prisma.song.findMany({
+      where: { audioUrl },
+      select: { assetId: true, durationMs: true },
+      take: 2,
+    });
+    if (songs.length > 1) {
+      drops.push('ambiguous-match');
+      return null;
+    }
+    return songs[0] ?? null;
   }
 
   async stopSong(programId: string): Promise<void> {
@@ -493,7 +825,11 @@ export class RadioService {
       });
     } catch (error) {
       this.logMachineFailure('playInstant', programId, error);
-      throw new BadGatewayException('Palazzo rejected the instant');
+      throw new PalazzoInstantRefusedException(
+        error instanceof PalazzoMachineError &&
+          error.reason === 'rejected' &&
+          error.status === 409,
+      );
     }
   }
 
@@ -573,4 +909,79 @@ export class RadioService {
       reason,
     });
   }
+}
+
+/**
+ * Seconds a cue point may trim from one edge of a song (gaulatti/alcantara#234,
+ * the same bound as Palazzo's). Catalog on 2026-11-21: tail silence max 8.01 s,
+ * head max 9.81 s.
+ */
+export const CUE_EDGE_BOUND_SECONDS = 10;
+
+/**
+ * The cue group to send for a song's measured edges (gaulatti/alcantara#234).
+ * Palazzo trims when it receives a full group, so a single measured edge is
+ * sent with the other filled: a missing cue-in is 0, a missing cue-out is the
+ * song's duration (the same duration Palazzo validates against). Each edge is
+ * bounded on its own: a cue that would trim more than CUE_EDGE_BOUND_SECONDS,
+ * is not finite or is negative is not applied (that edge is filled instead)
+ * and counted. Without a known duration a song keeps today's behaviour: both
+ * measured cues, unbounded (Palazzo's own bound applies at play time), or
+ * none. Null when no edge is left to trim.
+ */
+export function cueGroupFrom(
+  cueIn: number | null,
+  cueOut: number | null,
+  durationSeconds: number | undefined,
+  drops: AnalysisDropResult[],
+): {
+  cueInSeconds: number;
+  cueOutSeconds: number;
+  shape: Exclude<CueGroupShape, 'none'>;
+} | null {
+  const known =
+    durationSeconds !== undefined && Number.isFinite(durationSeconds);
+  if (!known) {
+    // Without a duration neither the fill nor the tail bound is possible: a
+    // song keeps exactly today's behaviour, both measured cues or none.
+    return cueIn !== null && cueOut !== null
+      ? { cueInSeconds: cueIn, cueOutSeconds: cueOut, shape: 'both' }
+      : null;
+  }
+  const duration = durationSeconds as number;
+  let head = cueIn;
+  let tail = cueOut;
+  if (
+    head !== null &&
+    !(Number.isFinite(head) && head >= 0 && head <= CUE_EDGE_BOUND_SECONDS)
+  ) {
+    drops.push('segue-edge-bound');
+    head = null;
+  }
+  if (
+    tail !== null &&
+    !(
+      Number.isFinite(tail) &&
+      tail >= 0 &&
+      // A cue-out past the stored duration (the file a little longer than
+      // Song.durationMs) is no tail trim: the duration stands in for it, and
+      // the head is kept rather than the whole group being dropped later.
+      tail <= duration &&
+      duration - tail <= CUE_EDGE_BOUND_SECONDS
+    )
+  ) {
+    drops.push('segue-edge-bound');
+    tail = null;
+  }
+  if (head === null && tail === null) return null;
+  return {
+    cueInSeconds: head ?? 0,
+    cueOutSeconds: tail ?? duration,
+    shape:
+      head !== null && tail !== null
+        ? 'both'
+        : head === null
+          ? 'head_filled'
+          : 'tail_filled',
+  };
 }

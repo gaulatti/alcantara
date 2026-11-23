@@ -8,6 +8,9 @@ describe('BroadcastDestinationsService decorator metadata', () => {
       jest.doMock('../observability/managed-metrics.service', () => ({
         ManagedMetricsService: undefined,
       }));
+      jest.doMock('../filler/filler-binding.service', () => ({
+        FillerBindingService: undefined,
+      }));
       jest.doMock('./alana.client', () => ({
         AlanaClient: undefined,
         AlanaRequestError: class AlanaRequestError extends Error {},
@@ -18,7 +21,7 @@ describe('BroadcastDestinationsService decorator metadata', () => {
         };
       expect(
         Reflect.getMetadata('design:paramtypes', BroadcastDestinationsService),
-      ).toEqual([Object, Object, Object]);
+      ).toEqual([Object, Object, Object, Object]);
     });
   });
 });

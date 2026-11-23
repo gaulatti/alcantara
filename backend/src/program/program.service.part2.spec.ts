@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- Test doubles and private-state inspection are intentionally loosely typed. */
+import { scriptedTransport } from '../outbound/safe-fetch.testing';
 import {
   BadGatewayException,
   BadRequestException,
@@ -20,6 +21,8 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
   const build = () => {
     const states = new Map<string, Row>();
     const prisma = {
+      program: { upsert: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
       programState: {
         findUnique: jest.fn(({ where }: { where: { programId: string } }) =>
           Promise.resolve(states.get(where.programId) ?? null),
@@ -39,6 +42,13 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       scene: { findUnique: jest.fn().mockResolvedValue({ id: 5 }) },
       mediaAsset: { findFirst: jest.fn().mockResolvedValue(null) },
       instant: { findUnique: jest.fn().mockResolvedValue(null) },
+      // A v2 state reads the broadcast settings (gaulatti/alcantara#177).
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+      broadcastSettings: {
+        upsert: jest
+          .fn()
+          .mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
+      },
     };
     const radio = {
       updateMixer: jest.fn().mockResolvedValue(undefined),
@@ -339,6 +349,15 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect('secret' in projected).toBe(false);
     });
 
+    it('projects schemaVersion 2 for a v2 registration', async () => {
+      const { service, put } = build();
+      put('v2', {
+        templateManifest: { ...manifest, contractVersion: 2, schemaVersion: 2 },
+      });
+      const projected = (await service.getPublicState('v2')) as Row;
+      expect(projected.schemaVersion).toBe(2);
+    });
+
     it('returns the staged scene or null placeholders (default and explicit)', async () => {
       const { service, put } = build();
       put('main', {
@@ -440,6 +459,98 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       },
     );
 
+    // gaulatti/alcantara#280: a song goes into a playlist once. Playlists that already hold a
+    // song twice stay editable, so the data repair does not block the operators.
+    describe('a song in the playlist twice (#280)', () => {
+      const twice = (urls: string[], extra: Record<string, unknown> = {}) => ({
+        ...sequence(0),
+        items: urls.map((url, i) => ({
+          ...leaf(`d${i}`, false),
+          audioUrl: url,
+          ...extra,
+        })),
+      });
+
+      it('refuses a second leaf for the same audio address, and names the song', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a']), songQueue: [] });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).rejects.toThrow(
+          /is already in the playlist; a song can be added once/,
+        );
+        expect(prisma.programState.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses a second leaf for the same song id even when the addresses differ', async () => {
+        const { service, put } = build();
+        put('main', {
+          songSequence: twice(['u-a'], { songId: 7 }),
+          songQueue: [],
+        });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-b'], { songId: 7 }),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('refuses to add a second leaf to a playlist that is empty or null', async () => {
+        const { service, put } = build();
+        put('main', { songSequence: null, songQueue: [] });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('still saves a playlist that already holds the song twice, and a third leaf is refused', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a', 'u-a']), songQueue: [] });
+        prisma.programState.update.mockResolvedValue({
+          songSequence: twice(['u-a', 'u-a']),
+          songQueue: [],
+          audioMixer: {},
+        });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).resolves.toBeDefined();
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a', 'u-a']),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('allows removing one of the two, and leaves without a song id or address alone', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a', 'u-a']), songQueue: [] });
+        prisma.programState.update.mockResolvedValue({
+          songSequence: twice(['u-a']),
+          songQueue: [],
+          audioMixer: {},
+        });
+        await expect(
+          service.updateProgramAudioBus({ songSequence: twice(['u-a']) }),
+        ).resolves.toBeDefined();
+        const blank = {
+          ...sequence(0),
+          items: [
+            { ...leaf('x', false), audioUrl: '' },
+            { ...leaf('y', false), audioUrl: '' },
+          ],
+        };
+        await expect(
+          service.updateProgramAudioBus({ songSequence: blank }),
+        ).resolves.toBeDefined();
+      });
+    });
+
     it('rejects more than the high rotation limit', async () => {
       const { service, put } = build();
       put('main', { songQueue: [] });
@@ -516,7 +627,10 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         });
         const args = prisma.programState.update.mock.calls[0][0];
         expect('songQueue' in args.data).toBe(false);
-        expect(args.data.songSequence).toEqual(sequence(1));
+        // The song sequence read earlier is not written back: here the song
+        // ended in between, and the result reports what the database holds.
+        expect('songSequence' in args.data).toBe(false);
+        expect(result.songSequence).toBeNull();
         expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
         expect(result.mixerSettings.songMasterVolume).toBe(0.5);
         expect(radio.updateMixer).toHaveBeenCalledTimes(forwards ? 1 : 0);
@@ -1219,76 +1333,85 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
   });
 
   describe('proxyAudio', () => {
-    const response = (init: Partial<Record<string, unknown>> = {}) =>
-      ({
-        ok: true,
-        status: 200,
-        arrayBuffer: jest.fn().mockResolvedValue(new Uint8Array([1, 2]).buffer),
-        headers: { get: jest.fn().mockReturnValue('audio/mpeg') },
-        ...init,
-      }) as never;
+    // The remote audio fetch goes through the outbound-request policy; the
+    // policy's own refusals are covered in src/outbound.
+    const withTransport = (
+      script: Parameters<typeof scriptedTransport>[1],
+      names: Record<string, string[]> = {
+        'media.example.com': ['93.184.216.34'],
+      },
+    ) => {
+      const built = build();
+      const transport = scriptedTransport(names, script);
+      built.service.outboundDeps = transport;
+      return { ...built, transport };
+    };
 
-    afterEach(() => jest.restoreAllMocks());
-
-    it('validates the url', async () => {
+    it('requires a url', async () => {
       const { service } = build();
       for (const bad of [undefined, 5, '', '   ']) {
         await expect(service.proxyAudio(bad)).rejects.toThrow(
           'url is required',
         );
       }
-      await expect(service.proxyAudio('nope')).rejects.toThrow(
-        'url must be an absolute URL',
-      );
-      await expect(service.proxyAudio('ftp://x/y')).rejects.toThrow(
-        'url must use http or https',
-      );
     });
 
-    it('maps fetch failures and upstream errors to bad gateway', async () => {
-      const { service } = build();
-      const fetchSpy = jest
-        .spyOn(globalThis, 'fetch')
-        .mockRejectedValueOnce(new Error('down'));
-      await expect(service.proxyAudio('http://x/a.mp3')).rejects.toThrow(
-        'failed to fetch remote audio',
-      );
-      fetchSpy.mockResolvedValueOnce(response({ ok: false, status: 503 }));
-      await expect(service.proxyAudio('http://x/a.mp3')).rejects.toThrow(
-        'remote audio returned HTTP 503',
-      );
-    });
-
-    it('rejects oversized audio', async () => {
-      const { service } = build();
-      jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-        response({
-          arrayBuffer: jest
-            .fn()
-            .mockResolvedValue({ byteLength: 100 * 1024 * 1024 + 1 }),
-        }),
-      );
-      await expect(service.proxyAudio('https://x/a.mp3')).rejects.toThrow(
-        'audio file is too large to proxy',
-      );
-    });
-
-    it('returns the buffer with the upstream or default content type', async () => {
-      const { service } = build();
-      const fetchSpy = jest
-        .spyOn(globalThis, 'fetch')
-        .mockResolvedValueOnce(response());
-      const ok = await service.proxyAudio(' http://x/a.mp3 ');
-      expect(fetchSpy).toHaveBeenCalledWith('http://x/a.mp3');
+    it('returns a public audio file with its type', async () => {
+      const { service } = withTransport({
+        'media.example.com/a.mp3': {
+          status: 200,
+          headers: { 'content-type': 'audio/mpeg' },
+          body: Buffer.from([1, 2]),
+        },
+      });
+      const ok = await service.proxyAudio(' https://media.example.com/a.mp3 ');
       expect(ok.buffer).toEqual(Buffer.from([1, 2]));
       expect(ok.contentType).toBe('audio/mpeg');
-      fetchSpy.mockResolvedValueOnce(
-        response({ headers: { get: jest.fn().mockReturnValue(null) } }),
-      );
-      expect((await service.proxyAudio('http://x/b')).contentType).toBe(
-        'application/octet-stream',
-      );
     });
+
+    it.each([
+      ['http://media.example.com/a.mp3', 400, 'The address must use https.'],
+      [
+        'https://10.0.0.1/a.mp3',
+        400,
+        'The address points at a private, local or reserved network, which the server never fetches.',
+      ],
+      [
+        'https://media.example.com/page',
+        400,
+        'The response is not a type the server accepts here.',
+      ],
+      [
+        'https://media.example.com/gone',
+        502,
+        'The address answered with an error status.',
+      ],
+      [
+        'https://media.example.com/none',
+        502,
+        'The address could not be reached.',
+      ],
+      [
+        'https://media.example.com/idle',
+        504,
+        'The address did not answer in time.',
+      ],
+    ])(
+      'refuses %s with %s and a plain message',
+      async (url, status, message) => {
+        const { service } = withTransport({
+          'media.example.com/page': {
+            status: 200,
+            headers: { 'content-type': 'text/html' },
+            body: Buffer.from('<html>'),
+          },
+          'media.example.com/gone': { status: 503 },
+          'media.example.com/idle': { status: 200, socketTimeout: true },
+        });
+        const error = await service.proxyAudio(url).catch((e: unknown) => e);
+        expect(error).toMatchObject({ status, message });
+      },
+    );
   });
 
   describe('program scenes', () => {
@@ -1410,6 +1533,122 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       expect(
         internals.programSceneInstantPlaybackByProgramId.get('main').isPlaying,
       ).toBe(false);
+    });
+  });
+
+  describe('removeProgramSongLeaves (#327)', () => {
+    const outcome = (over: Row = {}) => ({
+      removed: [
+        {
+          id: 'song_x',
+          songId: 7,
+          artist: 'A',
+          title: 'T',
+          highRotation: true,
+          coverUrl: '',
+          kind: 'preset',
+        },
+      ],
+      before: 5,
+      after: 4,
+      cursorMovedTo: 'next',
+      songSequence: { mode: 'autoplay', items: [] },
+      songQueue: [{ id: 'q1' }],
+      ...over,
+    });
+
+    it('hands the removal to the engine, then broadcasts the new playlist and tells the engine the queue', async () => {
+      const { service, engine, put } = build();
+      put('radio-1', { type: 'radio', audioMixer: null });
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(outcome());
+      const broadcast = jest
+        .spyOn(service, 'broadcastUpdate')
+        .mockReturnValue({ version: 9 } as never);
+
+      const result = await service.removeProgramSongLeaves(
+        ' radio-1 ',
+        ['song_x'],
+        { keepRotation: true },
+      );
+
+      expect((engine as any).removeSongLeaves).toHaveBeenCalledWith(
+        'radio-1',
+        ['song_x'],
+        { keepRotation: true, dryRun: false },
+      );
+      expect(broadcast).toHaveBeenCalledWith(
+        'radio-1',
+        expect.objectContaining({
+          type: 'audio_bus_update',
+          programId: 'radio-1',
+          settings: expect.objectContaining({
+            songSequence: { mode: 'autoplay', items: [] },
+            songQueue: [{ id: 'q1' }],
+          }),
+        }),
+      );
+      expect(engine.handleQueueUpdated).toHaveBeenCalledWith('radio-1', [
+        { id: 'q1' },
+      ]);
+      expect(result).toEqual({
+        dryRun: false,
+        removed: [
+          {
+            id: 'song_x',
+            songId: 7,
+            artist: 'A',
+            title: 'T',
+            highRotation: true,
+          },
+        ],
+        leafCountBefore: 5,
+        leafCountAfter: 4,
+        cursorMovedTo: 'next',
+        version: 9,
+      });
+    });
+
+    it('falls back to the topic version when the broadcast carries none', async () => {
+      const { service, engine, put } = build();
+      put('radio-1', { type: 'radio' });
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(
+        outcome({
+          removed: [{ id: 'a', artist: 'A', title: 'T', kind: 'preset' }],
+        }),
+      );
+      noVersionBroadcast(service);
+      jest.spyOn(service, 'getProgramTopicVersion').mockReturnValue(3);
+      const result = await service.removeProgramSongLeaves('radio-1', ['a']);
+      expect(result.version).toBe(3);
+      expect(result.removed[0]).toEqual({
+        id: 'a',
+        songId: null,
+        artist: 'A',
+        title: 'T',
+        highRotation: false,
+      });
+    });
+
+    it('a dry run reports and neither broadcasts nor touches the engine queue', async () => {
+      const { service, engine } = build();
+      (engine as any).removeSongLeaves = jest.fn().mockResolvedValue(outcome());
+      const broadcast = jest.spyOn(service, 'broadcastUpdate');
+      const result = await service.removeProgramSongLeaves('radio-1', ['x'], {
+        dryRun: true,
+      });
+      expect((engine as any).removeSongLeaves).toHaveBeenCalledWith(
+        'radio-1',
+        ['x'],
+        { keepRotation: false, dryRun: true },
+      );
+      expect(result).toMatchObject({
+        dryRun: true,
+        leafCountBefore: 5,
+        leafCountAfter: 4,
+        version: null,
+      });
+      expect(broadcast).not.toHaveBeenCalled();
+      expect(engine.handleQueueUpdated).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,16 +1,15 @@
-# Render this template from deployment secrets. Never commit real values.
+# The shape infra/helix/livekit-up.sh renders from the runtime secret
+# (backend/src/config/livekit-server-config.js). Never commit real values.
 port: 7880
 rtc:
   tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50100
+  udp_port: 7882
   use_external_ip: true
 redis:
   address: redis:6379
 turn:
   enabled: true
   domain: turn.example.invalid
-  tls_port: 5349
   udp_port: 3478
   relay_range_start: 30000
   relay_range_end: 30100

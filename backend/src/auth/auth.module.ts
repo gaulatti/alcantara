@@ -1,6 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { MCP_ATTRIBUTION } from '../mcp/contract';
+import { ActorContextInterceptor } from './actor-context.interceptor';
+import { McpActorAttribution } from './mcp-actor-attribution';
 import { AuthController } from './auth.controller';
 import { PompeiiAuthorizationGuard } from './pompeii-authorization.guard';
 import { PompeiiService } from './pompeii.service';
@@ -17,7 +20,14 @@ import { TestAuthService } from './test-auth.service';
     RealtimeTicketService,
     TestAuthService,
     { provide: APP_GUARD, useClass: PompeiiAuthorizationGuard },
+    { provide: APP_INTERCEPTOR, useClass: ActorContextInterceptor },
+    { provide: MCP_ATTRIBUTION, useClass: McpActorAttribution },
   ],
-  exports: [PompeiiService, RealtimeTicketService, TestAuthService],
+  exports: [
+    PompeiiService,
+    RealtimeTicketService,
+    TestAuthService,
+    MCP_ATTRIBUTION,
+  ],
 })
 export class AuthModule {}

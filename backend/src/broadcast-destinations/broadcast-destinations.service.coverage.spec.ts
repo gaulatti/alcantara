@@ -151,6 +151,8 @@ function harness(programType = 'both') {
     prisma as unknown as PrismaService,
     alana as unknown as AlanaClient,
     metrics as unknown as ManagedMetricsService,
+    // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
+    { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
   );
   return {
     service,
@@ -181,6 +183,23 @@ async function caught(promise: Promise<unknown>): Promise<any> {
 
 describe('BroadcastDestinationsService coverage', () => {
   describe('catalog', () => {
+    it('narrows the list to the caller team, and to nothing where no team is configured', async () => {
+      const h = harness();
+      h.prisma.broadcastDestination.findMany.mockResolvedValue([]);
+      await h.service.listDestinations(7);
+      expect(h.prisma.broadcastDestination.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { teamId: 7 } }),
+      );
+      await h.service.listDestinations(0);
+      expect(
+        h.prisma.broadcastDestination.findMany.mock.calls.at(-1)?.[0],
+      ).not.toHaveProperty('where.teamId');
+      await h.service.listDestinations();
+      expect(
+        h.prisma.broadcastDestination.findMany.mock.calls.at(-1)?.[0],
+      ).not.toHaveProperty('where.teamId');
+    });
+
     it('lists destinations flagging retired entries', async () => {
       const h = harness();
       h.prisma.broadcastDestination.findMany.mockResolvedValue([
@@ -220,6 +239,28 @@ describe('BroadcastDestinationsService coverage', () => {
           updatedAt: destination.updatedAt,
         },
       ]);
+    });
+
+    it('stamps the caller team on a new destination, and none where no team is configured', async () => {
+      const input = {
+        id: 'team-one',
+        displayName: 'Team one',
+        secretId: 'broadcast/test/team',
+        secretVersionId: 'v1',
+      };
+      const h = harness();
+      await h.service.createDestination(input, 7);
+      expect(h.prisma.broadcastDestination.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({ id: 'team-one', teamId: 7 }),
+      });
+      await h.service.createDestination(input, 0);
+      expect(
+        h.prisma.broadcastDestination.create.mock.calls.at(-1)?.[0].data,
+      ).not.toHaveProperty('teamId');
+      await h.service.createDestination(input);
+      expect(
+        h.prisma.broadcastDestination.create.mock.calls.at(-1)?.[0].data,
+      ).not.toHaveProperty('teamId');
     });
 
     it('creates a destination at the end of the catalog with trimmed input', async () => {

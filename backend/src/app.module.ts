@@ -19,10 +19,15 @@ import { WebrtcModule } from './webrtc/webrtc.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OperatorPreferencesModule } from './operator-preferences/operator-preferences.module';
 import { BroadcastDestinationsModule } from './broadcast-destinations/broadcast-destinations.module';
+import { FillerModule } from './filler/filler.module';
 import { ExternalSourcesModule } from './external-sources/external-sources.module';
 import { RecordingModule } from './recording/recording.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
 import { MediaAssetsModule } from './media-assets/media-assets.module';
+import { AsRunModule } from './as-run/as-run.module';
+import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
+import { McpModule } from './mcp/mcp.module';
+import { AccessModule } from './access/access.module';
 
 @Module({
   imports: [
@@ -45,10 +50,17 @@ import { MediaAssetsModule } from './media-assets/media-assets.module';
     WebrtcModule,
     OperatorPreferencesModule,
     BroadcastDestinationsModule,
+    FillerModule,
     ExternalSourcesModule,
     RecordingModule,
     DatabaseBackupModule,
     MediaAssetsModule,
+    AsRunModule,
+    MediaAnalysisModule,
+    // gaulatti/alcantara#224: /access and the access MCP capabilities.
+    AccessModule,
+    // gaulatti/alcantara#221: /mcp, /register and the OAuth discovery documents.
+    McpModule,
   ],
   controllers: [AppController, MetricsController],
   providers: [AppService],

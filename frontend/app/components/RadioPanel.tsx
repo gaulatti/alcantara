@@ -12,7 +12,7 @@ import {
   Trash2,
   ListPlus,
 } from "lucide-react";
-import { ConsoleClock, ConsolePanel } from "./ConsoleSurface";
+import { ConsolePanel } from "./ConsoleSurface";
 import { Link } from "react-router";
 import type {
   ProgramSongPlaybackState,
@@ -29,8 +29,23 @@ import {
 } from "../utils/programSequence";
 import { RadioOutputPlayer } from "./RadioOutputPlayer";
 import { PlaybackBar } from "./PlaybackBar";
+import { useRadioMonitor } from "./RadioMonitor";
+import { HoldButton } from "./radio-desk/HoldButton";
+import { deriveOnAir } from "./radio-desk/onAir";
+import { OnAirStrip } from "./radio-desk/OnAirStrip";
+import { PlaySongNow } from "./radio-desk/PlaySongNow";
+import { PlayoutMode } from "./radio-desk/PlayoutMode";
+import { Meter } from "./radio-desk/primitives";
+import { RadioTransport } from "./radio-desk/RadioTransport";
+import {
+  nextUp,
+  onAirLeaf,
+  rotationLeaves,
+  type NextUpSong,
+} from "./radio-desk/songs";
 import { InstantsPanel } from "./panels";
-import { faderToDb } from "../utils/audioTaper";
+import { dbToFader, faderToDb } from "../utils/audioTaper";
+import { engineUnavailableLabel } from "../utils/palazzoReason";
 import {
   fetchFlightSequences,
   updateFlightSequence,
@@ -45,6 +60,9 @@ interface RadioMixerChannelState {
   volume: number;
   muted?: boolean;
   peak: number;
+  /** The live level and its held peak from ProgramAudioMeterLevels (#298); the meter shows them when given. */
+  vu?: number;
+  peakHold?: number;
 }
 
 export interface RadioMixerState {
@@ -76,11 +94,21 @@ interface RadioPanelProps {
   onRemoveQueuedSong: (entryId: string) => Promise<void> | void;
   onReorderSongQueue: (entryIds: string[]) => Promise<void> | void;
   onTakeOffAir: () => Promise<void>;
+  /** Puts a library song on air now, without changing the rotation (#298). */
+  onPlaySongNow?: (song: SongCatalogItem) => Promise<void> | void;
   instants: InstantItem[];
   instantSearch: string;
   onInstantSearchChange: (v: string) => void;
   onTriggerInstant: (id: number) => void;
   onStopAllInstants: () => void;
+  /** The last refused instant or Stop all (gaulatti/alcantara#253). */
+  instantError?: string | null;
+  /** Why the cartwall's instants did not load; shown with a retry. */
+  instantsLoadError?: string | null;
+  onRetryInstants?: () => void;
+  /** Why the song library did not load; shown with a retry. */
+  songCatalogLoadError?: string | null;
+  onRetrySongCatalog?: () => void;
   instantPlayback: Record<
     number,
     { startedAtMs: number; endsAtMs: number | null }
@@ -114,6 +142,8 @@ interface PalazzoStatus {
   lastSnapshotAt: string | null;
   degraded: boolean;
   detail: string | null;
+  /** Why there is no engine, when the backend says (#257); unknown values are ignored. */
+  reason?: string | null;
 }
 
 interface OutputConfidence {
@@ -144,6 +174,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onRemoveQueuedSong,
   onReorderSongQueue,
   onTakeOffAir,
+  onPlaySongNow,
   songCatalog,
   programSongPlayback,
   instants,
@@ -151,6 +182,11 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   onInstantSearchChange,
   onTriggerInstant,
   onStopAllInstants,
+  instantError = null,
+  instantsLoadError = null,
+  onRetryInstants,
+  songCatalogLoadError = null,
+  onRetrySongCatalog,
   instantPlayback,
   mixer,
   onSongVolumeChange,
@@ -409,36 +445,60 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
   const engineReady =
     palazzo?.connection === "connected" || palazzo?.connection === "polling";
 
+  const monitor = useRadioMonitor();
+  const [findingSong, setFindingSong] = useState(false);
+  const leaves = rotationLeaves(rotation.items);
+  const liveLeaf = onAirLeaf(
+    leaves,
+    programSongPlayback,
+    rotation.activeItemId ?? null,
+  );
+  const next = nextUp({
+    sequence: rotation,
+    queue: songQueue,
+    playback: programSongPlayback,
+  });
+  const onAirView = deriveOnAir({
+    playback: programSongPlayback,
+    next,
+    mode: rotation.mode,
+    streamRunning: stream === null ? null : isLive,
+    engine: {
+      connected: engineReady,
+      degraded: palazzo?.degraded === true,
+      unavailableLabel: engineUnavailableLabel(palazzo),
+      detail: palazzo?.detail ?? null,
+    },
+    monitor: monitor ? monitor.state : "unavailable",
+  });
+  const takeRotationSong = async (itemId: string) => {
+    const selection = { ...rotation, activeItemId: itemId, startedAt: Date.now() };
+    if (onTakeSelection) await onTakeSelection(selection);
+    else await onSaveSongSequence(selection);
+  };
+  const takeNext = (song: NextUpSong) => takeRotationSong(song.itemId);
+
+  useEffect(() => {
+    const onSlash = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey)
+        return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      )
+        return;
+      event.preventDefault();
+      setFindingSong(true);
+    };
+    window.addEventListener("keydown", onSlash);
+    return () => window.removeEventListener("keydown", onSlash);
+  }, []);
+
   return (
     <div className="broadcast-console radio-console" data-console="radio">
-      <header className="console-toolbar">
-        <div className="console-toolbar-title">
-          <span className="console-eyebrow">Radio / Live control</span>
-          {programId}
-        </div>
-        <span
-          className="console-status"
-          data-tone={stream === null ? "warning" : isLive ? "ready" : "live"}
-        >
-          {stream === null
-            ? "Stream unverified"
-            : isLive
-              ? "Stream connected"
-              : "Stream offline"}
-        </span>
-        <span
-          className="console-status"
-          data-tone={engineReady && !palazzo?.degraded ? "ready" : "warning"}
-          title={palazzo?.detail ?? undefined}
-        >
-          {engineReady
-            ? palazzo?.degraded
-              ? "Engine degraded"
-              : "Engine connected"
-            : "Engine unavailable"}
-        </span>
-        <ConsoleClock />
-      </header>
+      <OnAirStrip view={onAirView} programId={programId} />
       <div className="radio-console-scroll">
         <div className="radio-workspace">
           <ConsolePanel
@@ -473,15 +533,10 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                     <strong>{activeLog.name}</strong>
                     <small className="block">
                       {new Date(activeLog.scheduledAt!).toLocaleString()} ·{" "}
-                      {activeLog.isRunning
-                        ? Date.parse(activeLog.scheduledAt!) > Date.now()
-                          ? "ARMED"
-                          : "ON AIR"
-                        : activeLog.publishedAt
-                          ? activeLog.lastStartedAt
-                            ? "Aired / stopped"
-                            : "Published"
-                          : "Draft"}{" "}
+                      {/* timedBlockOnAir means activeLog is the running log. */}
+                      {Date.parse(activeLog.scheduledAt!) > Date.now()
+                        ? "ARMED"
+                        : "ON AIR"}{" "}
                       · Revision {activeLog.revision}
                     </small>
                   </>
@@ -503,16 +558,48 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   </>
                 )}
               </div>
-              <span className="console-count">
-                {timedBlockOnAir
-                  ? `${activeLog?.items.length ?? 0} events`
-                  : `${rotation.mode} · ${rotation.loop ? "Loop on" : "Loop off"}`}
-              </span>
+              {timedBlockOnAir ? (
+                <span className="console-count">{`${activeLog!.items.length} events`}</span>
+              ) : (
+                <PlayoutMode
+                  sequence={rotation}
+                  activeItemId={liveLeaf?.id ?? null}
+                  playing={programSongPlayback?.isPlaying === true}
+                  onChange={(nextSequence) => {
+                    void Promise.resolve(onSaveSongSequence(nextSequence)).catch(
+                      (cause) =>
+                        setQueueError(
+                          cause instanceof Error
+                            ? cause.message
+                            : "Rotation was not changed",
+                        ),
+                    );
+                  }}
+                />
+              )}
             </div>
             {(playoutError || queueError || logLoadError) && (
               <p role="alert" className="px-4 py-3 text-sm text-terracotta">
                 {playoutError || queueError || logLoadError}
               </p>
+            )}
+            {songCatalogLoadError && (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-terracotta"
+              >
+                <span>Song library did not load: {songCatalogLoadError}</span>
+                {onRetrySongCatalog && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="secondary"
+                    onClick={onRetrySongCatalog}
+                  >
+                    Retry song library
+                  </Button>
+                )}
+              </div>
             )}
             <div className="radio-rundown-body">
               {timedBlockOnAir && activeLog ? (
@@ -689,9 +776,24 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                         ? (next) => runRotation(() => onTakeSelection(next))
                         : undefined
                     }
-                    onQueueItem={onQueueSong}
+                    onQueueItem={(itemId) => {
+                      // The editor fires and forgets; a refused add is shown
+                      // here, as a refused rotation change is (#194). A new
+                      // add clears the last refusal first.
+                      setQueueError(null);
+                      void Promise.resolve(onQueueSong(itemId)).catch(
+                        (cause) =>
+                          setQueueError(
+                            cause instanceof Error
+                              ? cause.message
+                              : "Play Next was not changed",
+                          ),
+                      );
+                    }}
                     view={addingFillers ? "full" : "queue"}
                     rotationLabel="Filler rotation"
+                    liveItemId={liveLeaf?.id ?? null}
+                    nextItemId={next?.itemId ?? null}
                   />
                 </div>
               )}
@@ -723,9 +825,8 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   }
                   onClick={() => {
                     const items = [...activeLog.items];
-                    const insert = activeLog.isRunning
-                      ? currentLogIndex + 1
-                      : items.length;
+                    // The log is running here, so the song goes next.
+                    const insert = currentLogIndex + 1;
                     items.splice(insert, 0, {
                       id: crypto.randomUUID(),
                       kind: "playSong",
@@ -736,7 +837,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
                   }}
                 >
                   <Plus size={13} />{" "}
-                  {activeLog.isRunning ? "Add next" : "Add event"}
+                  Add next
                 </Button>
                 <Link to="/media" className="ml-auto">
                   Library & tags
@@ -790,25 +891,55 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
               title="Cartwall"
               className="radio-cartwall"
               actions={
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={onStopAllInstants}
+                <HoldButton
+                  label="Stop all sounders"
+                  hint="Hold to stop every sounder (0.6 s)."
+                  tone="danger"
+                  onConfirm={onStopAllInstants}
                 >
-                  Stop all
-                </Button>
+                  Hold · stop all
+                </HoldButton>
               }
             >
               <div className="radio-cartwall-body">
-                <InstantsPanel
-                  isLoading={false}
-                  instants={instants}
-                  search={instantSearch}
-                  playback={instantPlayback}
-                  onSearchChange={onInstantSearchChange}
-                  onTrigger={onTriggerInstant}
-                />
+                {instantError && (
+                  <p
+                    role="alert"
+                    className="radio-cartwall-alert text-sm text-terracotta"
+                  >
+                    {instantError}
+                  </p>
+                )}
+                {instantsLoadError && (
+                  <div
+                    role="alert"
+                    className="radio-cartwall-alert flex flex-wrap items-center gap-2 text-sm text-terracotta"
+                  >
+                    <span>Cartwall did not load: {instantsLoadError}</span>
+                    {onRetryInstants && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="secondary"
+                        onClick={onRetryInstants}
+                      >
+                        Retry cartwall
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {/* A failed reload keeps the pads that loaded; the error is
+                    shown alone only when there is nothing to play. */}
+                {!(instantsLoadError && instants.length === 0) && (
+                  <InstantsPanel
+                    isLoading={false}
+                    instants={instants}
+                    search={instantSearch}
+                    playback={instantPlayback}
+                    onSearchChange={onInstantSearchChange}
+                    onTrigger={onTriggerInstant}
+                  />
+                )}
               </div>
             </ConsolePanel>
             <ConsolePanel title="Mixer">
@@ -893,6 +1024,7 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           </aside>
         </div>
       </div>
+      {timedBlockOnAir ? (
       <PlaybackBar
         sequence={rotation}
         programSongPlayback={programSongPlayback}
@@ -916,30 +1048,53 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
           timedBlockOnAir
             ? {
                 isRunning: !!runningLog,
-                canStart:
-                  !!activeLog?.publishedAt &&
-                  !activeLog.lastStartedAt &&
-                  !runningLog,
+                // timedBlockOnAir requires a running log, so nothing is
+                // waiting to start.
+                canStart: false,
                 canAdvance:
                   !!runningLog &&
                   Date.parse(runningLog.scheduledAt!) <= Date.now() &&
                   currentLogIndex < runningLog.items.length - 1,
                 busy: logBusy,
-                label: runningLog
-                  ? Date.parse(runningLog.scheduledAt!) > Date.now()
+                label:
+                  Date.parse(runningLog!.scheduledAt!) > Date.now()
                     ? "Rundown armed for scheduled start"
-                    : "Rundown automation running"
-                  : activeLog?.lastStartedAt
-                    ? "Rundown stopped"
-                    : activeLog?.publishedAt
-                      ? "Waiting for scheduled start"
-                      : "Publish a rundown to start",
+                    : "Rundown automation running",
                 onStart: () => void commandLog("start"),
                 onStop: () => void commandLog("stop"),
                 onAdvance: () => void commandLog("advance"),
               }
             : undefined
         }
+      />
+      ) : (
+        <RadioTransport
+          next={next}
+          onTake={takeNext}
+          onTakeOffAir={onTakeOffAir}
+          keysEnabled={!findingSong}
+          onListen={
+            monitor
+              ? () =>
+                  monitor.state === "stopped"
+                    ? void monitor.listen()
+                    : monitor.stop()
+              : undefined
+          }
+          listening={monitor?.state === "playing"}
+        />
+      )}
+      <PlaySongNow
+        open={findingSong}
+        leaves={leaves}
+        catalog={songCatalog}
+        onClose={() => setFindingSong(false)}
+        onCueNext={(leaf) => onQueueSong(leaf.id)}
+        onTakeNow={async (candidate) => {
+          if (candidate.leaf) return takeRotationSong(candidate.leaf.id);
+          if (candidate.song && onPlaySongNow) return onPlaySongNow(candidate.song);
+          throw new Error("Playing a library song now is not available here.");
+        }}
       />
     </div>
   );
@@ -958,7 +1113,6 @@ function RadioMixerChannel({
 }) {
   const db = faderToDb(channel.volume);
   const level = Number.isFinite(db) ? `${db.toFixed(1)} dB` : "-∞ dB";
-  const peakPercent = `${Math.max(0, Math.min(100, channel.peak * 100))}%`;
   return (
     <section className="console-channel" aria-label={`${label} mixer channel`}>
       <div className="console-channel-label">{label}</div>
@@ -970,18 +1124,29 @@ function RadioMixerChannel({
         step={0.01}
         value={channel.volume}
         onChange={(event) => onVolumeChange(Number(event.target.value))}
+        onKeyDown={(event) => {
+          // Up and down move the fader one decibel, not one hundredth of its travel.
+          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+          event.preventDefault();
+          const current = Number.isFinite(db) ? db : -80;
+          const target = current + (event.key === "ArrowUp" ? 1 : -1);
+          onVolumeChange(Math.max(0, Math.min(1, dbToFader(target))));
+        }}
         aria-label={`${label} level`}
       />
-      <div
-        className="console-meter"
-        role="meter"
-        aria-label={`${label} live peak`}
-        aria-valuenow={Math.max(0, Math.min(100, channel.peak * 100))}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <span style={{ width: peakPercent }} />
-      </div>
+      <Meter
+        label={`${label} live peak`}
+        value={Math.max(0, Math.min(100, (channel.vu ?? channel.peak) * 100))}
+        peak={channel.vu !== undefined ? Math.min(100, channel.peak * 100) : null}
+        hold={
+          channel.peakHold !== undefined
+            ? Math.min(100, channel.peakHold * 100)
+            : null
+        }
+        min={0}
+        max={100}
+        warnFrom={90}
+      />
       {onToggleMuted ? (
         <TooltipButton
           type="button"

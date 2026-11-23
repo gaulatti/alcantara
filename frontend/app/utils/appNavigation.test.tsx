@@ -36,6 +36,19 @@ describe("program-aware application navigation", () => {
     expect(labels("tv")).not.toContain("Component catalog");
   });
 
+  it("keeps the Development labels short enough for the sidebar, and distinct", () => {
+    const developer = getAppNavigationSections({
+      programType: "tv",
+      canViewBroadcasts: true,
+      includeDeveloperTools: true,
+    }).find((section) => section.id === "developer")!;
+    const names = developer.items.map((item) => item.label);
+    expect(names).toHaveLength(9);
+    expect(new Set(names).size).toBe(names.length);
+    // The sidebar truncates a nested label at about 18 characters.
+    for (const name of names) expect(name.length).toBeLessThanOrEqual(17);
+  });
+
   it("treats the legacy control route as the live destination", () => {
     expect(isNavigationItemActive("/control", "/")).toBe(true);
     expect(isNavigationItemActive("/media", "/media")).toBe(true);

@@ -1,11 +1,14 @@
 import {
+  ALLOWLISTED_OPTIONAL_SECRET_KEYS,
   RUNTIME_SECRET_KEYS,
   isPrivateServiceHostname,
   isValidAlanaControlToken,
   normalizeAlanaControlUrl,
   normalizePrivateServiceUrl,
+  normalizeTemplateOrigin,
   parseRuntimeSecretPayload,
   validateExternalSourceEncryption,
+  validateProgramTemplateOrigins,
 } from './runtime-secret-contract';
 
 const TOKEN = 'a'.repeat(64);
@@ -33,6 +36,11 @@ describe('runtime secret contract', () => {
       'externalSourceConfigKeys',
     ]);
     expect(Object.isFrozen(RUNTIME_SECRET_KEYS)).toBe(true);
+    expect(ALLOWLISTED_OPTIONAL_SECRET_KEYS).toEqual([
+      'programTemplateOrigins',
+      'POMPEII_ACCESS_CREDENTIAL',
+    ]);
+    expect(Object.isFrozen(ALLOWLISTED_OPTIONAL_SECRET_KEYS)).toBe(true);
   });
 
   describe('isValidAlanaControlToken', () => {
@@ -248,6 +256,104 @@ describe('runtime secret contract', () => {
           JSON.stringify(payload({ externalSourceConfigKeys: '{}' })),
         ),
       ).toThrow('External source encryption configuration is malformed');
+      expect(() =>
+        parseRuntimeSecretPayload(
+          JSON.stringify(
+            payload({ programTemplateOrigins: 'http://insecure.test' }),
+          ),
+        ),
+      ).toThrow('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
+    });
+
+    it('handles programTemplateOrigins correctly', () => {
+      const selected = parseRuntimeSecretPayload(
+        JSON.stringify(
+          payload({
+            programTemplateOrigins:
+              ' https://template1.test , https://template2.test/ ',
+          }),
+        ),
+      );
+      expect(selected.programTemplateOrigins).toBe(
+        'https://template1.test , https://template2.test/',
+      );
+
+      const empty = parseRuntimeSecretPayload(
+        JSON.stringify(
+          payload({
+            programTemplateOrigins: '   ',
+          }),
+        ),
+      );
+      expect(empty.programTemplateOrigins).toBe('');
+    });
+  });
+
+  describe('POMPEII_ACCESS_CREDENTIAL (gaulatti/alcantara#224)', () => {
+    it('is optional: absent or blank never fails the payload, a value is trimmed', () => {
+      expect(
+        parseRuntimeSecretPayload(JSON.stringify(payload()))
+          .POMPEII_ACCESS_CREDENTIAL,
+      ).toBeUndefined();
+      expect(
+        parseRuntimeSecretPayload(
+          JSON.stringify(payload({ POMPEII_ACCESS_CREDENTIAL: '   ' })),
+        ).POMPEII_ACCESS_CREDENTIAL,
+      ).toBe('');
+      expect(
+        parseRuntimeSecretPayload(
+          JSON.stringify(payload({ POMPEII_ACCESS_CREDENTIAL: ' pmp_svc_x ' })),
+        ).POMPEII_ACCESS_CREDENTIAL,
+      ).toBe('pmp_svc_x');
+    });
+
+    it('refuses a value that is not a string, naming the key and never the value', () => {
+      expect(() =>
+        parseRuntimeSecretPayload(
+          JSON.stringify(payload({ POMPEII_ACCESS_CREDENTIAL: 12345 })),
+        ),
+      ).toThrow(
+        'Alcantara runtime configuration field POMPEII_ACCESS_CREDENTIAL is malformed',
+      );
+    });
+  });
+
+  describe('normalizeTemplateOrigin', () => {
+    it('normalizes valid origins', () => {
+      expect(
+        normalizeTemplateOrigin('https://template.harborlight.test/'),
+      ).toBe('https://template.harborlight.test');
+      expect(normalizeTemplateOrigin('https://template.harborlight.test')).toBe(
+        'https://template.harborlight.test',
+      );
+    });
+
+    it.each([
+      'not a url',
+      'http://insecure.test',
+      'https://user:pass@template.test',
+      'https://template.test?query=1',
+      'https://template.test#hash',
+      'https://template.test/path',
+    ])('rejects invalid origin %p', (val) => {
+      expect(() => normalizeTemplateOrigin(val)).toThrow(
+        'PROGRAM_TEMPLATE_ORIGINS contains an invalid origin',
+      );
+    });
+  });
+
+  describe('validateProgramTemplateOrigins', () => {
+    it('validates and returns array of normalized origins', () => {
+      expect(
+        validateProgramTemplateOrigins('https://a.test, https://b.test/ , , '),
+      ).toEqual(['https://a.test', 'https://b.test']);
+      expect(validateProgramTemplateOrigins('')).toEqual([]);
+    });
+
+    it('rejects non-string values', () => {
+      expect(() =>
+        validateProgramTemplateOrigins(undefined as unknown as string),
+      ).toThrow('PROGRAM_TEMPLATE_ORIGINS is malformed');
     });
   });
 });

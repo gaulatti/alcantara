@@ -968,7 +968,18 @@ describe('ProgramService timed-block audio cuts', () => {
     await service.stopProgramSongForTimedBlock('radio-1');
     expect(prisma.programState.update).not.toHaveBeenCalled();
     expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
-    expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1');
+    expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1', {
+      keepSequence: true,
+    });
+  });
+  it('keeps the rotation mode on a stop the flight drives, cueing the engine past the song (#173)', async () => {
+    const { service, prisma, engine } = setup();
+    await service.takeProgramSongOffAir('radio-1', { flightDriven: true });
+    expect(prisma.programState.update).not.toHaveBeenCalled();
+    expect(engine.handleSequenceUpdated).not.toHaveBeenCalled();
+    expect(engine.handleStopSong).toHaveBeenCalledWith('radio-1', {
+      keepMode: true,
+    });
   });
   it('makes an explicit operator stop persist Manual so idle snapshots cannot restart playback', async () => {
     const { service, prisma, engine } = setup();

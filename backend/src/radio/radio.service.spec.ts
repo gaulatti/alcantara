@@ -252,6 +252,8 @@ describe('RadioService recovery playlist', () => {
           .fn()
           .mockImplementation(async () => ({ radioSettings: settings })),
       },
+      // No program radio filler configured (gaulatti/alcantara#126).
+      fillerLeg: { findUnique: jest.fn().mockResolvedValue(null) },
       song: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -324,6 +326,7 @@ describe('RadioService recovery playlist', () => {
           radioSettings: { id: 9, palazzoUrl: 'http://palazzo:3100' },
         }),
       },
+      fillerLeg: { findUnique: jest.fn().mockResolvedValue(null) },
       song: {
         findMany: jest
           .fn()

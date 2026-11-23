@@ -7,10 +7,13 @@ export function ScenePreparationFixture({
   clock = false,
   error = false,
   saving = false,
+  timezone = false,
 }: {
   clock?: boolean;
   error?: boolean;
   saving?: boolean;
+  /** A clock widget saved with a zone the browser lists under an alias. */
+  timezone?: boolean;
 }) {
   const [player, setPlayer] = useState({
     show: false,
@@ -24,6 +27,7 @@ export function ScenePreparationFixture({
     showLogo: true,
     showPlaybackProgress: false,
   });
+  const [clockWidget, setClockWidget] = useState({ timezone: "Asia/Kolkata" });
   const [slideshow, setSlideshow] = useState({
     intervalMs: 5000,
     transitionMs: 900,
@@ -31,7 +35,11 @@ export function ScenePreparationFixture({
     shuffle: false,
     kenBurns: true,
   });
-  const name = clock ? "Studio clock" : "Giorgia player";
+  const name = timezone
+    ? "World clock"
+    : clock
+      ? "Studio clock"
+      : "Giorgia player";
   return (
     <section className="broadcast-console min-h-screen bg-dark-sand p-4 text-text-primary">
       <SceneAttributesPanel
@@ -43,13 +51,15 @@ export function ScenePreparationFixture({
           error ? "Changes could not be saved. Retry Save changes." : null
         }
         editableSceneComponentEntries={
-          clock
-            ? [
-                ["modoitaliano-clock", clockProps],
-                ["slideshow", slideshow],
-                [type, player],
-              ]
-            : [[type, player]]
+          timezone
+            ? [["clock-widget", clockWidget]]
+            : clock
+              ? [
+                  ["modoitaliano-clock", clockProps],
+                  ["slideshow", slideshow],
+                  [type, player],
+                ]
+              : [[type, player]]
         }
         componentTypes={[
           { type, name: "Giorgia player", description: "" },
@@ -59,6 +69,7 @@ export function ScenePreparationFixture({
             description: "",
           },
           { type: "slideshow", name: "Slideshow", description: "" },
+          { type: "clock-widget", name: "Clock Widget", description: "" },
         ]}
         sceneEditorProps={{ [type]: player }}
         selectedSceneInstantId={null}
@@ -80,11 +91,13 @@ export function ScenePreparationFixture({
         onCommitComponentProps={async () => undefined}
         onUpdateProp={(component, key, value) => {
           const update =
-            component === "modoitaliano-clock"
-              ? setClockProps
-              : component === "slideshow"
-                ? setSlideshow
-                : setPlayer;
+            component === "clock-widget"
+              ? setClockWidget
+              : component === "modoitaliano-clock"
+                ? setClockProps
+                : component === "slideshow"
+                  ? setSlideshow
+                  : setPlayer;
           update((current: any) => ({ ...current, [key]: value }));
         }}
         onReplaceProps={(_, next) => setPlayer(next)}

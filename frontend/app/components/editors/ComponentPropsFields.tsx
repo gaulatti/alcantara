@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import { Field, Checkbox, Input, Select, Textarea } from '@gaulatti/bleecker';
-import { getTimezonesSortedByOffset, getTimezoneOptionLabel } from '../../utils/timezones';
+import { getTimezonesSortedByOffset, getTimezoneOptionLabel, withTimezoneOption } from '../../utils/timezones';
 import { SlideshowEditorFields } from './SlideshowEditorFields';
 import { ToniChyronEditorFields } from './ToniChyronEditorFields';
 import { RelojDigitalEditorFields } from './RelojDigitalEditorFields';
 import { ProgramChyronEditorFields } from './ProgramChyronEditorFields';
 import { ModoItalianoBracketEditorFields } from './ModoItalianoBracketEditorFields';
 import { ModoItalianoPodcastPlayerEditorFields } from './ModoItalianoPodcastPlayerEditorFields';
+import { ModoItalianoGiorgiaArtistBumperEditorFields } from './ModoItalianoGiorgiaArtistBumperEditorFields';
 import { FIFTHBELL_AVAILABLE_WEATHER_CITIES, normalizeSceneInstantId } from '../../utils/broadcast';
 import { createProgramTextSequence } from '../../utils/programSequence';
 import type { Scene, SongCatalogItem, MediaGroup, MediaLabel } from '../../models/broadcast';
@@ -232,8 +233,9 @@ export function ComponentPropsFields({
               max={4}
               value={typeof props.maxStreams === 'number' ? props.maxStreams : 4}
               onChange={(e) => {
+                // A number input's value is "" or a finite number, and Number("") is 0, so raw is always finite.
                 const raw = Number(e.target.value);
-                const normalized = Number.isFinite(raw) ? Math.max(1, Math.min(4, Math.round(raw))) : 4;
+                const normalized = Math.max(1, Math.min(4, Math.round(raw)));
                 updateProp(componentType, 'maxStreams', normalized);
               }}
             />
@@ -411,7 +413,7 @@ export function ComponentPropsFields({
             <Select
               value={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
               onChange={(v) => updateProp(componentType, 'clockTimezone', v)}
-              options={timezoneOptions}
+              options={withTimezoneOption(timezoneOptions, props.clockTimezone || 'America/Argentina/Buenos_Aires')}
             />
           </div>
         </div>
@@ -422,19 +424,29 @@ export function ComponentPropsFields({
           <Select
             value={props.timezone || 'America/Argentina/Buenos_Aires'}
             onChange={(v) => updateProp(componentType, 'timezone', v)}
-            options={timezoneOptions}
+            options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
           />
         </Field>
       );
     case 'reloj-clock':
       return (
-        <Field label='Timezone'>
-          <Select
-            value={props.timezone || 'America/Argentina/Buenos_Aires'}
-            onChange={(v) => updateProp(componentType, 'timezone', v)}
-            options={timezoneOptions}
-          />
-        </Field>
+        <div className='space-y-3'>
+          <Field label='Timezone'>
+            <Select
+              value={props.timezone || 'America/Argentina/Buenos_Aires'}
+              onChange={(v) => updateProp(componentType, 'timezone', v)}
+              options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
+            />
+          </Field>
+          <Field label='Logo URL (optional)'>
+            <Input
+              type='text'
+              value={props.logoUrl || ''}
+              onChange={(e) => updateProp(componentType, 'logoUrl', e.target.value)}
+              placeholder='https://example.com/logo.svg'
+            />
+          </Field>
+        </div>
       );
     case 'reloj-loop-clock':
       return (
@@ -443,7 +455,7 @@ export function ComponentPropsFields({
             <Select
               value={props.timezone || 'Europe/Madrid'}
               onChange={(v) => updateProp(componentType, 'timezone', v)}
-              options={timezoneOptions}
+              options={withTimezoneOption(timezoneOptions, props.timezone || 'Europe/Madrid')}
             />
           </Field>
           <p className='text-xs text-text-secondary'>Loop sequence: Madrid, Sanremo, New York, Santiago. Each timezone stays active for 30 seconds.</p>
@@ -493,6 +505,12 @@ export function ComponentPropsFields({
               />
               Show Playback Progress
             </label>
+            {componentType === 'modoitaliano-giorgia-clock' ? (
+              <label className='flex items-center gap-2 text-sm text-text-primary'>
+                <Checkbox checked={toBoolean(props.keySafe, false)} onChange={(e) => updateProp(componentType, 'keySafe', e.target.checked)} />
+                Key-safe (for chroma key scenes)
+              </label>
+            ) : null}
           </div>
         </div>
       );
@@ -676,6 +694,16 @@ export function ComponentPropsFields({
           isLoadingMediaGroups={isLoadingMediaGroups}
         />
       );
+    case 'modoitaliano-giorgia-artist-bumper':
+      return (
+        <ModoItalianoGiorgiaArtistBumperEditorFields
+          componentType={componentType}
+          props={props}
+          updateProp={updateProp}
+          mediaLabels={mediaLabels}
+          isLoadingMediaLabels={isLoadingMediaLabels}
+        />
+      );
     case 'cronica-background':
       return <p className='text-xs text-text-secondary italic'>No configurable fields for Cronica background.</p>;
     case 'cronica-chyron':
@@ -752,7 +780,7 @@ export function ComponentPropsFields({
     case 'fifthbell-corner': {
       const supportsContent = componentType === 'fifthbell' || componentType === 'fifthbell-content';
       const supportsMarquee = componentType === 'fifthbell' || componentType === 'fifthbell-marquee';
-      const selectedWeatherCities = Array.isArray(props.weatherCities) ? props.weatherCities.filter((c: unknown): c is string => typeof c === 'string') : [];
+      const selectedWeatherCities: string[] = Array.isArray(props.weatherCities) ? props.weatherCities.filter((c: unknown): c is string => typeof c === 'string') : [];
       const selectedCitySet = new Set(selectedWeatherCities);
       const languageRotation = Array.isArray(props.languageRotation) ? props.languageRotation.filter((l: unknown): l is string => typeof l === 'string') : ['en', 'es', 'en', 'it'];
 

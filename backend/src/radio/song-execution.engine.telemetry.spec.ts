@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { SongSimilarityService } from './song-similarity.service';
 import {
   SongExecutionEngine,
   type SongEngineEvent,
@@ -115,11 +114,16 @@ function setup(
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordCursorWrite: jest.fn(),
+    recordInheritedAdoption: jest.fn(),
+    recordEngineResync: jest.fn(),
+    recordEngineDegraded: jest.fn(),
     recordIntroTransition: jest.fn(),
     recordSongQueueAction: jest.fn(),
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -285,28 +289,18 @@ describe('SongExecutionEngine constructor metadata', () => {
       jest.doMock('../prisma.service', () => ({}));
       jest.doMock('./now-playing-publisher.service', () => ({}));
       jest.doMock('./radio-metrics.service', () => ({}));
+      jest.doMock('./song-similarity.service', () => ({}));
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const isolated = require('./song-execution.engine') as {
           SongExecutionEngine: new (...args: never[]) => unknown;
         };
-        // The similarity service is not mocked, so its real class is emitted
-        // by the isolated registry; compare by name.
         expect(
-          (
-            Reflect.getMetadata(
-              'design:paramtypes',
-              isolated.SongExecutionEngine,
-            ) as Array<{ name: string }>
-          ).map((type) => type.name),
-        ).toEqual([
-          'Object',
-          'Object',
-          'Object',
-          'Object',
-          'Object',
-          SongSimilarityService.name,
-        ]);
+          Reflect.getMetadata(
+            'design:paramtypes',
+            isolated.SongExecutionEngine,
+          ),
+        ).toEqual([Object, Object, Object, Object, Object, Object]);
       } finally {
         jest.dontMock('./radio.service');
         jest.dontMock('../program/flight.service');
@@ -621,6 +615,19 @@ describe('SongExecutionEngine Palazzo events', () => {
       ).toHaveLength(1);
     });
 
+    it('skips persistence when the program state disappears before the write', async () => {
+      const ctx = setup();
+      const requestId = await startAutomatic(ctx, FAVORITES);
+      ctx.prisma.programState.update.mockClear();
+      ctx.engine.handlePalazzoEvent('radio-1', {
+        type: 'track.started',
+        data: { playbackRequestId: requestId },
+      });
+      internals(ctx.engine).states.delete('radio-1');
+      await flush();
+      expect(ctx.prisma.programState.update).not.toHaveBeenCalled();
+    });
+
     it('tolerates the program state disappearing while the write fails', async () => {
       const ctx = setup();
       const requestId = await startAutomatic(ctx, FAVORITES);
@@ -865,14 +872,19 @@ describe('SongExecutionEngine playing snapshots', () => {
     ]);
   });
 
-  it('only warns once about a foreign track and never adopts it', () => {
-    const { engine, radioService } = setup();
+  it('only warns once about a foreign track and never adopts it', async () => {
+    const { engine, radioService, prisma } = setup();
+    (prisma as unknown as { song: unknown }).song = {
+      findMany: jest.fn().mockResolvedValue([]),
+    };
     engine.handleSequenceUpdated('radio-1', AUTO);
     const foreign = playing('foreign', {
       url: 'https://example.test/unknown.mp3',
     });
     engine.handlePalazzoSnapshot('radio-1', foreign);
     engine.handlePalazzoSnapshot('radio-1', foreign);
+    await Promise.resolve();
+    await Promise.resolve();
     expect(stateOf(engine).busyWithForeignTrack).toBe(true);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(engine.getPlaybackState('radio-1')).toBeNull();

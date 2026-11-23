@@ -24,7 +24,7 @@ describe('ChartsController decorator metadata', () => {
       returnType = Reflect.getMetadata(
         'design:returntype',
         ChartsController.prototype,
-        'getSanremoRealtime',
+        'getRealtimeFeed',
       );
     });
     expect(returnType).toBe(realPromise);
@@ -43,7 +43,7 @@ describe('ChartsController decorator metadata', () => {
         returnType = Reflect.getMetadata(
           'design:returntype',
           ChartsController.prototype,
-          'getSanremoRealtime',
+          'getRealtimeFeed',
         );
       } finally {
         globalThis.Promise = realPromise;

@@ -103,32 +103,42 @@ export function getAppNavigationSections({
         {
           id: "console-fixture",
           href: "/console-fixture",
-          label: "Console fixture",
+          label: "Console",
         },
         {
           id: "radio-workflow-fixture",
           href: "/console-fixture?state=radio-workflow",
-          label: "Radio workflow fixture",
+          label: "Radio workflow",
         },
         {
           id: "radio-continuous-fixture",
           href: "/console-fixture?state=radio-continuous",
-          label: "Continuous radio fixture",
+          label: "Continuous radio",
         },
         {
           id: "rundown-desk-fixture",
           href: "/console-fixture?state=rundown-desk",
-          label: "Rundown desk fixture",
+          label: "Rundown desk",
         },
         {
           id: "rundown-filler-fixture",
           href: "/console-fixture?state=rundown-fillers",
-          label: "Rundown filler fixture",
+          label: "Rundown fillers",
         },
         {
           id: "media-fixture",
           href: "/media-fixture",
-          label: "Media fixture",
+          label: "Media states",
+        },
+        {
+          id: "labels-fixture",
+          href: "/labels-fixture",
+          label: "Label states",
+        },
+        {
+          id: "access-fixture",
+          href: "/access-fixture",
+          label: "Access states",
         },
       ],
     });

@@ -84,7 +84,7 @@ export function ModoItalianoGiorgiaPodcastPlayer({
       if (playing && analyserRef.current && !motion.matches) {
         analyserRef.current.getByteFrequencyData(data);
         for (let i = 0; i < 80; i++) {
-          const height = Math.max(2, (data[i] ?? 0) / 255 * 100);
+          const height = Math.max(2, data[i] / 255 * 100);
           ctx.globalAlpha = 0.5 + height / 200;
           ctx.fillRect(i * 12, (120 - height) / 2, 5, height);
         }

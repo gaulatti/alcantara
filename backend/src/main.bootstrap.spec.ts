@@ -102,6 +102,7 @@ describe('main bootstrap', () => {
     delete process.env.HTTP_PORT;
     delete process.env.ALLOWED_ORIGINS;
     delete process.env.FRONTEND_ORIGIN;
+    delete process.env.PROGRAM_TEMPLATE_ORIGINS;
   });
 
   afterEach(() => {
@@ -117,7 +118,7 @@ describe('main bootstrap', () => {
     expect(h.order).toEqual(['assert', 'db', 'runtime']);
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(h.app.register).toHaveBeenCalledWith(mockMultipart, {
-      limits: { files: 1, fileSize: 100 * 1024 * 1024 },
+      limits: { files: 1, fileSize: 200 * 1024 * 1024 },
     });
     expect(h.app.listen).toHaveBeenCalledWith(3000, '0.0.0.0');
     const corsOptions = h.app.enableCors.mock.calls[0][0] as Record<
@@ -190,11 +191,16 @@ describe('main bootstrap', () => {
       for (const origin of [
         undefined,
         'null',
+        // The consent page's own form POST (bastille#34).
+        'https://api.alcantara.gaulatti.com',
         'https://alcantara.gaulatti.com',
         'https://alcantara.dev',
         'https://alcantara.gt',
         'https://fifthbell.com',
         'https://cdn.fifthbell.com',
+        // The desktop console (bastille#32): macOS, then Windows and Linux.
+        'tauri://localhost',
+        'http://tauri.localhost',
         'http://localhost',
         'https://localhost:5173',
         'http://127.0.0.1:3000',
@@ -203,18 +209,13 @@ describe('main bootstrap', () => {
       }
     });
 
-    it('rejects unknown origins with a descriptive error', async () => {
+    it('refuses unknown origins without an error, so they get no CORS headers rather than a server error', async () => {
       const h = await runMain({
         fastifyInstance: { server: { on: jest.fn() } },
       });
       const cb = corsOrigin(h)('https://evil.example');
       expect(cb).toHaveBeenCalledTimes(1);
-      const [error, allow] = cb.mock.calls[0] as [Error, boolean];
-      expect(error).toBeInstanceOf(Error);
-      expect(error.message).toBe(
-        'Origin https://evil.example not allowed by CORS',
-      );
-      expect(allow).toBe(false);
+      expect(cb).toHaveBeenCalledWith(null, false);
     });
 
     it('adds trimmed ALLOWED_ORIGINS entries and ignores empty ones', async () => {
@@ -227,6 +228,23 @@ describe('main bootstrap', () => {
       expect(check('https://a.example')).toHaveBeenCalledWith(null, true);
       expect(check('https://b.example')).toHaveBeenCalledWith(null, true);
       expect(check('https://ignored.example').mock.calls[0][1]).toBe(false);
+    });
+
+    it('allows a configured template origin, as typed, and refuses an unconfigured one', async () => {
+      process.env.PROGRAM_TEMPLATE_ORIGINS =
+        'https://Template.HarborLight.test:443/';
+      const h = await runMain({
+        fastifyInstance: { server: { on: jest.fn() } },
+      });
+      const check = corsOrigin(h);
+      expect(check('https://template.harborlight.test')).toHaveBeenCalledWith(
+        null,
+        true,
+      );
+      expect(check('https://other.harborlight.test')).toHaveBeenCalledWith(
+        null,
+        false,
+      );
     });
 
     it('uses FRONTEND_ORIGIN when ALLOWED_ORIGINS is unset', async () => {

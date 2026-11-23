@@ -14,6 +14,8 @@ import {
   Images,
   LayoutTemplate,
   List,
+  KeyRound,
+  Tag,
   LogOut,
   Menu,
   Music,
@@ -23,6 +25,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Square,
   SlidersHorizontal,
   Tv,
   Volume2,
@@ -36,6 +39,7 @@ import { resolveProgramOutputUrl, type ProgramTemplateManifest } from '../utils/
 import { useGlobalTransitionId } from '../utils/globalTransition';
 import { SCENE_TRANSITIONS, getSceneTransitionPreset } from '../utils/sceneTransitions';
 import { useLogout } from '../hooks/useAuth';
+import { RadioMonitorProvider, useRadioMonitor } from '../components/RadioMonitor';
 import { useFeatures } from '../hooks/useFeatures';
 import { isTestAuth } from '../services/session';
 import { getAppNavigationSections, isNavigationItemActive, type ProgramType } from '../utils/appNavigation';
@@ -88,7 +92,12 @@ const NAVIGATION_ICONS: Record<string, ReactNode> = {
   shows: <Boxes size={17} />,
   'radio-distribution': <Cable size={17} />,
   'component-catalog': <BookOpen size={17} />,
-  'console-fixture': <Code2 size={17} />
+  'console-fixture': <Code2 size={17} />,
+  'rundown-desk-fixture': <List size={17} />,
+  'rundown-filler-fixture': <List size={17} />,
+  'media-fixture': <Images size={17} />,
+  'labels-fixture': <Tag size={17} />,
+  'access-fixture': <KeyRound size={17} />
 };
 
 interface ShellLinkProps {
@@ -114,10 +123,29 @@ function renderAppLink({ children, className, item, onClick }: ShellLinkProps) {
   );
 }
 
+/**
+ * The console shell. The listener audio element lives in the provider around it, so it keeps
+ * playing while the operator moves between console pages, and stops when the Program changes or
+ * the shell leaves the screen (sign-out).
+ */
 export default function Layout() {
+  const [selectedProgramId] = useGlobalProgramId();
+  return (
+    <RadioMonitorProvider programId={selectedProgramId}>
+      <ConsoleShell />
+    </RadioMonitorProvider>
+  );
+}
+
+function ConsoleShell() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useLogout();
+  const { logout: signOut } = useLogout();
+  const radioMonitor = useRadioMonitor();
+  const logout = () => {
+    radioMonitor?.stop();
+    signOut();
+  };
   const { hasPermission } = useFeatures();
   const [knownPrograms, setKnownPrograms] = useState<ProgramSummary[]>([]);
   const [knownScenes, setKnownScenes] = useState<SceneSummary[]>([]);
@@ -433,6 +461,13 @@ export default function Layout() {
     </IconButton>
   );
 
+  const renderAccessButton = () => (
+    <Button variant='ghost' size='sm' onClick={() => navigate('/access')} aria-current={location.pathname === '/access' ? 'page' : undefined}>
+      <KeyRound size={15} strokeWidth={1.5} />
+      <span>Access</span>
+    </Button>
+  );
+
   const renderLogoutButton = () => (
     <Button variant='ghost' size='sm' onClick={logout}>
       <LogOut size={15} strokeWidth={1.5} />
@@ -537,7 +572,9 @@ export default function Layout() {
         icon: <Cable size={16} />,
         onSelect: () => navigate('/radio-settings')
       },
-      {
+      // The component bench is a development route (gaulatti/alcantara#352): the command
+      // exists only in development builds, where /preview is registered.
+      ...(import.meta.env.DEV ? [{
         id: 'nav-preview',
         title: 'Open Preview',
         description: 'Open component preview in a new tab',
@@ -547,7 +584,7 @@ export default function Layout() {
           if (typeof window === 'undefined') return;
           window.open('/preview', '_blank', 'noopener,noreferrer');
         }
-      },
+      }] : []),
       {
         id: 'open-selected-program',
         title: selectedProgramTitle,
@@ -767,11 +804,14 @@ export default function Layout() {
         <p className='mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary'>Active show</p>
         {renderHeaderProgramSelector()}
       </div>
-      <div className='flex items-center justify-between gap-2'>
+      <div className='flex flex-col items-start gap-1' data-testid='sidebar-footer-actions'>
         <Button size='sm' variant='ghost' onClick={() => setCommandOpen(true)}>
           <Search size={14} /> Commands
         </Button>
-        {renderLogoutButton()}
+        <div className='flex items-center gap-1'>
+          {renderAccessButton()}
+          {renderLogoutButton()}
+        </div>
       </div>
     </div>
   );
@@ -832,6 +872,7 @@ export default function Layout() {
                     </Button>
                     {renderOpenProgramButton()}
                     {renderRefreshProgramButton()}
+                    {renderAccessButton()}
                     {renderLogoutButton()}
                   </div>
                 }
@@ -850,6 +891,18 @@ export default function Layout() {
               <span className='hidden min-w-0 flex-1 truncate text-xs text-text-secondary lg:block'>
                 {selectedProgramType === 'radio' ? 'Continuous audio playout' : selectedProgramType === 'both' ? 'Television and radio legs' : 'Preview and Program switching'}
               </span>
+              {radioMonitor && radioMonitor.state !== 'stopped' ? (
+                <span
+                  role='status'
+                  className='inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] py-0.5 pl-2.5 pr-1 text-xs font-semibold text-text-secondary'
+                >
+                  <Headphones size={14} />
+                  <span className='max-w-32 truncate'>{radioMonitor.state === 'buffering' ? 'Connecting' : 'Listening'} · {selectedProgramId}</span>
+                  <Button size='xs' variant='ghost' onClick={radioMonitor.stop} aria-label='Stop listening'>
+                    <Square size={12} />
+                  </Button>
+                </span>
+              ) : null}
               <Button size='xs' variant='ghost' onClick={() => setCommandOpen(true)} aria-label='Open command menu'>
                 <Search size={14} />
                 <span className='hidden lg:inline'>Commands</span>
