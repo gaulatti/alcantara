@@ -3,8 +3,7 @@ import type { RuntimeSecretPayload } from './runtime-secret-contract';
 export const LIVEKIT_PORTS: Readonly<{
   signal: number;
   rtcTcp: number;
-  rtcUdpStart: number;
-  rtcUdpEnd: number;
+  rtcUdp: number;
   turnUdp: number;
   relayStart: number;
   relayEnd: number;

@@ -16,12 +16,13 @@ describe('the LiveKit server configuration rendered from the runtime secret', ()
     const yaml = renderLivekitServerConfig(selected);
     expect(yaml).toContain('port: 7880\n');
     expect(yaml).toContain(
-      '  tcp_port: 7881\n  port_range_start: 50000\n  port_range_end: 50100\n  use_external_ip: true\n',
+      '  tcp_port: 7881\n  udp_port: 7882\n  use_external_ip: true\n',
     );
     expect(yaml).toContain('redis:\n  address: redis:6379\n');
     expect(yaml).toContain(
       '  domain: "livekit.example.test"\n  udp_port: 3478\n  relay_range_start: 30000\n  relay_range_end: 30100\n',
     );
+    expect(yaml).not.toContain('port_range_');
     expect(
       yaml.endsWith(
         `keys:\n  "APIfictional": "${selected.livekitApiSecret}"\n`,
@@ -38,21 +39,19 @@ describe('the LiveKit server configuration rendered from the runtime secret', ()
     expect(yaml.match(/^port: /gm)).toHaveLength(1);
   });
 
-  it('uses the ports the production compose file publishes', () => {
+  it('uses the ports the Helix compose file publishes, and keeps the relay range inside', () => {
     const compose = fs.readFileSync(
-      path.join(__dirname, '../../../infra/compose.production.yml'),
+      path.join(__dirname, '../../../infra/helix/compose.livekit.yml'),
       'utf8',
     );
-    for (const port of [LIVEKIT_PORTS.signal, LIVEKIT_PORTS.rtcTcp])
-      expect(compose).toContain(`${port}:${port}/tcp`);
     expect(compose).toContain(
-      `${LIVEKIT_PORTS.turnUdp}:${LIVEKIT_PORTS.turnUdp}/udp`,
+      `'127.0.0.1:${LIVEKIT_PORTS.signal}:${LIVEKIT_PORTS.signal}/tcp'`,
     );
     expect(compose).toContain(
-      `${LIVEKIT_PORTS.rtcUdpStart}-${LIVEKIT_PORTS.rtcUdpEnd}:${LIVEKIT_PORTS.rtcUdpStart}-${LIVEKIT_PORTS.rtcUdpEnd}/udp`,
+      `'${LIVEKIT_PORTS.rtcTcp}:${LIVEKIT_PORTS.rtcTcp}/tcp'`,
     );
-    expect(compose).toContain(
-      `${LIVEKIT_PORTS.relayStart}-${LIVEKIT_PORTS.relayEnd}:${LIVEKIT_PORTS.relayStart}-${LIVEKIT_PORTS.relayEnd}/udp`,
-    );
+    for (const port of [LIVEKIT_PORTS.rtcUdp, LIVEKIT_PORTS.turnUdp])
+      expect(compose).toContain(`'${port}:${port}/udp'`);
+    expect(compose).not.toContain(`${LIVEKIT_PORTS.relayStart}`);
   });
 });
