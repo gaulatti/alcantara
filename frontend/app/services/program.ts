@@ -141,3 +141,33 @@ export async function fetchMediaGroups(targetProgramId: string): Promise<unknown
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
+
+/** The public station marks of a program (gaulatti/alcantara#335). Every field is optional. */
+export interface ProgramBrandingMarks {
+  displayName: string | null;
+  callsign: string | null;
+  subtitle: string | null;
+  logoUrl: string | null;
+  hashtag: string | null;
+  siteUrl: string | null;
+  defaultChyron: string | null;
+}
+
+export async function fetchProgramBranding(targetProgramId: string): Promise<ProgramBrandingMarks | null> {
+  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/branding`));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function saveProgramBranding(
+  targetProgramId: string,
+  marks: ProgramBrandingMarks,
+): Promise<ProgramBrandingMarks> {
+  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/branding`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(marks),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}

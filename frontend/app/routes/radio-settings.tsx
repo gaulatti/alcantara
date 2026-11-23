@@ -2,6 +2,7 @@ import { AlertContainer, Button, Card, Checkbox, Empty, Field, Input, LoadingSpi
 import { Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { AppPage } from '../components/AppPage';
+import { BrandingSection } from '../components/BrandingSection';
 import { RecoveryPlaylistPanel } from '../components/RecoveryPlaylistPanel';
 import { SongSimilarityPanel } from '../components/SongSimilarityPanel';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -194,7 +195,7 @@ export default function RadioSettingsRoute() {
           }
         />
       ) : (
-        <><RecoveryPlaylistPanel programId={programId} /><SongSimilarityPanel programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
+        <><RecoveryPlaylistPanel programId={programId} /><SongSimilarityPanel programId={programId} /><BrandingSection programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div>
               <h2 className='mt-1 text-xl font-semibold'>Radio playout</h2>
