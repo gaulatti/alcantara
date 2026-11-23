@@ -939,6 +939,24 @@ describe('storing the decoded length (#296)', () => {
     });
   });
 
+  it('records an unexpected analyzer error as decode-failed and counts the attempt', async () => {
+    const { service, prisma, analyzer } = setup([[backfillRow()]]);
+    analyzer.analyze.mockRejectedValueOnce(new Error('unexpected'));
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { attempts: 2 } }),
+    );
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'media_analysis.failed',
+        assetId: 'song:1',
+        error: 'decode-failed',
+      }),
+    );
+  });
+
   it('does not run a tool for a source that is not a URL, and does not wipe the row', async () => {
     const { service, prisma, analyzer } = setup([
       [backfillRow({ sourceUrl: 'file:///etc/passwd' })],
