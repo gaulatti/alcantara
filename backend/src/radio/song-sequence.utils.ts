@@ -509,6 +509,34 @@ export function collectProgramSongLeaves(
   return leaves;
 }
 
+/**
+ * How many leaves each song has in a sequence, keyed by the song id (else by the audio
+ * address), with a label for messages. A song airs once per leaf in a rotation, so a
+ * second leaf for the same song doubles its share (gaulatti/alcantara#280).
+ */
+export function countProgramSongLeavesBySong(
+  sequence: ProgramSongSequence | null,
+): Map<string, { count: number; label: string }> {
+  const counts = new Map<string, { count: number; label: string }>();
+  for (const leaf of collectProgramSongLeaves(sequence)) {
+    const key =
+      typeof leaf.songId === 'number'
+        ? `song:${leaf.songId}`
+        : leaf.audioUrl?.trim()
+          ? `url:${leaf.audioUrl.trim()}`
+          : null;
+    if (!key) continue;
+    const seen = counts.get(key);
+    if (seen) seen.count += 1;
+    else
+      counts.set(key, {
+        count: 1,
+        label: [leaf.artist, leaf.title].filter(Boolean).join(' - ') || key,
+      });
+  }
+  return counts;
+}
+
 export function collectHighRotationProgramSongLeaves(
   sequence: ProgramSongSequence | null,
 ): ProgramResolvedSongLeaf[] {

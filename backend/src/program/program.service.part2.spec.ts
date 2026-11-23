@@ -457,6 +457,98 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       },
     );
 
+    // gaulatti/alcantara#280: a song goes into a playlist once. Playlists that already hold a
+    // song twice stay editable, so the data repair does not block the operators.
+    describe('a song in the playlist twice (#280)', () => {
+      const twice = (urls: string[], extra: Record<string, unknown> = {}) => ({
+        ...sequence(0),
+        items: urls.map((url, i) => ({
+          ...leaf(`d${i}`, false),
+          audioUrl: url,
+          ...extra,
+        })),
+      });
+
+      it('refuses a second leaf for the same audio address, and names the song', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a']), songQueue: [] });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).rejects.toThrow(
+          /is already in the playlist; a song can be added once/,
+        );
+        expect(prisma.programState.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses a second leaf for the same song id even when the addresses differ', async () => {
+        const { service, put } = build();
+        put('main', {
+          songSequence: twice(['u-a'], { songId: 7 }),
+          songQueue: [],
+        });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-b'], { songId: 7 }),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('refuses to add a second leaf to a playlist that is empty or null', async () => {
+        const { service, put } = build();
+        put('main', { songSequence: null, songQueue: [] });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('still saves a playlist that already holds the song twice, and a third leaf is refused', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a', 'u-a']), songQueue: [] });
+        prisma.programState.update.mockResolvedValue({
+          songSequence: twice(['u-a', 'u-a']),
+          songQueue: [],
+          audioMixer: {},
+        });
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a']),
+          }),
+        ).resolves.toBeDefined();
+        await expect(
+          service.updateProgramAudioBus({
+            songSequence: twice(['u-a', 'u-a', 'u-a']),
+          }),
+        ).rejects.toThrow('already in the playlist');
+      });
+
+      it('allows removing one of the two, and leaves without a song id or address alone', async () => {
+        const { service, prisma, put } = build();
+        put('main', { songSequence: twice(['u-a', 'u-a']), songQueue: [] });
+        prisma.programState.update.mockResolvedValue({
+          songSequence: twice(['u-a']),
+          songQueue: [],
+          audioMixer: {},
+        });
+        await expect(
+          service.updateProgramAudioBus({ songSequence: twice(['u-a']) }),
+        ).resolves.toBeDefined();
+        const blank = {
+          ...sequence(0),
+          items: [
+            { ...leaf('x', false), audioUrl: '' },
+            { ...leaf('y', false), audioUrl: '' },
+          ],
+        };
+        await expect(
+          service.updateProgramAudioBus({ songSequence: blank }),
+        ).resolves.toBeDefined();
+      });
+    });
+
     it('rejects more than the high rotation limit', async () => {
       const { service, put } = build();
       put('main', { songQueue: [] });

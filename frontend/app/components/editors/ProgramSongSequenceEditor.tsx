@@ -7,6 +7,7 @@ import {
   createProgramSongSequenceItem,
   getProgramSongSequenceSelectedItemId,
   normalizeProgramSongSequence,
+  songIdsInProgramSongSequence,
   type ProgramSongSequence,
   type ProgramSongSequenceItem,
   type ProgramSongSequenceLeafItem
@@ -109,6 +110,9 @@ export function ProgramSongSequenceEditor({
     [songCatalog]
   );
 
+  // A song goes into a playlist once (gaulatti/alcantara#280): the picker says so and the server refuses a repeat.
+  const songIdsInPlaylist = useMemo(() => songIdsInProgramSongSequence(sequence), [sequence]);
+
   const catalogOptions = useMemo(
     () => availableSongCatalog.map((s) => ({ value: String(s.id), label: [s.artist, s.title].filter(Boolean).join(' - ') || `Song #${s.id}` })),
     [availableSongCatalog]
@@ -187,7 +191,7 @@ export function ProgramSongSequenceEditor({
   const addItemFromCatalog = useCallback(
     (songId: number) => {
       const selectedSong = availableSongCatalog.find((s) => s.id === songId);
-      if (!selectedSong) return;
+      if (!selectedSong || songIdsInPlaylist.has(songId)) return;
       const nextItem = createProgramSongSequenceItem('preset');
       if (nextItem.kind !== 'preset') return;
       const filled = {
@@ -211,7 +215,7 @@ export function ProgramSongSequenceEditor({
         activeItemId: isAutomatic ? (editorActiveItemId ?? sequence.activeItemId ?? filled.id) : editorActiveItemId
       });
     },
-    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence]
+    [applySequence, availableSongCatalog, editorActiveItemId, isAutomatic, sequence, songIdsInPlaylist]
   );
 
   const removeItem = useCallback(
@@ -574,10 +578,11 @@ export function ProgramSongSequenceEditor({
                     </div>
                     <Button
                       type='button'
+                      disabled={songIdsInPlaylist.has(song.id)}
                       onClick={() => addItemFromCatalog(song.id)}
                       className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-text-secondary opacity-0 shadow-none transition-all hover:translate-y-0 hover:scale-100 hover:bg-sea/20 hover:text-sea group-hover:opacity-100'
-                      title='Add to queue'
-                      aria-label='Add to queue'
+                      title={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
+                      aria-label={songIdsInPlaylist.has(song.id) ? 'Already in the playlist' : 'Add to queue'}
                     >
                       <Plus size={14} />
                     </Button>

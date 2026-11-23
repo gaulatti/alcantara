@@ -40,6 +40,7 @@ import {
 } from '../radio/song-queue.utils';
 import {
   collectHighRotationProgramSongLeaves,
+  countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
@@ -1752,6 +1753,22 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(
         `High rotation is limited to ${MAX_HIGH_ROTATION_SONGS} songs`,
       );
+    }
+    if (hasSongSequenceUpdate) {
+      // A song is added to a playlist once (gaulatti/alcantara#280). A playlist that already
+      // holds a song twice stays editable: only a write that raises a song's leaf count
+      // above what is stored (and above one) is refused.
+      const stored = countProgramSongLeavesBySong(
+        normalizeProgramSongSequence(currentState.songSequence),
+      );
+      for (const [key, next] of countProgramSongLeavesBySong(
+        normalizedNextSongSequence,
+      )) {
+        if (next.count > Math.max(1, stored.get(key)?.count ?? 0))
+          throw new BadRequestException(
+            `${next.label} is already in the playlist; a song can be added once`,
+          );
+      }
     }
     const currentSongQueue = normalizeProgramSongQueue(currentState.songQueue);
     const nextSongQueue = hasSongSequenceUpdate
