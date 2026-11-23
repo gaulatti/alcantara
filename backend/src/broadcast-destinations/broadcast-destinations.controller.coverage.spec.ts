@@ -37,10 +37,15 @@ describe('BroadcastDestinationsController coverage', () => {
     ).resolves.toEqual(['list']);
     expect(service.listDestinations).toHaveBeenCalledWith(7);
     await expect(controller.listCatalog()).resolves.toEqual(['catalog']);
-    await expect(controller.createDestination({ id: 'x' })).resolves.toEqual({
+    await expect(
+      controller.createDestination(
+        { id: 'x' },
+        { user: { sub: 'operator-1', authorization: { teamId: 7 } } },
+      ),
+    ).resolves.toEqual({
       id: 'created',
     });
-    expect(service.createDestination).toHaveBeenCalledWith({ id: 'x' });
+    expect(service.createDestination).toHaveBeenCalledWith({ id: 'x' }, 7);
     await expect(
       controller.reorderDestinations({ destinationIds: ['b', 'a'] }),
     ).resolves.toEqual(['ordered']);
@@ -108,7 +113,7 @@ describe('BroadcastDestinationsController coverage', () => {
           Isolated.prototype,
           'createDestination',
         ),
-      ).toEqual([Object]);
+      ).toEqual([Object, Object]);
     });
     jest.resetModules();
   });

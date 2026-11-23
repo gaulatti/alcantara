@@ -241,6 +241,28 @@ describe('BroadcastDestinationsService coverage', () => {
       ]);
     });
 
+    it('stamps the caller team on a new destination, and none where no team is configured', async () => {
+      const input = {
+        id: 'team-one',
+        displayName: 'Team one',
+        secretId: 'broadcast/test/team',
+        secretVersionId: 'v1',
+      };
+      const h = harness();
+      await h.service.createDestination(input, 7);
+      expect(h.prisma.broadcastDestination.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({ id: 'team-one', teamId: 7 }),
+      });
+      await h.service.createDestination(input, 0);
+      expect(
+        h.prisma.broadcastDestination.create.mock.calls.at(-1)?.[0].data,
+      ).not.toHaveProperty('teamId');
+      await h.service.createDestination(input);
+      expect(
+        h.prisma.broadcastDestination.create.mock.calls.at(-1)?.[0].data,
+      ).not.toHaveProperty('teamId');
+    });
+
     it('creates a destination at the end of the catalog with trimmed input', async () => {
       const h = harness();
       const created = await h.service.createDestination({

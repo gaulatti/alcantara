@@ -40,8 +40,14 @@ export class BroadcastDestinationsController {
 
   @Post('destinations')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  createDestination(@Body() body: Record<string, unknown>) {
-    return this.service.createDestination(body);
+  createDestination(
+    @Body() body: Record<string, unknown>,
+    @Req() request: TeamRequest,
+  ) {
+    return this.service.createDestination(
+      body,
+      request.user.authorization.teamId,
+    );
   }
 
   /**

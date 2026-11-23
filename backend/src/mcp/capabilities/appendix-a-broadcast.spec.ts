@@ -79,7 +79,10 @@ const EXTRA_RADIO_READS = new Set([
   'radio_get_audio_levels',
 ]);
 const specs = [
-  ...new BroadcastDestinationsMcpTools({} as never).specs(),
+  ...new BroadcastDestinationsMcpTools(
+    {} as never,
+    { teamId: 0 } as never,
+  ).specs(),
   ...new FillerMcpTools({} as never).specs(),
   ...new RecordingMcpTools({} as never).specs(),
   ...new RadioMcpTools(

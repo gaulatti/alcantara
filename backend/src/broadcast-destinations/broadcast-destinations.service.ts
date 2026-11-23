@@ -85,12 +85,21 @@ export class BroadcastDestinationsService {
     }));
   }
 
-  async createDestination(input: CatalogInput) {
+  /**
+   * A destination created by a caller with a team belongs to that team, which the ingest route and
+   * the list both require (gaulatti/carmencita#4). With team `0` (none configured, never
+   * production) or no caller team, no team is stamped.
+   */
+  async createDestination(input: CatalogInput, callerTeam = 0) {
     const normalized = normalizeCatalogInput(input, true);
     const position = await this.prisma.broadcastDestination.count();
     try {
       return await this.prisma.broadcastDestination.create({
-        data: { ...normalized, position },
+        data: {
+          ...normalized,
+          position,
+          ...(callerTeam === 0 ? {} : { teamId: callerTeam }),
+        },
       });
     } catch (error) {
       if (

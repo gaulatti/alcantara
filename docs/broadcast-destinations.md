@@ -83,7 +83,9 @@ The list of destinations without keys is the existing
 `GET /broadcast/destinations` (`broadcast.view`). It lists only the caller's team's
 destinations (every destination where no team is configured, which production
 refuses), so it never offers one the ingest route would answer 404 for. A
-destination with no team is not listed until its `teamId` is stamped.
+destination with no team is not listed until its `teamId` is stamped. A destination created by a
+caller with a team (HTTP or MCP) is stamped with that team; with no team
+configured it is not stamped.
 
 ## Immutability and idempotency
 

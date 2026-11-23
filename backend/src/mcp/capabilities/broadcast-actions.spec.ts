@@ -188,7 +188,10 @@ function build() {
     webrtc: new WebrtcController(s.webrtc as never),
   };
   const specs = [
-    ...new BroadcastDestinationsMcpTools(s.destinations as never).specs(),
+    ...new BroadcastDestinationsMcpTools(
+      s.destinations as never,
+      { teamId: 0 } as never,
+    ).specs(),
     ...new FillerMcpTools(s.fillers as never).specs(),
     ...new RecordingMcpTools(s.recording as never).specs(),
     ...new RadioMcpTools(
@@ -261,12 +264,15 @@ describe('broadcast destination writes', () => {
         secret_version_id: 'v1',
       },
       () =>
-        b.controllers.destinations.createDestination({
-          id: 'youtube',
-          displayName: 'YouTube',
-          secretId: 'arn:x',
-          secretVersionId: 'v1',
-        }),
+        b.controllers.destinations.createDestination(
+          {
+            id: 'youtube',
+            displayName: 'YouTube',
+            secretId: 'arn:x',
+            secretVersionId: 'v1',
+          },
+          { user: { sub: 'u', authorization: { teamId: 0 } } },
+        ),
       [d.createDestination],
     );
     await parity(
