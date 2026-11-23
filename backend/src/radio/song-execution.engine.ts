@@ -6,6 +6,7 @@ import {
 } from '../auth/actor-context';
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   Inject,
@@ -38,6 +39,7 @@ import type {
 } from './palazzo-contract';
 import {
   activateProgramSongLeaf,
+  activeProgramSongLeafId,
   advanceProgramSongSequence,
   collectHighRotationProgramSongLeaves,
   collectProgramSongLeaves,
@@ -46,12 +48,15 @@ import {
   findUniqueProgramSongLeafByAudioUrl,
   normalizeProgramSongSequence,
   programSongSequenceStructure,
+  removeProgramSongLeavesInPlace,
   resolveProgramSongLeaf,
   type ProgramSongSequence,
+  type ProgramSongSequenceLeafItem,
   type ProgramResolvedSongLeaf,
 } from './song-sequence.utils';
 import {
   MAX_PROGRAM_SONG_QUEUE_LENGTH,
+  filterProgramSongQueueForSequence,
   normalizeProgramSongQueue,
   type ProgramSongQueueEntry,
 } from './song-queue.utils';
@@ -405,6 +410,9 @@ interface SongEngineState {
 }
 
 const MAX_ENDED_REQUEST_IDS = 128;
+/** How often a leaf removal re-reads the row when another write moved it first. */
+const REMOVE_LEAVES_ATTEMPTS = 4;
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const RADIO_PROGRAM_TYPES = new Set(['radio', 'both']);
 
 /**
@@ -816,6 +824,116 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
         this.recordQueueMutationFailure(error);
         throw error;
       }
+    });
+  }
+
+  /**
+   * Removes exactly these leaves from a program's playlist without rewriting the cursor from a
+   * stale read (gaulatti/alcantara#327). Under the queue-mutation lock it reads the stored row,
+   * takes the sequence the engine holds when that differs from the stored one only by the cursor
+   * (so the cursor is the live one), removes the leaves, filters the queue and stores both with
+   * one compare-and-swap on the row's `updatedAt`, retried when the row moved. A dry run only
+   * reports.
+   */
+  async removeSongLeaves(
+    programId: string,
+    leafIds: string[],
+    options: { keepRotation: boolean; dryRun: boolean },
+  ): Promise<{
+    removed: ProgramSongSequenceLeafItem[];
+    before: number;
+    after: number;
+    cursorMovedTo: string | null;
+    songSequence: ProgramSongSequence;
+    songQueue: ProgramSongQueueEntry[];
+  }> {
+    const wanted = new Set(leafIds);
+    return this.withQueueMutationLock(programId, async () => {
+      for (let attempt = 0; attempt < REMOVE_LEAVES_ATTEMPTS; attempt += 1) {
+        const row = await this.prisma.programState.findUnique({
+          where: { programId },
+          select: { songSequence: true, songQueue: true, updatedAt: true },
+        });
+        if (!row) throw new NotFoundException('Program not found');
+        const stored = normalizeProgramSongSequence(row.songSequence);
+        if (!stored)
+          throw new BadRequestException('The program has no playlist');
+        const held = this.states.get(programId)?.sequence ?? null;
+        const base = clone(
+          held &&
+            programSongSequenceStructure(held) ===
+              programSongSequenceStructure(stored)
+            ? held
+            : stored,
+        );
+        const known = new Set(
+          collectProgramSongLeaves(base).map((leaf) => leaf.id),
+        );
+        const unknown = leafIds.filter((id) => !known.has(id));
+        if (unknown.length)
+          throw new BadRequestException(
+            `Unknown leaf id(s): ${unknown.slice(0, 5).join(', ')}${unknown.length > 5 ? ` and ${unknown.length - 5} more` : ''}`,
+          );
+        let cursorMovedTo: string | null = null;
+        const active = activeProgramSongLeafId(base);
+        if (active && wanted.has(active)) {
+          if (!options.keepRotation)
+            throw new BadRequestException(
+              `Leaf ${active} is the active leaf; set keep_rotation to move the rotation to the next leaf`,
+            );
+          for (
+            let moves = 0, now = active;
+            now && wanted.has(now) && moves <= known.size;
+            moves += 1
+          ) {
+            if (!advanceProgramSongSequence(base, now)) break;
+            now = activeProgramSongLeafId(base) ?? '';
+          }
+          const next = activeProgramSongLeafId(base);
+          if (next && wanted.has(next))
+            throw new BadRequestException(
+              'No leaf is left to move the rotation to',
+            );
+          cursorMovedTo = next;
+        }
+        const before = known.size;
+        const removed = removeProgramSongLeavesInPlace(base, wanted);
+        const queue = filterProgramSongQueueForSequence(
+          normalizeProgramSongQueue(row.songQueue),
+          base,
+        );
+        const result = {
+          removed,
+          before,
+          after: before - removed.length,
+          cursorMovedTo,
+          songSequence: base,
+          songQueue: queue,
+        };
+        if (options.dryRun) return result;
+        const { count } = await this.prisma.programState.updateMany({
+          where: { programId, updatedAt: row.updatedAt },
+          data: {
+            songSequence: base as unknown as Prisma.InputJsonValue,
+            songQueue: queue as unknown as Prisma.InputJsonValue,
+          },
+        });
+        if (count !== 1) continue;
+        // The engine's own cursor may have moved since the read (an operator edit would have
+        // moved `updatedAt` and failed the swap): keep the live cursor, drop the leaves.
+        const live = this.states.get(programId);
+        if (live?.sequence) {
+          const current = clone(live.sequence);
+          removeProgramSongLeavesInPlace(current, wanted);
+          live.sequence = current;
+          result.songSequence = current;
+        }
+        this.updateHighRotationFavoriteMetric();
+        return result;
+      }
+      throw new ConflictException(
+        'The playlist kept changing; nothing was removed, try again',
+      );
     });
   }
 

@@ -1845,6 +1845,67 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * Removes exactly these leaves from a program's playlist (gaulatti/alcantara#327): the engine
+   * does the compare-and-swap write against the live cursor, then this broadcasts the same
+   * `audio_bus_update` the normal path does. A dry run reports and changes nothing.
+   */
+  async removeProgramSongLeaves(
+    programId: string,
+    leafIds: string[],
+    options: { keepRotation?: boolean; dryRun?: boolean } = {},
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const dryRun = options.dryRun === true;
+    const outcome = await this.songExecutionEngine.removeSongLeaves(
+      normalizedProgramId,
+      leafIds,
+      { keepRotation: options.keepRotation === true, dryRun },
+    );
+    const summary = {
+      removed: outcome.removed.map((leaf) => ({
+        id: leaf.id,
+        songId: leaf.songId ?? null,
+        artist: leaf.artist,
+        title: leaf.title,
+        highRotation: leaf.highRotation === true,
+      })),
+      leafCountBefore: outcome.before,
+      leafCountAfter: outcome.after,
+      cursorMovedTo: outcome.cursorMovedTo,
+    };
+    if (dryRun) return { dryRun, ...summary, version: null };
+
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { audioMixer: true },
+    });
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'audio_bus_update',
+      programId: normalizedProgramId,
+      settings: {
+        songSequence: outcome.songSequence,
+        songQueue: outcome.songQueue,
+        mixerSettings: this.withResolvedProgramAudioMixerSettings(
+          state?.audioMixer,
+        ),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    this.songExecutionEngine.handleQueueUpdated(
+      normalizedProgramId,
+      outcome.songQueue,
+    );
+    return {
+      dryRun,
+      ...summary,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
   async enqueueProgramSong(programId: string, itemId: string) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const songQueue = await this.songExecutionEngine.enqueueSong(
