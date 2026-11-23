@@ -16,7 +16,9 @@ import { ManagedMetricsService } from '../observability/managed-metrics.service'
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
 import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
-import { ARTIST_LABEL_LOOKUP, NO_ARTIST_LABELS } from './artist-label-lookup';
+import { ARTIST_LABEL_LOOKUP } from './artist-label-lookup';
+import { ArtistLabelsModule } from '../artist-labels/artist-labels.module';
+import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
 
 @Global()
 @Module({
@@ -157,8 +159,15 @@ describe('ProgramModule wiring', () => {
       FlightMcpTools,
       RecipesService,
       RecipeMcpTools,
-      { provide: ARTIST_LABEL_LOOKUP, useValue: NO_ARTIST_LABELS },
+      {
+        provide: ARTIST_LABEL_LOOKUP,
+        useFactory: expect.any(Function),
+        inject: [ArtistLabelsService],
+      },
       PrismaService,
+    ]);
+    expect(Reflect.getMetadata('imports', ProgramModule)).toEqual([
+      ArtistLabelsModule,
     ]);
   });
 });

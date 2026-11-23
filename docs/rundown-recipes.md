@@ -24,8 +24,8 @@ Its only input is the song. The eight steps, in the order they air (the step key
 step whose scene isn't set on the recipe is left out of a use.
 
 **The label** is the use's own `labelId` when one is given. Otherwise it is the artist's media label
-(gaulatti/alcantara#423, reached through the `ARTIST_LABEL_LOOKUP` port, which answers `null` until
-gaulatti/alcantara#427 binds it). Otherwise the use has none.
+(gaulatti/alcantara#423, reached through the `ARTIST_LABEL_LOOKUP` port, bound to `ArtistLabelsService` in
+the program module since gaulatti/alcantara#427; a song with no team is looked up as the deployment's own). Otherwise the use has none.
 
 ## A use in a rundown
 
