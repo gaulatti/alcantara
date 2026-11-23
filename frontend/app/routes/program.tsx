@@ -952,6 +952,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             triggeredAt: timestamp || new Date().toISOString()
           });
         } else {
+          // Decision (gaulatti/alcantara#264): the state poll is the source of truth. A poll that answers
+          // isPlaying:false stops an instant, even one a websocket take started a moment earlier. The
+          // race is resolved by the next poll, which answers from the backend, so the page does not keep
+          // a grace window of its own. A grace window, if wanted, is a separate ticket. The
+          // playing-answer case is pinned by the scene-instant tests.
           stopSceneInstantAudio();
         }
       } else if (data.type === 'program_reload') {
