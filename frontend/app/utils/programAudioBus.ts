@@ -337,11 +337,23 @@ function buildMeterEnvelope(audioBuffer: AudioBuffer): MeterEnvelope | null {
     values[frameIndex] = peakChannelRms;
   }
 
+  /* v8 ignore start -- @preserve: defensive. frameCount is at least 1, so there is always a value. */
+  if (values.length === 0) {
+    return {
+      stepMs: frameSize * 1000 / sampleRate,
+      values
+    };
+  }
+  /* v8 ignore stop */
+
   const sortedValues = Array.from(values).sort((left, right) => left - right);
   const lowIndex = Math.max(0, Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * METER_ENVELOPE_LOW_PERCENTILE)));
   const highIndex = Math.max(lowIndex, Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * METER_ENVELOPE_HIGH_PERCENTILE)));
-  const floorValue = sortedValues[lowIndex];
-  const ceilingValue = Math.max(floorValue + 1e-6, sortedValues[highIndex]);
+  // The indexes are clamped into a non-empty array; the fallbacks are defensive.
+  /* v8 ignore start -- @preserve */
+  const floorValue = sortedValues[lowIndex] ?? 0;
+  const ceilingValue = Math.max(floorValue + 1e-6, sortedValues[highIndex] ?? floorValue + 1e-6);
+  /* v8 ignore stop */
   let previousNormalized = 0;
 
   // Normalize using percentiles and add transient emphasis for visible movement.
@@ -384,9 +396,11 @@ function getMeterEnvelope(audioUrl: string, context: AudioContext): Promise<Mete
   return promise;
 }
 
-function resolveEnvelopeFetchUrl(audioUrl: string): string {
-  // The bus hands over the track's trimmed, non-empty URL.
-  const normalized = audioUrl;
+export function resolveEnvelopeFetchUrl(audioUrl: string): string {
+  const normalized = audioUrl.trim();
+  if (!normalized) {
+    return normalized;
+  }
 
   try {
     const parsed = new URL(normalized, window.location.href);
@@ -414,11 +428,13 @@ function warnEnvelopeSkippedOnce(): void {
   console.warn('Program audio level envelope skipped: the browser refused an AudioContext.');
 }
 
-function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: string): void {
-  // The bus hands over the track's trimmed, non-empty URL (ensureProgramAudioBusTrack refuses a blank one).
-  const normalizedUrl = trackAudioUrl;
+export function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: string): void {
+  const normalizedUrl = typeof trackAudioUrl === 'string' ? trackAudioUrl.trim() : '';
   state.meterEnvelopeUrl = normalizedUrl;
   state.meterEnvelope = null;
+  if (!normalizedUrl) {
+    return;
+  }
 
   const AudioContextCtor = getAudioContextConstructor();
   if (!AudioContextCtor) {
@@ -786,7 +802,9 @@ export function getProgramAudioBusSignalSnapshot(programId: string): ProgramAudi
       Math.floor(timeMs / Math.max(1, state.meterEnvelope.stepMs))
       )
     );
-    const envelopeLevel = state.meterEnvelope.values[envelopeIndex];
+    // The index is clamped into a non-empty array; the fallback is defensive.
+    /* v8 ignore next -- @preserve */
+    const envelopeLevel = state.meterEnvelope.values[envelopeIndex] ?? 0;
     const normalizedEnvelopeLevel = envelopeLevel * clampVolume(state.activeAudio.volume);
     nextRms = normalizedEnvelopeLevel;
     nextPeak = normalizedEnvelopeLevel;

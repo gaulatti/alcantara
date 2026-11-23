@@ -143,3 +143,53 @@ it("treats a program id that is not a string as no program", () => {
   expect(getProgramAudioBusSnapshot(undefined as never)).toMatchObject({ track: null, isPlaying: false });
   expect(getProgramAudioBusSignalSnapshot(7 as never)).toEqual({ rms: 0, peak: 0 });
 });
+
+// gaulatti/alcantara#438: the guards on the on-air audio path stay, and each is fed the bad input it
+// guards against, asserting the safe result.
+
+it("plays a padded URL trimmed, and refuses a blank one without a song or a meter", () => {
+  ensureProgramAudioBusTrack(programId, { token: "rem:pad", audioUrl: "  https://audio.test/padded.mp3  " });
+  expect(Audio_.created.map((audio) => audio.src)).toEqual(["https://audio.test/padded.mp3"]);
+  stopProgramAudioBus(programId);
+  Audio_.created = [];
+  ensureProgramAudioBusTrack(programId, { token: "rem:blank", audioUrl: "   " });
+  ensureProgramAudioBusTrack(programId, { token: "   ", audioUrl: "https://audio.test/x.mp3" });
+  expect(Audio_.created).toHaveLength(0);
+});
+
+it("resolves an envelope URL that is blank, padded, relative, foreign or malformed to a safe address", async () => {
+  const { resolveEnvelopeFetchUrl } = await import("./programAudioBus");
+  expect(resolveEnvelopeFetchUrl("")).toBe("");
+  expect(resolveEnvelopeFetchUrl("   ")).toBe("");
+  expect(resolveEnvelopeFetchUrl(`  ${window.location.origin}/a.mp3  `)).toBe(`${window.location.origin}/a.mp3`);
+  expect(resolveEnvelopeFetchUrl("/relative.mp3")).toBe(`${window.location.origin}/relative.mp3`);
+  expect(resolveEnvelopeFetchUrl("https://elsewhere.test/a.mp3")).toContain(
+    `audio-proxy?url=${encodeURIComponent("https://elsewhere.test/a.mp3")}`,
+  );
+  expect(resolveEnvelopeFetchUrl("http://[bad")).toContain("audio-proxy?url=");
+});
+
+it("sets up no envelope for a URL that is blank or not a string", async () => {
+  const { setupAudioMeterEnvelope } = await import("./programAudioBus");
+  const state = { meterEnvelopeUrl: "keep", meterEnvelope: { values: new Float32Array(1), stepMs: 1 } } as never;
+  setupAudioMeterEnvelope(state, "   ");
+  expect(state).toMatchObject({ meterEnvelopeUrl: "", meterEnvelope: null });
+  setupAudioMeterEnvelope(state, undefined as never);
+  expect(state).toMatchObject({ meterEnvelopeUrl: "", meterEnvelope: null });
+});
+
+it("reports the post-fader level when the decoded track is empty", async () => {
+  const bus = await import("./programAudioBus");
+  vi.stubGlobal(
+    "AudioContext",
+    class {
+      state = "suspended";
+      resume = () => new Promise<void>(() => {});
+      decodeAudioData = () => Promise.resolve({ numberOfChannels: 2, length: 0, sampleRate: 44100, getChannelData: () => new Float32Array(0) });
+    },
+  );
+  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(new ArrayBuffer(8)))));
+  bus.ensureProgramAudioBusTrack(programId, track("empty"));
+  await vi.advanceTimersByTimeAsync(50);
+  expect(bus.getProgramAudioBusSignalSnapshot(programId)).toEqual({ rms: 1, peak: 1 });
+});
