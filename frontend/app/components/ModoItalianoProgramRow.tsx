@@ -1,8 +1,8 @@
 import React from 'react';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import type { ProgramRowPlan } from '../utils/programRow';
-import { ModoItalianoChyron } from './ModoItalianoChyron';
-import { ModoItalianoClock } from './ModoItalianoClock';
+import { GiorgiaLegacyChyronRenderer as ModoItalianoChyron } from './GiorgiaLegacyChyronRenderer';
+import { GiorgiaLegacyClockRenderer as ModoItalianoClock } from './GiorgiaLegacyClockRenderer';
 import { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
 import { GiorgiaChyronRenderer as ModoItalianoGiorgiaChyron } from './GiorgiaChyronRenderer';
 import { GiorgiaClockRenderer as ModoItalianoGiorgiaClock } from './GiorgiaClockRenderer';

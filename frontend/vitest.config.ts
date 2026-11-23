@@ -5,8 +5,6 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 export default defineConfig({
   plugins: [tsconfigPaths()],
   resolve: {
-    // @modoitaliano/giorgia depends on its own React; two copies break hooks in its components.
-    dedupe: ['react', 'react-dom'],
     alias: [
       {
         find: /^@gaulatti\/bleecker$/,
@@ -15,8 +13,6 @@ export default defineConfig({
     ],
   },
   test: {
-    // Inline the library so its React import resolves to the app's single copy (see resolve.dedupe).
-    server: { deps: { inline: [/@modoitaliano\/giorgia/] } },
     environment: 'jsdom',
     // Both suffixes: .test.ts files were silently skipped before (gaulatti/alcantara#253).
     include: ['app/**/*.test.{ts,tsx}'],
