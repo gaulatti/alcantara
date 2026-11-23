@@ -422,6 +422,88 @@ describe("the layouts that stack several components", () => {
     });
   });
 
+  it("keeps a staged stream playing through a cut: the scene that goes on air is the one already warm", async () => {
+    // gaulatti/alcantara#357: a take swaps the scenes (the staged one goes on air,
+    // the one it replaces is staged). The warm stream must not be started again.
+    const streamScene = (id: number, url: string) =>
+      sceneOf(["video-stream"], { "video-stream": { sourceUrl: url } }, id);
+    const onAir = streamScene(7, "https://x.example/seven.m3u8");
+    const staged = streamScene(8, "https://x.example/eight.m3u8");
+    await show(onAir, { staged });
+    const streamOf = (url: string) =>
+      [...view.container.querySelectorAll('[data-stub="VideoStream"]')].find(
+        (node) => JSON.parse(node.getAttribute("data-props") ?? "{}").sourceUrl === url,
+      ) as HTMLElement;
+    const layerOf = (node: HTMLElement) => node.closest("[data-scene-layer]") as HTMLElement;
+    const gainOf = (node: HTMLElement) => JSON.parse(node.getAttribute("data-props") ?? "{}").channelGain;
+
+    const warm = streamOf("https://x.example/eight.m3u8");
+    expect(layerOf(warm).dataset.sceneLayer).toBe("staged");
+    expect(layerOf(warm).style.opacity).toBe("0");
+    expect(layerOf(warm).getAttribute("aria-hidden")).toBe("true");
+    expect(gainOf(warm)).toBe(0);
+    const order = () =>
+      [...view.container.querySelectorAll("[data-scene-layer]")].map((layer) =>
+        JSON.parse(layer.querySelector('[data-stub="VideoStream"]')!.getAttribute("data-props")!).sourceUrl,
+      );
+    const before = order();
+
+    await emit({ type: "scene_change", transitionId: "cut", state: stateOf(staged, onAir) });
+
+    const taken = streamOf("https://x.example/eight.m3u8");
+    expect(taken).toBe(warm);
+    expect(layerOf(taken).dataset.sceneLayer).toBe("on-air");
+    expect(layerOf(taken).style.opacity).toBe("1");
+    expect(gainOf(taken)).toBe(1);
+    // The scene it replaced stays mounted, hidden and muted, for the cut back.
+    const replaced = streamOf("https://x.example/seven.m3u8");
+    expect(layerOf(replaced).dataset.sceneLayer).toBe("staged");
+    expect(gainOf(replaced)).toBe(0);
+    // The layers never change places, so no playing element is moved in the page.
+    expect(order()).toEqual(before);
+
+    // A staged scene without a stream is not rendered ahead of time.
+    await emit({ type: "scene_change", transitionId: "cut", state: stateOf(staged, sceneOf(["lower-third"], {}, 9)) });
+    expect(view.container.querySelectorAll("[data-scene-layer]")).toHaveLength(1);
+    expect(streamOf("https://x.example/eight.m3u8")).toBe(warm);
+  });
+
+  it("moves no layer in the page across a cut, the swap back, or a new staged scene", async () => {
+    // A media element removed from the document pauses, and React moves a keyed node by
+    // removing and inserting it, so a persisting layer must never appear in a removal.
+    const streamScene = (id: number, url: string) =>
+      sceneOf(["video-stream"], { "video-stream": { sourceUrl: url } }, id);
+    const a = streamScene(7, "https://x.example/seven.m3u8");
+    const b = streamScene(8, "https://x.example/eight.m3u8");
+    const c = streamScene(9, "https://x.example/nine.m3u8");
+    await show(a, { staged: b });
+    const parent = view.container.querySelector("[data-scene-layer]")!.parentElement!;
+    const layerFor = (url: string) =>
+      [...parent.querySelectorAll("[data-scene-layer]")].find((layer) =>
+        layer.querySelector(`[data-props*='${url}']`),
+      )!;
+    const layerA = layerFor("seven");
+    const layerB = layerFor("eight");
+    const removed: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) removed.push(...record.removedNodes);
+    });
+    observer.observe(parent, { childList: true });
+
+    await emit({ type: "scene_change", transitionId: "cut", state: stateOf(b, a) }); // cut to b
+    await emit({ type: "scene_change", transitionId: "cut", state: stateOf(a, b) }); // cut back to a
+    await emit({ type: "scene_staged", programId: "main", stagedSceneId: 9, scene: c }); // stage c
+    await act(async () => {});
+    observer.disconnect();
+
+    expect(removed).not.toContain(layerA);
+    // b left the page only when c replaced it as the staged scene, never during a cut.
+    expect(removed.filter((node) => node === layerB)).toHaveLength(1);
+    expect(layerA.isConnected).toBe(true);
+    expect(layerFor("nine")).toBeTruthy();
+
+  });
+
   it("falls back to an empty wall and a four-stream limit", async () => {
     await show(
       sceneOf(["stream-wall"], {

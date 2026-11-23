@@ -4,9 +4,12 @@ import {
   Card,
   Checkbox,
   Input,
-  LoadingSpinner,
+  Empty,
+  ErrorState,
+  SkeletonCard,
   Modal,
   SectionHeader,
+  StatePill,
   showAlert,
 } from "@gaulatti/bleecker";
 import {
@@ -139,11 +142,17 @@ export default function Broadcasts() {
     );
   }, [canManage, canView, programId]);
 
+  // The first load's failure has no data to show, so it gets an ErrorState with a retry (gaulatti/alcantara#349).
+  const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     if (permissionsLoading) return;
     setLoading(true);
     void load()
-      .catch((error) => showAlert(handleApiError(error), "error"))
+      .then(() => setLoadFailed(false))
+      .catch((error) => {
+        setLoadFailed(true);
+        showAlert(handleApiError(error), "error");
+      })
       .finally(() => setLoading(false));
   }, [load, permissionsLoading]);
 
@@ -298,8 +307,33 @@ export default function Broadcasts() {
 
   if (permissionsLoading || loading) {
     return (
-      <AppPage className="flex min-h-[50vh] items-center justify-center">
-        <LoadingSpinner />
+      <AppPage>
+        <div aria-busy="true" aria-label="Loading broadcasts" className="space-y-4">
+          <SkeletonCard rows={3} />
+          <SkeletonCard rows={4} />
+        </div>
+      </AppPage>
+    );
+  }
+  if (loadFailed && !state) {
+    return (
+      <AppPage>
+        <AlertContainer />
+        <ErrorState
+          title="Broadcasts could not be loaded"
+          description="The executor state and destination catalog did not load. Nothing was changed."
+          onRetry={() => {
+            setLoading(true);
+            void load()
+              .then(() => setLoadFailed(false))
+              .catch((error) => {
+                setLoadFailed(true);
+                showAlert(handleApiError(error), "error");
+              })
+              .finally(() => setLoading(false));
+          }}
+          retryLabel="Try again"
+        />
       </AppPage>
     );
   }
@@ -337,22 +371,21 @@ export default function Broadcasts() {
               Executor state
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StateBadge
+              <StatePill
                 label={`Requested ${state?.downstream.requestedState ?? "unknown"}`}
-                healthy={
-                  state?.downstream.requestedState ===
-                  state?.downstream.actualState
-                }
+                tone={executorTone(state?.downstream.requestedState)}
               />
-              <StateBadge
+              <StatePill
                 label={`Actual ${state?.downstream.actualState ?? "unknown"}`}
-                healthy={isRunning || isStopped}
+                tone={
+                  state?.downstream.requestedState === state?.downstream.actualState
+                    ? executorTone(state?.downstream.actualState)
+                    : "warn"
+                }
+                pulse={isRunning}
               />
               {state?.downstream.transition ? (
-                <StateBadge
-                  label={state.downstream.transition}
-                  healthy={false}
-                />
+                <StatePill label={state.downstream.transition} tone="warn" pulse />
               ) : null}
             </div>
           </div>
@@ -476,6 +509,13 @@ export default function Broadcasts() {
             Manager references. Secret values are never retrieved.
           </p>
           <div className="mt-4 space-y-3">
+            {catalog.length === 0 ? (
+              <Empty
+                title="No destinations yet"
+                description="Add a version-pinned destination. A Start needs at least one current destination."
+                action={canManage ? <Button onClick={() => openCatalogModal()}>Add destination</Button> : undefined}
+              />
+            ) : null}
             {catalog.map((destination, index) => (
               <div
                 key={destination.id}
@@ -681,12 +721,9 @@ export default function Broadcasts() {
   );
 }
 
-function StateBadge({ label, healthy }: { label: string; healthy: boolean }) {
-  return (
-    <span
-      className={`rounded-full border px-3 py-1 text-xs font-medium ${healthy ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600" : "border-amber-500/30 bg-amber-500/10 text-amber-600"}`}
-    >
-      {label}
-    </span>
-  );
+/** Colour is not the only signal: the label carries the state in words (gaulatti/alcantara#349). */
+function executorTone(state: string | undefined): "live" | "idle" | "warn" {
+  if (state === "running") return "live";
+  if (state === "stopped") return "idle";
+  return "warn";
 }
