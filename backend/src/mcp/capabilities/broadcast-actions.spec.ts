@@ -80,8 +80,7 @@ function build() {
   const s = {
     destinations: {
       listCatalog: answers([catalogRow]),
-      createDestination: answers(catalogRow),
-      updateDestination: answers(catalogRow),
+      renameDestination: answers(catalogRow),
       setRetired: answers({ ...catalogRow, retiredAt: new Date() }),
       reorderDestinations: answers([catalogRow]),
       getProgramState: answers({
@@ -251,46 +250,20 @@ async function parity(
 }
 
 describe('broadcast destination writes', () => {
-  it('create, update, retire, restore and reorder reach the console service', async () => {
+  it('rename, retire, restore and reorder reach the console service', async () => {
     const b = build();
     const d = b.s.destinations;
     await parity(
       b,
-      'destination_create_destination',
-      {
-        id: 'youtube',
-        display_name: 'YouTube',
-        secret_id: 'arn:x',
-        secret_version_id: 'v1',
-      },
+      'destination_rename_destination',
+      { destination_id: 'youtube', display_name: 'YouTube 2' },
       () =>
-        b.controllers.destinations.createDestination(
-          {
-            id: 'youtube',
-            displayName: 'YouTube',
-            secretId: 'arn:x',
-            secretVersionId: 'v1',
-          },
+        b.controllers.destinations.renameDestination(
+          'youtube',
+          { displayName: 'YouTube 2' },
           { user: { sub: 'u', authorization: { teamId: 0 } } },
         ),
-      [d.createDestination],
-    );
-    await parity(
-      b,
-      'destination_update_destination',
-      {
-        destination_id: 'youtube',
-        display_name: 'YouTube 2',
-        secret_id: 'arn:y',
-        secret_version_id: 'v2',
-      },
-      () =>
-        b.controllers.destinations.updateDestination('youtube', {
-          displayName: 'YouTube 2',
-          secretId: 'arn:y',
-          secretVersionId: 'v2',
-        }),
-      [d.updateDestination],
+      [d.renameDestination],
     );
     await parity(
       b,
@@ -1027,19 +1000,10 @@ describe('through the action executor', () => {
 describe('every W, A and D capability plans before it acts', () => {
   const guest = participants.participants[0].identity;
   const plans: Array<[string, Record<string, unknown>]> = [
-    [
-      'destination_create_destination',
-      { id: 'y', display_name: 'Y', secret_id: 'a', secret_version_id: 'v' },
-    ],
     ['destination_reorder_destinations', { destination_ids: ['youtube'] }],
     [
-      'destination_update_destination',
-      {
-        destination_id: 'youtube',
-        display_name: 'Y',
-        secret_id: 'a',
-        secret_version_id: 'v',
-      },
+      'destination_rename_destination',
+      { destination_id: 'youtube', display_name: 'Y' },
     ],
     ['destination_restore_destination', { destination_id: 'youtube' }],
     [

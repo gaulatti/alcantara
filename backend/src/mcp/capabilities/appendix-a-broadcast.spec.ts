@@ -26,7 +26,7 @@ import { WebrtcMcpTools } from './webrtc';
 // now-playing consumers, manual song and instant), operator preferences,
 // external sources and guests (webrtc). Two groups of rows are not this
 // ticket's: the radio similarity rows (ticket 218) and the rows marked
-// excluded because they return or produce a credential (ten rows in all:
+// excluded because they return or produce a credential (twelve rows in all:
 // the realtime, monitor and download tickets, the source credential rotation,
 // the guest link of create and replace invitation, the operator token and the
 // desktop program feed token).
@@ -116,11 +116,11 @@ const controllerOf = (area: string, path: string) =>
 
 describe('appendix A rows of ticket #219', () => {
   it('has a row for every route of its areas that is not excluded', () => {
-    expect(ROWS).toHaveLength(57);
+    expect(ROWS).toHaveLength(56);
     const count = (area: string) =>
       ROWS.filter((row) => row[0] === area).length;
     expect([...AREAS].map((area) => [area, count(area)])).toEqual([
-      ['broadcast-destinations', 11],
+      ['broadcast-destinations', 10],
       ['filler', 3],
       ['recording', 6],
       ['radio', 16],
@@ -167,7 +167,7 @@ describe('appendix A rows of ticket #219', () => {
     const tiers = ROWS.map((row) => row[6]);
     for (const [tier, n] of [
       ['R', 19],
-      ['W', 13],
+      ['W', 12],
       ['A', 19],
       ['D', 6],
     ] as const)
@@ -193,6 +193,7 @@ describe('appendix A rows of ticket #219', () => {
     // both guest-link rows, the operator token, the desktop program feed token and
     // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
+      'addDestination',
       'createInvitation',
       'desktopProgramFeedToken',
       'issue',
@@ -200,6 +201,7 @@ describe('appendix A rows of ticket #219', () => {
       'issueIngest',
       'operatorToken',
       'replaceInvitation',
+      'replaceKey',
       'rotate',
     ]);
     for (const row of excludedRows) expect(row[5]).toBe('—');

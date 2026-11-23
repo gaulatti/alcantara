@@ -15,6 +15,7 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  KeyRound,
   Pencil,
   Plus,
   RadioTower,
@@ -44,7 +45,44 @@ interface DestinationSummary {
 interface CatalogDestination extends DestinationSummary {
   secretId: string;
   secretVersionId: string;
+  /** 'youtube' or 'custom'; null for a destination whose secret reference was typed by hand. */
+  service: "youtube" | "custom" | null;
+  ingestUrl: string | null;
+  /** The last four characters of the key, or null for a short key or none. */
+  keyLast4: string | null;
+  keySetAt: string | null;
   retiredAt: string | null;
+}
+
+type DestinationService = "youtube" | "custom";
+type DestinationDialog =
+  | { kind: "add" }
+  | { kind: "rename"; destination: CatalogDestination }
+  | { kind: "key"; destination: CatalogDestination };
+
+const YOUTUBE_INGEST_URL = "rtmps://a.rtmps.youtube.com:443/live2";
+const INGEST_URL_PATTERN = /^rtmps?:\/\/[^\s/?#@]+\/[^\s?#]+$/i;
+
+/** Inline checks for the add and replace-key forms; empty strings mean the field is fine. */
+function validateDestinationForm(
+  form: { service: DestinationService; name: string; ingestUrl: string; streamKey: string },
+  options: { needsName: boolean; needsService: boolean; otherNames: string[] },
+) {
+  const errors = { name: "", ingestUrl: "", streamKey: "" };
+  const name = form.name.trim();
+  if (options.needsName) {
+    if (!name) errors.name = "Enter a name.";
+    else if (name.length > 100) errors.name = "Use at most 100 characters.";
+    else if (options.otherNames.some((other) => other.trim().toLowerCase() === name.toLowerCase()))
+      errors.name = "A destination with this name already exists.";
+  }
+  if (options.needsService && form.service === "custom" && !INGEST_URL_PATTERN.test(form.ingestUrl.trim())) {
+    errors.ingestUrl = "Use an rtmp:// or rtmps:// address with a host and an application, for example rtmps://host/live.";
+  }
+  if (!form.streamKey) errors.streamKey = "Enter the stream key.";
+  else if (/\s/.test(form.streamKey)) errors.streamKey = "A stream key has no spaces.";
+  else if (form.streamKey.length > 512) errors.streamKey = "A stream key is at most 512 characters.";
+  return errors;
 }
 
 interface DestinationRelayState {
@@ -107,15 +145,14 @@ export default function Broadcasts() {
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction>(null);
   // Retire is confirmed by name before it is sent (gaulatti/alcantara#349); Restore is direct.
   const [retireTarget, setRetireTarget] = useState<CatalogDestination | null>(null);
-  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
-  const [editingDestination, setEditingDestination] =
-    useState<CatalogDestination | null>(null);
-  const [catalogForm, setCatalogForm] = useState({
-    id: "",
-    displayName: "",
-    secretId: "",
-    secretVersionId: "",
+  const [dialog, setDialog] = useState<DestinationDialog | null>(null);
+  const [form, setForm] = useState({
+    service: "youtube" as DestinationService,
+    name: "",
+    ingestUrl: "",
+    streamKey: "",
   });
+  const [showKey, setShowKey] = useState(false);
 
   const load = useCallback(async () => {
     if (!canView) return;
@@ -223,38 +260,70 @@ export default function Broadcasts() {
     }
   };
 
-  const openCatalogModal = (destination?: CatalogDestination) => {
-    const editing = destination ?? null;
-    setEditingDestination(editing);
-    setCatalogForm(
-      editing
-        ? {
-            id: editing.id,
-            displayName: editing.displayName,
-            secretId: editing.secretId,
-            secretVersionId: editing.secretVersionId,
-          }
-        : { id: "", displayName: "", secretId: "", secretVersionId: "" },
-    );
-    setCatalogModalOpen(true);
+  const openDialog = (next: DestinationDialog) => {
+    setForm({
+      service: "youtube",
+      name: next.kind === "rename" ? next.destination.displayName : "",
+      ingestUrl: "",
+      streamKey: "",
+    });
+    setShowKey(false);
+    setDialog(next);
   };
 
-  const saveCatalogDestination = async () => {
+  /** What the open dialog still needs; empty strings are fine. */
+  const formErrors = useMemo(() => {
+    if (!dialog || dialog.kind === "rename") return null;
+    const target = dialog.kind === "key" ? dialog.destination : null;
+    return validateDestinationForm(form, {
+      needsName: dialog.kind === "add",
+      // A destination added by hand has no service yet: replacing its key names one.
+      needsService: dialog.kind === "add" || target?.service === null,
+      otherNames: catalog.map((entry) => entry.displayName),
+    });
+  }, [dialog, form, catalog]);
+  const formInvalid =
+    dialog?.kind === "rename"
+      ? !form.name.trim() || form.name.trim().length > 100
+      : formErrors !== null && Boolean(formErrors.name || formErrors.ingestUrl || formErrors.streamKey);
+
+  const saveDestination = async () => {
+    if (!dialog) return;
     setBusyAction("catalog-save");
     try {
-      if (editingDestination) {
+      if (dialog.kind === "rename") {
         await api.put(
-          `/broadcast/destinations/${encodeURIComponent(editingDestination.id)}`,
-          catalogForm,
+          `/broadcast/destinations/${encodeURIComponent(dialog.destination.id)}`,
+          { displayName: form.name.trim() },
         );
+        showAlert("Destination renamed.", "success");
+      } else if (dialog.kind === "add") {
+        await api.post("/broadcast/destinations", {
+          service: form.service,
+          name: form.name.trim(),
+          ...(form.service === "custom" ? { ingestUrl: form.ingestUrl.trim() } : {}),
+          streamKey: form.streamKey,
+        });
+        showAlert("Destination added.", "success");
       } else {
-        await api.post("/broadcast/destinations", catalogForm);
+        const legacy = dialog.destination.service === null;
+        await api.put(
+          `/broadcast/destinations/${encodeURIComponent(dialog.destination.id)}/key`,
+          {
+            streamKey: form.streamKey,
+            ...(legacy
+              ? {
+                  service: form.service,
+                  ...(form.service === "custom" ? { ingestUrl: form.ingestUrl.trim() } : {}),
+                }
+              : {}),
+          },
+        );
+        showAlert("Key replaced. It applies from the next start.", "success");
       }
-      setCatalogModalOpen(false);
-      showAlert(
-        editingDestination ? "Destination updated." : "Destination created.",
-        "success",
-      );
+      // The key is dropped from the page as soon as it is sent.
+      setForm((current) => ({ ...current, streamKey: "" }));
+      setDialog(null);
       await load();
     } catch (error) {
       showAlert(handleApiError(error), "error");
@@ -358,7 +427,7 @@ export default function Broadcasts() {
           description={`Choose the public destinations for the television leg of ${programId}. Stream keys remain in Secrets Manager and Croccante.`}
         />
         {canManage ? (
-          <Button onClick={() => openCatalogModal()}>
+          <Button onClick={() => openDialog({ kind: "add" })}>
             <Plus size={15} /> Add destination
           </Button>
         ) : null}
@@ -505,15 +574,15 @@ export default function Broadcasts() {
             Destination catalog
           </h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Only catalog managers can see or change version-pinned Secrets
-            Manager references. Secret values are never retrieved.
+            Only catalog managers can add destinations and replace their keys.
+            A key is written once and never shown again.
           </p>
           <div className="mt-4 space-y-3">
             {catalog.length === 0 ? (
               <Empty
                 title="No destinations yet"
-                description="Add a version-pinned destination. A Start needs at least one current destination."
-                action={canManage ? <Button onClick={() => openCatalogModal()}>Add destination</Button> : undefined}
+                description="Add a destination with its stream key. A Start needs at least one current destination."
+                action={canManage ? <Button onClick={() => openDialog({ kind: "add" })}>Add destination</Button> : undefined}
               />
             ) : null}
             {catalog.map((destination, index) => (
@@ -528,9 +597,19 @@ export default function Broadcasts() {
                       <span className="text-xs text-red-500">(retired)</span>
                     ) : null}
                   </p>
-                  <p className="truncate text-xs text-text-secondary">
-                    {destination.id} · {destination.secretId} ·{" "}
-                    {destination.secretVersionId}
+                  <p className="text-xs text-text-secondary">
+                    {destination.service === "youtube"
+                      ? "YouTube"
+                      : destination.service === "custom"
+                        ? `Custom RTMP(S) · ${destination.ingestUrl ?? ""}`
+                        : "Secret reference (added by hand)"}
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    Key {"••••"}
+                    {destination.keyLast4 ?? ""}
+                    {destination.keySetAt
+                      ? ` · set ${new Date(destination.keySetAt).toLocaleDateString()}`
+                      : ""}
                   </p>
                 </div>
                 <Button
@@ -554,9 +633,18 @@ export default function Broadcasts() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => openCatalogModal(destination)}
+                  onClick={() => openDialog({ kind: "rename", destination })}
                 >
-                  <Pencil size={14} /> Edit
+                  <Pencil size={14} /> Rename
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={Boolean(destination.retiredAt)}
+                  onClick={() => openDialog({ kind: "key", destination })}
+                >
+                  <KeyRound size={14} />{" "}
+                  {destination.service === null ? "Set key" : "Replace key"}
                 </Button>
                 <Button
                   size="sm"
@@ -641,77 +729,132 @@ export default function Broadcasts() {
       </Modal>
 
       <Modal
-        isOpen={catalogModalOpen}
-        onClose={() => setCatalogModalOpen(false)}
-        title={editingDestination ? "Edit destination" : "Add destination"}
+        isOpen={dialog !== null}
+        onClose={() => setDialog(null)}
+        title={
+          dialog?.kind === "rename"
+            ? "Rename destination"
+            : dialog?.kind === "key"
+              ? dialog.destination.service === null
+                ? "Set key"
+                : "Replace key"
+              : "Add destination"
+        }
       >
         <div className="space-y-4">
-          <label className="block text-sm font-medium text-text-primary">
-            Opaque destination ID
-            <Input
-              className="mt-1"
-              value={catalogForm.id}
-              disabled={Boolean(editingDestination)}
-              onChange={(event) =>
-                setCatalogForm((current) => ({
-                  ...current,
-                  id: event.target.value,
-                }))
-              }
-              placeholder="primary"
-            />
-          </label>
-          <label className="block text-sm font-medium text-text-primary">
-            Display name
-            <Input
-              className="mt-1"
-              value={catalogForm.displayName}
-              onChange={(event) =>
-                setCatalogForm((current) => ({
-                  ...current,
-                  displayName: event.target.value,
-                }))
-              }
-              placeholder="Primary platform"
-            />
-          </label>
-          <label className="block text-sm font-medium text-text-primary">
-            Secrets Manager reference
-            <Input
-              className="mt-1"
-              value={catalogForm.secretId}
-              onChange={(event) =>
-                setCatalogForm((current) => ({
-                  ...current,
-                  secretId: event.target.value,
-                }))
-              }
-              placeholder="broadcast/production/primary"
-            />
-          </label>
-          <label className="block text-sm font-medium text-text-primary">
-            Pinned secret version ID
-            <Input
-              className="mt-1"
-              value={catalogForm.secretVersionId}
-              onChange={(event) =>
-                setCatalogForm((current) => ({
-                  ...current,
-                  secretVersionId: event.target.value,
-                }))
-              }
-              placeholder="00000000-0000-0000-0000-000000000000"
-            />
-          </label>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setCatalogModalOpen(false)}>
+          {dialog?.kind === "key" ? (
+            <p className="text-sm text-text-secondary">
+              {dialog.destination.displayName}: the current key ends in {"••••"}
+              {dialog.destination.keyLast4 ?? ""}. A new key applies from the next
+              start; a broadcast already on air keeps the one it started with.
+            </p>
+          ) : null}
+          {dialog?.kind === "add" ||
+          (dialog?.kind === "key" && dialog.destination.service === null) ? (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-text-primary">Service</legend>
+              <div className="flex flex-wrap gap-2">
+                {(["youtube", "custom"] as const).map((option) => (
+                  <Button
+                    key={option}
+                    size="sm"
+                    variant={form.service === option ? "primary" : "ghost"}
+                    aria-pressed={form.service === option}
+                    onClick={() => setForm((current) => ({ ...current, service: option }))}
+                  >
+                    {option === "youtube" ? "YouTube" : "Custom RTMP(S)"}
+                  </Button>
+                ))}
+              </div>
+              {form.service === "youtube" ? (
+                <p className="text-xs text-text-secondary">
+                  Ingest address: {YOUTUBE_INGEST_URL}
+                </p>
+              ) : (
+                <label className="block text-sm font-medium text-text-primary">
+                  Ingest URL
+                  <Input
+                    className="mt-1"
+                    value={form.ingestUrl}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, ingestUrl: event.target.value }))
+                    }
+                    placeholder="rtmps://ingest.example.com/live"
+                  />
+                  {formErrors?.ingestUrl && form.ingestUrl ? (
+                    <span role="alert" className="mt-1 block text-xs text-red-500">
+                      {formErrors.ingestUrl}
+                    </span>
+                  ) : null}
+                </label>
+              )}
+            </fieldset>
+          ) : null}
+          {dialog?.kind === "add" || dialog?.kind === "rename" ? (
+            <label className="block text-sm font-medium text-text-primary">
+              Name
+              <Input
+                className="mt-1"
+                value={form.name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="YouTube main channel"
+              />
+              {formErrors?.name && form.name ? (
+                <span role="alert" className="mt-1 block text-xs text-red-500">
+                  {formErrors.name}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
+          {dialog?.kind === "add" || dialog?.kind === "key" ? (
+            <div>
+              <label className="block text-sm font-medium text-text-primary">
+                Stream key
+                <Input
+                  className="mt-1"
+                  type={showKey ? "text" : "password"}
+                  autoComplete="off"
+                  value={form.streamKey}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, streamKey: event.target.value }))
+                  }
+                />
+              </label>
+              <div className="mt-1 flex items-center gap-2">
+                <Checkbox
+                  checked={showKey}
+                  onChange={(event) => setShowKey(event.target.checked)}
+                  aria-label="Show key"
+                />
+                <span className="text-xs text-text-secondary">Show key</span>
+              </div>
+              {formErrors?.streamKey && form.streamKey ? (
+                <span role="alert" className="mt-1 block text-xs text-red-500">
+                  {formErrors.streamKey}
+                </span>
+              ) : null}
+              <p className="mt-1 text-xs text-text-secondary">
+                The key is saved to Secrets Manager by Alcántara and never shown again.
+              </p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDialog(null)}>
               Cancel
             </Button>
             <Button
-              onClick={() => void saveCatalogDestination()}
-              disabled={busyAction !== null}
+              onClick={() => void saveDestination()}
+              disabled={busyAction !== null || formInvalid}
             >
-              {busyAction === "catalog-save" ? "Saving…" : "Save destination"}
+              {busyAction === "catalog-save"
+                ? "Saving…"
+                : dialog?.kind === "rename"
+                  ? "Rename"
+                  : dialog?.kind === "key"
+                    ? "Save key"
+                    : "Add destination"}
             </Button>
           </div>
         </div>

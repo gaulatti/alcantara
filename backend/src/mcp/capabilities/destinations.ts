@@ -10,8 +10,6 @@ const permissions = ALCANTARA_PERMISSIONS.broadcast;
 
 const destinationIdArg = z.string().trim().min(1).max(64);
 const displayNameArg = z.string().trim().min(1).max(100);
-const secretIdArg = z.string().trim().min(1).max(512);
-const secretVersionIdArg = z.string().trim().min(1).max(128);
 /** A stable command id: the executor replays the recorded result for a repeat. */
 const commandIdArg = z
   .string()
@@ -95,48 +93,15 @@ export class BroadcastDestinationsMcpTools {
 
   /** The catalog row of a destination; the plan and the refusal start from it. */
   private async catalogRow(id: string): Promise<CatalogRow> {
-    const row = ((await this.destinations.listCatalog()) as CatalogRow[]).find(
-      (candidate) => candidate.id === id,
-    );
+    const row = (
+      (await this.destinations.listCatalog(this.pompeii.teamId)) as CatalogRow[]
+    ).find((candidate) => candidate.id === id);
     if (!row) throw new McpToolError('not_found', 'Destination not found');
     return row;
   }
 
   private catalogWrites(): McpToolSpec[] {
-    const reference = {
-      secret_id: secretIdArg,
-      secret_version_id: secretVersionIdArg,
-    };
     return [
-      actionSpec({
-        name: 'destination_create_destination',
-        title: 'Add a broadcast destination',
-        description:
-          'Adds a destination to the end of the catalog: an id, a display name and the Secrets Manager reference (secret id and pinned version id) of its stream key. The key itself is never read or returned.',
-        permission: permissions.manage,
-        tier: 'W',
-        shape: {
-          id: destinationIdArg,
-          display_name: displayNameArg,
-          ...reference,
-        },
-        id: (args) => args.id,
-        plan: (args) => ({
-          summary: `Adds destination ${args.id} at the end of the catalog. It becomes selectable for the next start; nothing on air changes. It can be retired later (destinations are never deleted).`,
-          affects: [{ kind: 'destination', id: args.id, name: args.id }],
-          recoverable: true,
-        }),
-        run: (args) =>
-          this.destinations.createDestination(
-            {
-              id: args.id,
-              displayName: args.display_name,
-              secretId: args.secret_id,
-              secretVersionId: args.secret_version_id,
-            },
-            this.pompeii.teamId,
-          ),
-      }),
       actionSpec({
         name: 'destination_reorder_destinations',
         title: 'Reorder the broadcast destinations',
@@ -159,21 +124,20 @@ export class BroadcastDestinationsMcpTools {
           this.destinations.reorderDestinations(args.destination_ids),
       }),
       actionSpec({
-        name: 'destination_update_destination',
-        title: 'Update a broadcast destination',
+        name: 'destination_rename_destination',
+        title: 'Rename a broadcast destination',
         description:
-          'Replaces the display name and the Secrets Manager reference of a destination (all three are required, as the console sends them).',
+          'Changes the display name of a destination. Its stream key and Secrets Manager reference are not touched; adding a destination and replacing a key are console-only because they carry a credential.',
         permission: permissions.manage,
         tier: 'W',
         shape: {
           destination_id: destinationIdArg,
           display_name: displayNameArg,
-          ...reference,
         },
         load: (args) => this.catalogRow(args.destination_id),
         id: (args) => args.destination_id,
         plan: (args) => ({
-          summary: `Replaces the name and stream key reference of destination ${args.destination_id}. A running broadcast keeps the immutable selection it started with; the new reference applies from the next start. The previous values are not kept: read the catalog first to restore them.`,
+          summary: `Renames destination ${args.destination_id} to "${args.display_name}". A running broadcast keeps the immutable selection it started with. The previous name is not kept: read the catalog first to restore it.`,
           affects: [
             {
               kind: 'destination',
@@ -184,11 +148,11 @@ export class BroadcastDestinationsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.destinations.updateDestination(args.destination_id, {
-            displayName: args.display_name,
-            secretId: args.secret_id,
-            secretVersionId: args.secret_version_id,
-          }),
+          this.destinations.renameDestination(
+            args.destination_id,
+            { displayName: args.display_name },
+            this.pompeii.teamId,
+          ),
       }),
       ...[
         ['retire', true],

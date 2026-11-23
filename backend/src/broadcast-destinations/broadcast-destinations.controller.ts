@@ -12,6 +12,7 @@ import {
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
+import { BroadcastDestinationKeysService } from './broadcast-destination-keys.service';
 import { BroadcastIngestService } from './broadcast-ingest.service';
 
 type AuthorizedRequest = { user: { sub: string } };
@@ -24,6 +25,7 @@ export class BroadcastDestinationsController {
   constructor(
     private readonly service: BroadcastDestinationsService,
     private readonly ingest: BroadcastIngestService,
+    private readonly keys: BroadcastDestinationKeysService,
   ) {}
 
   @Get('destinations')
@@ -34,27 +36,26 @@ export class BroadcastDestinationsController {
 
   @Get('destinations/catalog')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  listCatalog() {
-    return this.service.listCatalog();
+  listCatalog(@Req() request: TeamRequest) {
+    return this.service.listCatalog(request.user.authorization.teamId);
   }
 
+  /** Adds a destination by service, name and stream key; the backend writes the secret. */
   @Post('destinations')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  createDestination(
+  @Header('Cache-Control', 'no-store')
+  addDestination(
     @Body() body: Record<string, unknown>,
     @Req() request: TeamRequest,
   ) {
-    return this.service.createDestination(
+    return this.keys.add(
       body,
       request.user.authorization.teamId,
+      request.user.sub,
     );
   }
 
-  /**
-   * The ingest address and key of one destination, for the desktop studio at Go live
-   * (gaulatti/carmencita#4). A credential: manage permission only, audited on every call,
-   * never cached, and not an MCP capability.
-   */
+  /** The ingest address and key of one destination, for the desktop studio at Go live. */
   @Post('destinations/:destinationId/ingest')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
   @HttpCode(200)
@@ -76,13 +77,35 @@ export class BroadcastDestinationsController {
     return this.service.reorderDestinations(body.destinationIds);
   }
 
-  @Put('destinations/:destinationId')
+  /** Writes a new version of the destination's key and pins it. */
+  @Put('destinations/:destinationId/key')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
-  updateDestination(
+  @Header('Cache-Control', 'no-store')
+  replaceKey(
     @Param('destinationId') destinationId: string,
     @Body() body: Record<string, unknown>,
+    @Req() request: TeamRequest,
   ) {
-    return this.service.updateDestination(destinationId, body);
+    return this.keys.replaceKey(
+      destinationId,
+      body,
+      request.user.authorization.teamId,
+      request.user.sub,
+    );
+  }
+
+  @Put('destinations/:destinationId')
+  @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
+  renameDestination(
+    @Param('destinationId') destinationId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: TeamRequest,
+  ) {
+    return this.service.renameDestination(
+      destinationId,
+      body,
+      request.user.authorization.teamId,
+    );
   }
 
   @Post('destinations/:destinationId/retire')

@@ -44,6 +44,37 @@ Only the management endpoint returns secret identifiers and pinned version
 IDs. View and operation responses, downstream state, logs, and Prometheus
 labels omit references, URLs, stream keys, provider payloads, and user IDs.
 
+## Adding a destination by service and key
+
+An operator with `broadcast.manage` adds a destination by choosing a service, giving a
+name and entering the stream key; they never type a Secrets Manager name or version
+(gaulatti/alcantara#376).
+
+- `POST /broadcast/destinations` with `{service: "youtube" | "custom", name, ingestUrl?, streamKey}`.
+  YouTube's address is fixed (`rtmps://a.rtmps.youtube.com:443/live2`); a custom service
+  needs an `rtmp://` or `rtmps://` address with a host and an application path. The name is
+  unique within the team (case-insensitive); the id is its slug, made unique with a numeric
+  suffix. The backend creates one secret per destination named
+  `alcantara/destinations/<team>/<id>` holding the payload the ingest route and Croccante
+  read, pins the version Secrets Manager returns, stamps the caller's team and records who
+  added it. If the row cannot be saved the secret it just created is deleted.
+- `PUT /broadcast/destinations/:destinationId/key` with `{streamKey}` writes a new version of
+  that secret and re-pins it; a destination whose reference was typed by hand names its
+  `service` (and `ingestUrl`) once, and its key moves under a secret this backend owns. The
+  pinned version means a failed write leaves the running destinations untouched.
+- `PUT /broadcast/destinations/:destinationId` renames (`{displayName}`); the secret and key
+  are not touched.
+- The catalog (`GET /broadcast/destinations/catalog`) adds `service`, `ingestUrl`, `keyLast4`
+  (the last four characters of a key of 8 or more, never more) and `keySetAt`. The key is
+  shown nowhere after it is saved except by the ingest route. None of these routes is an MCP
+  capability (they carry a credential); MCP can rename, retire, restore, reorder and read.
+- Audit: a `BroadcastDestinationKeyChange` row (team, destination, subject, `created` or
+  `replaced`, time) is written in the same transaction as the change; never the key.
+  Metrics: `alcantara_broadcast_destination_operations_total{action="create"|"replace_key"}`.
+- IAM: the backend role needs `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue`
+  and `DeleteSecret` on `arn:aws:secretsmanager:*:*:secret:alcantara/destinations/*` only.
+  Retiring a destination does not delete its secret (a retired destination can be restored).
+
 ## Ingest credential for the desktop studio
 
 The desktop studio publishes straight from the operator's Mac and needs one
