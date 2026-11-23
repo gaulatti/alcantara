@@ -4,7 +4,9 @@ import {
   Card,
   Checkbox,
   Input,
-  LoadingSpinner,
+  Empty,
+  ErrorState,
+  SkeletonCard,
   Modal,
   SectionHeader,
   showAlert,
@@ -139,11 +141,17 @@ export default function Broadcasts() {
     );
   }, [canManage, canView, programId]);
 
+  // The first load's failure has no data to show, so it gets an ErrorState with a retry (gaulatti/alcantara#349).
+  const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     if (permissionsLoading) return;
     setLoading(true);
     void load()
-      .catch((error) => showAlert(handleApiError(error), "error"))
+      .then(() => setLoadFailed(false))
+      .catch((error) => {
+        setLoadFailed(true);
+        showAlert(handleApiError(error), "error");
+      })
       .finally(() => setLoading(false));
   }, [load, permissionsLoading]);
 
@@ -298,8 +306,33 @@ export default function Broadcasts() {
 
   if (permissionsLoading || loading) {
     return (
-      <AppPage className="flex min-h-[50vh] items-center justify-center">
-        <LoadingSpinner />
+      <AppPage>
+        <div aria-busy="true" aria-label="Loading broadcasts" className="space-y-4">
+          <SkeletonCard rows={3} />
+          <SkeletonCard rows={4} />
+        </div>
+      </AppPage>
+    );
+  }
+  if (loadFailed && !state) {
+    return (
+      <AppPage>
+        <AlertContainer />
+        <ErrorState
+          title="Broadcasts could not be loaded"
+          description="The executor state and destination catalog did not load. Nothing was changed."
+          onRetry={() => {
+            setLoading(true);
+            void load()
+              .then(() => setLoadFailed(false))
+              .catch((error) => {
+                setLoadFailed(true);
+                showAlert(handleApiError(error), "error");
+              })
+              .finally(() => setLoading(false));
+          }}
+          retryLabel="Try again"
+        />
       </AppPage>
     );
   }
@@ -476,6 +509,13 @@ export default function Broadcasts() {
             Manager references. Secret values are never retrieved.
           </p>
           <div className="mt-4 space-y-3">
+            {catalog.length === 0 ? (
+              <Empty
+                title="No destinations yet"
+                description="Add a version-pinned destination. A Start needs at least one current destination."
+                action={canManage ? <Button onClick={() => openCatalogModal()}>Add destination</Button> : undefined}
+              />
+            ) : null}
             {catalog.map((destination, index) => (
               <div
                 key={destination.id}

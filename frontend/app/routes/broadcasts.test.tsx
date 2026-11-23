@@ -446,7 +446,8 @@ it("refreshes every five seconds while the tab is visible, after a failed first 
   }) as never);
   api.get.mockRejectedValueOnce(refusal(500));
   render(<Broadcasts />);
-  await screen.findByText("Executor state");
+  // A failed first load shows the error state with a retry (gaulatti/alcantara#349).
+  await screen.findByText("Broadcasts could not be loaded");
   expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 5000);
   const before = api.get.mock.calls.length;
   Object.defineProperty(document, "visibilityState", {
@@ -594,4 +595,42 @@ it("adds, edits, reorders, retires and restores catalog destinations", async () 
   fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
   fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
   await toast("Resource not found");
+});
+
+it("retries a failed first load from the error state, and recovers", async () => {
+  api.get.mockRejectedValueOnce(refusal(500));
+  render(<Broadcasts />);
+  expect(await screen.findByText("Broadcasts could not be loaded")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Executor state")).toBeInTheDocument();
+  expect(screen.queryByText("Broadcasts could not be loaded")).toBeNull();
+});
+
+it("shows a skeleton while the first load is pending, not an empty page", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = api.get.getMockImplementation();
+  api.get.mockImplementation(async (...args: unknown[]) => {
+    await gate;
+    return original!(...(args as Parameters<typeof api.get>));
+  });
+  render(<Broadcasts />);
+  expect(screen.getByLabelText("Loading broadcasts")).toHaveAttribute("aria-busy", "true");
+  release();
+  expect(await screen.findByText("Executor state")).toBeInTheDocument();
+});
+
+it("says so when the catalog is empty, with the next step", async () => {
+  const saved = catalog;
+  catalog = [];
+  try {
+    render(<Broadcasts />);
+    await screen.findByText("Executor state");
+    expect(await screen.findByText("No destinations yet")).toBeInTheDocument();
+    expect(screen.getByText("Add a version-pinned destination. A Start needs at least one current destination.")).toBeInTheDocument();
+  } finally {
+    catalog = saved;
+  }
 });
