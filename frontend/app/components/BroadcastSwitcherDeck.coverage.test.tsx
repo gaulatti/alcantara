@@ -125,3 +125,18 @@ it("clears an armed fade-to-black when the deck is left", async () => {
   view.unmount();
   expect(clear.mock.calls.length).toBeGreaterThan(before);
 });
+
+it("re-arms, and never fades to black, when the press comes after the arm has run out", async () => {
+  const onFadeToBlack = vi.fn();
+  render(<BroadcastSwitcherDeck {...props} onFadeToBlack={onFadeToBlack} workspace="director" />);
+  fireEvent.click(screen.getByRole("button", { name: "Fade to black" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^Fade to black: armed/ })).toBeInTheDocument(),
+  );
+  // The arm window is 3 seconds; wait it out, then press once more.
+  await new Promise((resolve) => setTimeout(resolve, 3_200));
+  expect(screen.getByRole("button", { name: "Fade to black" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Fade to black" }));
+  expect(onFadeToBlack).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: /^Fade to black: armed/ })).toBeInTheDocument();
+});

@@ -48,6 +48,9 @@ const WORKSPACES: Array<{ id: ConsoleWorkspace; label: string }> = [
   { id: "compact", label: "Remote" },
 ];
 
+/** How long a fade to black stays armed for its second press. The button and the Alt+B arm share it, so an expired arm can never take. */
+const FTB_ARM_MS = 3_000;
+
 function blocksBroadcastShortcut(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(
@@ -619,7 +622,7 @@ export function BroadcastSwitcherDeck(props: Props) {
     ftbArmTimerRef.current = window.setTimeout(() => {
       setFtbArmed(false);
       ftbArmTimerRef.current = null;
-    }, 3_000);
+    }, FTB_ARM_MS);
   };
 
   useEffect(() => {
@@ -931,6 +934,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                   {/* Hold, or press twice: one stray click never fades the program. */}
                   <ArmTake
                     label="Fade to black"
+                    armTimeoutMs={FTB_ARM_MS}
                     onTake={() => latestPropsRef.current.onFadeToBlack()}
                   />
                 </div>
