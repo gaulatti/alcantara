@@ -14,7 +14,11 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
   GripVertical,
+  Tag,
+  Unlink,
   Pause,
   Play,
   Plus,
@@ -54,6 +58,24 @@ import {
   stopFlight,
   updateFlightSequence,
 } from "../services/flight";
+import { RundownLibrary } from "./RundownLibrary";
+import { cueFor, type LibraryEntry } from "../utils/rundownBuilder";
+import {
+  detachUse,
+  groupRundown,
+  insertCues,
+  moveRow,
+  removeUse,
+  replaceUse,
+  type RundownRow,
+} from "../utils/recipeUses";
+import {
+  expandRecipe,
+  fetchRecipes,
+  type Recipe,
+  type RecipeIssue,
+} from "../services/recipes";
+import { fetchAllMediaLabels } from "../services/mediaLabels";
 
 const CUE_KIND_OPTIONS: { value: FlightCueKind; label: string }[] = [
   { value: "scene", label: "Switch scene" },
@@ -96,6 +118,17 @@ export default function ManualRundown() {
   const [instants, setInstants] = useState<InstantItem[]>([]);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // gaulatti/alcantara#425: the program's recipes (null while the API has none), a use waiting for
+  // the operator to accept its issues, and the use whose label is being changed.
+  const [recipes, setRecipes] = useState<Recipe[] | null>(null);
+  const [pendingUse, setPendingUse] = useState<{
+    items: FlightCue[];
+    issues: RecipeIssue[];
+    title: string;
+  } | null>(null);
+  const [labelUse, setLabelUse] = useState<Extract<RundownRow, { kind: "use" }> | null>(null);
+  const [mediaLabels, setMediaLabels] = useState<{ id: string; name: string }[] | null>(null);
+  const [labelChoice, setLabelChoice] = useState("");
   const [newSequenceName, setNewSequenceName] = useState("");
 
   const activeSequence = useMemo(
@@ -248,6 +281,22 @@ export default function ManualRundown() {
   // order the operator made them.
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
+  useEffect(() => {
+    let cancelled = false;
+    setRecipes(null);
+    fetchRecipes(activeProgramId)
+      .then((loaded) => {
+        if (!cancelled) setRecipes(loaded);
+      })
+      .catch((err) => {
+        // Recipes are an addition: the rundown works without them.
+        console.error("Failed to load recipes:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProgramId]);
+
   const latestItems = (sequence: FlightSequence) =>
     unsavedItems.current.get(sequence.id)?.items ?? sequence.items;
 
@@ -387,6 +436,89 @@ export default function ManualRundown() {
     await persistSequenceItems(activeSequence, items);
   };
 
+  /** A song, clip or stop from the library, at the end (gaulatti/alcantara#425). */
+  const handleAddLibraryEntry = async (entry: LibraryEntry) => {
+    if (!activeSequence) return;
+    const items = insertCues(latestItems(activeSequence), [cueFor(entry, false)]);
+    await persistSequenceItems(activeSequence, items);
+  };
+
+  const songTitle = (songId: number) =>
+    songs.find((item) => item.id === songId)?.title || `Song ${songId}`;
+
+  /** One use of a recipe: its cues are added together, after the operator sees any issue. */
+  const handleAddRecipeUse = async (recipeId: number, songId: number) => {
+    if (!activeSequence) return;
+    try {
+      const { items, issues } = await expandRecipe(activeProgramId, recipeId, { songId });
+      if (!items.length) {
+        showAlert("The recipe has no steps to add.", "error");
+        return;
+      }
+      if (issues.length) {
+        setPendingUse({ items, issues, title: songTitle(songId) });
+        return;
+      }
+      await persistSequenceItems(activeSequence, insertCues(latestItems(activeSequence), items));
+    } catch (err) {
+      showAlert(extractErrorMessage(err), "error");
+    }
+  };
+
+  const confirmPendingUse = async () => {
+    const use = pendingUse;
+    setPendingUse(null);
+    if (!activeSequence || !use) return;
+    await persistSequenceItems(activeSequence, insertCues(latestItems(activeSequence), use.items));
+  };
+
+  const handleMoveRow = async (rowIndex: number, direction: "up" | "down") => {
+    if (!activeSequence) return;
+    const current = latestItems(activeSequence);
+    const items = moveRow(current, rowIndex, direction);
+    if (items !== current) await persistSequenceItems(activeSequence, items);
+  };
+
+  const handleDetachUse = async (useId: string) => {
+    if (!activeSequence) return;
+    await persistSequenceItems(activeSequence, detachUse(latestItems(activeSequence), useId));
+  };
+
+  const handleRemoveUse = async (useId: string) => {
+    if (!activeSequence) return;
+    await persistSequenceItems(activeSequence, removeUse(latestItems(activeSequence), useId));
+  };
+
+  const openLabelChange = (row: Extract<RundownRow, { kind: "use" }>) => {
+    setLabelUse(row);
+    setLabelChoice(row.cues[0]?.recipeUse?.params.labelId ?? "");
+    if (mediaLabels === null)
+      fetchAllMediaLabels<{ id: string; name: string }>()
+        .then(setMediaLabels)
+        .catch((err) => showAlert(extractErrorMessage(err), "error"));
+  };
+
+  /** Builds the use again with the chosen label, in place and with the same ids. */
+  const applyLabelChange = async () => {
+    const row = labelUse;
+    setLabelUse(null);
+    if (!activeSequence || !row) return;
+    try {
+      const { items } = await expandRecipe(
+        activeProgramId,
+        row.recipeId,
+        { songId: row.songId, labelId: labelChoice || null },
+        row.useId,
+      );
+      await persistSequenceItems(
+        activeSequence,
+        replaceUse(latestItems(activeSequence), row.useId, items),
+      );
+    } catch (err) {
+      showAlert(extractErrorMessage(err), "error");
+    }
+  };
+
   const handleUpdateCue = async (cueId: string, patch: Partial<FlightCue>) => {
     if (!activeSequence) return;
 
@@ -403,20 +535,7 @@ export default function ManualRundown() {
     await persistSequenceItems(activeSequence, items);
   };
 
-  const handleMoveCue = async (cueId: string, direction: "up" | "down") => {
-    if (!activeSequence) return;
 
-    const current = latestItems(activeSequence);
-    const index = current.findIndex((cue) => cue.id === cueId);
-    if (index < 0) return;
-
-    const newIndex = direction === "up" ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= current.length) return;
-
-    const items = [...current];
-    [items[index], items[newIndex]] = [items[newIndex], items[index]];
-    await persistSequenceItems(activeSequence, items);
-  };
 
   const sceneOptions = useMemo(
     () =>
@@ -553,6 +672,21 @@ export default function ManualRundown() {
                     ))}
                   </div>
                 )}
+                {activeSequence && (
+                  <div className="mt-4">
+                    <RundownLibrary
+                      songs={songs}
+                      clips={instants}
+                      disabled={false}
+                      onAdd={(entry) => void handleAddLibraryEntry(entry)}
+                      recipes={recipes}
+                      onAddRecipe={(recipeId, songId) =>
+                        void handleAddRecipeUse(recipeId, songId)
+                      }
+                      footnote="Select an item and press Enter, or double-click it, to add it at the end."
+                    />
+                  </div>
+                )}
               </Card>
 
               {activeSequence ? (
@@ -562,7 +696,29 @@ export default function ManualRundown() {
                       No cues yet. Add one above.
                     </div>
                   ) : (
-                    activeSequence.items.map((cue, index) => (
+                    groupRundown(activeSequence.items).map((row, rowIndex, rows) =>
+                      row.kind === "use" ? (
+                        <UseRow
+                          key={`${row.useId}-${row.start}`}
+                          row={row}
+                          recipeName={
+                            recipes?.find((recipe) => recipe.id === row.recipeId)?.name ??
+                            "Recipe"
+                          }
+                          songTitle={songTitle(row.songId)}
+                          rowIndex={rowIndex}
+                          rowCount={rows.length}
+                          activeCueIndex={
+                            runtime?.isRunning ? activeCueIndex : -1
+                          }
+                          describe={getFlightCueDisplayLabel}
+                          onMove={(direction) => void handleMoveRow(rowIndex, direction)}
+                          onDetach={() => void handleDetachUse(row.useId)}
+                          onRemove={() => void handleRemoveUse(row.useId)}
+                          onChangeLabel={() => openLabelChange(row)}
+                        />
+                      ) : (
+                      ((cue, index) => (
                       <CueRow
                         key={cue.id}
                         cue={cue}
@@ -586,9 +742,11 @@ export default function ManualRundown() {
                         instantOptions={instantOptions}
                         onUpdate={(patch) => handleUpdateCue(cue.id, patch)}
                         onDelete={() => handleDeleteCue(cue.id)}
-                        onMove={(direction) => handleMoveCue(cue.id, direction)}
+                        onMove={(direction) => void handleMoveRow(rowIndex, direction)}
                       />
-                    ))
+                      ))(row.cue, row.index)
+                      ),
+                    )
                   )}
                 </Card>
               ) : (
@@ -636,6 +794,66 @@ export default function ManualRundown() {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={pendingUse !== null}
+        onClose={() => setPendingUse(null)}
+        title={`Add ${pendingUse?.title ?? "the song"} with issues?`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-300">
+            The recipe can add this use, but it may not air as intended:
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-amber-300" aria-label="Recipe issues">
+            {pendingUse?.issues.map((issue) => (
+              <li key={issue.code + issue.message} data-code={issue.code}>
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setPendingUse(null)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void confirmPendingUse()}>
+              Add anyway
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={labelUse !== null}
+        onClose={() => setLabelUse(null)}
+        title="Change the use's label"
+      >
+        <div className="space-y-4">
+          <label className="block text-sm font-medium text-zinc-300">
+            Media label for the bumper and the slideshow
+            <select
+              aria-label="Media label"
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              value={labelChoice}
+              onChange={(event) => setLabelChoice(event.target.value)}
+            >
+              <option value="">The artist's label (or none)</option>
+              {(mediaLabels ?? []).map((label) => (
+                <option key={label.id} value={label.id}>
+                  {label.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setLabelUse(null)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void applyLabelChange()}>
+              Rebuild the use
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isCreateModalOpen}
@@ -1476,5 +1694,104 @@ function IconButton({
     >
       {children}
     </TooltipButton>
+  );
+}
+
+/**
+ * One recipe use as one row (gaulatti/alcantara#425): the song and the recipe, its steps on demand,
+ * and the actions that act on the whole use. Its cues stay ordinary cues in the rundown.
+ */
+export function UseRow({
+  row,
+  recipeName,
+  songTitle,
+  rowIndex,
+  rowCount,
+  activeCueIndex,
+  describe,
+  onMove,
+  onDetach,
+  onRemove,
+  onChangeLabel,
+  defaultOpen = false,
+}: {
+  row: Extract<RundownRow, { kind: "use" }>;
+  recipeName: string;
+  songTitle: string;
+  rowIndex: number;
+  rowCount: number;
+  activeCueIndex: number;
+  describe: (cue: FlightCue) => string;
+  onMove: (direction: "up" | "down") => void;
+  onDetach: () => void;
+  onRemove: () => void;
+  onChangeLabel: () => void;
+  /** The steps start shown (the visual fixture). */
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const onAir = activeCueIndex >= row.start && activeCueIndex < row.end;
+  const played = activeCueIndex >= row.end;
+  return (
+    <section
+      aria-label={`Song: ${songTitle} · ${recipeName}`}
+      data-recipe-use={row.useId}
+      className={`p-4 ${onAir ? "bg-sea/10" : played ? "opacity-60" : ""}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={open ? "Hide the steps" : "Show the steps"}
+          className="text-zinc-400 hover:text-zinc-100"
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        <span className="font-semibold text-zinc-100">Song: {songTitle}</span>
+        <span className="text-xs text-zinc-400">· {recipeName} · {row.cues.length} steps</span>
+        {onAir ? <span className="rounded bg-sea/20 px-2 py-0.5 text-xs text-sea">On air</span> : null}
+        {row.partial ? (
+          <span
+            className="rounded bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300"
+            title="Hand edits split this use; detach it to keep editing its cues"
+          >
+            Partial use
+          </span>
+        ) : null}
+        <span className="ml-auto flex items-center gap-1">
+          <IconButton title="Move the use up" disabled={rowIndex === 0} onClick={() => onMove("up")}>
+            <ArrowUp size={14} />
+          </IconButton>
+          <IconButton title="Move the use down" disabled={rowIndex === rowCount - 1} onClick={() => onMove("down")}>
+            <ArrowDown size={14} />
+          </IconButton>
+          {!row.partial ? (
+            <IconButton title="Change the label" onClick={onChangeLabel}>
+              <Tag size={14} />
+            </IconButton>
+          ) : null}
+          <IconButton title="Detach: edit these steps by hand" onClick={onDetach}>
+            <Unlink size={14} />
+          </IconButton>
+          <IconButton title="Remove the use" variant="danger" onClick={onRemove}>
+            <Trash2 size={14} />
+          </IconButton>
+        </span>
+      </div>
+      {open ? (
+        <ol className="mt-3 space-y-1 pl-7 text-sm text-zinc-300" aria-label="Steps">
+          {row.cues.map((cue, offset) => (
+            <li
+              key={cue.id}
+              aria-current={row.start + offset === activeCueIndex ? "step" : undefined}
+              className={row.start + offset === activeCueIndex ? "font-semibold text-sea" : ""}
+            >
+              {describe(cue)}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </section>
   );
 }
