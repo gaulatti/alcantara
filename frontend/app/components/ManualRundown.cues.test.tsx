@@ -20,6 +20,11 @@ import {
   stubLibrary,
 } from "../../test/manualRundownKit";
 
+// These tests are long operator flows (many awaited steps over a large DOM) that take 1-3 s on an idle
+// machine, so a loaded CI runner exceeded the 5 s default. They assert behaviour, not timing: give the
+// flow room instead of letting load decide the result.
+vi.setConfig({ testTimeout: 30_000 });
+
 // The operator-cue editors of ManualRundown: each cue kind's fields, ordering,
 // and the scene-update metadata editor. Every edit is saved to the flight API
 // and the row shows what the server returned.

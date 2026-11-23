@@ -17,6 +17,11 @@ import {
 import { MemoryRouter } from "react-router";
 import { dbToFader } from "../utils/audioTaper";
 
+// These tests are long operator flows (many awaited steps over a large DOM) that take 1-3 s on an idle
+// machine, so a loaded CI runner exceeded the 5 s default. They assert behaviour, not timing: give the
+// flow room instead of letting load decide the result.
+vi.setConfig({ testTimeout: 30_000 });
+
 // gaulatti/alcantara#194 group 3: the TV audio desk. The mixer's faders,
 // mutes, solos and A/B presets save through the program's audio bus, and the
 // realtime link keeps the bus, meters, song playback and scene audio current.
