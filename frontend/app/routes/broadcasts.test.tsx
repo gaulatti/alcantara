@@ -572,8 +572,15 @@ it("adds, edits, reorders, retires and restores catalog destinations", async () 
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-  // Retire and restore.
+  // Retire is confirmed by name before it is sent; a Cancel sends nothing.
   fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  const retireDialog = await screen.findByRole("dialog", { name: "Confirm retire" });
+  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
+  fireEvent.click(within(retireDialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm retire" })).toBeNull());
+  expect(api.post).not.toHaveBeenCalledWith("/broadcast/destinations/primary/retire");
+  fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
   await toast("Destination retired. Active sessions are unchanged.");
   expect(api.post).toHaveBeenLastCalledWith(
     "/broadcast/destinations/primary/retire",
@@ -585,5 +592,6 @@ it("adds, edits, reorders, retires and restores catalog destinations", async () 
   );
   api.post.mockRejectedValueOnce(refusal(404));
   fireEvent.click(screen.getAllByRole("button", { name: /^Retire$/ })[0]);
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm retire" })).getByRole("button", { name: "Retire destination" }));
   await toast("Resource not found");
 });

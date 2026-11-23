@@ -102,6 +102,8 @@ export default function Broadcasts() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction>(null);
+  // Retire is confirmed by name before it is sent (gaulatti/alcantara#349); Restore is direct.
+  const [retireTarget, setRetireTarget] = useState<CatalogDestination | null>(null);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [editingDestination, setEditingDestination] =
     useState<CatalogDestination | null>(null);
@@ -520,7 +522,9 @@ export default function Broadcasts() {
                   size="sm"
                   variant={destination.retiredAt ? "ghost" : "destructive"}
                   onClick={() =>
-                    void setRetired(destination, !destination.retiredAt)
+                    destination.retiredAt
+                      ? void setRetired(destination, false)
+                      : setRetireTarget(destination)
                   }
                   disabled={busyAction !== null}
                 >
@@ -532,6 +536,35 @@ export default function Broadcasts() {
           </div>
         </Card>
       ) : null}
+
+      <Modal
+        isOpen={retireTarget !== null}
+        onClose={() => setRetireTarget(null)}
+        title="Confirm retire"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Retire {retireTarget?.displayName ?? "this destination"}? It leaves
+            the catalog for new broadcasts. Active sessions are unchanged.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRetireTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busyAction !== null}
+              onClick={() => {
+                const target = retireTarget;
+                setRetireTarget(null);
+                if (target) void setRetired(target, true);
+              }}
+            >
+              Retire destination
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={confirmedAction !== null}
