@@ -15,8 +15,23 @@ export interface FlightMixerChange {
   solo?: boolean;
 }
 
+/**
+ * The recipe use a rundown cue belongs to (gaulatti/alcantara#222, contract C1). A cue of one use
+ * shares `useId`; its id is `<useId>.<step>` (C2). Cues carry it for grouping only: the resolver and
+ * the executor ignore it.
+ */
+export interface FlightRecipeUse {
+  useId: string;
+  recipeId: number;
+  recipeRevision: number;
+  step: string;
+  params: { songId: number; labelId?: string | null };
+}
+
 export interface FlightCue {
   isFiller?: boolean;
+  // A rundown cue's recipe use, when it came from a recipe (gaulatti/alcantara#422).
+  recipeUse?: FlightRecipeUse;
   id: string;
   kind: FlightCueKind;
   label?: string;

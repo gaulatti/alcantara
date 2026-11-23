@@ -1502,4 +1502,66 @@ describe('FlightService public lifecycle and clock boundary', () => {
       );
     },
   );
+
+  // gaulatti/alcantara#422 (R1): a recipe-use tag is kept through the service's own save and read paths.
+  const recipeTag = {
+    useId: 'use-1',
+    recipeId: 7,
+    recipeRevision: 2,
+    step: 'wait',
+    params: { songId: 5 },
+  };
+  const taggedWait = (id: string, durationMs: number) => ({
+    id,
+    kind: 'wait',
+    durationMs,
+    recipeUse: recipeTag,
+  });
+
+  it('saves tagged cues and reads them back with the tag, and drops a malformed tag but keeps the cue', async () => {
+    const f = setup();
+    await f.service.updateFlightSequence('news', 7, {
+      items: [
+        taggedWait('use-1.wait', 500),
+        { ...taggedWait('use-1.tail', 500), recipeUse: { ...recipeTag, recipeId: 0 } },
+      ],
+    });
+    const [listed] = await f.service.listFlightSequences(' news ');
+    expect(listed.items).toEqual([
+      expect.objectContaining({ id: 'use-1.wait', recipeUse: recipeTag }),
+      expect.objectContaining({ id: 'use-1.tail', kind: 'wait' }),
+    ]);
+    expect(listed.items[1]).not.toHaveProperty('recipeUse');
+  });
+
+  it('keeps the tag through create, and edits a tail while leaving a played cue untouched', async () => {
+    const f = setup();
+    const created = await f.service.createFlightSequence('news', {
+      name: 'Recipe rundown',
+      items: [taggedWait('use-1.wait', 1000), taggedWait('use-1.tail', 1000)],
+    });
+    expect(created.items[0]).toEqual(expect.objectContaining({ recipeUse: recipeTag }));
+
+    f.sequence().items = [taggedWait('use-1.wait', 1000), taggedWait('use-1.tail', 1000)];
+    await f.service.start('news');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(f.sequence()).toEqual(expect.objectContaining({ isRunning: true, activeItemId: 'use-1.wait' }));
+
+    // The played cue is the same tagged cue; only the tail changes.
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        items: [taggedWait('use-1.wait', 1000), taggedWait('use-1.tail', 500)],
+      }),
+    ).resolves.toEqual(expect.objectContaining({ revision: 2 }));
+
+    // Changing the tag on the played cue is a played-prefix edit, and is refused.
+    await expect(
+      f.service.updateFlightSequence('news', 7, {
+        items: [
+          { ...taggedWait('use-1.wait', 1000), recipeUse: { ...recipeTag, step: 'other' } },
+          taggedWait('use-1.tail', 500),
+        ],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
 });
