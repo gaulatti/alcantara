@@ -1170,3 +1170,78 @@
     padding-right: 6px;
   }
 }
+
+/* Program return honesty (alcantara#301): what the PROGRAM monitor really is. */
+.switcher-return-local,
+.switcher-return-state,
+.switcher-return-behind {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.switcher-return-local {
+  border: 1px solid var(--console-border);
+  color: var(--console-muted);
+}
+.switcher-return-behind {
+  color: var(--console-muted);
+  font-variant-numeric: tabular-nums;
+}
+.switcher-return-state[data-state="live"] {
+  background: color-mix(in srgb, var(--console-ready) 22%, transparent);
+  color: var(--console-ready);
+}
+.switcher-return-state[data-state="delayed"],
+.switcher-return-state[data-state="frozen"] {
+  background: color-mix(in srgb, var(--console-preview) 22%, transparent);
+  color: var(--console-preview);
+}
+.switcher-return-state[data-state="lost"] {
+  background: var(--console-live);
+  color: var(--console-canvas);
+}
+.switcher-return-listen {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--console-muted);
+}
+.switcher-return-listen:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.switcher-return-ribbon {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--console-canvas) 82%, transparent);
+  color: var(--console-text);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+.switcher-return-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.switcher-return-overlay[data-state="frozen"] {
+  background: color-mix(in srgb, var(--console-preview) 18%, transparent);
+  color: var(--console-preview);
+}
+.switcher-return-overlay[data-state="lost"] {
+  background: color-mix(in srgb, var(--console-live) 82%, black);
+  color: var(--console-text);
+}

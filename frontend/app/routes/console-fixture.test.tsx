@@ -243,6 +243,10 @@ vi.mock("../components/AppLoading", () => ({
 vi.mock("../components/RundownFixture", () => ({
   RundownFixture: () => <Box name="rundown desk" data={null} />,
 }));
+vi.mock("../components/ReturnCallersFixture", () => ({
+  ProgramReturnFixture: () => <Box name="program return" data={null} />,
+  CallerDeskFixture: () => <Box name="caller desk" data={null} />,
+}));
 vi.mock("../components/RundownFillers", () => ({
   RundownFillers: (p: any) => (
     <Box
@@ -372,6 +376,8 @@ it("opens the single-component fixtures", () => {
 
   const single: [string, string, unknown][] = [
     ["?state=rundown-desk", "rundown desk", null],
+    ["?state=program-return", "program return", null],
+    ["?state=caller-desk", "caller desk", null],
     ["?state=loading", "loading", null],
     ["?state=hidden-component", "prepare", {}],
     ["?state=prepare-timezone", "prepare", { timezone: true }],

@@ -1,0 +1,145 @@
+/* Caller desk (alcantara#301): guests as channel strips beside a waiting queue. */
+.caller-desk-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--app-sand) 30%, transparent);
+  border-radius: var(--radius-ui);
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+.caller-desk-count {
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+.caller-desk-count[data-live="true"] {
+  color: var(--app-accent-red);
+}
+.caller-desk {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.caller-desk-queue {
+  display: grid;
+  gap: 16px;
+}
+.caller-desk-waiting {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.caller-desk-waiting li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--app-sand) 25%, transparent);
+  border-radius: var(--radius-ui);
+}
+.caller-desk-gap,
+.guest-strip-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--app-text-secondary);
+}
+.caller-desk-strips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.guest-strip {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--app-sand) 30%, transparent);
+  border-top-width: 3px;
+  border-radius: var(--radius-ui);
+  outline: none;
+}
+.guest-strip:focus-visible {
+  box-shadow: 0 0 0 2px var(--app-sea);
+}
+.guest-strip[data-state="connected"] {
+  border-top-color: var(--app-sea);
+}
+.guest-strip[data-state="cued-live"] {
+  border-top-color: var(--app-accent-red);
+}
+.guest-strip[data-state="reconnecting"] {
+  border-top-color: var(--app-accent-yellow);
+}
+.guest-strip-free {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  border-style: dashed;
+}
+.guest-strip-head,
+.guest-strip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.guest-strip-slot {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--app-text-secondary);
+}
+.guest-strip-state {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--app-sand) 20%, transparent);
+}
+.guest-strip-state[data-state="connected"] {
+  background: color-mix(in srgb, var(--app-sea) 14%, transparent);
+  color: var(--app-sea);
+}
+.guest-strip-state[data-state="cued-live"] {
+  background: var(--app-accent-red);
+  color: white;
+}
+.guest-strip-state[data-state="reconnecting"] {
+  background: color-mix(in srgb, var(--app-accent-yellow) 24%, transparent);
+}
+.guest-strip-meter {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.guest-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  font-size: 11px;
+  color: var(--app-text-secondary);
+}
+.guest-strip-cue {
+  font-size: 11px;
+  font-weight: 600;
+}
+.guest-strip-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.guest-strip-foot {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--app-sand) 20%, transparent);
+}
+@media (max-width: 900px) {
+  .caller-desk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .guest-strip [data-holding="true"] {
+    transition: background-color 800ms linear;
+  }
+}

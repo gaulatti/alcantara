@@ -1,5 +1,5 @@
 import { TooltipButton } from "./BleeckerButtons";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ArmTake,
   Button,
@@ -12,6 +12,7 @@ import {
 } from "@gaulatti/bleecker";
 import {
   Expand,
+  Headphones,
   Keyboard,
   MonitorPlay,
   Settings2,
@@ -21,6 +22,14 @@ import {
 } from "lucide-react";
 import type { Scene } from "../models/broadcast";
 import { SCENE_TRANSITIONS } from "../utils/sceneTransitions";
+import {
+  RETURN_STATE_LABEL,
+  behindLabel,
+  returnState,
+  sinceLabel,
+  type ReturnSource,
+  type ReturnState,
+} from "../utils/programReturn";
 import {
   useConsolePreferences,
   type ConsoleWorkspace,
@@ -345,7 +354,9 @@ export function ConfidenceMonitor({
   tone,
   scene,
   src,
-  state,
+  state: airState,
+  returnSource = { kind: "local" },
+  returnMedia,
 }: {
   label: string;
   tone: "preview" | "program";
@@ -353,9 +364,20 @@ export function ConfidenceMonitor({
   src: string;
   /** What is going out, shown on the Program monitor: on air, or faded to black. */
   state?: { tone: StatePillTone; label: string; pulse?: boolean };
+  /**
+   * The program's real return (alcantara#301). Until one exists this stays
+   * `local`: the monitor shows the program page rendered again in this browser,
+   * silent, and says it is not the output.
+   */
+  returnSource?: ReturnSource;
+  /** The return's own video, once a real return exists. */
+  returnMedia?: ReactNode;
 }) {
   const monitorRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const preview = tone === "preview";
+  const fromReturn = !preview && returnSource.kind === "return";
 
   useEffect(() => {
     const monitor = monitorRef.current;
@@ -370,35 +392,80 @@ export function ConfidenceMonitor({
     return () => observer.disconnect();
   }, []);
 
-  const preview = tone === "preview";
+  // Only a real return has timers (frozen for, lost for) to keep current.
+  useEffect(() => {
+    if (!fromReturn) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [fromReturn]);
+
+  const state: ReturnState = preview ? "local" : returnState(returnSource, now);
+  const behind =
+    returnSource.kind === "return" ? behindLabel(returnSource.latencyMs) : null;
+  const lastFrameAt =
+    returnSource.kind === "return" ? returnSource.lastFrameAt : null;
   return (
     <section
       data-tone={tone}
+      data-return-state={preview ? undefined : state}
+      aria-label={preview ? `${label} monitor` : fromReturn ? "Program return" : `${label} monitor, local render`}
       className={`switcher-monitor min-w-0 overflow-hidden border bg-black md:order-2 ${preview ? "border-amber-400/60 opacity-95" : "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.45),0_12px_32px_-12px_rgba(239,68,68,0.55)]"}`}
     >
       <header
         className={`flex h-8 items-center gap-2 px-2 sm:px-3 ${preview ? "bg-amber-400 text-zinc-950" : "bg-red-600 text-white"}`}
       >
         <span className="shrink-0 text-xs font-black tracking-[0.12em] sm:tracking-[0.18em]">
-          {label}
+          {fromReturn && returnSource.kind === "return"
+            ? `RETURN · FROM ${returnSource.from.toUpperCase()}`
+            : label}
         </span>
+        {fromReturn ? (
+          <span className="switcher-return-state" data-state={state}>
+            {RETURN_STATE_LABEL[state]}
+          </span>
+        ) : (
+          <span className="switcher-return-local">local render</span>
+        )}
+        {behind && state !== "lost" ? (
+          <span className="switcher-return-behind">{behind}</span>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-right text-xs font-semibold">
           {scene?.name || (preview ? "Preview is clear" : "Program is clear")}
         </span>
-        {state ? (
+        {airState ? (
           <StatePill
             className="shrink-0 border-white/40 bg-black/30 text-white"
-            tone={state.tone}
-            label={state.label}
-            pulse={state.pulse}
+            tone={airState.tone}
+            label={airState.label}
+            pulse={airState.pulse}
           />
+        ) : null}
+        {!preview ? (
+          <button
+            type="button"
+            className="switcher-return-listen"
+            disabled
+            title={
+              fromReturn
+                ? "Return audio is not available yet"
+                : "No return audio: the local render is silent"
+            }
+          >
+            <Headphones size={12} aria-hidden="true" /> Listen
+          </button>
         ) : null}
       </header>
       <div
         ref={monitorRef}
         className="switcher-monitor-screen relative h-[clamp(84px,13vh,210px)] sm:h-[clamp(84px,16vh,210px)] overflow-hidden bg-[radial-gradient(circle_at_center,#202631_0%,#08090b_72%)]"
       >
-        {scene ? (
+        {fromReturn ? (
+          (returnMedia ?? (
+            <div className="switcher-monitor-empty absolute inset-0 flex items-center justify-center text-xs font-semibold uppercase tracking-widest">
+              No return picture
+            </div>
+          ))
+        ) : scene ? (
           <iframe
             title={`${label} confidence monitor`}
             src={src}
@@ -421,6 +488,21 @@ export function ConfidenceMonitor({
             </span>
           </div>
         )}
+        {!preview && state === "local" ? (
+          <p className="switcher-return-ribbon" role="note">
+            Local render · not the output
+          </p>
+        ) : null}
+        {state === "frozen" ? (
+          <p className="switcher-return-overlay" data-state="frozen" role="status">
+            Frozen · same frame for {sinceLabel(lastFrameAt, now)}
+          </p>
+        ) : null}
+        {state === "lost" ? (
+          <p className="switcher-return-overlay" data-state="lost" role="alert">
+            Signal lost · {lastFrameAt === null ? "no frame yet" : `${sinceLabel(lastFrameAt, now)} since the last frame`}
+          </p>
+        ) : null}
       </div>
     </section>
   );
