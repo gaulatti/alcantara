@@ -20,6 +20,7 @@
     "preflight:runtime": "node dist/src/config/runtime-preflight",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "pretest:coverage": "pnpm run prisma:generate",
     "test:coverage": "jest --coverage --coverageProvider=v8 --coverageReporters=json --coverageDirectory=../coverage --collectCoverageFrom='**/*.(t|j)s' --collectCoverageFrom='!**/*.spec.ts'",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
