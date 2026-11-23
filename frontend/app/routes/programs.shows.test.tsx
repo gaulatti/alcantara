@@ -17,6 +17,12 @@ import { apiUrl } from "../utils/apiBaseUrl";
 // template inspection, deleting, and each refusal.
 
 const selection = vi.hoisted(() => ({ current: "news", set: vi.fn() }));
+vi.mock("@gaulatti/bleecker", async (original) => {
+  const kit = await import("../../test/routeKit");
+  return kit.inlineMenus(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  );
+});
 vi.mock("../utils/globalProgram", () => ({
   useGlobalProgramId: () => [selection.current, selection.set],
 }));
@@ -654,7 +660,8 @@ it("deletes a show after confirmation and moves the selection off it", async () 
   vi.spyOn(console, "error").mockImplementation(() => {});
   open();
   await loaded();
-  fireEvent.click(screen.getByRole("button", { name: "Delete news" }));
+  fireEvent.click(within(card("news")).getByRole("button", { name: "Actions for news" }));
+  fireEvent.click(within(card("news")).getByText("Delete show"));
   const dialog = await screen.findByRole("dialog", { name: "Confirm delete" });
   expect(dialog).toHaveTextContent('Delete show “news”?');
   expect(calls("DELETE")).toEqual([]);
@@ -667,14 +674,16 @@ it("deletes a show after confirmation and moves the selection off it", async () 
     shows = shows.filter((entry) => entry.programId !== "news");
     return json({});
   };
-  fireEvent.click(screen.getByRole("button", { name: "Delete news" }));
+  fireEvent.click(within(card("news")).getByRole("button", { name: "Actions for news" }));
+  fireEvent.click(within(card("news")).getByText("Delete show"));
   await confirmDelete();
   await toast("Show deleted.");
   expect(selection.set).toHaveBeenLastCalledWith("radio one");
 
   // Another show: the selection stays.
   selection.set.mockClear();
-  fireEvent.click(screen.getByRole("button", { name: "Delete sim" }));
+  fireEvent.click(within(card("sim")).getByRole("button", { name: "Actions for sim" }));
+  fireEvent.click(within(card("sim")).getByText("Delete show"));
   await confirmDelete();
   await waitFor(() =>
     expect(calls("DELETE")).toContainEqual(["/program/sim", null]),
@@ -692,7 +701,8 @@ it("deletes a show after confirmation and moves the selection off it", async () 
   };
   open();
   await loaded();
-  fireEvent.click(screen.getByRole("button", { name: "Delete radio one" }));
+  fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+  fireEvent.click(within(card("radio one")).getByText("Delete show"));
   await confirmDelete();
   await waitFor(() => expect(selection.set).toHaveBeenCalledWith("main"));
 
@@ -705,7 +715,8 @@ it("deletes a show after confirmation and moves the selection off it", async () 
     cleanup();
     open();
     await loaded();
-    fireEvent.click(screen.getByRole("button", { name: "Delete radio one" }));
+    fireEvent.click(within(card("radio one")).getByRole("button", { name: "Actions for radio one" }));
+  fireEvent.click(within(card("radio one")).getByText("Delete show"));
     await confirmDelete();
     await toast("Failed to delete show.");
   }

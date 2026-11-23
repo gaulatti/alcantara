@@ -1,6 +1,6 @@
 import { TooltipButton } from "../components/BleeckerButtons";
-import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, StatePill, showAlert } from '@gaulatti/bleecker';
-import { ExternalLink, Link2, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
+import { AlertContainer, Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, StatePill, showAlert } from '@gaulatti/bleecker';
+import { ExternalLink, Link2, MoreHorizontal, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/programs';
@@ -475,9 +475,10 @@ export default function ProgramsAdmin() {
                       <div className='min-w-0 flex-1'>
                         <div className='flex flex-wrap items-center gap-2'>
                           <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{program.programId}</h3>
-                          <span className='inline-flex items-center gap-1 rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15'>
-                            {program.type === 'radio' ? <><Radio size={12} /> Radio</> : program.type === 'both' ? <><Tv size={12} /><Radio size={12} /> Simulcast</> : <><Tv size={12} /> TV</>}
-                          </span>
+                          <StatePill
+                            tone='info'
+                            label={program.type === 'radio' ? 'Radio' : program.type === 'both' ? 'Simulcast' : 'TV'}
+                          />
                           {isSelected ? <StatePill tone='live' label='Active' /> : null}
                         </div>
                         {program.type === 'radio' ? (
@@ -490,6 +491,7 @@ export default function ProgramsAdmin() {
                         )}
                         {program.type !== 'radio' && program.templateManifest ? (
                           <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
+                            <StatePill tone='ok' label='Renderer ready' />
                             <Link2 size={13} />
                             <span>
                               {program.templateManifest.name} · {program.templateManifest.bundleVersion}
@@ -518,14 +520,18 @@ export default function ProgramsAdmin() {
                         >
                           <Pencil size={16} />
                         </IconButton>
-                        <IconButton
-                          onClick={() => setPendingDelete(program.programId)}
-                          className='text-terracotta'
-                          title={`Delete ${program.programId}`}
-                          aria-label={`Delete ${program.programId}`}
-                        >
-                          <Trash2 size={16} />
-                        </IconButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton title={`Actions for ${program.programId}`} aria-label={`Actions for ${program.programId}`}>
+                              <MoreHorizontal size={16} />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align='end'>
+                            <DropdownMenuItem onSelect={() => setPendingDelete(program.programId)}>
+                              <Trash2 size={14} className='mr-2' /> Delete show
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </article>
