@@ -805,6 +805,7 @@ export default function Control() {
             return {
               ...prev,
               activeSceneId: null,
+              activeScene: null,
             };
           });
           return;
@@ -2944,6 +2945,7 @@ export default function Control() {
           return {
             ...prev,
             activeSceneId: null,
+            activeScene: null,
           };
         });
         return;

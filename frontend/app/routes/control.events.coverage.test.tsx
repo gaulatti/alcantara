@@ -210,6 +210,9 @@ it("follows the TV program: snapshots, staging, scene updates, clearing, fade to
   await waitFor(() =>
     expect(screen.queryByText("This scene is on Program. Saved changes appear live.")).toBeNull(),
   );
+  // The switcher agrees: no source is tagged Program once Program is cleared (#251).
+  expect(onProgram(/Fictional desk/)).toBe(false);
+  expect(onProgram(/Fictional headlines/)).toBe(false);
   const groupReads = () => server.calls.filter((call) => call.path === "/program/main/media-groups").length;
   const before = groupReads();
   await send({ type: "program_media_groups_changed", state: tvState() });
