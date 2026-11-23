@@ -253,8 +253,7 @@ column with the other. Cartwall has one search and a visible Stop all action.
 
 Mixer strips expose Music, Cartwall, Scene audio, and Main mix together. Stream
 appears when Preview or Program includes a video-stream component, as before.
-Horizontal Bleecker `Slider` faders (until the vertical Bleecker fader ships),
-with the live meter above each and editable dB values, use the existing
+Vertical keyboard-accessible faders and editable dB values use the existing
 console taper and debounced audio-bus persistence. Channel Mute, Solo, saved A/B
 levels, and TAKE A/B retain their existing operations. Preset fade is beside the
 Mixer heading. Authoritative meters include VU, peak, and hold; Stream shows no
