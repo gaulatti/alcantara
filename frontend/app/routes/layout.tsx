@@ -1,3 +1,4 @@
+import { getDesktopHost } from '../platform/desktopHost';
 import { BrandLockup, IconButton, CommandSpotlight, HeaderSelect, Input, Button, Modal, Sidebar, type CommandSpotlightAction, type SidebarItem } from '@gaulatti/bleecker';
 import {
   Blend,
@@ -909,6 +910,9 @@ function ConsoleShell() {
               </Button>
               {renderOpenProgramButton()}
               {renderRefreshProgramButton()}
+              {(getDesktopHost()?.topBarControls ?? []).map((Control, index) => (
+                <Control key={index} programId={selectedProgramId} />
+              ))}
             </div>
 
             <main className={`min-h-0 flex-1 ${isViewportConstrainedRoute ? 'overflow-hidden' : 'overflow-y-auto'}`}>

@@ -1,4 +1,5 @@
 import { fetchAuthSession, signOut } from "aws-amplify/auth";
+import { getDesktopHost } from "../platform/desktopHost";
 import { getApiBaseUrl } from "../utils/apiBaseUrl";
 
 export interface AppSession {
@@ -69,6 +70,14 @@ export async function getAppSession(forceRefresh = false): Promise<AppSession> {
       });
     return localSession;
   }
+  // A desktop app (gaulatti/alcantara#431) signs in through the system browser and holds the tokens.
+  const desktop = getDesktopHost()?.auth;
+  if (desktop) {
+    const current = await desktop.currentSession(forceRefresh);
+    return current
+      ? { token: current.token, userSub: current.userSub, payload: current.payload }
+      : {};
+  }
   const session = await fetchAuthSession({ forceRefresh });
   return {
     userSub: session.userSub,
@@ -80,6 +89,11 @@ export async function getAppSession(forceRefresh = false): Promise<AppSession> {
 }
 
 export async function clearAppSession(): Promise<void> {
+  const desktop = getDesktopHost()?.auth;
+  if (desktop) {
+    await desktop.signOut();
+    return;
+  }
   if (isTestAuth()) {
     localSession = undefined;
     window.sessionStorage.removeItem(TEST_SESSION_KEY);

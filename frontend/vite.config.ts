@@ -20,6 +20,12 @@ export default defineConfig({
         find: /^@gaulatti\/bleecker$/,
         // Keep the app's Bleecker surface centralized on public subpath exports.
         replacement: fileURLToPath(new URL('./app/bleecker.ts', import.meta.url))
+      },
+      {
+        // gaulatti/alcantara#431: the desktop extension point. The website has no desktop host; the
+        // desktop pilot builds with a second config that points this alias at its own module.
+        find: /^@desktop-host$/,
+        replacement: fileURLToPath(new URL('./app/platform/desktopHost.none.ts', import.meta.url))
       }
     ]
   },

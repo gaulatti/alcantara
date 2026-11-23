@@ -74,6 +74,14 @@ vi.mock("../hooks/useFeatures", () => ({
   }),
 }));
 vi.mock("../services/session", () => ({ isTestAuth: () => shell.testAuth }));
+// gaulatti/alcantara#431: no desktop host unless a test plugs one in.
+const desktop = vi.hoisted(() => ({ host: null as null | Record<string, unknown> }));
+vi.mock("@desktop-host", () => ({
+  get default() {
+    return desktop.host;
+  },
+}));
+
 
 vi.mock("@gaulatti/bleecker", async (original) => {
   const actual = await original<typeof import("@gaulatti/bleecker")>();
@@ -278,6 +286,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  desktop.host = null;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -1086,4 +1095,28 @@ it("shows no listening chip, and asks for no grant, on a page without a player",
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
   expect(screen.queryByText(/Listening ·/)).toBeNull();
   expect(grantRequests()).toHaveLength(0);
+});
+
+it("ends the header with a desktop host's controls for the selected show (gaulatti/alcantara#431)", async () => {
+  desktop.host = {
+    topBarControls: [
+      ({ programId }: { programId: string }) => <button type="button">Go live · {programId}</button>,
+      ({ programId }: { programId: string }) => <button type="button">Tape · {programId}</button>,
+    ],
+  };
+  open("/media/library");
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
+  const golive = screen.getByRole("button", { name: "Go live · news" });
+  const tape = screen.getByRole("button", { name: "Tape · news" });
+  const commandsButton = screen.getByRole("button", { name: "Open command menu" });
+  expect(commandsButton.compareDocumentPosition(golive) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(golive.compareDocumentPosition(tape) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  choose("sim");
+  expect(screen.getByRole("button", { name: "Go live · sim" })).toBeInTheDocument();
+});
+
+it("shows no desktop controls on the website", async () => {
+  open("/media/library");
+  await waitFor(() => expect(programSelects()[0]).toHaveValue("news"));
+  expect(screen.queryByRole("button", { name: /Go live/ })).toBeNull();
 });

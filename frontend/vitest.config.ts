@@ -10,6 +10,10 @@ export default defineConfig({
         find: /^@gaulatti\/bleecker$/,
         replacement: fileURLToPath(new URL('./app/bleecker.ts', import.meta.url)),
       },
+      {
+        find: /^@desktop-host$/,
+        replacement: fileURLToPath(new URL('./app/platform/desktopHost.none.ts', import.meta.url)),
+      },
     ],
   },
   test: {

@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const amplify = vi.hoisted(() => ({ fetchAuthSession: vi.fn(), signOut: vi.fn() }));
 vi.mock("aws-amplify/auth", () => amplify);
+// gaulatti/alcantara#431: no desktop host unless a test plugs one in.
+const desktop = vi.hoisted(() => ({ host: null as null | Record<string, unknown> }));
+vi.mock("@desktop-host", () => ({
+  get default() {
+    return desktop.host;
+  },
+}));
 
 const KEY = "alcantara.testAuth.session";
 const rawFetch = vi.fn();
@@ -24,6 +31,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
 });
 afterEach(() => {
+  desktop.host = null;
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -116,5 +124,47 @@ describe("test auth", () => {
     expect(amplify.signOut).not.toHaveBeenCalled();
     await mod.getAppSession();
     expect(rawFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a desktop host (gaulatti/alcantara#431)", () => {
+  const auth = () => ({
+    currentSession: vi.fn(async () => ({ token: "desktop-token", userSub: "d-sub", payload: { b: 2 } })),
+    signIn: vi.fn(async () => undefined),
+    signOut: vi.fn(async () => undefined),
+    onChange: vi.fn(() => () => undefined),
+  });
+
+  it("answers the session from the desktop app, never the provider", async () => {
+    const host = auth();
+    desktop.host = { auth: host };
+    const mod = await load();
+    expect(await mod.getAppSession(true)).toEqual({ token: "desktop-token", userSub: "d-sub", payload: { b: 2 } });
+    expect(host.currentSession).toHaveBeenCalledWith(true);
+    expect(amplify.fetchAuthSession).not.toHaveBeenCalled();
+  });
+
+  it("answers an empty session when the desktop app holds none", async () => {
+    const host = auth();
+    host.currentSession.mockResolvedValueOnce(null as never);
+    desktop.host = { auth: host };
+    const mod = await load();
+    expect(await mod.getAppSession()).toEqual({});
+  });
+
+  it("signs out through the desktop app", async () => {
+    const host = auth();
+    desktop.host = { auth: host };
+    const mod = await load();
+    await mod.clearAppSession();
+    expect(host.signOut).toHaveBeenCalledTimes(1);
+    expect(amplify.signOut).not.toHaveBeenCalled();
+  });
+
+  it("keeps the provider when the host has no auth", async () => {
+    desktop.host = { topBarControls: [] };
+    const mod = await load();
+    amplify.fetchAuthSession.mockResolvedValue({ userSub: "u", tokens: { idToken: { toString: () => "id-token", payload: {} } } });
+    expect((await mod.getAppSession()).token).toBe("id-token");
   });
 });

@@ -7,6 +7,7 @@ import { useAuthStatus } from "../../hooks/useAuth";
 import { SESSION_INVALID_EVENT } from "../../services/session-events";
 import { clearAppSession } from "../../services/session";
 import { checkAppSession } from "../../services/sessionCheck";
+import { getDesktopHost } from "../../platform/desktopHost";
 
 /** How long to wait before asking again while the API cannot be reached. */
 export const SESSION_RETRY_MS = 3000;
@@ -49,8 +50,16 @@ export default function AuthListener() {
       void checkSession();
     }
 
+    // A desktop app (gaulatti/alcantara#431) signs in through the system browser and says when it is done.
+    const stopDesktop = getDesktopHost()?.auth?.onChange((change) => {
+      if (change.signedIn) void checkSession();
+      else clearInvalidSession();
+      if (change.error) console.error("Desktop sign-in:", change.error);
+    });
+
     return () => {
       disposed = true;
+      stopDesktop?.();
       if (retryTimer !== null) window.clearTimeout(retryTimer);
       window.removeEventListener(SESSION_INVALID_EVENT, clearInvalidSession);
     };
