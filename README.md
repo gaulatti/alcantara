@@ -150,11 +150,32 @@ secrets in the application-scoped secret. Route public LiveKit HTTPS/WSS through
 the existing port-443 edge, and expose WebRTC TCP 7881, TURN/TLS 5349, TURN UDP
 3478, and the configured UDP media/relay ranges. Validate TURN
 from a restrictive external network before scheduling remote guests. Never use
-the committed local credentials outside Compose. The Calls console reports the
-feature as unavailable until `LIVEKIT_CONFIG_B64`, `LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET`, `WEBRTC_RENDERER_KEY`, and the
-public `LIVEKIT_WS_URL` deployment variable are configured; their absence does
-not block unrelated Alcantara deployments.
+the committed local credentials outside Compose.
+
+In production, LiveKit is configured only by the runtime secret
+(`broadcast/production/config`, #354). The secret holds four fields that must
+all be present or all absent:
+- `livekitWsUrl`: the public `wss://` origin;
+- `livekitApiKey`;
+- `livekitApiSecret`: at least 32 characters;
+- `webrtcSessionSecret`: at least 32 characters.
+
+`webrtcRendererKey` is optional.
+
+The backend copies them into `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET`, `WEBRTC_SESSION_SECRET` and `WEBRTC_RENDERER_KEY` at
+start-up. When a field is absent from the secret, a value left in the container
+is removed.
+
+A partial or invalid group never stops the backend, which also controls the
+radio. It starts with WebRTC off and logs the field names, never the values.
+The deploy's contract check and the LiveKit renderer do refuse such a group, so
+a deploy fails before the running container is replaced.
+
+The deploy renders the LiveKit server's `livekit.yaml` from the same fields
+(`backend/scripts/print-livekit-config.mjs`) and starts `redis` and `livekit`.
+Without the group, the Calls console reports the feature as unavailable, and
+unrelated deployments are unaffected.
 
 ### Radio automation
 

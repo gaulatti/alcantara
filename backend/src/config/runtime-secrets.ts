@@ -77,6 +77,7 @@ export function validateRuntimeConfiguration(
 export async function loadRuntimeSecrets(
   environment: RuntimeEnvironment = process.env,
   client?: SecretClient,
+  warn: (message: string) => void = (message) => console.warn(message),
 ): Promise<void> {
   if (environment.NODE_ENV !== 'production') return;
   const secretId = environment.ALCANTARA_CONFIG_SECRET_ID?.trim();
@@ -109,7 +110,16 @@ export async function loadRuntimeSecrets(
   } catch {
     throw new Error('Alcantara runtime configuration is unavailable');
   }
-  const selected = parseRuntimeSecretPayload(response.SecretString);
+  // WebRTC is optional: an invalid group is dropped and reported, never fatal
+  // (the backend also controls the radio).
+  const selected = parseRuntimeSecretPayload(response.SecretString, {
+    strictWebrtc: false,
+  });
+  if (selected.webrtcProblem) {
+    warn(
+      `Alcantara WebRTC is disabled: the runtime secret's LiveKit group is unusable (${selected.webrtcProblem})`,
+    );
+  }
   environment.PALAZZO_ALLOWED_URLS = selected.palazzoAllowedUrls;
   environment.ALANA_CONTROL_TOKEN = selected.alanaControlToken;
   environment.ALANA_CONTROL_URL = selected.alanaControlUrl;
@@ -128,8 +138,24 @@ export async function loadRuntimeSecrets(
     // The secret is authoritative: a container leftover must not configure it.
     delete environment.POMPEII_ACCESS_CREDENTIAL;
   }
+  // gaulatti/alcantara#354: LiveKit and the WebRTC secrets come from the secret
+  // only. Absent there, a container leftover must not turn WebRTC on.
+  for (const [field, name] of LIVEKIT_ENVIRONMENT) {
+    const value = selected[field];
+    if (value !== undefined) environment[name] = value;
+    else delete environment[name];
+  }
   validateRuntimeConfiguration(environment);
 }
+
+/** Each WebRTC field of the runtime secret and the setting the backend reads. */
+const LIVEKIT_ENVIRONMENT = [
+  ['livekitWsUrl', 'LIVEKIT_WS_URL'],
+  ['livekitApiKey', 'LIVEKIT_API_KEY'],
+  ['livekitApiSecret', 'LIVEKIT_API_SECRET'],
+  ['webrtcSessionSecret', 'WEBRTC_SESSION_SECRET'],
+  ['webrtcRendererKey', 'WEBRTC_RENDERER_KEY'],
+] as const;
 
 export function validateExternalSourceEncryption(
   environment: RuntimeEnvironment = process.env,
