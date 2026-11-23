@@ -76,6 +76,7 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
   GuestCommand: childOf('GuestInvitation'),
   GuestEvent: childOf('GuestInvitation'),
   FlightSequence: childOf('ProgramState'),
+  RundownRecipe: childOf('ProgramState'),
   ProgramScene: childOf('ProgramState'),
   ProgramMediaGroup: childOf('ProgramState'),
   ProgramStinger: childOf('ProgramState'),

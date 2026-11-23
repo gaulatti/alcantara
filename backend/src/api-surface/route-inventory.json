@@ -775,6 +775,30 @@
   },
   {
     "method": "GET",
+    "path": "/program/:programId/recipes",
+    "public": false,
+    "permission": "alcantara:flight:read"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/recipes",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/recipes/:recipeId",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
+    "method": "POST",
+    "path": "/program/:programId/recipes/:recipeId/expand",
+    "public": false,
+    "permission": "alcantara:flight:read"
+  },
+  {
+    "method": "GET",
     "path": "/program/:programId/recording",
     "public": false,
     "permission": "alcantara:program:read"

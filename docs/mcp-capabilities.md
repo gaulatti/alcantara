@@ -260,6 +260,8 @@ titles) are user text and sit under `untrusted`.
 |---|---|---|
 | `program_list_flight_sequences_by_id` | `flight.read` | `GET /program/:programId/flight` (every sequence with its cues, schedule, publication state, revision and `isRunning`) |
 | `program_preflight_flight_sequence_by_id` | `flight.read` | `GET /program/:programId/flight/:sequenceId/preflight` (`ready` and the `issues` found; a sequence with no scheduled start is `invalid`) |
+| `program_list_recipes_by_id` | `flight.read` | `GET /program/:programId/recipes` (each rundown recipe with its scenes, transition, hold, enabled steps and revision; gaulatti/alcantara#424) |
+| `program_expand_recipe_by_id` | `flight.read` | `POST /program/:programId/recipes/:recipeId/expand` (the cues one use would add for a song, and its issues; writes nothing) |
 
 ### Write capabilities (`flight.manage`)
 
@@ -279,6 +281,9 @@ optional on `update` (a clocked log needs it).
 | `program_update_flight_sequence_by_id` | Lists what changes, from the sequence as it is now. On a running sequence the dry run reports `onAir: true` (later cues change at once; the console refuses schedule and loop changes and edits of the cue on air or already played). The previous values are not kept. |
 | `program_generate_tagged_log` | A proposal: returns the cues and saves nothing (save them with update). Refused by the console unless the log is an unaired, unpublished draft of a program with a radio leg. |
 | `program_fill_rundown` | The same for the gaps of a rundown; answers cues and warnings. |
+| `program_create_recipe_by_id` | Creates a rundown recipe on a program with a television leg. Nothing airs until a use of it is added to a rundown that runs. Recoverable: change it. |
+| `program_update_recipe_by_id` | Changes a recipe with the revision read (stale is a conflict), then rebuilds its uses not yet on air in the program's operator rundowns; cues on air or played are never touched. The answer counts the rebuilt uses. |
+| `program_add_recipe_use_by_id` | Adds one use of a recipe for a song (the song recipe: bumper, hold, song, slideshow for the song, back) to an operator rundown at a position or at the end, through the rundown's normal update. Refused (`on_air`) at or before the cue on air. Recoverable: remove the cues in the rundown. |
 | `program_publish_flight_sequence_by_id` | Publishes a clocked log: the console then starts it by itself at its scheduled time, with nobody present, and its start cannot move. There is no unpublish (the way back is a delete, refused while it is queued, or editing its cues). Not recoverable. |
 
 ### On-air capabilities (`flight.operate`)

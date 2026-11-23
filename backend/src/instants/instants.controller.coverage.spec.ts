@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma.service';
 import { RadioService } from '../radio/radio.service';
 import { InstantsController } from './instants.controller';
 import { InstantsModule } from './instants.module';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 function build() {
   const program = {
@@ -123,11 +124,24 @@ class RadioStubModule {}
 })
 class PompeiiStubModule {}
 
+// The metrics service is global in the application; the program module's recipes count their work there.
+@Global()
+@Module({
+  providers: [{ provide: ManagedMetricsService, useValue: {} }],
+  exports: [ManagedMetricsService],
+})
+class MetricsStubModule {}
+
 describe('InstantsModule (coverage)', () => {
   it('wires the controller to the program service exported by ProgramModule', async () => {
     const program = { listInstants: jest.fn().mockResolvedValue(['x']) };
     const moduleRef = await Test.createTestingModule({
-      imports: [PompeiiStubModule, RadioStubModule, InstantsModule],
+      imports: [
+        PompeiiStubModule,
+        RadioStubModule,
+        MetricsStubModule,
+        InstantsModule,
+      ],
     })
       .overrideProvider(ProgramService)
       .useValue(program)
