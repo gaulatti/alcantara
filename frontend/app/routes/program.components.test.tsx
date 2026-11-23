@@ -98,7 +98,8 @@ vi.mock("../components/RelojDigitalLoopClock", async () => ({
 vi.mock("../components/ModoItalianoProgramRow", async () => ({
   ModoItalianoProgramRow: await hoisted.standIn("ModoItalianoProgramRow"),
 }));
-vi.mock("../programs/fifthbell/FifthBellProgram", async () => ({
+// The page places the Fifth Bell program through its Brokaw reader (alcantara#381).
+vi.mock("../components/BrokawFifthBellProgramRenderer", async () => ({
   default: await hoisted.standIn("FifthBellProgram"),
 }));
 

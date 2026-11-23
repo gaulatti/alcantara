@@ -53,7 +53,7 @@ interface FifthBellWorldClockCity {
   timezone: string;
 }
 
-interface FifthBellProgramProps {
+export interface FifthBellProgramProps {
   programId?: string;
   embedded?: boolean;
   sceneMetadata?: Record<string, unknown> | null;

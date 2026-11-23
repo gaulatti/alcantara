@@ -39,7 +39,7 @@ import { resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
-import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
+import FifthBellProgram from '../components/BrokawFifthBellProgramRenderer';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import {
