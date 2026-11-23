@@ -40,6 +40,8 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
   BroadcastSettings: tenant,
   // Audit of ingest-credential requests (gaulatti/carmencita#4): the destination's team.
   BroadcastIngestAccess: tenant,
+  // Audit of key set/replace (gaulatti/alcantara#376): the destination's team.
+  BroadcastDestinationKeyChange: tenant,
   // The program table (gaulatti/alcantara#147): one row per program with its own team.
   Program: tenant,
 

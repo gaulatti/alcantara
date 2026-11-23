@@ -106,12 +106,33 @@ model BroadcastDestination {
   secretId        String
   secretVersionId String
   position        Int
+  /// gaulatti/alcantara#376: how the destination was added ('youtube' or 'custom'; null for a
+  /// row whose secret reference was typed by hand), its non-secret ingest address, the last four
+  /// characters of the key (never more) and when the key was last set.
+  service         String?
+  ingestUrl       String?
+  keyLast4        String?
+  keySetAt        DateTime?
   retiredAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([teamId])
   @@index([retiredAt, position])
+}
+
+/// One row per destination created or key replaced through the console (gaulatti/alcantara#376).
+/// Audit only: who, which destination, what, when. The key is never stored here.
+model BroadcastDestinationKeyChange {
+  id            String   @id @default(uuid())
+  teamId        Int?
+  destinationId String
+  subject       String
+  action        String
+  createdAt     DateTime @default(now())
+
+  @@index([teamId])
+  @@index([destinationId, createdAt])
 }
 
 model BroadcastDestinationSelection {

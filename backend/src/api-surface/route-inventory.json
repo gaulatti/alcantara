@@ -132,6 +132,12 @@
     "permission": "broadcast.manage"
   },
   {
+    "method": "PUT",
+    "path": "/broadcast/destinations/:destinationId/key",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
     "method": "POST",
     "path": "/broadcast/destinations/:destinationId/restore",
     "public": false,

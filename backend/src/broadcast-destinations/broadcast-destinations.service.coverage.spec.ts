@@ -121,6 +121,8 @@ function harness(programType = 'both') {
     broadcastDestination: {
       findMany: jest.fn().mockResolvedValue([destination]),
       count: jest.fn().mockResolvedValue(3),
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(async ({ data }: any) => ({ ...data })),
       update: jest.fn(async ({ data }: any) => ({ ...data })),
     },
@@ -225,7 +227,7 @@ describe('BroadcastDestinationsService coverage', () => {
       });
     });
 
-    it('lists the catalog including secret references', async () => {
+    it('lists the catalog including secret references, service and key ending', async () => {
       const h = harness();
       await expect(h.service.listCatalog()).resolves.toEqual([
         {
@@ -233,6 +235,10 @@ describe('BroadcastDestinationsService coverage', () => {
           displayName: 'Primary platform',
           secretId: 'broadcast/test/primary',
           secretVersionId: 'version-1',
+          service: undefined,
+          ingestUrl: undefined,
+          keyLast4: undefined,
+          keySetAt: undefined,
           position: 0,
           retiredAt: null,
           createdAt: destination.createdAt,
@@ -241,162 +247,105 @@ describe('BroadcastDestinationsService coverage', () => {
       ]);
     });
 
-    it('stamps the caller team on a new destination, and none where no team is configured', async () => {
-      const input = {
-        id: 'team-one',
-        displayName: 'Team one',
-        secretId: 'broadcast/test/team',
-        secretVersionId: 'v1',
-      };
+    it("narrows the catalog to the caller's team", async () => {
       const h = harness();
-      await h.service.createDestination(input, 7);
-      expect(h.prisma.broadcastDestination.create).toHaveBeenLastCalledWith({
-        data: expect.objectContaining({ id: 'team-one', teamId: 7 }),
-      });
-      await h.service.createDestination(input, 0);
-      expect(
-        h.prisma.broadcastDestination.create.mock.calls.at(-1)?.[0].data,
-      ).not.toHaveProperty('teamId');
-      await h.service.createDestination(input);
-      expect(
-        h.prisma.broadcastDestination.create.mock.calls.at(-1)?.[0].data,
-      ).not.toHaveProperty('teamId');
+      await h.service.listCatalog(7);
+      expect(h.prisma.broadcastDestination.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { teamId: 7 } }),
+      );
     });
 
-    it('creates a destination at the end of the catalog with trimmed input', async () => {
-      const h = harness();
-      const created = await h.service.createDestination({
-        id: ' new-one ',
-        displayName: ' New ',
-        secretId: ' broadcast/test/new ',
-        secretVersionId: ' v2 ',
-      });
-      expect(h.prisma.broadcastDestination.create).toHaveBeenCalledWith({
-        data: {
-          id: 'new-one',
-          displayName: 'New',
-          secretId: 'broadcast/test/new',
-          secretVersionId: 'v2',
-          position: 3,
-        },
-      });
-      expect(created).toMatchObject({ id: 'new-one', position: 3 });
-    });
+    describe('rename', () => {
+      const row = { ...destination, teamId: 7 };
 
-    const valid = {
-      id: 'x',
-      displayName: 'X',
-      secretId: 'a/b',
-      secretVersionId: 'v1',
-    };
-
-    it('maps duplicate ids to a conflict and rethrows other failures', async () => {
-      const h = harness();
-      h.prisma.broadcastDestination.create.mockRejectedValueOnce(
-        prismaError('P2002'),
-      );
-      await expect(h.service.createDestination(valid)).rejects.toThrow(
-        new ConflictException('Destination ID already exists'),
-      );
-      h.prisma.broadcastDestination.create.mockRejectedValueOnce(
-        prismaError('P2003'),
-      );
-      await expect(h.service.createDestination(valid)).rejects.toBeInstanceOf(
-        Prisma.PrismaClientKnownRequestError,
-      );
-      const boom = new Error('boom');
-      h.prisma.broadcastDestination.create.mockRejectedValueOnce(boom);
-      await expect(h.service.createDestination(valid)).rejects.toBe(boom);
-    });
-
-    it.each([
-      [
-        'a missing id',
-        { ...valid, id: undefined },
-        'Destination ID is invalid',
-      ],
-      ['an invalid id', { ...valid, id: '-bad' }, 'Destination ID is invalid'],
-      [
-        'a non string display name',
-        { ...valid, displayName: 3 },
-        'Display name must contain 1-100 characters',
-      ],
-      [
-        'a blank display name',
-        { ...valid, displayName: '   ' },
-        'Display name must contain 1-100 characters',
-      ],
-      [
-        'a long display name',
-        { ...valid, displayName: 'n'.repeat(101) },
-        'Display name must contain 1-100 characters',
-      ],
-      [
-        'a non string secret id',
-        { ...valid, secretId: 5 },
-        'Secrets Manager reference is invalid',
-      ],
-      [
-        'a secret id with spaces',
-        { ...valid, secretId: 'a b' },
-        'Secrets Manager reference is invalid',
-      ],
-      [
-        'a non string secret version',
-        { ...valid, secretVersionId: 5 },
-        'Secret version ID is invalid',
-      ],
-      [
-        'a bad secret version',
-        { ...valid, secretVersionId: '!' },
-        'Secret version ID is invalid',
-      ],
-    ])('rejects creation with %s', async (_name, body, message) => {
-      const h = harness();
-      await expect(h.service.createDestination(body)).rejects.toThrow(
-        new BadRequestException(message),
-      );
-      expect(h.prisma.broadcastDestination.create).not.toHaveBeenCalled();
-    });
-
-    it('updates only the mutable fields of a destination', async () => {
-      const h = harness();
-      await h.service.updateDestination('primary', {
-        id: 'ignored',
-        displayName: 'Renamed',
-        secretId: 'a/b',
-        secretVersionId: 'v9',
-      });
-      expect(h.prisma.broadcastDestination.update).toHaveBeenCalledWith({
-        where: { id: 'primary' },
-        data: {
+      it('renames a destination of the caller team and touches nothing else', async () => {
+        const h = harness();
+        h.prisma.broadcastDestination.findUnique = jest
+          .fn()
+          .mockResolvedValue(row);
+        h.prisma.broadcastDestination.findFirst = jest
+          .fn()
+          .mockResolvedValue(null);
+        h.prisma.broadcastDestination.update.mockResolvedValue({
+          ...row,
           displayName: 'Renamed',
-          secretId: 'a/b',
-          secretVersionId: 'v9',
-        },
+        });
+        await expect(
+          h.service.renameDestination(
+            'primary',
+            { displayName: ' Renamed ' },
+            7,
+          ),
+        ).resolves.toMatchObject({ id: 'primary', displayName: 'Renamed' });
+        expect(h.prisma.broadcastDestination.update).toHaveBeenCalledWith({
+          where: { id: 'primary' },
+          data: { displayName: 'Renamed' },
+        });
+        expect(h.prisma.broadcastDestination.findFirst).toHaveBeenCalledWith({
+          where: {
+            displayName: { equals: 'Renamed', mode: 'insensitive' },
+            id: { not: 'primary' },
+            teamId: 7,
+          },
+          select: { id: true },
+        });
       });
-    });
 
-    it('validates the id before updating and maps P2025 to not found', async () => {
-      const h = harness();
-      await expect(
-        h.service.updateDestination('-bad', valid),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      h.prisma.broadcastDestination.update.mockRejectedValueOnce(
-        prismaError('P2025'),
-      );
-      await expect(h.service.updateDestination('x', valid)).rejects.toThrow(
-        new NotFoundException('Destination not found'),
-      );
-      h.prisma.broadcastDestination.update.mockRejectedValueOnce(
-        prismaError('P2002'),
-      );
-      await expect(
-        h.service.updateDestination('x', valid),
-      ).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
-      const boom = new Error('boom');
-      h.prisma.broadcastDestination.update.mockRejectedValueOnce(boom);
-      await expect(h.service.updateDestination('x', valid)).rejects.toBe(boom);
+      it('checks the name across every team where none is configured', async () => {
+        const h = harness();
+        h.prisma.broadcastDestination.findUnique = jest
+          .fn()
+          .mockResolvedValue(row);
+        h.prisma.broadcastDestination.findFirst = jest
+          .fn()
+          .mockResolvedValue(null);
+        h.prisma.broadcastDestination.update.mockResolvedValue(row);
+        await h.service.renameDestination('primary', { displayName: 'X' });
+        expect(
+          h.prisma.broadcastDestination.findFirst.mock.calls[0][0].where,
+        ).not.toHaveProperty('teamId');
+      });
+
+      it.each([
+        ['an unknown destination', null, 7],
+        ["another team's destination", { ...row, teamId: 9 }, 7],
+        ['a destination with no team', { ...row, teamId: null }, 7],
+      ])('answers not found for %s', async (_name, found, team) => {
+        const h = harness();
+        h.prisma.broadcastDestination.findUnique = jest
+          .fn()
+          .mockResolvedValue(found);
+        await expect(
+          h.service.renameDestination('primary', { displayName: 'X' }, team),
+        ).rejects.toThrow(new NotFoundException('Destination not found'));
+        expect(h.prisma.broadcastDestination.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses a name another destination already has', async () => {
+        const h = harness();
+        h.prisma.broadcastDestination.findUnique = jest
+          .fn()
+          .mockResolvedValue(row);
+        h.prisma.broadcastDestination.findFirst = jest
+          .fn()
+          .mockResolvedValue({ id: 'other' });
+        await expect(
+          h.service.renameDestination('primary', { displayName: 'Taken' }, 7),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(h.prisma.broadcastDestination.update).not.toHaveBeenCalled();
+      });
+
+      it('validates the id and the name first', async () => {
+        const h = harness();
+        await expect(
+          h.service.renameDestination('-bad', { displayName: 'X' }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          h.service.renameDestination('primary', { displayName: '  ' }),
+        ).rejects.toThrow(
+          new BadRequestException('Name must contain 1-100 characters'),
+        );
+      });
     });
 
     it('retires with a timestamp and restores with null', async () => {

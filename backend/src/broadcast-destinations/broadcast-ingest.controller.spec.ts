@@ -25,6 +25,7 @@ describe('ingest credential route', () => {
       {
         issue,
       } as never,
+      {} as never,
     );
     await controller.issueIngest('youtube', {
       user: { sub: 'user-1', authorization: { teamId: 7 } },

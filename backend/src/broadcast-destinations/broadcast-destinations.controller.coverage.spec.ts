@@ -6,56 +6,68 @@ describe('BroadcastDestinationsController coverage', () => {
   const service = {
     listDestinations: jest.fn(),
     listCatalog: jest.fn(),
-    createDestination: jest.fn(),
     reorderDestinations: jest.fn(),
-    updateDestination: jest.fn(),
+    renameDestination: jest.fn(),
     setRetired: jest.fn(),
     getProgramState: jest.fn(),
     reload: jest.fn(),
     start: jest.fn(),
     stop: jest.fn(),
   };
+  const keys = { add: jest.fn(), replaceKey: jest.fn() };
   const controller = new BroadcastDestinationsController(
     service as unknown as BroadcastDestinationsService,
     {} as never,
+    keys as never,
   );
+  const teamRequest = {
+    user: { sub: 'operator-1', authorization: { teamId: 7 } },
+  };
   const request = { user: { sub: 'operator-1' } };
 
   beforeEach(() => jest.resetAllMocks());
 
-  it('delegates catalog reads and writes to the service', async () => {
+  it('delegates catalog reads and writes to the services, with the caller team', async () => {
     service.listDestinations.mockResolvedValue(['list']);
     service.listCatalog.mockResolvedValue(['catalog']);
-    service.createDestination.mockResolvedValue({ id: 'created' });
+    keys.add.mockResolvedValue({ id: 'created' });
+    keys.replaceKey.mockResolvedValue({ id: 'keyed' });
     service.reorderDestinations.mockResolvedValue(['ordered']);
-    service.updateDestination.mockResolvedValue({ id: 'updated' });
+    service.renameDestination.mockResolvedValue({ id: 'renamed' });
 
-    await expect(
-      controller.listDestinations({
-        user: { sub: 'operator-1', authorization: { teamId: 7 } },
-      }),
-    ).resolves.toEqual(['list']);
+    await expect(controller.listDestinations(teamRequest)).resolves.toEqual([
+      'list',
+    ]);
     expect(service.listDestinations).toHaveBeenCalledWith(7);
-    await expect(controller.listCatalog()).resolves.toEqual(['catalog']);
+    await expect(controller.listCatalog(teamRequest)).resolves.toEqual([
+      'catalog',
+    ]);
+    expect(service.listCatalog).toHaveBeenCalledWith(7);
     await expect(
-      controller.createDestination(
-        { id: 'x' },
-        { user: { sub: 'operator-1', authorization: { teamId: 7 } } },
-      ),
-    ).resolves.toEqual({
-      id: 'created',
-    });
-    expect(service.createDestination).toHaveBeenCalledWith({ id: 'x' }, 7);
+      controller.addDestination({ name: 'x' }, teamRequest),
+    ).resolves.toEqual({ id: 'created' });
+    expect(keys.add).toHaveBeenCalledWith({ name: 'x' }, 7, 'operator-1');
+    await expect(
+      controller.replaceKey('x', { streamKey: 'k' }, teamRequest),
+    ).resolves.toEqual({ id: 'keyed' });
+    expect(keys.replaceKey).toHaveBeenCalledWith(
+      'x',
+      { streamKey: 'k' },
+      7,
+      'operator-1',
+    );
     await expect(
       controller.reorderDestinations({ destinationIds: ['b', 'a'] }),
     ).resolves.toEqual(['ordered']);
     expect(service.reorderDestinations).toHaveBeenCalledWith(['b', 'a']);
     await expect(
-      controller.updateDestination('x', { displayName: 'Y' }),
-    ).resolves.toEqual({ id: 'updated' });
-    expect(service.updateDestination).toHaveBeenCalledWith('x', {
-      displayName: 'Y',
-    });
+      controller.renameDestination('x', { displayName: 'Y' }, teamRequest),
+    ).resolves.toEqual({ id: 'renamed' });
+    expect(service.renameDestination).toHaveBeenCalledWith(
+      'x',
+      { displayName: 'Y' },
+      7,
+    );
   });
 
   it('retires and restores through setRetired', async () => {
@@ -99,6 +111,9 @@ describe('BroadcastDestinationsController coverage', () => {
       jest.doMock('./broadcast-ingest.service', () => ({
         BroadcastIngestService: undefined,
       }));
+      jest.doMock('./broadcast-destination-keys.service', () => ({
+        BroadcastDestinationKeysService: undefined,
+      }));
       const { BroadcastDestinationsController: Isolated } =
         require('./broadcast-destinations.controller') as {
           BroadcastDestinationsController: new (...args: never[]) => unknown;
@@ -106,12 +121,13 @@ describe('BroadcastDestinationsController coverage', () => {
       expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
         Object,
         Object,
+        Object,
       ]);
       expect(
         Reflect.getMetadata(
           'design:paramtypes',
           Isolated.prototype,
-          'createDestination',
+          'addDestination',
         ),
       ).toEqual([Object, Object]);
     });
@@ -129,8 +145,9 @@ describe('BroadcastDestinationsController coverage', () => {
             BroadcastDestinationsController: { prototype: object };
           };
         for (const method of [
-          'createDestination',
-          'updateDestination',
+          'addDestination',
+          'replaceKey',
+          'renameDestination',
           'reload',
           'start',
           'stop',

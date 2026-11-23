@@ -9,10 +9,10 @@ import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
-import { isIP } from 'node:net';
 import { PrismaService } from '../prisma.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { DESTINATION_ID_PATTERN } from './broadcast-destinations.types';
+import { parseIngestPayload } from './ingest-payload';
 
 /** What the desktop studio needs to publish: the ingest address and the key, kept apart. */
 export interface IngestCredential {
@@ -32,17 +32,6 @@ export interface IngestSecretClient {
 
 /** The outcomes recorded in the audit row: a bounded set, never free text. */
 type IngestOutcome = 'issued' | 'not_found' | 'retired' | 'unavailable';
-
-const SECRET_FIELDS = new Set([
-  'scheme',
-  'host',
-  'port',
-  'application',
-  'streamKey',
-]);
-const HOST_PATTERN =
-  /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
-const APPLICATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
 /**
  * Returns one destination's ingest address and key, read from the Secrets Manager version the
@@ -157,61 +146,14 @@ export class BroadcastIngestService {
     ) {
       throw new Error('secret version mismatch');
     }
-    const payload: unknown = JSON.parse(response.SecretString);
-    if (
-      typeof payload !== 'object' ||
-      payload === null ||
-      Array.isArray(payload)
-    ) {
-      throw new Error('invalid payload');
-    }
-    const fields = payload as Record<string, unknown>;
-    if (Object.keys(fields).some((key) => !SECRET_FIELDS.has(key))) {
-      throw new Error('unexpected field');
-    }
-    const { scheme, host, port, application, streamKey } = fields;
-    if (scheme !== 'rtmp' && scheme !== 'rtmps') {
-      throw new Error('scheme');
-    }
-    if (
-      typeof host !== 'string' ||
-      !(HOST_PATTERN.test(host) || isIP(host) !== 0)
-    ) {
-      throw new Error('host');
-    }
-    if (
-      typeof application !== 'string' ||
-      !APPLICATION_PATTERN.test(application) ||
-      application.split('/').includes('..')
-    ) {
-      throw new Error('application');
-    }
-    if (
-      typeof streamKey !== 'string' ||
-      streamKey.length < 1 ||
-      streamKey.length > 512 ||
-      /\s/.test(streamKey) ||
-      [...streamKey].some((char) => char.charCodeAt(0) < 32)
-    ) {
-      throw new Error('key');
-    }
-    let authority = isIP(host) === 6 ? `[${host}]` : host;
-    if (port !== undefined) {
-      if (
-        typeof port !== 'number' ||
-        !Number.isInteger(port) ||
-        port < 1 ||
-        port > 65535
-      ) {
-        throw new Error('port');
-      }
-      authority = `${authority}:${port}`;
-    }
+    const { payload, ingestUrl } = parseIngestPayload(
+      JSON.parse(response.SecretString),
+    );
     return {
       destinationId: id,
       displayName,
-      ingestUrl: `${scheme}://${authority}/${application}`,
-      streamKey,
+      ingestUrl,
+      streamKey: payload.streamKey,
     };
   }
 }

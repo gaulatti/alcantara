@@ -13,7 +13,7 @@ describe('BroadcastDestinationsController permissions', () => {
       ALCANTARA_PERMISSIONS.broadcast.operate,
     );
     expect(
-      Reflect.getMetadata(REQUIRED_PERMISSION_KEY, prototype.createDestination),
+      Reflect.getMetadata(REQUIRED_PERMISSION_KEY, prototype.addDestination),
     ).toBe(ALCANTARA_PERMISSIONS.broadcast.manage);
     expect(
       Reflect.getMetadata(REQUIRED_PERMISSION_KEY, prototype.listCatalog),

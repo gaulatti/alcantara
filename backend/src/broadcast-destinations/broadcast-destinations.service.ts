@@ -11,23 +11,16 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AlanaClient, AlanaRequestError } from './alana.client';
+import { catalogRow, cleanName } from './catalog-row';
 import { FillerBindingService } from '../filler/filler-binding.service';
 import {
   canonicalJson,
   DESTINATION_ID_PATTERN,
-  DESTINATION_SECRET_ID_PATTERN,
   DESTINATION_VERSION_PATTERN,
   MAX_DESTINATIONS,
   type DestinationSelectionPayload,
   type SafeAlanaState,
 } from './broadcast-destinations.types';
-
-type CatalogInput = {
-  id?: unknown;
-  displayName?: unknown;
-  secretId?: unknown;
-  secretVersionId?: unknown;
-};
 
 type CommandInput = {
   commandId?: unknown;
@@ -69,73 +62,48 @@ export class BroadcastDestinationsService {
     }));
   }
 
-  async listCatalog() {
+  /** The catalog of the caller's team (every destination where no team is configured). */
+  async listCatalog(callerTeam = 0) {
     const destinations = await this.prisma.broadcastDestination.findMany({
+      where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
-    return destinations.map((destination) => ({
-      id: destination.id,
-      displayName: destination.displayName,
-      secretId: destination.secretId,
-      secretVersionId: destination.secretVersionId,
-      position: destination.position,
-      retiredAt: destination.retiredAt,
-      createdAt: destination.createdAt,
-      updatedAt: destination.updatedAt,
-    }));
+    return destinations.map(catalogRow);
   }
 
-  /**
-   * A destination created by a caller with a team belongs to that team, which the ingest route and
-   * the list both require (gaulatti/carmencita#4). With team `0` (none configured, never
-   * production) or no caller team, no team is stamped.
-   */
-  async createDestination(input: CatalogInput, callerTeam = 0) {
-    const normalized = normalizeCatalogInput(input, true);
-    const position = await this.prisma.broadcastDestination.count();
-    try {
-      return await this.prisma.broadcastDestination.create({
-        data: {
-          ...normalized,
-          position,
-          ...(callerTeam === 0 ? {} : { teamId: callerTeam }),
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Destination ID already exists');
-      }
-      throw error;
-    }
-  }
-
-  async updateDestination(destinationId: string, input: CatalogInput) {
+  /** Renames a destination of the caller's team; its secret and key are not touched. */
+  async renameDestination(
+    destinationId: string,
+    input: { displayName?: unknown },
+    callerTeam = 0,
+  ) {
     validateDestinationId(destinationId);
-    const normalized = normalizeCatalogInput(
-      { ...input, id: destinationId },
-      false,
-    );
-    try {
-      return await this.prisma.broadcastDestination.update({
-        where: { id: destinationId },
-        data: {
-          displayName: normalized.displayName,
-          secretId: normalized.secretId,
-          secretVersionId: normalized.secretVersionId,
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Destination not found');
-      }
-      throw error;
+    const displayName = cleanName(input.displayName);
+    const existing = await this.prisma.broadcastDestination.findUnique({
+      where: { id: destinationId },
+    });
+    if (!existing || (callerTeam !== 0 && existing.teamId !== callerTeam)) {
+      throw new NotFoundException('Destination not found');
     }
+    const clash = await this.prisma.broadcastDestination.findFirst({
+      where: {
+        displayName: { equals: displayName, mode: 'insensitive' },
+        id: { not: destinationId },
+        ...(callerTeam === 0 ? {} : { teamId: callerTeam }),
+      },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new ConflictException(
+        'A destination with this name already exists',
+      );
+    }
+    return catalogRow(
+      await this.prisma.broadcastDestination.update({
+        where: { id: destinationId },
+        data: { displayName },
+      }),
+    );
   }
 
   async setRetired(destinationId: string, retired: boolean) {
@@ -730,29 +698,6 @@ function parseCommandInput(
     throw new BadRequestException('Selection version is invalid');
   }
   return { commandId: input.commandId, destinationIds, selectionVersion };
-}
-
-function normalizeCatalogInput(input: CatalogInput, includeId: boolean) {
-  const id = typeof input.id === 'string' ? input.id.trim() : '';
-  if (includeId || id) validateDestinationId(id);
-  const displayName =
-    typeof input.displayName === 'string' ? input.displayName.trim() : '';
-  const secretId =
-    typeof input.secretId === 'string' ? input.secretId.trim() : '';
-  const secretVersionId =
-    typeof input.secretVersionId === 'string'
-      ? input.secretVersionId.trim()
-      : '';
-  if (!displayName || displayName.length > 100) {
-    throw new BadRequestException('Display name must contain 1-100 characters');
-  }
-  if (!DESTINATION_SECRET_ID_PATTERN.test(secretId)) {
-    throw new BadRequestException('Secrets Manager reference is invalid');
-  }
-  if (!DESTINATION_VERSION_PATTERN.test(secretVersionId)) {
-    throw new BadRequestException('Secret version ID is invalid');
-  }
-  return { id, displayName, secretId, secretVersionId };
 }
 
 function validateDestinationId(destinationId: string) {

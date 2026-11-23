@@ -4,9 +4,10 @@ auth	GET	/auth/me	access	getMe	auth_get_me	covered by whoami
 auth	POST	/auth/realtime-ticket	program.read	issueRealtimeTicket	—	excluded: returns a credential
 broadcast-destinations	GET	/broadcast/destinations	broadcast.view	listDestinations	destination_list_destinations	R
 broadcast-destinations	GET	/broadcast/destinations/catalog	broadcast.manage	listCatalog	destination_list_catalog	R
-broadcast-destinations	POST	/broadcast/destinations	broadcast.manage	createDestination	destination_create_destination	W
+broadcast-destinations	POST	/broadcast/destinations	broadcast.manage	addDestination	—	excluded: carries a credential (the stream key)
 broadcast-destinations	PUT	/broadcast/destinations/order	broadcast.manage	reorderDestinations	destination_reorder_destinations	W
-broadcast-destinations	PUT	/broadcast/destinations/:destinationId	broadcast.manage	updateDestination	destination_update_destination	W
+broadcast-destinations	PUT	/broadcast/destinations/:destinationId	broadcast.manage	renameDestination	destination_rename_destination	W
+broadcast-destinations	PUT	/broadcast/destinations/:destinationId/key	broadcast.manage	replaceKey	—	excluded: carries a credential (the stream key)
 broadcast-destinations	POST	/broadcast/destinations/:destinationId/ingest	broadcast.manage	issueIngest	—	excluded: returns a credential
 broadcast-destinations	POST	/broadcast/destinations/:destinationId/retire	broadcast.manage	retireDestination	destination_retire_destination	W
 broadcast-destinations	POST	/broadcast/destinations/:destinationId/restore	broadcast.manage	restoreDestination	destination_restore_destination	W
