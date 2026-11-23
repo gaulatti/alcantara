@@ -103,7 +103,9 @@ the captured base bus, and publish the output to the matching
 `alcantara-<programId>` LiveKit room as `program-feed-<programId>` (and optional
 `preview-feed-<programId>`). A desktop console that renders the program itself
 publishes it as `desktop-program-feed-<programId>`, with a token from
-`POST /webrtc/desktop-program-feed-token`; while that participant is in the
+`POST /webrtc/desktop-program-feed-token` (the program's picture as a screen-share
+track and its sound as a microphone-source track named `program-audio`, the only app-audio
+track LiveKit's Swift SDK publishes); while that participant is in the
 room, guests' program video and the router's program bus take it instead of
 `program-feed-<programId>`, and fall back to Alana's feed when it leaves. Run one isolated
 `/return-router/<programId>#key=<WEBRTC_RENDERER_KEY>` renderer alongside it.

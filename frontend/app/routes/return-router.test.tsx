@@ -352,6 +352,35 @@ it("feeds the program bus from the desktop's feed while it is present, and from 
   expect(sourceOf("alana-feed").feeds).toContain(mixFor("guest-anna")!);
 });
 
+// The desktop console publishes the program's sound as a microphone-source track named
+// "program-audio" (LiveKit's Swift SDK has no other kind of app-audio track). It is the program
+// feed, never a guest's microphone: it reaches only guests on the program bus.
+it("routes the desktop feed's program-audio to the program bus only, never as a guest microphone", async () => {
+  routes = [
+    guestRoute("guest-anna", { returnAudioBus: "program" }),
+    guestRoute("guest-cy", { returnAudioBus: "monitor" }),
+  ];
+  await openRouter();
+  await settle();
+  room().remoteParticipants.set("guest-anna", { identity: "guest-anna" });
+  room().remoteParticipants.set("guest-cy", { identity: "guest-cy" });
+  emit("trackSubscribed", ...audioTrack("desktop-feed", "t1", "program-audio", "desktop-program-feed-main"));
+  emit("trackSubscribed", ...audioTrack("anna-mic", "t2", "mic", "guest-anna"));
+  emit("trackSubscribed", ...audioTrack("cy-mic", "t3", "mic", "guest-cy"));
+  await settle();
+  const anna = mixFor("guest-anna")!;
+  const cy = mixFor("guest-cy")!;
+  // Whether a source reaches a guest's mix by any path (direct, or through level and delay).
+  const reaches = (from: Node, to: Node, seen = new Set<Node>()): boolean =>
+    from === to || (!seen.has(from) && (seen.add(from), from.feeds.some((next) => reaches(next, to, seen))));
+  expect(reaches(sourceOf("desktop-feed"), anna)).toBe(true);
+  expect(reaches(sourceOf("desktop-feed"), cy)).toBe(false);
+  // N-1 still holds: each guest hears the other's microphone, never its own.
+  expect(reaches(sourceOf("anna-mic"), cy)).toBe(true);
+  expect(reaches(sourceOf("cy-mic"), anna)).toBe(true);
+  expect(reaches(sourceOf("cy-mic"), cy)).toBe(false);
+});
+
 it("publishes one N-1 mix per connected guest with each guest's own level and delay", async () => {
   routes = [
     guestRoute("guest-anna", {
