@@ -700,8 +700,7 @@ describe('as-run attribution of operator actions', () => {
       const spec = specNamed(
         new ProgramMcpTools(
           fakes.programs as never,
-          fakes.templates as never,
-        ).specs(),
+          fakes.templates as never, { teamId: 7 } as never).specs(),
         NAME,
       );
       const metrics = new ManagedMetricsService();
