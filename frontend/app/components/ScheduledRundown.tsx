@@ -21,10 +21,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../components/BroadcastConsole.css";
 import { RundownFillers } from "./RundownFillers";
 import { RundownEventList, formatRundownDuration } from "./RundownEventList";
+import { RundownLibrary } from "./RundownLibrary";
+import { RundownTimeline } from "./RundownTimeline";
+import {
+  cueFor,
+  insertCue,
+  moveAnchor,
+  snapSeconds,
+  timelineLayout,
+  type LibraryEntry,
+} from "../utils/rundownBuilder";
 import { rundownTiming } from "../utils/rundownTiming";
 import "./Rundown.css";
 import { RadioLogGenerator } from "../components/RadioLogGenerator";
 import { VoiceTrackRecorder } from "../components/VoiceTrackRecorder";
+import { RundownAdvanced } from "./RundownAdvanced";
 import type {
   FlightCue,
   FlightSequence,
@@ -235,12 +246,12 @@ export default function ScheduledRundown({
     }
   };
 
-  const publish = async () => {
+  const publish = async (checked?: FlightSequence) => {
     if (!selected) return;
     setBusy(true);
     setError(null);
     try {
-      const updated = dirty ? await save() : selected;
+      const updated = checked ?? (dirty ? await save() : selected);
       const published = await publishFlightSequence(
         programId,
         updated.id,
@@ -262,6 +273,37 @@ export default function ScheduledRundown({
     }
   };
 
+  // ⌘↵: save, Check on that revision, and publish only when Check passes.
+  const checkAndPublish = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setError(null);
+    let updated: FlightSequence;
+    try {
+      updated = dirty ? await save() : selected;
+      const result = await preflightFlightSequence(programId, updated.id);
+      setPreflight({
+        ...result,
+        forRevision: `${updated.id}:${updated.revision}`,
+      });
+      if (!result.ready) return;
+    } catch (cause) {
+      setError(message(cause));
+      return;
+    } finally {
+      setBusy(false);
+    }
+    await publish(updated);
+  };
+  // Publishing a block that overruns a fixed start asks first, naming the loss.
+  const [overrunAsk, setOverrunAsk] = useState<"publish" | "check" | null>(
+    null,
+  );
+  const requestPublish = (mode: "publish" | "check") => {
+    if (layout.overrunMs > 0) setOverrunAsk(mode);
+    else void (mode === "check" ? checkAndPublish() : publish());
+  };
+
   const updateItem = (index: number, patch: Partial<FlightCue>) => {
     setPreflight(null);
     setItems((current) =>
@@ -270,23 +312,11 @@ export default function ScheduledRundown({
       ),
     );
   };
-  const add = (kind: "playSong" | "instant" | "stopSong") => {
+  // Library entries land as the same cues the forms created (#299).
+  const add = (entry: LibraryEntry, index?: number) => {
     setPreflight(null);
-    const cue: FlightCue = {
-      id: crypto.randomUUID(),
-      kind,
-      ...(items.length === 0 ? { clockOffsetSeconds: 0 } : {}),
-    };
-    if (kind === "playSong")
-      cue.songId = songs.find((song) => song.enabled)?.id;
-    if (kind === "instant")
-      cue.instantId = clips.find((clip) => clip.enabled)?.id;
-    setItems((current) => {
-      const end = current.at(-1);
-      return end?.kind === "stopSong" && end.clockOffsetSeconds !== undefined
-        ? [...current.slice(0, -1), cue, end]
-        : [...current, cue];
-    });
+    const cue = cueFor(entry, items.length === 0);
+    setItems((current) => insertCue(current, cue, index, activeIndex));
     setSelectedCueId(cue.id);
     setInspector("event");
   };
@@ -302,6 +332,7 @@ export default function ScheduledRundown({
     : null;
 
   const timing = rundownTiming(items, songs);
+  const layout = timelineLayout(items, songs);
   const revealInspector = () => {
     if (window.matchMedia("(max-width: 760px)").matches) {
       requestAnimationFrame(() =>
@@ -314,6 +345,21 @@ export default function ScheduledRundown({
   const editLocked = editIndex <= activeIndex;
   const editable =
     !!selected && (!selected.lastStartedAt || selected.isRunning);
+  const canPublish =
+    !!selected &&
+    !busy &&
+    !fixtureData &&
+    !selected.lastStartedAt &&
+    !selected.isRunning;
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      if (canPublish) requestPublish("check");
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  });
   const gapMs = timing.reduce(
     (sum, row, index) =>
       sum + (items[index].kind === "stopSong" ? 0 : (row.gapMs ?? 0)),
@@ -439,19 +485,51 @@ export default function ScheduledRundown({
               </Button>
               <Button
                 size="xs"
-                disabled={
-                  !selected ||
-                  busy ||
-                  !!fixtureData ||
-                  !!selected.lastStartedAt ||
-                  !!selected.isRunning
-                }
-                onClick={() => void publish()}
+                variant="secondary"
+                disabled={!canPublish}
+                onClick={() => requestPublish("publish")}
               >
                 Publish
               </Button>
+              <Button
+                size="xs"
+                disabled={!canPublish}
+                title="Save, check this revision and publish only if the check passes"
+                onClick={() => requestPublish("check")}
+              >
+                Check &amp; publish <kbd className="rundown-kbd">⌘↵</kbd>
+              </Button>
             </div>
           </div>
+          {selected && (
+            <div className="rundown-builder">
+              <RundownLibrary
+                songs={songs}
+                clips={clips}
+                disabled={busy || !editable}
+                onAdd={(entry) => add(entry)}
+              />
+              <RundownTimeline
+                items={items}
+                songs={songs}
+                clips={clips}
+                scheduledAt={selected.scheduledAt!}
+                activeIndex={activeIndex}
+                selectedCueId={selectedCueId}
+                disabled={busy || !editable}
+                onSelect={(id) => {
+                  setSelectedCueId(id);
+                  setInspector("event");
+                  revealInspector();
+                }}
+                onDropEntry={(entry, index) => add(entry, index)}
+                onMoveAnchor={(index, seconds) => {
+                  setPreflight(null);
+                  setItems((current) => moveAnchor(current, index, seconds));
+                }}
+              />
+            </div>
+          )}
           {selected ? (
             <RundownEventList
               items={items}
@@ -477,30 +555,6 @@ export default function ScheduledRundown({
             </div>
           )}
           <div className="rundown-insert">
-            <Button
-              size="xs"
-              variant="secondary"
-              disabled={busy || !editable}
-              onClick={() => add("playSong")}
-            >
-              <Plus size={13} /> Song
-            </Button>
-            <Button
-              size="xs"
-              variant="secondary"
-              disabled={busy || !editable}
-              onClick={() => add("instant")}
-            >
-              <Plus size={13} /> Clip
-            </Button>
-            <Button
-              size="xs"
-              variant="secondary"
-              disabled={busy || !editable}
-              onClick={() => add("stopSong")}
-            >
-              <Plus size={13} /> Stop
-            </Button>
             <Button
               size="xs"
               variant="ghost"
@@ -689,6 +743,27 @@ export default function ScheduledRundown({
                       }
                     />
                   </label>
+                  {editIndex > 0 && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={editLocked || busy}
+                      onClick={() =>
+                        updateItem(editIndex, {
+                          clockOffsetSeconds:
+                            editCue.clockOffsetSeconds === undefined
+                              ? snapSeconds(
+                                  (timing[editIndex].startMs ?? 0) / 1000,
+                                )
+                              : undefined,
+                        })
+                      }
+                    >
+                      {editCue.clockOffsetSeconds === undefined
+                        ? "Pin its start here"
+                        : "Follow the previous event"}
+                    </Button>
+                  )}
                   <p className="rundown-inspector-note">
                     {editCue.clockOffsetSeconds === undefined
                       ? "Follows the previous event. The start in the log is estimated from catalog duration."
@@ -700,6 +775,11 @@ export default function ScheduledRundown({
                       {Math.round((editCue.voiceDuckGain ?? 0.35) * 100)}%
                     </p>
                   )}
+                  <RundownAdvanced
+                    cue={editCue}
+                    disabled={editLocked || busy}
+                    onChange={(patch) => updateItem(editIndex, patch)}
+                  />
                   <div className="rundown-actions mt-5">
                     {editCue.kind === "playSong" &&
                       songs.some((song) => song.id === editCue.songId) && (
@@ -760,6 +840,38 @@ export default function ScheduledRundown({
         <Button disabled={busy} onClick={() => void create()}>
           Create rundown
         </Button>
+      </Modal>
+      <Modal
+        isOpen={overrunAsk !== null}
+        onClose={() => setOverrunAsk(null)}
+        title="This block overruns a fixed start"
+      >
+        <p className="rundown-inspector-note" role="alert">
+          {formatRundownDuration(layout.overrunMs)} of content is cut at the
+          next fixed start. Shorten the block or move the pin before air, or
+          publish it as it is.
+        </p>
+        <div className="rundown-actions mt-5">
+          <Button
+            size="xs"
+            variant="secondary"
+            onClick={() => setOverrunAsk(null)}
+          >
+            Keep editing
+          </Button>
+          <Button
+            size="xs"
+            variant="destructive"
+            disabled={busy}
+            onClick={() => {
+              const mode = overrunAsk;
+              setOverrunAsk(null);
+              void (mode === "check" ? checkAndPublish() : publish());
+            }}
+          >
+            Publish anyway
+          </Button>
+        </div>
       </Modal>
       <Modal
         isOpen={recordIndex !== null}

@@ -225,6 +225,13 @@ async function openBlock() {
 }
 
 const eventRows = (table: HTMLElement) => within(table).getAllByRole("button");
+// The library replaces the Song, Clip and Stop buttons (#299): select a row and
+// press Enter to add it at the end.
+const library = () => screen.getByRole("listbox", { name: "Library items" });
+const addFromLibrary = (name: RegExp) => {
+  fireEvent.click(within(library()).getByRole("option", { name }));
+  fireEvent.keyDown(library(), { key: "Enter" });
+};
 
 beforeEach(() => {
   // jsdom has no modal dialog; open and close it as a browser would.
@@ -305,7 +312,9 @@ it("shows how to start when the program has no scheduled block", async () => {
   expect(
     await screen.findByText("Timed content interrupts continuous fillers"),
   ).toBeVisible();
-  expect(screen.getByRole("button", { name: /Song/ })).toBeDisabled();
+  expect(
+    screen.queryByRole("listbox", { name: "Library items" }),
+  ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
 });
@@ -374,8 +383,8 @@ it("adds songs and clips before a fixed end, then saves and reports dirtiness", 
   const view = renderRundown(onDirtyChange);
   const table = await openBlock();
 
-  fireEvent.click(screen.getByRole("button", { name: /Song/ }));
-  fireEvent.click(screen.getByRole("button", { name: /Clip/ }));
+  addFromLibrary(/^Harbor Light/);
+  addFromLibrary(/^Station ident/);
   let rows = eventRows(table);
   expect(rows).toHaveLength(3);
   // The first enabled song and clip are chosen, ahead of the fixed end.
@@ -404,7 +413,7 @@ it("starts a new block's first event at its fixed start and appends after a foll
   vi.mocked(fetchFlightSequences).mockResolvedValue([block({ items: [] })]);
   renderRundown();
   await screen.findByText(/DRAFT · Revision 3 · 0 events/);
-  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  addFromLibrary(/^Stop program audio/);
   // The first event is fixed at the block start.
   expect(screen.getByRole("spinbutton", { name: "Fixed start" })).toHaveValue(
     0,
@@ -415,7 +424,7 @@ it("starts a new block's first event at its fixed start and appends after a foll
   fireEvent.change(screen.getByRole("spinbutton", { name: "Fixed start" }), {
     target: { value: "" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Song/ }));
+  addFromLibrary(/^Harbor Light/);
   const table = screen.getByRole("table", { name: "Scheduled rundown events" });
   const rows = eventRows(table);
   expect(rows[0]).toHaveTextContent("Stop program audio");
@@ -429,7 +438,7 @@ it("reports a save failure and keeps the edits", async () => {
   );
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: /Save/ }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Stale revision");
   expect(screen.getByText(/Unsaved changes/)).toBeVisible();
@@ -468,7 +477,7 @@ it("saves unsaved edits before checking, and reports a failed check", async () =
   );
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: "Check" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Palazzo unavailable",
@@ -486,7 +495,7 @@ it("publishes the block, saving unsaved edits first", async () => {
   );
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   expect(
     await screen.findByText("Rundown published for automatic start."),
@@ -505,7 +514,7 @@ it("keeps the ready-for-air confirmation after publishing moves the block to a n
   );
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   expect(await screen.findByText(/PUBLISHED · Revision 5/)).toBeVisible();
   expect(screen.getByText("Audio checked · ready for air")).toBeVisible();
@@ -522,12 +531,12 @@ it("keeps a passing check after saving unsaved edits first, and drops it once th
   });
   renderRundown();
   await openBlock();
-  fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+  addFromLibrary(/^Stop program audio/);
   fireEvent.click(screen.getByRole("button", { name: "Check" }));
   expect(
     await screen.findByText("Audio checked · ready for air"),
   ).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+  addFromLibrary(/^Stop program audio/);
   expect(screen.queryByText("Audio checked · ready for air")).toBeNull();
 });
 
@@ -572,7 +581,7 @@ it("locks what has aired and marks the on-air event", async () => {
     "true",
   );
   // A running block still accepts new events, but its played events are locked.
-  expect(screen.getByRole("button", { name: /Song/ })).toBeEnabled();
+  expect(library()).toHaveAttribute("aria-disabled", "false");
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
   fireEvent.click(eventRows(table)[0]);
   expect(screen.getByText(/Event 01 · Locked/)).toBeVisible();
@@ -580,7 +589,7 @@ it("locks what has aired and marks the on-air event", async () => {
 
   fireEvent.change(blocks, { target: { value: "8" } });
   expect(await screen.findByText(/AIRED \/ INTERRUPTED/)).toBeVisible();
-  expect(screen.getByRole("button", { name: /Song/ })).toBeDisabled();
+  expect(library()).toHaveAttribute("aria-disabled", "true");
   expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
   fireEvent.click(eventRows(table)[1]);
   expect(screen.getByText(/Event 02 · Locked/)).toBeVisible();

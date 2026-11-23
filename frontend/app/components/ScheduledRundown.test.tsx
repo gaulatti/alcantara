@@ -54,7 +54,11 @@ it("inserts new content before the fixed end of hour", async () => {
   const table = await screen.findByRole("table", {
     name: "Scheduled rundown events",
   });
-  fireEvent.click(screen.getByRole("button", { name: "Clip" }));
+  const library = screen.getByRole("listbox", { name: "Library items" });
+  fireEvent.click(
+    within(library).getByRole("option", { name: /^News bulletin/ }),
+  );
+  fireEvent.keyDown(library, { key: "Enter" });
   const rows = within(table).getAllByRole("button");
   expect(rows.at(-2)).toHaveTextContent("News bulletin");
   expect(rows.at(-1)).toHaveTextContent("End of hour");
