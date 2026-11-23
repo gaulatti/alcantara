@@ -564,9 +564,25 @@ export function normalizeProgramSongSequence(
   }
 
   const rawItems = Array.isArray(record.items) ? record.items : [];
-  const items = rawItems
-    .map((item) => normalizeSongSequenceItem(item, depth))
-    .filter((item): item is ProgramSongSequenceItem => item !== null);
+  // Ids stay unique within a sequence. A song without a string id takes its content-derived id; when
+  // the same song appears again, the repeat gets an occurrence suffix (_2, _3, ...), so the first
+  // occurrence keeps the id it would have alone and a repeat never shares an id with it.
+  const used = new Set<string>();
+  const items: ProgramSongSequenceItem[] = [];
+  for (const rawItem of rawItems) {
+    const item = normalizeSongSequenceItem(rawItem, depth);
+    if (!item) continue;
+    const givenId = typeof asRecord(rawItem)?.id === 'string' && (asRecord(rawItem)?.id as string) !== '';
+    let id = item.id;
+    if (!givenId) {
+      const base = item.id;
+      for (let occurrence = 2; used.has(id); occurrence += 1) {
+        id = `${base}_${occurrence}`;
+      }
+    }
+    used.add(id);
+    items.push({ ...item, id });
+  }
 
   return withNormalizedSequenceShape(record, items, 'autoplay');
 }
