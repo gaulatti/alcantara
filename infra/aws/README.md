@@ -6,8 +6,10 @@ shared Cumulus host, network, and Arauco database. This stack owns:
 - `alcantara-github-deploy`, restricted to `gaulatti/alcantara` `main`, read-only
   access to `broadcast/production/config` for the pre-build secret contract
   gate, and SSM commands to the EC2 instance tagged `Name=macondo-services`;
-- the host grants for Alcántara media storage; and
-- `api.alcantara.gaulatti.com` pointing to the Cumulus Elastic IP.
+- the host grants for Alcántara media storage;
+- `api.alcantara.gaulatti.com` pointing to the Cumulus Elastic IP; and
+- `livekit.alcantara.gaulatti.com`, a CNAME to `helix.gaulatti.com`, where
+  production LiveKit runs (gaulatti/alcantara#354; see `infra/README.md`).
 
 The media-storage grant also supports the production backend's hourly logical
 database backups under `postgres-backups/alcantara/`. This stack does not own

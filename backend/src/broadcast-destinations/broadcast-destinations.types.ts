@@ -22,6 +22,29 @@ export interface SafeDestinationState {
   publisherProcessHealthy: boolean;
 }
 
+/** The renderer's effective RTMP profile, as gaulatti/alana#29 reports it. */
+export interface TelevisionLiveProfile {
+  width: number;
+  height: number;
+  fps: number;
+  videoBitrate: string;
+  audioRate: number;
+  audioChannels: number;
+  audioBitrate: string;
+  gop: number;
+  loopSeconds: number;
+}
+
+/** A filler acknowledgement, reduced to the fields Alcantara binds against. */
+export interface SafeAlanaFiller {
+  version: string;
+  status: string;
+  ready: boolean;
+  sourceId?: string;
+  sourceSha256?: string;
+  profileChecksum?: string;
+}
+
 export interface SafeAlanaState {
   requestedState: string;
   actualState: string;
@@ -41,6 +64,8 @@ export interface SafeAlanaState {
     destinationCount?: number;
   } | null;
   error?: string;
+  activeFiller?: SafeAlanaFiller;
+  pendingFiller?: SafeAlanaFiller;
 }
 
 export interface SafeDestinationMetadata {

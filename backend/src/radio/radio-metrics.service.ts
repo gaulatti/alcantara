@@ -6,7 +6,20 @@ export type PalazzoEventIgnoreReason =
   | 'superseded-boot'
   | 'sequence-gap'
   | 'cross-program'
-  | 'malformed';
+  | 'malformed'
+  | 'unknown-type'
+  | 'unsupported-version';
+
+/**
+ * A Palazzo value Alcantara does not know and reads as a safe default instead
+ * of rejecting the whole payload (gaulatti/ariston#217). The label is the
+ * field, never the unknown value.
+ */
+export type PalazzoUnknownField =
+  | 'availability'
+  | 'status'
+  | 'intro-status'
+  | 'withdrawn-reason';
 
 export type PalazzoMachineOperation =
   | 'song-play'
@@ -21,7 +34,9 @@ export type PalazzoMachineOperation =
   | 'filler-prepare'
   | 'automation-read'
   | 'automation-start'
-  | 'automation-stop';
+  | 'automation-stop'
+  | 'next-announce'
+  | 'next-withdraw';
 
 export type PalazzoMachineResult =
   | 'success'
@@ -30,7 +45,61 @@ export type PalazzoMachineResult =
   | 'rejected'
   | 'unavailable'
   | 'malformed'
-  | 'cross-program';
+  | 'cross-program'
+  /**
+   * Palazzo answered with a value Alcantara does not know and the request was
+   * read safely instead of failing (gaulatti/ariston#217).
+   */
+  | 'unknown-value';
+
+/**
+ * gaulatti/alcantara#230: the engine read Palazzo's state itself, because a
+ * foreign track ended or because Palazzo kept reporting no playback (the
+ * watchdog), and what it found: `resumed` (Palazzo was idle and the engine
+ * reconciled from it), `resumed_no_command` (a watchdog resume after which
+ * nothing was commanded or advanced, gaulatti/alcantara#233), `playing`
+ * (Palazzo was playing; nothing to do), `unavailable` (no state could be read).
+ */
+export type EngineResyncTrigger =
+  | 'foreign_ended'
+  | 'watchdog'
+  | 'command_failed';
+export type EngineResyncResult =
+  | 'resumed'
+  | 'resumed_no_command'
+  | 'playing'
+  | 'unavailable'
+  | 'undecided';
+/**
+ * Engine paths that degrade instead of failing (#237): Palazzo state unreadable
+ * at resync, radio settings unreadable when advancing the bumper sequence, a
+ * bumper attempt that failed before its send, and a command with no radio
+ * settings for the program.
+ */
+export type EngineDegradedSite =
+  | 'telemetry_state'
+  | 'bumper_settings'
+  | 'bumper_attempt'
+  | 'radio_settings_missing';
+export const ENGINE_DEGRADED_SITES: EngineDegradedSite[] = [
+  'telemetry_state',
+  'bumper_settings',
+  'bumper_attempt',
+  'radio_settings_missing',
+];
+
+const RESYNC_TRIGGERS: EngineResyncTrigger[] = [
+  'foreign_ended',
+  'watchdog',
+  'command_failed',
+];
+const RESYNC_RESULTS: EngineResyncResult[] = [
+  'resumed',
+  'resumed_no_command',
+  'playing',
+  'unavailable',
+  'undecided',
+];
 
 export type TrackTransitionResult =
   | 'advanced'
@@ -39,8 +108,11 @@ export type TrackTransitionResult =
   | 'ignored-duplicate'
   | 'ignored-frozen'
   | 'adopted'
+  | 'unidentified'
   | 'command-failed'
   | 'published-stopped';
+
+export type SongRequestFailureReason = 'timeout' | 'other';
 
 export type IntroTransitionResult =
   | 'submitted'
@@ -68,6 +140,91 @@ export type HighRotationActionResult =
   | 'quota-unmet'
   | 'history-persistence-failed';
 
+// Why analysis-derived segue or loudness was left off a song command or announcement (the song still plays without it).
+export type AnalysisDropResult =
+  | 'segue-invalid'
+  | 'segue-beyond-duration'
+  | 'segue-edge-bound'
+  | 'loudness-invalid'
+  | 'ambiguous-match'
+  // A song sent with no analysis at all (gaulatti/alcantara#255).
+  | 'no-asset'
+  | 'not-analyzed'
+  | 'lookup-failed';
+
+export type SimilarityActionResult =
+  | 'selected'
+  | 'fallback-no-candidate'
+  | 'fallback-no-embedding'
+  | 'shadow-recorded'
+  | 'decision-persistence-failed';
+
+/** Outcome of announcing the next song to Palazzo (contract palazzo#40 §5). */
+export type NextAnnouncementResult =
+  | 'accepted'
+  | 'not_ready'
+  | 'rejected'
+  | 'unsupported'
+  | 'withdrawn';
+
+/** How the engine moved from one song to the next at an accepted end. */
+export type HandoffPath = 'preloaded' | 'command' | 'race_replaced';
+/** Why a started song was left without an announced successor (gaulatti/alcantara#232). */
+export type AnnouncementSkipReason =
+  | 'bumper_slot'
+  | 'bumper_unavailable'
+  | 'intro'
+  | 'clocked_log'
+  | 'no_successor'
+  | 'queue_head_active'
+  | 'not_autoplay'
+  | 'unsupported'
+  | 'superseded'
+  | 'refused';
+export const ANNOUNCEMENT_SKIP_REASONS: AnnouncementSkipReason[] = [
+  'bumper_slot',
+  'bumper_unavailable',
+  'intro',
+  'clocked_log',
+  'no_successor',
+  'queue_head_active',
+  'not_autoplay',
+  'unsupported',
+  'superseded',
+  'refused',
+];
+/**
+ * A bumper spot by how it reached Palazzo: `announced` with the next song
+ * (gaulatti/palazzo#50) or `command` (played after the end, then the song by
+ * command); `sent` when Palazzo took it, `played` on Palazzo's
+ * instant.started for it, `failed` when Palazzo did not take a command spot,
+ * `retried` for each retry of a command spot Palazzo refused as not ready yet
+ * (gaulatti/alcantara#274).
+ */
+export type BumperPath = 'announced' | 'command';
+/** A write of the playlist cursor after it advanced (#277). */
+export type CursorWriteResult = 'succeeded' | 'failed' | 'conflict';
+const CURSOR_WRITE_RESULTS: CursorWriteResult[] = [
+  'succeeded',
+  'failed',
+  'conflict',
+];
+/** How the song on air at a restart was recognised (#277). */
+export type InheritedAdoptionPath = 'leaf' | 'cursor_leaf' | 'catalogue';
+const INHERITED_ADOPTION_PATHS: InheritedAdoptionPath[] = [
+  'leaf',
+  'cursor_leaf',
+  'catalogue',
+];
+export type BumperResult = 'sent' | 'played' | 'failed' | 'retried';
+const BUMPER_PATHS: BumperPath[] = ['announced', 'command'];
+const BUMPER_RESULTS: BumperResult[] = ['sent', 'played', 'failed', 'retried'];
+/** `failed` and `retried` are command spots; an announced spot travels with its announcement, whose refusal is counted as a skip. */
+const isBumperSeries = (path: BumperPath, result: BumperResult): boolean =>
+  BUMPER_PATHS.includes(path) &&
+  BUMPER_RESULTS.includes(result) &&
+  !(path === 'announced' && (result === 'failed' || result === 'retried'));
+
 export type SnapshotReconciliationResult =
   | 'accepted'
   | 'instance-mismatch'
@@ -81,12 +238,19 @@ export interface RadioMetricsSnapshot {
   eventsIgnored: Record<string, number>;
   degradedPrograms: number;
   trackTransitions: Record<string, number>;
+  engineResyncs: Record<string, number>;
   introTransitions: Record<string, number>;
+  songRequestFailures: Record<string, number>;
   songQueueActions: Record<string, number>;
   songQueueDepth: number;
   highRotationActions: Record<string, number>;
+  similarityActions: Record<string, number>;
+  analysisDrops: Record<string, number>;
+  nextAnnouncements: Record<string, number>;
+  handoffs: Record<string, number>;
   highRotationFavorites: number;
   staleTelemetryPrograms: number;
+  palazzoConfigRejected: number;
   machineRequests: Record<string, number>;
   machineRetries: Record<string, number>;
   outputConfidenceTransitions: Record<string, number>;
@@ -104,6 +268,11 @@ const OUTPUT_CONFIDENCE_STATES = [
 const RADIO_LOG_RESULTS = [
   'interrupted',
   'completed',
+  // An as-run play whose end never arrived, closed when a later play ended (#241).
+  'unended-closed',
+  // The close of an unended play failed; the real end was still recorded (#241).
+  'unended-close-failed',
+  'record-failed',
   'resume-failed',
   'filled',
   'fill-failed',
@@ -142,6 +311,15 @@ const IGNORE_REASONS: PalazzoEventIgnoreReason[] = [
   'sequence-gap',
   'cross-program',
   'malformed',
+  'unknown-type',
+  'unsupported-version',
+];
+
+const UNKNOWN_FIELDS: PalazzoUnknownField[] = [
+  'availability',
+  'status',
+  'intro-status',
+  'withdrawn-reason',
 ];
 
 const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
@@ -158,6 +336,8 @@ const MACHINE_OPERATIONS: PalazzoMachineOperation[] = [
   'automation-read',
   'automation-start',
   'automation-stop',
+  'next-announce',
+  'next-withdraw',
 ];
 
 const MACHINE_RESULTS: PalazzoMachineResult[] = [
@@ -168,6 +348,7 @@ const MACHINE_RESULTS: PalazzoMachineResult[] = [
   'unavailable',
   'malformed',
   'cross-program',
+  'unknown-value',
 ];
 
 const TRANSITION_RESULTS: TrackTransitionResult[] = [
@@ -177,8 +358,14 @@ const TRANSITION_RESULTS: TrackTransitionResult[] = [
   'ignored-duplicate',
   'ignored-frozen',
   'adopted',
+  'unidentified',
   'command-failed',
   'published-stopped',
+];
+
+const SONG_REQUEST_FAILURE_REASONS: SongRequestFailureReason[] = [
+  'timeout',
+  'other',
 ];
 
 const INTRO_TRANSITION_RESULTS: IntroTransitionResult[] = [
@@ -200,6 +387,47 @@ const SONG_QUEUE_ACTION_RESULTS: SongQueueActionResult[] = [
   'cursor-persisted',
   'rejected',
   'persistence-failed',
+];
+
+/**
+ * The cue group sent with a song (gaulatti/alcantara#234): both edges
+ * measured, the head filled with 0 (only the tail measured), the tail filled
+ * with the song's duration (only the head measured), or none sent.
+ */
+export type CueGroupShape = 'both' | 'head_filled' | 'tail_filled' | 'none';
+const CUE_GROUP_SHAPES: CueGroupShape[] = [
+  'both',
+  'head_filled',
+  'tail_filled',
+  'none',
+];
+const ANALYSIS_DROP_RESULTS: AnalysisDropResult[] = [
+  'segue-invalid',
+  'segue-beyond-duration',
+  'segue-edge-bound',
+  'loudness-invalid',
+  'ambiguous-match',
+  'no-asset',
+  'not-analyzed',
+  'lookup-failed',
+];
+
+const NEXT_ANNOUNCEMENT_RESULTS: NextAnnouncementResult[] = [
+  'accepted',
+  'not_ready',
+  'rejected',
+  'unsupported',
+  'withdrawn',
+];
+
+const HANDOFF_PATHS: HandoffPath[] = ['preloaded', 'command', 'race_replaced'];
+
+const SIMILARITY_ACTION_RESULTS: SimilarityActionResult[] = [
+  'selected',
+  'fallback-no-candidate',
+  'fallback-no-embedding',
+  'shadow-recorded',
+  'decision-persistence-failed',
 ];
 
 const HIGH_ROTATION_ACTION_RESULTS: HighRotationActionResult[] = [
@@ -240,14 +468,29 @@ export class RadioMetricsService {
   private reconnectFailures = 0;
   private readonly snapshotReconciliation = new Map<string, number>();
   private readonly eventsIgnored = new Map<string, number>();
+  private readonly unknownValues = new Map<string, number>();
   private degradedPrograms = 0;
   private staleTelemetryPrograms = 0;
+  private palazzoConfigRejected = 0;
   private readonly trackTransitions = new Map<string, number>();
+  private readonly engineResyncs = new Map<string, number>();
+  private readonly engineDegraded = new Map<EngineDegradedSite, number>();
   private readonly introTransitions = new Map<string, number>();
+  private readonly songRequestFailures = new Map<string, number>();
   private readonly songQueueActions = new Map<string, number>();
   private songQueueDepth = 0;
   private readonly highRotationActions = new Map<string, number>();
+  private readonly similarityActions = new Map<string, number>();
+  private readonly analysisDrops = new Map<string, number>();
+  private readonly cueGroups = new Map<string, number>();
+  private readonly nextAnnouncements = new Map<string, number>();
+  private readonly handoffs = new Map<string, number>();
+  private readonly announcementSkips = new Map<string, number>();
+  private readonly bumpers = new Map<string, number>();
+  private readonly cursorWrites = new Map<string, number>();
+  private readonly inheritedAdoptions = new Map<string, number>();
   private highRotationFavorites = 0;
+  private automaticPrograms = 0;
   private readonly machineRequests = new Map<string, number>();
   private readonly machineRetries = new Map<string, number>();
 
@@ -283,6 +526,10 @@ export class RadioMetricsService {
     this.eventsIgnored.set(reason, (this.eventsIgnored.get(reason) ?? 0) + 1);
   }
 
+  recordUnknownValue(field: PalazzoUnknownField): void {
+    this.unknownValues.set(field, (this.unknownValues.get(field) ?? 0) + 1);
+  }
+
   recordDegradedPrograms(count: number): void {
     this.degradedPrograms = Math.max(0, count);
   }
@@ -291,11 +538,38 @@ export class RadioMetricsService {
     this.staleTelemetryPrograms = Math.max(0, count);
   }
 
+  /** A Palazzo URL the allowlist rejected when a program's client was started (#257). */
+  recordPalazzoConfigRejected(): void {
+    this.palazzoConfigRejected += 1;
+  }
+
   recordTrackTransition(result: TrackTransitionResult): void {
     if (!TRANSITION_RESULTS.includes(result)) return;
     this.trackTransitions.set(
       result,
       (this.trackTransitions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordEngineResync(
+    trigger: EngineResyncTrigger,
+    result: EngineResyncResult,
+  ): void {
+    const key = `${trigger}:${result}`;
+    this.engineResyncs.set(key, (this.engineResyncs.get(key) ?? 0) + 1);
+  }
+
+  /** An engine path that degraded instead of failing (#237). */
+  recordEngineDegraded(site: EngineDegradedSite): void {
+    if (!ENGINE_DEGRADED_SITES.includes(site)) return;
+    this.engineDegraded.set(site, (this.engineDegraded.get(site) ?? 0) + 1);
+  }
+
+  /** A song Palazzo could not load (`playout.request_failed`), by reason. */
+  recordSongRequestFailure(reason: SongRequestFailureReason): void {
+    this.songRequestFailures.set(
+      reason,
+      (this.songRequestFailures.get(reason) ?? 0) + 1,
     );
   }
 
@@ -325,6 +599,64 @@ export class RadioMetricsService {
       result,
       (this.highRotationActions.get(result) ?? 0) + 1,
     );
+  }
+
+  recordSimilarityAction(result: SimilarityActionResult): void {
+    if (!SIMILARITY_ACTION_RESULTS.includes(result)) return;
+    this.similarityActions.set(
+      result,
+      (this.similarityActions.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordAnalysisDrop(result: AnalysisDropResult): void {
+    if (!ANALYSIS_DROP_RESULTS.includes(result)) return;
+    this.analysisDrops.set(result, (this.analysisDrops.get(result) ?? 0) + 1);
+  }
+
+  recordCueGroup(shape: CueGroupShape): void {
+    if (!CUE_GROUP_SHAPES.includes(shape)) return;
+    this.cueGroups.set(shape, (this.cueGroups.get(shape) ?? 0) + 1);
+  }
+
+  recordNextAnnouncement(result: NextAnnouncementResult): void {
+    if (!NEXT_ANNOUNCEMENT_RESULTS.includes(result)) return;
+    this.nextAnnouncements.set(
+      result,
+      (this.nextAnnouncements.get(result) ?? 0) + 1,
+    );
+  }
+
+  recordHandoff(path: HandoffPath): void {
+    if (!HANDOFF_PATHS.includes(path)) return;
+    this.handoffs.set(path, (this.handoffs.get(path) ?? 0) + 1);
+  }
+
+  recordAnnouncementSkipped(reason: AnnouncementSkipReason): void {
+    if (!ANNOUNCEMENT_SKIP_REASONS.includes(reason)) return;
+    this.announcementSkips.set(
+      reason,
+      (this.announcementSkips.get(reason) ?? 0) + 1,
+    );
+  }
+
+  recordCursorWrite(result: CursorWriteResult): void {
+    if (!CURSOR_WRITE_RESULTS.includes(result)) return;
+    this.cursorWrites.set(result, (this.cursorWrites.get(result) ?? 0) + 1);
+  }
+
+  recordInheritedAdoption(path: InheritedAdoptionPath): void {
+    if (!INHERITED_ADOPTION_PATHS.includes(path)) return;
+    this.inheritedAdoptions.set(
+      path,
+      (this.inheritedAdoptions.get(path) ?? 0) + 1,
+    );
+  }
+
+  recordBumper(path: BumperPath, result: BumperResult): void {
+    if (!isBumperSeries(path, result)) return;
+    const key = `${path}\t${result}`;
+    this.bumpers.set(key, (this.bumpers.get(key) ?? 0) + 1);
   }
 
   recordHighRotationFavorites(count: number): void {
@@ -361,6 +693,11 @@ export class RadioMetricsService {
     );
   }
 
+  /** Radio programs whose rotation runs on its own (autoplay or shuffle). */
+  recordAutomaticPrograms(count: number): void {
+    this.automaticPrograms = Math.max(0, Math.floor(count));
+  }
+
   recordOutputSilentPrograms(count: number): void {
     this.outputSilentPrograms = Math.max(0, Math.floor(count));
   }
@@ -395,12 +732,19 @@ export class RadioMetricsService {
       eventsIgnored: Object.fromEntries(this.eventsIgnored),
       degradedPrograms: this.degradedPrograms,
       trackTransitions: Object.fromEntries(this.trackTransitions),
+      engineResyncs: Object.fromEntries(this.engineResyncs),
       introTransitions: Object.fromEntries(this.introTransitions),
+      songRequestFailures: Object.fromEntries(this.songRequestFailures),
       songQueueActions: Object.fromEntries(this.songQueueActions),
       songQueueDepth: this.songQueueDepth,
       highRotationActions: Object.fromEntries(this.highRotationActions),
+      similarityActions: Object.fromEntries(this.similarityActions),
+      analysisDrops: Object.fromEntries(this.analysisDrops),
+      nextAnnouncements: Object.fromEntries(this.nextAnnouncements),
+      handoffs: Object.fromEntries(this.handoffs),
       highRotationFavorites: this.highRotationFavorites,
       staleTelemetryPrograms: this.staleTelemetryPrograms,
+      palazzoConfigRejected: this.palazzoConfigRejected,
       machineRequests: Object.fromEntries(this.machineRequests),
       machineRetries: Object.fromEntries(this.machineRetries),
       outputConfidenceTransitions: Object.fromEntries(
@@ -445,9 +789,21 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_palazzo_unknown_values_total Palazzo values Alcantara does not know, read as a safe default.',
+      '# TYPE alcantara_palazzo_unknown_values_total counter',
+    );
+    for (const field of UNKNOWN_FIELDS) {
+      lines.push(
+        `alcantara_palazzo_unknown_values_total{field="${field}"} ${this.unknownValues.get(field) ?? 0}`,
+      );
+    }
+    lines.push(
       '# HELP alcantara_palazzo_telemetry_stale_programs Radio programs with stale Palazzo telemetry.',
       '# TYPE alcantara_palazzo_telemetry_stale_programs gauge',
       `alcantara_palazzo_telemetry_stale_programs ${this.staleTelemetryPrograms}`,
+      '# HELP alcantara_palazzo_config_rejected_total Palazzo URLs the allowlist rejected when a program started consuming telemetry; the program has no engine until its settings change.',
+      '# TYPE alcantara_palazzo_config_rejected_total counter',
+      `alcantara_palazzo_config_rejected_total ${this.palazzoConfigRejected}`,
       '# HELP alcantara_radio_programs_degraded Radio programs currently degraded or unavailable.',
       '# TYPE alcantara_radio_programs_degraded gauge',
       `alcantara_radio_programs_degraded ${this.degradedPrograms}`,
@@ -460,12 +816,40 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_radio_engine_resyncs_total Times the song engine read Palazzo state itself, by trigger and outcome.',
+      '# TYPE alcantara_radio_engine_resyncs_total counter',
+    );
+    for (const trigger of RESYNC_TRIGGERS)
+      for (const result of RESYNC_RESULTS)
+        // resumed_no_command is the watchdog's alone (#233).
+        if (result !== 'resumed_no_command' || trigger === 'watchdog')
+          lines.push(
+            `alcantara_radio_engine_resyncs_total{trigger="${trigger}",result="${result}"} ${this.engineResyncs.get(`${trigger}:${result}`) ?? 0}`,
+          );
+    lines.push(
+      '# HELP alcantara_radio_engine_degraded_total Song engine paths that degraded instead of failing, by site.',
+      '# TYPE alcantara_radio_engine_degraded_total counter',
+    );
+    for (const site of ENGINE_DEGRADED_SITES)
+      lines.push(
+        `alcantara_radio_engine_degraded_total{site="${site}"} ${this.engineDegraded.get(site) ?? 0}`,
+      );
+    lines.push(
       '# HELP alcantara_radio_intro_transitions_total Atomic song-intro lifecycle transitions by bounded result.',
       '# TYPE alcantara_radio_intro_transitions_total counter',
     );
     for (const result of INTRO_TRANSITION_RESULTS) {
       lines.push(
         `alcantara_radio_intro_transitions_total{result="${result}"} ${this.introTransitions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_song_request_failures_total Songs Palazzo could not load (playout.request_failed) by bounded reason.',
+      '# TYPE alcantara_radio_song_request_failures_total counter',
+    );
+    for (const reason of SONG_REQUEST_FAILURE_REASONS) {
+      lines.push(
+        `alcantara_radio_song_request_failures_total{reason="${reason}"} ${this.songRequestFailures.get(reason) ?? 0}`,
       );
     }
     lines.push(
@@ -492,9 +876,96 @@ export class RadioMetricsService {
       );
     }
     lines.push(
+      '# HELP alcantara_radio_similarity_total Similarity picker outcomes by bounded result.',
+      '# TYPE alcantara_radio_similarity_total counter',
+    );
+    for (const result of SIMILARITY_ACTION_RESULTS) {
+      lines.push(
+        `alcantara_radio_similarity_total{result="${result}"} ${this.similarityActions.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_analysis_dropped_total Analysis-derived segue or loudness left off a song command or next-song announcement, including songs sent with no analysis at all, by bounded reason.',
+      '# TYPE alcantara_radio_analysis_dropped_total counter',
+    );
+    for (const result of ANALYSIS_DROP_RESULTS) {
+      lines.push(
+        `alcantara_radio_analysis_dropped_total{result="${result}"} ${this.analysisDrops.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_cue_groups_total Cue groups sent with a song or announcement, by shape: both edges measured, head filled with 0, tail filled with the duration, or none sent.',
+      '# TYPE alcantara_radio_cue_groups_total counter',
+    );
+    for (const shape of CUE_GROUP_SHAPES) {
+      lines.push(
+        `alcantara_radio_cue_groups_total{shape="${shape}"} ${this.cueGroups.get(shape) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_next_announcements_total Next-song announcements to Palazzo by bounded result.',
+      '# TYPE alcantara_radio_next_announcements_total counter',
+    );
+    for (const result of NEXT_ANNOUNCEMENT_RESULTS) {
+      lines.push(
+        `alcantara_radio_next_announcements_total{result="${result}"} ${this.nextAnnouncements.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_handoffs_total Song-to-song handoffs at an accepted end, by bounded path.',
+      '# TYPE alcantara_radio_handoffs_total counter',
+    );
+    for (const path of HANDOFF_PATHS) {
+      lines.push(
+        `alcantara_radio_handoffs_total{path="${path}"} ${this.handoffs.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_announcement_skipped_total Started songs left without an announced successor, by bounded reason (once per song).',
+      '# TYPE alcantara_radio_announcement_skipped_total counter',
+    );
+    for (const reason of ANNOUNCEMENT_SKIP_REASONS) {
+      lines.push(
+        `alcantara_radio_announcement_skipped_total{reason="${reason}"} ${this.announcementSkips.get(reason) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_bumpers_total Bumper spots by how they reached Palazzo (announced with the next song, or command after the end) and result (sent, played on Palazzo, failed: a command spot Palazzo did not take, retried: a command spot Palazzo refused as not ready yet and the engine sent again).',
+      '# TYPE alcantara_radio_bumpers_total counter',
+    );
+    for (const path of BUMPER_PATHS) {
+      for (const result of BUMPER_RESULTS) {
+        if (!isBumperSeries(path, result)) continue;
+        lines.push(
+          `alcantara_radio_bumpers_total{path="${path}",result="${result}"} ${this.bumpers.get(`${path}\t${result}`) ?? 0}`,
+        );
+      }
+    }
+    lines.push(
+      '# HELP alcantara_radio_cursor_writes_total Writes of the playlist cursor after it advanced, by result (succeeded; failed: the database refused or timed out, the next song is not delayed; conflict: the stored sequence was edited meanwhile, or changed under the write, so nothing was written).',
+      '# TYPE alcantara_radio_cursor_writes_total counter',
+    );
+    for (const result of CURSOR_WRITE_RESULTS) {
+      lines.push(
+        `alcantara_radio_cursor_writes_total{result="${result}"} ${this.cursorWrites.get(result) ?? 0}`,
+      );
+    }
+    lines.push(
+      '# HELP alcantara_radio_inherited_adoptions_total Songs on air at a restart that the engine recorded as its own, by how it recognised them (leaf: the one sequence leaf with that audio; cursor_leaf: the leaf the cursor points at, when the audio is not unique in the sequence; catalogue: the song catalogue, outside the cursor).',
+      '# TYPE alcantara_radio_inherited_adoptions_total counter',
+    );
+    for (const path of INHERITED_ADOPTION_PATHS) {
+      lines.push(
+        `alcantara_radio_inherited_adoptions_total{path="${path}"} ${this.inheritedAdoptions.get(path) ?? 0}`,
+      );
+    }
+    lines.push(
       '# HELP alcantara_radio_high_rotation_favorites Configured high rotation playlist songs across radio-capable programs.',
       '# TYPE alcantara_radio_high_rotation_favorites gauge',
       `alcantara_radio_high_rotation_favorites ${this.highRotationFavorites}`,
+      '# HELP alcantara_radio_automatic_programs Radio programs in autoplay or shuffle, whose rotation the engine runs on its own.',
+      '# TYPE alcantara_radio_automatic_programs gauge',
+      `alcantara_radio_automatic_programs ${this.automaticPrograms}`,
     );
     lines.push(
       '# HELP alcantara_palazzo_machine_requests_total Program-scoped Palazzo machine requests by bounded operation and result.',

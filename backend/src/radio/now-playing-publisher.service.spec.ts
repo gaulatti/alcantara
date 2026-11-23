@@ -2,6 +2,16 @@ import { NowPlayingPublisherService } from './now-playing-publisher.service';
 import type { PrismaService } from '../prisma.service';
 import type { ManagedMetricsService } from '../observability/managed-metrics.service';
 import type { SongPlaybackData } from './song-execution.engine';
+import { scriptedTransport } from '../outbound/safe-fetch.testing';
+
+const deliver = (service: NowPlayingPublisherService, host: string) => {
+  const transport = scriptedTransport(
+    { [host]: ['93.184.216.34'] },
+    { [`${host}/now-playing`]: { status: 204 } },
+  );
+  service.outboundDeps = transport;
+  return transport;
+};
 
 describe('NowPlayingPublisherService logging', () => {
   const playback: SongPlaybackData = {
@@ -43,11 +53,7 @@ describe('NowPlayingPublisherService logging', () => {
       prisma as unknown as PrismaService,
     );
     const log = jest.spyOn(service['logger'], 'log').mockImplementation();
-    const fetchSpy = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(null, { status: 204, statusText: 'No Content' }),
-      );
+    const transport = deliver(service, 'spritz.example.test');
 
     await service.publishPlayback('main', playback);
 
@@ -57,7 +63,7 @@ describe('NowPlayingPublisherService logging', () => {
     expect(messages).toContain('Now-playing publish succeeded for main/spritz');
     expect(messages).toContain('Test song');
     expect(messages).not.toContain('secret-token');
-    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+    expect(JSON.parse(transport.sent[0].body)).toMatchObject({
       artworkUrl: 'https://example.test/cover.jpg',
     });
   });
@@ -83,9 +89,7 @@ describe('NowPlayingPublisherService logging', () => {
     const service = new NowPlayingPublisherService(
       prisma as unknown as PrismaService,
     );
-    const fetchSpy = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(null, { status: 204 }));
+    const transport = deliver(service, 'spritz.example.test');
 
     await service.publishPlayback('main', { ...playback, coverUrl: '' });
 
@@ -93,7 +97,7 @@ describe('NowPlayingPublisherService logging', () => {
       where: { audioUrl: playback.audioUrl },
       select: { coverUrl: true },
     });
-    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+    expect(JSON.parse(transport.sent[0].body)).toMatchObject({
       artworkUrl: 'https://example.test/catalog-cover.jpg',
     });
   });

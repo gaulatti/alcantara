@@ -18,6 +18,7 @@ export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
 export { ModoItalianoBracket } from './ModoItalianoBracket';
 export { ModoItalianoPodcastPlayer } from './ModoItalianoPodcastPlayer';
 export { ModoItalianoGiorgiaPodcastPlayer } from './ModoItalianoGiorgiaPodcastPlayer';
+export { ModoItalianoGiorgiaArtistBumper } from './ModoItalianoGiorgiaArtistBumper';
 export { CronicaChyron } from './CronicaChyron';
 export { CronicaBackground } from './CronicaBackground';
 export { CronicaReiteramos } from './CronicaReiteramos';

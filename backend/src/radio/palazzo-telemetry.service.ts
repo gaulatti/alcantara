@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
   Logger,
@@ -14,12 +15,23 @@ import {
   type PalazzoInstanceValidation,
 } from './palazzo-program.client';
 import type {
+  PalazzoPlaybackState,
   PalazzoProgramStatus,
   PalazzoProgramType,
+  PalazzoUnavailableReason,
+  PalazzoUnavailableStatus,
 } from './palazzo-contract';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 
 const RADIO_PROGRAM_TYPES = ['radio', 'both'];
+
+const UNAVAILABLE_DETAIL: Record<PalazzoUnavailableReason, string> = {
+  'not-configured': 'No Palazzo URL is configured for this program',
+  disabled: 'Radio is disabled in this program’s settings',
+  'url-rejected': 'The configured Palazzo URL is not on the allowlist',
+  'deploy-candidate':
+    'This is a deploy candidate: Palazzo telemetry is not started',
+};
 
 /**
  * Supervises one Palazzo telemetry client per enabled radio-capable program.
@@ -40,6 +52,8 @@ export class PalazzoRadioTelemetryService
   private readonly statusByProgram = new Map<string, PalazzoProgramStatus>();
   private readonly ownerByInstance = new Map<string, string>();
   private readonly instanceByProgram = new Map<string, string>();
+  /** Programs whose Palazzo URL the allowlist rejected at start (#257). */
+  private readonly rejectedPrograms = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,6 +65,10 @@ export class PalazzoRadioTelemetryService
 
   async onModuleInit(): Promise<void> {
     this.engine.setPalazzoTelemetry(this);
+    if (isDeployCandidate()) {
+      this.logger.log('Deploy candidate: no Palazzo telemetry is started');
+      return;
+    }
     await this.startAll();
   }
 
@@ -59,6 +77,7 @@ export class PalazzoRadioTelemetryService
       client.stop();
     }
     this.clients.clear();
+    this.rejectedPrograms.clear();
     this.ownerByInstance.clear();
     this.instanceByProgram.clear();
   }
@@ -87,6 +106,7 @@ export class PalazzoRadioTelemetryService
   /** Called when radio settings change so URL/enablement is honored promptly. */
   async handleRadioSettingsChanged(programId: string): Promise<void> {
     this.stopClient(programId);
+    this.rejectedPrograms.delete(programId);
     const setting = await this.prisma.radioSettings.findFirst({
       where: {
         enabled: true,
@@ -118,9 +138,65 @@ export class PalazzoRadioTelemetryService
     );
   }
 
+  /** Palazzo's current state for the program, on request (#230). */
+  async currentState(programId: string): Promise<PalazzoPlaybackState | null> {
+    const client = this.clients.get(programId);
+    return client ? client.currentState() : null;
+  }
+
   getStatus(programId: string): PalazzoProgramStatus | null {
     const client = this.clients.get(programId);
     return client ? client.getStatus() : null;
+  }
+
+  /**
+   * The status the console reads: the live one when a client exists, else an
+   * `unavailable` status that says why (#257). One settings read, only when
+   * there is no client.
+   */
+  async getStatusWithReason(
+    programId: string,
+  ): Promise<PalazzoProgramStatus | PalazzoUnavailableStatus | null> {
+    const client = this.clients.get(programId);
+    if (client) return client.getStatus();
+    // Only a program of a radio type has an engine to be unavailable. Any
+    // other program (a TV program, or none) keeps answering null, as before.
+    const state = await this.prisma.programState.findUnique({
+      where: { programId },
+      select: { type: true },
+    });
+    if (!state || !RADIO_PROGRAM_TYPES.includes(state.type)) return null;
+    const programType = state.type as PalazzoProgramType;
+    let reason: PalazzoUnavailableReason | undefined;
+    if (isDeployCandidate()) {
+      reason = 'deploy-candidate';
+    } else if (this.rejectedPrograms.has(programId)) {
+      reason = 'url-rejected';
+    } else {
+      const setting = await this.prisma.radioSettings.findFirst({
+        where: { programState: { programId } },
+        select: { enabled: true, palazzoUrl: true },
+      });
+      if (!setting || !setting.palazzoUrl) {
+        reason = 'not-configured';
+      } else if (!setting.enabled) {
+        reason = 'disabled';
+      }
+    }
+    return {
+      programId,
+      programType,
+      palazzoUrl: '',
+      instanceId: null,
+      connection: 'unavailable',
+      lastEventAt: null,
+      lastSnapshotAt: null,
+      degraded: false,
+      detail: reason
+        ? UNAVAILABLE_DETAIL[reason]
+        : 'Palazzo telemetry has not started for this program',
+      ...(reason ? { reason } : {}),
+    };
   }
 
   listStatuses(): PalazzoProgramStatus[] {
@@ -138,8 +214,11 @@ export class PalazzoRadioTelemetryService
       approvedUrl = this.machineClient.validateBaseUrl(palazzoUrl);
     } catch {
       this.logger.error(`Palazzo URL configuration rejected for ${programId}`);
+      this.rejectedPrograms.add(programId);
+      this.metrics.recordPalazzoConfigRejected();
       return;
     }
+    this.rejectedPrograms.delete(programId);
     this.engine.registerRadioProgram(programId);
     const client = new PalazzoProgramClient({
       programId,

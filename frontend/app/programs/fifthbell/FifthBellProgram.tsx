@@ -597,20 +597,23 @@ export default function FifthBellProgram({ programId = 'fifthbell', embedded = f
     onPlaylistLoop: handlePlaylistLoop
   });
 
+  // The <audio> element mounts only after data has loaded (see the dataLoaded branch
+  // below), so these effects must wait for it: running them on the first render finds
+  // audioRef.current null and silently skips the preload and the initial gain.
   useEffect(() => {
-    if (!audioRef.current || audioInitialized.current) {
+    if (!dataLoaded || !audioRef.current || audioInitialized.current) {
       return;
     }
 
     audioRef.current.load();
     audioInitialized.current = true;
-  }, []);
+  }, [dataLoaded]);
 
   useEffect(() => {
-    if (!audioRef.current) return;
+    if (!dataLoaded || !audioRef.current) return;
     audioRef.current.volume = Math.max(0, Math.min(1, masterGain));
     audioRef.current.muted = masterGain <= 0.0001;
-  }, [masterGain]);
+  }, [dataLoaded, masterGain]);
 
   useEffect(() => {
     if (!config.audioCueEnabled) {

@@ -37,6 +37,7 @@ describe('ProgramController template registration', () => {
       'fifthbell',
       'tv',
       registration,
+      undefined,
     );
   });
 

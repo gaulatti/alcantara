@@ -1,13 +1,30 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import {
+  BadGatewayException,
   BadRequestException,
+  GatewayTimeoutException,
   Injectable,
   InternalServerErrorException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { parseBuffer } from 'music-metadata';
 import { randomUUID } from 'node:crypto';
-import { extname } from 'node:path';
+import { basename, extname } from 'node:path';
+import { Writable } from 'node:stream';
+import {
+  localMediaEnvironment,
+  readLocalMediaPublicBase,
+  readMediaS3Endpoint,
+} from '../config/local-media';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { isAudioMediaType } from '../outbound/media-types';
+import {
+  OUTBOUND_REFUSAL_MESSAGES,
+  safeFetch,
+  type OutboundRefusal,
+  type SafeFetchDeps,
+} from '../outbound/safe-fetch';
 
 type UploadKind = 'instant' | 'background' | 'artwork' | 'song' | 'stinger';
 
@@ -32,10 +49,23 @@ export interface UploadResult {
   };
 }
 
-const MAX_INSTANT_BYTES = 100 * 1024 * 1024;
+const MAX_INSTANT_BYTES = 200 * 1024 * 1024;
 const MAX_ARTWORK_BYTES = 10 * 1024 * 1024;
-const MAX_SONG_BYTES = 100 * 1024 * 1024;
+const MAX_SONG_BYTES = 200 * 1024 * 1024;
 const MAX_STINGER_BYTES = 50 * 1024 * 1024;
+/** An import is read under the upload limit of its kind (the audio limit is the largest). */
+export const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
+export const IMPORT_TIMEOUT_MS = 120_000;
+export const IMPORT_MAX_REDIRECTS = 3;
+/** The kinds a URL may be imported as: every kind the console's upload routes take. */
+export const IMPORT_KINDS = [
+  'instant',
+  'background',
+  'song',
+  'artwork',
+  'stinger',
+] as const;
+export type ImportKind = (typeof IMPORT_KINDS)[number];
 
 const INSTANT_MIME_TYPES = new Set<string>([
   'audio/aac',
@@ -89,13 +119,46 @@ const ARTWORK_EXTENSIONS = new Set<string>([
   '.webp',
 ]);
 
+/**
+ * What the fetch of an import accepts, per kind: the response content type and
+ * the byte cap are the upload route's own (audio 200 MiB, artwork an image of
+ * at most 10 MiB, a stinger video/webm of at most 50 MiB). The bytes then go
+ * through upload(), whose type, extension and size checks are the console's.
+ */
+const IMPORT_POLICY: Record<
+  ImportKind,
+  { maxBytes: number; allowContentType: (mediaType: string) => boolean }
+> = {
+  instant: { maxBytes: MAX_IMPORT_BYTES, allowContentType: isAudioMediaType },
+  background: {
+    maxBytes: MAX_IMPORT_BYTES,
+    allowContentType: isAudioMediaType,
+  },
+  song: { maxBytes: MAX_IMPORT_BYTES, allowContentType: isAudioMediaType },
+  artwork: {
+    maxBytes: MAX_ARTWORK_BYTES,
+    allowContentType: (mediaType) => ARTWORK_MIME_TYPES.has(mediaType),
+  },
+  stinger: {
+    maxBytes: MAX_STINGER_BYTES,
+    allowContentType: (mediaType) => STINGER_MIME_TYPES.has(mediaType),
+  },
+};
+
 @Injectable()
 export class UploadsService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly region: string;
+  private readonly localPublicBase: string | undefined;
 
-  constructor(private readonly configService: ConfigService) {
+  /** Test seam: the resolver and transport the outbound policy uses (real by default). */
+  outboundDeps: Omit<SafeFetchDeps, 'record'> = {};
+
+  constructor(
+    private readonly configService: ConfigService,
+    @Optional() private readonly metrics?: ManagedMetricsService,
+  ) {
     this.bucket = (
       this.configService.get<string>('MEDIA_S3_BUCKET') ?? ''
     ).trim();
@@ -106,8 +169,12 @@ export class UploadsService {
         'us-east-1'
       ).trim() || 'us-east-1';
 
+    const localMedia = localMediaEnvironment(this.configService);
+    const endpoint = readMediaS3Endpoint(localMedia);
+    this.localPublicBase = readLocalMediaPublicBase(localMedia);
     this.s3 = new S3Client({
       region: this.region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
     });
   }
 
@@ -147,6 +214,74 @@ export class UploadsService {
       sizeBytes: payload.buffer.length,
       metadata,
     };
+  }
+
+  /**
+   * Fetches a file from an address someone supplied and stores it as the same
+   * kind of upload the console's multipart routes store. The fetch is the
+   * outbound-request policy's (https only, public addresses only, every
+   * redirect checked again, the content type and byte cap of the kind in
+   * IMPORT_POLICY, one deadline), streamed into memory under the cap; the bytes then go
+   * through upload(), so type, size and extension are validated as for a file
+   * the operator sends. The address is never stored, logged or echoed: a
+   * refusal is the policy's plain message.
+   */
+  async importFromUrl(payload: {
+    kind: ImportKind;
+    url: string;
+  }): Promise<UploadResult> {
+    const chunks: Buffer[] = [];
+    const sink = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        chunks.push(chunk);
+        done();
+      },
+    });
+    let contentType: string;
+    try {
+      ({ contentType } = await safeFetch(
+        payload.url.trim(),
+        {
+          path: 'media_import',
+          maxBytes: IMPORT_POLICY[payload.kind].maxBytes,
+          timeoutMs: IMPORT_TIMEOUT_MS,
+          maxRedirects: IMPORT_MAX_REDIRECTS,
+          allowContentType: IMPORT_POLICY[payload.kind].allowContentType,
+          bodySink: sink,
+        },
+        {
+          ...this.outboundDeps,
+          record: (path, result) =>
+            this.metrics?.recordOutboundFetch(path, result),
+        },
+      ));
+    } catch (error) {
+      sink.destroy();
+      // safeFetch only ever throws an OutboundRefusal.
+      const { reason } = error as OutboundRefusal;
+      const message = OUTBOUND_REFUSAL_MESSAGES[reason];
+      if (reason === 'timeout') throw new GatewayTimeoutException(message);
+      if (reason === 'http_status' || reason === 'network')
+        throw new BadGatewayException(message);
+      throw new BadRequestException(message);
+    }
+    return this.upload({
+      kind: payload.kind,
+      buffer: Buffer.concat(chunks),
+      mimeType: contentType,
+      originalFilename: this.importedFilename(payload.url),
+    });
+  }
+
+  /** The last path segment of the address, for the stored name and extension only. */
+  private importedFilename(raw: string): string {
+    try {
+      return (
+        basename(decodeURIComponent(new URL(raw.trim()).pathname)) || 'import'
+      );
+    } catch {
+      return 'import';
+    }
   }
 
   private assertConfigured() {
@@ -230,6 +365,10 @@ export class UploadsService {
       .split('/')
       .map((part) => encodeURIComponent(part))
       .join('/');
+
+    if (this.localPublicBase) {
+      return `${this.localPublicBase}/${encodedKey}`;
+    }
 
     if (this.region === 'us-east-1') {
       return `https://${this.bucket}.s3.amazonaws.com/${encodedKey}`;

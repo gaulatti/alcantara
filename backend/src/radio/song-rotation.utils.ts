@@ -155,7 +155,7 @@ export function selectHighRotationCandidate(
     );
   };
   eligible.sort((a, b) => lastPlayedAt(a) - lastPlayedAt(b));
-  return { song: eligible[0] ?? null, status: 'selected' };
+  return { song: eligible[0], status: 'selected' };
 }
 
 export function recordHighRotationPlay(

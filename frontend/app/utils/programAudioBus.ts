@@ -1,5 +1,6 @@
 import { interpolateGainLog } from './audioTaper';
 import { apiUrl } from './apiBaseUrl';
+import { canRouteMediaThroughWebAudio } from './mediaWebAudioAccess';
 
 export interface ProgramAudioBusTrack {
   token: string;
@@ -42,11 +43,13 @@ interface ProgramAudioBusState {
   endedToken: string;
   isPlaying: boolean;
   transitionVersion: number;
+  /** Token of the track a fade is currently switching to, or '' when no switch is in flight. */
+  transitionTargetToken: string;
   listeners: Set<Listener>;
   meterContext: AudioContext | null;
   meterSource: AudioNode | null;
   meterAnalyser: AnalyserNode | null;
-  meterBuffer: Float32Array | null;
+  meterBuffer: Float32Array<ArrayBuffer> | null;
   lastSignalLevel: number;
   meterUsesMediaElementFallback: boolean;
   meterEnvelopeUrl: string;
@@ -75,6 +78,7 @@ function createProgramAudioBusState(): ProgramAudioBusState {
     endedToken: '',
     isPlaying: false,
     transitionVersion: 0,
+    transitionTargetToken: '',
     listeners: new Set<Listener>(),
     meterContext: null,
     meterSource: null,
@@ -215,7 +219,7 @@ function setupAudioMeter(state: ProgramAudioBusState, audio: HTMLAudioElement): 
     state.meterContext = context;
     const attachFromStream = (): boolean => {
       const stream =
-        audio.captureStream?.() ||
+        (audio as HTMLAudioElement & { captureStream?: () => MediaStream }).captureStream?.() ||
         (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.();
       if (!stream) {
         return false;
@@ -234,7 +238,9 @@ function setupAudioMeter(state: ProgramAudioBusState, audio: HTMLAudioElement): 
     };
 
     const attachFromMediaElement = (): boolean => {
-      if (context.state !== 'running') {
+      // Web Audio cannot read a cross-origin source loaded without CORS: routing it would mute the
+      // element and play silence. It keeps playing on its own, without a level.
+      if (context.state !== 'running' || !canRouteMediaThroughWebAudio(audio)) {
         return false;
       }
       const source = context.createMediaElementSource(audio);
@@ -402,6 +408,21 @@ function resolveEnvelopeFetchUrl(audioUrl: string): string {
   }
 }
 
+let envelopeSkipWarned = false;
+
+/**
+ * Logs, once per page, that the loudness envelope was skipped because the
+ * browser refused an AudioContext. The message is fixed and carries no track
+ * URL. Only the bus's level snapshot is affected; the song plays as usual.
+ */
+function warnEnvelopeSkippedOnce(): void {
+  if (envelopeSkipWarned) {
+    return;
+  }
+  envelopeSkipWarned = true;
+  console.warn('Program audio level envelope skipped: the browser refused an AudioContext.');
+}
+
 function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: string): void {
   const normalizedUrl = typeof trackAudioUrl === 'string' ? trackAudioUrl.trim() : '';
   state.meterEnvelopeUrl = normalizedUrl;
@@ -414,8 +435,19 @@ function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: str
   if (!AudioContextCtor) {
     return;
   }
-  const context = state.meterContext ?? new AudioContextCtor();
-  state.meterContext = context;
+  let context = state.meterContext;
+  if (!context) {
+    // setupAudioMeter could not create one either: the browser refused an
+    // AudioContext (NotSupportedError). The envelope is optional; the track
+    // still plays.
+    try {
+      context = new AudioContextCtor();
+    } catch {
+      warnEnvelopeSkippedOnce();
+      return;
+    }
+    state.meterContext = context;
+  }
 
   void getMeterEnvelope(normalizedUrl, context).then((envelope) => {
     if (state.meterEnvelopeUrl !== normalizedUrl) {
@@ -545,6 +577,7 @@ function replaceTrack(state: ProgramAudioBusState, track: ProgramAudioBusTrack):
 async function transitionToTrackWithFade(state: ProgramAudioBusState, track: ProgramAudioBusTrack): Promise<void> {
   state.transitionVersion += 1;
   const version = state.transitionVersion;
+  state.transitionTargetToken = track.token;
   const outgoingAudio = state.activeAudio;
 
   if (outgoingAudio && !outgoingAudio.ended) {
@@ -565,6 +598,7 @@ async function transitionToTrackWithFade(state: ProgramAudioBusState, track: Pro
   }
 
   state.activeTrack = track;
+  state.transitionTargetToken = '';
   state.progress = 0;
   state.endedToken = '';
   state.isPlaying = false;
@@ -636,6 +670,13 @@ export function ensureProgramAudioBusTrack(programId: string, track: ProgramAudi
     return;
   }
 
+  // A switch to this track is already fading the current one out. Callers ask again on every state
+  // update; restarting the fade each time cancelled the switch before it could finish, so the new song
+  // never started unless the current one was stopped first.
+  if (state.transitionTargetToken === normalizedTrack.token) {
+    return;
+  }
+
   const hasRunningTrack = state.activeTrack && state.activeAudio && !state.activeAudio.ended && !state.activeAudio.paused;
   if (hasRunningTrack) {
     void transitionToTrackWithFade(state, normalizedTrack);
@@ -643,6 +684,7 @@ export function ensureProgramAudioBusTrack(programId: string, track: ProgramAudi
   }
 
   state.transitionVersion += 1;
+  state.transitionTargetToken = '';
   replaceTrack(state, normalizedTrack);
 }
 
@@ -653,6 +695,7 @@ export function stopProgramAudioBus(programId: string): void {
   }
 
   state.transitionVersion += 1;
+  state.transitionTargetToken = '';
 
   if (state.activeAudio) {
     releaseAudioMeter(state);

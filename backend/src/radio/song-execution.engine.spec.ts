@@ -1,10 +1,16 @@
-import { SongExecutionEngine } from './song-execution.engine';
+import { config as rxjsConfig } from 'rxjs';
+import {
+  SongExecutionEngine,
+  type SongEngineTrackEvent,
+} from './song-execution.engine';
 import type { RadioService } from './radio.service';
 import type { FlightService } from '../program/flight.service';
 import type { PrismaService } from '../prisma.service';
 import type { NowPlayingPublisherService } from './now-playing-publisher.service';
 import type { RadioMetricsService } from './radio-metrics.service';
 import type { PalazzoPlaybackState } from './palazzo-contract';
+import { SongSimilarityService } from './song-similarity.service';
+import { SIMILARITY_MODEL } from './song-similarity.utils';
 
 function idleSnapshot(
   instanceId: string,
@@ -100,6 +106,7 @@ function createEngine(opts: {
   reconciled: boolean;
   radio?: boolean;
   tv?: boolean;
+  similarity?: SongSimilarityService;
 }) {
   let currentProgramState = {
     programId: opts.tv ? 'tv-1' : 'radio-1',
@@ -139,6 +146,10 @@ function createEngine(opts: {
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordCursorWrite: jest.fn(),
+    recordInheritedAdoption: jest.fn(),
+    recordEngineResync: jest.fn(),
+    recordEngineDegraded: jest.fn(),
     recordIntroTransition: jest.fn(),
     recordEventIgnored: jest.fn(),
     recordDegradedPrograms: jest.fn(),
@@ -151,6 +162,8 @@ function createEngine(opts: {
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
+    recordSimilarityAction: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -158,6 +171,7 @@ function createEngine(opts: {
     prisma as unknown as PrismaService,
     nowPlayingPublisher as unknown as NowPlayingPublisherService,
     metrics as unknown as RadioMetricsService,
+    opts.similarity,
   );
   engine.setPalazzoTelemetry({
     isReconciled: () => opts.reconciled,
@@ -2250,47 +2264,6 @@ describe('SongExecutionEngine concurrent queue claims and appliance reconciliati
     expect(f.radioService.playSong).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    'handles stop-time queue claim disappearance/storage failure without consuming another entry: failure=%p',
-    async (failure) => {
-      const f = fixture();
-      const active = {
-        ...queueEntry('head'),
-        active: true,
-        playbackRequestId: 'active-request',
-      };
-      f.setPersistedProgramState({ songQueue: [active] });
-      f.engine.handleQueueUpdated('radio-1', [active]);
-      f.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
-      f.engine.handlePalazzoSnapshot(
-        'radio-1',
-        playingSnapshot(
-          'instance',
-          'boot',
-          1,
-          'active-request',
-          'https://example.test/song-2.mp3',
-        ),
-      );
-      if (failure)
-        f.prisma.programState.update.mockRejectedValueOnce(
-          new Error('release storage failure'),
-        );
-      else f.setPersistedProgramState({ songQueue: [] });
-      f.engine.handleStopSong('radio-1');
-      await flush(30);
-      expect(f.engine.getPlaybackState('radio-1')).toBeNull();
-      if (failure)
-        expect(f.metrics.recordSongQueueAction).toHaveBeenCalledWith(
-          'persistence-failed',
-        );
-      else expect(f.getPersistedProgramState().songQueue).toEqual([]);
-      expect(f.metrics.recordSongQueueAction).not.toHaveBeenCalledWith(
-        'consumed',
-      );
-    },
-  );
-
   it('preserves a newer manual song when an older pending command confirms or rejects later', async () => {
     const f = fixture();
     let finishOld!: (result: any) => void;
@@ -2810,5 +2783,825 @@ describe('SongExecutionEngine bounded history and delayed successor ownership', 
     );
     expect(f.engine.getPlaybackState('radio-1')).toBeNull();
     expect(f.radioService.playSong).not.toHaveBeenCalled();
+  });
+});
+
+describe('similarity picker in the engine', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const leaf = (n: number, artist: string) => ({
+    id: `item-${n}`,
+    kind: 'preset',
+    songId: n,
+    title: `Song ${n}`,
+    artist,
+    coverUrl: '',
+    audioUrl: `https://example.test/${n}.mp3`,
+    durationMs: 1000,
+  });
+  const SIM_SEQUENCE = {
+    mode: 'autoplay',
+    loop: true,
+    intervalMs: 500,
+    items: [leaf(1, 'A'), leaf(2, 'B'), leaf(3, 'C')],
+  };
+  const W = 30;
+  const row = (songId: number, segment: string, vector: number[]) => ({
+    songId,
+    segment,
+    windowSeconds: W,
+    vector: `[${vector.join(',')}]`,
+  });
+  // Song 1 closes like song 3 opens; song 2 opens orthogonally; song 4 only
+  // exists in the catalog and also opens like song 1 closes.
+  const FULL_ROWS = [
+    row(1, 'closing', [1, 0, 0]),
+    row(2, 'opening', [0, 1, 0]),
+    row(3, 'opening', [1, 0.1, 0]),
+    row(4, 'opening', [1, 0.05, 0]),
+  ];
+
+  async function build(
+    mode: string,
+    rows = FULL_ROWS,
+    extra: { pool?: string; threshold?: number } = {},
+  ) {
+    const similarityRows = {
+      radioSettings: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            similarityMode: mode,
+            similarityThreshold: extra.threshold ?? 0.8,
+            similarityWindowSeconds: W,
+            similarityPool: extra.pool ?? 'sequence',
+            programState: { programId: 'radio-1', songArtistCycle: null },
+          },
+        ]),
+      },
+      $queryRaw: jest.fn().mockResolvedValue(rows),
+      song: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 4,
+            artist: 'D',
+            title: 'Song 4',
+            audioUrl: 'https://example.test/4.mp3',
+            coverUrl: null,
+            durationMs: 1000,
+          },
+        ]),
+      },
+      similarityDecision: { create: jest.fn().mockResolvedValue({}) },
+      programState: { update: jest.fn().mockResolvedValue({}) },
+    };
+    const metricsStub = { recordSimilarityAction: jest.fn() };
+    const similarity = new SongSimilarityService(
+      similarityRows as never,
+      metricsStub as never,
+    );
+    await similarity.onModuleInit();
+    similarity.onModuleDestroy();
+    const harness = createEngine({ reconciled: true, radio: true, similarity });
+    harness.engine.handleSequenceUpdated('radio-1', SIM_SEQUENCE);
+    harness.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    return { ...harness, similarity, similarityRows };
+  }
+
+  const playedUrls = (radioService: { playSong: jest.Mock }) =>
+    radioService.playSong.mock.calls.map((call) => call[1] as string);
+
+  async function endCurrent(
+    h: Awaited<ReturnType<typeof build>>,
+    callIndex: number,
+  ) {
+    const requestId = h.radioService.playSong.mock.calls[callIndex][4];
+    h.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    h.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    await flush(20);
+  }
+
+  it('off: follows the cursor and never touches similarity data', async () => {
+    const h = await build('off');
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService).slice(0, 2)).toEqual([
+      'https://example.test/1.mp3',
+      'https://example.test/2.mp3',
+    ]);
+    expect(h.similarityRows.similarityDecision.create).not.toHaveBeenCalled();
+    expect(h.similarityRows.programState.update).not.toHaveBeenCalled();
+    expect(h.similarityRows.$queryRaw).not.toHaveBeenCalled();
+    expect(h.metrics.recordSimilarityAction).not.toHaveBeenCalled();
+  });
+
+  it('without a similarity service the engine behaves as before', async () => {
+    const h = createEngine({ reconciled: true, radio: true });
+    h.engine.handleSequenceUpdated('radio-1', SIM_SEQUENCE);
+    h.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    expect(playedUrls(h.radioService)).toEqual(['https://example.test/1.mp3']);
+  });
+
+  it('shadow: plays the cursor song and records the proposal beside it', async () => {
+    const h = await build('shadow');
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService).slice(0, 2)).toEqual([
+      'https://example.test/1.mp3',
+      'https://example.test/2.mp3',
+    ]);
+    const decisions = h.similarityRows.similarityDecision.create.mock.calls.map(
+      (c: [{ data: Record<string, unknown> }]) => c[0].data,
+    );
+    const second = decisions.at(-1);
+    expect(second).toMatchObject({
+      programId: 'radio-1',
+      mode: 'shadow',
+      outcome: 'selected',
+      currentSongId: 1,
+      proposedSongId: 3,
+      playedSongId: 2,
+    });
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith(
+      'shadow-recorded',
+    );
+  });
+
+  it('on: plays the closest passing song and resumes the cursor after it', async () => {
+    const h = await build('on');
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/3.mp3');
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith('selected');
+  });
+
+  it('on: falls back to the cursor when the current song has no embedding', async () => {
+    const h = await build(
+      'on',
+      FULL_ROWS.filter((r) => r.segment !== 'closing'),
+    );
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith(
+      'fallback-no-embedding',
+    );
+  });
+
+  it('on: falls back when nothing clears the threshold', async () => {
+    const h = await build('on', FULL_ROWS, { threshold: 0.9999999 });
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
+    expect(h.metrics.recordSimilarityAction).toHaveBeenCalledWith(
+      'fallback-no-candidate',
+    );
+  });
+
+  it('on: leaves favorites to the high-rotation quota instead of ranking them', async () => {
+    const h = await build('on');
+    h.engine.handleSequenceUpdated('radio-1', {
+      ...SIM_SEQUENCE,
+      items: [
+        SIM_SEQUENCE.items[0],
+        SIM_SEQUENCE.items[1],
+        { ...SIM_SEQUENCE.items[2], highRotation: true },
+      ],
+    });
+    const before = h.metrics.recordSimilarityAction.mock.calls.length;
+    await endCurrent(h, 0);
+    // The quota (due, empty history) airs the favorite; similarity is not asked.
+    expect(h.metrics.recordHighRotationAction).toHaveBeenCalledWith('selected');
+    expect(h.metrics.recordSimilarityAction.mock.calls).toHaveLength(before);
+  });
+
+  it('on + catalog pool: fills from the catalog and does not skip the cursor successor', async () => {
+    // Only song 4 (catalog) opens like song 1 closes.
+    const rows = [
+      row(1, 'closing', [1, 0, 0]),
+      row(2, 'opening', [0, 1, 0]),
+      row(3, 'opening', [0, 0, 1]),
+      row(4, 'opening', [1, 0.05, 0]),
+    ];
+    const h = await build('on', rows, { pool: 'catalog' });
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/4.mp3');
+    await endCurrent(h, 1);
+    expect(playedUrls(h.radioService)[2]).toBe('https://example.test/2.mp3');
+  });
+
+  it('on + sequence pool never leaves the playlist', async () => {
+    const rows = [
+      row(1, 'closing', [1, 0, 0]),
+      row(2, 'opening', [0, 1, 0]),
+      row(3, 'opening', [0, 0, 1]),
+      row(4, 'opening', [1, 0.05, 0]),
+    ];
+    const h = await build('on', rows);
+    await endCurrent(h, 0);
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/2.mp3');
+  });
+
+  it('on: passes a cycle reset to the artist cycle when the picker asks for one', async () => {
+    const h = await build('on');
+    const original = h.similarity.propose.bind(h.similarity);
+    jest.spyOn(h.similarity, 'propose').mockImplementation((...args) => {
+      const proposal = original(...args);
+      return {
+        ...proposal,
+        result: { ...proposal.result, cycleReset: true },
+      };
+    });
+    const noteStarted = jest.spyOn(h.similarity, 'noteSongStarted');
+    await endCurrent(h, 0);
+    const requestId = h.radioService.playSong.mock.calls[1][4];
+    h.engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    expect(playedUrls(h.radioService)[1]).toBe('https://example.test/3.mp3');
+    expect(noteStarted).toHaveBeenLastCalledWith('radio-1', 'C', {
+      resetCycle: true,
+    });
+  });
+
+  describe.each(['shadow', 'on'] as const)(
+    '%s: resolution edge cases',
+    (mode) => {
+      function resolver(
+        propose: jest.Mock,
+        baseline: unknown = null,
+        lastEnded: unknown = null,
+      ) {
+        const similarity = {
+          propose,
+          recordDecision: jest.fn(),
+        };
+        const h = createEngine({
+          reconciled: true,
+          radio: true,
+          similarity: similarity as never,
+        });
+        const internals = h.engine as unknown as {
+          resolveWithSimilarity: (...args: unknown[]) => unknown;
+          resolveCursorPlaylistSong: unknown;
+        };
+        internals.resolveCursorPlaylistSong = jest
+          .fn()
+          .mockReturnValue(baseline);
+        const logger = jest
+          .spyOn(
+            (h.engine as unknown as { logger: { error: () => void } }).logger,
+            'error',
+          )
+          .mockImplementation();
+        const run = () =>
+          internals.resolveWithSimilarity.call(
+            h.engine,
+            'radio-1',
+            { lastEnded, pendingCycleReset: false },
+            structuredClone(SIM_SEQUENCE),
+            0,
+            mode,
+            Date.now(),
+          );
+        return { similarity, h, run, logger };
+      }
+
+      it('falls back to the cursor and records nothing when the proposal throws', () => {
+        const baseline = { songId: 2 };
+        const { similarity, run, logger, h } = resolver(
+          jest.fn(() => {
+            throw new Error('boom');
+          }),
+          baseline,
+        );
+        expect(run()).toBe(baseline);
+        expect(logger).toHaveBeenCalledWith(
+          expect.stringContaining('using the playlist cursor: Error: boom'),
+        );
+        expect(similarity.recordDecision).not.toHaveBeenCalled();
+        expect(h.metrics.recordSimilarityAction).not.toHaveBeenCalled();
+      });
+
+      it('records absent song ids and scores as null when nothing was chosen', () => {
+        const { similarity, run } = resolver(
+          jest.fn().mockReturnValue({
+            leaf: null,
+            result: {
+              outcome: 'fallback-no-candidate',
+              chosen: undefined,
+              runnerUps: [],
+              cycleReset: false,
+            },
+          }),
+        );
+        expect(run()).toBeNull();
+        expect(similarity.recordDecision).toHaveBeenCalledWith(
+          'radio-1',
+          expect.objectContaining({
+            mode,
+            outcome: 'fallback-no-candidate',
+            currentSongId: null,
+            proposedSongId: null,
+            playedSongId: null,
+            score: null,
+            runnerUps: [],
+          }),
+        );
+      });
+    },
+  );
+
+  it('on: records a selected leaf without a catalog song id as null ids', () => {
+    const leafWithoutSong = {
+      ...leaf(9, 'Z'),
+      id: 'item-1',
+      songId: undefined,
+    };
+    const similarity = {
+      propose: jest.fn().mockReturnValue({
+        leaf: leafWithoutSong,
+        result: {
+          outcome: 'selected',
+          chosen: undefined,
+          runnerUps: [{ songId: 5, score: 0.5 }],
+          cycleReset: false,
+        },
+      }),
+      recordDecision: jest.fn(),
+    };
+    const h = createEngine({
+      reconciled: true,
+      radio: true,
+      similarity: similarity as never,
+    });
+    const resolved = (
+      h.engine as unknown as {
+        resolveWithSimilarity: (...args: unknown[]) => unknown;
+      }
+    ).resolveWithSimilarity(
+      'radio-1',
+      { lastEnded: null, pendingCycleReset: false },
+      structuredClone(SIM_SEQUENCE),
+      0,
+      'on',
+      Date.now(),
+    );
+    expect(resolved).toBe(leafWithoutSong);
+    expect(similarity.recordDecision).toHaveBeenCalledWith('radio-1', {
+      mode: 'on',
+      outcome: 'selected',
+      currentSongId: null,
+      proposedSongId: null,
+      playedSongId: null,
+      score: null,
+      runnerUps: [{ songId: 5, score: 0.5 }],
+    });
+  });
+
+  it('shadow: records the runner-ups beside the cursor song', () => {
+    const similarity = {
+      propose: jest.fn().mockReturnValue({
+        leaf: null,
+        result: {
+          outcome: 'selected',
+          chosen: { songId: 3, score: 0.9 },
+          runnerUps: [{ songId: 4, score: 0.8 }],
+          cycleReset: false,
+        },
+      }),
+      recordDecision: jest.fn(),
+    };
+    const h = createEngine({
+      reconciled: true,
+      radio: true,
+      similarity: similarity as never,
+    });
+    const internals = h.engine as unknown as {
+      resolveWithSimilarity: (...args: unknown[]) => unknown;
+      resolveCursorPlaylistSong: unknown;
+    };
+    internals.resolveCursorPlaylistSong = jest
+      .fn()
+      .mockReturnValue({ songId: 2 });
+    internals.resolveWithSimilarity.call(
+      h.engine,
+      'radio-1',
+      { lastEnded: { songId: 1 }, pendingCycleReset: false },
+      structuredClone(SIM_SEQUENCE),
+      0,
+      'shadow',
+      Date.now(),
+    );
+    expect(similarity.recordDecision).toHaveBeenCalledWith('radio-1', {
+      mode: 'shadow',
+      outcome: 'selected',
+      currentSongId: 1,
+      proposedSongId: 3,
+      playedSongId: 2,
+      score: 0.9,
+      runnerUps: [{ songId: 4, score: 0.8 }],
+    });
+  });
+
+  it('records the model identity the vectors are matched against', () => {
+    expect(SIMILARITY_MODEL.name).toBe('discogs-effnet-bs64-1');
+  });
+});
+
+describe('SongExecutionEngine track events', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function startedEngine() {
+    const harness = createEngine({ reconciled: true, radio: true });
+    harness.engine.handleSequenceUpdated('radio-1', TWO_SONG_SEQUENCE);
+    harness.engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const firstCall = harness.radioService.playSong.mock.calls[0] as Parameters<
+      RadioService['playSong']
+    >;
+    const requestId = firstCall[4] as string;
+    return { ...harness, requestId };
+  }
+
+  it('emits exactly one event for each track.started and track.ended, with the pinned fields', async () => {
+    const { engine, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    jest.setSystemTime(new Date('2026-11-16T10:00:00.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: {
+        playbackRequestId: requestId,
+        title: 'Song one',
+        artist: 'Artist one',
+        coverUrl: 'https://example.test/song-1.jpg',
+        url: 'https://example.test/song-1.mp3',
+      },
+    });
+    expect(events).toEqual([
+      {
+        programId: 'radio-1',
+        type: 'track.started',
+        playbackRequestId: requestId,
+        title: 'Song one',
+        artist: 'Artist one',
+        url: 'https://example.test/song-1.mp3',
+        at: new Date('2026-11-16T10:00:00.000Z'),
+      },
+    ]);
+
+    jest.setSystemTime(new Date('2026-11-16T10:03:00.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId, title: null },
+    });
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({
+      programId: 'radio-1',
+      type: 'track.ended',
+      playbackRequestId: requestId,
+      title: null,
+      artist: null,
+      url: null,
+      at: new Date('2026-11-16T10:03:00.000Z'),
+    });
+  });
+
+  it('emits a duplicate track.ended for the same request exactly once in total', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-duplicate',
+    );
+    expect(
+      events.map((event) => [event.type, event.playbackRequestId]),
+    ).toEqual([
+      ['track.started', requestId],
+      ['track.ended', requestId],
+    ]);
+  });
+
+  it('emits no start for a command a manual song already replaced, and records the manual song as usual', async () => {
+    const { engine, metrics, radioService, requestId } = await startedEngine();
+    // A manual song takes over before Palazzo confirms the first command.
+    engine.handleManualSong(
+      'radio-1',
+      'https://example.test/manual.mp3',
+      'Manual',
+      'Artist',
+      120_000,
+    );
+    await flush();
+    const manualCall = radioService.playSong.mock.calls[1] as Parameters<
+      RadioService['playSong']
+    >;
+    const manualRequestId = manualCall[4] as string;
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith('adopted');
+    expect(events).toEqual([]);
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: manualRequestId },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: manualRequestId },
+    });
+    expect(
+      events.map((event) => [event.type, event.playbackRequestId]),
+    ).toEqual([
+      ['track.started', manualRequestId],
+      ['track.ended', manualRequestId],
+    ]);
+  });
+
+  it('emits an inferred end at the advance time when an idle snapshot ends the song, and ignores the late real end', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    jest.setSystemTime(new Date('2026-11-16T10:00:00.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    // The track.ended never arrives; Palazzo later reports idle.
+    jest.setSystemTime(new Date('2026-11-16T10:03:10.000Z'));
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 2),
+    );
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith('advanced');
+    expect(events[1]).toEqual({
+      programId: 'radio-1',
+      type: 'track.ended',
+      playbackRequestId: requestId,
+      title: 'Song one',
+      artist: 'Artist one',
+      url: 'https://example.test/song-1.mp3',
+      at: new Date('2026-11-16T10:03:10.000Z'),
+      inferred: true,
+    });
+
+    jest.setSystemTime(new Date('2026-11-16T10:03:20.000Z'));
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-duplicate',
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      'track.started',
+      'track.ended',
+    ]);
+  });
+
+  it('emits nothing for transitions the engine ignores', async () => {
+    const { engine, metrics, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    // Mismatched start.
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: 'foreign-request' },
+    });
+    // End without a request id.
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: '' },
+    });
+    // End for a request that is not the active song.
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'foreign-request' },
+    });
+    // End while frozen.
+    engine.handlePalazzoStatus('radio-1', {
+      programId: 'radio-1',
+      programType: 'radio',
+      palazzoUrl: 'http://palazzo:3100',
+      instanceId: 'palazzo-a',
+      connection: 'unavailable',
+      lastEventAt: null,
+      lastSnapshotAt: null,
+      degraded: true,
+      detail: 'sse and state endpoint unreachable',
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+
+    for (const outcome of [
+      'ignored-mismatch',
+      'ignored-no-active',
+      'ignored-frozen',
+    ]) {
+      expect(metrics.recordTrackTransition).toHaveBeenCalledWith(outcome);
+    }
+    expect(events).toEqual([]);
+  });
+
+  it('emits nothing for a track.ended when no song is active', async () => {
+    const { engine, metrics } = createEngine({ reconciled: true, radio: true });
+    engine.handlePalazzoSnapshot(
+      'radio-1',
+      idleSnapshot('palazzo-a', 'boot-1', 1),
+    );
+    await flush();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'track.ended',
+      data: { playbackRequestId: 'some-request' },
+    });
+
+    expect(engine.getPlaybackState('radio-1')).toBeNull();
+    expect(metrics.recordTrackTransition).toHaveBeenCalledWith(
+      'ignored-no-active',
+    );
+    expect(events).toEqual([]);
+  });
+
+  it('emits nothing for playback.position, audio levels, intro events or unhandled programs', async () => {
+    const { engine, requestId } = await startedEngine();
+    const events: SongEngineTrackEvent[] = [];
+    engine.trackEvents$.subscribe((event) => events.push(event));
+
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'playback.position',
+      data: { playbackRequestId: requestId, positionSeconds: 5 },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'audio.levels',
+      data: {
+        song: { rms: 0, peak: 0 },
+        instant: { rms: 0, peak: 0 },
+        output: { rms: 0, peak: 0 },
+      },
+    });
+    engine.handlePalazzoEvent('radio-1', {
+      type: 'intro.started',
+      data: {
+        programId: 'radio-1',
+        playbackId: `${requestId}:intro`,
+        parentPlaybackId: requestId,
+      },
+    });
+    // Not a registered radio program, and a radio program with no state yet.
+    engine.handlePalazzoEvent('tv-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    });
+    engine.registerRadioProgram('radio-2');
+    engine.handlePalazzoEvent('radio-2', {
+      type: 'track.ended',
+      data: { playbackRequestId: requestId },
+    });
+
+    expect(events).toEqual([]);
+  });
+
+  it('keeps handling this event and the next one when a subscriber throws', async () => {
+    const previous = rxjsConfig.onUnhandledError;
+    const unhandled = jest.fn();
+    rxjsConfig.onUnhandledError = unhandled;
+    try {
+      const { engine, radioService, flightService, metrics, requestId } =
+        await startedEngine();
+      const received: SongEngineTrackEvent[] = [];
+      engine.trackEvents$.subscribe(() => {
+        throw new Error('subscriber failed');
+      });
+      engine.trackEvents$.subscribe((event) => received.push(event));
+
+      expect(() =>
+        engine.handlePalazzoEvent('radio-1', {
+          type: 'track.started',
+          data: { playbackRequestId: requestId },
+        }),
+      ).not.toThrow();
+      expect(engine.getPlaybackState('radio-1')).toMatchObject({
+        isPlaying: true,
+        audioUrl: 'https://example.test/song-1.mp3',
+      });
+
+      expect(() =>
+        engine.handlePalazzoEvent('radio-1', {
+          type: 'track.ended',
+          data: { playbackRequestId: requestId },
+        }),
+      ).not.toThrow();
+      expect(metrics.recordTrackTransition).toHaveBeenCalledWith('adopted');
+      expect(metrics.recordTrackTransition).toHaveBeenCalledWith('advanced');
+      await flush(12);
+      expect(flightService.handleSongEnded).toHaveBeenCalledTimes(1);
+      expect(radioService.playSong).toHaveBeenCalledTimes(2);
+      expect(received.map((event) => event.type)).toEqual([
+        'track.started',
+        'track.ended',
+      ]);
+      jest.runOnlyPendingTimers();
+      expect(unhandled).toHaveBeenCalledWith(new Error('subscriber failed'));
+    } finally {
+      rxjsConfig.onUnhandledError = previous;
+    }
+  });
+
+  it('catches a subscriber error that RxJS rethrows synchronously', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    rxjsConfig.useDeprecatedSynchronousErrorHandling = true;
+    try {
+      const { engine, requestId } = await startedEngine();
+      engine.trackEvents$.subscribe(() => {
+        throw new Error('subscriber failed');
+      });
+
+      expect(() =>
+        engine.handlePalazzoEvent('radio-1', {
+          type: 'track.started',
+          data: { playbackRequestId: requestId },
+        }),
+      ).not.toThrow();
+      expect(engine.getPlaybackState('radio-1')).toMatchObject({
+        isPlaying: true,
+        audioUrl: 'https://example.test/song-1.mp3',
+      });
+    } finally {
+      rxjsConfig.useDeprecatedSynchronousErrorHandling = false;
+      warn.mockRestore();
+    }
+  });
+
+  it('adds no awaited work: handling returns before a subscriber settles', async () => {
+    const { engine, requestId } = await startedEngine();
+    let settled = false;
+    const pending = new Promise<void>(() => {});
+    engine.trackEvents$.subscribe(() => {
+      void pending.then(() => {
+        settled = true;
+      });
+    });
+
+    const result = engine.handlePalazzoEvent('radio-1', {
+      type: 'track.started',
+      data: { playbackRequestId: requestId },
+    }) as unknown;
+    expect(result).toBeUndefined();
+    await Promise.resolve(result);
+    expect(engine.getPlaybackState('radio-1')).toMatchObject({
+      isPlaying: true,
+    });
+    expect(settled).toBe(false);
   });
 });

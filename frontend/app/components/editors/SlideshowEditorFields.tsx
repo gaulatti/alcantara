@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Checkbox, Button, Input, Select } from '@gaulatti/bleecker';
+import { Checkbox, Button, FileInput, Input, Select } from '@gaulatti/bleecker';
 import { uploadFileToMediaBucket } from '../../services/uploads';
 import { normalizeSlideshowImageList, normalizeSlideshowLabelId, normalizeSlideshowMediaGroupId } from '../../utils/broadcast';
 import type { MediaLabel } from '../../models/broadcast';
@@ -118,7 +118,7 @@ export function SlideshowEditorFields({
       {!usesLabel ? (
         <div className='space-y-2'>
           <label className='block text-xs text-text-secondary'>Upload images</label>
-          <Input type='file' accept='image/*' multiple disabled={isUploading}
+          <FileInput accept='image/*' multiple disabled={isUploading}
             onChange={e => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; void uploadImages(files); }}
             className='block w-full text-xs text-text-secondary file:mr-3 file:rounded file:border file:border-sand/40 file:bg-dark-sand/80 file:px-2 file:py-1 file:text-xs file:font-medium file:text-text-primary hover:file:bg-sand/10' />
           <p className='text-xs text-text-secondary mt-1'>1920x1080 images are recommended. Upload one or many files.</p>

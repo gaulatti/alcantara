@@ -1,3 +1,5 @@
+import { TIMEZONE_LINKS } from './timezoneAliases';
+
 const FALLBACK_TIMEZONES = [
   'UTC',
   'America/Argentina/Buenos_Aires',
@@ -95,4 +97,75 @@ export function getTimezonesSortedByOffset(date: Date = new Date()): string[] {
   });
 
   return withMeta.map((item) => item.timezone);
+}
+
+export interface TimezoneOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Replaces the options at `indexes` (all the same zone) with one option for
+ * the saved id, in the first one's place. A saved id that names a city keeps
+ * its own name (Kyiv, not Kiev); a POSIX id such as EST5EDT keeps the listed
+ * city's label.
+ */
+function withSavedOption(options: TimezoneOption[], indexes: number[], value: string, date: Date): TimezoneOption[] {
+  const [first] = indexes;
+  const label = value.includes('/') ? getTimezoneOptionLabel(value, date) : options[first].label;
+  return options.flatMap((option, index) =>
+    index === first ? [{ value, label }] : indexes.includes(index) ? [] : [option]
+  );
+}
+
+/** The tz database zone that `timezone` names, through its links. */
+function getLinkedZone(timezone: string): string {
+  return TIMEZONE_LINKS[timezone] ?? timezone;
+}
+
+/**
+ * The browser's own id for `timezone`: Intl resolves an alias such as
+ * America/Argentina/Buenos_Aires to the name it lists (America/Buenos_Aires
+ * in Chromium). Used only to compare ids; it is never stored. An id the
+ * browser does not know is returned unchanged.
+ */
+function getBrowserTimezoneId(timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone }).resolvedOptions().timeZone;
+  } catch {
+    return timezone;
+  }
+}
+
+/**
+ * Returns the picker options with `value` kept selectable as exactly one
+ * option. The options list the zones the browser's Intl reports, which may
+ * spell a saved or default zone differently (Chromium lists
+ * America/Buenos_Aires and Asia/Calcutta for the saved
+ * America/Argentina/Buenos_Aires and Asia/Kolkata). The option for the same
+ * zone then carries the saved id, and its name when the id names a city, so
+ * the picker shows it selected and saving keeps the stored id. Ids are
+ * matched through Intl first and then through the tz database's links
+ * (TIMEZONE_LINKS), for engines such as WebKit whose Intl links neither
+ * spelling. A zone the list lacks under any name is listed first. The saved
+ * id is never rewritten.
+ */
+export function withTimezoneOption(options: TimezoneOption[], value: string, date: Date = new Date()): TimezoneOption[] {
+  if (!value || options.some((option) => option.value === value)) {
+    return options;
+  }
+  const browserId = getBrowserTimezoneId(value);
+  const aliasIndex = options.findIndex((option) => option.value === browserId);
+  if (aliasIndex >= 0) {
+    return withSavedOption(options, [aliasIndex], value, date);
+  }
+  // Intl linked nothing (WebKit resolves both spellings to themselves):
+  // compare through the tz database's links instead. Every listed name of
+  // the saved zone becomes the one saved option.
+  const zone = getLinkedZone(value);
+  const sameZone = options.flatMap((option, index) => (getLinkedZone(option.value) === zone ? [index] : []));
+  if (sameZone.length > 0) {
+    return withSavedOption(options, sameZone, value, date);
+  }
+  return [{ value, label: getTimezoneOptionLabel(value, date) }, ...options];
 }

@@ -173,6 +173,132 @@ describe('PalazzoMachineClient', () => {
     });
   });
 
+  it('sends segue and loudness on the song command when provided', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      Response.json({
+        ok: true,
+        playbackRequestId: 'song-1',
+      }),
+    );
+    const client = new PalazzoMachineClient(
+      config(),
+      new RadioMetricsService(),
+      fetchImpl,
+    );
+
+    await client.playSong(BASE_URL, PROGRAM_ID, {
+      playbackId: 'song-1',
+      url: 'https://media.example/song.mp3',
+      duration: 250,
+      segue: {
+        cueInSeconds: 0.35,
+        cueOutSeconds: 211.0,
+        fadeInSeconds: 0.0,
+        fadeOutSeconds: 1.8,
+        overlapSeconds: 2.5,
+      },
+      loudness: {
+        integratedLufs: -9.8,
+        truePeakDbtp: -0.4,
+      },
+    });
+
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body).toEqual({
+      song: {
+        programId: PROGRAM_ID,
+        playbackId: 'song-1',
+        url: 'https://media.example/song.mp3',
+        segue: {
+          cueInSeconds: 0.35,
+          cueOutSeconds: 211.0,
+          fadeInSeconds: 0.0,
+          fadeOutSeconds: 1.8,
+          overlapSeconds: 2.5,
+        },
+        loudness: {
+          integratedLufs: -9.8,
+          truePeakDbtp: -0.4,
+        },
+      },
+    });
+  });
+
+  it('produces byte-identical request body when segue and loudness are absent', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      Response.json({
+        ok: true,
+        playbackRequestId: 'song-1',
+      }),
+    );
+    const client = new PalazzoMachineClient(
+      config(),
+      new RadioMetricsService(),
+      fetchImpl,
+    );
+
+    await client.playSong(BASE_URL, PROGRAM_ID, {
+      playbackId: 'song-1',
+      url: 'https://media.example/song.mp3',
+      title: 'Track 1',
+    });
+
+    const rawBody = fetchImpl.mock.calls[0][1].body;
+    expect(rawBody).toBe(
+      JSON.stringify({
+        song: {
+          programId: PROGRAM_ID,
+          playbackId: 'song-1',
+          url: 'https://media.example/song.mp3',
+          title: 'Track 1',
+        },
+      }),
+    );
+  });
+
+  it('rejects invalid segue or loudness before issuing any request', async () => {
+    const fetchImpl = jest.fn();
+    const metrics = new RadioMetricsService();
+    const client = new PalazzoMachineClient(config(), metrics, fetchImpl);
+
+    const invalidCases: Array<{ duration?: number; segue?: any; loudness?: any }> = [
+      { segue: null },
+      { segue: 'not-an-object' },
+      { segue: { cueInSeconds: NaN, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { segue: { cueInSeconds: -1, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { segue: { cueInSeconds: 10, cueOutSeconds: 5, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { segue: { cueInSeconds: 5, cueOutSeconds: 5, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { duration: 20, segue: { cueInSeconds: 0, cueOutSeconds: 25, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { duration: NaN, segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: -1, fadeOutSeconds: 0, overlapSeconds: 0 } },
+      { segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: -1, overlapSeconds: 0 } },
+      { segue: { cueInSeconds: 0, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: -1 } },
+      { segue: { cueInSeconds: 2, cueOutSeconds: 10, fadeInSeconds: 0, fadeOutSeconds: 0, overlapSeconds: 9 } },
+      { loudness: null },
+      { loudness: 'invalid' },
+      { loudness: { integratedLufs: NaN, truePeakDbtp: 0 } },
+      { loudness: { integratedLufs: -75, truePeakDbtp: 0 } },
+      { loudness: { integratedLufs: 1, truePeakDbtp: 0 } },
+      { loudness: { integratedLufs: -14, truePeakDbtp: 7 } },
+    ];
+
+    for (const testCase of invalidCases) {
+      await expect(
+        client.playSong(BASE_URL, PROGRAM_ID, {
+          playbackId: 'song-test',
+          url: 'https://media.example/song.mp3',
+          duration: testCase.duration,
+          segue: testCase.segue,
+          loudness: testCase.loudness,
+        }),
+      ).rejects.toMatchObject({ reason: 'rejected' });
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(metrics.snapshot().machineRequests['song-play:rejected']).toBe(
+      invalidCases.length,
+    );
+  });
+
   it('uses private program routes for instant, mixer, state, stop, and SSE', async () => {
     const fetchImpl = jest.fn(async (url: string, init: RequestInit) => {
       if (url.endsWith('/playback/instant')) {

@@ -14,9 +14,12 @@ model Layout {
   name          String   @unique
   componentType String
   settings      String // JSON stringified
+  teamId        Int?
   scenes        Scene[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([teamId])
 }
 
 model Scene {
@@ -26,6 +29,7 @@ model Scene {
   layout        Layout         @relation(fields: [layoutId], references: [id])
   chyronText    String?
   metadata      String? // JSON stringified
+  teamId        Int?
   programStates ProgramState[]
   programScenes ProgramScene[]
   createdAt     DateTime       @default(now())
@@ -33,7 +37,35 @@ model Scene {
   externalSourceId String?
   externalSource ExternalSource? @relation(fields: [externalSourceId], references: [id], onDelete: SetNull)
 
+  @@index([teamId])
   @@index([externalSourceId])
+}
+
+model Program {
+  programId String   @id
+  teamId    Int?
+  channelId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branding  ProgramBranding?
+
+  @@index([teamId])
+}
+
+// gaulatti/alcantara#335: per-program station marks, one row per Program. Owned through the Program
+// row (which carries the team), and written through the program.manage permission.
+model ProgramBranding {
+  programId     String   @id
+  program       Program  @relation(fields: [programId], references: [programId], onDelete: Cascade)
+  displayName   String?
+  callsign      String?
+  subtitle      String?
+  logoUrl       String?
+  hashtag       String?
+  siteUrl       String?
+  defaultChyron String?
+  updatedAt     DateTime     @updatedAt
 }
 
 model ProgramState {
@@ -50,6 +82,7 @@ model ProgramState {
   songSequence           Json?
   songQueue              Json?
   songRotation           Json?
+  songArtistCycle        Json?
   shuffleOrder           Json?
   audioMixer             Json?
   activeFlightSequenceId Int?
@@ -68,6 +101,7 @@ model ProgramState {
 
 model BroadcastDestination {
   id              String   @id
+  teamId          Int?
   displayName     String
   secretId        String
   secretVersionId String
@@ -76,6 +110,7 @@ model BroadcastDestination {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  @@index([teamId])
   @@index([retiredAt, position])
 }
 
@@ -127,6 +162,22 @@ model BroadcastDestinationCommand {
   @@index([selectionId])
 }
 
+/// One row per request for a destination's ingest credential (gaulatti/carmencita#4). Audit only:
+/// who asked, for which destination, when, and the outcome. The credential itself is never stored.
+model BroadcastIngestAccess {
+  id            String   @id @default(uuid())
+  /// The destination's team (null when the destination id is unknown).
+  teamId        Int?
+  destinationId String
+  subject       String
+  outcome       String
+  createdAt     DateTime @default(now())
+
+  @@index([teamId])
+  @@index([destinationId, createdAt])
+  @@index([subject, createdAt])
+}
+
 model BroadcastDestinationRuntime {
   programId          String   @id
   nextSequence       Int      @default(1)
@@ -135,6 +186,36 @@ model BroadcastDestinationRuntime {
   pendingSelectionId String?
   activeSelectionId  String?
   updatedAt          DateTime @updatedAt
+}
+
+/// One immutable filler configuration for one program leg (gaulatti/alcantara#126).
+/// Only safe identity is stored: source asset ids and SHA-256, mode, seed and
+/// the acknowledged profile checksum. Never download URLs or credentials.
+model FillerVersion {
+  id         String    @id
+  programId  String
+  leg        String
+  checksum   String
+  config     Json
+  status     String    @default("preparing")
+  reason     String?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  preparedAt DateTime?
+
+  @@index([programId, leg, createdAt])
+}
+
+/// The prepared next-session (pending) and in-session (active) filler
+/// versions of one program leg.
+model FillerLeg {
+  programId        String
+  leg              String
+  pendingVersionId String?
+  activeVersionId  String?
+  updatedAt        DateTime @updatedAt
+
+  @@id([programId, leg])
 }
 
 model ExternalSource {
@@ -222,6 +303,7 @@ model ProgramScene {
 
 model BroadcastSettings {
   id                    Int       @id
+  teamId                Int?
   timeOverrideEnabled   Boolean   @default(false)
   timeOverrideStartTime String?
   timeOverrideStartedAt DateTime?
@@ -237,6 +319,8 @@ model BroadcastSettings {
   instantSolo           Boolean   @default(false)
   streamSolo            Boolean   @default(false)
   updatedAt             DateTime  @updatedAt
+
+  @@index([teamId])
 }
 
 enum MediaAssetKind {
@@ -254,6 +338,7 @@ enum MediaAssetType {
 
 model MediaAsset {
   id              String                     @id
+  teamId          Int?
   kind            MediaAssetKind?
   mediaType       MediaAssetType?
   name            String
@@ -265,10 +350,12 @@ model MediaAsset {
   song            Song?                      @relation("SongMediaAsset")
   songCovers      Song[]                     @relation("SongCoverMediaAsset")
   transition      Stinger?                   @relation("TransitionMediaAsset")
+  analysis        MediaAssetAnalysis?
   labels          MediaAssetLabel[]
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
 
+  @@index([teamId])
   @@index([kind, updatedAt])
   @@index([mediaType, updatedAt])
 }
@@ -284,10 +371,13 @@ model BackgroundAudioCapability {
 model MediaLabel {
   id          String            @id @default(uuid())
   name        String            @unique
+  teamId      Int?
   description String?
   assets      MediaAssetLabel[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  @@index([teamId])
 }
 
 model MediaAssetLabel {
@@ -308,6 +398,7 @@ model Instant {
   assetId   String?  @unique
   asset     MediaAsset? @relation("AudioClipMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name      String
+  teamId    Int?
   audioUrl  String
   volume    Float    @default(1)
   enabled   Boolean  @default(true)
@@ -315,6 +406,8 @@ model Instant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   songIntro SongIntro?
+
+  @@index([teamId])
 }
 
 model Song {
@@ -325,6 +418,7 @@ model Song {
   coverAsset   MediaAsset? @relation("SongCoverMediaAsset", fields: [coverAssetId], references: [id], onDelete: SetNull)
   artist       String
   title        String
+  teamId       Int?
   audioUrl     String
   coverUrl     String?
   durationMs   Int?
@@ -335,8 +429,60 @@ model Song {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   intro        SongIntro?
+  embeddings   SongEmbedding[]
+  chartIdentity SongChartIdentity?
 
+  @@index([teamId])
   @@index([coverAssetId])
+}
+
+model SongChartIdentity {
+  id         Int      @id @default(autoincrement())
+  songId     Int      @unique
+  song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  provider   String
+  externalId String?
+  rank       String?
+  spins      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+/// Audio embedding of a song's opening or closing window. The vector column is
+/// pgvector's dimensionless `vector` type so another model can be stored later;
+/// it is read and written with raw SQL because Prisma cannot model it.
+model SongEmbedding {
+  id            Int      @id @default(autoincrement())
+  songId        Int
+  song          Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  segment       String
+  model         String
+  modelVersion  String
+  license       String
+  windowSeconds Int
+  audioSha256   String
+  vector        Unsupported("vector")
+  computedAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@unique([songId, segment, model, windowSeconds])
+  @@index([model, windowSeconds])
+}
+
+/// Shadow/on-air record of what the similarity picker proposed at a song change.
+model SimilarityDecision {
+  id             Int      @id @default(autoincrement())
+  programId      String
+  mode           String
+  outcome        String
+  currentSongId  Int?
+  proposedSongId Int?
+  playedSongId   Int?
+  score          Float?
+  runnerUps      Json
+  createdAt      DateTime @default(now())
+
+  @@index([programId, createdAt])
 }
 
 model SongIntro {
@@ -358,20 +504,26 @@ model Media {
   assetId    String?          @unique
   asset      MediaAsset?      @relation("ImageMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name       String
+  teamId     Int?
   imageUrl   String
   groupItems MediaGroupItem[]
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+
+  @@index([teamId])
 }
 
 model MediaGroup {
   id                 Int                 @id @default(autoincrement())
   name               String              @unique
+  teamId             Int?
   description        String?
   mediaItems         MediaGroupItem[]
   programMediaGroups ProgramMediaGroup[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+
+  @@index([teamId])
 }
 
 model MediaGroupItem {
@@ -403,12 +555,15 @@ model Stinger {
   assetId         String?          @unique
   asset           MediaAsset?      @relation("TransitionMediaAsset", fields: [assetId], references: [id], onDelete: SetNull)
   name            String
+  teamId          Int?
   videoUrl        String
   cutPointMs      Int              @default(1000)
   enabled         Boolean          @default(true)
   programStingers ProgramStinger[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+
+  @@index([teamId])
 }
 
 model ProgramStinger {
@@ -429,13 +584,20 @@ model RadioSettings {
   programState     ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
   palazzoUrl       String       @default("http://palazzo:3100")
   listenerUrl      String?
-  bumperEnabled    Boolean      @default(false)
+  bumperEnabled    Boolean      @default(true)
   bumperInterval   Int?
   bumperInstantIds Int[]        @default([])
   bumperMode       String       @default("sequential")
   fillerSongIds    Int[]        @default([])
   fillerVersion    String?
   enabled          Boolean      @default(false)
+  segueMode        String       @default("on")
+  /// segueMode before #180 turned it on for existing programs; null when it was already on. Kept for a put-back.
+  segueModeBeforeDefaultOn String?
+  similarityMode          String @default("on")
+  similarityThreshold     Float  @default(0.8)
+  similarityWindowSeconds Int    @default(30)
+  similarityPool          String @default("sequence")
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }
@@ -541,6 +703,8 @@ model GuestCommand {
   @@index([invitationId, createdAt])
 }
 
+
+
 model GuestEvent {
   id           String          @id @default(uuid())
   invitationId String
@@ -551,3 +715,60 @@ model GuestEvent {
 
   @@index([invitationId, createdAt])
 }
+
+model MediaAssetAnalysis {
+  assetId                String     @id
+  asset                  MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  status                 String     @default("pending")
+  cueInSeconds           Float?
+  cueOutSeconds          Float?
+  fadeInSeconds          Float?
+  fadeOutSeconds         Float?
+  overlapSeconds         Float?
+  integratedLufs         Float?
+  truePeakDbtp           Float?
+  /// The decoded length of the file, from the same pass that measures the cue points; null until measured.
+  durationSeconds        Float?
+  isrc                   String?
+  musicbrainzRecordingId String?
+  error                  String?
+  /// Analysis runs claimed for the current source, bounded by the analysis job.
+  attempts               Int        @default(0)
+  /// When a claimed run's lease ends or a failed run may be retried; null when settled.
+  nextAttemptAt          DateTime?
+  /// The source URL the row describes; a different MediaAsset.sourceUrl means the row is stale.
+  sourceUrl              String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+}
+
+/// As-run record of track playback events on a radio program.
+/// Records reference songs and assets by scalar id with no foreign key relation,
+/// so deleting a song or asset preserves historical playback audit trails.
+model AsRunRecord {
+  id        Int      @id @default(autoincrement())
+  programId String
+  songId    Int?
+  assetId   String?
+  state     String
+  at        DateTime
+  createdAt DateTime @default(now())
+  /// Engine playback request ID; at most one record per play and state.
+  playbackRequestId String?
+  /// True on an end the engine inferred because the real end never arrived.
+  inferred          Boolean @default(false)
+  /// Review flag on an inferred end: `short` or `no-start`; null otherwise.
+  reviewFlag        String?
+  /// Why the engine ended a started play: `stopped`, `replaced` or `superseded`; null otherwise.
+  endReason         String?
+  /// Who caused an operator action: Pompeii principal (null while unresolved or for automatic transitions).
+  actorPrincipalId  String?
+  /// `console` or `mcp`; null for automatic transitions and older rows.
+  actorVia          String?
+  /// MCP client name when `actorVia` is `mcp`; null otherwise.
+  actorClient       String?
+
+  @@unique([programId, playbackRequestId, state])
+  @@index([programId, at])
+}
+

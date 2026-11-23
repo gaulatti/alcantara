@@ -1,7 +1,14 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { isProductionEnvironment } from '../config/local-media';
 import { PrismaService } from '../prisma.service';
 import type { SongPlaybackData } from './song-execution.engine';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import {
+  OutboundRefusal,
+  safeFetch,
+  type SafeFetchDeps,
+} from '../outbound/safe-fetch';
 
 type NowPlayingMethod = 'POST' | 'PUT' | 'PATCH';
 
@@ -35,10 +42,31 @@ type NowPlayingPublisherPayload =
 export class NowPlayingPublisherService {
   private readonly logger = new Logger(NowPlayingPublisherService.name);
 
+  // Test seam: the resolver and transport the request policy uses.
+  outboundDeps: Omit<SafeFetchDeps, 'record'> = {};
+
+  private static readonly DELIVERY_TIMEOUT_MS = 10_000;
+  private static readonly DELIVERY_MAX_REDIRECTS = 3;
+
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly metrics?: ManagedMetricsService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * Outside production no now-playing update leaves the machine
+   * (gaulatti/alcantara#206): a consumer an operator enters on a local stack
+   * may be a real endpoint. Production always publishes.
+   */
+  outboundPublishing(): 'enabled' | 'blocked-local' {
+    if (!this.config) return 'enabled';
+    return isProductionEnvironment({
+      NODE_ENV: this.config.get<string>('NODE_ENV'),
+    })
+      ? 'enabled'
+      : 'blocked-local';
+  }
 
   async listConsumers(programId: string) {
     return this.prisma.nowPlayingConsumer.findMany({
@@ -60,8 +88,16 @@ export class NowPlayingPublisherService {
     });
     if (!state) throw new Error('Program not found');
 
+    // A stored http address that is submitted again unchanged keeps
+    // delivering (to public addresses only); a new or changed one must be
+    // https.
+    const stored = await this.prisma.nowPlayingConsumer.findMany({
+      where: { programStateId: state.id },
+      select: { url: true },
+    });
+    const storedUrls = new Set(stored.map((consumer) => consumer.url));
     const records = consumers.map((consumer, index) =>
-      this.normalizeConsumerPayload(consumer, index),
+      this.normalizeConsumerPayload(consumer, index, storedUrls),
     );
 
     await this.prisma.$transaction([
@@ -177,6 +213,7 @@ export class NowPlayingPublisherService {
   private normalizeConsumerPayload(
     consumer: NowPlayingConsumerPayload,
     index: number,
+    storedUrls: Set<string>,
   ): {
     name: string;
     url: string;
@@ -187,6 +224,7 @@ export class NowPlayingPublisherService {
   } {
     const url = this.normalizeString(consumer.url);
     if (!url) throw new Error(`Consumer ${index + 1} requires url`);
+    this.assertDeliveryUrl(url, index, storedUrls);
 
     return {
       name: this.normalizeString(consumer.name) ?? `consumer-${index + 1}`,
@@ -198,11 +236,46 @@ export class NowPlayingPublisherService {
     };
   }
 
+  /**
+   * A consumer address must be an absolute https URL with no user name or
+   * password. The message names the consumer, never the address.
+   */
+  private assertDeliveryUrl(
+    url: string,
+    index: number,
+    storedUrls: Set<string>,
+  ): void {
+    const label = `Consumer ${index + 1}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`${label}: the URL is not a valid absolute URL.`);
+    }
+    if (parsed.username || parsed.password)
+      throw new Error(
+        `${label}: the URL must not include a user name or password.`,
+      );
+    if (parsed.protocol === 'https:') return;
+    if (parsed.protocol === 'http:' && storedUrls.has(url)) return;
+    throw new Error(`${label}: the URL must use https.`);
+  }
+
   private async publishToConsumers(
     programId: string,
     consumers: NowPlayingConsumerConfig[],
     payload: NowPlayingPublisherPayload,
   ): Promise<void> {
+    if (this.outboundPublishing() === 'blocked-local') {
+      const started = process.hrtime.bigint();
+      for (let i = 0; i < consumers.length; i++) {
+        this.recordPublishMetric('skipped', started);
+      }
+      this.logger.warn(
+        `Now-playing publish blocked for ${programId}: outbound publishing is off outside production (${consumers.length} consumer(s) not contacted)`,
+      );
+      return;
+    }
     await Promise.all(
       consumers.map((consumer) =>
         this.postNowPlaying(programId, consumer, payload),
@@ -210,57 +283,73 @@ export class NowPlayingPublisherService {
     );
   }
 
+  /**
+   * One delivery under the outbound-request policy: public addresses only
+   * (checked after DNS and on each redirect, the connection made to the
+   * checked address), one deadline, the answer not read. A stored plain-http
+   * consumer still delivers, to a public address only, and is counted as
+   * legacy_http. No log line carries the address or the payload.
+   */
   private async postNowPlaying(
     programId: string,
     consumer: NowPlayingConsumerConfig,
     payload: NowPlayingPublisherPayload,
   ): Promise<void> {
     const started = process.hrtime.bigint();
+    const target = `${programId}/${consumer.name}`;
     this.logger.log(
-      `Now-playing publish attempt for ${programId}/${consumer.name}: ${consumer.method} ${consumer.endpointUrl} ${JSON.stringify(payload)}`,
+      `Now-playing publish attempt for ${target}: ${consumer.method}`,
     );
 
-    let response: Response;
     try {
-      response = await fetch(consumer.endpointUrl, {
-        method: consumer.method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...consumer.headers,
+      const response = await safeFetch(
+        consumer.endpointUrl,
+        {
+          path: 'now_playing',
+          method: consumer.method,
+          headers: {
+            'Content-Type': 'application/json',
+            ...consumer.headers,
+          },
+          body: JSON.stringify(payload),
+          maxBytes: 0,
+          timeoutMs: NowPlayingPublisherService.DELIVERY_TIMEOUT_MS,
+          maxRedirects: NowPlayingPublisherService.DELIVERY_MAX_REDIRECTS,
+          allowContentType: () => true,
+          readBody: false,
+          allowLegacyHttp: true,
         },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      this.recordPublishMetric('unavailable', started);
-      this.logger.error(
-        `Now-playing publish failed for ${programId}/${consumer.name}: ${err}`,
+        {
+          ...this.outboundDeps,
+          record: (path, result) =>
+            this.metrics?.recordOutboundFetch(path, result),
+        },
       );
-      return;
-    }
-
-    if (response.ok) {
       this.recordPublishMetric('success', started);
       this.logger.log(
-        `Now-playing publish succeeded for ${programId}/${consumer.name}: ${response.status} ${response.statusText}`,
+        `Now-playing publish succeeded for ${target}: ${response.status}`,
       );
-      return;
+      if (response.legacyHttp)
+        this.logger.warn(
+          `Now-playing consumer ${target} uses plain http; change its URL to https`,
+        );
+    } catch (error) {
+      // safeFetch only ever throws an OutboundRefusal.
+      const { reason, upstreamStatus } = error as OutboundRefusal;
+      this.recordPublishMetric(
+        reason === 'http_status' ? 'http-error' : 'unavailable',
+        started,
+      );
+      this.logger.error(
+        `Now-playing publish failed for ${target}: ${reason}${
+          upstreamStatus ? ` ${upstreamStatus}` : ''
+        }`,
+      );
     }
-
-    this.recordPublishMetric('http-error', started);
-
-    let responseBody = '';
-    try {
-      responseBody = await response.text();
-    } catch {
-      responseBody = '<failed to read response body>';
-    }
-    this.logger.error(
-      `Now-playing publish failed for ${programId}/${consumer.name}: ${response.status} ${response.statusText} ${responseBody}`,
-    );
   }
 
   private recordPublishMetric(
-    result: 'success' | 'http-error' | 'unavailable',
+    result: 'success' | 'http-error' | 'unavailable' | 'skipped',
     started: bigint,
   ): void {
     this.metrics?.recordDependency(

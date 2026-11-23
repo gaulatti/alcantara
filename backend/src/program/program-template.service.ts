@@ -1,19 +1,28 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { validateProgramTemplateOrigins } from '../config/runtime-secret-contract';
+import {
+  ManagedMetricsService,
+  type ProgramTemplateUnknownMember,
+} from '../observability/managed-metrics.service';
 
 export const PROGRAM_TEMPLATE_KIND = 'alcantara.program-template';
 export const PROGRAM_TEMPLATE_CONTRACT_VERSION = 1;
+export const PROGRAM_TEMPLATE_CONTRACT_VERSION_V2 = 2;
 export const PROGRAM_TEMPLATE_PROTOCOL = 'alcantara.program.v1';
+export const PROGRAM_TEMPLATE_PROTOCOL_V2 = 'alcantara.program.v2';
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_REDIRECTS = 3;
 const MANIFEST_TIMEOUT_MS = 5_000;
-const PRODUCTION_TEMPLATE_ORIGINS = new Set(['https://cdn.fifthbell.com']);
+export const DEFAULT_PRODUCTION_TEMPLATE_ORIGINS = Object.freeze([
+  'https://cdn.fifthbell.com',
+]);
 const TOKEN_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 const PARAMETER_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
 const SIGNAL_PATTERN = /^[a-z][a-z0-9_]*$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export const PROGRAM_TEMPLATE_SIGNALS = new Set([
   'audio_bus_update',
@@ -36,9 +45,50 @@ export const PROGRAM_TEMPLATE_SIGNALS = new Set([
   'song_off_air',
 ]);
 
+export const V2_ONLY_SIGNALS = new Set([
+  'chyron_update',
+  'fade_to_black',
+  'song_playback_active',
+  'song_playback_update',
+  'song_queue_update',
+  'audio_levels',
+  'audience_interaction_draw_start',
+  'audience_interaction_draw_end',
+  'playing_track_update',
+]);
+
+export const PROGRAM_TEMPLATE_V2_SIGNALS = new Set([
+  ...PROGRAM_TEMPLATE_SIGNALS,
+  ...V2_ONLY_SIGNALS,
+]);
+
+export const PROGRAM_TEMPLATE_V2_CAPABILITIES = new Set([
+  'audio.playback',
+  'media.groups',
+  'scene.configuration',
+  'stinger.transitions',
+  'audience.interaction',
+  'data.chart-provider',
+  'source.external-video',
+  'source.webrtc-guest',
+  'sequence.song',
+  'sequence.chyron',
+  'media.slideshow',
+  'display.clock',
+  'display.ticker',
+  'display.scoreboard',
+]);
+
+export interface ProgramTemplateManifestFile {
+  key: string;
+  bytes: number;
+  contentType: string;
+  sha256: string;
+}
+
 export interface ProgramTemplateManifest {
   kind: typeof PROGRAM_TEMPLATE_KIND;
-  contractVersion: typeof PROGRAM_TEMPLATE_CONTRACT_VERSION;
+  contractVersion: 1 | 2;
   id: string;
   name: string;
   package: string;
@@ -48,7 +98,9 @@ export interface ProgramTemplateManifest {
   entrypointUrl: string;
   capabilities: string[];
   control: {
-    protocol: typeof PROGRAM_TEMPLATE_PROTOCOL;
+    protocol:
+      | typeof PROGRAM_TEMPLATE_PROTOCOL
+      | typeof PROGRAM_TEMPLATE_PROTOCOL_V2;
     transport: 'server-sent-events';
     snapshotPath: string;
     eventsPath: string;
@@ -58,6 +110,27 @@ export interface ProgramTemplateManifest {
     };
     signals: string[];
   };
+  files?: ProgramTemplateManifestFile[];
+}
+
+export function getApprovedTemplateOrigins(
+  environment: Record<string, string | undefined> = process.env,
+): Set<string> {
+  return new Set([
+    ...DEFAULT_PRODUCTION_TEMPLATE_ORIGINS,
+    ...validateProgramTemplateOrigins(
+      environment.PROGRAM_TEMPLATE_ORIGINS ?? '',
+    ),
+  ]);
+}
+
+/** Program state schema version emitted to a registration: 2 for contract v2, else 1. */
+export function programTemplateSchemaVersion(
+  manifest: Pick<ProgramTemplateManifest, 'contractVersion'>,
+): 1 | 2 {
+  return manifest.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2
+    ? 2
+    : 1;
 }
 
 export interface ProgramTemplateRegistration {
@@ -149,6 +222,7 @@ async function readBoundedManifestBody(response: Response): Promise<Buffer> {
 export function validateProgramTemplateManifest(
   value: unknown,
   manifestUrl: URL,
+  onUnknown?: (member: ProgramTemplateUnknownMember) => void,
 ): ProgramTemplateManifest {
   if (!isRecord(value)) {
     throw new BadRequestException('Template manifest must be a JSON object');
@@ -158,12 +232,17 @@ export function validateProgramTemplateManifest(
       `Template manifest kind must be ${PROGRAM_TEMPLATE_KIND}`,
     );
   }
-  if (value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION) {
+  if (
+    value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION &&
+    value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION_V2
+  ) {
     throw new BadRequestException(
       `Unsupported template contract version ${String(value.contractVersion)}`,
     );
   }
-  if (value.schemaVersion !== 1) {
+  const isV2 = value.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2;
+  const expectedSchemaVersion = isV2 ? 2 : 1;
+  if (value.schemaVersion !== expectedSchemaVersion) {
     throw new BadRequestException(
       `Unsupported program state schema version ${String(value.schemaVersion)}`,
     );
@@ -176,19 +255,28 @@ export function validateProgramTemplateManifest(
       'Template manifest entrypoint must remain on the manifest origin',
     );
   }
+  // A v2 capability Alcantara does not offer is simply not provided: it is
+  // left out and counted, not a reason to refuse the template.
   const capabilities = uniqueStringList(
     value.capabilities,
     'capabilities',
     TOKEN_PATTERN,
     64,
-  );
+  ).filter((capability) => {
+    if (!isV2 || PROGRAM_TEMPLATE_V2_CAPABILITIES.has(capability)) return true;
+    onUnknown?.('capability');
+    return false;
+  });
 
   if (!isRecord(value.control)) {
     throw new BadRequestException('Template manifest control is required');
   }
-  if (value.control.protocol !== PROGRAM_TEMPLATE_PROTOCOL) {
+  const expectedProtocol = isV2
+    ? PROGRAM_TEMPLATE_PROTOCOL_V2
+    : PROGRAM_TEMPLATE_PROTOCOL;
+  if (value.control.protocol !== expectedProtocol) {
     throw new BadRequestException(
-      `Template manifest control protocol must be ${PROGRAM_TEMPLATE_PROTOCOL}`,
+      `Template manifest control protocol must be ${expectedProtocol}`,
     );
   }
   if (value.control.transport !== 'server-sent-events') {
@@ -214,39 +302,127 @@ export function validateProgramTemplateManifest(
       'Template manifest control paths are unsupported',
     );
   }
+  // The signal list only filters what Alcantara sends, so a signal Alcantara
+  // does not know for this contract version is left out and counted. The
+  // stored subscription holds only signals Alcantara knows.
+  const allowedSignals = isV2
+    ? PROGRAM_TEMPLATE_V2_SIGNALS
+    : PROGRAM_TEMPLATE_SIGNALS;
   const signals = uniqueStringList(
     value.control.signals,
     'control.signals',
     SIGNAL_PATTERN,
     64,
-  );
-  const unsupportedSignal = signals.find(
-    (signal) => !PROGRAM_TEMPLATE_SIGNALS.has(signal),
-  );
-  if (unsupportedSignal) {
-    throw new BadRequestException(
-      `Template manifest requests unsupported signal ${unsupportedSignal}`,
-    );
-  }
+  ).filter((signal) => {
+    if (allowedSignals.has(signal)) return true;
+    onUnknown?.('signal');
+    return false;
+  });
   if (!signals.includes('program_state_snapshot')) {
     throw new BadRequestException(
       'Template manifest must accept program_state_snapshot',
     );
   }
 
-  return {
+  let files: ProgramTemplateManifestFile[] | undefined;
+  if (isV2) {
+    const allowedTopLevel = new Set([
+      'kind',
+      'contractVersion',
+      'schemaVersion',
+      'id',
+      'name',
+      'package',
+      'bundleVersion',
+      'entrypoint',
+      'capabilities',
+      'control',
+      'files',
+    ]);
+    // A member Alcantara does not know is not read and not stored (the
+    // manifest below is built from known fields only), so it is counted and
+    // left out rather than refusing the template (gaulatti/ariston#217).
+    countUnknownKeys(value, allowedTopLevel, 'property', onUnknown);
+    const allowedControl = new Set([
+      'protocol',
+      'transport',
+      'snapshotPath',
+      'eventsPath',
+      'runtimeParameters',
+      'signals',
+    ]);
+    countUnknownKeys(
+      value.control,
+      allowedControl,
+      'control-property',
+      onUnknown,
+    );
+    const allowedRuntime = new Set(['programId', 'apiBaseUrl']);
+    // Only programId and apiBaseUrl are ever passed to the template.
+    countUnknownKeys(
+      value.control.runtimeParameters,
+      allowedRuntime,
+      'runtime-parameter',
+      onUnknown,
+    );
+
+    if (value.files !== undefined) {
+      if (!Array.isArray(value.files)) {
+        throw new BadRequestException(
+          'Template manifest files must be an array',
+        );
+      }
+      files = value.files.map((fileEntry, index) => {
+        if (!isRecord(fileEntry)) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} must be an object`,
+          );
+        }
+        const key = requiredString(fileEntry.key, `files[${index}].key`);
+        if (
+          typeof fileEntry.bytes !== 'number' ||
+          !Number.isInteger(fileEntry.bytes) ||
+          fileEntry.bytes < 0
+        ) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} bytes is invalid`,
+          );
+        }
+        const contentType = requiredString(
+          fileEntry.contentType,
+          `files[${index}].contentType`,
+        );
+        if (
+          typeof fileEntry.sha256 !== 'string' ||
+          !SHA256_PATTERN.test(fileEntry.sha256)
+        ) {
+          throw new BadRequestException(
+            `Template manifest file at index ${index} sha256 is invalid`,
+          );
+        }
+        return {
+          key,
+          bytes: fileEntry.bytes,
+          contentType,
+          sha256: fileEntry.sha256,
+        };
+      });
+    }
+  }
+
+  const manifest: ProgramTemplateManifest = {
     kind: PROGRAM_TEMPLATE_KIND,
-    contractVersion: PROGRAM_TEMPLATE_CONTRACT_VERSION,
+    contractVersion: isV2 ? 2 : 1,
     id: requiredString(value.id, 'id', TOKEN_PATTERN),
     name: requiredString(value.name, 'name'),
     package: requiredString(value.package, 'package'),
     bundleVersion: requiredString(value.bundleVersion, 'bundleVersion'),
-    schemaVersion: 1,
+    schemaVersion: expectedSchemaVersion,
     entrypoint,
     entrypointUrl: entrypointUrl.toString(),
     capabilities,
     control: {
-      protocol: PROGRAM_TEMPLATE_PROTOCOL,
+      protocol: expectedProtocol,
       transport: 'server-sent-events',
       snapshotPath,
       eventsPath,
@@ -265,12 +441,26 @@ export function validateProgramTemplateManifest(
       signals,
     },
   };
+  if (files !== undefined) {
+    manifest.files = files;
+  }
+  return manifest;
+}
+
+function countUnknownKeys(
+  record: Record<string, unknown>,
+  known: ReadonlySet<string>,
+  member: ProgramTemplateUnknownMember,
+  onUnknown?: (member: ProgramTemplateUnknownMember) => void,
+): void {
+  for (const key of Object.keys(record)) {
+    if (!known.has(key)) onUnknown?.(member);
+  }
 }
 
 function isBlockedIpv4(address: string): boolean {
-  // The only caller has already established native isIP(address) === 4.
-  const octets = address.split('.').map((part) => Number(part));
-  const [a, b, c] = octets;
+  // Callers pass only addresses that `isIP` already accepted as IPv4.
+  const [a, b, c] = address.split('.').map((part) => Number(part));
   return (
     a === 0 ||
     a === 10 ||
@@ -307,13 +497,39 @@ export function isPublicNetworkAddress(address: string): boolean {
   );
 }
 
+/**
+ * A stored cover URL a v2 template may load (gaulatti/alcantara#179): a
+ * well-formed https URL whose host is a public address or a dotted public
+ * name. Loopback, private, link-local and other reserved addresses, bare
+ * hostnames and anything else return undefined. The URL is returned exactly
+ * as stored.
+ */
+export function publicCoverUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value !== value.trim() || !value) {
+    return undefined;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    return undefined;
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (isIP(host)) return isPublicNetworkAddress(host) ? value : undefined;
+  return host.includes('.') && !host.endsWith('.localhost') ? value : undefined;
+}
+
 export function readProgramTemplateManifest(
   value: unknown,
 ): ProgramTemplateManifest | null {
   if (
     !isRecord(value) ||
     value.kind !== PROGRAM_TEMPLATE_KIND ||
-    value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION ||
+    (value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION &&
+      value.contractVersion !== PROGRAM_TEMPLATE_CONTRACT_VERSION_V2) ||
     typeof value.entrypointUrl !== 'string' ||
     !Array.isArray(value.capabilities) ||
     !isRecord(value.control) ||
@@ -343,9 +559,10 @@ function projectScene(value: unknown): Record<string, unknown> | null {
 
 export function projectProgramTemplateState(
   value: Record<string, unknown>,
+  manifest: Pick<ProgramTemplateManifest, 'contractVersion'>,
 ): Record<string, unknown> {
   return {
-    schemaVersion: 1,
+    schemaVersion: programTemplateSchemaVersion(manifest),
     id: value.id,
     programId: value.programId,
     activeSceneId: value.activeSceneId ?? null,
@@ -355,6 +572,19 @@ export function projectProgramTemplateState(
     fadeToBlack: value.fadeToBlack === true,
     updatedAt: value.updatedAt,
     version: value.version,
+    // The program-wide broadcast settings, in the broadcast_settings_update
+    // `settings` shape, so a page loaded mid-override starts with it
+    // (gaulatti/alcantara#177). v2 only, and absent when not supplied.
+    ...(manifest.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2 &&
+    isRecord(value.broadcastSettings)
+      ? { broadcastSettings: value.broadcastSettings }
+      : {}),
+    // The track the song engine confirmed on air (gaulatti/alcantara#178).
+    // v2 only, and absent when nothing confirmed is playing.
+    ...(manifest.contractVersion === PROGRAM_TEMPLATE_CONTRACT_VERSION_V2 &&
+    isRecord(value.playingTrack)
+      ? { playingTrack: value.playingTrack }
+      : {}),
   };
 }
 
@@ -375,11 +605,14 @@ export function projectProgramTemplateSignal(
 ): Record<string, unknown> | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null;
   if (!manifest.control.signals.includes(value.type)) return null;
+  if (V2_ONLY_SIGNALS.has(value.type) && manifest.contractVersion !== 2) {
+    return null;
+  }
 
   const common = {
     type: value.type,
     programId: value.programId,
-    schemaVersion: 1,
+    schemaVersion: programTemplateSchemaVersion(manifest),
     version: value.version,
   };
   if (
@@ -392,10 +625,10 @@ export function projectProgramTemplateSignal(
     return {
       ...common,
       ...copyFields(value, ['transitionId']),
-      state: projectProgramTemplateState({
-        ...value.state,
-        version: value.version,
-      }),
+      state: projectProgramTemplateState(
+        { ...value.state, version: value.version },
+        manifest,
+      ),
     };
   }
 
@@ -413,6 +646,35 @@ export function projectProgramTemplateSignal(
     scene_staged: ['stagedSceneId', 'updatedAt'],
     scene_update: ['updatedAt'],
     song_off_air: ['triggeredAt'],
+    chyron_update: ['sceneId', 'chyronText'],
+    fade_to_black: ['active'],
+    song_playback_active: [
+      'songId',
+      'title',
+      'artist',
+      'coverUrl',
+      'durationMs',
+      'startedAt',
+      'externalChartProvider',
+      'externalChartRank',
+      'externalChartSpins',
+    ],
+    song_playback_update: ['songId', 'positionMs', 'durationMs'],
+    playing_track_update: ['playingTrack', 'updatedAt'],
+    audio_levels: ['rms', 'peak'],
+    audience_interaction_draw_start: [
+      'sceneId',
+      'componentType',
+      'drawId',
+      'durationSeconds',
+      'candidateIds',
+    ],
+    audience_interaction_draw_end: [
+      'sceneId',
+      'componentType',
+      'drawId',
+      'selectedId',
+    ],
   };
   const projected: Record<string, unknown> = {
     ...common,
@@ -420,6 +682,22 @@ export function projectProgramTemplateSignal(
   };
   if (value.type === 'scene_staged' || value.type === 'scene_update') {
     projected.scene = projectScene(value.scene);
+  } else if (value.type === 'song_queue_update') {
+    if (Array.isArray(value.items)) {
+      projected.items = value.items
+        .filter(isRecord)
+        .map((item) => copyFields(item, ['songId', 'title', 'artist']));
+    }
+  } else if (value.type === 'audience_interaction_draw_start') {
+    // The contract names the draw's candidates `candidateIds`; the scenes service broadcasts them as `songIds`.
+    projected.candidateIds = Array.isArray(value.candidateIds)
+      ? value.candidateIds
+      : Array.isArray(value.songIds)
+        ? value.songIds
+        : [];
+    if (isRecord(value.slot)) {
+      projected.slot = copyFields(value.slot, ['matchId', 'field']);
+    }
   }
   return projected;
 }
@@ -455,69 +733,72 @@ export class ProgramTemplateService {
 
   private async inspectManifest(
     templateUrl: string,
+    redirectCount = 0,
   ): Promise<ProgramTemplateRegistration> {
-    let currentUrl = this.parseTemplateUrl(templateUrl);
+    const currentUrl = this.parseTemplateUrl(templateUrl);
 
-    for (let redirectCount = 0; ; redirectCount += 1) {
-      await this.assertSafeDestination(currentUrl);
-      let response: Response;
-      try {
-        response = await this.fetchManifest(currentUrl, {
-          headers: { Accept: 'application/json' },
-          redirect: 'manual',
-          signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
-        });
-      } catch {
-        throw new BadRequestException('Template manifest could not be fetched');
-      }
-
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location || redirectCount === MAX_REDIRECTS) {
-          throw new BadRequestException(
-            'Template manifest redirect could not be followed safely',
-          );
-        }
-        currentUrl = this.parseTemplateUrl(
-          new URL(location, currentUrl).toString(),
-        );
-        continue;
-      }
-      if (!response.ok) {
-        throw new BadRequestException(
-          `Template manifest returned HTTP ${response.status}`,
-        );
-      }
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!/(?:application\/json|\+json)(?:;|$)/i.test(contentType)) {
-        throw new BadRequestException(
-          'Template manifest must use a JSON content type',
-        );
-      }
-      const declaredSize = Number(response.headers.get('content-length'));
-      if (Number.isFinite(declaredSize) && declaredSize > MAX_MANIFEST_BYTES) {
-        throw new BadRequestException('Template manifest is too large');
-      }
-      let body: Buffer;
-      try {
-        body = await readBoundedManifestBody(response);
-      } catch (error) {
-        if (error instanceof BadRequestException) throw error;
-        throw new BadRequestException('Template manifest could not be read');
-      }
-
-      let decoded: unknown;
-      try {
-        decoded = JSON.parse(body.toString('utf8')) as unknown;
-      } catch {
-        throw new BadRequestException('Template manifest is not valid JSON');
-      }
-      return {
-        templateUrl: currentUrl.toString(),
-        templateManifest: validateProgramTemplateManifest(decoded, currentUrl),
-        templateVerifiedAt: new Date(),
-      };
+    await this.assertSafeDestination(currentUrl);
+    let response: Response;
+    try {
+      response = await this.fetchManifest(currentUrl, {
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
+      });
+    } catch {
+      throw new BadRequestException('Template manifest could not be fetched');
     }
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location || redirectCount === MAX_REDIRECTS) {
+        throw new BadRequestException(
+          'Template manifest redirect could not be followed safely',
+        );
+      }
+      return this.inspectManifest(
+        new URL(location, currentUrl).toString(),
+        redirectCount + 1,
+      );
+    }
+    if (!response.ok) {
+      throw new BadRequestException(
+        `Template manifest returned HTTP ${response.status}`,
+      );
+    }
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!/(?:application\/json|\+json)(?:;|$)/i.test(contentType)) {
+      throw new BadRequestException(
+        'Template manifest must use a JSON content type',
+      );
+    }
+    const declaredSize = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_MANIFEST_BYTES) {
+      throw new BadRequestException('Template manifest is too large');
+    }
+    let body: Buffer;
+    try {
+      body = await readBoundedManifestBody(response);
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException('Template manifest could not be read');
+    }
+
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(body.toString('utf8')) as unknown;
+    } catch {
+      throw new BadRequestException('Template manifest is not valid JSON');
+    }
+    return {
+      templateUrl: currentUrl.toString(),
+      templateManifest: validateProgramTemplateManifest(
+        decoded,
+        currentUrl,
+        (member) => this.metrics?.recordProgramTemplateUnknown(member),
+      ),
+      templateVerifiedAt: new Date(),
+    };
   }
 
   private parseTemplateUrl(value: string): URL {
@@ -538,7 +819,7 @@ export class ProgramTemplateService {
     }
     if (
       process.env.NODE_ENV === 'production' &&
-      !PRODUCTION_TEMPLATE_ORIGINS.has(parsed.origin)
+      !getApprovedTemplateOrigins().has(parsed.origin)
     ) {
       throw new BadRequestException(
         'Template URL origin is not an approved program-template publisher',

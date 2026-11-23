@@ -15,8 +15,6 @@ import {
   showAlert,
 } from "@gaulatti/bleecker";
 import {
-  ArrowDown,
-  ArrowUp,
   Pencil,
   Plus,
   Search,
@@ -27,12 +25,15 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router";
 import { AppPage } from "../components/AppPage";
+import { AudioLibrary } from "../components/media/AudioLibrary";
 import { InlineLabelCreator } from "../components/media/InlineLabelCreator";
+import { LabelsView } from "../components/media/LabelsView";
 import { MediaLibraryPage } from "../components/media/MediaLibraryPage";
 import { uploadFileToMediaBucket } from "../services/uploads";
 import { authFetch } from "../services/api";
 import { fetchAllMediaLabels } from "../services/mediaLabels";
 import type { ProgramType } from "../utils/appNavigation";
+import type { AssetAnalysisField } from "../utils/audioLibrary";
 import { getMediaLibraryView, type MediaType } from "../utils/mediaLibrary";
 import type { Route } from "./+types/media";
 
@@ -70,6 +71,8 @@ interface MediaAsset {
   } | null;
   coverForSongIds: number[];
   transition: { id: number; cutPointMs: number } | null;
+  /** Sent for audio assets once the server includes it; absent until then. */
+  analysis?: AssetAnalysisField;
   updatedAt: string;
 }
 
@@ -233,7 +236,6 @@ export default function MediaRoute() {
   const [labelDescription, setLabelDescription] = useState("");
   const [isSavingLabel, setIsSavingLabel] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState<MediaLabel | null>(null);
-  const [assetToAdd, setAssetToAdd] = useState("");
   const [bulkLabelId, setBulkLabelId] = useState("");
 
   useEffect(() => {
@@ -579,7 +581,7 @@ export default function MediaRoute() {
   const deleteLabel = async (label: MediaLabel) => {
     if (
       !window.confirm(
-        `Delete label “${label.name}”? Files will remain in the library.`,
+        `Delete label “${label.name}”, used by ${label.assetCount} asset${label.assetCount === 1 ? "" : "s"}? Files will remain in the library.`,
       )
     )
       return;
@@ -611,14 +613,9 @@ export default function MediaRoute() {
     await refresh();
   };
 
-  const moveLabelAsset = async (index: number, direction: -1 | 1) => {
-    if (!selectedLabel) return;
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= selectedLabel.assets.length) return;
-    const next = selectedLabel.assets.map((entry) => entry.asset.id);
-    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  const reorderLabelAssets = async (label: MediaLabel, assetIds: string[]) => {
     try {
-      await persistLabelOrder(selectedLabel, next);
+      await persistLabelOrder(label, assetIds);
     } catch (error) {
       showAlert(
         error instanceof Error ? error.message : "Failed to reorder label.",
@@ -627,12 +624,11 @@ export default function MediaRoute() {
     }
   };
 
-  const removeLabelAsset = async (assetId: string) => {
-    if (!selectedLabel) return;
+  const removeLabelAsset = async (label: MediaLabel, assetId: string) => {
     try {
       await persistLabelOrder(
-        selectedLabel,
-        selectedLabel.assets
+        label,
+        label.assets
           .map((entry) => entry.asset.id)
           .filter((id) => id !== assetId),
       );
@@ -644,14 +640,16 @@ export default function MediaRoute() {
     }
   };
 
-  const addAssetToLabel = async () => {
-    if (!selectedLabel || !assetToAdd) return;
+  const addAssetToLabel = async (
+    label: MediaLabel,
+    assetId: string,
+  ): Promise<boolean> => {
     try {
-      await persistLabelOrder(selectedLabel, [
-        ...selectedLabel.assets.map((entry) => entry.asset.id),
-        assetToAdd,
+      await persistLabelOrder(label, [
+        ...label.assets.map((entry) => entry.asset.id),
+        assetId,
       ]);
-      setAssetToAdd("");
+      return true;
     } catch (error) {
       showAlert(
         error instanceof Error
@@ -659,6 +657,7 @@ export default function MediaRoute() {
           : "Failed to add media to label.",
         "error",
       );
+      return false;
     }
   };
 
@@ -705,12 +704,6 @@ export default function MediaRoute() {
       [...assets].sort((left, right) => left.name.localeCompare(right.name)),
     [assets],
   );
-  const availableForSelectedLabel = selectedLabel
-    ? allAssetsForLabels.filter(
-        (asset) =>
-          !selectedLabel.assets.some((entry) => entry.asset.id === asset.id),
-      )
-    : [];
 
   if (programType === null) {
     return (
@@ -728,12 +721,7 @@ export default function MediaRoute() {
         <Plus size={16} />
         Add images
       </Button>
-    ) : isLabelsView ? (
-      <Button onClick={openCreateLabel}>
-        <Plus size={16} />
-        Create label
-      </Button>
-    ) : mediaType === "AUDIO" ? (
+    ) : isLabelsView ? undefined : mediaType === "AUDIO" ? (
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={openCreateBackground}>
           <Plus size={16} />
@@ -755,7 +743,75 @@ export default function MediaRoute() {
       visibleSections={visibleSections}
       width="full"
     >
-      {!isLabelsView ? (
+      {!isLabelsView && mediaType === "AUDIO" ? (
+        <Card className="space-y-4">
+          <AudioLibrary
+            assets={assets}
+            total={totalCount}
+            loading={isLoading}
+            capability={capability}
+            onCapabilityChange={(value) =>
+              setCapability(value as MediaCapability | "")
+            }
+            search={search}
+            onSearchChange={setSearch}
+            filtered={Boolean(debouncedSearch || capability)}
+            selectedIds={selectedAssetIds}
+            onToggleSelected={(id, checked) =>
+              setSelectedAssetIds((current) => {
+                const next = new Set(current);
+                if (checked) next.add(id);
+                else next.delete(id);
+                return next;
+              })
+            }
+            canDelete={(asset) =>
+              !asset.instant &&
+              !asset.song &&
+              asset.coverForSongIds.length === 0 &&
+              !asset.transition
+            }
+            onDelete={(asset) => void deleteStandaloneAsset(asset)}
+            bulk={
+              <div className="flex min-w-[18rem] flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={bulkLabelId}
+                    onChange={setBulkLabelId}
+                    options={[
+                      { value: "", label: "Choose label…" },
+                      ...labels.map((label) => ({
+                        value: label.id,
+                        label: label.name,
+                      })),
+                    ]}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => void applyBulkLabel()}
+                    disabled={!bulkLabelId}
+                  >
+                    <Tag size={14} />
+                    Label {selectedAssetIds.size}
+                  </Button>
+                </div>
+                <InlineLabelCreator
+                  onCreate={(name) => createInlineLabel(name, setBulkLabelId)}
+                />
+              </div>
+            }
+          />
+          {totalPages > 1 ? (
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              hasNextPage={page < totalPages}
+              hasPrevPage={page > 1}
+              onPageChange={setPage}
+            />
+          ) : null}
+        </Card>
+      ) : !isLabelsView ? (
         <Card className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="relative w-full lg:max-w-md">
@@ -938,163 +994,25 @@ export default function MediaRoute() {
           </p>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.7fr)]">
-          <Card className="space-y-3">
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
-                size={16}
-              />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search labels…"
-                className="pl-9"
-              />
-            </div>
-            {labels
-              .filter(
-                (label) =>
-                  !debouncedSearch ||
-                  label.name
-                    .toLowerCase()
-                    .includes(debouncedSearch.toLowerCase()),
-              )
-              .map((label) => (
-                <TooltipButton
-                  key={label.id}
-                  type="button"
-                  onClick={() => setSelectedLabel(label)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${selectedLabel?.id === label.id ? "border-sea/60 bg-sea/10" : "border-sand/25 hover:border-sea/30"}`}
-                >
-                  <span className="block font-medium text-text-primary">
-                    {label.name}
-                  </span>
-                  <span className="mt-1 block text-xs text-text-secondary">
-                    {label.assetCount} asset{label.assetCount === 1 ? "" : "s"}
-                  </span>
-                </TooltipButton>
-              ))}
-            {!isLoading && labels.length === 0 ? (
-              <Empty
-                title="No labels yet"
-                description="Create a label, then apply it to any media asset."
-              />
-            ) : null}
-          </Card>
-
-          <Card className="space-y-4">
-            {!selectedLabel ? (
-              <Empty
-                title="Select a label"
-                description="Labels can group and order any media without creating a separate collection."
-              />
-            ) : (
-              <>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold text-text-primary">
-                      {selectedLabel.name}
-                    </h2>
-                    {selectedLabel.description ? (
-                      <p className="mt-1 text-sm text-text-secondary">
-                        {selectedLabel.description}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex gap-1">
-                    <IconButton
-                      aria-label={`Edit ${selectedLabel.name}`}
-                      onClick={() => openEditLabel(selectedLabel)}
-                    >
-                      <Pencil size={16} />
-                    </IconButton>
-                    <IconButton
-                      aria-label={`Delete ${selectedLabel.name}`}
-                      onClick={() => void deleteLabel(selectedLabel)}
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Select
-                    value={assetToAdd}
-                    onChange={setAssetToAdd}
-                    options={[
-                      { value: "", label: "Choose media…" },
-                      ...availableForSelectedLabel.map((asset) => ({
-                        value: asset.id,
-                        label: `${asset.name} · ${asset.mediaType.toLowerCase()}`,
-                      })),
-                    ]}
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={() => void addAssetToLabel()}
-                    disabled={!assetToAdd}
-                  >
-                    Add
-                  </Button>
-                </div>
-                {selectedLabel.assets.length === 0 ? (
-                  <Empty
-                    title="No media with this label"
-                    description="Add existing media here, or apply this label while uploading images."
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    {selectedLabel.assets.map(({ asset }, index) => (
-                      <div
-                        key={asset.id}
-                        className="flex items-center gap-3 rounded-xl border border-sand/25 p-3"
-                      >
-                        <span className="w-6 text-center text-xs text-text-secondary">
-                          {index + 1}
-                        </span>
-                        {asset.mediaType === "IMAGE" ? (
-                          <img
-                            src={asset.sourceUrl}
-                            alt=""
-                            className="h-10 w-14 rounded object-cover"
-                          />
-                        ) : null}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-text-primary">
-                            {asset.name}
-                          </p>
-                          <p className="text-xs text-text-secondary">
-                            {asset.mediaType.toLowerCase()}
-                          </p>
-                        </div>
-                        <IconButton
-                          aria-label="Move up"
-                          disabled={index === 0}
-                          onClick={() => void moveLabelAsset(index, -1)}
-                        >
-                          <ArrowUp size={15} />
-                        </IconButton>
-                        <IconButton
-                          aria-label="Move down"
-                          disabled={index === selectedLabel.assets.length - 1}
-                          onClick={() => void moveLabelAsset(index, 1)}
-                        >
-                          <ArrowDown size={15} />
-                        </IconButton>
-                        <IconButton
-                          aria-label="Remove label from media"
-                          onClick={() => void removeLabelAsset(asset.id)}
-                        >
-                          <Trash2 size={15} />
-                        </IconButton>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </Card>
-        </div>
+        <Card className="space-y-4">
+          <LabelsView
+            labels={labels}
+            loading={isLoading}
+            selectedId={selectedLabel?.id ?? null}
+            onSelect={(id) =>
+              setSelectedLabel(labels.find((label) => label.id === id) ?? null)
+            }
+            search={search}
+            onSearchChange={setSearch}
+            onCreate={openCreateLabel}
+            onEdit={openEditLabel}
+            onDelete={(label) => void deleteLabel(label)}
+            addableAssets={allAssetsForLabels}
+            onAddAsset={addAssetToLabel}
+            onRemoveAsset={removeLabelAsset}
+            onReorder={reorderLabelAssets}
+          />
+        </Card>
       )}
 
       <Modal

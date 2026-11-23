@@ -38,8 +38,8 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const bgRafRef = useRef<number | null>(null);
   const vizRafRef = useRef<number | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
-  const timeArrayRef = useRef<Uint8Array | null>(null);
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const timeArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const bgTimeRef = useRef(0);
 
   const isPlayingRef = useRef(false);
@@ -55,7 +55,14 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
     if (!audioRef.current) return;
     audioRef.current.volume = Math.max(0, Math.min(1, masterGain));
     audioRef.current.muted = masterGain <= 0.0001;
-  }, [masterGain]);
+    // `show` re-applies the gain to the audio element mounted when the player
+    // is shown (gaulatti/alcantara#192).
+  }, [masterGain, show]);
+
+  // Every effect that binds to the canvases or the audio element depends on
+  // `show`: those elements exist only while the player is shown, so a player
+  // mounted hidden and shown later (program.tsx keys it by component type)
+  // binds them when they appear (gaulatti/alcantara#192).
 
   // ── Background canvas animation ──────────────────────────────────────────
   // Smooth animated mesh gradient: 4 color orbs drifting on slow sine paths,
@@ -113,7 +120,7 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
 
     bgRafRef.current = requestAnimationFrame(draw);
     return () => { if (bgRafRef.current !== null) cancelAnimationFrame(bgRafRef.current); };
-  }, []);
+  }, [show]);
 
   // ── Waveform visualizer ──────────────────────────────────────────────────
   // When playing: mirrored FFT bar visualizer.
@@ -189,7 +196,7 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
 
     vizRafRef.current = requestAnimationFrame(draw);
     return () => { if (vizRafRef.current !== null) cancelAnimationFrame(vizRafRef.current); };
-  }, []);
+  }, [show]);
 
   // ── Audio events ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -197,7 +204,7 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
     if (!audio) return;
 
     const onTimeUpdate = () => { currentTimeRef.current = audio.currentTime; setCurrentTime(audio.currentTime); };
-    const onDurationChange = () => { durationRef.current = audio.duration ?? 0; setDuration(audio.duration ?? 0); };
+    const onDurationChange = () => { durationRef.current = audio.duration; setDuration(audio.duration); };
     const onPlay = () => { isPlayingRef.current = true; setIsPlaying(true); setAutoplayBlocked(false); };
     const onPause = () => { isPlayingRef.current = false; setIsPlaying(false); };
     const onEnded = () => { isPlayingRef.current = false; setIsPlaying(false); };
@@ -216,7 +223,7 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
     };
-  }, []);
+  }, [show]);
 
   // ── Web Audio analyser setup ─────────────────────────────────────────────
   const initAnalyser = () => {
@@ -254,7 +261,22 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
     };
     audio.addEventListener('canplay', tryPlay, { once: true });
     return () => { audio.removeEventListener('canplay', tryPlay); };
-  }, [audioUrl]);
+  }, [audioUrl, show]);
+
+  // The audio graph belongs to the audio element it was built on. Hiding the
+  // player unmounts that element, so the graph is closed and rebuilt for the
+  // element mounted when the player is shown again (gaulatti/alcantara#192).
+  useEffect(() => {
+    if (!show) return;
+    return () => {
+      void audioCtxRef.current?.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
+      sourceRef.current = null;
+      dataArrayRef.current = null;
+      timeArrayRef.current = null;
+    };
+  }, [show]);
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -264,27 +286,6 @@ export const ModoItalianoPodcastPlayer: React.FC<ModoItalianoPodcastPlayerProps>
       void audioCtxRef.current?.close();
     };
   }, []);
-
-  const handlePlayPause = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    initAnalyser();
-    if (audioCtxRef.current?.state === 'suspended') void audioCtxRef.current.resume();
-    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
-  };
-
-  const handleSkip = (delta: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + delta));
-  };
-
-  const handleSeek = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const audio = audioRef.current;
-    if (!audio || !durationRef.current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    audio.currentTime = Math.max(0, Math.min(durationRef.current, (e.clientX - rect.left) / rect.width * durationRef.current));
-  };
 
   if (!show) return null;
 

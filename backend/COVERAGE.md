@@ -4,15 +4,7 @@ Use Node 22, pnpm 9 and a local Docker context, then run from the repository roo
 
 ```sh
 pnpm install --frozen-lockfile
-node backend/scripts/verify-local.mjs
 ```
-
-The runner creates an isolated temporary PostgreSQL 17 database, applies the real
-migrations, generates Prisma, builds the backend, runs the complete unit and
-end-to-end inventory with native coverage, reruns end-to-end tests against the
-normal compiled application, and verifies deployment contracts and the actual
-authenticated Prometheus scrape. It removes its own database on completion.
-No AWS, deployment, provider credentials or Clouseau review are invoked.
 
 `pnpm --dir backend test:cov --runInBand` requires a disposable migrated
 `DATABASE_URL`. Native Istanbul instruments the authored TypeScript before the

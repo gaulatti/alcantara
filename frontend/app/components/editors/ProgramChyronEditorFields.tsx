@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Input, Switch } from '@gaulatti/bleecker';
-import { normalizeProgramTextSequence, createProgramTextSequence, createProgramTextSequenceItem, type ProgramTextSequence } from '../../utils/programSequence';
+import { normalizeProgramTextSequence, createProgramTextSequence, createProgramTextSequenceItem, type ProgramTextSequence, type ProgramTextSequenceItem } from '../../utils/programSequence';
 import { ProgramTextSequenceEditor } from './ProgramTextSequenceEditor';
 
 export function ProgramChyronEditorFields({
@@ -30,10 +30,11 @@ export function ProgramChyronEditorFields({
     if (!legacyMainText.trim() && !legacyUseMarquee) return base;
     if (seqHasText(base)) return base;
     const first = base.items[0];
-    const fallback = createProgramTextSequenceItem('preset', { includeMarquee: true });
+    // A new preset item is always a preset, so the fallback needs no kind check.
+    const fallback = createProgramTextSequenceItem('preset', { includeMarquee: true }) as Extract<ProgramTextSequenceItem, { kind: 'preset' }>;
     const seeded = first && first.kind === 'preset'
       ? { ...first, text: legacyMainText, useMarquee: legacyUseMarquee }
-      : { ...(fallback.kind === 'preset' ? fallback : createProgramTextSequenceItem('preset', { includeMarquee: true })), text: legacyMainText, useMarquee: legacyUseMarquee };
+      : { ...fallback, text: legacyMainText, useMarquee: legacyUseMarquee };
     return { ...base, items: [seeded], activeItemId: base.activeItemId ?? seeded.id, startedAt: base.startedAt ?? Date.now() };
   }, [normalizedText, legacyMainText, legacyUseMarquee]);
 
@@ -42,10 +43,11 @@ export function ProgramChyronEditorFields({
     if (!legacyCtaText.trim()) return base;
     if (seqHasText(base)) return base;
     const first = base.items[0];
-    const fallback = createProgramTextSequenceItem('preset');
+    // A new preset item is always a preset, so the fallback needs no kind check.
+    const fallback = createProgramTextSequenceItem('preset') as Extract<ProgramTextSequenceItem, { kind: 'preset' }>;
     const seeded = first && first.kind === 'preset'
       ? { ...first, text: legacyCtaText }
-      : { ...(fallback.kind === 'preset' ? fallback : createProgramTextSequenceItem('preset')), text: legacyCtaText };
+      : { ...fallback, text: legacyCtaText };
     return { ...base, items: [seeded], activeItemId: base.activeItemId ?? seeded.id, startedAt: base.startedAt ?? Date.now() };
   }, [normalizedCta, legacyCtaText]);
 

@@ -23,7 +23,31 @@ test('validates the production secret contract before build, push, or host mutat
   assert.ok(preflight >= 0);
   assert.ok(build > preflight);
   assert.ok(deploy > build);
-  assert.match(workflow, /build:\n    needs: production-config-preflight/);
+  // gaulatti/alcantara#188: the build (and so the deploy) waits for the preflight and for the
+  // repository's own unit and end-to-end tests.
+  assert.match(
+    workflow,
+    /build:\n    needs: \[production-config-preflight, test\]/,
+  );
+  const tests = workflow.slice(
+    workflow.indexOf('\n  test:'),
+    workflow.indexOf('\n  build:'),
+  );
+  assert.match(tests, /pnpm --dir backend exec jest\n/);
+  assert.match(tests, /--config \.\/test\/jest-e2e\.json --runInBand/);
+  for (const spec of [
+    'metrics',
+    'media-label-concurrency',
+    'filler-persistence',
+    'deploy-candidate',
+    'as-run-actor-migration',
+    'external-sources',
+    'media-analysis-duration',
+    'radio-monitor',
+    'recording',
+  ])
+    assert.match(tests, new RegExp(`[|']${spec}[|']`));
+  assert.doesNotMatch(tests, /clouseau|coverage/i);
   assert.match(
     workflow,
     /deploy:\n    runs-on: ubuntu-latest\n    needs: build/,
@@ -31,7 +55,7 @@ test('validates the production secret contract before build, push, or host mutat
   assert.match(workflow, /secretsmanager get-secret-value/);
   assert.match(
     workflow,
-    /node backend\/src\/config\/runtime-secret-contract\.js/,
+    /node backend\/src\/config\/runtime-secret-contract-cli\.js/,
   );
   assert.match(
     workflow,
@@ -91,9 +115,13 @@ test('keeps the backend private to nginx and preserves realtime proxy behavior',
   assert.match(nginx, /proxy_read_timeout 24h/);
 });
 
+test('serves the API over HTTP/2 so long-lived streams cannot starve other requests', () => {
+  assert.match(nginx, /^\s*http2 on;$/m);
+});
+
 test('allows song upload bodies through nginx while retaining the application file limit', () => {
-  assert.match(nginx, /client_max_body_size 110m;/);
-  assert.match(backendMain, /fileSize: 100 \* 1024 \* 1024/);
+  assert.match(nginx, /client_max_body_size 210m;/);
+  assert.match(backendMain, /fileSize: 200 \* 1024 \* 1024/);
 });
 
 test('uses bounded host-local logs without a CloudWatch dependency', () => {
@@ -144,4 +172,409 @@ test('reclaims only unused images before pulling and after retiring the rollback
   assert.ok(finalPrune > removePrevious);
   assert.doesNotMatch(deployScript, /docker system prune/);
   assert.match(deployScript, /trap 'rm -rf "\$docker_config_dir"' EXIT/);
+});
+
+test('a failed start prints a bounded, filtered log tail on stderr', () => {
+  assert.match(deployScript, /print_startup_log\(\) \{/);
+  assert.match(deployScript, /tail -n 35/);
+  assert.match(deployScript, /cut -c1-200 >&2/);
+  assert.match(
+    deployScript,
+    /grep -vE 'Mapped \\\{\|RoutesResolver\|InstanceLoader'/,
+  );
+  const failure = deployScript.indexOf(
+    'Alcantara backend failed its local health check; rolling back',
+  );
+  assert.ok(failure > 0);
+  assert.ok(
+    deployScript.indexOf('print_startup_log alcantara-backend', failure) >
+      failure,
+  );
+  assert.doesNotMatch(deployScript, /docker logs --tail 200 alcantara-backend/);
+});
+
+// gaulatti/alcantara#223: the deploy script itself runs here against stub
+// commands. A candidate that fails its health check stops the deploy before
+// the running backend is stopped; a healthy one is removed and the deploy
+// goes on to replace the running backend as before.
+function runDeploy({
+  candidateHealthy,
+  tokenFails = false,
+  automaticPrograms = '1',
+  radioPlays = true,
+  radioLive = false,
+}) {
+  const {
+    mkdtempSync,
+    writeFileSync,
+    chmodSync,
+    readFileSync: read,
+  } = require('node:fs');
+  const { join } = require('node:path');
+  const { tmpdir } = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const bin = mkdtempSync(join(tmpdir(), 'alcantara-deploy-'));
+  const calls = join(bin, 'calls.log');
+  const stub = (name, body) => {
+    writeFileSync(
+      join(bin, name),
+      `#!/usr/bin/env bash\necho "${name} $*" >> "${calls}"\n${body}\n`,
+    );
+    chmodSync(join(bin, name), 0o755);
+  };
+  stub(
+    'docker',
+    `args="$*"
+case "$args" in
+  *login*) cat >/dev/null ;;
+  "inspect alcantara-backend-previous") exit 1 ;;
+  "run --rm"*print-metrics-token*) ${tokenFails ? 'exit 1' : 'echo fictional-scrape-token'} ;;
+  *"State.Running"*) echo ${candidateHealthy ? 'true' : 'false'} ;;
+  "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
+  "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
+  "exec alcantara-backend node"*) ${automaticPrograms === null ? 'exit 1' : `echo '${automaticPrograms}'`} ;;
+  "exec palazzo node"*) ${radioLive ? "echo 'RADIO_LIVE'" : radioPlays ? "echo 'RADIO_PLAYING startedAt=fictional'" : "echo 'RADIO_NOT_PLAYING {}'; exit 1"} ;;
+esac
+exit 0`,
+  );
+  stub('curl', 'case "$*" in *write-out*) printf 200 ;; esac\nexit 0');
+  // The deploy writes the token to a temp file by redirection (no pipe, so no
+  // SIGPIPE under pipefail). mktemp is the one command that must hand back a real,
+  // writable path; install and mv are recorded.
+  stub('mktemp', `command -p mktemp "${bin}/token.XXXXXX"`);
+  for (const name of [
+    'install',
+    'sleep',
+    'mv',
+    'nginx',
+    'systemctl',
+    'certbot',
+  ])
+    stub(name, 'exit 0');
+  const result = spawnSync(
+    'bash',
+    [
+      '../deploy/cumulus.sh',
+      'fictional-user',
+      Buffer.from('fictional-registry-token').toString('base64'),
+      'fictional/broadcast',
+      'fictional/database',
+      'ghcr.io/example/alcantara:fictional',
+      Buffer.from('# nginx').toString('base64'),
+      'fictional-bucket',
+    ],
+    {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      encoding: 'utf8',
+    },
+  );
+  const log = read(calls, 'utf8').split('\n').filter(Boolean);
+  return { ...result, log };
+}
+
+test('a candidate that fails its health check leaves the running backend untouched', () => {
+  const { status, stdout, stderr, log } = runDeploy({
+    candidateHealthy: false,
+  });
+  assert.equal(status, 1);
+  assert.match(
+    stdout,
+    /Alcantara candidate failed its health check; the running backend is untouched/,
+  );
+  assert.match(stderr, /fictional start-up failure/);
+  const candidate = log.findIndex((line) =>
+    line.startsWith('docker run -d --name alcantara-backend-candidate'),
+  );
+  assert.ok(candidate >= 0);
+  assert.match(log[candidate], /-e ALCANTARA_DEPLOY_CANDIDATE=1/);
+  assert.doesNotMatch(log[candidate], /broadcast-control|-p |--restart/);
+  assert.ok(log.includes('docker rm -f alcantara-backend-candidate'));
+  for (const line of log) {
+    assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+    assert.doesNotMatch(line, /^docker run -d --name alcantara-backend /);
+  }
+});
+
+test('a healthy candidate is removed before the running backend is replaced as before', () => {
+  const { status, stdout, log } = runDeploy({ candidateHealthy: true });
+  assert.equal(status, 0, stdout);
+  assert.match(stdout, /Alcantara candidate passed its health check/);
+  assert.match(stdout, /ALCANTARA_HEALTHY/);
+  const removed = log.lastIndexOf('docker rm -f alcantara-backend-candidate');
+  const stop = log.indexOf('docker stop alcantara-backend');
+  const live = log.findIndex((line) =>
+    line.startsWith('docker run -d --name alcantara-backend '),
+  );
+  assert.ok(removed >= 0 && stop > removed && live > stop);
+  assert.doesNotMatch(log[live], /ALCANTARA_DEPLOY_CANDIDATE/);
+  assert.match(log[live], /--network broadcast-control/);
+});
+
+test('mounts the scrape credential from the production secret read-only without exposing it', () => {
+  const tokenScript = readFileSync('./scripts/print-metrics-token.mjs', 'utf8');
+  const resolve = deployScript.indexOf('node scripts/print-metrics-token.mjs');
+  const stop = deployScript.indexOf('docker stop alcantara-backend');
+  const run = deployScript.indexOf('docker run -d --name alcantara-backend \\');
+
+  assert.ok(resolve >= 0);
+  assert.ok(resolve < stop);
+  assert.ok(stop < run);
+  assert.match(tokenScript, /metrics_bearer_token/);
+  assert.match(tokenScript, /process\.exit\(1\)/);
+  assert.doesNotMatch(tokenScript, /console\.(log|error)\([^)]*token\)/);
+  assert.match(
+    deployScript,
+    /node scripts\/print-metrics-token\.mjs >"\$metrics_token_tmp"/,
+  );
+  assert.match(
+    deployScript,
+    /install -m 0400 -o root -g root "\$metrics_token_tmp" "\$metrics_token_file\.new"/,
+  );
+  // No pipe between the writer and install: SIGPIPE under pipefail (141).
+  assert.doesNotMatch(deployScript, /print-metrics-token\.mjs\s*\\?\n?\s*\|/);
+  assert.doesNotMatch(deployScript, /\/dev\/stdin/);
+  assert.match(deployScript, /install -d -m 0755 -o root -g root/);
+  assert.match(
+    deployScript,
+    /-v "\$metrics_token_file":\/run\/secrets\/alcantara-metrics-token:ro/,
+  );
+  assert.match(
+    deployScript,
+    /-e METRICS_TOKEN_FILE=\/run\/secrets\/alcantara-metrics-token/,
+  );
+  assert.doesNotMatch(deployScript, /metrics_bearer_token/);
+});
+
+test('a deploy whose scrape token cannot be resolved stops before the running backend is touched', () => {
+  const { status, log } = runDeploy({
+    candidateHealthy: true,
+    tokenFails: true,
+  });
+  assert.notEqual(status, 0);
+  assert.ok(
+    log.some((line) => /^docker run --rm .*print-metrics-token/.test(line)),
+  );
+  for (const line of log) {
+    assert.doesNotMatch(line, /^docker (stop|rename|start) /);
+    assert.doesNotMatch(line, /^docker run -d --name alcantara-backend /);
+  }
+});
+
+test('a healthy deploy mounts the scrape token file read-only on the live backend only', () => {
+  const { status, stdout, log } = runDeploy({ candidateHealthy: true });
+  assert.equal(status, 0, stdout);
+  const mount =
+    '-v /etc/alcantara/metrics-token:/run/secrets/alcantara-metrics-token:ro';
+  const live = log.find((line) =>
+    line.startsWith('docker run -d --name alcantara-backend '),
+  );
+  const candidate = log.find((line) =>
+    line.startsWith('docker run -d --name alcantara-backend-candidate'),
+  );
+  assert.ok(live.includes(mount));
+  assert.ok(
+    live.includes('-e METRICS_TOKEN_FILE=/run/secrets/alcantara-metrics-token'),
+  );
+  assert.ok(!candidate.includes('alcantara-metrics-token'));
+  assert.doesNotMatch(log.join('\n'), /fictional-scrape-token/);
+});
+
+// gaulatti/alcantara#230: after a healthy deploy the radio must play.
+test('a healthy deploy waits for a song started after the restart when a program is in automation', () => {
+  const { status, stdout, log } = runDeploy({ candidateHealthy: true });
+  assert.equal(status, 0, stdout);
+  assert.match(
+    stdout,
+    /ALCANTARA_HEALTHY\n[\s\S]*RADIO_PLAYING startedAt=fictional/,
+  );
+  const since = deployScript.indexOf('radio_since="$(date +%s)"');
+  const live = deployScript.indexOf(
+    'if ! docker run -d --name alcantara-backend \\',
+  );
+  assert.ok(
+    since > 0 && since < live,
+    'the moment is taken before the new backend starts',
+  );
+  // The scrape token is read inside the backend container, never on the host.
+  const metricsRead = log.find((line) =>
+    line.startsWith('docker exec alcantara-backend node'),
+  );
+  assert.match(metricsRead, /METRICS_TOKEN_FILE/);
+  assert.doesNotMatch(metricsRead, /fictional-scrape-token/);
+  assert.ok(log.some((line) => line.startsWith('docker exec palazzo node')));
+});
+
+test('a deploy whose radio does not play fails loudly and does not roll back', () => {
+  const { status, stdout, log } = runDeploy({
+    candidateHealthy: true,
+    radioPlays: false,
+  });
+  assert.equal(status, 1);
+  assert.match(stdout, /ALCANTARA_HEALTHY/);
+  assert.match(stdout, /RADIO_NOT_PLAYING/);
+  assert.match(
+    stdout,
+    /RADIO_CHECK_FAILED: no song started after the restart; the backend stays deployed/,
+  );
+  assert.doesNotMatch(stdout, /Restoring previous Alcantara backend/);
+  const removed = log.indexOf('docker rm alcantara-backend-previous');
+  assert.ok(removed >= 0);
+});
+
+test('a deploy during a live show passes the radio check', () => {
+  const { status, stdout } = runDeploy({
+    candidateHealthy: true,
+    radioPlays: false,
+    radioLive: true,
+  });
+  assert.equal(status, 0, stdout);
+  assert.match(stdout, /RADIO_LIVE/);
+  assert.doesNotMatch(stdout, /RADIO_CHECK_FAILED/);
+});
+
+test('the radio check is skipped with no program in automation and fails when the backend cannot say', () => {
+  const skipped = runDeploy({ candidateHealthy: true, automaticPrograms: '0' });
+  assert.equal(skipped.status, 0, skipped.stdout);
+  assert.match(
+    skipped.stdout,
+    /RADIO_CHECK_SKIPPED: no radio program is in automation/,
+  );
+  assert.ok(
+    !skipped.log.some((line) => line.startsWith('docker exec palazzo node')),
+  );
+
+  for (const automaticPrograms of [null, '', 'many']) {
+    const unknown = runDeploy({ candidateHealthy: true, automaticPrograms });
+    assert.equal(unknown.status, 1);
+    assert.match(
+      unknown.stdout,
+      /RADIO_CHECK_FAILED: the backend did not report its automatic programs/,
+    );
+  }
+});
+
+// The Palazzo-side poll itself, run for real against a fake state endpoint.
+async function runRadioPoll(states, since) {
+  const http = require('node:http');
+  const { spawn } = require('node:child_process');
+  const start =
+    deployScript.indexOf("if ! docker exec palazzo node -e '") +
+    "if ! docker exec palazzo node -e '".length;
+  const script = deployScript
+    .slice(start, deployScript.indexOf('\n\' "$radio_since"; then', start))
+    .replace(
+      'http://127.0.0.1:3100',
+      'http://127.0.0.1:" + process.env.FAKE_PORT + "',
+    )
+    .replace(
+      'let deadline = Date.now() + 120000;',
+      'let deadline = Date.now() + Number(process.env.FAKE_BOUND_MS);',
+    )
+    .replace('setTimeout(resolve, 5000)', 'setTimeout(resolve, 5)');
+  let served = 0;
+  const server = http.createServer((request, response) => {
+    const next = states[Math.min(served, states.length - 1)];
+    served += 1;
+    if (next === 500) {
+      response.writeHead(500).end();
+      return;
+    }
+    response
+      .writeHead(200, { 'content-type': 'application/json' })
+      .end(JSON.stringify(next));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const child = spawn(process.execPath, ['-e', script, String(since)], {
+    env: {
+      ...process.env,
+      PROGRAM_ID: 'radio one',
+      FAKE_PORT: String(port),
+      FAKE_BOUND_MS: '200',
+    },
+  });
+  let stdout = '';
+  child.stdout.on('data', (chunk) => (stdout += chunk));
+  const code = await new Promise((resolve) => child.on('exit', resolve));
+  server.close();
+  return { code, stdout, served };
+}
+
+test('the radio poll passes on a song started after the restart and reports a stall without URLs', async () => {
+  const since = Math.floor(Date.now() / 1000);
+  const idle = {
+    availability: 'available',
+    status: 'idle',
+    track: null,
+    intro: null,
+    remainingSeconds: null,
+    levels: { output: { rms: 0 } },
+    live: { onAir: false },
+    liquidsoap: { running: true },
+    icecast: { connected: true },
+  };
+  const fresh = {
+    ...idle,
+    status: 'playing',
+    track: {
+      startedAt: new Date((since + 5) * 1000).toISOString(),
+      url: 'https://media.example.test/a.mp3',
+    },
+    remainingSeconds: 100,
+  };
+
+  const played = await runRadioPoll([500, idle, fresh], since);
+  assert.equal(played.code, 0);
+  assert.match(played.stdout, /^RADIO_PLAYING startedAt=/);
+
+  const stalled = await runRadioPoll([idle], since);
+  assert.equal(stalled.code, 1);
+  const report = JSON.parse(stalled.stdout.replace(/^RADIO_NOT_PLAYING /, ''));
+  assert.deepEqual(report, {
+    error: null,
+    availability: 'available',
+    status: 'idle',
+    trackStartedAt: null,
+    remainingSeconds: null,
+    intro: null,
+    outputRms: 0,
+    liveOnAir: false,
+    liquidsoapRunning: true,
+    icecastConnected: true,
+  });
+  assert.doesNotMatch(stalled.stdout, /https?:/);
+
+  // A live show passes at once, even with no song.
+  const live = await runRadioPoll([{ ...idle, live: { onAir: true } }], since);
+  assert.equal(live.code, 0);
+  assert.equal(live.stdout, 'RADIO_LIVE\n');
+  assert.equal(live.served, 1);
+
+  const unreachable = await runRadioPoll([500], since);
+  assert.equal(unreachable.code, 1);
+  assert.match(unreachable.stdout, /"error":"http 500"/);
+});
+
+test('a song already on air at the restart extends the wait to its end, within 15 minutes', async () => {
+  const since = Math.floor(Date.now() / 1000);
+  const old = {
+    availability: 'available',
+    status: 'playing',
+    track: { startedAt: new Date((since - 60) * 1000).toISOString() },
+    intro: null,
+    remainingSeconds: 0.05,
+    levels: { output: { rms: 0.2 } },
+    live: { onAir: false },
+    liquidsoap: { running: true },
+    icecast: { connected: true },
+  };
+  const next = {
+    ...old,
+    track: { startedAt: new Date((since + 1) * 1000).toISOString() },
+  };
+  // Past the 200 ms bound the old song's end still keeps the poll going.
+  const states = Array.from({ length: 60 }, () => old).concat([next]);
+  const result = await runRadioPoll(states, since);
+  assert.equal(result.code, 0, result.stdout);
+  assert.ok(result.served > 40);
 });

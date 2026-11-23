@@ -3,6 +3,7 @@ import { Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { AppPage } from '../components/AppPage';
 import { RecoveryPlaylistPanel } from '../components/RecoveryPlaylistPanel';
+import { SongSimilarityPanel } from '../components/SongSimilarityPanel';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import type { Route } from './+types/radio-settings';
@@ -51,6 +52,16 @@ function draftId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+// A 400 names the consumer and the rule it broke (for example "Consumer 2:
+// the URL must use https."); any other failure reports its status.
+async function consumerSaveRefusal(response: Response): Promise<string> {
+  const fallback = `Now-playing delivery was not saved (${response.status})`;
+  if (response.status !== 400) return fallback;
+  const body = await response.json().catch(() => null);
+  const message = typeof body?.message === 'string' ? body.message.trim() : '';
+  return message ? `Now-playing delivery was not saved: ${message}` : fallback;
+}
+
 function normalizeConsumer(value: any): ConsumerDraft {
   const headers = value?.headers && typeof value.headers === 'object' && !Array.isArray(value.headers) ? (value.headers as Record<string, string>) : {};
   return {
@@ -71,6 +82,7 @@ export default function RadioSettingsRoute() {
   const [programId] = useGlobalProgramId();
   const [settings, setSettings] = useState<RadioSettings | null>(null);
   const [consumers, setConsumers] = useState<ConsumerDraft[]>([]);
+  const [publishing, setPublishing] = useState<'enabled' | 'blocked-local' | null>(null);
   const [instants, setInstants] = useState<InstantOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -79,17 +91,21 @@ export default function RadioSettingsRoute() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsResponse, consumersResponse, instantsResponse] = await Promise.all([
+      const [settingsResponse, consumersResponse, instantsResponse, publishingResponse] = await Promise.all([
         fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/settings`)),
         fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/now-playing-consumers`)),
-        fetch(apiUrl('/instants'))
+        fetch(apiUrl('/instants')),
+        fetch(apiUrl(`/radio/${encodeURIComponent(programId)}/now-playing-publishing`))
       ]);
       if (!settingsResponse.ok) throw new Error(`Radio settings failed (${settingsResponse.status})`);
       if (!consumersResponse.ok) throw new Error(`Now-playing delivery failed (${consumersResponse.status})`);
       if (!instantsResponse.ok) throw new Error(`Audio clips failed (${instantsResponse.status})`);
+      if (!publishingResponse.ok) throw new Error(`Now-playing publishing state failed (${publishingResponse.status})`);
       setSettings((await settingsResponse.json()) as RadioSettings);
       const consumerPayload = await consumersResponse.json();
       setConsumers(Array.isArray(consumerPayload) ? consumerPayload.map(normalizeConsumer) : []);
+      const publishingPayload = (await publishingResponse.json()) as { publishing?: unknown };
+      setPublishing(publishingPayload.publishing === 'blocked-local' ? 'blocked-local' : 'enabled');
       const instantPayload = await instantsResponse.json();
       setInstants(Array.isArray(instantPayload) ? instantPayload : []);
     } catch (error) {
@@ -143,7 +159,7 @@ export default function RadioSettingsRoute() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ consumers: payload })
       });
-      if (!response.ok) throw new Error(`Now-playing delivery was not saved (${response.status})`);
+      if (!response.ok) throw new Error(await consumerSaveRefusal(response));
       const result = await response.json();
       setConsumers(Array.isArray(result) ? result.map(normalizeConsumer) : []);
       showAlert('Now-playing delivery saved.', 'success');
@@ -178,7 +194,7 @@ export default function RadioSettingsRoute() {
           }
         />
       ) : (
-        <><RecoveryPlaylistPanel programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
+        <><RecoveryPlaylistPanel programId={programId} /><SongSimilarityPanel programId={programId} /><div className='grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'>
           <Card variant='outlined' padding='lg' className='space-y-5'>
             <div>
               <h2 className='mt-1 text-xl font-semibold'>Radio playout</h2>
@@ -280,6 +296,11 @@ export default function RadioSettingsRoute() {
                 <Plus size={14} /> Add consumer
               </Button>
             </div>
+            {publishing === 'blocked-local' && (
+              <p role='status' className='rounded-md border border-border px-3 py-2 text-sm text-text-secondary'>
+                Publishing is off on this local stack: no consumer is contacted outside production.
+              </p>
+            )}
             {consumers.length === 0 ? (
               <Empty title='No consumers configured' description='Add a destination when another service needs now-playing metadata.' />
             ) : (
@@ -321,7 +342,7 @@ export default function RadioSettingsRoute() {
                       </Field>
                     </div>
                     <Field label='URL'>
-                      <Input type='url' value={consumer.url} onChange={(event) => updateConsumer(index, { url: event.target.value })} />
+                      <Input type='url' placeholder='https://' value={consumer.url} onChange={(event) => updateConsumer(index, { url: event.target.value })} />
                     </Field>
                     <div className='space-y-2'>
                       <div className='flex items-center justify-between gap-3'>

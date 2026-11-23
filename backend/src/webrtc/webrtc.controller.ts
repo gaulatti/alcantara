@@ -115,6 +115,18 @@ export class WebrtcController {
     );
   }
 
+  @Post('desktop-program-feed-token')
+  @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
+  desktopProgramFeedToken(
+    @Req() request: OperatorRequest,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.webrtc.createDesktopProgramFeedToken(
+      identityFrom(request),
+      body.programId,
+    );
+  }
+
   @Post('rooms/:programId/participants/:identity/control')
   @RequirePermission(ALCANTARA_PERMISSIONS.webrtc.operate)
   controlParticipant(

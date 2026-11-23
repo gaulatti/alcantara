@@ -1,13 +1,17 @@
 import { Logger } from '@nestjs/common';
 import type {
   PalazzoConnectionState,
+  PalazzoEventEnvelope,
   PalazzoPlaybackEvent,
   PalazzoPlaybackState,
   PalazzoProgramStatus,
   PalazzoProgramType,
 } from './palazzo-contract';
-import { parsePalazzoEvent, parsePalazzoState } from './palazzo-contract';
-import type { RadioMetricsService } from './radio-metrics.service';
+import { classifyPalazzoFrame, parsePalazzoState } from './palazzo-contract';
+import type {
+  PalazzoUnknownField,
+  RadioMetricsService,
+} from './radio-metrics.service';
 import { PalazzoMachineClient } from './palazzo-machine.client';
 
 export type PalazzoInstanceValidation = 'ok' | 'mismatch' | 'conflict';
@@ -77,6 +81,7 @@ export class PalazzoProgramClient {
   private detail: string | null = null;
   private sseLoopRunning = false;
   private pollInFlight = false;
+  private lastStatus: PalazzoPlaybackState['status'] | null = null;
 
   constructor(private readonly options: PalazzoProgramClientOptions) {
     this.logger = new Logger(`PalazzoClient(${options.programId})`);
@@ -172,18 +177,18 @@ export class PalazzoProgramClient {
       return false;
     }
 
+    let consumed = true;
     try {
       await this.consumeStream(response.body);
-      return true;
     } catch {
-      return false;
-    } finally {
-      try {
-        await response.body?.cancel();
-      } catch {
-        // no-op
-      }
+      consumed = false;
     }
+    try {
+      await response.body?.cancel();
+    } catch {
+      // no-op
+    }
+    return consumed;
   }
 
   private async consumeStream(body: ReadableStream<Uint8Array>): Promise<void> {
@@ -222,13 +227,44 @@ export class PalazzoProgramClient {
       this.options.metrics.recordEventIgnored('malformed');
       throw new Error('malformed Palazzo event');
     }
-    const event = parsePalazzoEvent(decoded);
-    if (!event) {
+    const parsed = classifyPalazzoFrame(decoded, this.recordUnknown);
+    if (parsed.kind === 'unknown-type') {
+      this.skipUnknownEvent(parsed.envelope);
+      return;
+    }
+    if (parsed.kind === 'unsupported-version') {
+      // Another major version: nothing of the frame is read, and the stream
+      // stays up (gaulatti/ariston#217). A later known event that skips past
+      // its sequence is reconciled as a gap.
+      this.options.metrics.recordEventIgnored('unsupported-version');
+      return;
+    }
+    if (parsed.kind === 'malformed') {
       this.options.metrics.recordEventIgnored('malformed');
       throw new Error('malformed Palazzo event');
     }
+    const event = parsed.event;
     if (frame.id) event.id = frame.id;
     await this.acceptEvent(event);
+  }
+
+  /**
+   * A well-formed event of a type Alcantara does not know is skipped and
+   * counted, never a reason to drop the stream (gaulatti/ariston#217). When it
+   * is the next event of the accepted boot it still advances the cursor, so the
+   * known event after it is not mistaken for a gap.
+   */
+  private skipUnknownEvent(envelope: PalazzoEventEnvelope): void {
+    this.options.metrics.recordEventIgnored('unknown-type');
+    if (
+      this.currentBootId === null ||
+      envelope.bootId !== this.currentBootId ||
+      (this.instanceId !== null && envelope.instanceId !== this.instanceId) ||
+      envelope.sequence <= this.lastSequence
+    )
+      return;
+    this.lastSequence = envelope.sequence;
+    this.touch(envelope);
   }
 
   private async acceptEvent(event: PalazzoPlaybackEvent): Promise<void> {
@@ -241,7 +277,10 @@ export class PalazzoProgramClient {
       return;
     }
     if (event.type === 'snapshot') {
-      let state = parsePalazzoState(event.data?.state);
+      let state = parsePalazzoState(event.data?.state, {
+        previousStatus: this.lastStatus ?? undefined,
+        onUnknown: this.recordUnknown,
+      });
       if (!state) {
         // Palazzo's SSE security boundary intentionally strips URL-shaped
         // fields, including track and intro URLs, from snapshots. Hydrate the
@@ -266,7 +305,7 @@ export class PalazzoProgramClient {
       // automation engine permanently "unreconciled" during healthy service
       // and prevents idle startup recovery.
       this.setConnection('connected', null);
-      this.options.callbacks.onSnapshot(this.options.programId, state);
+      this.emitSnapshot(state);
       return;
     }
 
@@ -287,6 +326,11 @@ export class PalazzoProgramClient {
 
     if (event.bootId !== this.currentBootId) {
       this.options.metrics.recordEventIgnored('superseded-boot');
+      return;
+    }
+
+    if (event.type === 'replay.gap') {
+      this.recordReplayGap(event);
       return;
     }
 
@@ -313,11 +357,33 @@ export class PalazzoProgramClient {
     }
   }
 
+  /**
+   * Palazzo says the events between our last cursor and its snapshot are gone
+   * (gaulatti/alcantara#240): the cursor was outside its replay window or came
+   * from another boot. It arrives right after the snapshot, carrying the
+   * snapshot's id, boot and sequence, and that snapshot has already been
+   * hydrated and applied, so the state is current and there is nothing more to
+   * fetch. It is counted under the existing gap counter and logged once; the
+   * cursor stays at the snapshot and nothing reaches the engine, so what airs
+   * does not change.
+   */
+  private recordReplayGap(event: PalazzoPlaybackEvent): void {
+    this.options.metrics.recordEventIgnored('sequence-gap');
+    const replayEvents = event.data?.replayEvents;
+    this.logger.warn(
+      `Palazzo replay gap on ${this.options.programId}: events between the last cursor and the snapshot were not replayed` +
+        (Number.isSafeInteger(replayEvents)
+          ? ` (replay window held ${String(replayEvents)} events)`
+          : ''),
+    );
+  }
+
   private async reconcileGap(): Promise<void> {
     const state = await this.options.machineClient.getPlaybackState(
       this.options.palazzoUrl,
       this.options.programId,
       this.abort?.signal,
+      this.lastStatus ?? undefined,
     );
     if (!this.validateInstanceId(state.instanceId)) return;
     if (state.intro && state.intro.programId !== this.options.programId) {
@@ -327,7 +393,7 @@ export class PalazzoProgramClient {
     this.rebaseCursor(state.bootId, state.sequence);
     this.lastSnapshotAt = Date.now();
     this.lastEventAt = Date.now();
-    this.options.callbacks.onSnapshot(this.options.programId, state);
+    this.emitSnapshot(state);
   }
 
   private rebaseCursor(bootId: string, sequence: number): void {
@@ -376,7 +442,17 @@ export class PalazzoProgramClient {
     return true;
   }
 
-  private touch(event: PalazzoPlaybackEvent): void {
+  /** Keeps the last accepted status for a later unknown one, then forwards. */
+  private emitSnapshot(state: PalazzoPlaybackState): void {
+    this.lastStatus = state.status;
+    this.options.callbacks.onSnapshot(this.options.programId, state);
+  }
+
+  private readonly recordUnknown = (field: PalazzoUnknownField): void => {
+    this.options.metrics.recordUnknownValue(field);
+  };
+
+  private touch(event: Pick<PalazzoPlaybackEvent, 'occurredAt'>): void {
     const occurred = Date.parse(event.occurredAt);
     this.lastEventAt = Number.isFinite(occurred) ? occurred : Date.now();
   }
@@ -421,7 +497,7 @@ export class PalazzoProgramClient {
           'sse unavailable; polling state endpoint',
         );
       }
-      this.options.callbacks.onSnapshot(this.options.programId, state);
+      this.emitSnapshot(state);
     } catch {
       if (this.isTerminalConnection()) {
         this.setConnection('unavailable', 'sse and state endpoint unreachable');
@@ -447,12 +523,30 @@ export class PalazzoProgramClient {
     );
   }
 
+  /**
+   * Palazzo's current state on request (gaulatti/alcantara#230): Palazzo sends
+   * a snapshot only when a stream connects, so a healthy connection never
+   * reports an idle player by itself. The engine asks when it needs the
+   * authoritative state. Null when this client is stopped, Palazzo is
+   * unreachable, or the state belongs to another Palazzo instance or boot;
+   * nothing is emitted and the stream's cursor is not touched.
+   */
+  async currentState(): Promise<PalazzoPlaybackState | null> {
+    if (this.stopped) return null;
+    const state = await this.fetchState();
+    if (!state || state.instanceId !== this.instanceId) return null;
+    if (this.currentBootId && state.bootId !== this.currentBootId) return null;
+    this.lastStatus = state.status;
+    return state;
+  }
+
   private async fetchState(): Promise<PalazzoPlaybackState | null> {
     try {
       return await this.options.machineClient.getPlaybackState(
         this.options.palazzoUrl,
         this.options.programId,
         this.abort?.signal,
+        this.lastStatus ?? undefined,
       );
     } catch {
       return null;
@@ -563,7 +657,11 @@ function isEnginePlaybackEvent(type: PalazzoPlaybackEvent['type']): boolean {
     type === 'intro.started' ||
     type === 'intro.ended' ||
     type === 'intro.failed' ||
+    type === 'playout.next_withdrawn' ||
+    type === 'instant.started' ||
+    type === 'instant.ended' ||
     type === 'playback.position' ||
-    type === 'audio.levels'
+    type === 'audio.levels' ||
+    type === 'playout.request_failed'
   );
 }

@@ -133,7 +133,7 @@ export const FifthBellChyron: React.FC<FifthBellChyronProps> = ({
   const activeLabel = label ?? LABELS[labelIndex];
 
   return (
-    <div className={`toni-chyron ${visible ? 'toni-chyron-visible' : ''}`}>
+    <div className='toni-chyron toni-chyron-visible'>
       <div className='toni-chyron-slug'>
         <span className={`toni-chyron-slug-text${labelFading ? ' toni-chyron-slug-text--fading' : ''}`}>{activeLabel}</span>
       </div>

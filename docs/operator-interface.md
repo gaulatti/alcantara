@@ -65,9 +65,29 @@ The broadcast deck reserves a separate semantic action grammar:
 
 - **Stage** selects Preview only.
 - **CUT** and **TAKE** are the only controls that move Preview to Program.
-- **FADE TO BLACK** requires an arm action followed by confirmation within three
-  seconds. Restoring Program remains a single explicit action because it removes
-  the blackout.
+- **Fade to black** is a Bleecker `ArmTake`: the first press only
+  arms it, a second press within five seconds or
+  a 0.8-second hold takes it, and Esc disarms. From the keyboard, Alt+B arms and
+  a second Alt+B within three seconds takes it; a "Fade to black armed" pill
+  shows while it waits. Restoring Program remains a single explicit action
+  because it removes the blackout.
+- Program shows its state as a Bleecker `StatePill` in the monitor header: **On
+  air** (pulsing, with the on-air glow on the monitor) or **Faded to black**.
+  Preview carries no on-air state. Source rows use pills too: Program, Preview ·
+  Program, or Preview.
+- The transition, device class and preset visibility pickers are Bleecker
+  `Select`; the source panel width is a Bleecker `Slider`. No text on the deck
+  is smaller than 12 px.
+
+Keyboard shortcuts apply when the keyboard toggle in Workspace options is on. Only a fresh key press acts: a held key's repeats are ignored, so holding Alt+B arms and never takes.
+
+| Action | Mouse | Keyboard |
+|---|---|---|
+| Take Preview to Program | TAKE TO PROGRAM | Space |
+| Cut | CUT | C |
+| Clear Preview | — | Esc |
+| Fade to black | Fade to black twice within 5 s, or hold 0.8 s | Alt+B twice within 3 s |
+| Restore Program | RESTORE PROGRAM | — |
 - Red/destructive styling is reserved for a destructive or live-impacting
   action. Icon-only controls always have a visible tooltip or accessible label.
 
@@ -174,7 +194,7 @@ and source-list width. Program recording is a secondary disclosure and contacts
 Alana only while open. Recording service availability is independent of scene
 staging and TAKE.
 
-The Radio desk has one persistent player at the bottom with actual engine metadata, progress, and remaining time. Continuous fillers retain Manual/Autoplay/Shuffle/Loop and the saved songs. A future published block does not hide the playing rotation. When a timed block is on air, the desk shows its events and routes transport to Stop/Advance through flight execution.
+The Radio desk (#298) has an **on-air strip** that never scrolls away: On air, Off air or Status delayed, the song with elapsed and remaining time, the intro state, what plays next and the playout mode, and the stream, engine and monitor chips (Stream verified, Engine ready, Monitor off; an unknown or failed state is never shown as a good one). When the telemetry is stale the strip says Status delayed and shows no clock instead of a frozen one. Manual/Autoplay/Shuffle/Loop sit above the rotation, and the song on air and the next one are marked in it. At the bottom, the transport is **Cue next (N)**, then **Take (Space)**: one press never takes, a cue clears itself after five seconds or on Esc, and a refused take is shown beside the transport. Holding **Stop** (or Alt and period) for 0.6 seconds takes the song off air, and holding **Stop all** on the cartwall for 0.6 seconds stops every sounder; a click only explains. **/** opens a search of the rotation and the library: Enter queues a rotation song next, and **Take now** arms it, then **Confirm** within five seconds puts it on air (a library song that is not in the rotation can only be taken, through `POST /radio/:programId/song`, without changing the rotation). **M** toggles the monitor. Sounders show their time left while they play, a cartwall search keeps each pad's number and Ctrl key, and the faders show the live level with its peak and held peak (from `ProgramAudioMeterLevels`) and move one decibel with the arrow keys. Continuous fillers retain the saved songs. A future published block does not hide the playing rotation. When a timed block is on air, the desk shows its events and routes transport to Stop/Advance through flight execution.
 
 The dominant panel follows the current playout owner. Continuous mode shows the saved filler rotation and existing Play Next overrides; timed mode shows the on-air block with protected played/on-air events and fixed boundaries. **Prepare rundown** opens the planner with the continuous-fillers summary and optional timed blocks. **Build from tags** resolves Library labels into a reviewable block draft. See `radio-station-workflow.md` for selection and completion behavior.
 
@@ -184,11 +204,36 @@ state. Disabled clips stay disabled. Recovery/session controls remain in a
 secondary disclosure. The development `radio-workflow` fixture now shows a log
 with both following events and fixed-time boundaries; `radio-empty`,
 `radio-offline`, and `radio-external` retain explicit empty/degraded feedback.
+Cart shortcuts follow the platform (gaulatti/alcantara#308). On macOS a pad plays on Ctrl+letter, and the pad shows that chord. On Windows and Linux a pad plays on Alt+letter, and the pad shows that chord, so Ctrl+C, V, X, Z, A, F and P stay with the browser and the operating system. The platform is read once per page from `navigator.userAgentData.platform`, falling back to `navigator.platform`. Scene hotkeys keep Ctrl+S and Ctrl+digit on every platform. The Windows and Linux letters skip the browser's menu letters: Chrome and Edge use Alt+F, Alt+E and Alt+D, and Firefox's Alt menu uses F, E, V, S, B, T and H. The Alt map is `qyuiopagjzxcm` (13 slots), a subset of the macOS map `qeyuiopadfghjzxcvbm` (19 slots).
+
+Failures on the Radio desk are shown, never only logged (#253). A refused
+instant or **Stop all** appears above the Cartwall pads and clears when the
+next instant or Stop all starts, or when the operator switches program; a
+refusal that arrives after a switch is not shown. A song library or Cartwall that did not load
+says so with **Retry song library** or **Retry cartwall** instead of looking
+empty; a later successful load replaces the error, and only the failed list
+shows one. A failed reload never discards a list that already loaded: the
+error and its retry sit above the still-usable pads, and stand alone only when
+nothing has loaded. Refusals read the server's own `message` when it answers with JSON
+(a string or a list of strings), as one line of at most 160 characters and as
+plain text; any other body falls back to `HTTP <status>`. The helper is
+`frontend/app/utils/responseFailure.ts`. `/console-fixture?state=radio-refused`
+shows all three states.
 
 The local wall clock is labeled separately from authoritative playback timing.
 Remaining time uses reported duration and position; stale telemetry is labeled
 as last reported time. Missing output/engine data stays visibly unverified or
 unavailable. The console does not generate a simulated waveform or audio meter.
+
+The program page measures a song or instant from the element's captured stream
+when the engine offers `captureStream()`. Otherwise it routes the element through
+Web Audio, but only when Web Audio can read the source: same origin, `blob:`,
+`data:`, or loaded in CORS mode (`frontend/app/utils/mediaWebAudioAccess.ts`).
+A cross-origin source loaded without CORS (the song and instant store sends no
+CORS headers) plays on its own element with no measured level. Web Audio would
+output silence for it, so routing it would take it off the program sound. This
+is the case in WebKit (Safari and the desktop console), which has no
+`captureStream()` on media elements.
 
 Console surfaces retain Encode Sans, Bleecker radii, and the existing palette,
 with centrally scoped dark surface and semantic live/preview/ready tokens in
@@ -256,6 +301,16 @@ source, then return to TAKE. Collection routes use stacked cards with visible
 actions where a desktop row would otherwise require horizontal navigation or
 hover.
 
+## Program filler
+
+**Broadcast destinations** ends with a **Program filler** section (gaulatti/alcantara#127). It reads `GET /broadcast/programs/:programId/fillers` from #126 (see `docs/program-filler.md` once #126 lands).
+- Each leg the program has (television and/or radio) shows its version **Active this session** and its version **Pending next session**. For each version it shows the id, status (with reason), order and seed, sources (named from the media library when known), a short checksum, and the preparation time.
+- With `broadcast.manage`, an operator can prepare a television filler from one enabled image or video asset, and a radio filler from enabled audio assets, in order or shuffled with a seed.
+- A failed preparation shows the server's message and keeps the selection for a retry.
+- Nothing claims a ready state the backend did not report.
+- Against a backend without the filler API (404), the section renders nothing.
+- No signed URL or credential appears in the UI.
+
 ## Local verification fixtures
 
 Compose seeds three fictional shows: `main` (Simulcast), `tv-demo` (TV), and
@@ -284,11 +339,14 @@ The `state=radio-workflow` fixture renders a populated twelve-track Radio desk,
 full clocked log, output confidence, Cartwall, and Mixer without commanding
 Palazzo. Queue changes, cart triggers/search, mute/fader controls, and Stop are
 interactive in this fixture. `state=radio-empty`, `state=radio-offline`, and
-`state=radio-stale` cover the corresponding explicit states.
+`state=radio-stale` cover the corresponding explicit states;
+`state=radio-not-configured` shows the engine badge with its reason.
 `state=radio-external` keeps the reported playing track visible when it is absent
 from the playlist. These fixtures are
 visual verification only; normal authenticated Compose console checks exercise
 the actual backend staging, activation, queue, and mix paths separately.
+
+`/filler-fixture` renders the program filler legs (gaulatti/alcantara#127): a television leg with an active and a pending version, and a radio leg with a pending shuffle and nothing active. It is built from the response pinned in `app/components/fillerFixture.ts`.
 
 Browser acceptance covers 1440 x 900, 1024 x 768, and 390 x 844. Verify that
 navigation is reachable, no shell element overlaps the switcher, Stage does not
@@ -315,4 +373,4 @@ Leaving the Fillers or Build block tab while a preview is pending cancels applyi
 
 ### Continuous radio management
 
-The Radio desk shows the saved continuous filler rotation whenever a timed block is not currently on air, including when future blocks are published. The ordinary transport controls remain connected to that rotation. The Rundown planner keeps a 24/7 continuous-fillers summary above optional timed blocks, with direct access to the live rotation. New blocks can start at any minute and are not forced to end after an hour; offsets, filler previews, duration estimates, and runtime timers follow explicit event boundaries. `/console-fixture?state=radio-continuous` covers a populated rotation with no scheduled blocks. The existing rundown fixture retains its authored +3600 stop to demonstrate compatibility, rather than imposing that boundary on new blocks.
+The Radio desk shows the saved continuous filler rotation whenever a timed block is not currently on air, including when future blocks are published. The ordinary transport controls remain connected to that rotation. The Rundown planner keeps a 24/7 continuous-fillers summary above optional timed blocks, with direct access to the live rotation. New blocks can start at any minute and are not forced to end after an hour; offsets, filler previews, duration estimates, and runtime timers follow explicit event boundaries. `/console-fixture?state=radio-continuous` covers a populated rotation with no scheduled blocks. `/console-fixture?state=radio-song-failed` shows the Radio desk alert for a song Palazzo could not load (#175). The existing rundown fixture retains its authored +3600 stop to demonstrate compatibility, rather than imposing that boundary on new blocks.

@@ -1,7 +1,9 @@
+import { readChartSongValues, type ChartSongValues } from './programChartValues';
+
 export type ToniChyronContentMode = 'text' | 'sequence';
 export type ToniChyronSequenceMode = 'manual' | 'autoplay';
 
-export interface ToniChyronSequenceLeafItem {
+export interface ToniChyronSequenceLeafItem extends ChartSongValues {
   id: string;
   kind: 'preset';
   text: string;
@@ -38,7 +40,7 @@ export interface ToniChyronResolvedContent {
   activePathLabels: string[];
 }
 
-export interface ToniChyronResolvedLeaf {
+export interface ToniChyronResolvedLeaf extends ChartSongValues {
   text: string;
   useMarquee: boolean;
   earoneSongId?: string;
@@ -94,7 +96,8 @@ function normalizeLeafItem(record: RecordValue): ToniChyronSequenceLeafItem {
         ? record.earoneSpins.trim()
         : typeof record.earoneSpins === 'number' && Number.isFinite(record.earoneSpins)
           ? String(record.earoneSpins)
-          : undefined
+          : undefined,
+    ...readChartSongValues(record)
   };
 }
 
@@ -260,6 +263,10 @@ function resolveSequenceRecursive(
     earoneSongId: selected.earoneSongId,
     earoneRank: selected.earoneRank,
     earoneSpins: selected.earoneSpins,
+    externalChartId: selected.externalChartId,
+    externalChartSongId: selected.externalChartSongId,
+    externalChartRank: selected.externalChartRank,
+    externalChartSpins: selected.externalChartSpins,
     activePathLabels: [...labels, selected.text]
   };
 }

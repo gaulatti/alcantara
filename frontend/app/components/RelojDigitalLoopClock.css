@@ -1,4 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@400;700;800&display=swap');
+/*
+ * Countdown and world clock in Giorgia's broadcast language, after the artist
+ * bumper: the MI mark top-left, type set straight on a navy field, one magenta
+ * signal rule, square geometry, and hard cuts. Barlow and Barlow Condensed are
+ * loaded by the app root.
+ */
 
 .reloj-digital-loop-root {
     width: 100%;
@@ -7,187 +12,150 @@
     top: 0;
     left: 0;
     pointer-events: none;
+    color: #fff;
 }
 
-/* Blue tint overlay with blur — sits between BG image and content */
+/* Navy field over whatever sits underneath (usually the slideshow). */
 .reloj-digital-loop-root::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: rgba(10, 18, 52, 0.7);
+    background:
+        linear-gradient(90deg, rgba(4, 9, 30, 0.5) 0%, rgba(4, 9, 30, 0.08) 62%, rgba(4, 9, 30, 0.36) 100%),
+        rgba(10, 18, 52, 0.7);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     z-index: 0;
 }
 
-#logo-above img {
-    height: 52px;
-    width: auto;
-    filter: brightness(0) invert(1) drop-shadow(0 0 12px rgba(0, 0, 0, 0.85));
+#reloj-mark {
+    position: absolute;
+    top: 68px;
+    left: 82px;
 }
 
+/* The clock hangs off the magenta rule, vertically centred on the left edge. */
 #clock-block {
     position: absolute;
     top: 50%;
-    left: 52px;
+    left: 82px;
     transform: translateY(-54%);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 22px;
+    gap: 26px;
+    padding-left: 48px;
     pointer-events: auto;
 }
 
-#clock,
-#ms,
-#city-name {
-    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    opacity: 1;
-    transform: scale(1) translateY(0);
+#clock-block::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 10px;
+    background: #ed0076;
+    box-shadow: 0 0 30px rgba(237, 0, 118, 0.3);
 }
 
+/* The city changes with a hard cut: the outgoing value is simply hidden for the swap. */
 #clock-block.clock-out #clock,
 #clock-block.clock-out #ms,
 #clock-block.clock-out #city-name {
-    opacity: 0;
-    transform: scale(0.96) translateY(10px);
+    visibility: hidden;
+}
+
+/* Label above the time, as on the bumper's "In onda ora" card. */
+#city-name {
+    order: -1;
+    min-height: 34px;
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 38px;
+    color: #ed0076;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1;
+    text-align: left;
+    text-shadow: 0 3px 16px rgba(0, 0, 0, 0.65);
+    white-space: nowrap;
 }
 
 #clock-row {
     display: flex;
-    align-items: stretch;
+    align-items: baseline;
+    gap: 22px;
 }
 
-@keyframes relojBgFlow {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
-#clock-bg {
-    background: linear-gradient(125deg, rgba(164, 35, 35, 0.85) 0%, rgba(102, 19, 19, 0.85) 48%, rgba(164, 35, 35, 0.85) 100%);
-    background-size: 200% 200%;
-    animation: relojBgFlow 8s ease-in-out infinite;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 6px 0 0 6px;
-    padding: 14px 52px 18px;
+#clock-bg,
+#ms-bg {
     display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 #clock {
-    font-family: 'Barlow Condensed', sans-serif;
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
     font-weight: 800;
-    font-size: 148px;
+    font-size: 300px;
     color: #fff;
-    letter-spacing: 0.01em;
-    line-height: 1;
+    letter-spacing: -0.03em;
+    line-height: 0.8;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-}
-
-#ms-bg {
-    background: rgba(26, 0, 8, 0.25);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 0 6px 6px 0;
-    padding: 14px 28px 18px 24px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    border-left: 2px solid rgba(255, 255, 255, 0.1);
+    text-shadow: 0 8px 34px rgba(0, 0, 0, 0.66);
 }
 
 #ms {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 700;
-    font-size: 72px;
-    color: rgba(255, 255, 255, 0.75);
-    letter-spacing: 0.02em;
-    line-height: 1;
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 132px;
+    color: rgba(255, 255, 255, 0.78);
+    letter-spacing: -0.02em;
+    line-height: 0.8;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    padding-bottom: 10px;
+    text-shadow: 0 8px 34px rgba(0, 0, 0, 0.66);
 }
 
-#city-name {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 300;
-    font-size: 52px;
-    color: rgba(255, 255, 255, 0.88);
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    line-height: 1;
-    text-align: left;
-    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
-    white-space: nowrap;
-}
-
-/* Lower third */
+/* Lower third: a hairline, the call to action as a magenta label, then the title. */
 #lower-third {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 160px;
-    display: flex;
-    align-items: center;
-    padding: 0 52px 16px;
-    gap: 0;
+    bottom: 70px;
+    left: 82px;
+    right: 82px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    column-gap: 44px;
+    padding-top: 22px;
+    border-top: 2px solid rgba(255, 255, 255, 0.4);
     pointer-events: auto;
 }
 
 #cta {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 800;
-    font-size: 72px;
-    color: #c6a760;
-    letter-spacing: 0.02em;
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 38px;
+    color: #ed0076;
+    letter-spacing: 0.14em;
     line-height: 1;
     text-transform: uppercase;
-    align-self: center;
-    padding-bottom: 4px;
-    margin-right: 32px;
-    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    opacity: 1;
-    transform: translateY(0);
+    text-shadow: 0 3px 16px rgba(0, 0, 0, 0.65);
+    white-space: nowrap;
 }
 
 #cta.out {
-    opacity: 0;
-    transform: translateY(12px);
-}
-
-#pipe {
-    color: #fff;
-    font-family: 'Barlow', sans-serif;
-    font-weight: 400;
-    font-size: 64px;
-    line-height: 1;
-    opacity: 0.9;
-    margin-right: 32px;
-    align-self: center;
-    padding-bottom: 6px;
+    visibility: hidden;
 }
 
 #show-title {
-    font-family: 'Barlow Condensed', sans-serif;
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
     font-weight: 800;
-    font-size: 72px;
+    font-size: 76px;
     color: #fff;
-    letter-spacing: 0.02em;
-    line-height: 1;
+    letter-spacing: -0.02em;
+    line-height: 0.9;
     text-transform: uppercase;
-    align-self: center;
-    padding-bottom: 4px;
+    text-shadow: 0 8px 34px rgba(0, 0, 0, 0.66);
+    white-space: nowrap;
 }

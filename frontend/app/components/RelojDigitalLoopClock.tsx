@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
-import { activateScene } from '../services/program';
+import { completeSceneCountdown } from '../services/program';
+import { GiorgiaMark } from './giorgiaBroadcast';
 import './RelojDigitalLoopClock.css';
 
 interface RelojDigitalLoopClockProps {
@@ -188,7 +189,11 @@ export default function RelojDigitalLoopClock({
       if (countdownRunning && remaining <= 0 && !countdownFiredRef.current) {
         countdownFiredRef.current = true;
         if (allowProgramActivation && programId && countdownTargetSceneId) {
-          activateScene(programId, countdownTargetSceneId, countdownTransitionId);
+          // The on-air page is not signed in, so it cannot take a scene itself. The API takes the target
+          // from the scene's own settings.
+          completeSceneCountdown(programId).catch((error) => {
+            console.error('The countdown reached zero but the scene did not switch:', error);
+          });
         }
         return;
       }
@@ -276,20 +281,21 @@ export default function RelojDigitalLoopClock({
     return () => window.clearInterval(id);
   }, [mode]);
 
-  const active = LOOP_TIMEZONES[activeIndex] || LOOP_TIMEZONES[0];
+  const active = LOOP_TIMEZONES[activeIndex];
 
   const activeTitleItem = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedTextSequence }, nowMs);
   const activeCtaItem = resolveProgramTextLeaf({ contentMode: 'sequence', sequence: normalizedCtaSequence }, nowMs);
 
   const titleText = activeTitleItem?.text?.trim() || '';
   const ctaText = activeCtaItem?.text?.trim() || '';
+  // A resolved text leaf carries no in/out mode, so the CTA never takes the in-anim or out class.
 
   return (
     <div className='reloj-digital-loop-root'>
+      <div id='reloj-mark'>
+        <GiorgiaMark width={172} />
+      </div>
       <div id='clock-block' className={clockOut && mode === 'clock' ? 'clock-out' : ''}>
-        <div id='logo-above'>
-          <img src='/mi.svg' alt='Modo Italiano' />
-        </div>
         <div id='clock-row'>
           <div id='clock-bg'>
             <div id='clock' ref={clockRef}>
@@ -307,11 +313,10 @@ export default function RelojDigitalLoopClock({
       {(titleText !== '' || ctaText !== '') && (
         <div id='lower-third'>
           {ctaText !== '' && (
-            <div id='cta' className={activeCtaItem?.mode === 'in' ? 'in-anim' : activeCtaItem?.mode === 'out' ? 'out' : ''}>
+            <div id='cta' className=''>
               {ctaText}
             </div>
           )}
-          {titleText !== '' && ctaText !== '' && <div id='pipe'>|</div>}
           {titleText !== '' && (
             <div id='show-title'>
               <FlightBoardText targetText={titleText} />

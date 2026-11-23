@@ -14,7 +14,7 @@ interface ToniLogoProps {
 }
 
 export const ToniLogo: React.FC<ToniLogoProps> = ({
-  callsign = 'MR',
+  callsign = '',
   subtitle,
   logos = DEFAULT_TONI_LOGOS,
   rotationIntervalMs = DEFAULT_INTERVAL_MS,

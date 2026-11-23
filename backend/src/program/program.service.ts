@@ -1,16 +1,26 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   BadRequestException,
   BadGatewayException,
+  GatewayTimeoutException,
   forwardRef,
   Inject,
   Injectable,
   Optional,
   OnModuleInit,
+  OnModuleDestroy,
   NotFoundException,
 } from '@nestjs/common';
 import { MediaAssetKind, type Prisma } from '@prisma/client';
-import { Subject, Observable } from 'rxjs';
+import { Subject, Observable, type Subscription } from 'rxjs';
 import { PrismaService } from '../prisma.service';
+import {
+  OUTBOUND_REFUSAL_MESSAGES,
+  OutboundRefusal,
+  safeFetch,
+  type SafeFetchDeps,
+} from '../outbound/safe-fetch';
+import { isAudioMediaType } from '../outbound/media-types';
 import {
   deleteMediaAsset,
   syncAudioClipAsset,
@@ -22,6 +32,7 @@ import { toRadioMixerPayload } from '../radio/radio-mixer.utils';
 import {
   SongExecutionEngine,
   type SongEngineEvent,
+  type SongEngineTrackEvent,
 } from '../radio/song-execution.engine';
 import {
   filterProgramSongQueueForSequence,
@@ -29,12 +40,15 @@ import {
 } from '../radio/song-queue.utils';
 import {
   collectHighRotationProgramSongLeaves,
+  countProgramSongLeavesBySong,
   normalizeProgramSongSequence,
 } from '../radio/song-sequence.utils';
 import { MAX_HIGH_ROTATION_SONGS } from '../radio/song-rotation.utils';
 import {
   projectProgramTemplateSignal,
   projectProgramTemplateState,
+  programTemplateSchemaVersion,
+  publicCoverUrl,
   readProgramTemplateManifest,
   type ProgramTemplateManifest,
   type ProgramTemplateRegistration,
@@ -104,8 +118,21 @@ type ProgramUpdateTopic =
   | 'sceneInstant'
   | 'flight';
 
+/**
+ * The track the song engine confirmed on air: an accepted `track.started` of
+ * its own song, as the as-run log records it (gaulatti/alcantara#178).
+ */
+export interface ProgramPlayingTrack {
+  playbackId: string;
+  title: string | null;
+  artist: string | null;
+  startedAt: string;
+  /** The song record's stored public https cover (gaulatti/alcantara#179). */
+  coverUrl?: string;
+}
+
 @Injectable()
-export class ProgramService implements OnModuleInit {
+export class ProgramService implements OnModuleInit, OnModuleDestroy {
   private static readonly DEFAULT_PROGRAM_ID = 'main';
   private static readonly BROADCAST_SETTINGS_ID = 1;
   private static readonly SONG_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 450;
@@ -151,6 +178,14 @@ export class ProgramService implements OnModuleInit {
       queueEntryId?: string | null;
     }
   >();
+  /** Confirmed playing track per program; absent when none is on air. */
+  private readonly playingTrackByProgramId = new Map<
+    string,
+    ProgramPlayingTrack
+  >();
+  private trackEventsSubscription: Subscription | null = null;
+  /** Applies each program's track events in order across cover lookups. */
+  private readonly trackEventChains = new Map<string, Promise<void>>();
   private eventListeners:
     | Set<
         (event: {
@@ -178,7 +213,112 @@ export class ProgramService implements OnModuleInit {
     this.songExecutionEngine.setBroadcastHandler((event: SongEngineEvent) => {
       this.handleEngineEvent(event);
     });
+    this.trackEventsSubscription =
+      this.songExecutionEngine.trackEvents$.subscribe((event) =>
+        this.handleTrackEvent(event),
+      );
+    // A deploy candidate (#223) writes no program state.
+    if (isDeployCandidate()) return;
     await this.ensureDefaultProgramState();
+  }
+
+  onModuleDestroy(): void {
+    this.trackEventsSubscription?.unsubscribe();
+    this.trackEventsSubscription = null;
+  }
+
+  /**
+   * Follows the engine's accepted starts and ends, the as-run log's source:
+   * a start puts its song on air (an announced song only once its start is
+   * accepted, even under the song it follows), and an end clears it only when
+   * it ends the song on air. Each change is one `playing_track_update`.
+   */
+  private handleTrackEvent(event: SongEngineTrackEvent): void {
+    const programId = this.normalizeProgramId(event.programId);
+    const previous = this.trackEventChains.get(programId) ?? Promise.resolve();
+    this.trackEventChains.set(
+      programId,
+      previous.then(() => this.applyTrackEvent(programId, event)),
+    );
+  }
+
+  private async applyTrackEvent(
+    programId: string,
+    event: SongEngineTrackEvent,
+  ): Promise<void> {
+    if (event.type === 'track.started') {
+      const coverUrl = await this.storedCoverUrl(event.url);
+      this.playingTrackByProgramId.set(programId, {
+        playbackId: event.playbackRequestId,
+        title: event.title,
+        artist: event.artist,
+        startedAt: event.at.toISOString(),
+        ...(coverUrl ? { coverUrl } : {}),
+      });
+    } else if (
+      this.playingTrackByProgramId.get(programId)?.playbackId ===
+      event.playbackRequestId
+    ) {
+      this.playingTrackByProgramId.delete(programId);
+    } else {
+      return;
+    }
+    const playingTrack = this.playingTrackByProgramId.get(programId);
+    this.broadcastUpdate(programId, {
+      type: 'playing_track_update',
+      programId,
+      ...(playingTrack ? { playingTrack } : {}),
+      updatedAt: event.at.toISOString(),
+    });
+  }
+
+  /**
+   * The cover the song record stores for this audio URL, when it is a public
+   * https URL (gaulatti/alcantara#179). A miss, a failed lookup or an unsafe
+   * value leaves the track without a cover. Each lookup records its result in
+   * alcantara_program_playing_track_cover_lookups_total.
+   */
+  private async storedCoverUrl(
+    audioUrl: string | null,
+  ): Promise<string | undefined> {
+    if (!audioUrl) return undefined;
+    let stored: unknown;
+    try {
+      const song = await this.prisma.song.findFirst({
+        where: { audioUrl },
+        select: { coverUrl: true },
+      });
+      stored = song?.coverUrl;
+    } catch (error) {
+      this.metrics?.recordPlayingTrackCoverLookup('error');
+      console.warn(
+        `[ProgramService] Cover lookup failed for a playing track: ${String(error)}`,
+      );
+      return undefined;
+    }
+    if (stored === undefined || stored === null || stored === '') {
+      this.metrics?.recordPlayingTrackCoverLookup('absent');
+      return undefined;
+    }
+    const coverUrl = publicCoverUrl(stored);
+    this.metrics?.recordPlayingTrackCoverLookup(
+      coverUrl ? 'included' : 'rejected',
+    );
+    return coverUrl;
+  }
+
+  /** A v2 template's state with the confirmed playing track, when there is one. */
+  private withTemplatePlayingTrack(
+    state: Record<string, unknown>,
+    manifest: ProgramTemplateManifest | null,
+    programId: string,
+  ): Record<string, unknown> {
+    const playingTrack = this.playingTrackByProgramId.get(
+      this.normalizeProgramId(programId),
+    );
+    return manifest?.contractVersion === 2 && playingTrack
+      ? { ...state, playingTrack }
+      : state;
   }
 
   private async ensureDefaultProgramState(): Promise<void> {
@@ -326,7 +466,6 @@ export class ProgramService implements OnModuleInit {
   private withResolvedBroadcastMixerChannels<T extends Record<string, any>>(
     settings: T,
   ): T & { mixerChannels: BroadcastMixerChannel[] } {
-    const defaultChannels = this.createDefaultBroadcastMixerChannels();
     const legacyChannels: BroadcastMixerChannel[] = [
       {
         id: 'song',
@@ -360,7 +499,7 @@ export class ProgramService implements OnModuleInit {
 
     const normalizedChannels = this.normalizeBroadcastMixerChannels(
       settings.mixerChannels,
-      legacyChannels.length ? legacyChannels : defaultChannels,
+      legacyChannels,
     );
     const song = this.getBroadcastMixerChannel(normalizedChannels, 'song');
     const stream = this.getBroadcastMixerChannel(normalizedChannels, 'stream');
@@ -576,11 +715,32 @@ export class ProgramService implements OnModuleInit {
   }
 
   async getBroadcastSettings() {
-    const settings = await this.ensureBroadcastSettings();
     return {
-      ...this.withResolvedBroadcastMixerChannels(settings as any),
+      ...(await this.currentBroadcastSettings()),
       version: this.getGlobalBroadcastVersion(),
     };
+  }
+
+  /** The broadcast settings exactly as broadcast_settings_update carries them in `settings`. */
+  private async currentBroadcastSettings(): Promise<Record<string, unknown>> {
+    const settings = await this.ensureBroadcastSettings();
+    return this.withResolvedBroadcastMixerChannels(settings as any);
+  }
+
+  /**
+   * The program state a template sees first. While the broadcast time
+   * override is on, a v2 template also gets the current broadcast settings,
+   * so a page loaded mid-override starts with it (gaulatti/alcantara#177).
+   */
+  private async withTemplateBroadcastSettings(
+    state: Record<string, unknown>,
+    manifest: ProgramTemplateManifest,
+  ): Promise<Record<string, unknown>> {
+    if (manifest.contractVersion !== 2) return state;
+    const settings = await this.currentBroadcastSettings();
+    return isActiveTimeOverride(settings)
+      ? { ...state, broadcastSettings: settings }
+      : state;
   }
 
   private normalizeOverrideTime(startTime: string): string {
@@ -1278,6 +1438,7 @@ export class ProgramService implements OnModuleInit {
     programId: string,
     type?: string,
     template?: ProgramTemplateRegistration | null,
+    teamId?: number,
   ) {
     const normalized = this.normalizeProgramId(programId);
     const programType =
@@ -1297,15 +1458,25 @@ export class ProgramService implements OnModuleInit {
       throw new Error('Program already exists');
     }
 
-    await this.prisma.programState.create({
-      data: {
-        programId: normalized,
-        type: programType,
-        ...this.programTemplateUpdateData(template ?? null),
-        activeSceneId: null,
-        audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
-      },
-    });
+    // gaulatti/alcantara#335: the Program row (which carries the team and owns branding) is created
+    // in the same transaction as the ProgramState, so a new program never lacks one.
+    await this.prisma.$transaction([
+      this.prisma.program.upsert({
+        where: { programId: normalized },
+        // Team 0 is the test-mode value, not a team: it is stored as no team.
+        create: { programId: normalized, teamId: teamId && teamId > 0 ? teamId : null },
+        update: {},
+      }),
+      this.prisma.programState.create({
+        data: {
+          programId: normalized,
+          type: programType,
+          ...this.programTemplateUpdateData(template ?? null),
+          activeSceneId: null,
+          audioMixer: this.createDefaultProgramAudioMixerSettings() as any,
+        },
+      }),
+    ]);
     return this.getProgramStateWithScenes(normalized);
   }
 
@@ -1471,6 +1642,33 @@ export class ProgramService implements OnModuleInit {
     return states.map((state) => this.withStagedSceneState(state));
   }
 
+  /** gaulatti/alcantara#335: the public station marks of a program, or null when it has none. */
+  async getBranding(programId: string) {
+    const row = await this.prisma.programBranding.findUnique({
+      where: { programId: this.normalizeProgramId(programId) },
+    });
+    return row ? publicBranding(row) : null;
+  }
+
+  /** gaulatti/alcantara#335: create or update a program's station marks (program.manage). */
+  async putBranding(programId: string, input: unknown) {
+    const normalized = this.normalizeProgramId(programId);
+    const marks = parseBrandingInput(input);
+    const program = await this.prisma.program.findUnique({
+      where: { programId: normalized },
+      select: { programId: true },
+    });
+    if (!program) {
+      throw new NotFoundException('Program not found');
+    }
+    const row = await this.prisma.programBranding.upsert({
+      where: { programId: normalized },
+      create: { programId: normalized, ...marks },
+      update: marks,
+    });
+    return publicBranding(row);
+  }
+
   async getState(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const state = await this.getProgramStateWithScenes(normalizedProgramId);
@@ -1484,7 +1682,17 @@ export class ProgramService implements OnModuleInit {
     const state = await this.getState(programId);
     const manifest = readProgramTemplateManifest(state.templateManifest);
     return manifest
-      ? projectProgramTemplateState(state as Record<string, unknown>)
+      ? projectProgramTemplateState(
+          this.withTemplatePlayingTrack(
+            await this.withTemplateBroadcastSettings(
+              state as Record<string, unknown>,
+              manifest,
+            ),
+            manifest,
+            programId,
+          ),
+          manifest,
+        )
       : state;
   }
 
@@ -1584,6 +1792,22 @@ export class ProgramService implements OnModuleInit {
         `High rotation is limited to ${MAX_HIGH_ROTATION_SONGS} songs`,
       );
     }
+    if (hasSongSequenceUpdate) {
+      // A song is added to a playlist once (gaulatti/alcantara#280). A playlist that already
+      // holds a song twice stays editable: only a write that raises a song's leaf count
+      // above what is stored (and above one) is refused.
+      const stored = countProgramSongLeavesBySong(
+        normalizeProgramSongSequence(currentState.songSequence),
+      );
+      for (const [key, next] of countProgramSongLeavesBySong(
+        normalizedNextSongSequence,
+      )) {
+        if (next.count > Math.max(1, stored.get(key)?.count ?? 0))
+          throw new BadRequestException(
+            `${next.label} is already in the playlist; a song can be added once`,
+          );
+      }
+    }
     const currentSongQueue = normalizeProgramSongQueue(currentState.songQueue);
     const nextSongQueue = hasSongSequenceUpdate
       ? filterProgramSongQueueForSequence(
@@ -1601,9 +1825,12 @@ export class ProgramService implements OnModuleInit {
     const updatedState = await this.prisma.programState.update({
       where: { programId: normalizedProgramId },
       data: {
-        songSequence: nextSongSequence as any,
+        // A mixer-only change must not write the song sequence back. It was
+        // read a moment earlier, so writing it could undo a song that ended in
+        // between and put it back on air in the now-playing display.
         ...(hasSongSequenceUpdate
           ? {
+              songSequence: nextSongSequence as any,
               songQueue: nextSongQueue as unknown as Prisma.InputJsonValue,
             }
           : {}),
@@ -1649,6 +1876,67 @@ export class ProgramService implements OnModuleInit {
 
     return {
       ...nextSettings,
+      version:
+        broadcastPayload && typeof broadcastPayload.version === 'number'
+          ? broadcastPayload.version
+          : this.getProgramTopicVersion(normalizedProgramId, 'audioBus'),
+    };
+  }
+
+  /**
+   * Removes exactly these leaves from a program's playlist (gaulatti/alcantara#327): the engine
+   * does the compare-and-swap write against the live cursor, then this broadcasts the same
+   * `audio_bus_update` the normal path does. A dry run reports and changes nothing.
+   */
+  async removeProgramSongLeaves(
+    programId: string,
+    leafIds: string[],
+    options: { keepRotation?: boolean; dryRun?: boolean } = {},
+  ) {
+    const normalizedProgramId = this.normalizeProgramId(programId);
+    const dryRun = options.dryRun === true;
+    const outcome = await this.songExecutionEngine.removeSongLeaves(
+      normalizedProgramId,
+      leafIds,
+      { keepRotation: options.keepRotation === true, dryRun },
+    );
+    const summary = {
+      removed: outcome.removed.map((leaf) => ({
+        id: leaf.id,
+        songId: leaf.songId ?? null,
+        artist: leaf.artist,
+        title: leaf.title,
+        highRotation: leaf.highRotation === true,
+      })),
+      leafCountBefore: outcome.before,
+      leafCountAfter: outcome.after,
+      cursorMovedTo: outcome.cursorMovedTo,
+    };
+    if (dryRun) return { dryRun, ...summary, version: null };
+
+    const state = await this.prisma.programState.findUnique({
+      where: { programId: normalizedProgramId },
+      select: { audioMixer: true },
+    });
+    const broadcastPayload = this.broadcastUpdate(normalizedProgramId, {
+      type: 'audio_bus_update',
+      programId: normalizedProgramId,
+      settings: {
+        songSequence: outcome.songSequence,
+        songQueue: outcome.songQueue,
+        mixerSettings: this.withResolvedProgramAudioMixerSettings(
+          state?.audioMixer,
+        ),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    this.songExecutionEngine.handleQueueUpdated(
+      normalizedProgramId,
+      outcome.songQueue,
+    );
+    return {
+      dryRun,
+      ...summary,
       version:
         broadcastPayload && typeof broadcastPayload.version === 'number'
           ? broadcastPayload.version
@@ -2263,52 +2551,53 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  /**
+   * A remote audio file for the program page (the loudness envelope), under
+   * the outbound-request policy: https to a public address only, GET with no
+   * caller headers or cookies, audio types only, at most 100 MiB within 60 s.
+   * A refusal is a 400 (the address is not allowed), 502 (the remote failed)
+   * or 504 (it did not answer in time), with a plain message, never the URL.
+   */
   async proxyAudio(
     url: unknown,
   ): Promise<{ buffer: Buffer; contentType: string }> {
     if (typeof url !== 'string' || !url.trim()) {
       throw new BadRequestException('url is required');
     }
-
-    let normalizedUrl: URL;
     try {
-      normalizedUrl = new URL(url.trim());
-    } catch {
-      throw new BadRequestException('url must be an absolute URL');
-    }
-
-    if (
-      normalizedUrl.protocol !== 'http:' &&
-      normalizedUrl.protocol !== 'https:'
-    ) {
-      throw new BadRequestException('url must use http or https');
-    }
-
-    let response: globalThis.Response;
-    try {
-      response = await fetch(normalizedUrl.toString());
-    } catch {
-      throw new BadGatewayException('failed to fetch remote audio');
-    }
-
-    if (!response.ok) {
-      throw new BadGatewayException(
-        `remote audio returned HTTP ${response.status}`,
+      const response = await safeFetch(
+        url.trim(),
+        {
+          path: 'program_audio',
+          method: 'GET',
+          maxBytes: ProgramService.PROXY_AUDIO_MAX_BYTES,
+          timeoutMs: ProgramService.PROXY_AUDIO_TIMEOUT_MS,
+          maxRedirects: 3,
+          allowContentType: isAudioMediaType,
+        },
+        {
+          ...this.outboundDeps,
+          record: (path, result) =>
+            this.metrics?.recordOutboundFetch(path, result),
+        },
       );
+      return { buffer: response.body, contentType: response.contentType };
+    } catch (error) {
+      // safeFetch only ever throws an OutboundRefusal.
+      const { reason } = error as OutboundRefusal;
+      const message = OUTBOUND_REFUSAL_MESSAGES[reason];
+      if (reason === 'timeout') throw new GatewayTimeoutException(message);
+      if (reason === 'http_status' || reason === 'network')
+        throw new BadGatewayException(message);
+      throw new BadRequestException(message);
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const maxBytes = 100 * 1024 * 1024;
-    if (arrayBuffer.byteLength > maxBytes) {
-      throw new BadRequestException('audio file is too large to proxy');
-    }
-
-    return {
-      buffer: Buffer.from(arrayBuffer),
-      contentType:
-        response.headers.get('content-type') || 'application/octet-stream',
-    };
   }
+
+  // Test seam: the resolver and transport the policy uses (real by default).
+  outboundDeps: Omit<SafeFetchDeps, 'record'> = {};
+
+  private static readonly PROXY_AUDIO_MAX_BYTES = 100 * 1024 * 1024;
+  private static readonly PROXY_AUDIO_TIMEOUT_MS = 60_000;
 
   async addSceneToProgram(
     sceneId: number,
@@ -2747,6 +3036,55 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
+  /**
+   * Called by the on-air page when the countdown clock of the scene on air
+   * reaches zero. That page is not signed in, so it cannot name a scene to
+   * take: the target and the transition are read from the scene's own
+   * settings, and nothing happens unless the scene on air has a countdown.
+   */
+  async completeSceneCountdown(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+  ) {
+    const state = await this.getProgramStateWithScenes(programId);
+    const target = this.parseSceneCountdownTarget(state.activeScene?.metadata);
+    if (!target) {
+      throw new BadRequestException(
+        'The scene on air has no countdown that switches scenes',
+      );
+    }
+    return this.activateScene(target.sceneId, programId, target.transitionId);
+  }
+
+  private parseSceneCountdownTarget(
+    sceneMetadata: unknown,
+  ): { sceneId: number; transitionId: string } | null {
+    let parsed: unknown = sceneMetadata;
+    if (typeof sceneMetadata === 'string') {
+      try {
+        parsed = JSON.parse(sceneMetadata);
+      } catch {
+        return null;
+      }
+    }
+    const clock = (parsed as Record<string, unknown> | null | undefined)?.[
+      'reloj-digital-loop-clock'
+    ] as Record<string, unknown> | undefined;
+    if (
+      !clock ||
+      clock.mode !== 'countdown' ||
+      !Number.isInteger(clock.countdownTargetSceneId)
+    ) {
+      return null;
+    }
+    return {
+      sceneId: clock.countdownTargetSceneId as number,
+      transitionId:
+        typeof clock.countdownTransitionId === 'string'
+          ? clock.countdownTransitionId
+          : 'cut',
+    };
+  }
+
   async activateScene(
     sceneId: number,
     programId: string = ProgramService.DEFAULT_PROGRAM_ID,
@@ -2926,15 +3264,31 @@ export class ProgramService implements OnModuleInit {
     };
   }
 
-  takeProgramSongOffAir(programId: string = ProgramService.DEFAULT_PROGRAM_ID) {
-    return this.stopProgramSong(programId, false);
+  /**
+   * `flightDriven`: a stop the flight itself makes (a manual flight ending, a
+   * failed timed cue, a rundown stopSong cue) stops the song but keeps the
+   * rotation's mode; only operator stops halt it (#173).
+   */
+  takeProgramSongOffAir(
+    programId: string = ProgramService.DEFAULT_PROGRAM_ID,
+    options: { flightDriven?: boolean } = {},
+  ) {
+    return this.stopProgramSong(
+      programId,
+      false,
+      options.flightDriven === true,
+    );
   }
 
   stopProgramSongForTimedBlock(programId: string) {
     return this.stopProgramSong(programId, true);
   }
 
-  private async stopProgramSong(programId: string, preserveRotation: boolean) {
+  private async stopProgramSong(
+    programId: string,
+    preserveRotation: boolean,
+    flightDriven = false,
+  ) {
     const normalizedProgramId = this.normalizeProgramId(programId);
     const updatedAt = new Date().toISOString();
 
@@ -2951,6 +3305,7 @@ export class ProgramService implements OnModuleInit {
 
     if (
       !preserveRotation &&
+      !flightDriven &&
       currentState.songSequence &&
       typeof currentState.songSequence === 'object' &&
       !Array.isArray(currentState.songSequence)
@@ -2977,7 +3332,7 @@ export class ProgramService implements OnModuleInit {
       });
     }
 
-    if (!preserveRotation) {
+    if (!preserveRotation && !flightDriven) {
       const stoppedSequence = normalizeProgramSongSequence(
         currentState.songSequence,
       );
@@ -3019,7 +3374,16 @@ export class ProgramService implements OnModuleInit {
     console.log(
       `[ProgramService] takeProgramSongOffAir → forwarded stop to radio for ${normalizedProgramId}`,
     );
-    this.songExecutionEngine.handleStopSong(normalizedProgramId);
+    // A timed block keeps the rotation and resumes it itself (#173).
+    if (preserveRotation)
+      this.songExecutionEngine.handleStopSong(normalizedProgramId, {
+        keepSequence: true,
+      });
+    else if (flightDriven)
+      this.songExecutionEngine.handleStopSong(normalizedProgramId, {
+        keepMode: true,
+      });
+    else this.songExecutionEngine.handleStopSong(normalizedProgramId);
 
     return { ok: true, programId: normalizedProgramId };
   }
@@ -3471,6 +3835,15 @@ export class ProgramService implements OnModuleInit {
         });
         break;
       }
+      case 'song_request_failed': {
+        // A song Palazzo could not load (#175), for the operator's view.
+        const normalizedProgramId = this.normalizeProgramId(programId);
+        this.broadcastUpdate(normalizedProgramId, {
+          ...event,
+          programId: normalizedProgramId,
+        });
+        break;
+      }
       case 'radio_leg_status': {
         const normalizedProgramId = this.normalizeProgramId(programId);
         this.broadcastUpdate(normalizedProgramId, {
@@ -3573,9 +3946,31 @@ export class ProgramService implements OnModuleInit {
       let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       const pendingEvents: unknown[] = [];
       const serialize = (data: unknown) => ({ data: JSON.stringify(data) });
+      // The latest broadcast settings this v2 stream has seen, carried on its
+      // state-bearing signals too (gaulatti/alcantara#177), with the playing
+      // track confirmed at the time of sending (gaulatti/alcantara#178).
+      let broadcastSettings: Record<string, unknown> | null = null;
+      const withLiveState = (data: unknown): unknown => {
+        if (templateManifest?.contractVersion !== 2 || !isObjectRecord(data)) {
+          return data;
+        }
+        if (data.type === 'broadcast_settings_update') {
+          broadcastSettings = isActiveTimeOverride(data.settings)
+            ? data.settings
+            : null;
+          return data;
+        }
+        if (!isObjectRecord(data.state)) return data;
+        const state = this.withTemplatePlayingTrack(
+          broadcastSettings ? { ...data.state, broadcastSettings } : data.state,
+          templateManifest,
+          normalizedProgramId,
+        );
+        return { ...data, state };
+      };
       const sendEvent = (data: unknown) => {
         const projected = templateManifest
-          ? projectProgramTemplateSignal(data, templateManifest)
+          ? projectProgramTemplateSignal(withLiveState(data), templateManifest)
           : data;
         if (projected) subscriber.next(serialize(projected));
       };
@@ -3593,21 +3988,38 @@ export class ProgramService implements OnModuleInit {
       });
 
       void this.getState(normalizedProgramId)
-        .then((state) => {
+        .then(async (state) => {
           if (closed) return;
-          templateManifest = readProgramTemplateManifest(
-            state.templateManifest,
-          );
-          const publicState = templateManifest
-            ? projectProgramTemplateState(
-                state as unknown as Record<string, unknown>,
+          const manifest = readProgramTemplateManifest(state.templateManifest);
+          const templateState = manifest
+            ? this.withTemplatePlayingTrack(
+                await this.withTemplateBroadcastSettings(
+                  state as unknown as Record<string, unknown>,
+                  manifest,
+                ),
+                manifest,
+                normalizedProgramId,
               )
-            : state;
+            : null;
+          if (closed) return;
+          templateManifest = manifest;
+          if (isActiveTimeOverride(templateState?.broadcastSettings)) {
+            broadcastSettings = templateState.broadcastSettings;
+          }
+          const publicState =
+            templateManifest && templateState
+              ? projectProgramTemplateState(templateState, templateManifest)
+              : state;
           subscriber.next(
             serialize({
               type: 'program_state_snapshot',
               programId: normalizedProgramId,
-              ...(templateManifest ? { schemaVersion: 1 } : {}),
+              ...(templateManifest
+                ? {
+                    schemaVersion:
+                      programTemplateSchemaVersion(templateManifest),
+                  }
+                : {}),
               state: publicState,
               version: state.version,
             }),
@@ -3646,4 +4058,92 @@ export class ProgramService implements OnModuleInit {
       };
     });
   }
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Broadcast settings whose time override is switched on. */
+function isActiveTimeOverride(
+  settings: unknown,
+): settings is Record<string, unknown> {
+  return isObjectRecord(settings) && settings.timeOverrideEnabled === true;
+}
+
+/** Station marks a program can carry (gaulatti/alcantara#335). Each is an optional string. */
+const BRANDING_FIELDS = [
+  'displayName',
+  'callsign',
+  'subtitle',
+  'logoUrl',
+  'hashtag',
+  'siteUrl',
+  'defaultChyron',
+] as const;
+type BrandingField = (typeof BRANDING_FIELDS)[number];
+type ProgramBrandingMarks = Partial<Record<BrandingField, string | null>>;
+
+const BRANDING_MAX_LENGTH: Record<BrandingField, number> = {
+  displayName: 120,
+  callsign: 32,
+  subtitle: 120,
+  logoUrl: 2048,
+  hashtag: 64,
+  siteUrl: 2048,
+  defaultChyron: 240,
+};
+
+/**
+ * Validates a branding write. Only the known fields are accepted; each is a string up to its
+ * length (or null to clear it). `logoUrl` must be an absolute https URL, so a program cannot point
+ * an overlay at an arbitrary scheme. An empty string is stored as null.
+ */
+export function parseBrandingInput(input: unknown): ProgramBrandingMarks {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new BadRequestException('branding must be an object');
+  }
+  const record = input as Record<string, unknown>;
+  const unknown = Object.keys(record).filter(
+    (key) => !(BRANDING_FIELDS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new BadRequestException(`unknown branding field: ${unknown[0]}`);
+  }
+  const marks: ProgramBrandingMarks = {};
+  for (const field of BRANDING_FIELDS) {
+    if (!(field in record)) continue;
+    const value = record[field];
+    if (value === null) {
+      marks[field] = null;
+      continue;
+    }
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${field} must be a string or null`);
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > BRANDING_MAX_LENGTH[field]) {
+      throw new BadRequestException(
+        `${field} is longer than ${BRANDING_MAX_LENGTH[field]} characters`,
+      );
+    }
+    if (field === 'logoUrl' && trimmed !== '' && !isHttpsUrl(trimmed)) {
+      throw new BadRequestException('logoUrl must be an absolute https URL');
+    }
+    marks[field] = trimmed === '' ? null : trimmed;
+  }
+  return marks;
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** The public marks of a branding row: never the program's team or any internal column. */
+function publicBranding(row: Record<BrandingField, string | null>) {
+  return Object.fromEntries(BRANDING_FIELDS.map((field) => [field, row[field] ?? null]));
 }

@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { AlanaClient, AlanaRequestError } from './alana.client';
+import { FillerBindingService } from '../filler/filler-binding.service';
 import {
   canonicalJson,
   DESTINATION_ID_PATTERN,
@@ -47,10 +48,17 @@ export class BroadcastDestinationsService {
     private readonly prisma: PrismaService,
     private readonly alana: AlanaClient,
     private readonly metrics: ManagedMetricsService,
+    private readonly fillers: FillerBindingService,
   ) {}
 
-  async listDestinations() {
+  /**
+   * `callerTeam` narrows the list to that team's destinations, so it never offers one the ingest
+   * route would refuse (gaulatti/carmencita#4). `0` (no team configured, never production) and the
+   * in-process callers that pass nothing see every destination, as before.
+   */
+  async listDestinations(callerTeam = 0) {
     const destinations = await this.prisma.broadcastDestination.findMany({
+      where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
     return destinations.map((destination) => ({
@@ -77,12 +85,21 @@ export class BroadcastDestinationsService {
     }));
   }
 
-  async createDestination(input: CatalogInput) {
+  /**
+   * A destination created by a caller with a team belongs to that team, which the ingest route and
+   * the list both require (gaulatti/carmencita#4). With team `0` (none configured, never
+   * production) or no caller team, no team is stamped.
+   */
+  async createDestination(input: CatalogInput, callerTeam = 0) {
     const normalized = normalizeCatalogInput(input, true);
     const position = await this.prisma.broadcastDestination.count();
     try {
       return await this.prisma.broadcastDestination.create({
-        data: { ...normalized, position },
+        data: {
+          ...normalized,
+          position,
+          ...(callerTeam === 0 ? {} : { teamId: callerTeam }),
+        },
       });
     } catch (error) {
       if (
@@ -268,6 +285,19 @@ export class BroadcastDestinationsService {
     if (command.status === 'succeeded')
       return this.commandResult(command, true);
 
+    // The program television filler (gaulatti/alcantara#126): with one
+    // configured and an Alana that acknowledges profile checksums, Start is
+    // sent only when Alana holds that exact version. Otherwise unchanged.
+    let filler: Awaited<
+      ReturnType<FillerBindingService['televisionStartBinding']>
+    >;
+    try {
+      filler = await this.fillers.televisionStartBinding(programId, status);
+    } catch (error) {
+      await this.failCommand(command.id, error);
+      throw error;
+    }
+
     const selection = selectionPayload(command);
     try {
       if (
@@ -297,6 +327,13 @@ export class BroadcastDestinationsService {
         });
       }
       assertSelectionAcknowledged(downstream.activeDestinations, selection);
+      if (filler) {
+        await this.fillers.confirmTelevisionStart(
+          programId,
+          filler,
+          downstream,
+        );
+      }
       return await this.finishCommand(command, downstream, 'succeeded', {
         requestedState: 'running',
         actualState: 'running',

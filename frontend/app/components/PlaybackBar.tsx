@@ -53,14 +53,6 @@ function normalizeProgramSongPlaylist(
   };
 }
 
-interface SceneQuickAction {
-  id: number;
-  name: string;
-  isActive: boolean;
-  isStaged: boolean;
-  shortcutLabel: string;
-}
-
 interface PlaybackBarProps {
   logTransport?: {
     isRunning: boolean;
@@ -74,25 +66,20 @@ interface PlaybackBarProps {
   };
   sequence: ProgramSongSequence;
   programSongPlayback: ProgramSongPlaybackState | null;
-  sceneQuickActions?: SceneQuickAction[];
   onChange: (nextSequence: ProgramSongSequence) => void;
   onTakeSelection?: (nextSequence: ProgramSongSequence) => Promise<void> | void;
   onTakeOffAir?: () => Promise<void> | void;
   onStopAllInstants?: () => void;
-  onStageScene?: (sceneId: number) => void;
-  onTakeScene?: (sceneId: number) => void;
 }
 
 export function PlaybackBar({
   sequence: _sequence,
   logTransport,
   programSongPlayback = null,
-  sceneQuickActions = [],
   onChange,
   onTakeSelection,
   onTakeOffAir,
   onStopAllInstants,
-  onStageScene,
 }: PlaybackBarProps) {
   const sequence = useMemo(() => {
     const n = normalizeProgramSongSequence(_sequence);
@@ -112,8 +99,6 @@ export function PlaybackBar({
   );
   const automaticPlayback =
     sequence.mode === "autoplay" || sequence.mode === "shuffle";
-
-  const showSceneQuickBar = sceneQuickActions.length > 0;
 
   const applySequence = useCallback(
     (nextSequence: ProgramSongSequence) => {
@@ -136,7 +121,7 @@ export function PlaybackBar({
       const matches = sequence.items.filter(
         (i) => i.kind === "preset" && (i.audioUrl || "").trim() === url,
       );
-      if (matches.length === 1) return matches[0]?.id ?? null;
+      if (matches.length === 1) return matches[0].id;
       if (matches.length > 1) {
         if (
           sequence.activeItemId &&
@@ -237,27 +222,6 @@ export function PlaybackBar({
 
   return (
     <div className="playback-dock shrink-0 bg-dark-sand/95 shadow-[0_-10px_28px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-dark-sand/90">
-      {showSceneQuickBar ? (
-        <div className="border-t border-sand/30 bg-dark-sand/90 px-4 py-2">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {sceneQuickActions.map((a) => (
-              <Button
-                key={a.id}
-                onClick={() => onStageScene?.(a.id)}
-                title={`${a.name} (click to stage in Preview)`}
-                variant="ghost"
-                size="sm"
-                className={`relative min-w-[150px] max-w-[240px] shrink-0 overflow-hidden rounded border px-2 py-1.5 text-left text-[11px] font-medium leading-tight transition-colors ${a.isActive ? "border-terracotta/80 bg-terracotta/35 text-white ring-1 ring-terracotta/50" : a.isStaged ? "border-accent-blue/80 bg-accent-blue/35 text-white ring-1 ring-accent-blue/50" : "border-sand/25 bg-dark-sand/80 text-text-primary hover:border-sea/40 hover:bg-sea/10"}`}
-              >
-                <span className="mb-0.5 block font-mono text-[9px] opacity-50">
-                  {a.shortcutLabel}
-                </span>
-                <span className="line-clamp-2">{a.name}</span>
-              </Button>
-            ))}
-          </div>
-        </div>
-      ) : null}
       <div className="playback-bar flex flex-wrap items-center justify-between gap-2 border-t border-sand/30 bg-dark-sand/85 px-3 py-2 sm:px-4 sm:py-3 md:flex-nowrap">
         <div className="order-2 flex items-center gap-2 md:order-none">
           {logTransport ? (

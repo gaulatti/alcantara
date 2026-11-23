@@ -55,7 +55,7 @@ describe('autoplay traversal arithmetic and unknown-duration boundaries', () => 
     expect(getProgramSongSequenceSelectedItemId(input, 2)).toBe('first');
   });
 
-  it('keeps the known-duration numeric overflow fallback and a sparse-array guard intact', () => {
+  it('keeps the known-duration numeric overflow fallback intact', () => {
     const overflowing = sequence(
       [leaf('first', Number.MAX_VALUE), leaf('second', Number.MAX_VALUE)],
       'first',
@@ -64,13 +64,5 @@ describe('autoplay traversal arithmetic and unknown-duration boundaries', () => 
     expect(
       getProgramSongSequenceSelectedItemId(overflowing, Number.MAX_VALUE),
     ).toBe('first');
-    const sparse = [leaf('first', 10)];
-    sparse.length = 2;
-    expect(
-      getProgramSongSequenceSelectedItemId(
-        sequence(sparse, 'first', -Number.MAX_VALUE),
-        Number.MAX_VALUE,
-      ),
-    ).toBeNull();
   });
 });

@@ -5,6 +5,9 @@ import { ProgramRealtimeService } from './program.realtime.service';
 import { FlightService } from './flight.service';
 import { PrismaService } from '../prisma.service';
 import { ProgramTemplateService } from './program-template.service';
+import { FlightMcpTools } from '../mcp/capabilities/flight';
+import { ProgramMcpTools } from '../mcp/capabilities/program';
+import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 
 @Global()
 @Module({
@@ -14,6 +17,9 @@ import { ProgramTemplateService } from './program-template.service';
     ProgramRealtimeService,
     FlightService,
     ProgramTemplateService,
+    ProgramMcpTools,
+    SongLeavesMcpTools,
+    FlightMcpTools,
     PrismaService,
   ],
   exports: [ProgramService, ProgramRealtimeService, FlightService],

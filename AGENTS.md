@@ -31,6 +31,15 @@ weaken or contradict these rules.
   skills, wiki changes, and unrelated worktree changes. It must not include
   product files in its metadata commit, and it must not push, deploy, reset,
   rebase, or discard changes.
+- Startup must also run the installed `ensure-clouseau` bootstrap after the
+  managed-standard check, including when private bastille is unavailable. It
+  refreshes the public Clouseau source and one shared user-wide agent skill.
+  Agent installation must not add Actions workflows, provider keys, CI review,
+  branch rules or deployment configuration. Those integrations are separate.
+- Before opening a PR, run the current shared Clouseau skill locally, investigate
+  its findings and repair demonstrated blockers within the accepted requirement.
+  An explicitly integrated CI verifier may consume a trusted signed receipt for
+  the exact final revision. An unsigned report cannot authorize CI approval.
 - Do not continue product work with dirty managed metadata. If the updater
   cannot commit its `AGENTS.md`, managed-skills manifest, and centrally owned
   skills cleanly, stop and report the failure instead of treating those files
@@ -180,6 +189,21 @@ weaken or contradict these rules.
   checks, local documentation, and browser verification together.
 - Do not call a full-stack change complete until the application has been built
   and exercised through the Compose-served browser UI and normal backend path.
+
+## Local container runtime
+
+- On macOS, run Docker in the shared `default` Colima profile. Never create
+  additional Colima profiles or VMs per task, branch, ticket, or verification
+  run; each one keeps a full disk image that is not reclaimed when the task
+  ends.
+- Isolate parallel work inside the shared runtime with distinct Compose project
+  names (`docker compose -p <task>`), not separate VMs. Do not change the
+  default profile's CPU, memory, or disk settings without explicit approval.
+- Before handing off, stop and remove the containers, networks, and volumes the
+  task created (`docker compose -p <task> down -v` for disposable state). Keep
+  volumes only when the user needs that state afterward, and say so.
+- If a task genuinely needs a separate Colima profile, ask first. When approved,
+  delete it with `colima delete --force --data -p <profile>` before finishing.
 
 ## Prometheus observability for managed backends
 
@@ -389,11 +413,20 @@ end-to-end contract.
 - Before creating any pull request, run the current shared `clouseau` skill
   locally with your authenticated coding harness against the complete change.
   The accepted local recipe is `.clouseau-local.json`.
-- Fix the reported defects and required changes, run the recipe's verification,
-  and rerun Clouseau after repairs. Resolve every actionable finding; do not
-  create a PR with unresolved findings or an incomplete review.
-- Review the final committed change with a clean worktree. A change to the code
-  or base requires a matching fresh review; never repeat an unchanged review to
-  obtain a pass.
-- Submit changes through PRs; never push directly to `main`.
-
+- Fix the reported defects and required changes, run the local verification
+  recipe, and rerun Clouseau after repairs. Resolve every actionable finding;
+  do not create a PR with unresolved findings or an incomplete review.
+- Review the final committed change with a clean worktree. A change to the code,
+  base or protected review policy requires a matching fresh review. Preserve
+  negative review records; never repeat an unchanged review to obtain a pass.
+- Publish the passing signed receipt and include its returned marker in the
+  initial body of a ready, non-draft PR. Agent-created PRs must not omit local
+  review to move paid AI work into CI. Follow Clouseau's bounded repair policy;
+  if the review cannot pass, report the blocker before creating the PR.
+- CI independently verifies the receipt, tests and exact 100% line/branch
+  coverage of `backend/src`. Local review never waives those checks. Changes
+  without an agent's signed review, including manual and dependency-bot
+  changes, use CI AI review. See `docs/clouseau-ci.md` for the gated scope:
+  `frontend/`, `infra/aws` and `backend/scripts` are not gated, but any change
+  there must add tests for the code it touches where a test runner exists.
+- Submit changes through protected PRs; never push directly to `main`.

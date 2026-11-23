@@ -11,6 +11,7 @@ import { MetricsController } from '../src/metrics.controller';
 import { ObservabilityModule } from '../src/observability/observability.module';
 import { ManagedMetricsService } from '../src/observability/managed-metrics.service';
 import { RadioMetricsService } from '../src/radio/radio-metrics.service';
+import { MediaAnalysisMetrics } from '../src/media-analysis/media-analysis.metrics';
 
 describe('private Prometheus scrape boundary (e2e)', () => {
   let app: NestFastifyApplication;
@@ -28,7 +29,7 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true }), ObservabilityModule],
       controllers: [MetricsController],
-      providers: [RadioMetricsService],
+      providers: [RadioMetricsService, MediaAnalysisMetrics],
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
@@ -65,6 +66,11 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     ]);
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingStatus('active', 'success');
+    for (const result of ['included', 'absent', 'rejected', 'error'] as const)
+      metrics.recordPlayingTrackCoverLookup(result);
+    metrics.recordFillerPreparation('television', 'ready');
+    metrics.recordFillerPreparation('radio', 'failed');
+    metrics.recordFillerStartBinding('bound');
     const radioMetrics = app.get(RadioMetricsService);
     radioMetrics.recordListenerConfiguration('success');
     radioMetrics.recordListenerConfiguration('failure');
@@ -90,6 +96,10 @@ describe('private Prometheus scrape boundary (e2e)', () => {
     radioMetrics.recordRadioLogResult('generation-failed');
     radioMetrics.recordRadioLogResult('private-tag-id');
     radioMetrics.recordEventIgnored('sequence-gap');
+    const analysisMetrics = app.get(MediaAnalysisMetrics);
+    analysisMetrics.record('success', 1.5);
+    analysisMetrics.record('retry', 180);
+    analysisMetrics.setBacklog(4321);
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   });
@@ -191,6 +201,62 @@ describe('private Prometheus scrape boundary (e2e)', () => {
       'alcantara_radio_log_transitions_total{result="interrupted"} 1',
     );
     expect(body).toContain('alcantara_palazzo_sse_connections');
+    // The program filler counters (gaulatti/alcantara#126) carry exactly their
+    // bounded labels, every series present from the first scrape.
+    const fillerPreparations = body
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_filler_preparations_total{'),
+      );
+    expect(fillerPreparations.sort()).toEqual(
+      ['radio', 'television']
+        .flatMap((leg) =>
+          ['failed', 'profile-unavailable', 'ready', 'unavailable'].map(
+            (result) =>
+              `alcantara_filler_preparations_total{leg="${leg}",result="${result}"} ${
+                (leg === 'television' && result === 'ready') ||
+                (leg === 'radio' && result === 'failed')
+                  ? 1
+                  : 0
+              }`,
+          ),
+        )
+        .sort(),
+    );
+    const fillerBindings = body
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_filler_start_bindings_total{'),
+      );
+    expect(fillerBindings.sort()).toEqual(
+      ['bound', 'legacy-executor', 'mismatch', 'not-configured'].map(
+        (result) =>
+          `alcantara_filler_start_bindings_total{result="${result}"} ${result === 'bound' ? 1 : 0}`,
+      ),
+    );
+    // The playing-track cover lookup counter has exactly its bounded results.
+    const coverLookups = body
+      .split('\n')
+      .filter((line) =>
+        line.startsWith('alcantara_program_playing_track_cover_lookups_total{'),
+      );
+    expect(coverLookups.sort()).toEqual(
+      ['absent', 'error', 'included', 'rejected'].map(
+        (result) =>
+          `alcantara_program_playing_track_cover_lookups_total{result="${result}"} 1`,
+      ),
+    );
+    expect(body).toContain(
+      'alcantara_media_analyses_total{result="success"} 1',
+    );
+    expect(body).toContain('alcantara_media_analyses_total{result="retry"} 1');
+    expect(body).toContain(
+      'alcantara_media_analyses_total{result="failure"} 0',
+    );
+    expect(body).toContain(
+      'alcantara_media_analysis_duration_seconds_count{result="retry"} 1',
+    );
+    expect(body).toContain('alcantara_media_analysis_backlog_assets 4321');
     expect(body).toContain(
       'alcantara_radio_log_transitions_total{result="completed"} 1',
     );

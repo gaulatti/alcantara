@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Injectable,
   Logger,
@@ -5,7 +6,10 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { isProductionEnvironment } from '../config/local-media';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { PrismaService } from '../prisma.service';
 
 export interface ChartEntry {
   normalizedKey: string;
@@ -31,6 +35,21 @@ export interface CachedChartsResponse {
   };
   entries: ChartEntry[];
 }
+
+/** One entry of the provider-neutral chart feed (`GET /charts/realtime`). */
+export interface ChartFeedEntry {
+  provider: string;
+  externalId: string | null;
+  title: string;
+  artist: string;
+  rank: string | null;
+  spins: string | null;
+  /** When the refresh that produced these values ran. */
+  updatedAt: string;
+}
+
+/** The provider whose ids SongChartIdentity.externalId holds for these entries. */
+const RANKED_PROVIDER = 'earone';
 
 interface EaroneApiSong {
   curPos?: number;
@@ -110,9 +129,35 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     entries: [],
   };
 
-  constructor(@Optional() private readonly metrics?: ManagedMetricsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly metrics?: ManagedMetricsService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
+
+  /**
+   * Outside production the two third-party chart feeds are never polled
+   * (gaulatti/alcantara#206); the charts stay empty. Production polls as
+   * before.
+   */
+  pollingEnabled(): boolean {
+    if (!this.config) return true;
+    return isProductionEnvironment({
+      NODE_ENV: this.config.get<string>('NODE_ENV'),
+    });
+  }
 
   onModuleInit() {
+    if (isDeployCandidate()) {
+      this.logger.log('Deploy candidate: chart polling is off');
+      return;
+    }
+    if (!this.pollingEnabled()) {
+      this.logger.warn(
+        'Chart polling is off outside production; no external chart feed is contacted',
+      );
+      return;
+    }
     void this.refreshCache();
     this.refreshTimer = setInterval(() => {
       void this.refreshCache();
@@ -125,7 +170,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async getSanremoRealtime() {
+  async getSnapshot() {
     if (this.cache.entries.length === 0) {
       await this.refreshCache();
     }
@@ -133,7 +178,27 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
     return this.cache;
   }
 
+  /**
+   * The refreshed entries in a provider-neutral shape. Only rank and spins
+   * are carried; the upstream's streaming counts are not part of the feed.
+   */
+  async getRealtimeFeed(): Promise<ChartFeedEntry[]> {
+    const cache = await this.getSnapshot();
+    return cache.entries.map((entry) => ({
+      provider: entry.sourceKeys.earone ? RANKED_PROVIDER : 'escplus',
+      externalId: entry.earoneSongId,
+      title: entry.title,
+      artist: entry.artist,
+      rank: entry.ranking,
+      spins: entry.radioSpinsToday,
+      updatedAt: cache.updatedAt,
+    }));
+  }
+
   private async refreshCache() {
+    if (!this.pollingEnabled()) {
+      return;
+    }
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
@@ -142,6 +207,7 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
       .then((nextCache) => {
         this.cache = nextCache;
         this.metrics?.recordJob('charts-refresh', 'success');
+        return this.storeRanks(nextCache);
       })
       .catch((error) => {
         this.metrics?.recordJob('charts-refresh', 'failure');
@@ -152,6 +218,64 @@ export class ChartsService implements OnModuleInit, OnModuleDestroy {
       });
 
     return this.refreshPromise;
+  }
+
+  // Writes the refreshed rank and spins into SongChartIdentity rows whose
+  // provider and externalId match an upstream entry. Only changed, non-null
+  // values are written, so a refresh never clears a rank. A failure is
+  // logged and counted; the cache refresh itself has already succeeded.
+  private async storeRanks(cache: CachedChartsResponse): Promise<void> {
+    const live = new Map<
+      string,
+      { rank: string | null; spins: string | null }
+    >();
+    for (const entry of cache.entries) {
+      if (entry.earoneSongId === null) continue;
+      if (entry.ranking === null && entry.radioSpinsToday === null) continue;
+      live.set(entry.earoneSongId, {
+        rank: entry.ranking,
+        spins: entry.radioSpinsToday,
+      });
+    }
+    if (live.size === 0) return;
+
+    const started = process.hrtime.bigint();
+    try {
+      const rows = await this.prisma.songChartIdentity.findMany({
+        where: {
+          provider: RANKED_PROVIDER,
+          externalId: { in: [...live.keys()] },
+        },
+        select: { id: true, externalId: true, rank: true, spins: true },
+      });
+      for (const row of rows) {
+        const next = live.get(row.externalId!)!;
+        const data = {
+          ...(next.rank !== null &&
+            next.rank !== row.rank && { rank: next.rank }),
+          ...(next.spins !== null &&
+            next.spins !== row.spins && { spins: next.spins }),
+        };
+        if (Object.keys(data).length === 0) continue;
+        await this.prisma.songChartIdentity.update({
+          where: { id: row.id },
+          data,
+        });
+      }
+      this.recordStoreMetric('success', started);
+    } catch (error) {
+      this.recordStoreMetric('failure', started);
+      this.logger.error(`Failed to store chart ranks: ${String(error)}`);
+    }
+  }
+
+  private recordStoreMetric(result: 'success' | 'failure', started: bigint) {
+    this.metrics?.recordDependency(
+      'postgres',
+      'write',
+      result,
+      Number(process.hrtime.bigint() - started) / 1_000_000_000,
+    );
   }
 
   private async fetchAndMerge(): Promise<CachedChartsResponse> {

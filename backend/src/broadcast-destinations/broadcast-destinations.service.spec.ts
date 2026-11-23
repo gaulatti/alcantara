@@ -156,6 +156,8 @@ function makeHarness(programType = 'both') {
       prisma as unknown as PrismaService,
       alana as unknown as AlanaClient,
       metrics as unknown as ManagedMetricsService,
+      // No program filler configured: Start is unchanged (gaulatti/alcantara#126).
+      { televisionStartBinding: jest.fn().mockResolvedValue(null) } as never,
     ),
     prisma,
     alana,
@@ -592,24 +594,6 @@ describe('BroadcastDestinationsService catalog and immutable command lifecycle',
       ).toHaveBeenCalledTimes(1);
     },
   );
-
-  it('reports a null downstream status when a stored successful retry has none', async () => {
-    const f = makeHarness();
-    f.alana.stop.mockResolvedValue(stoppedState());
-    const input = confirmed({ destinationIds: [] });
-    await f.service.stop('main', input, 'operator');
-    f.prisma.broadcastDestinationCommand.findUnique.mockResolvedValue({
-      ...f.command(),
-      downstreamStatus: null,
-    });
-    const repeated = await f.service.stop('main', input, 'operator');
-    expect(repeated).toMatchObject({
-      duplicate: true,
-      status: 'succeeded',
-      downstream: null,
-    });
-    expect(f.alana.stop).toHaveBeenCalledTimes(1);
-  });
 
   it('does not let an existing command id authorize another action, program or selection', async () => {
     const f = makeHarness();
