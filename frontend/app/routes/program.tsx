@@ -20,7 +20,6 @@ import {
   ModoItalianoChyron,
   ModoItalianoGiorgiaClock,
   ModoItalianoGiorgiaChyron,
-  ModoItalianoDisclaimer,
   ModoItalianoBracket,
   ModoItalianoPodcastPlayer,
   ModoItalianoGiorgiaPodcastPlayer,
@@ -1845,21 +1844,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     textSequence={props.textSequence}
                     ctaSequence={props.ctaSequence}
                     keySafe={toBoolean(props.keySafe, false)}
-                  />
-                );
-              case 'modoitaliano-disclaimer':
-                if (programRow?.ownedTypes.has(componentType)) {
-                  return null;
-                }
-                return (
-                  <ModoItalianoDisclaimer
-                    key={componentType}
-                    text={props.text || ''}
-                    show={typeof props.show === 'boolean' ? props.show : true}
-                    align={props.align === 'left' || props.align === 'center' || props.align === 'right' ? props.align : undefined}
-                    bottomPx={typeof props.bottomPx === 'number' ? props.bottomPx : undefined}
-                    fontSizePx={typeof props.fontSizePx === 'number' ? props.fontSizePx : undefined}
-                    opacity={typeof props.opacity === 'number' ? props.opacity : undefined}
                   />
                 );
               case 'modoitaliano-bracket':

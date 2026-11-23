@@ -6,17 +6,13 @@ export interface ProgramRowPlan {
   clockType: ProgramRowClockType;
   /** Chyron rendered in the left slot, or null when the scene has none. */
   chyronType: ProgramRowChyronType | null;
-  /** Whether the disclaimer may take the left slot while no chyron is showing. */
-  hasDisclaimer: boolean;
   /** Component types the row renders itself; they must not also render standalone. */
   ownedTypes: ReadonlySet<string>;
 }
 
-const DISCLAIMER_TYPE = 'modoitaliano-disclaimer';
 /** Components that move the legacy clock from the top-right corner into its bottom row. */
 const LEGACY_ROW_COMPANION_TYPES: readonly string[] = [
   'modoitaliano-chyron',
-  DISCLAIMER_TYPE,
   'cronica-chyron',
   'modoitaliano-bracket',
   'modoitaliano-podcast-player',
@@ -37,7 +33,6 @@ export function resolveProgramRow(components: readonly string[]): ProgramRowPlan
     return {
       clockType: 'modoitaliano-giorgia-clock',
       chyronType: 'modoitaliano-giorgia-chyron',
-      hasDisclaimer: false,
       ownedTypes: new Set<string>(['modoitaliano-giorgia-clock', 'modoitaliano-giorgia-chyron'])
     };
   }
@@ -46,8 +41,7 @@ export function resolveProgramRow(components: readonly string[]): ProgramRowPlan
     return {
       clockType: 'modoitaliano-clock',
       chyronType: components.includes('modoitaliano-chyron') ? 'modoitaliano-chyron' : null,
-      hasDisclaimer: components.includes(DISCLAIMER_TYPE),
-      ownedTypes: new Set<string>(['modoitaliano-clock', 'modoitaliano-chyron', DISCLAIMER_TYPE])
+      ownedTypes: new Set<string>(['modoitaliano-clock', 'modoitaliano-chyron'])
     };
   }
 

@@ -1,12 +1,13 @@
 import React from 'react';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import type { ProgramRowPlan } from '../utils/programRow';
-import { GiorgiaLegacyChyronRenderer as ModoItalianoChyron } from './GiorgiaLegacyChyronRenderer';
-import { GiorgiaLegacyClockRenderer as ModoItalianoClock } from './GiorgiaLegacyClockRenderer';
-import { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
-import { GiorgiaChyronRenderer as ModoItalianoGiorgiaChyron } from './GiorgiaChyronRenderer';
-import { GiorgiaClockRenderer as ModoItalianoGiorgiaClock } from './GiorgiaClockRenderer';
-import { GIORGIA } from './giorgiaBroadcast';
+import { GIORGIA } from '@modoitaliano/giorgia/scenes';
+import {
+  ModoItalianoChyron,
+  ModoItalianoClock,
+  ModoItalianoGiorgiaChyron,
+  ModoItalianoGiorgiaClock,
+} from '../scenes/packagedScenes';
 
 interface ModoItalianoProgramRowProps {
   plan: ProgramRowPlan;
@@ -78,24 +79,11 @@ export const ModoItalianoProgramRow: React.FC<ModoItalianoProgramRowProps> = ({ 
     );
   }
 
-  const disclaimerProps = metadata['modoitaliano-disclaimer'] || {};
-  const disclaimerText = typeof disclaimerProps.text === 'string' ? disclaimerProps.text.trim() : '';
-  const showDisclaimer = plan.hasDisclaimer && !showChyron && toBoolean(disclaimerProps.show, true) && !!disclaimerText;
-
   return (
     <div data-program-row='legacy' className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
       <div data-program-row-slot='chyron' className='flex-1 min-w-0'>
         {showChyron ? (
           <ModoItalianoChyron show textSequence={chyronProps.textSequence} ctaSequence={chyronProps.ctaSequence} inline />
-        ) : showDisclaimer ? (
-          <ModoItalianoDisclaimer
-            text={disclaimerProps.text || ''}
-            show
-            align={disclaimerProps.align === 'left' || disclaimerProps.align === 'center' || disclaimerProps.align === 'right' ? disclaimerProps.align : 'right'}
-            fontSizePx={typeof disclaimerProps.fontSizePx === 'number' ? disclaimerProps.fontSizePx : 20}
-            opacity={typeof disclaimerProps.opacity === 'number' ? disclaimerProps.opacity : 0.82}
-            inline
-          />
         ) : null}
       </div>
       <div data-program-row-slot='clock' className='shrink-0'>

@@ -2,9 +2,15 @@ import React from 'react';
 import { cleanup, render, waitFor, configure } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import BrokawFifthBellProgramRenderer from './BrokawFifthBellProgramRenderer';
-import { GiorgiaChyronRenderer } from './GiorgiaChyronRenderer';
-import { GiorgiaLegacyChyronRenderer } from './GiorgiaLegacyChyronRenderer';
-import { GiorgiaLegacyClockRenderer } from './GiorgiaLegacyClockRenderer';
+import {
+  ModoItalianoBracket,
+  ModoItalianoChyron,
+  ModoItalianoClock,
+  ModoItalianoGiorgiaChyron,
+  ModoItalianoGiorgiaClock,
+  ModoItalianoGiorgiaPodcastPlayer,
+  ModoItalianoPodcastPlayer,
+} from '../scenes/packagedScenes';
 
 // These tests import the packaged scenes after resetting the module registry, which is slow on a loaded
 // CI runner: wait for the lazy load for as long as it takes rather than a fixed second.
@@ -16,6 +22,7 @@ configure({ asyncUtilTimeout: 15_000 });
 // The app carries no resolve.dedupe: Giorgia and Brokaw declare react as a peer dependency.
 
 const sequence = { mode: 'manual', items: [{ id: 'a', kind: 'preset', text: 'Ciao mondo', useMarquee: false }], activeItemId: 'a' };
+const podcast = { show: true } as Record<string, unknown>;
 let errors: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -32,16 +39,21 @@ afterEach(() => {
 const hookErrors = () =>
   errors.mock.calls.map((call) => String(call[0])).filter((message) => /Invalid hook call|Cannot read properties of null/.test(message));
 
-it('renders the packaged Giorgia chyron and the legacy chyron and clock without a second React', async () => {
+it('renders every packaged Giorgia scene without a second React', async () => {
   const view = render(
     <>
-      <GiorgiaChyronRenderer show textSequence={sequence as never} />
-      <GiorgiaLegacyChyronRenderer show textSequence={sequence as never} />
-      <GiorgiaLegacyClockRenderer programId='main' />
+      <ModoItalianoGiorgiaChyron show textSequence={sequence as never} />
+      <ModoItalianoGiorgiaClock programId='main' />
+      <ModoItalianoGiorgiaPodcastPlayer {...(podcast as React.ComponentProps<typeof ModoItalianoGiorgiaPodcastPlayer>)} />
+      <ModoItalianoChyron show textSequence={sequence as never} />
+      <ModoItalianoClock programId='main' />
+      <ModoItalianoBracket title='TORNEO' />
+      <ModoItalianoPodcastPlayer {...(podcast as React.ComponentProps<typeof ModoItalianoPodcastPlayer>)} />
     </>,
   );
   await waitFor(() => expect(view.container.textContent ?? '').toMatch(/CIAO MONDO/i));
   await waitFor(() => expect(view.container.textContent ?? '').toMatch(/\d{2}:\d{2}/));
+  await waitFor(() => expect(view.container.textContent ?? '').toMatch(/Gran Final/));
   expect(hookErrors()).toEqual([]);
 });
 

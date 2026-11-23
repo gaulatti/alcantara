@@ -52,7 +52,6 @@ const hoisted = vi.hoisted(() => {
     "ModoItalianoChyron",
     "ModoItalianoGiorgiaClock",
     "ModoItalianoGiorgiaChyron",
-    "ModoItalianoDisclaimer",
     "ModoItalianoBracket",
     "ModoItalianoPodcastPlayer",
     "ModoItalianoGiorgiaPodcastPlayer",
@@ -838,11 +837,10 @@ describe("the chart badge", () => {
 describe("the Modo Italiano components", () => {
   it("shows the legacy clock and chyron on one bottom row, and none of them standalone", async () => {
     await show(
-      sceneOf(["modoitaliano-clock", "modoitaliano-chyron", "modoitaliano-disclaimer"]),
+      sceneOf(["modoitaliano-clock", "modoitaliano-chyron"]),
     );
     expect(present("ModoItalianoClock")).toBe(false);
     expect(present("ModoItalianoChyron")).toBe(false);
-    expect(present("ModoItalianoDisclaimer")).toBe(false);
     expect(stub("ModoItalianoProgramRow")).toMatchObject({
       programId: "main",
       plan: { clockType: "modoitaliano-clock", chyronType: "modoitaliano-chyron" },
@@ -854,12 +852,10 @@ describe("the Modo Italiano components", () => {
       sceneOf([
         "modoitaliano-giorgia-clock",
         "modoitaliano-giorgia-chyron",
-        "modoitaliano-disclaimer",
       ]),
     );
     expect(present("ModoItalianoGiorgiaClock")).toBe(false);
     expect(present("ModoItalianoGiorgiaChyron")).toBe(false);
-    expect(stub("ModoItalianoDisclaimer")).toBeDefined();
     expect(stub("ModoItalianoProgramRow")).toMatchObject({
       plan: { clockType: "modoitaliano-giorgia-clock" },
     });
@@ -924,59 +920,7 @@ describe("the Modo Italiano components", () => {
     });
   });
 
-  it("hands the disclaimer its text and layout settings, and ignores values of the wrong kind", async () => {
-    await show(
-      sceneOf(["modoitaliano-disclaimer"], {
-        "modoitaliano-disclaimer": {
-          text: "Fictional disclaimer",
-          show: false,
-          align: "right",
-          bottomPx: 40,
-          fontSizePx: 18,
-          opacity: 0.5,
-        },
-      }),
-    );
-    expect(stub("ModoItalianoDisclaimer")).toMatchObject({
-      text: "Fictional disclaimer",
-      show: false,
-      align: "right",
-      bottomPx: 40,
-      fontSizePx: 18,
-      opacity: 0.5,
-    });
-    cleanup();
-    await show(
-      sceneOf(["modoitaliano-disclaimer"], {
-        "modoitaliano-disclaimer": {
-          align: "justify",
-          bottomPx: "40",
-          fontSizePx: "18",
-          opacity: "1",
-        },
-      }),
-    );
-    expect(stub("ModoItalianoDisclaimer")).toMatchObject({
-      text: "",
-      show: true,
-      align: UNSET,
-      bottomPx: UNSET,
-      fontSizePx: UNSET,
-      opacity: UNSET,
-    });
-    cleanup();
-    for (const align of ["left", "center"]) {
-      await show(
-        sceneOf(["modoitaliano-disclaimer"], {
-          "modoitaliano-disclaimer": { align },
-        }),
-      );
-      expect(stub("ModoItalianoDisclaimer").align).toBe(align);
-      cleanup();
-    }
-  });
-
-  it("hands the Giorgia disclaimer's neighbours their text, and the podcast player its episode and the output volume", async () => {
+  it("hands the Giorgia clock and chyron their text, and the podcast player its episode and the output volume", async () => {
     await show(
       sceneOf(
         [

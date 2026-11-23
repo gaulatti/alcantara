@@ -10,14 +10,6 @@ export { FifthBellChyron, ToniChyron } from './ToniChyron';
 export { ToniClock } from './ToniClock';
 export { ToniLogo } from './ToniLogo';
 export { Earone } from './Earone';
-export { GiorgiaLegacyClockRenderer as ModoItalianoClock } from './GiorgiaLegacyClockRenderer';
-export { GiorgiaLegacyChyronRenderer as ModoItalianoChyron } from './GiorgiaLegacyChyronRenderer';
-export { GiorgiaClockRenderer as ModoItalianoGiorgiaClock } from './GiorgiaClockRenderer';
-export { GiorgiaChyronRenderer as ModoItalianoGiorgiaChyron } from './GiorgiaChyronRenderer';
-export { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
-export { GiorgiaLegacyBracketRenderer as ModoItalianoBracket } from './GiorgiaLegacyBracketRenderer';
-export { GiorgiaLegacyPodcastPlayerRenderer as ModoItalianoPodcastPlayer } from './GiorgiaLegacyPodcastPlayerRenderer';
-export { GiorgiaPodcastPlayerRenderer as ModoItalianoGiorgiaPodcastPlayer } from './GiorgiaPodcastPlayerRenderer';
 export { ModoItalianoGiorgiaArtistBumper } from './ModoItalianoGiorgiaArtistBumper';
 export { CronicaChyron } from './CronicaChyron';
 export { CronicaBackground } from './CronicaBackground';
@@ -30,3 +22,12 @@ export { Scoreboard } from './Scoreboard';
 export { default as RelojLoopClock } from './RelojLoopClock';
 export { default as RelojDigitalLoopClock } from './RelojDigitalLoopClock';
 export { default as RelojClone } from './RelojClone';
+export {
+  ModoItalianoBracket,
+  ModoItalianoChyron,
+  ModoItalianoClock,
+  ModoItalianoGiorgiaChyron,
+  ModoItalianoGiorgiaClock,
+  ModoItalianoGiorgiaPodcastPlayer,
+  ModoItalianoPodcastPlayer,
+} from '../scenes/packagedScenes';

@@ -609,67 +609,6 @@ export function ComponentPropsFields({
         </div>
       );
     }
-    case 'modoitaliano-disclaimer':
-      return (
-        <div className='space-y-3'>
-          <p className='text-xs text-text-secondary'>Shown only when ModoItaliano chyron is hidden/empty.</p>
-          <Field label='Text'>
-            <Input
-              type='text'
-              value={props.text || ''}
-              onChange={(e) => updateProp(componentType, 'text', e.target.value)}
-              placeholder='Disclaimer text'
-            />
-          </Field>
-          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
-            <label className='flex items-center gap-2 text-sm text-text-primary'>
-              <Checkbox checked={toBoolean(props.show, true)} onChange={(e) => updateProp(componentType, 'show', e.target.checked)} />
-              Show Disclaimer
-            </label>
-            <label className='text-sm text-text-primary'>
-              <span className='block text-xs text-text-secondary mb-1'>Alignment</span>
-              <Select
-                value={props.align || 'right'}
-                onChange={(v) => updateProp(componentType, 'align', v)}
-                options={[
-                  { value: 'left', label: 'Left' },
-                  { value: 'center', label: 'Center' },
-                  { value: 'right', label: 'Right' }
-                ]}
-              />
-            </label>
-            <label className='text-sm text-text-primary'>
-              <span className='block text-xs text-text-secondary mb-1'>Bottom (px)</span>
-              <Input
-                type='number'
-                min={0}
-                value={props.bottomPx ?? 24}
-                onChange={(e) => updateProp(componentType, 'bottomPx', Number(e.target.value))}
-              />
-            </label>
-            <label className='text-sm text-text-primary'>
-              <span className='block text-xs text-text-secondary mb-1'>Font Size (px)</span>
-              <Input
-                type='number'
-                min={10}
-                value={props.fontSizePx ?? 20}
-                onChange={(e) => updateProp(componentType, 'fontSizePx', Number(e.target.value))}
-              />
-            </label>
-          </div>
-          <label className='text-sm text-text-primary block max-w-xs'>
-            <span className='block text-xs text-text-secondary mb-1'>Opacity (0-1)</span>
-            <Input
-              type='number'
-              min={0}
-              max={1}
-              step={0.05}
-              value={props.opacity ?? 0.82}
-              onChange={(e) => updateProp(componentType, 'opacity', Number(e.target.value))}
-            />
-          </label>
-        </div>
-      );
     case 'modoitaliano-bracket':
       return (
         <ModoItalianoBracketEditorFields

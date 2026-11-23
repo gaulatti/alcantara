@@ -1,6 +1,6 @@
 import './SceneTransitionOverlay.css';
 import type { SceneTransitionPreset } from '../utils/sceneTransitions';
-import { GiorgiaMark } from './giorgiaBroadcast';
+import { GiorgiaMark } from '@modoitaliano/giorgia/scenes';
 
 interface SceneTransitionOverlayProps {
   transition: SceneTransitionPreset;

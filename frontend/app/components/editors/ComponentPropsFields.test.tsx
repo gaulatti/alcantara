@@ -122,7 +122,6 @@ it("edits the text fields of the ticker, chyron, header, QR code and Crónica ty
     "stream-wall",
     "scoreboard",
     "broadcast-layout",
-    "modoitaliano-disclaimer",
   ]) {
     fields(type);
     cleanup();
@@ -545,48 +544,6 @@ it("edits the Toni and FifthBell clocks, their timing and the world clock cities
   expect(screen.getByDisplayValue("300")).toBeInTheDocument();
   expect(screen.getByDisplayValue("200")).toBeInTheDocument();
   expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("[]");
-});
-
-it("edits the Modo Italiano disclaimer", () => {
-  const { updateProp } = fields("modoitaliano-disclaimer", {
-    text: "Fiction",
-    show: "false",
-    align: "center",
-    bottomPx: 30,
-    fontSizePx: 18,
-    opacity: 0.5,
-  });
-  edits(
-    updateProp,
-    "modoitaliano-disclaimer",
-    "Fiction",
-    "Satire",
-    "text",
-    "Satire",
-  );
-  expect(box("Show Disclaimer").checked).toBe(false);
-  fireEvent.click(box("Show Disclaimer"));
-  expect(updateProp).toHaveBeenLastCalledWith(
-    "modoitaliano-disclaimer",
-    "show",
-    true,
-  );
-  const align = screen.getByRole("combobox");
-  expect(align).toHaveValue("center");
-  fireEvent.change(align, { target: { value: "left" } });
-  expect(updateProp).toHaveBeenLastCalledWith(
-    "modoitaliano-disclaimer",
-    "align",
-    "left",
-  );
-  edits(updateProp, "modoitaliano-disclaimer", "30", "40", "bottomPx", 40);
-  edits(updateProp, "modoitaliano-disclaimer", "18", "22", "fontSizePx", 22);
-  edits(updateProp, "modoitaliano-disclaimer", "0.5", "0.9", "opacity", 0.9);
-  cleanup();
-  fields("modoitaliano-disclaimer");
-  expect(screen.getByRole("combobox")).toHaveValue("right");
-  for (const value of ["24", "20", "0.82"])
-    expect(screen.getByDisplayValue(value)).toBeInTheDocument();
 });
 
 it("edits the Crónica banner and the EarOne chart card", () => {

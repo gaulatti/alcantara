@@ -69,7 +69,6 @@ export function ProgramChyronEditorFields({
 
   return (
     <div className='space-y-4'>
-      <p className='text-xs text-text-secondary'>ModoItaliano row rule: if chyron and disclaimer are both enabled, chyron is shown.</p>
       <Switch checked={showValue} onCheckedChange={checked => updateProp(componentType, 'show', checked)} label='Show Chyron' />
 
       {showValue ? (

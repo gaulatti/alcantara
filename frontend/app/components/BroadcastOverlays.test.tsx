@@ -6,7 +6,6 @@ vi.mock("./LogoWidget", () => ({ LogoWidget: () => <i data-testid="logo" /> }));
 
 import { CronicaLayout } from "./CronicaLayout";
 import { CronicaReiteramos } from "./CronicaReiteramos";
-import { ModoItalianoDisclaimer } from "./ModoItalianoDisclaimer";
 import { Scoreboard } from "./Scoreboard";
 
 afterEach(cleanup);
@@ -50,39 +49,5 @@ describe("Cronica overlays", () => {
     expect(screen.getByText("OTRA VEZ")).toBeInTheDocument();
     rerender(<CronicaReiteramos show={false} />);
     expect(container).toBeEmptyDOMElement();
-  });
-});
-
-describe("ModoItalianoDisclaimer", () => {
-  it("renders nothing when hidden or blank", () => {
-    expect(render(<ModoItalianoDisclaimer text="x" show={false} />).container).toBeEmptyDOMElement();
-    cleanup();
-    expect(render(<ModoItalianoDisclaimer text="   " />).container).toBeEmptyDOMElement();
-    cleanup();
-    expect(render(<ModoItalianoDisclaimer />).container).toBeEmptyDOMElement();
-  });
-  it("places the text at the bottom for each alignment, clamping size and opacity", () => {
-    const style = (c: HTMLElement) => (c.firstElementChild as HTMLElement).style;
-    const right = render(<ModoItalianoDisclaimer text="Aviso" />);
-    expect(style(right.container)).toMatchObject({ right: "56px", bottom: "24px", fontSize: "20px", opacity: "0.82" });
-    cleanup();
-    const left = render(<ModoItalianoDisclaimer text="Aviso" align="left" bottomPx={-5} fontSizePx={3} opacity={4} />);
-    expect(style(left.container)).toMatchObject({ left: "56px", bottom: "0px", fontSize: "10px", opacity: "1" });
-    cleanup();
-    const center = render(<ModoItalianoDisclaimer text="Aviso" align="center" opacity={-1} />);
-    expect(style(center.container)).toMatchObject({ left: "50%", opacity: "0" });
-    expect(style(center.container).transform).toContain("translateX(-50%)");
-  });
-  it("fills its box inline, justified by alignment", () => {
-    const justify = (align: any) => {
-      const view = render(<ModoItalianoDisclaimer text="Aviso" inline align={align} fontSizePx={2} opacity={9} />);
-      const el = view.container.firstElementChild as HTMLElement;
-      const result = [el.style.justifyContent, el.style.fontSize, el.style.opacity];
-      view.unmount();
-      return result;
-    };
-    expect(justify("left")).toEqual(["flex-start", "10px", "1"]);
-    expect(justify("center")[0]).toBe("center");
-    expect(justify("right")[0]).toBe("flex-end");
   });
 });
