@@ -9,6 +9,10 @@ on:
       - "deploy/**"
       - "infra/**"
       - ".github/workflows/backend-deploy.yml"
+      # The brand-literal baselines gate the backend tests, so a change to them must deploy.
+      - "scripts/brand-baselines/**"
+  # A manual run for when main changed outside these paths and production needs the latest backend.
+  workflow_dispatch:
 
 # One deploy at a time: a second run waits for the first instead of meeting its
 # rollback container on the host.
