@@ -22,7 +22,9 @@ services:
       - ${ALCANTARA_SERVICE_DIR:-/services/alcantara}/livekit.yaml:/etc/livekit.yaml:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     ports:
-      - '7880:7880/tcp'
+      # Signalling stays on the host: nginx terminates TLS for the public name
+      # and proxies WebSocket upgrades here. The backend reaches it on the network.
+      - '127.0.0.1:7880:7880/tcp'
       - '7881:7881/tcp'
       - '3478:3478/udp'
       - '5349:5349/tcp'
@@ -31,11 +33,22 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-T', '2', '-O', '/dev/null', 'http://127.0.0.1:7880/']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # The host also runs the radio engine: LiveKit gets at most one CPU and 1 GiB.
+    cpus: 1.0
+    mem_limit: 1g
     restart: always
 
   ingress:
     image: livekit/ingress:v1.5.0
     container_name: alcantara-livekit-ingress
+    # Off by default: WHIP/HLS ingress needs its own ingress.yaml, which the
+    # deploy does not write yet. Start it with `--profile ingress` once it does.
+    profiles: ['ingress']
     environment:
       INGRESS_CONFIG_FILE: /etc/ingress.yaml
     volumes:
