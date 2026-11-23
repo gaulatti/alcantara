@@ -45,6 +45,9 @@ test('validates the production secret contract before build, push, or host mutat
     'media-analysis-duration',
     'radio-monitor',
     'recording',
+    // gaulatti/alcantara#331
+    'app.e2e-spec',
+    'broadcast-destinations',
   ])
     assert.match(tests, new RegExp(`[|']${spec}[|']`));
   assert.doesNotMatch(tests, /clouseau|coverage/i);
