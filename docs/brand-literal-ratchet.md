@@ -27,3 +27,5 @@ The brand-literal ratchet invariant prevents new customer-branded code or files 
 ## Transitional raise (gaulatti/alcantara#382)
 
 The three Giorgia readers (`GiorgiaChyronRenderer.tsx`, `GiorgiaClockRenderer.tsx`, `GiorgiaPodcastPlayerRenderer.tsx`) name the brand because they read `@modoitaliano/giorgia/scenes`. Until the closer of #382 deletes the local renderers they wrap, `frontend/modoitaliano` is 33 (was 31) and `frontend/giorgia` is 25 (was 21; this includes the Brokaw reader of #381). The closer lowers both.
+
+- 2026-11-23 (#409): frontend/modoitaliano 33→37 and frontend/giorgia 25→29 for the four transitional Giorgia legacy readers; the #382 closer deletes the local copies and lowers both again.
