@@ -162,6 +162,22 @@ model BroadcastDestinationCommand {
   @@index([selectionId])
 }
 
+/// One row per request for a destination's ingest credential (gaulatti/carmencita#4). Audit only:
+/// who asked, for which destination, when, and the outcome. The credential itself is never stored.
+model BroadcastIngestAccess {
+  id            String   @id @default(uuid())
+  /// The destination's team (null when the destination id is unknown).
+  teamId        Int?
+  destinationId String
+  subject       String
+  outcome       String
+  createdAt     DateTime @default(now())
+
+  @@index([teamId])
+  @@index([destinationId, createdAt])
+  @@index([subject, createdAt])
+}
+
 model BroadcastDestinationRuntime {
   programId          String   @id
   nextSequence       Int      @default(1)

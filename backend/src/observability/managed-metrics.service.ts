@@ -640,7 +640,7 @@ export class ManagedMetricsService {
   }
 
   recordBroadcastDestination(action: string, result: string): void {
-    const actions = new Set(['reload', 'start', 'stop', 'command']);
+    const actions = new Set(['reload', 'start', 'stop', 'command', 'ingest']);
     const results = new Set(['succeeded', 'failed', 'conflict']);
     this.broadcastDestinationOperations.inc({
       action: bounded(action, actions),

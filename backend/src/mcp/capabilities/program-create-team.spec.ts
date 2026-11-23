@@ -20,7 +20,9 @@ describe('program_create_program records the caller team', () => {
       { inspect: jest.fn() } as never,
       { teamId: 7 } as never,
     );
-    const spec = tools.specs().find((candidate) => candidate.name === 'program_create_program');
+    const spec = tools
+      .specs()
+      .find((candidate) => candidate.name === 'program_create_program');
     expect(spec).toBeDefined();
     await spec!.run({ program_id: 'news' } as never, {} as never);
     expect(createProgram).toHaveBeenCalledTimes(1);

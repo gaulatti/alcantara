@@ -127,6 +127,12 @@
   },
   {
     "method": "POST",
+    "path": "/broadcast/destinations/:destinationId/ingest",
+    "public": false,
+    "permission": "broadcast.manage"
+  },
+  {
+    "method": "POST",
     "path": "/broadcast/destinations/:destinationId/restore",
     "public": false,
     "permission": "broadcast.manage"

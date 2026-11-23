@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../../auth/permissions';
+import { PompeiiService } from '../../auth/pompeii.service';
 import { BroadcastDestinationsService } from '../../broadcast-destinations/broadcast-destinations.service';
 import { z } from 'zod';
 import { McpToolError, McpToolProvider, type McpToolSpec } from '../contract';
@@ -51,7 +52,10 @@ const stateStamp = (state: ProgramBroadcast): string =>
 @Injectable()
 @McpToolProvider()
 export class BroadcastDestinationsMcpTools {
-  constructor(private readonly destinations: BroadcastDestinationsService) {}
+  constructor(
+    private readonly destinations: BroadcastDestinationsService,
+    private readonly pompeii: PompeiiService,
+  ) {}
 
   specs(): McpToolSpec[] {
     return [...this.reads(), ...this.catalogWrites(), ...this.commands()];
@@ -66,7 +70,7 @@ export class BroadcastDestinationsMcpTools {
           'Lists the broadcast destinations an operator may select (id, display name, position, retired), in catalog order.',
         permission: permissions.view,
         shape: {},
-        run: () => this.destinations.listDestinations(),
+        run: () => this.destinations.listDestinations(this.pompeii.teamId),
       }),
       readSpec({
         name: 'destination_list_catalog',
@@ -123,12 +127,15 @@ export class BroadcastDestinationsMcpTools {
           recoverable: true,
         }),
         run: (args) =>
-          this.destinations.createDestination({
-            id: args.id,
-            displayName: args.display_name,
-            secretId: args.secret_id,
-            secretVersionId: args.secret_version_id,
-          }),
+          this.destinations.createDestination(
+            {
+              id: args.id,
+              displayName: args.display_name,
+              secretId: args.secret_id,
+              secretVersionId: args.secret_version_id,
+            },
+            this.pompeii.teamId,
+          ),
       }),
       actionSpec({
         name: 'destination_reorder_destinations',

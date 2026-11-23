@@ -69,7 +69,10 @@ const s = {
 };
 
 const controllers = {
-  destinations: new BroadcastDestinationsController(s.destinations as never),
+  destinations: new BroadcastDestinationsController(
+    s.destinations as never,
+    {} as never,
+  ),
   filler: new FillerController(s.fillers as never),
   recording: new RecordingController(s.recording as never),
   tape: new TapeController(s.recording as never),
@@ -87,7 +90,10 @@ const controllers = {
 };
 
 const specs = [
-  ...new BroadcastDestinationsMcpTools(s.destinations as never).specs(),
+  ...new BroadcastDestinationsMcpTools(
+    s.destinations as never,
+    { teamId: 0 } as never,
+  ).specs(),
   ...new FillerMcpTools(s.fillers as never).specs(),
   ...new RecordingMcpTools(s.recording as never).specs(),
   ...new RadioMcpTools(
@@ -159,7 +165,9 @@ describe('read capabilities return what the controller returns', () => {
 
   it('destination_list_destinations', async () => {
     const result = await same('destination_list_destinations', {}, () =>
-      controllers.destinations.listDestinations(),
+      controllers.destinations.listDestinations({
+        user: { sub: 'u', authorization: { teamId: 0 } },
+      } as never),
     );
     expect(JSON.stringify(result)).toContain('"untrusted"');
   });
