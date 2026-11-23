@@ -5,6 +5,7 @@ import {
   Header,
   Post,
   Body,
+  Req,
   Sse,
   Param,
   Delete,
@@ -55,6 +56,8 @@ export class ProgramController {
       type?: string;
       templateUrl?: string | null;
     },
+    // gaulatti/alcantara#336: the Program row takes the caller's team, as the guard resolved it.
+    @Req() request?: { user?: { authorization?: { teamId?: number } } },
   ) {
     this.rejectRadioTemplate(data.type, data.templateUrl);
     const template = await this.resolveTemplateRegistration(data.templateUrl);
@@ -62,6 +65,7 @@ export class ProgramController {
       data.programId,
       data.type,
       template,
+      request?.user?.authorization?.teamId,
     );
   }
 

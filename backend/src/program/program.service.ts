@@ -1438,6 +1438,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     programId: string,
     type?: string,
     template?: ProgramTemplateRegistration | null,
+    teamId?: number,
   ) {
     const normalized = this.normalizeProgramId(programId);
     const programType =
@@ -1462,7 +1463,7 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction([
       this.prisma.program.upsert({
         where: { programId: normalized },
-        create: { programId: normalized },
+        create: { programId: normalized, teamId: teamId ?? null },
         update: {},
       }),
       this.prisma.programState.create({
