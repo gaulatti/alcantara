@@ -23,3 +23,7 @@ The brand-literal ratchet invariant prevents new customer-branded code or files 
    [brand-ratchet] Reminder: lower baseline for <tree>/<word> from <old> to <new>
    ```
    The developer or agent retiring the brand code updates only that specific `<tree>/<word>.json` counter to the new lower count, locking in the reduction.
+
+## Transitional raise (gaulatti/alcantara#382)
+
+The three Giorgia readers (`GiorgiaChyronRenderer.tsx`, `GiorgiaClockRenderer.tsx`, `GiorgiaPodcastPlayerRenderer.tsx`) name the brand because they read `@modoitaliano/giorgia/scenes`. Until the closer of #382 deletes the local renderers they wrap, `frontend/modoitaliano` is 33 (was 31) and `frontend/giorgia` is 25 (was 21; this includes the Brokaw reader of #381). The closer lowers both.
