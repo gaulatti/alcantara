@@ -24,8 +24,6 @@ The brand-literal ratchet invariant prevents new customer-branded code or files 
    ```
    The developer or agent retiring the brand code updates only that specific `<tree>/<word>.json` counter to the new lower count, locking in the reduction.
 
-## Transitional raise (gaulatti/alcantara#382)
+## Retired renderers (gaulatti/alcantara#382, #391)
 
-The three Giorgia readers (`GiorgiaChyronRenderer.tsx`, `GiorgiaClockRenderer.tsx`, `GiorgiaPodcastPlayerRenderer.tsx`) name the brand because they read `@modoitaliano/giorgia/scenes`. Until the closer of #382 deletes the local renderers they wrap, `frontend/modoitaliano` is 33 (was 31) and `frontend/giorgia` is 25 (was 21; this includes the Brokaw reader of #381). The closer lowers both.
-
-- 2026-11-23 (#409): frontend/modoitaliano 33→37 and frontend/giorgia 25→29 for the four transitional Giorgia legacy readers; the #382 closer deletes the local copies and lowers both again.
+The Modo Italiano renderers (chyron, clock, bracket, podcast player and the Giorgia family) are `@modoitaliano/giorgia`'s. The local copies, their readers and the unused disclaimer were deleted, so `frontend/modoitaliano` is 22 and `frontend/giorgia` is 19. `frontend/app/scenes/packagedScenes.tsx` is the one place the app loads them, and `frontend/app/scenes/noLocalRenderers.test.ts` fails if a renderer named for the brand is added under `frontend/app/components/`.

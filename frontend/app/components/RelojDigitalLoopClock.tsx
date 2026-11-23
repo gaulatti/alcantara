@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeProgramTextSequence, resolveProgramTextLeaf } from '../utils/programSequence';
 import { completeSceneCountdown } from '../services/program';
-import { GiorgiaMark } from './giorgiaBroadcast';
+import { GiorgiaMark } from '@modoitaliano/giorgia/scenes';
 import './RelojDigitalLoopClock.css';
 
 interface RelojDigitalLoopClockProps {

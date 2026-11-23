@@ -291,20 +291,6 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     defaultProps: { show: true }
   },
   {
-    id: 'modoitaliano-disclaimer',
-    name: 'Modo Italiano Disclaimer',
-    description: 'Disclaimer text overlay',
-    hasConfigurableSceneAttributes: true,
-    defaultProps: {
-      text: 'Contenuti a scopo informativo.',
-      show: true,
-      align: 'right',
-      bottomPx: 24,
-      fontSizePx: 20,
-      opacity: 0.82
-    }
-  },
-  {
     id: 'modoitaliano-bracket',
     name: 'Modo Italiano Bracket',
     description: 'Tournament bracket from Round of 16 or Quarterfinals to Final',

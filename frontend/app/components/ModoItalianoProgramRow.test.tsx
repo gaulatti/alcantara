@@ -146,32 +146,6 @@ describe('ModoItalianoProgramRow: legacy', () => {
     expect(slot(container, 'chyron')?.childNodes).toHaveLength(0);
   });
 
-  it('shows the disclaimer only while no chyron is showing', async () => {
-    const layout = 'modoitaliano-clock,modoitaliano-chyron,modoitaliano-disclaimer';
-    const disclaimer = { 'modoitaliano-disclaimer': { text: 'Aviso legal', align: 'left', fontSizePx: 24, opacity: 0.5 } };
-    const hidden = await renderRow(layout, { ...disclaimer, 'modoitaliano-chyron': { show: false, textSequence: text('Titular') } });
-    const shown = slot(hidden, 'chyron')?.firstElementChild as HTMLElement;
-    expect(shown.textContent).toBe('Aviso legal');
-    expect(shown.style.justifyContent).toBe('flex-start');
-    expect(shown.style.fontSize).toBe('24px');
-    expect(shown.style.opacity).toBe('0.5');
-
-    const withChyron = await renderRow(layout, { ...disclaimer, ...chyron });
-    expect(slot(withChyron, 'chyron')?.textContent).toContain('TITULAR');
-    expect(slot(withChyron, 'chyron')?.textContent).not.toContain('Aviso legal');
-
-    const defaults = await renderRow('modoitaliano-clock,modoitaliano-disclaimer', { 'modoitaliano-disclaimer': { text: 'Aviso', align: 'diagonal' } });
-    const fallback = slot(defaults, 'chyron')?.firstElementChild as HTMLElement;
-    expect(fallback.style.justifyContent).toBe('flex-end');
-    expect(fallback.style.fontSize).toBe('20px');
-    expect(fallback.style.opacity).toBe('0.82');
-
-    const disabled = await renderRow('modoitaliano-clock,modoitaliano-disclaimer', { 'modoitaliano-disclaimer': { text: 'Aviso', show: 'off' } });
-    expect(slot(disabled, 'chyron')?.childNodes).toHaveLength(0);
-    const blank = await renderRow('modoitaliano-clock,modoitaliano-disclaimer', { 'modoitaliano-disclaimer': { text: '   ' } });
-    expect(slot(blank, 'chyron')?.childNodes).toHaveLength(0);
-  });
-
   it('applies the clock switches from the legacy clock metadata', async () => {
     const container = await renderRow('modoitaliano-clock,modoitaliano-bracket', { 'modoitaliano-clock': { showWorldClocks: 0, showLogo: 'no' } }, null);
     expect(slot(container, 'clock')?.childNodes).toHaveLength(0);

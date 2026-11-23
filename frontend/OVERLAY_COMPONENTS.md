@@ -143,7 +143,7 @@ Anything partly transparent over the key colour comes out of the keyer as a dirt
 
 The only edges left over the key colour are the straight sides of the navy shapes. Type positions and sizes are unchanged.
 
-Shared tokens and helpers for both (`GIORGIA`, `GiorgiaMark`, `GiorgiaRule`, `GiorgiaGrade`, `fitGiorgiaText`) live in `app/components/giorgiaBroadcast.tsx`.
+Shared tokens and helpers for both (`GIORGIA`, `GiorgiaMark`, `GiorgiaRule`, `GiorgiaGrade`, `fitGiorgiaText`) are exported by `@modoitaliano/giorgia/scenes`; the renderers themselves live in the package, loaded through `app/scenes/packagedScenes.tsx`.
 
 ---
 
@@ -183,21 +183,20 @@ Example scene metadata:
 
 ### Modo Italiano bottom row
 
-The Giorgia family is the current Modo Italiano look. The original family (`modoitaliano-clock`, `modoitaliano-chyron`, `modoitaliano-disclaimer`, `modoitaliano-bracket`, `modoitaliano-podcast-player`) is kept for legacy and historical scenes. Do not combine the two in one layout.
+The Giorgia family is the current Modo Italiano look. The original family (`modoitaliano-clock`, `modoitaliano-chyron`, `modoitaliano-bracket`, `modoitaliano-podcast-player`) is kept for legacy and historical scenes. Do not combine the two in one layout.
 
 When a scene pairs a clock with its chyron, the renderer lays them out together along the bottom instead of rendering each standalone. `resolveProgramRow` in `app/utils/programRow.ts` makes that decision:
 
 - `modoitaliano-giorgia-clock` rows only with `modoitaliano-giorgia-chyron`.
-- `modoitaliano-clock` rows with `modoitaliano-chyron`, and without a chyron still moves into its row beside `modoitaliano-disclaimer`, `cronica-chyron`, `modoitaliano-bracket`, `modoitaliano-podcast-player`, or `modoitaliano-giorgia-podcast-player`.
+- `modoitaliano-clock` rows with `modoitaliano-chyron`, and without a chyron still moves into its row beside `cronica-chyron`, `modoitaliano-bracket`, `modoitaliano-podcast-player`, or `modoitaliano-giorgia-podcast-player`.
 - The families never pair with each other. A component of the other family in the same layout renders standalone, in its own position.
 - A scene gets at most one row; the Giorgia pair takes it when both families are complete.
-- The disclaimer takes the left slot of the legacy row only while no chyron is showing.
 
 The anchoring clock decides the geometry:
 
 | Anchor | Row position | Left slot | Right slot |
 |--------|--------------|-----------|------------|
-| `modoitaliano-clock` (legacy) | `left`/`right`/`bottom: 110px` | legacy chyron or disclaimer | the clock card, docked right |
+| `modoitaliano-clock` (legacy) | `left`/`right`/`bottom: 110px` | legacy chyron | the clock card, docked right |
 | `modoitaliano-giorgia-clock` | `left`/`right: 82px`, `bottom: 70px` | the Giorgia chyron | the on-air block; the header stays top-left |
 
 In the Giorgia row the headline keeps at least half the row, so a long now-playing title cannot squeeze it; while the chyron is hidden the on-air block takes the left edge. The legacy row is unchanged: the chyron slot shrinks freely and the clock card never does.
