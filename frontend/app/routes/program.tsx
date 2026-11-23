@@ -1973,8 +1973,17 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   const activeScene = state?.activeScene ?? null;
   const stagedScene = state?.stagedScene ?? null;
   const confidenceScene = confidenceMode === 'preview' ? stagedScene : activeScene;
-  const stagedSceneHasVideoStream = sceneIncludesVideoStream(stagedScene);
-  const stagedSceneIsOnAir = stagedSceneHasVideoStream && stagedScene !== null && activeScene !== null && stagedScene.id === activeScene.id;
+  // A staged scene with a video stream is rendered hidden and muted, so its stream is
+  // already playing when it goes on air (gaulatti/alcantara#357). Both scenes are keyed
+  // by id under one parent: a take swaps them (the staged one goes on air and the one
+  // it replaces is staged), and the keyed layer keeps its mounted tree, so a cut shows
+  // a live frame instead of a cold stream starting over black.
+  const warmStagedScene =
+    stagedScene !== null && sceneIncludesVideoStream(stagedScene) && stagedScene.id !== activeScene?.id ? stagedScene : null;
+  const sceneLayers = [
+    ...(activeScene ? [{ scene: activeScene, onAir: true }] : []),
+    ...(warmStagedScene ? [{ scene: warmStagedScene, onAir: false }] : [])
+  ].sort((a, b) => a.scene.id - b.scene.id);
   const shouldAnimateFadeToBlack = previousFadeToBlackRef.current !== null;
 
   if (confidenceMode) {
@@ -1997,10 +2006,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
-      <div className='pointer-events-none absolute inset-0 opacity-0' aria-hidden='true' style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}>
-        {stagedSceneHasVideoStream && stagedScene ? renderScene(stagedScene, { forceStreamMuted: !stagedSceneIsOnAir }) : null}
-      </div>
-      <div className='absolute inset-0'>{!stagedSceneIsOnAir ? renderScene(activeScene, { forceStreamMuted: false }) : null}</div>
+      {activeScene ? null : <div className='absolute inset-0'>{renderScene(null, { forceStreamMuted: false })}</div>}
+      {sceneLayers.map(({ scene, onAir }) => (
+        <div
+          key={scene.id}
+          data-scene-layer={onAir ? 'on-air' : 'staged'}
+          className={onAir ? 'absolute inset-0' : 'pointer-events-none absolute inset-0'}
+          aria-hidden={onAir ? undefined : true}
+          style={{ opacity: onAir ? 1 : 0, zIndex: onAir ? 1 : 0 }}
+        >
+          {renderScene(scene, { forceStreamMuted: !onAir })}
+        </div>
+      ))}
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
       <div
         className='pointer-events-none absolute inset-0 z-[2000] bg-black'
