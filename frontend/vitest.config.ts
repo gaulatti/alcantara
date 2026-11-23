@@ -17,6 +17,9 @@ export default defineConfig({
     // Both suffixes: .test.ts files were silently skipped before (gaulatti/alcantara#253).
     include: ['app/**/*.test.{ts,tsx}'],
     setupFiles: ['./test/setup.ts'],
+    // The shared @gaulatti/bleecker widgets are inlined, so the suite's module mocks (hls.js, livekit-client)
+    // reach the code that imports them, as they did when those widgets lived in the app.
+    server: { deps: { inline: [/@gaulatti\/bleecker/] } },
     // Coverage (gaulatti/alcantara#181), on with `pnpm run test:coverage`: native V8 counts over every
     // runtime source under app/, including files no test imports, reported as Istanbul JSON at
     // coverage/coverage-final.json plus a text summary. Only tests and declarations are left out. There
