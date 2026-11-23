@@ -230,6 +230,7 @@ case "$args" in
   "inspect alcantara-backend-previous") exit 1 ;;
   "run --rm"*print-metrics-token*) ${tokenFails ? 'exit 1' : 'echo fictional-scrape-token'} ;;
   *"State.Running"*) echo ${candidateHealthy ? 'true' : 'false'} ;;
+  *"State.ExitCode"*) echo 3 ;;
   "exec alcantara-backend-candidate"*) exit ${candidateHealthy ? 0 : 1} ;;
   "logs alcantara-backend-candidate") echo 'Error: fictional start-up failure' ;;
   "exec alcantara-backend node"*) ${automaticPrograms === null ? 'exit 1' : `echo '${automaticPrograms}'`} ;;
@@ -277,10 +278,13 @@ test('a candidate that fails its health check leaves the running backend untouch
     candidateHealthy: false,
   });
   assert.equal(status, 1);
+  // The candidate exited (the stub reports exit code 3): the message says so, and the start-up
+  // lines it prints on stderr are labelled.
   assert.match(
     stdout,
-    /Alcantara candidate failed its health check; the running backend is untouched/,
+    /Alcantara candidate exited with code 3 before it answered its health check; the running backend is untouched/,
   );
+  assert.match(stderr, /--- candidate start-up log/);
   assert.match(stderr, /fictional start-up failure/);
   const candidate = log.findIndex((line) =>
     line.startsWith('docker run -d --name alcantara-backend-candidate'),
@@ -577,4 +581,22 @@ test('a song already on air at the restart extends the wait to its end, within 1
   const result = await runRadioPoll(states, since);
   assert.equal(result.code, 0, result.stdout);
   assert.ok(result.served > 40);
+});
+
+test('the candidate does not migrate again; the live backend still migrates at start', () => {
+  const dockerfile = readFileSync('./Dockerfile', 'utf8');
+  const start = dockerfile.split('\n').find((line) => line.startsWith('CMD '));
+  assert.ok(start);
+  // Candidate branch: starts the server with no migration.
+  assert.match(start, /if \[ -n \\"\$ALCANTARA_DEPLOY_CANDIDATE\\" \]; then pnpm start:prod;/);
+  // Live branch: migrate, then start.
+  assert.match(start, /else pnpm run db:migrate:deploy && pnpm start:prod; fi/);
+  // The deploy step that proves the image can migrate stays.
+  const migrate = deployScript.indexOf('pnpm run db:migrate:deploy');
+  const candidate = deployScript.indexOf('docker run -d --name alcantara-backend-candidate');
+  assert.ok(migrate >= 0 && migrate < candidate);
+});
+
+test('a candidate that stayed up but did not answer says so instead of claiming an exit', () => {
+  assert.match(deployScript, /did not answer its health check in time/);
 });

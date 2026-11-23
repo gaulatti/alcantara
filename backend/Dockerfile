@@ -29,4 +29,7 @@ RUN test -f /app/dist/src/proto/authorization.proto && test -f /app/dist/src/pro
 
 ENV ALCANTARA_BUILD_VERSION=${ALCANTARA_BUILD_VERSION}
 
-CMD ["sh", "-c", "pnpm run db:migrate:deploy && pnpm start:prod"]
+# The live backend migrates at start. A deploy candidate does not: deploy/cumulus.sh already ran the
+# migration as its own step from this same image, and a second migration inside the candidate made one
+# transient database error fail the whole deploy (gaulatti/alcantara#271).
+CMD ["sh", "-c", "if [ -n \"$ALCANTARA_DEPLOY_CANDIDATE\" ]; then pnpm start:prod; else pnpm run db:migrate:deploy && pnpm start:prod; fi"]

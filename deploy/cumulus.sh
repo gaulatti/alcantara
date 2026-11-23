@@ -102,7 +102,16 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 if [ "$candidate_ready" != true ]; then
-  echo 'Alcantara candidate failed its health check; the running backend is untouched'
+  # Say why: a container that exited is a different failure from one that stayed up and did not answer.
+  if [ "$(docker inspect --format '{{.State.Running}}' alcantara-backend-candidate 2>/dev/null)" != true ]; then
+    candidate_exit="$(docker inspect --format '{{.State.ExitCode}}' alcantara-backend-candidate 2>/dev/null || echo unknown)"
+    echo "Alcantara candidate exited with code ${candidate_exit} before it answered its health check; the running backend is untouched"
+  else
+    echo 'Alcantara candidate did not answer its health check in time; the running backend is untouched'
+  fi
+  # The candidate's own start-up lines come next, on stderr: the workflow prints stdout first and
+  # stderr after, so they appear below this line although they happened before the deploy's later steps.
+  echo '--- candidate start-up log (last lines, printed on stderr) ---' >&2
   print_startup_log alcantara-backend-candidate
   docker rm -f alcantara-backend-candidate >/dev/null 2>&1 || true
   exit 1
