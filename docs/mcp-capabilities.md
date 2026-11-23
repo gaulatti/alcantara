@@ -513,6 +513,34 @@ proceeds after the confirm, as the console does.
 - Metrics: the area adds no metric. The executor counts every call under
   `alcantara_mcp_requests_total{tool,tier,result}`.
 
+### Remove playlist leaves (`program_remove_program_song_leaves_by_id`, #327)
+
+File: `backend/src/mcp/capabilities/song-leaves.ts`; the work is
+`ProgramService.removeProgramSongLeaves` and `SongExecutionEngine.removeSongLeaves`.
+An A capability with `program.operate`, taking `program_id`, `leaf_ids` (1 to 200),
+and optional `keep_rotation` and `dry_run`. It has no route of its own: the console
+removes a leaf by sending the whole edited playlist, and
+`program_update_program_audio_bus_by_id` does the same with a whole `songSequence`,
+cursor (`activeItemId`, `startedAt`) included. That cursor changes with every song, so a
+whole-playlist write races the rotation.
+
+- **What it writes.** Under the engine's queue-mutation lock it reads the row, takes the
+  sequence the engine holds when that differs from the stored one only by the cursor
+  (so the cursor is the live one), removes exactly those leaves at any depth, keeps every
+  other field as stored, filters the Play Next queue with `filterProgramSongQueueForSequence`
+  and stores both with one compare-and-swap on the row's `updatedAt`. A row that moved is
+  re-read and the removal retried (4 attempts, then a conflict and nothing written).
+  It then broadcasts the same `audio_bus_update` as the normal path. A song that ends
+  between the read and the write is not undone: the engine's in-memory cursor is kept.
+- **Refusals.** An unknown leaf id (nothing changes); a program with no playlist; the
+  leaf on air, unless `keep_rotation` is set, which moves the rotation to the next leaf
+  the way a song ending does (a refusal if no other leaf is left).
+- **Dry run.** Returns the leaves that would be removed (id, song id, artist, title,
+  high rotation) and the leaf count before and after, and writes nothing.
+- **Metrics.** None new: it does not use the engine's best-effort cursor write, so
+  its cursor-write result counts are unchanged; a retry exhausted is a visible
+  conflict error, not a metric.
+
 ## The rows no ticket owned (#226)
 
 Appendix A is 167 rows: 154 are capabilities, 6 are `covered by` another tool
@@ -632,6 +660,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `program_inspect_template` | `backend/src/mcp/capabilities/program.ts:201` | No | - | Fetches and reports a manifest; nothing is stored. |
 | `program_create_program` | `backend/src/mcp/capabilities/program.ts:213` | No | - | Its plan: the program starts empty and off air. |
 | `program_rename_program` | `backend/src/mcp/capabilities/program.ts:244` | Live output | No record to write (see below) | Declares `onAir` while the program has a scene, fade, song, queue, flight sequence or scene instant live (program.ts:269); players lose the old id. |
+| `program_remove_program_song_leaves_by_id` | `alcantara:program:operate` | A | Removes exactly the playlist leaves with these ids (1 to 200, nested blocks included) against the live rotation cursor; the leaf on air is refused unless keep_rotation is set; dry_run lists what would go. |
 | `program_remove_queued_program_song_by_id` | `backend/src/mcp/capabilities/program.ts:466` | Queue | Yes, through the executor's attribution wrap | Removes a Play Next entry: `ProgramService.removeQueuedProgramSong` -> `SongExecutionEngine.removeQueuedSong` (song-execution.engine.ts:682) reads the actor and emits `song_queue_update` with it. |
 | `program_add_scene_to_program` | `backend/src/mcp/capabilities/program.ts:498` | No | - | Assignment only; its plan: nothing goes on air. |
 | `program_add_media_group_to_program` | `backend/src/mcp/capabilities/program.ts:513` | No | - | Assignment only; takes effect when a scene or page reads it. |
