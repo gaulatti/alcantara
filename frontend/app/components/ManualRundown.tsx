@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "../utils/apiBaseUrl";
+import { TRANSITION_OPTIONS } from "../utils/transitionOptions";
 import { useGlobalProgramId } from "../utils/globalProgram";
 import { useSSE } from "../hooks/useSSE";
 import type {
@@ -74,13 +75,6 @@ const MIXER_CHANNEL_OPTIONS: {
   { value: "instants", label: "Instants" },
   { value: "sceneInstant", label: "Scene Instant" },
   { value: "stream", label: "Stream" },
-];
-
-const TRANSITION_OPTIONS = [
-  { value: "cut", label: "Cut" },
-  { value: "crescendo-prism", label: "Crescendo Prism" },
-  { value: "velvet-eclipse", label: "Velvet Eclipse" },
-  { value: "webm-stinger", label: "WebM Stinger" },
 ];
 
 function extractErrorMessage(err: unknown): string {

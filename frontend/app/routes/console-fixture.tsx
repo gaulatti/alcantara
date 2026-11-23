@@ -17,6 +17,7 @@ import { ProgramSongSequenceEditor } from "../components/editors";
 import { ScenePreparationFixture } from "../components/ScenePreparationFixture";
 import { AppLoading } from "../components/AppLoading";
 import { RundownFixture } from "../components/RundownFixture";
+import { RecipeEditorFixture } from "../components/RecipeEditorFixture";
 import { CallerDeskFixture, ProgramReturnFixture } from "../components/ReturnCallersFixture";
 import { RundownFillers } from "../components/RundownFillers";
 import {
@@ -320,6 +321,7 @@ export default function ConsoleFixture() {
       </main>
     );
   if (fixture === "rundown-desk") return <RundownFixture />;
+  if (fixture === "rundown-recipes") return <RecipeEditorFixture />;
   if (fixture === "program-return") return <ProgramReturnFixture />;
   if (fixture === "caller-desk") return <CallerDeskFixture />;
   if (fixture === "loading") return <AppLoading />;

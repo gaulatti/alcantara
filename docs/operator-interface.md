@@ -395,6 +395,31 @@ Scheduled Rundown preserves tag-based generation, recorded voice tracks, revisio
 
 The console fixtures include `radio-workflow` with filler rows and `rundown-fillers` for the filler selection panel.
 
+### Recipes (operator cues)
+
+A recipe is the steps a song needs around it: the artist bumper, a transition, a hold, the slideshow for the
+song's length and the way back (design note and contracts: gaulatti/alcantara#222, C3). The **Recipes** tab
+sits beside **Cues** in the TV and simulcast operator view (`?tab=recipes`), for whoever holds `flight.read`;
+only `flight.manage` edits. Radio's timed blocks have no recipes.
+
+- **List:** each recipe with its revision and how many uses it has in this show's operator sequences (the
+  distinct `recipeUse.useId` of its cues).
+- **Form:** the bumper, slideshow and return scene pickers (the show's assigned scenes; none skips the step),
+  the transition, the hold in seconds (0 to 60, half-second steps) and one switch per step. A step switched off
+  is left out of `steps`, so the recipe skips it; a step key the editor does not know is kept as it came.
+- **Save** sends the revision the recipe was loaded at; the backend compares and sets on it. The confirmation
+  first names how many uses that have not aired yet will be rebuilt (uses in a sequence that is not running, and
+  uses entirely after the cue on air), including hand edits to them. A 409 shows "Changed elsewhere" with a
+  **Reload** button; any other refusal shows its reason.
+- **Preview a use:** pick a song and **Preview** calls `POST /programs/:id/recipes/:recipeId/expand` with
+  `{params: {songId}}` and lists the cues it would write and the issues (`song_unavailable`,
+  `artist_label_missing`, `label_empty`, `scene_not_assigned`, `scene_shared`). It uses the saved recipe and
+  writes nothing.
+- **Empty states:** "Recipes are not available yet" while `GET /programs/:id/recipes` answers 404, and "No
+  recipes in this show yet" for an empty list.
+
+The `rundown-recipes` console fixture shows one recipe with two uses and a preview with one issue.
+
 ### Scheduled Rundown workspace
 
 The block is built by direct manipulation (gaulatti/alcantara#299). A searchable **library** (All, Songs, Clips; `/` focuses its search) lists enabled songs with their stored length, enabled clips, and a Stop. Drag a row onto the **timeline**, where it is inserted ahead of the first item whose middle lies past the drop point, or select it (click or ↑/↓) and press Enter, or double-click it, to add it at the end. Nothing is inserted ahead of an item that has played, and an item dropped first becomes the block's opener at 0. Recipes and show templates are not offered until #222's recipe model exists.
