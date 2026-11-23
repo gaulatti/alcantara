@@ -135,6 +135,7 @@ their own modules; `SimilarityMcpTools` is a provider of the radio module.
 | `media_asset_find_all` | `access` | `GET /media-assets`, limited to the assets the caller may read |
 | `media_asset_find_one` | `access` | `GET /media-assets/:id` |
 | `media_asset_find_labels` | `access` | `GET /media-labels` |
+| `media_list_artist_labels` | `media.read` | `GET /artist-labels` |
 | `media_asset_find_label` | `access` | `GET /media-labels/:id` |
 | `radio_similarity_coverage` | `radio.read` | `GET /radio/:programId/similarity/coverage` |
 | `radio_similarity_decisions` | `radio.read` | `GET /radio/:programId/similarity/decisions` (limit 1 to 200, default 50) |
@@ -650,6 +651,7 @@ Every W capability, and whether it changes what is on air or queued:
 | `layout_update` | `backend/src/mcp/capabilities/layouts.ts:109` | Live output | No record to write (see below) | Declares `onAir` while a scene of the layout is on air (layouts.ts:131). |
 | `media_asset_create_background_audio` | `backend/src/mcp/capabilities/media-assets.ts:224` | No | - | A new library asset. |
 | `media_asset_replace_asset_labels` | `backend/src/mcp/capabilities/media-assets.ts:254` | No | - | Label membership of one asset; the spec declares no on-air effect. |
+| `media_set_artist_label` | `backend/src/mcp/capabilities/artist-labels.ts:42` | No | - | Attaches a media label to an artist; the artist bumper and the song recipe read it when they next build, nothing on air changes. |
 | `media_asset_create_label` | `backend/src/mcp/capabilities/media-assets.ts:279` | No | - | A new, empty label. |
 | `media_asset_update_label` | `backend/src/mcp/capabilities/media-assets.ts:301` | Live output | No record to write (see below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:322). |
 | `media_asset_replace_label_assets` | `backend/src/mcp/capabilities/media-assets.ts:332` | Live output | No record to write (see below) | Declares `onAir` while a program that reads the label is on air (media-assets.ts:350). |
@@ -703,12 +705,12 @@ are wrapped and a dry run is not.
 | `destination_list_catalog` | `broadcast.manage` | R | Lists the full destination catalog with the Secrets Manager reference (not the key) each destination streams with, and its retirement and update times. |
 | `destination_list_destinations` | `broadcast.view` | R | Lists the broadcast destinations an operator may select (id, display name, position, retired), in catalog order. |
 | `destination_reload` | `broadcast.operate` | A | Loads a destination selection into the stopped television executor of a program without going live. |
+| `destination_rename_destination` | `broadcast.manage` | W | Changes the display name of a destination. Its stream key and Secrets Manager reference are not touched; adding a destination and replacing a key are console-only because they carry a credential. |
 | `destination_reorder_destinations` | `broadcast.manage` | W | Sets the catalog order. |
 | `destination_restore_destination` | `broadcast.manage` | W | Restores a retired destination so it can be selected again. |
 | `destination_retire_destination` | `broadcast.manage` | W | Retires a destination: it can no longer be selected for a start (a replay of an older selection that includes it is refused too). |
 | `destination_start` | `broadcast.operate` | A | Starts the television broadcast of a program to the selected destinations: the stream goes out live to every one of them. |
 | `destination_stop` | `broadcast.operate` | A | Stops the television broadcast of a program: the stream ends for every destination. |
-| `destination_rename_destination` | `broadcast.manage` | W | Changes the display name of a destination. Its stream key and Secrets Manager reference are not touched; adding a destination and replacing a key are console-only because they carry a credential. |
 | `external_source_create` | `alcantara:webrtc:operate` | A | Creates an external source of the team for one to 16 programs. |
 | `external_source_get` | `alcantara:webrtc:read` | R | Reads one external source: transport, lifecycle, health, programs, credential version, ingress and participant identity. |
 | `external_source_list` | `alcantara:webrtc:read` | R | Lists the external sources of the team (name, transport, lifecycle, health, programs, credential version), active ones first. |
@@ -730,6 +732,8 @@ are wrapped and a dry run is not.
 | `media_create` | `alcantara:media:manage` | W | Adds an image (a name and an image address) and creates its media asset. |
 | `media_group_create` | `alcantara:media:manage` | W | Creates a media group (a unique name, an optional description and an ordered list of existing media). |
 | `media_group_update` | `alcantara:media:manage` | W | Changes the name, description or ordered media of a media group; only the fields given change, and media_ids replaces the whole list. |
+| `media_list_artist_labels` | `media.read` | R | Lists the media label attached to each artist: the normalised artist key, the artist as last saved and the label id. |
+| `media_set_artist_label` | `media.manage` | W | Attaches a media label to an artist (matched ignoring case and outer spaces), replacing any label already attached, or removes the link when label_id is null. It changes which pictures the artist bumper and the song recipe use for every song by that artist. |
 | `media_update` | `alcantara:media:manage` | W | Changes the name or image address of an image; a field left out stays. |
 | `preference_discover` | `alcantara:access` | R | Lists the shared console layouts published for a program or for the team (name, description, source device class, version). |
 | `preference_get` | `alcantara:access` | R | Reads your own console profile for a device class (desktop, tablet or phone); the default profile at version 0 when none is saved. |
@@ -759,10 +763,10 @@ are wrapped and a dry run is not.
 | `program_take_program_song_off_air_by_id` | `alcantara:program:operate` | A | Stops the song playing on a program and turns its rotation to manual (the operator Stop). |
 | `program_update_broadcast_settings` | `alcantara:program:operate` | A | Changes the global broadcast settings (time override, mixer levels, mute and solo) that every program reads. |
 | `program_update_program_audio_bus_by_id` | `alcantara:program:operate` | A | Replaces the song sequence (playlist and rotation mode) and/or the mixer settings of a program. |
+| `radio_get_playback_state` | `alcantara:radio:read` | R | Reads what the radio is playing now in a program: the song on air (elapsed and duration in milliseconds, progress, intro status, whether telemetry is stale), the song announced next, and the rotation mode and frozen flag; `on_air` is null when nothing plays. |
 | `radio_get_recovery` | `alcantara:radio:read` | R | Reads the recovery (filler) session of a radio program: the selected songs, the prepared version and Palazzo's automation state; `connection` is "unavailable" when Palazzo cannot be reached. |
 | `radio_get_settings` | `alcantara:radio:read` | R | Reads the radio settings of a program (Palazzo address, listener address, bumpers, recovery playlist, segue and similarity settings); null when the program has none yet. |
 | `radio_get_status` | `alcantara:radio:read` | R | Reads whether the radio engine of a program is running (liquidsoap and icecast connected). |
-| `radio_get_playback_state` | `alcantara:radio:read` | R | Reads what the radio is playing now in a program: the song on air (elapsed and duration in milliseconds, progress, intro status, whether telemetry is stale), the song announced next, and the rotation mode and frozen flag; `on_air` is null when nothing plays. |
 
 `radio_get_playback_state` and `get_on_air` both read what is on air, but differ: `radio_get_playback_state` is a capability of the registry and returns the song's elapsed time, duration and progress with the next song, the mode and the frozen flag; `get_on_air` is the radio tool and adds the Palazzo connection and the output confidence. Both answer `not_found` for an unknown program and `on_air: null` when nothing plays. Title and artist are user-entered and are returned only under `untrusted`.
 | `radio_get_audio_levels` | `alcantara:radio:read` | R | Reads the latest audio levels of a program per channel (song, instants, scene_instant, main): vu, peak and peak_hold, each from 0 to 1, with the time they were last updated. |

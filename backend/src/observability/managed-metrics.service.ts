@@ -183,6 +183,7 @@ const JOBS = new Set([
 ]);
 const JOB_RESULTS = new Set(['success', 'failure', 'skipped', 'unknown']);
 const MEDIA_LABEL_ASSIGNMENT_RESULTS = new Set(['success', 'failure']);
+const ARTIST_LABEL_WRITE_RESULTS = ['set', 'cleared', 'rejected'] as const;
 const SCENE_HANDOFF_RESULTS = new Set(['success', 'failure']);
 const PREFERENCE_ACTIONS = new Set([
   'read',
@@ -308,6 +309,7 @@ export class ManagedMetricsService {
   private readonly dependencyDuration: Histogram<string>;
   private readonly jobs: Counter<string>;
   private readonly mediaLabelAssignments: Counter<string>;
+  private readonly artistLabelWrites: Counter<string>;
   private readonly sceneHandoffs: Counter<string>;
   private readonly jobLastSuccess: Gauge<string>;
   private readonly preferenceOperations: Counter<string>;
@@ -396,6 +398,14 @@ export class ManagedMetricsService {
       labelNames: ['result'],
       registers: [this.registry],
     });
+    this.artistLabelWrites = new Counter({
+      name: 'alcantara_artist_label_writes_total',
+      help: 'Artist media label writes by bounded result (set, cleared or rejected).',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    for (const result of ARTIST_LABEL_WRITE_RESULTS)
+      this.artistLabelWrites.labels(result).inc(0);
     this.sceneHandoffs = new Counter({
       name: 'alcantara_scene_handoffs_total',
       help: 'Atomic Program and Preview scene handoff persistence outcomes.',
@@ -629,6 +639,12 @@ export class ManagedMetricsService {
   recordMediaLabelAssignment(result: string): void {
     this.mediaLabelAssignments.inc({
       result: bounded(result, MEDIA_LABEL_ASSIGNMENT_RESULTS),
+    });
+  }
+
+  recordArtistLabelWrite(result: string): void {
+    this.artistLabelWrites.inc({
+      result: bounded(result, new Set<string>(ARTIST_LABEL_WRITE_RESULTS)),
     });
   }
 

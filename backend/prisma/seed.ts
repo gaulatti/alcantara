@@ -224,6 +224,21 @@ async function main() {
     });
   }
 
+  // One fictional artist linked to a seeded label, to exercise the artist label picker offline.
+  if (
+    !(await prisma.artistLabel.findFirst({
+      where: { artistKey: 'seed artist', teamId: null },
+    }))
+  ) {
+    await prisma.artistLabel.create({
+      data: {
+        artistKey: 'seed artist',
+        artist: 'Seed Artist',
+        labelId: demoMusicTag.id,
+      },
+    });
+  }
+
   const songSequence = {
     mode: 'manual',
     items: [

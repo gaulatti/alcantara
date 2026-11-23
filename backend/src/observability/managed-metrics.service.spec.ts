@@ -22,6 +22,10 @@ describe('ManagedMetricsService program SSE metrics', () => {
     metrics.recordMediaLabelAssignment('success');
     metrics.recordMediaLabelAssignment('failure');
     metrics.recordMediaLabelAssignment('private-label-name');
+    metrics.recordArtistLabelWrite('set');
+    metrics.recordArtistLabelWrite('cleared');
+    metrics.recordArtistLabelWrite('rejected');
+    metrics.recordArtistLabelWrite('rob');
     metrics.recordRecordingCommand('start', 'accepted');
     metrics.recordRecordingCommand('private-action', 'private-result');
     metrics.recordRecordingStatus('finalizing', 'success');
@@ -61,6 +65,12 @@ describe('ManagedMetricsService program SSE metrics', () => {
       'alcantara_media_label_assignments_total{result="unknown"} 1',
     );
     expect(output).not.toContain('private-label-name');
+    // gaulatti/alcantara#423: bounded results, with the artist never a label.
+    for (const result of ['set', 'cleared', 'rejected', 'unknown'])
+      expect(output).toContain(
+        `alcantara_artist_label_writes_total{result="${result}"} 1`,
+      );
+    expect(output).not.toContain('rob');
     expect(output).toContain(
       'alcantara_recording_commands_total{action="start",result="accepted"} 1',
     );

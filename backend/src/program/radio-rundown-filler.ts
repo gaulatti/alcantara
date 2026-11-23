@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { artistKey } from '../artist-labels/artist-key';
 import { randomUUID } from 'node:crypto';
 import type { FlightCue } from './flight.types';
 import type { TaggedSong } from './radio-log-generator';
@@ -56,7 +57,7 @@ export function fillRadioRundown(
     );
   const items: FlightCue[] = [];
   const recent: string[] = [];
-  const artist = (song: TaggedSong) => song.artist.trim().toLocaleLowerCase();
+  const artist = (song: TaggedSong) => artistKey(song.artist);
   const addSong = (song: TaggedSong, cue: FlightCue) => {
     if (
       rules.artistSeparation &&

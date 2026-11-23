@@ -1,3 +1,4 @@
+import { ArtistLabelField } from '../components/ArtistLabelField';
 import { TooltipButton } from "../components/BleeckerButtons";
 import { AlertContainer, Button, Card, Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Empty, FileInput, IconButton, Input, LoadingSpinner, Modal, Pagination, SectionHeader, Switch, showAlert } from '@gaulatti/bleecker';
 import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal, Pencil, Play, Plus, Music2, Search, Trash2 } from 'lucide-react';
@@ -871,6 +872,8 @@ export default function SongsCatalog() {
                   <Input type='text' value={titleInput} onChange={(event) => setTitleInput(event.target.value)} />
                 </div>
               </div>
+
+              <ArtistLabelField artist={artistInput} />
 
               <div>
                 <label className='mb-1 block text-xs '>Audio URL</label>

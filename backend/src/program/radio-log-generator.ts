@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { artistKey } from '../artist-labels/artist-key';
 import type { FlightCue } from './flight.types';
 import { randomUUID } from 'node:crypto';
 
@@ -108,12 +109,12 @@ export function generateRadioLog(
           ? []
           : selected
               .slice(-rules.artistSeparation)
-              .map((song) => song.artist.trim().toLocaleLowerCase()),
+              .map((song) => artistKey(song.artist)),
       );
       const song = pool.find(
         (candidate) =>
           !used.has(candidate.id) &&
-          !recentArtists.has(candidate.artist.trim().toLocaleLowerCase()),
+          !recentArtists.has(artistKey(candidate.artist)),
       );
       if (!song)
         throw new BadRequestException(
