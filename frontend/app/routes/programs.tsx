@@ -1,5 +1,5 @@
 import { TooltipButton } from "../components/BleeckerButtons";
-import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import { AlertContainer, Button, Card, Checkbox, Empty, IconButton, Input, LoadingSpinner, Modal, SectionHeader, StatePill, showAlert } from '@gaulatti/bleecker';
 import { ExternalLink, Link2, Pencil, Plus, Trash2, Radio, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -406,8 +406,9 @@ export default function ProgramsAdmin() {
   const supportsSceneConfiguration = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'scene.configuration'));
   const supportsStingers = selectedType !== 'radio' && (!templatePreview || hasProgramCapability(templatePreview, 'stinger.transitions'));
 
+  // Delete is confirmed by name in a dialog before it is sent (gaulatti/alcantara#349).
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const deleteProgram = async (programId: string) => {
-    if (!confirm(`Delete program "${programId}"? This removes its scene assignments and active scene state.`)) return;
 
     try {
       const res = await fetch(apiUrl(`/program/${encodeURIComponent(programId)}`), {
@@ -477,11 +478,7 @@ export default function ProgramsAdmin() {
                           <span className='inline-flex items-center gap-1 rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15'>
                             {program.type === 'radio' ? <><Radio size={12} /> Radio</> : program.type === 'both' ? <><Tv size={12} /><Radio size={12} /> Simulcast</> : <><Tv size={12} /> TV</>}
                           </span>
-                          {isSelected ? (
-                            <span className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea   '>
-                              Selected
-                            </span>
-                          ) : null}
+                          {isSelected ? <StatePill tone='live' label='Active' /> : null}
                         </div>
                         {program.type === 'radio' ? (
                           <p className='mt-2 text-sm text-text-secondary dark:text-text-secondary'>Audio-only show · Songs, audio clips, mixer, and Radio distribution</p>
@@ -502,7 +499,10 @@ export default function ProgramsAdmin() {
                             </a>
                           </div>
                         ) : program.type !== 'radio' ? (
-                          <p className='mt-3 text-xs text-terracotta'>Transitional Alcantara renderer · no external template registered</p>
+                          <div className='mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary'>
+                            <StatePill tone='idle' label='No template' />
+                            <span>Uses the built-in Alcantara renderer; no external template is registered.</span>
+                          </div>
                         ) : null}
 
                       </div>
@@ -519,9 +519,7 @@ export default function ProgramsAdmin() {
                           <Pencil size={16} />
                         </IconButton>
                         <IconButton
-                          onClick={() => {
-                            void deleteProgram(program.programId);
-                          }}
+                          onClick={() => setPendingDelete(program.programId)}
                           className='text-terracotta'
                           title={`Delete ${program.programId}`}
                           aria-label={`Delete ${program.programId}`}
@@ -536,6 +534,27 @@ export default function ProgramsAdmin() {
             </div>
           )}
         </Card>
+
+        <Modal isOpen={pendingDelete !== null} onClose={() => setPendingDelete(null)} title='Confirm delete'>
+          <div className='space-y-4'>
+            <p className='text-sm text-text-secondary'>
+              Delete show &ldquo;{pendingDelete}&rdquo;? This removes its scene assignments and active scene state.
+            </p>
+            <div className='flex justify-end gap-2'>
+              <Button variant='ghost' onClick={() => setPendingDelete(null)}>Cancel</Button>
+              <Button
+                variant='destructive'
+                onClick={() => {
+                  const target = pendingDelete;
+                  setPendingDelete(null);
+                  if (target) void deleteProgram(target);
+                }}
+              >
+                Delete show
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         <Modal isOpen={showModal} onClose={closeModal} title={editingProgramId ? 'Edit show' : 'Create show'}>
           <div className='space-y-5'>
