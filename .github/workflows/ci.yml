@@ -91,7 +91,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: *verify-code
         with:
-          node-version: 22.23.4
+          node-version: 22.23.5
       - name: Install dependencies
         if: *verify-code
         run: |
