@@ -1,7 +1,12 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, configure } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { getProgramAudioBusSnapshot, subscribeProgramAudioBus } from '../utils/programAudioBus';
+
+// These tests import the packaged scenes after resetting the module registry, which is slow on a loaded
+// CI runner: wait for the lazy load for as long as it takes rather than a fixed second.
+vi.setConfig({ testTimeout: 30_000 });
+configure({ asyncUtilTimeout: 15_000 });
 
 const props = { programId: 'main' } as unknown as React.ComponentProps<typeof import('./GiorgiaLegacyClockRenderer').GiorgiaLegacyClockRenderer>;
 
