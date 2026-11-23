@@ -142,7 +142,7 @@ it("edits and toggles the chyron, and hides it when switching component", () => 
   render(<Preview />);
   open("chyron");
   const input = screen.getByPlaceholderText("Enter chyron text");
-  expect(input).toHaveValue("LAS INTROS DEL FESTIVAL DE SANREMO");
+  expect(input).toHaveValue("PROGRAM TITLE MESSAGE");
   fireEvent.change(input, { target: { value: "Ultima ora" } });
   expect(screen.getByTestId("ChyronHolder")).toHaveTextContent('"show":false');
   fireEvent.click(screen.getByText("Show Chyron").closest("button")!);

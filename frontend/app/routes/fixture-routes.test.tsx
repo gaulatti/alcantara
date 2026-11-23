@@ -126,7 +126,7 @@ it("shows chyron messages on demand in the layout demo", async () => {
   render(<BroadcastLayoutExample />);
   expect(screen.getByText("Broadcast Layout Demo")).toBeVisible();
   for (const [button, text] of [
-    ["Show Title Message", "LAS INTROS DEL FESTIVAL DE SANREMO"],
+    ["Show Title Message", "PROGRAM TITLE MESSAGE"],
     ["Show Now Playing", "Ahora suena: Beautiful Song - Amazing Artist"],
     ["Show Breaking News", "ULTIMA HORA: Noticia importante en desarrollo"],
   ]) {
