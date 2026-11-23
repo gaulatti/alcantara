@@ -191,7 +191,6 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
   return (
     <div className="relative flex items-center gap-2">
       <StatePill
-        className="text-xs"
         tone={SYNC_TONE[preferences.syncState] ?? "warn"}
         label={`Preferences ${preferences.syncState}`}
       />
@@ -441,7 +440,7 @@ export function ConfidenceMonitor({
         </span>
         {airState ? (
           <StatePill
-            className="shrink-0 border-white/40 bg-black/30 text-xs text-white"
+            className="shrink-0 border-white/40 bg-black/30 text-white"
             tone={airState.tone}
             label={airState.label}
             pulse={airState.pulse}
@@ -718,12 +717,12 @@ export function BroadcastSwitcherDeck(props: Props) {
               </span>
               {isProgram ? (
                 <StatePill
-                  className="shrink-0 text-xs"
+                  className="shrink-0"
                   tone="live"
                   label={isPreview ? "Preview · Program" : "Program"}
                 />
               ) : isPreview ? (
-                <StatePill className="shrink-0 text-xs" tone="arm" label="Preview" />
+                <StatePill className="shrink-0" tone="arm" label="Preview" />
               ) : (
                 <span className="shrink-0 text-xs text-text-secondary">
                   Stage
@@ -925,7 +924,6 @@ export function BroadcastSwitcherDeck(props: Props) {
                 <div className="flex items-center gap-2">
                   {ftbArmed ? (
                     <StatePill
-                      className="text-xs"
                       tone="arm"
                       label="Fade to black armed: Alt+B again"
                     />

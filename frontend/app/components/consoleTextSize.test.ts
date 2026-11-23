@@ -25,14 +25,23 @@ describe('console text size', () => {
     });
   }
 
-  it('gives every StatePill in the switcher deck a 12px size', () => {
-    const source = read('BroadcastSwitcherDeck.tsx');
-    const pills = [...source.matchAll(/<StatePill\b[\s\S]*?\/>/g)].map((match) => match[0]);
-    expect(pills.length).toBeGreaterThan(0);
-    expect(pills.filter((pill) => !/className=("|\{`)[^"`]*\btext-xs\b/.test(pill))).toEqual([]);
+  // Bleecker 0.1.54 sizes StatePill and StatusBadge at 12px by default (gaulatti/bleecker#588), so
+  // the console passes no override; the guard is that it never asks for the 11px size or re-forces 12px.
+  it('leaves StatePill and StatusBadge at their 12px default in the switcher deck and the header', () => {
+    for (const file of ['BroadcastSwitcherDeck.tsx', 'SimulcastStatusRail.tsx']) {
+      const source = read(file);
+      const badges = [...source.matchAll(/<(?:StatePill|StatusBadge)\b[\s\S]*?\/>/g)].map((match) => match[0]);
+      expect(badges.length).toBeGreaterThan(0);
+      // Only the pills and badges: the deck's buttons take their own sizes.
+      expect(badges.filter((badge) => /size=["'{]+sm/.test(badge))).toEqual([]);
+      const overrides = badges.filter((badge) => /text-xs|\[&>span:first-child\]/.test(badge));
+      expect(overrides).toEqual([]);
+    }
   });
 
-  it('raises the SIMULCAST badge in the console header to 12px', () => {
-    expect(read('SimulcastStatusRail.tsx')).toMatch(/<StatusBadge[^>]*\[&>span:first-child\]:text-xs[^>]*label='SIMULCAST'/);
+  it('pins a Bleecker that sizes them: 0.1.54 or later', () => {
+    const pin = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')).dependencies['@gaulatti/bleecker'] as string;
+    const [major, minor, patch] = pin.replace(/^[^\d]*/, '').split('.').map(Number);
+    expect(major === 0 && minor === 1 ? patch >= 54 : major > 0 || minor > 1).toBe(true);
   });
 });
