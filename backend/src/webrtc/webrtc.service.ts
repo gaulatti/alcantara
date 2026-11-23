@@ -615,10 +615,10 @@ export class WebrtcService {
       room: this.roomName(programId),
       roomJoin: true,
       canPublish: true,
-      canPublishSources: [
-        TrackSource.SCREEN_SHARE,
-        TrackSource.SCREEN_SHARE_AUDIO,
-      ],
+      // The program's picture as screen share and its sound as microphone: LiveKit's Swift
+      // SDK, which the desktop console uses, can publish app audio only as a microphone-source
+      // track, so screen-share audio is not granted.
+      canPublishSources: [TrackSource.SCREEN_SHARE, TrackSource.MICROPHONE],
       canSubscribe: false,
       canPublishData: false,
       hidden: false,

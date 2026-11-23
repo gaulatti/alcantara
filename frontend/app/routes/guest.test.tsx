@@ -574,6 +574,29 @@ it("switches the program return to the desktop's feed when it joins, and back wh
   expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
 });
 
+// The desktop feed's sound is a microphone-source track ("program-audio"). A guest never
+// subscribes to it directly: guests hear the program through their own mix-minus, which the
+// return router builds, so the program is not heard twice and never as a guest microphone.
+it("does not subscribe to the desktop feed's program-audio track", async () => {
+  await joined();
+  const subscribed: [string, boolean][] = [];
+  const publication = (sid: string, kind: string, trackName: string, source: string) => ({
+    kind,
+    trackName,
+    source,
+    setSubscribed: async (value: boolean) => {
+      subscribed.push([sid, value]);
+    },
+  });
+  const desktop = { identity: "desktop-program-feed-main" };
+  emit("trackPublished", publication("desktop-audio", "audio", "program-audio", "microphone"), desktop);
+  emit("trackPublished", publication("desktop-video", "video", "program", "screen_share"), desktop);
+  expect(subscribed).toEqual([
+    ["desktop-audio", false],
+    ["desktop-video", true],
+  ]);
+});
+
 it("keeps the desktop's feed when Alana's arrives after it", async () => {
   await joined();
   const events: string[] = [];

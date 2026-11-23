@@ -1437,7 +1437,7 @@ describe('WebrtcService coverage', () => {
         room: 'alcantara-main',
         roomJoin: true,
         canPublish: true,
-        canPublishSources: ['screen_share', 'screen_share_audio'],
+        canPublishSources: ['screen_share', 'microphone'],
         canSubscribe: false,
         canPublishData: false,
         hidden: false,
