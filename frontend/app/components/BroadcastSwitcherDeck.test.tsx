@@ -142,6 +142,48 @@ it("shows the keyboard arm for fade to black, and uses console controls instead 
   expect(screen.getByRole("combobox", { name: "Transition" })).toBeVisible();
 });
 
+it("never fades from a held Alt+B, and acts once for a held key", async () => {
+  preferenceProfile.shortcutsEnabled = true;
+  onTestFinished(() => {
+    preferenceProfile.shortcutsEnabled = false;
+  });
+  const onFadeToBlack = vi.fn();
+  const onStageScene = vi.fn();
+  render(
+    <BroadcastSwitcherDeck
+      {...props}
+      onFadeToBlack={onFadeToBlack}
+      onStageScene={onStageScene}
+      workspace="director"
+    />,
+  );
+  // Holding Alt+B: one fresh keydown, then auto-repeats. It arms, never takes.
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  for (let i = 0; i < 5; i += 1)
+    fireEvent.keyDown(window, { key: "b", altKey: true, repeat: true });
+  expect(screen.getByText("Fade to black armed: Alt+B again")).toBeVisible();
+  expect(onFadeToBlack).not.toHaveBeenCalled();
+  // A repeat is still swallowed, so it does not reach the page.
+  const repeat = new KeyboardEvent("keydown", {
+    key: "b",
+    altKey: true,
+    repeat: true,
+    cancelable: true,
+  });
+  window.dispatchEvent(repeat);
+  expect(repeat.defaultPrevented).toBe(true);
+  // A fresh second press takes it.
+  fireEvent.keyDown(window, { key: "b", altKey: true });
+  expect(onFadeToBlack).toHaveBeenCalledTimes(1);
+
+  // Holding Escape clears Preview once.
+  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.keyDown(window, { key: "Escape", repeat: true });
+  fireEvent.keyDown(window, { key: "Escape", repeat: true });
+  await waitFor(() => expect(onStageScene).toHaveBeenCalledTimes(1));
+  expect(onStageScene).toHaveBeenCalledWith(null);
+});
+
 it("filters sources and stages without taking Program", async () => {
   const onStageScene = vi.fn();
   const onTake = vi.fn();

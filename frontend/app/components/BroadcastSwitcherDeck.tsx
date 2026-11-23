@@ -530,31 +530,24 @@ export function BroadcastSwitcherDeck(props: Props) {
     if (!shortcutsEnabled) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (blocksBroadcastShortcut(event.target)) return;
-      if (event.altKey && event.key.toLowerCase() === "b") {
-        event.preventDefault();
-        requestFadeToBlack();
-      } else if (
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        event.code === "Space"
-      ) {
-        event.preventDefault();
-        void takeStagedScene();
-      } else if (
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === "c"
-      ) {
-        event.preventDefault();
-        void cutStagedScene();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        void stageScene(null);
-      }
+      const plain =
+        !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+      const action =
+        event.altKey && event.key.toLowerCase() === "b"
+          ? requestFadeToBlack
+          : plain && event.code === "Space"
+            ? () => void takeStagedScene()
+            : plain && event.key.toLowerCase() === "c"
+              ? () => void cutStagedScene()
+              : event.key === "Escape"
+                ? () => void stageScene(null)
+                : null;
+      if (!action) return;
+      event.preventDefault();
+      // A held key repeats keydown: only a fresh press acts, so holding Alt+B
+      // can never arm and then take, and holding Space or C takes once.
+      if (event.repeat) return;
+      action();
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
