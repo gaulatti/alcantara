@@ -9,7 +9,6 @@ import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { ActorContextInterceptor } from '../auth/actor-context.interceptor';
 import { PompeiiAuthorizationGuard } from '../auth/pompeii-authorization.guard';
 import { PompeiiService } from '../auth/pompeii.service';
-import { HttpMetricsInterceptor } from '../observability/http-metrics.interceptor';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 import { PrismaService } from '../prisma.service';
 import { BroadcastDestinationKeysService } from './broadcast-destination-keys.service';
@@ -124,7 +123,6 @@ describe('POST /broadcast/destinations/:destinationId/ingest', () => {
         PompeiiAuthorizationGuard,
         BroadcastIngestService,
         { provide: APP_INTERCEPTOR, useClass: ActorContextInterceptor },
-        { provide: APP_INTERCEPTOR, useClass: HttpMetricsInterceptor },
         { provide: PompeiiService, useValue: pompeii },
         { provide: BroadcastDestinationsService, useValue: {} },
         { provide: BroadcastDestinationKeysService, useValue: {} },
