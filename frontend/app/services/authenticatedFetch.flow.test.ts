@@ -77,7 +77,7 @@ describe("which requests are authenticated", () => {
     native.mockClear();
     await patched("https://api.test/v10/things");
     await patched("https://api.test/other");
-    expect(native.mock.calls.map((c) => c[1])).toEqual([undefined, undefined]);
+    expect(native.mock.calls.map((c: unknown[]) => c[1])).toEqual([undefined, undefined]);
   });
   it("sends the caller's own headers over the Request's", async () => {
     const { native, patched } = await setup();
