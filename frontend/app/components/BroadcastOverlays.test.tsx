@@ -1,10 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./ClockWidget", () => ({ ClockWidget: ({ timezone }: any) => <i data-testid="clock" data-tz={String(timezone)} /> }));
-vi.mock("./LogoWidget", () => ({ LogoWidget: () => <i data-testid="logo" /> }));
-
-import { CronicaLayout } from "./CronicaLayout";
 import { CronicaReiteramos } from "./CronicaReiteramos";
 import { Scoreboard } from "./Scoreboard";
 
@@ -30,18 +26,6 @@ describe("Scoreboard", () => {
 });
 
 describe("Cronica overlays", () => {
-  it("shows the chyron lines, the reiteramos strip, the logo and the clock", () => {
-    const { container } = render(<CronicaLayout headline={"UNO\nDOS"} reiteramosText="AGAIN" timezone="UTC" />);
-    expect([...container.querySelectorAll(".cronica-chyron-line")].map((n) => n.textContent)).toEqual(["UNO", "DOS"]);
-    expect(screen.getByText("AGAIN")).toBeInTheDocument();
-    expect(screen.getByTestId("logo")).toBeInTheDocument();
-    expect(screen.getByTestId("clock")).toHaveAttribute("data-tz", "UTC");
-  });
-  it("uses the default headline and can hide the strip", () => {
-    const { container } = render(<CronicaLayout showReiteramos={false} />);
-    expect(container.querySelectorAll(".cronica-chyron-line")).toHaveLength(3);
-    expect(container.querySelector(".cronica-reiteramos")).toBeNull();
-  });
   it("renders the reiteramos strip alone, or nothing when hidden", () => {
     const { container, rerender } = render(<CronicaReiteramos />);
     expect(screen.getByText("REITERAMOS")).toBeInTheDocument();

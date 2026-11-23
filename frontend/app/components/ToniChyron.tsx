@@ -12,6 +12,12 @@ interface FifthBellChyronProps {
   socialHandles?: unknown;
 }
 
+/** The handles the producer configured: strings only, trimmed, and none that are blank. */
+function configuredHandles(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+}
+
 /**
  * The Fifth Bell chyron is Brokaw's. The app keeps the chyron's sequence model: it resolves the text for
  * the current moment, every half second while a sequence is playing, and hands Brokaw the result.
@@ -34,7 +40,7 @@ export const FifthBellChyron: React.FC<FifthBellChyronProps> = ({ text = '', sho
       show={show}
       useMarquee={resolved.useMarquee}
       label={label}
-      socialHandles={Array.isArray(socialHandles) ? (socialHandles as string[]) : undefined}
+      socialHandles={configuredHandles(socialHandles)}
     />
   );
 };
