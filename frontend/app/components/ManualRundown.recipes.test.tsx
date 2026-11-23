@@ -194,3 +194,34 @@ it("keeps the rundown working when the recipes cannot be loaded", async () => {
   expect(screen.queryByRole("button", { name: "Recipes" })).toBeNull();
   expect(error).toHaveBeenCalledWith("Failed to load recipes:", expect.any(Error));
 });
+
+// gaulatti/alcantara#404 (group B): a recipe that expands to nothing, an expansion the service refuses, and a
+// save refused after the operator has accepted a use's issues.
+
+it("says a recipe with no steps has nothing to add", async () => {
+  vi.mocked(expandRecipe).mockResolvedValue({ items: [], issues: [] });
+  await open([plain("a")]);
+  await addWithRecipe("Harbor Light");
+  expect(await screen.findByText("The recipe has no steps to add.")).toBeInTheDocument();
+  expect(updateFlightSequence).not.toHaveBeenCalled();
+});
+
+it("shows why a recipe could not be expanded", async () => {
+  vi.mocked(expandRecipe).mockRejectedValue(new Error("Recipe service down"));
+  await open([plain("a")]);
+  await addWithRecipe("Harbor Light");
+  expect(await screen.findByText("Recipe service down")).toBeInTheDocument();
+  expect(updateFlightSequence).not.toHaveBeenCalled();
+});
+
+it("keeps the issues visible when the save refuses the use they were accepted for", async () => {
+  vi.mocked(expandRecipe).mockResolvedValue({
+    items: use("use_cccccccccccc"),
+    issues: [{ code: "artist_label_missing", message: "No media label for The Lighthouse Keepers" }],
+  });
+  vi.mocked(updateFlightSequence).mockRejectedValueOnce(new Error("Sequence is locked"));
+  await open([]);
+  await addWithRecipe("Harbor Light");
+  fireEvent.click(await screen.findByRole("button", { name: "Add anyway" }));
+  expect(await screen.findByText("Sequence is locked")).toBeInTheDocument();
+});
