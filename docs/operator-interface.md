@@ -205,6 +205,16 @@ Remaining time uses reported duration and position; stale telemetry is labeled
 as last reported time. Missing output/engine data stays visibly unverified or
 unavailable. The console does not generate a simulated waveform or audio meter.
 
+The program page measures a song or instant from the element's captured stream
+when the engine offers `captureStream()`. Otherwise it routes the element through
+Web Audio, but only when Web Audio can read the source: same origin, `blob:`,
+`data:`, or loaded in CORS mode (`frontend/app/utils/mediaWebAudioAccess.ts`).
+A cross-origin source loaded without CORS (the song and instant store sends no
+CORS headers) plays on its own element with no measured level. Web Audio would
+output silence for it, so routing it would take it off the program sound. This
+is the case in WebKit (Safari and the desktop console), which has no
+`captureStream()` on media elements.
+
 Console surfaces retain Encode Sans, Bleecker radii, and the existing palette,
 with centrally scoped dark surface and semantic live/preview/ready tokens in
 `BroadcastConsole.css`. This fixed dark working surface keeps monitor and status

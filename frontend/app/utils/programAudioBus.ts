@@ -1,5 +1,6 @@
 import { interpolateGainLog } from './audioTaper';
 import { apiUrl } from './apiBaseUrl';
+import { canRouteMediaThroughWebAudio } from './mediaWebAudioAccess';
 
 export interface ProgramAudioBusTrack {
   token: string;
@@ -237,7 +238,9 @@ function setupAudioMeter(state: ProgramAudioBusState, audio: HTMLAudioElement): 
     };
 
     const attachFromMediaElement = (): boolean => {
-      if (context.state !== 'running') {
+      // Web Audio cannot read a cross-origin source loaded without CORS: routing it would mute the
+      // element and play silence. It keeps playing on its own, without a level.
+      if (context.state !== 'running' || !canRouteMediaThroughWebAudio(audio)) {
         return false;
       }
       const source = context.createMediaElementSource(audio);

@@ -58,6 +58,7 @@ import { chartLookupId, resolveChartDisplay } from '../utils/programChartValues'
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import { getProgramSlideshowLabelIds, getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
 import { sceneInstantBelongsToActiveScene } from '../utils/programSceneInstant';
+import { canRouteMediaThroughWebAudio } from '../utils/mediaWebAudioAccess';
 
 import {
   VU_ATTACK_MS,
@@ -385,7 +386,9 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       };
 
       const attachFromMediaElement = (): boolean => {
-        if (context.state !== 'running') {
+        // Web Audio cannot read a cross-origin source loaded without CORS: routing it would mute the
+        // element and play silence. It keeps playing on its own, without a level.
+        if (context.state !== 'running' || !canRouteMediaThroughWebAudio(audio)) {
           return false;
         }
         const source = context.createMediaElementSource(audio);
