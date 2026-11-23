@@ -461,7 +461,10 @@ export function ConfidenceMonitor({
       >
         {fromReturn ? (
           (returnMedia ?? (
-            <div className="switcher-monitor-empty absolute inset-0 flex items-center justify-center text-xs font-semibold uppercase tracking-widest">
+            // With a frozen or lost overlay centred on the screen, the label moves to the top so the two never overlap.
+            <div
+              className={`switcher-monitor-empty absolute inset-0 flex justify-center text-xs font-semibold uppercase tracking-widest ${state === "frozen" || state === "lost" ? "items-start pt-2" : "items-center"}`}
+            >
               No return picture
             </div>
           ))

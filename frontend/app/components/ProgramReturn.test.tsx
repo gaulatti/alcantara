@@ -137,6 +137,8 @@ describe("ConfidenceMonitor", () => {
     const monitor = screen.getByRole("region", { name: "Program return" });
     expect(monitor).toHaveAttribute("data-return-state", "frozen");
     expect(within(monitor).getByText("No return picture")).toBeVisible();
+    // The missing-picture label sits at the top while the frozen overlay is centred.
+    expect(within(monitor).getByText("No return picture")).toHaveClass("items-start");
     expect(within(monitor).getByRole("status")).toHaveTextContent("Frozen · same frame for 0:02");
     act(() => {
       vi.advanceTimersByTime(2_000);
