@@ -58,16 +58,12 @@ export function faderToDb(value: number): number {
     return interpolateLinear(CONSOLE_SILENCE_DB, firstPoint.db, ratio);
   }
 
-  for (let index = 1; index < CONSOLE_TAPER.length; index += 1) {
-    const previous = CONSOLE_TAPER[index - 1];
-    const next = CONSOLE_TAPER[index];
-    if (normalized <= next.fader) {
-      const ratio = (normalized - previous.fader) / (next.fader - previous.fader);
-      return interpolateLinear(previous.db, next.db, ratio);
-    }
-  }
-
-  return 0;
+  // The last point is fader 1 and the value is below 1, so a segment always ends at or past it.
+  const index = CONSOLE_TAPER.findIndex((point, position) => position > 0 && normalized <= point.fader);
+  const previous = CONSOLE_TAPER[index - 1];
+  const next = CONSOLE_TAPER[index];
+  const ratio = (normalized - previous.fader) / (next.fader - previous.fader);
+  return interpolateLinear(previous.db, next.db, ratio);
 }
 
 export function dbToFader(value: number): number {
@@ -89,16 +85,12 @@ export function dbToFader(value: number): number {
     return clampUnit(interpolateLinear(0, firstPoint.fader, ratio));
   }
 
-  for (let index = 1; index < CONSOLE_TAPER.length; index += 1) {
-    const previous = CONSOLE_TAPER[index - 1];
-    const next = CONSOLE_TAPER[index];
-    if (value <= next.db) {
-      const ratio = (value - previous.db) / (next.db - previous.db);
-      return clampUnit(interpolateLinear(previous.fader, next.fader, ratio));
-    }
-  }
-
-  return 1;
+  // The last point is 0 dB and the value is below 0, so a segment always ends at or past it.
+  const index = CONSOLE_TAPER.findIndex((point, position) => position > 0 && value <= point.db);
+  const previous = CONSOLE_TAPER[index - 1];
+  const next = CONSOLE_TAPER[index];
+  const ratio = (value - previous.db) / (next.db - previous.db);
+  return clampUnit(interpolateLinear(previous.fader, next.fader, ratio));
 }
 
 export function faderToGain(value: number): number {

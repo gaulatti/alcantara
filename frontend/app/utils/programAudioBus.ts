@@ -337,18 +337,11 @@ function buildMeterEnvelope(audioBuffer: AudioBuffer): MeterEnvelope | null {
     values[frameIndex] = peakChannelRms;
   }
 
-  if (values.length === 0) {
-    return {
-      stepMs: frameSize * 1000 / sampleRate,
-      values
-    };
-  }
-
   const sortedValues = Array.from(values).sort((left, right) => left - right);
   const lowIndex = Math.max(0, Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * METER_ENVELOPE_LOW_PERCENTILE)));
   const highIndex = Math.max(lowIndex, Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * METER_ENVELOPE_HIGH_PERCENTILE)));
-  const floorValue = sortedValues[lowIndex] ?? 0;
-  const ceilingValue = Math.max(floorValue + 1e-6, sortedValues[highIndex] ?? floorValue + 1e-6);
+  const floorValue = sortedValues[lowIndex];
+  const ceilingValue = Math.max(floorValue + 1e-6, sortedValues[highIndex]);
   let previousNormalized = 0;
 
   // Normalize using percentiles and add transient emphasis for visible movement.
@@ -392,10 +385,8 @@ function getMeterEnvelope(audioUrl: string, context: AudioContext): Promise<Mete
 }
 
 function resolveEnvelopeFetchUrl(audioUrl: string): string {
-  const normalized = audioUrl.trim();
-  if (!normalized) {
-    return normalized;
-  }
+  // The bus hands over the track's trimmed, non-empty URL.
+  const normalized = audioUrl;
 
   try {
     const parsed = new URL(normalized, window.location.href);
@@ -424,12 +415,10 @@ function warnEnvelopeSkippedOnce(): void {
 }
 
 function setupAudioMeterEnvelope(state: ProgramAudioBusState, trackAudioUrl: string): void {
-  const normalizedUrl = typeof trackAudioUrl === 'string' ? trackAudioUrl.trim() : '';
+  // The bus hands over the track's trimmed, non-empty URL (ensureProgramAudioBusTrack refuses a blank one).
+  const normalizedUrl = trackAudioUrl;
   state.meterEnvelopeUrl = normalizedUrl;
   state.meterEnvelope = null;
-  if (!normalizedUrl) {
-    return;
-  }
 
   const AudioContextCtor = getAudioContextConstructor();
   if (!AudioContextCtor) {
@@ -797,7 +786,7 @@ export function getProgramAudioBusSignalSnapshot(programId: string): ProgramAudi
       Math.floor(timeMs / Math.max(1, state.meterEnvelope.stepMs))
       )
     );
-    const envelopeLevel = state.meterEnvelope.values[envelopeIndex] ?? 0;
+    const envelopeLevel = state.meterEnvelope.values[envelopeIndex];
     const normalizedEnvelopeLevel = envelopeLevel * clampVolume(state.activeAudio.volume);
     nextRms = normalizedEnvelopeLevel;
     nextPeak = normalizedEnvelopeLevel;
