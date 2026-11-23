@@ -60,7 +60,7 @@ it("draws exactly the station marks the overlay URL gives", () => {
 });
 
 it("draws the program's own marks from its active scene, with URL marks overriding them", async () => {
-  const fetchMock = vi.fn(async () =>
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
     new Response(
       JSON.stringify({
         activeScene: {
