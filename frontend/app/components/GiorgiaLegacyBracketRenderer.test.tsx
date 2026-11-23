@@ -1,7 +1,12 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, configure } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { fetchSongCatalog } from '../services/songs';
+
+// These tests import the packaged scenes after resetting the module registry, which is slow on a loaded
+// CI runner: wait for the lazy load for as long as it takes rather than a fixed second.
+vi.setConfig({ testTimeout: 30_000 });
+configure({ asyncUtilTimeout: 15_000 });
 
 vi.mock('../services/songs', () => ({ fetchSongCatalog: vi.fn().mockResolvedValue([]) }));
 

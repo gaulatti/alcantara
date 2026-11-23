@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, configure } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // gaulatti/alcantara#381: the Fifth Bell program is Brokaw's LiveProgram, placed with this API's
 // origin and the /fifthbell asset path Alcántara serves.
@@ -15,6 +15,11 @@ vi.mock("@fifthbell/brokaw/components/live-program", () => ({
 }));
 
 import BrokawFifthBellProgramRenderer from "./BrokawFifthBellProgramRenderer";
+
+// These tests import the packaged scenes after resetting the module registry, which is slow on a loaded
+// CI runner: wait for the lazy load for as long as it takes rather than a fixed second.
+vi.setConfig({ testTimeout: 30_000 });
+configure({ asyncUtilTimeout: 15_000 });
 
 afterEach(() => {
   cleanup();

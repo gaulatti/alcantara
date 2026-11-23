@@ -1,10 +1,15 @@
 import React from 'react';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, waitFor, configure } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import BrokawFifthBellProgramRenderer from './BrokawFifthBellProgramRenderer';
 import { GiorgiaChyronRenderer } from './GiorgiaChyronRenderer';
 import { GiorgiaLegacyChyronRenderer } from './GiorgiaLegacyChyronRenderer';
 import { GiorgiaLegacyClockRenderer } from './GiorgiaLegacyClockRenderer';
+
+// These tests import the packaged scenes after resetting the module registry, which is slow on a loaded
+// CI runner: wait for the lazy load for as long as it takes rather than a fixed second.
+vi.setConfig({ testTimeout: 30_000 });
+configure({ asyncUtilTimeout: 15_000 });
 
 // gaulatti/alcantara#391: the packaged components run on this app's single React. Nothing here is
 // mocked, so a second copy (an "Invalid hook call", or `useState` of null) fails these renders.

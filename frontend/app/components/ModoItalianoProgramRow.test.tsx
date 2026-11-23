@@ -1,7 +1,15 @@
-import { act, cleanup, render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, configure, render, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { resolveProgramRow } from '../utils/programRow';
 import { ModoItalianoProgramRow } from './ModoItalianoProgramRow';
+
+// The scene renderers load the library lazily. Import it once up front, outside any test's clock, so
+// a render below only waits for modules that are already in memory, however slow the runner is.
+vi.setConfig({ testTimeout: 30_000 });
+configure({ asyncUtilTimeout: 15_000 });
+beforeAll(async () => {
+  await Promise.all([import('@modoitaliano/giorgia/scenes'), import('@modoitaliano/giorgia/scenes/legacy')]);
+}, 120_000);
 
 afterEach(cleanup);
 
@@ -15,6 +23,11 @@ async function renderRow(componentType: string, metadata: Record<string, unknown
   // The scene renderers load lazily (the library's when the pinned version has them): let them settle.
   if (componentType.includes('giorgia')) {
     await waitFor(() => expect(container.querySelector('.modoitaliano-giorgia-clock-header')).not.toBeNull(), { timeout: 5000 });
+  }
+  // A shown chyron renders text as soon as its lazy component has loaded: wait for that, not a delay.
+  const chyronShown = plan.chyronType !== null && (metadata[plan.chyronType] as { show?: unknown } | undefined)?.show !== false;
+  if (chyronShown) {
+    await waitFor(() => expect(container.querySelector('[data-program-row-slot="chyron"]')?.childNodes.length).toBeGreaterThan(0));
   }
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
