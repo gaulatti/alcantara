@@ -40,7 +40,7 @@ export class BroadcastDestinationKeysService {
     const name = cleanName(body.name);
     const target = ingestTarget(body);
     const { payload, ingestUrl } = payloadFor(target.url, body.streamKey);
-    await this.requireUniqueName(name, callerTeam, null);
+    await this.requireUniqueName(name, callerTeam);
     const id = await this.freeId(name);
     const position = await this.prisma.broadcastDestination.count();
     let secret: { secretId: string; versionId: string };
@@ -176,16 +176,11 @@ export class BroadcastDestinationKeysService {
     }
   }
 
-  private async requireUniqueName(
-    name: string,
-    callerTeam: number,
-    exceptId: string | null,
-  ) {
+  private async requireUniqueName(name: string, callerTeam: number) {
     const clash = await this.prisma.broadcastDestination.findFirst({
       where: {
         displayName: { equals: name, mode: 'insensitive' },
         ...(callerTeam === 0 ? {} : { teamId: callerTeam }),
-        ...(exceptId === null ? {} : { id: { not: exceptId } }),
       },
       select: { id: true },
     });
