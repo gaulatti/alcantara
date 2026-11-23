@@ -910,3 +910,48 @@ describe("ProgramSongSequenceEditor catalog", () => {
     expect(screen.queryByLabelText("Swap song...")).toBeNull();
   });
 });
+
+describe("ProgramSongSequenceEditor remove edge cases (gaulatti/alcantara#186)", () => {
+  it("leaves no active song when the last remaining row is removed", () => {
+    vi.spyOn(Date, "now").mockReturnValue(5_000);
+    const { onChange } = editor({
+      sequence: {
+        mode: "manual",
+        activeItemId: "only",
+        items: [preset("only")],
+      },
+      view: "queue",
+    });
+    fireEvent.click(within(rows()[0]).getByLabelText("Remove"));
+    expect(onChange.mock.lastCall![0]).toEqual(
+      expect.objectContaining({ items: [], activeItemId: null }),
+    );
+  });
+
+  it("keeps the autoplay clock on the playing song when a row before it is removed", () => {
+    vi.spyOn(Date, "now").mockReturnValue(9_000);
+    const { onChange } = editor({
+      sequence: {
+        mode: "shuffle",
+        loop: true,
+        activeItemId: "ghost",
+        items: [preset("a"), preset("b")],
+      },
+      programSongPlayback: {
+        audioUrl: "https://example.test/a.mp3",
+        token: "a:1",
+        currentTimeMs: 1_000,
+        isPlaying: false,
+      },
+      view: "queue",
+    });
+    fireEvent.click(within(rows()[1]).getByLabelText("Remove"));
+    expect(onChange.mock.lastCall![0]).toEqual(
+      expect.objectContaining({
+        items: [expect.objectContaining({ id: "a" })],
+        activeItemId: "a",
+        startedAt: 8_000,
+      }),
+    );
+  });
+});
