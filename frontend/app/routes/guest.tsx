@@ -1,9 +1,10 @@
 import { TooltipButton } from "../components/BleeckerButtons";
-import { Button, Field, Select, StatusBadge } from '@gaulatti/bleecker';
+import { Button, Checkbox, Field, Select, StatusBadge } from '@gaulatti/bleecker';
 import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Radio, Volume2 } from 'lucide-react';
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
+import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/guest';
 
@@ -32,6 +33,12 @@ async function responseError(response: Response) {
     return body || `Request failed (${response.status})`;
   }
 }
+
+const INVITATION_CLOSED_HINT = 'Ask the studio for a new link.';
+const IN_USE_ELSEWHERE = 'This invitation is already in use in another window. Try again in a minute.';
+const STUDIO_NOT_READY = 'The studio is not ready for guests yet. Try again in a minute.';
+const STUDIO_UNREACHABLE = 'The studio could not be reached. Check your connection and try again.';
+const CONNECT_FAILED = 'Could not connect to the studio. Try again.';
 
 export default function GuestRoute() {
   const { invitation = '' } = useParams();
@@ -101,7 +108,9 @@ export default function GuestRoute() {
         status: commandStatus
       })
     });
-    if (commandStatus !== 'rejected') setNotice(null);
+    // Only the guest's own answer clears the notice; the automatic 'read' receipt
+    // leaves a director message on screen until the guest acknowledges it.
+    if (commandStatus === 'acknowledged' || commandStatus === 'accepted') setNotice(null);
   };
 
   useEffect(() => {
@@ -193,15 +202,34 @@ export default function GuestRoute() {
     if (!speakerChecked || (!headphonesConfirmed && !echoRiskAccepted)) return;
     setStatus('joining');
     setError('');
+    const storageKey = `alcantara-guest-session:${invitation.split('.')[0] || 'unknown'}`;
+    const previousSession = window.sessionStorage.getItem(storageKey);
+    let response: Response;
     try {
-      const storageKey = `alcantara-guest-session:${invitation.split('.')[0] || 'unknown'}`;
-      const previousSession = window.sessionStorage.getItem(storageKey);
-      const response = await fetch(apiUrl('/webrtc/join'), {
+      response = await fetch(apiUrl('/webrtc/join'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invitation, sessionToken: previousSession })
       });
-      if (!response.ok) throw new Error(await responseError(response));
+    } catch {
+      setError(STUDIO_UNREACHABLE);
+      setStatus('ready');
+      return;
+    }
+    if (!response.ok) {
+      // Revoked, expired or invalid: the same end as a refused heartbeat.
+      if (response.status === 401 || response.status === 403) {
+        // A rejoin with a revoked or expired invitation: say what to do, not the server's text (gaulatti/alcantara#353).
+        setError(`${await responseError(response)} ${INVITATION_CLOSED_HINT}`);
+        setStatus('ended');
+        return;
+      }
+      // Any other refusal can be retried while the preflight checks still hold.
+      setError(response.status === 409 ? IN_USE_ELSEWHERE : response.status === 503 ? STUDIO_NOT_READY : await responseError(response));
+      setStatus('ready');
+      return;
+    }
+    try {
       const credentials = (await response.json()) as {
         serverUrl: string;
         token: string;
@@ -227,23 +255,55 @@ export default function GuestRoute() {
         disconnectOnPageLeave: true
       });
       roomRef.current = room;
+      const programReturn = credentials.returnVideo === 'program';
       const wantedParticipant = (participant: RemoteParticipant) =>
-        participant.identity === `program-feed-${credentials.programId}` ||
+        isProgramFeed(participant.identity, credentials.programId) ||
         participant.identity === `preview-feed-${credentials.programId}` ||
         participant.identity.startsWith('return-router-');
       const wantedTrack = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (!wantedParticipant(participant)) return false;
         if (publication.kind === Track.Kind.Video) {
-          return credentials.returnVideo !== 'none' && participant.identity === `${credentials.returnVideo}-feed-${credentials.programId}`;
+          if (credentials.returnVideo === 'none') return false;
+          // Both program feeds are kept subscribed so the switch between them is
+          // a re-attach; an unattached video track is paused (adaptive stream).
+          if (programReturn) return isProgramFeed(participant.identity, credentials.programId);
+          return participant.identity === `${credentials.returnVideo}-feed-${credentials.programId}`;
         }
         return publication.trackName === `mixminus:${credentials.participantIdentity}:${credentials.returnAudioBus}`;
       };
       const subscribe = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         void publication.setSubscribed(wantedTrack(publication, participant));
       };
+      // The program video on screen, and the program feeds' video tracks by identity
+      // (gaulatti/alexandria#9: the desktop's feed when present, otherwise Alana's).
+      const programTracks = new Map<string, RemoteTrack>();
+      let shownVideo: RemoteTrack | null = null;
+      const show = (next: RemoteTrack | null) => {
+        if (next === shownVideo) return;
+        // Attach the new track before detaching the old one, so the switch shows
+        // no black longer than the handover itself.
+        if (next && returnVideoRef.current) next.attach(returnVideoRef.current);
+        shownVideo?.detach();
+        shownVideo = next;
+        setReturnFeed(next !== null);
+      };
+      const showPreferredProgram = () => {
+        if (!programReturn) return;
+        const present = [...programTracks.keys()];
+        const preferred = programTracks.get(preferredProgramFeed(credentials.programId, present));
+        show(preferred ?? programTracks.values().next().value ?? null);
+      };
       const attach = (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (!wantedTrack(publication, participant)) return;
-        if (track.kind === Track.Kind.Video && returnVideoRef.current) track.attach(returnVideoRef.current);
+        if (track.kind === Track.Kind.Video) {
+          if (programReturn && isProgramFeed(participant.identity, credentials.programId)) {
+            programTracks.set(participant.identity, track);
+            showPreferredProgram();
+            return;
+          }
+          show(track);
+          return;
+        }
         if (track.kind === Track.Kind.Audio && returnAudioRef.current) {
           track.attach(returnAudioRef.current);
           void returnAudioRef.current.play();
@@ -252,7 +312,20 @@ export default function GuestRoute() {
       };
       room.on(RoomEvent.TrackPublished, subscribe);
       room.on(RoomEvent.TrackSubscribed, attach);
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+        if (track.kind === Track.Kind.Video && participant && programTracks.get(participant.identity) === track) {
+          programTracks.delete(participant.identity);
+          if (shownVideo === track) {
+            // Fall back to the other program feed, if any, before letting go of this one.
+            const fallback = programTracks.get(preferredProgramFeed(credentials.programId, programTracks.keys())) ?? null;
+            show(fallback);
+          }
+          return;
+        }
+        if (track === shownVideo) {
+          show(null);
+          return;
+        }
         track.detach();
         setReturnFeed(false);
       });
@@ -301,9 +374,15 @@ export default function GuestRoute() {
       stopHeartbeat();
       heartbeatRef.current = window.setInterval(() => void heartbeat(), 20_000);
       void heartbeat();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to join the studio.');
-      setStatus('error');
+    } catch {
+      // Release the half-joined room, without its listeners reporting the
+      // disconnect as an ended session, so a retry starts from a clean room.
+      const failedRoom = roomRef.current;
+      roomRef.current = null;
+      failedRoom?.removeAllListeners();
+      failedRoom?.disconnect();
+      setError(CONNECT_FAILED);
+      setStatus('ready');
     }
   };
 
@@ -386,8 +465,11 @@ export default function GuestRoute() {
             </div>
           ) : null}
           {status === 'ended' || status === 'left' ? (
-            <div className='absolute inset-0 flex items-center justify-center bg-zinc-950/95 text-xl'>
-              {status === 'left' ? 'You left the studio.' : 'The studio session ended.'}
+            <div className='absolute inset-0 flex flex-col items-center justify-center gap-4 bg-zinc-950/95 px-6 text-center text-xl'>
+              <p>{status === 'left' ? 'You left the studio.' : 'The studio session ended.'}</p>
+              {error ? <p className='max-w-md text-base text-amber-200'>{error}</p> : null}
+              {/* A rejoin asks the studio again; if the invitation is closed, the message above says to ask for a new link. */}
+              <Button onClick={() => void join()}>Rejoin the studio</Button>
             </div>
           ) : null}
           {notice ? (
@@ -469,21 +551,20 @@ export default function GuestRoute() {
               <strong className='block'>Network</strong>
               <small className='text-white/50'>{network}</small>
             </div>
-            <label className='flex items-center gap-3 rounded-xl border border-white/10 p-4'>
-              <input type='checkbox' checked={headphonesConfirmed} onChange={(event) => setHeadphonesConfirmed(event.target.checked)} />
-              <Headphones className='text-sky-300' />
-              <span>
-                <strong className='block'>I am wearing headphones</strong>
-                <small className='text-white/50'>Required to prevent echo.</small>
-              </span>
-            </label>
-            <label className='flex items-center gap-3 rounded-xl border border-amber-300/20 p-4'>
-              <input type='checkbox' checked={echoRiskAccepted} onChange={(event) => setEchoRiskAccepted(event.target.checked)} />
-              <span>
-                <strong className='block text-amber-200'>Operator accepted speaker risk</strong>
-                <small className='text-white/50'>Use only when headphones are impossible.</small>
-              </span>
-            </label>
+            <Checkbox
+              containerClassName='rounded-xl border border-white/10 p-4'
+              checked={headphonesConfirmed}
+              onChange={(event) => setHeadphonesConfirmed(event.target.checked)}
+              label={<span className='flex items-center gap-3'><Headphones className='text-sky-300' /><strong>I am wearing headphones</strong></span>}
+              description='Required to prevent echo.'
+            />
+            <Checkbox
+              containerClassName='rounded-xl border border-amber-300/20 p-4'
+              checked={echoRiskAccepted}
+              onChange={(event) => setEchoRiskAccepted(event.target.checked)}
+              label={<strong className='text-amber-200'>Operator accepted speaker risk</strong>}
+              description='Use only when headphones are impossible.'
+            />
           </div>
         ) : null}
       </div>

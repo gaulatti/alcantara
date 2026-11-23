@@ -59,6 +59,11 @@ export class SongsController {
       earoneSongId?: string | number | null;
       earoneRank?: string | number | null;
       earoneSpins?: string | number | null;
+      externalChartId?: string | number | null;
+      externalChartSongId?: string | number | null;
+      externalChartRank?: string | number | null;
+      externalChartSpins?: string | number | null;
+      externalChartProvider?: string | null;
       enabled?: boolean;
       programId?: string;
       introInstantId?: number | null;
@@ -81,6 +86,11 @@ export class SongsController {
       earoneSongId?: string | number | null;
       earoneRank?: string | number | null;
       earoneSpins?: string | number | null;
+      externalChartId?: string | number | null;
+      externalChartSongId?: string | number | null;
+      externalChartRank?: string | number | null;
+      externalChartSpins?: string | number | null;
+      externalChartProvider?: string | null;
       enabled?: boolean;
       programId?: string;
       introInstantId?: number | null;

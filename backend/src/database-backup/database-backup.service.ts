@@ -1,3 +1,4 @@
+import { isDeployCandidate } from '../config/deploy-candidate';
 import {
   Inject,
   Injectable,
@@ -51,6 +52,12 @@ export class DatabaseBackupService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     if (!this.isProduction()) return;
     this.productionConfiguration();
+    if (isDeployCandidate()) {
+      this.logger.log(
+        'Deploy candidate: hourly PostgreSQL backups are not scheduled',
+      );
+      return;
+    }
     this.stopped = false;
     this.logger.log('Hourly PostgreSQL backups are enabled');
     this.scheduleNextBackup();

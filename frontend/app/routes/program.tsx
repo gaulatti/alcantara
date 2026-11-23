@@ -24,6 +24,7 @@ import {
   ModoItalianoBracket,
   ModoItalianoPodcastPlayer,
   ModoItalianoGiorgiaPodcastPlayer,
+  ModoItalianoGiorgiaArtistBumper,
   CronicaChyron,
   CronicaBackground,
   CronicaReiteramos,
@@ -34,14 +35,15 @@ import {
   Scoreboard
 } from '../components';
 import RelojClone from '../components/RelojClone';
+import { resolveProgramRow } from '../utils/programRow';
+import { ModoItalianoProgramRow } from '../components/ModoItalianoProgramRow';
 import RelojLoopClock from '../components/RelojLoopClock';
 import RelojDigitalLoopClock from '../components/RelojDigitalLoopClock';
-import FifthBellProgram from '../programs/fifthbell/FifthBellProgram.tsx';
+import FifthBellProgram from '../programs/fifthbell/FifthBellProgram';
 import { SceneTransitionOverlay } from '../components/SceneTransitionOverlay';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import {
   ensureProgramAudioBusTrack,
-  getProgramAudioBusSignalSnapshot,
   getProgramAudioBusSnapshot,
   setProgramAudioBusMasterVolume,
   stopProgramAudioBus,
@@ -51,653 +53,95 @@ import { faderToGain } from '../utils/audioTaper';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence, type ProgramSongSequenceItem } from '../utils/programSequence';
 import { resolveToniChyronLeaf } from '../utils/toniChyronSequence';
 import { getSceneTransitionPreset, type SceneTransitionPreset } from '../utils/sceneTransitions';
-import { BACKEND_SANREMO_REALTIME_URL, buildEaroneRealtimeLookup, matchEaroneRealtimeEntry, type EaroneRealtimeLookup } from '../utils/earoneRealtime';
+import { loadChartLookup, realtimeChartValues, type ChartFeedLookup } from '../utils/chartFeed';
+import { chartLookupId, resolveChartDisplay } from '../utils/programChartValues';
 import { getProgramRealtimeSocketUrl } from '../utils/programRealtimeSocket';
 import { getProgramSlideshowLabelIds, getProgramSlideshowMediaGroupIds } from '../utils/programSlideshow';
 import { sceneInstantBelongsToActiveScene } from '../utils/programSceneInstant';
+import { canRouteMediaThroughWebAudio } from '../utils/mediaWebAudioAccess';
 
-interface Layout {
-  id: number;
-  name: string;
-  componentType: string;
-  settings: string;
-}
-
-interface Scene {
-  id: number;
-  name: string;
-  layoutId: number;
-  layout: Layout;
-  chyronText: string | null;
-  metadata: string | null;
-}
-
-interface ProgramState {
-  id: number;
-  programId?: string;
-  activeSceneId: number | null;
-  activeScene: Scene | null;
-  stagedSceneId?: number | null;
-  stagedScene?: Scene | null;
-  fadeToBlack?: boolean;
-  updatedAt: string;
-}
-
-interface BroadcastSettings {
-  id: number;
-  timeOverrideEnabled: boolean;
-  timeOverrideStartTime: string | null;
-  timeOverrideStartedAt: string | null;
-  mainMasterVolume: number;
-  songMasterVolume: number;
-  instantMasterVolume: number;
-  sceneInstantMasterVolume: number;
-  streamMasterVolume: number;
-  songMuted: boolean;
-  instantMuted: boolean;
-  sceneInstantMuted: boolean;
-  streamMuted: boolean;
-  songSolo: boolean;
-  instantSolo: boolean;
-  sceneInstantSolo: boolean;
-  streamSolo: boolean;
-  mixerChannels: ProgramMixerChannel[];
-  updatedAt: string;
-}
-
-interface ProgramMixerChannel {
-  id: string;
-  name: string;
-  volume: number;
-  muted: boolean;
-  solo: boolean;
-}
-
-interface SceneChangeEvent {
-  type: 'scene_change';
-  transitionId?: string | null;
-  state: ProgramState;
-}
-
-interface InstantPlayEvent {
-  type: 'instant_play';
-  programId?: string;
-  instant: {
-    id: number;
-    name: string;
-    audioUrl: string;
-    volume: number;
-  };
-  triggeredAt: string;
-}
-
-interface SceneInstantTakeEvent {
-  type: 'scene_instant_take';
-  programId?: string;
-  sceneId?: number | null;
-  instant: {
-    id: number | null;
-    assetId?: string | null;
-    name: string;
-    audioUrl: string;
-    volume: number;
-  };
-  loop?: boolean;
-  triggeredAt: string;
-}
-
-interface SceneInstantStateEvent {
-  type: 'scene_instant_state';
-  programId?: string;
-  playback?: {
-    sceneId?: number | null;
-    instantId?: number | null;
-    mediaAssetId?: string | null;
-    isPlaying?: boolean;
-    instant?: {
-      id: number | null;
-      assetId?: string | null;
-      name: string;
-      audioUrl: string;
-      volume: number;
-    } | null;
-    startedAt?: string | null;
-    updatedAt?: string;
-  } | null;
-}
-
-interface ActiveTransition {
-  sequence: number;
-  preset: SceneTransitionPreset;
-}
-
-interface InstantAudioRuntimeState {
-  baseVolume: number;
-  meterSource: AudioNode | null;
-  meterAnalyser: AnalyserNode | null;
-  meterBuffer: Float32Array | null;
-  meterUsesMediaElementFallback: boolean;
-}
-
-interface SongOffAirEvent {
-  type: 'song_off_air';
-  programId: string;
-  triggeredAt: string;
-}
-
-interface ProgramReloadEvent {
-  type: 'program_reload';
-  programId?: string;
-  triggeredAt?: string;
-}
-
-interface ProgramAudioBusSettings {
-  songSequence?: unknown;
-  mixerSettings?: ProgramAudioMixerSettings | null;
-}
-
-interface ProgramAudioMixerSettings {
-  mainMasterVolume: number;
-  songMasterVolume: number;
-  instantMasterVolume: number;
-  sceneInstantMasterVolume: number;
-  streamMasterVolume: number;
-  songMuted: boolean;
-  instantMuted: boolean;
-  sceneInstantMuted: boolean;
-  streamMuted: boolean;
-  songSolo: boolean;
-  instantSolo: boolean;
-  sceneInstantSolo: boolean;
-  streamSolo: boolean;
-  mixerChannels: ProgramMixerChannel[];
-}
-
-interface SlideshowMediaItem {
-  id: number;
-  name: string;
-  imageUrl: string;
-}
-
-interface SlideshowMediaGroupItem {
-  id: number;
-  mediaGroupId: number;
-  mediaId: number;
-  position: number;
-  media: SlideshowMediaItem;
-}
-
-interface SlideshowMediaGroup {
-  id: number;
-  name: string;
-  description: string | null;
-  items: SlideshowMediaGroupItem[];
-}
-
-interface SlideshowMediaLabel {
-  id: string;
-  name: string;
-  images: Array<{
-    assetId: string;
-    name: string;
-    imageUrl: string;
-    position: number;
-  }>;
-}
-
-interface AudioBusUpdateEvent {
-  type: 'audio_bus_update';
-  programId: string;
-  settings: ProgramAudioBusSettings;
-  updatedAt: string;
-}
-
-interface MeterChannelPayload {
-  vu: number;
-  peak: number;
-  peakHold: number;
-}
-
-interface ProgramAudioMeterPayload {
-  song: MeterChannelPayload;
-  instants: MeterChannelPayload;
-  sceneInstant: MeterChannelPayload;
-  main: MeterChannelPayload;
-  version?: number;
-}
-
-interface MeterChannelBallistics {
-  vu: number;
-  peak: number;
-  peakHold: number;
-  peakHoldAtMs: number;
-}
-
-interface ProgramMeterBallisticsState {
-  song: MeterChannelBallistics;
-  instants: MeterChannelBallistics;
-  sceneInstant: MeterChannelBallistics;
-  main: MeterChannelBallistics;
-  lastTickAtMs: number | null;
-}
-
-type ProgramUpdateTopic = 'state' | 'audioBus' | 'audioMeter' | 'songPlayback' | 'sceneInstant' | 'broadcastSettings';
-
-const VU_ATTACK_MS = 300;
-const VU_RELEASE_MS = 300;
-const PEAK_RELEASE_MS = 300;
-const PEAK_HOLD_MS = 900;
-const METER_TICK_INTERVAL_MS = 60;
-const SCENE_INSTANT_SWITCH_FADE_MS = 1500;
+import {
+  VU_ATTACK_MS,
+  VU_RELEASE_MS,
+  PEAK_RELEASE_MS,
+  PEAK_HOLD_MS,
+  METER_TICK_INTERVAL_MS,
+  SCENE_INSTANT_SWITCH_FADE_MS,
+  normalizeUpdateVersion,
+  resolveProgramUpdateTopicFromType,
+  readProgramTopicVersion,
+  createMeterChannelBallistics,
+  createInstantAudioMeterContext,
+  flattenProgramSongItems,
+  normalizeProgramSongPlaylist,
+  normalizeProgramAudioBusSettings,
+  normalizeMasterVolume,
+  normalizeMixerToggle,
+  normalizeSlideshowMediaGroupId,
+  normalizeSlideshowLabelId,
+  normalizeProgramMixerChannels,
+  getProgramMixerChannel,
+  normalizeProgramAudioMixerSettings,
+  normalizeBroadcastSettings,
+  sceneIncludesVideoStream,
+  normalizeSceneInstantNumericId,
+  normalizeSceneInstantTimestamp,
+  normalizeSceneInstantAssetId,
+  buildSceneInstantPlaybackToken,
+  type Layout,
+  type Scene,
+  type ProgramState,
+  type BroadcastSettings,
+  type ProgramMixerChannel,
+  type SceneChangeEvent,
+  type InstantPlayEvent,
+  type SceneInstantTakeEvent,
+  type SceneInstantStateEvent,
+  type ActiveTransition,
+  type InstantAudioRuntimeState,
+  type SongOffAirEvent,
+  type ProgramReloadEvent,
+  type ProgramAudioBusSettings,
+  type ProgramAudioMixerSettings,
+  type SlideshowMediaItem,
+  type SlideshowMediaGroupItem,
+  type SlideshowMediaGroup,
+  type SlideshowMediaLabel,
+  type AudioBusUpdateEvent,
+  type MeterChannelPayload,
+  type MeterChannelBallistics,
+  type ProgramUpdateTopic
+} from '../utils/programRuntime';
 
 const FIFTHBELL_DRIVER_COMPONENT_TYPES = new Set(['fifthbell', 'fifthbell-content', 'fifthbell-marquee', 'fifthbell-corner', 'fifthbell-clock']);
 
-function normalizeUpdateVersion(value: unknown): number | null {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return null;
-  }
-  const normalized = Math.floor(numeric);
-  if (normalized < 0) {
-    return null;
-  }
-  return normalized;
-}
-
-function resolveProgramUpdateTopicFromType(type: unknown): ProgramUpdateTopic | null {
-  if (typeof type !== 'string') {
-    return null;
-  }
-
-  switch (type) {
-    case 'program_state_snapshot':
-    case 'scene_change':
-    case 'scene_staged':
-    case 'fade_to_black':
-    case 'scene_update':
-    case 'scene_cleared':
-    case 'program_scenes_changed':
-    case 'program_stingers_changed':
-      return 'state';
-    case 'audio_bus_snapshot':
-    case 'audio_bus_update':
-      return 'audioBus';
-    case 'audio_meter_update':
-      return 'audioMeter';
-    case 'song_playback_update':
-    case 'song_off_air':
-      return 'songPlayback';
-    case 'scene_instant_state':
-    case 'scene_instant_take':
-    case 'scene_instant_stop':
-      return 'sceneInstant';
-    case 'broadcast_settings_snapshot':
-    case 'broadcast_settings_update':
-      return 'broadcastSettings';
-    default:
-      return null;
+/**
+ * The on-air page reads each program snapshot with this (gaulatti/alcantara#201).
+ * An error answer is refused before it can replace what is on air: the page
+ * keeps its last good value, and the console gets one fixed line per source
+ * with at most the HTTP status, never the answer's body.
+ */
+class SnapshotRefused extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
   }
 }
 
-function readProgramTopicVersion(topic: ProgramUpdateTopic, payload: unknown): number | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return null;
-  }
-
-  const record = payload as Record<string, unknown>;
-  const topLevel = normalizeUpdateVersion(record.version);
-  if (topLevel !== null) {
-    return topLevel;
-  }
-
-  switch (topic) {
-    case 'state':
-      return normalizeUpdateVersion((record.state as Record<string, unknown> | undefined)?.version ?? record.stateVersion);
-    case 'audioBus':
-      return normalizeUpdateVersion((record.settings as Record<string, unknown> | undefined)?.version ?? record.audioBusVersion);
-    case 'audioMeter':
-      return normalizeUpdateVersion((record.levels as Record<string, unknown> | undefined)?.version ?? record.audioMeterVersion);
-    case 'songPlayback':
-      return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.songPlaybackVersion);
-    case 'sceneInstant':
-      return normalizeUpdateVersion((record.playback as Record<string, unknown> | undefined)?.version ?? record.sceneInstantVersion);
-    case 'broadcastSettings':
-      return normalizeUpdateVersion((record.settings as Record<string, unknown> | undefined)?.version ?? record.broadcastSettingsVersion);
-    default:
-      return null;
-  }
+function readSnapshot(res: Response): Promise<unknown> {
+  if (!res.ok) throw new SnapshotRefused(res.status);
+  return res.json();
 }
 
-function createMeterChannelBallistics(): MeterChannelBallistics {
-  return {
-    vu: 0,
-    peak: 0,
-    peakHold: 0,
-    peakHoldAtMs: 0
-  };
+function keepLastGood(source: string) {
+  return (err: unknown) =>
+    console.error(
+      `[program] ${source} could not be read; keeping the last good value.`,
+      err instanceof SnapshotRefused ? `HTTP ${err.status}` : 'unreadable answer',
+    );
 }
 
-function createProgramMeterBallisticsState(): ProgramMeterBallisticsState {
-  return {
-    song: createMeterChannelBallistics(),
-    instants: createMeterChannelBallistics(),
-    sceneInstant: createMeterChannelBallistics(),
-    main: createMeterChannelBallistics(),
-    lastTickAtMs: null
-  };
-}
-
-function createInstantAudioMeterContext(): AudioContext | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) {
-    return null;
-  }
-  try {
-    return new AudioContextCtor();
-  } catch {
-    return null;
-  }
-}
-
-function flattenProgramSongItems(items: ProgramSongSequenceItem[]): Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] {
-  const flattened: Extract<ProgramSongSequenceItem, { kind: 'preset' }>[] = [];
-
-  for (const item of items) {
-    if (item.kind === 'preset') {
-      flattened.push(item);
-      continue;
-    }
-
-    flattened.push(...flattenProgramSongItems(item.sequence.items));
-  }
-
-  return flattened;
-}
-
-function normalizeProgramSongPlaylist(sequence: ProgramSongSequence): ProgramSongSequence {
-  const playlistItems = flattenProgramSongItems(sequence.items);
-  const activeItemId =
-    sequence.activeItemId === null
-      ? null
-      : sequence.activeItemId && playlistItems.some((item) => item.id === sequence.activeItemId)
-        ? sequence.activeItemId
-        : (playlistItems[0]?.id ?? null);
-
-  return {
-    ...sequence,
-    items: playlistItems,
-    activeItemId
-  };
-}
-
-function normalizeProgramAudioBusSettings(value: unknown): ProgramAudioBusSettings {
-  if (!value || typeof value !== 'object') {
-    return {
-      songSequence: null,
-      mixerSettings: null
-    };
-  }
-
-  const record = value as Record<string, unknown>;
-  const normalizedSongSequence = normalizeProgramSongSequence(record.songSequence);
-  const hasMixerSettings = Object.prototype.hasOwnProperty.call(record, 'mixerSettings');
-
-  return {
-    songSequence: normalizedSongSequence ? normalizeProgramSongPlaylist(normalizedSongSequence) : null,
-    mixerSettings: hasMixerSettings ? normalizeProgramAudioMixerSettings(record.mixerSettings) : null
-  };
-}
-
-function normalizeMasterVolume(value: unknown, fallback: number = 1): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(0, Math.min(1, value));
-  }
-  return fallback;
-}
-
-function normalizeMixerToggle(value: unknown, fallback: boolean = false): boolean {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  return fallback;
-}
-
-function normalizeSlideshowMediaGroupId(value: unknown): number | null {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0 || !Number.isInteger(numeric)) {
-    return null;
-  }
-  return numeric;
-}
-
-function normalizeSlideshowLabelId(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function normalizeProgramMixerChannels(value: unknown, fallback: ProgramMixerChannel[]): ProgramMixerChannel[] {
-  if (!Array.isArray(value)) {
-    return fallback;
-  }
-
-  const byId = new Map<string, ProgramMixerChannel>();
-  for (const fallbackChannel of fallback) {
-    byId.set(fallbackChannel.id, { ...fallbackChannel });
-  }
-
-  for (const item of value) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      continue;
-    }
-    const record = item as Record<string, unknown>;
-    const id = typeof record.id === 'string' ? record.id.trim() : '';
-    if (!id) {
-      continue;
-    }
-    const previous = byId.get(id);
-    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : (previous?.name ?? id);
-    byId.set(id, {
-      id,
-      name,
-      volume: normalizeMasterVolume(record.volume, previous?.volume ?? 1),
-      muted: normalizeMixerToggle(record.muted, previous?.muted ?? false),
-      solo: normalizeMixerToggle(record.solo, previous?.solo ?? false)
-    });
-  }
-
-  return [...byId.values()];
-}
-
-function getProgramMixerChannel(channels: ProgramMixerChannel[], id: string): ProgramMixerChannel {
-  const matched = channels.find((channel) => channel.id === id);
-  if (matched) {
-    return matched;
-  }
-  return {
-    id,
-    name: id,
-    volume: 1,
-    muted: false,
-    solo: false
-  };
-}
-
-function normalizeProgramAudioMixerSettings(value: unknown): ProgramAudioMixerSettings {
-  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-  const scalarFallback = {
-    songMasterVolume: normalizeMasterVolume(record.songMasterVolume, 1),
-    instantMasterVolume: normalizeMasterVolume(record.instantMasterVolume, 1),
-    sceneInstantMasterVolume: normalizeMasterVolume(record.sceneInstantMasterVolume, 1),
-    streamMasterVolume: normalizeMasterVolume(record.streamMasterVolume, 1),
-    songMuted: normalizeMixerToggle(record.songMuted, false),
-    instantMuted: normalizeMixerToggle(record.instantMuted, false),
-    sceneInstantMuted: normalizeMixerToggle(record.sceneInstantMuted, false),
-    streamMuted: normalizeMixerToggle(record.streamMuted, false),
-    songSolo: normalizeMixerToggle(record.songSolo, false),
-    instantSolo: normalizeMixerToggle(record.instantSolo, false),
-    sceneInstantSolo: normalizeMixerToggle(record.sceneInstantSolo, false),
-    streamSolo: normalizeMixerToggle(record.streamSolo, false)
-  };
-  const fallbackChannels: ProgramMixerChannel[] = [
-    {
-      id: 'song',
-      name: 'Song',
-      volume: scalarFallback.songMasterVolume,
-      muted: scalarFallback.songMuted,
-      solo: scalarFallback.songSolo
-    },
-    {
-      id: 'stream',
-      name: 'Stream',
-      volume: scalarFallback.streamMasterVolume,
-      muted: scalarFallback.streamMuted,
-      solo: scalarFallback.streamSolo
-    },
-    {
-      id: 'instants',
-      name: 'Instants',
-      volume: scalarFallback.instantMasterVolume,
-      muted: scalarFallback.instantMuted,
-      solo: scalarFallback.instantSolo
-    },
-    {
-      id: 'sceneInstant',
-      name: 'Scene Instant',
-      volume: scalarFallback.sceneInstantMasterVolume,
-      muted: scalarFallback.sceneInstantMuted,
-      solo: scalarFallback.sceneInstantSolo
-    }
-  ];
-  const mixerChannels = normalizeProgramMixerChannels(record.mixerChannels, fallbackChannels);
-  const songChannel = getProgramMixerChannel(mixerChannels, 'song');
-  const streamChannel = getProgramMixerChannel(mixerChannels, 'stream');
-  const instantsChannel = getProgramMixerChannel(mixerChannels, 'instants');
-  const sceneInstantChannel = getProgramMixerChannel(mixerChannels, 'sceneInstant');
-
-  return {
-    mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
-    songMasterVolume: songChannel.volume,
-    instantMasterVolume: instantsChannel.volume,
-    sceneInstantMasterVolume: sceneInstantChannel.volume,
-    streamMasterVolume: streamChannel.volume,
-    songMuted: songChannel.muted,
-    instantMuted: instantsChannel.muted,
-    sceneInstantMuted: sceneInstantChannel.muted,
-    streamMuted: streamChannel.muted,
-    songSolo: songChannel.solo,
-    instantSolo: instantsChannel.solo,
-    sceneInstantSolo: sceneInstantChannel.solo,
-    streamSolo: streamChannel.solo,
-    mixerChannels
-  };
-}
-
-function normalizeBroadcastSettings(value: unknown): BroadcastSettings | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-  const id = typeof record.id === 'number' && Number.isFinite(record.id) ? record.id : 1;
-  const fallbackChannels: ProgramMixerChannel[] = [
-    {
-      id: 'song',
-      name: 'Song',
-      volume: normalizeMasterVolume(record.songMasterVolume, 1),
-      muted: normalizeMixerToggle(record.songMuted, false),
-      solo: normalizeMixerToggle(record.songSolo, false)
-    },
-    {
-      id: 'stream',
-      name: 'Stream',
-      volume: normalizeMasterVolume(record.streamMasterVolume, 1),
-      muted: normalizeMixerToggle(record.streamMuted, false),
-      solo: normalizeMixerToggle(record.streamSolo, false)
-    },
-    {
-      id: 'instants',
-      name: 'Instants',
-      volume: normalizeMasterVolume(record.instantMasterVolume, 1),
-      muted: normalizeMixerToggle(record.instantMuted, false),
-      solo: normalizeMixerToggle(record.instantSolo, false)
-    },
-    {
-      id: 'sceneInstant',
-      name: 'Scene Instant',
-      volume: normalizeMasterVolume(record.sceneInstantMasterVolume, 1),
-      muted: normalizeMixerToggle(record.sceneInstantMuted, false),
-      solo: normalizeMixerToggle(record.sceneInstantSolo, false)
-    }
-  ];
-  const mixerChannels = normalizeProgramMixerChannels(record.mixerChannels, fallbackChannels);
-  const songChannel = getProgramMixerChannel(mixerChannels, 'song');
-  const streamChannel = getProgramMixerChannel(mixerChannels, 'stream');
-  const instantsChannel = getProgramMixerChannel(mixerChannels, 'instants');
-  const sceneInstantChannel = getProgramMixerChannel(mixerChannels, 'sceneInstant');
-  return {
-    id,
-    timeOverrideEnabled: Boolean(record.timeOverrideEnabled),
-    timeOverrideStartTime: typeof record.timeOverrideStartTime === 'string' ? record.timeOverrideStartTime : null,
-    timeOverrideStartedAt: typeof record.timeOverrideStartedAt === 'string' ? record.timeOverrideStartedAt : null,
-    mainMasterVolume: normalizeMasterVolume(record.mainMasterVolume, 1),
-    songMasterVolume: songChannel.volume,
-    instantMasterVolume: instantsChannel.volume,
-    sceneInstantMasterVolume: sceneInstantChannel.volume,
-    streamMasterVolume: streamChannel.volume,
-    songMuted: songChannel.muted,
-    instantMuted: instantsChannel.muted,
-    sceneInstantMuted: sceneInstantChannel.muted,
-    streamMuted: streamChannel.muted,
-    songSolo: songChannel.solo,
-    instantSolo: instantsChannel.solo,
-    sceneInstantSolo: sceneInstantChannel.solo,
-    streamSolo: streamChannel.solo,
-    mixerChannels,
-    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
-  };
-}
-
-function sceneIncludesVideoStream(scene: Scene | null | undefined): boolean {
-  if (!scene?.layout?.componentType) {
-    return false;
-  }
-  return scene.layout.componentType
-    .split(',')
-    .map((componentType) => componentType.trim())
-    .filter(Boolean)
-    .some((componentType) => componentType === 'video-stream' || componentType === 'webrtc-guest');
-}
-
-function normalizeSceneInstantNumericId(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return null;
-  }
-  const rounded = Math.round(value);
-  return rounded > 0 ? rounded : null;
-}
-
-function normalizeSceneInstantTimestamp(value: unknown): string {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  return value.trim();
-}
-
-function normalizeSceneInstantAssetId(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function buildSceneInstantPlaybackToken(
-  sceneId: number | null,
-  mediaAssetId: string | null,
-  instantId: number | null,
-  audioUrl: string,
-  timestamp: string
-): string {
-  return `${sceneId ?? 'none'}|${mediaAssetId ?? instantId ?? 'none'}|${audioUrl.trim()}|${timestamp || 'none'}`;
-}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 
 export default function Program() {
   useTransparentDocument();
@@ -723,7 +167,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   const [slideshowMediaGroupsById, setSlideshowMediaGroupsById] = useState<Record<number, SlideshowMediaGroup>>({});
   const [slideshowMediaLabelsById, setSlideshowMediaLabelsById] = useState<Record<string, SlideshowMediaLabel>>({});
   const [programStingers, setProgramStingers] = useState<Array<{ id: number; name: string; videoUrl: string; cutPointMs: number }>>([]);
-  const [earoneLookup, setEaroneLookup] = useState<EaroneRealtimeLookup | null>(null);
+  const [chartLookup, setChartLookup] = useState<ChartFeedLookup | null>(null);
   const [activeTransition, setActiveTransition] = useState<ActiveTransition | null>(null);
   const [fadeToBlackAudioGain, setFadeToBlackAudioGain] = useState(1);
   const previousFadeToBlackRef = useRef<boolean | null>(null);
@@ -764,28 +208,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       broadcastSettings: -1
     };
   }, [programId]);
-  const meterBallisticsRef = useRef<ProgramMeterBallisticsState>(createProgramMeterBallisticsState());
-  const lastMeterPayloadRef = useRef<ProgramAudioMeterPayload>({
-    song: { vu: 0, peak: 0, peakHold: 0 },
-    instants: { vu: 0, peak: 0, peakHold: 0 },
-    sceneInstant: { vu: 0, peak: 0, peakHold: 0 },
-    main: { vu: 0, peak: 0, peakHold: 0 }
-  });
-  const lastSongPlaybackPayloadRef = useRef<{
-    token: string;
-    audioUrl: string;
-    progress: number;
-    currentTimeMs: number;
-    durationMs: number | null;
-    isPlaying: boolean;
-  }>({
-    token: '',
-    audioUrl: '',
-    progress: 0,
-    currentTimeMs: 0,
-    durationMs: null,
-    isPlaying: false
-  });
   const programMixerSettings = useMemo(
     () => (audioBusSettings?.mixerSettings ? normalizeProgramAudioMixerSettings(audioBusSettings.mixerSettings) : normalizeProgramAudioMixerSettings(null)),
     [audioBusSettings?.mixerSettings]
@@ -937,7 +359,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
     try {
       const attachFromStream = (): boolean => {
         const stream =
-          audio.captureStream?.() ||
+          (
+            audio as HTMLAudioElement & {
+              captureStream?: () => MediaStream;
+            }
+          ).captureStream?.() ||
           (
             audio as HTMLAudioElement & {
               mozCaptureStream?: () => MediaStream;
@@ -960,7 +386,9 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       };
 
       const attachFromMediaElement = (): boolean => {
-        if (context.state !== 'running') {
+        // Web Audio cannot read a cross-origin source loaded without CORS: routing it would mute the
+        // element and play silence. It keeps playing on its own, without a level.
+        if (context.state !== 'running' || !canRouteMediaThroughWebAudio(audio)) {
           return false;
         }
         const source = context.createMediaElementSource(audio);
@@ -1013,86 +441,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       runtime.meterBuffer = null;
       runtime.meterUsesMediaElementFallback = false;
     }
-  }, []);
-
-  const readInstantSignalSnapshot = useCallback((): {
-    rms: number;
-    peak: number;
-  } => {
-    let rmsPeak = 0;
-    let peak = 0;
-    for (const [audio, runtime] of activeInstantAudiosRef.current) {
-      if (audio.paused || audio.ended) {
-        continue;
-      }
-      if (!runtime.meterAnalyser || !runtime.meterBuffer) {
-        const fallbackLevel = normalizeMasterVolume(audio.volume, 0);
-        rmsPeak = Math.max(rmsPeak, fallbackLevel);
-        peak = Math.max(peak, fallbackLevel);
-        continue;
-      }
-
-      runtime.meterAnalyser.getFloatTimeDomainData(runtime.meterBuffer);
-      let sumSquares = 0;
-      let peakSample = 0;
-      for (let index = 0; index < runtime.meterBuffer.length; index += 1) {
-        const sample = runtime.meterBuffer[index];
-        sumSquares += sample * sample;
-        const absSample = Math.abs(sample);
-        if (absSample > peakSample) {
-          peakSample = absSample;
-        }
-      }
-      const rms = Math.sqrt(sumSquares / runtime.meterBuffer.length);
-      rmsPeak = Math.max(rmsPeak, rms);
-      peak = Math.max(peak, peakSample);
-    }
-
-    return {
-      rms: Math.max(0, Math.min(1, rmsPeak)),
-      peak: Math.max(0, Math.min(1, peak))
-    };
-  }, []);
-
-  const readSceneInstantSignalSnapshot = useCallback((): {
-    rms: number;
-    peak: number;
-  } => {
-    const current = activeSceneInstantAudioRef.current;
-    if (!current) {
-      return { rms: 0, peak: 0 };
-    }
-
-    const { audio, runtime } = current;
-    if (audio.paused || audio.ended) {
-      return { rms: 0, peak: 0 };
-    }
-
-    if (!runtime.meterAnalyser || !runtime.meterBuffer) {
-      const fallbackLevel = normalizeMasterVolume(audio.volume, 0);
-      return {
-        rms: fallbackLevel,
-        peak: fallbackLevel
-      };
-    }
-
-    runtime.meterAnalyser.getFloatTimeDomainData(runtime.meterBuffer);
-    let sumSquares = 0;
-    let peakSample = 0;
-    for (let index = 0; index < runtime.meterBuffer.length; index += 1) {
-      const sample = runtime.meterBuffer[index];
-      sumSquares += sample * sample;
-      const absSample = Math.abs(sample);
-      if (absSample > peakSample) {
-        peakSample = absSample;
-      }
-    }
-
-    const rms = Math.sqrt(sumSquares / runtime.meterBuffer.length);
-    return {
-      rms: Math.max(0, Math.min(1, rms)),
-      peak: Math.max(0, Math.min(1, peakSample))
-    };
   }, []);
 
   const stopSceneInstantAudio = useCallback((fadeMs = 0) => {
@@ -1208,6 +556,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
   const takeSceneInstantAudio = useCallback(
     (event: SceneInstantTakeEvent) => {
+      if (!event.instant) {
+        // A take with no instant has nothing to play. Refuse it before it cancels a take in progress.
+        console.warn(`Scene instant take ignored: no instant on scene ${event.sceneId}`);
+        return;
+      }
       sceneInstantTakeSequenceRef.current += 1;
       const takeSequence = sceneInstantTakeSequenceRef.current;
       const sceneId = normalizeSceneInstantNumericId(event.sceneId);
@@ -1614,6 +967,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           stopProgramAudioBus(programId);
         }
       } else if (data.type === 'song_playback_update') {
+        // The console's Preview and Program monitors are pictures only. Without this, each monitor
+        // started the song on its own audio bus at full volume, so the console played it twice with
+        // no way to turn it off.
+        if (confidenceMode) return;
         const playback = data?.playback;
         if (playback && playback.audioUrl && playback.isPlaying) {
           const audioUrl = String(playback.audioUrl).trim();
@@ -1654,12 +1011,13 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
           programStingersRef.current = stingers;
         } else {
           fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
-            .then((res) => res.json())
+            .then(readSnapshot)
             .then((stingers) => {
+              if (!Array.isArray(stingers)) throw new Error('not a list');
               setProgramStingers(stingers);
               programStingersRef.current = stingers;
             })
-            .catch(() => {});
+            .catch(keepLastGood('Program stingers reload'));
         }
       }
     },
@@ -1762,34 +1120,34 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       }
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
-          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'state')) {
-            setState(data);
+          if (!cancelled && isRecord(data) && shouldApplyProgramUpdatePayload(data, 'state')) {
+            setState(data as unknown as ProgramState);
           }
         })
-        .catch((err) => console.error('Failed to fetch initial state:', err));
+        .catch(keepLastGood('Initial program state'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'audioBus')) {
             setAudioBusSettings(normalizeProgramAudioBusSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to fetch audio bus settings:', err));
+        .catch(keepLastGood('Initial audio bus'));
 
       fetch(apiUrl('/program/broadcast-settings'))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'broadcastSettings')) {
             setBroadcastSettings(normalizeBroadcastSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to fetch broadcast settings:', err));
+        .catch(keepLastGood('Initial broadcast settings'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((playback) => {
           if (!cancelled) {
             const sceneInstantVersion =
@@ -1802,17 +1160,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             });
           }
         })
-        .catch((err) => console.error('Failed to fetch scene instant playback:', err));
+        .catch(keepLastGood('Initial scene clip playback'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((stingers) => {
+          if (!Array.isArray(stingers)) throw new Error('not a list');
           if (!cancelled) {
             setProgramStingers(stingers);
             programStingersRef.current = stingers;
           }
         })
-        .catch((err) => console.error('Failed to fetch program stingers:', err));
+        .catch(keepLastGood('Initial program stingers'));
     }, 900);
 
     return () => {
@@ -1826,34 +1185,34 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
     const pollSnapshots = () => {
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/state`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
-          if (!cancelled && shouldApplyProgramUpdatePayload(data, 'state')) {
-            setState(data);
+          if (!cancelled && isRecord(data) && shouldApplyProgramUpdatePayload(data, 'state')) {
+            setState(data as unknown as ProgramState);
           }
         })
-        .catch((err) => console.error('Failed to poll program state snapshot:', err));
+        .catch(keepLastGood('Program state poll'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/audio-bus`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'audioBus')) {
             setAudioBusSettings(normalizeProgramAudioBusSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to poll audio bus snapshot:', err));
+        .catch(keepLastGood('Audio bus poll'));
 
       fetch(apiUrl('/program/broadcast-settings'))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((data) => {
           if (!cancelled && shouldApplyProgramUpdatePayload(data, 'broadcastSettings')) {
             setBroadcastSettings(normalizeBroadcastSettings(data));
           }
         })
-        .catch((err) => console.error('Failed to poll broadcast settings snapshot:', err));
+        .catch(keepLastGood('Broadcast settings poll'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/scene-instant`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((playback) => {
           if (!cancelled) {
             const sceneInstantVersion =
@@ -1866,17 +1225,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             });
           }
         })
-        .catch((err) => console.error('Failed to poll scene instant snapshot:', err));
+        .catch(keepLastGood('Scene clip playback poll'));
 
       fetch(apiUrl(`/program/${encodeURIComponent(programId)}/stingers`))
-        .then((res) => res.json())
+        .then(readSnapshot)
         .then((stingers) => {
+          if (!Array.isArray(stingers)) throw new Error('not a list');
           if (!cancelled) {
             setProgramStingers(stingers);
             programStingersRef.current = stingers;
           }
         })
-        .catch((err) => console.error('Failed to poll program stingers:', err));
+        .catch(keepLastGood('Program stingers poll'));
     };
 
     const pollTimer = window.setInterval(() => {
@@ -1892,11 +1252,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   }, [programId, shouldApplyProgramUpdatePayload]);
 
   useEffect(() => {
-    if (confidenceMode) {
-      return;
-    }
+    // Also applied in a console monitor, where the resolved volume is 0, so a monitor's bus can
+    // never be audible even if something starts a track on it.
     setProgramAudioBusMasterVolume(programId, resolvedSongMasterVolume);
-  }, [confidenceMode, programId, resolvedSongMasterVolume]);
+  }, [programId, resolvedSongMasterVolume]);
 
   useEffect(() => {
     if (confidenceMode) {
@@ -2119,17 +1478,12 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
     const loadEarone = async () => {
       try {
-        const res = await fetch(BACKEND_SANREMO_REALTIME_URL);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
+        const lookup = await loadChartLookup();
         if (!cancelled) {
-          setEaroneLookup(buildEaroneRealtimeLookup(payload));
+          setChartLookup(lookup);
         }
       } catch (err) {
-        console.error('Failed to fetch EarOne realtime data:', err);
+        console.error('Failed to fetch the chart feed:', err);
       }
     };
 
@@ -2186,10 +1540,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       ...(metadata['fifthbell-chyron'] || {})
     } as Record<string, unknown>;
     const activeToniLeaf = resolveToniChyronLeaf(mergedFifthBellChyronProps);
-    const matchedEaroneEntry = matchEaroneRealtimeEntry(earoneLookup, {
-      earoneSongId: activeToniLeaf?.earoneSongId || null,
-      text: activeToniLeaf?.text || null
-    });
     const firstClockComponentType = components.find(
       (componentType) => componentType === 'toni-clock' || componentType === 'fifthbell-clock' || componentType === 'fifthbell-corner'
     );
@@ -2199,25 +1549,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       ...(metadata['fifthbell-clock'] || {}),
       ...(metadata['toni-clock'] || {})
     } as Record<string, unknown>;
-    const hasProgramClockComponent = components.includes('modoitaliano-clock');
-    const hasProgramChyronComponent = components.includes('modoitaliano-chyron');
-    const hasGiorgiaClockComponent = components.includes('modoitaliano-giorgia-clock');
-    const hasGiorgiaChyronComponent = components.includes('modoitaliano-giorgia-chyron');
-    const hasProgramDisclaimerComponent = components.includes('modoitaliano-disclaimer');
-    const hasCronicaChyronComponent = components.includes('cronica-chyron');
-    const hasProgramBracketComponent = components.includes('modoitaliano-bracket');
-    const hasProgramPodcastPlayerComponent = components.includes('modoitaliano-podcast-player') || components.includes('modoitaliano-giorgia-podcast-player');
-    const shouldRenderProgramRow =
-      hasProgramClockComponent &&
-      (hasProgramChyronComponent ||
-        hasProgramDisclaimerComponent ||
-        hasCronicaChyronComponent ||
-        hasProgramBracketComponent ||
-        hasProgramPodcastPlayerComponent);
-    const shouldRenderGiorgiaProgramRow = hasGiorgiaClockComponent && hasGiorgiaChyronComponent;
-    const modoItalianoChyronProps = metadata['modoitaliano-chyron'] || {};
-    const modoItalianoGiorgiaChyronProps = metadata['modoitaliano-giorgia-chyron'] || {};
-    const modoItalianoDisclaimerProps = metadata['modoitaliano-disclaimer'] || {};
+    const programRow = resolveProgramRow(components);
     const toBoolean = (value: unknown, fallback: boolean): boolean => {
       if (typeof value === 'boolean') return value;
       if (typeof value === 'number') return value !== 0;
@@ -2228,15 +1560,6 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       }
       return fallback;
     };
-    const modoItalianoDisclaimerText = typeof modoItalianoDisclaimerProps.text === 'string' ? modoItalianoDisclaimerProps.text.trim() : '';
-    const shouldShowProgramChyronComponent = shouldRenderProgramRow && hasProgramChyronComponent && toBoolean(modoItalianoChyronProps.show, true);
-    const showProgramDisclaimer =
-      shouldRenderProgramRow &&
-      hasProgramDisclaimerComponent &&
-      !shouldShowProgramChyronComponent &&
-      toBoolean(modoItalianoDisclaimerProps.show, true) &&
-      !!modoItalianoDisclaimerText;
-
     // Handle legacy single-component layouts
     if (components.length === 1) {
       const componentType = components[0];
@@ -2259,11 +1582,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       return (
         <BroadcastLayout
           headerTitle={props.headerTitle || ''}
-          hashtag={props.hashtag || '#ModoSanremoMR'}
-          url={props.url || 'modoradio.cl'}
+          hashtag={props.hashtag || ''}
+          url={props.url || ''}
           chyronText={props.chyronText || ''}
           showChyron={Boolean(props.showChyron ?? !!props.chyronText)}
-          qrCodeContent={props.qrCodeContent || 'https://modoradio.cl'}
+          qrCodeContent={props.qrCodeContent || ''}
           clockTimezone={props.clockTimezone || 'America/Argentina/Buenos_Aires'}
           showLiveIndicator={true}
           timeOverride={globalTimeOverride}
@@ -2384,7 +1707,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'reloj-clock':
-                return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} timeOverride={globalTimeOverride} />;
+                return <RelojClone key={componentType} timezone={props.timezone || 'America/Argentina/Buenos_Aires'} logoUrl={props.logoUrl} timeOverride={globalTimeOverride} />;
               case 'reloj-loop-clock':
                 return <RelojLoopClock key={componentType} timezone={props.timezone || 'Europe/Madrid'} />;
               case 'reloj-digital-loop-clock':
@@ -2448,7 +1771,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'modoitaliano-clock': {
-                if (shouldRenderProgramRow) {
+                if (programRow?.ownedTypes.has(componentType)) {
                   return null;
                 }
                 return (
@@ -2469,7 +1792,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                 );
               }
               case 'modoitaliano-chyron':
-                if (shouldRenderProgramRow) {
+                if (programRow?.ownedTypes.has(componentType)) {
                   return null;
                 }
                 return (
@@ -2481,7 +1804,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               case 'modoitaliano-giorgia-clock':
-                if (shouldRenderGiorgiaProgramRow) {
+                if (programRow?.ownedTypes.has(componentType)) {
                   return null;
                 }
                 return (
@@ -2498,10 +1821,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     showBellIcon={false}
                     songSequence={audioBusSettings?.songSequence}
                     language='es'
+                    keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
               case 'modoitaliano-giorgia-chyron':
-                if (shouldRenderGiorgiaProgramRow) {
+                if (programRow?.ownedTypes.has(componentType)) {
                   return null;
                 }
                 return (
@@ -2510,10 +1834,11 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                     show={typeof props.show === 'boolean' ? props.show : true}
                     textSequence={props.textSequence}
                     ctaSequence={props.ctaSequence}
+                    keySafe={toBoolean(props.keySafe, false)}
                   />
                 );
               case 'modoitaliano-disclaimer':
-                if (shouldRenderProgramRow) {
+                if (programRow?.ownedTypes.has(componentType)) {
                   return null;
                 }
                 return (
@@ -2558,17 +1883,34 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
                   />
                 );
               }
-              case 'toni-logo':
-                return <ToniLogo key={componentType} callsign={props.callsign || 'MR'} subtitle={props.subtitle} />;
-              case 'earone':
+              case 'modoitaliano-giorgia-artist-bumper':
                 return (
-                  <Earone
+                  <ModoItalianoGiorgiaArtistBumper
                     key={componentType}
-                    label={props.label || 'EARONE'}
-                    rank={props.rank || matchedEaroneEntry?.ranking || activeToniLeaf?.earoneRank}
-                    spins={props.spins || matchedEaroneEntry?.radioSpinsToday || activeToniLeaf?.earoneSpins}
+                    show={typeof props.show === 'boolean' ? props.show : true}
+                    artist={props.artist}
+                    songTitle={props.songTitle}
+                    labelId={props.labelId}
+                    images={props.images}
+                    contentType={props.contentType}
+                    creditLines={props.creditLines}
                   />
                 );
+              case 'toni-logo':
+                return <ToniLogo key={componentType} callsign={props.callsign || ''} subtitle={props.subtitle} />;
+              case 'earone': {
+                const realtimeChart = realtimeChartValues(chartLookup, {
+                  id: chartLookupId(activeToniLeaf?.earoneSongId, activeToniLeaf),
+                  text: activeToniLeaf?.text || null
+                });
+                const chartDisplay = resolveChartDisplay({
+                  scene: { rank: props.rank, spins: props.spins },
+                  song: activeToniLeaf,
+                  realtime: realtimeChart,
+                  legacy: { rank: activeToniLeaf?.earoneRank, spins: activeToniLeaf?.earoneSpins }
+                });
+                return <Earone key={componentType} label={props.label || 'EARONE'} rank={chartDisplay.rank} spins={chartDisplay.spins} />;
+              }
               case 'fifthbell':
               case 'fifthbell-content':
               case 'fifthbell-marquee':
@@ -2620,71 +1962,14 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
             </div>
           );
         })}
-        {shouldRenderProgramRow && (
-          <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
-            <div className='flex-1 min-w-0'>
-              {shouldShowProgramChyronComponent ? (
-                <ModoItalianoChyron show textSequence={modoItalianoChyronProps.textSequence} ctaSequence={modoItalianoChyronProps.ctaSequence} inline />
-              ) : showProgramDisclaimer ? (
-                <ModoItalianoDisclaimer
-                  text={modoItalianoDisclaimerProps.text || ''}
-                  show
-                  align={
-                    modoItalianoDisclaimerProps.align === 'left' || modoItalianoDisclaimerProps.align === 'center' || modoItalianoDisclaimerProps.align === 'right'
-                      ? modoItalianoDisclaimerProps.align
-                      : 'right'
-                  }
-                  fontSizePx={typeof modoItalianoDisclaimerProps.fontSizePx === 'number' ? modoItalianoDisclaimerProps.fontSizePx : 20}
-                  opacity={typeof modoItalianoDisclaimerProps.opacity === 'number' ? modoItalianoDisclaimerProps.opacity : 0.82}
-                  inline
-                />
-              ) : null}
-            </div>
-            <div className='shrink-0'>
-              <ModoItalianoClock
-                programId={programId}
-                timeOverride={globalTimeOverride}
-                transitionDurationMs={300}
-                shuffleCities={false}
-                widthPx={220}
-                showWorldClocks={toBoolean(metadata['modoitaliano-clock']?.showWorldClocks, true)}
-                showLogo={toBoolean(metadata['modoitaliano-clock']?.showLogo, true)}
-                showPlaybackProgress={toBoolean(metadata['modoitaliano-clock']?.showPlaybackProgress, true)}
-                showBellIcon={false}
-                songSequence={audioBusSettings?.songSequence}
-                language='es'
-                inline
-              />
-            </div>
-          </div>
-        )}
-        {shouldRenderGiorgiaProgramRow && (
-          <div className='absolute z-[950] flex items-end gap-6' style={{ left: '110px', right: '110px', bottom: '110px' }}>
-            <div className='flex-1 min-w-0'>
-              <ModoItalianoGiorgiaChyron
-                show={toBoolean(modoItalianoGiorgiaChyronProps.show, true)}
-                textSequence={modoItalianoGiorgiaChyronProps.textSequence}
-                ctaSequence={modoItalianoGiorgiaChyronProps.ctaSequence}
-                inline
-              />
-            </div>
-            <div className='shrink-0'>
-              <ModoItalianoGiorgiaClock
-                programId={programId}
-                timeOverride={globalTimeOverride}
-                transitionDurationMs={300}
-                shuffleCities={false}
-                widthPx={220}
-                showWorldClocks={toBoolean(metadata['modoitaliano-giorgia-clock']?.showWorldClocks, true)}
-                showLogo={toBoolean(metadata['modoitaliano-giorgia-clock']?.showLogo, true)}
-                showPlaybackProgress={toBoolean(metadata['modoitaliano-giorgia-clock']?.showPlaybackProgress, true)}
-                showBellIcon={false}
-                songSequence={audioBusSettings?.songSequence}
-                language='es'
-                inline
-              />
-            </div>
-          </div>
+        {programRow && (
+          <ModoItalianoProgramRow
+            plan={programRow}
+            metadata={metadata}
+            programId={programId}
+            timeOverride={globalTimeOverride}
+            songSequence={audioBusSettings?.songSequence}
+          />
         )}
       </div>
     );
@@ -2693,8 +1978,17 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
   const activeScene = state?.activeScene ?? null;
   const stagedScene = state?.stagedScene ?? null;
   const confidenceScene = confidenceMode === 'preview' ? stagedScene : activeScene;
-  const stagedSceneHasVideoStream = sceneIncludesVideoStream(stagedScene);
-  const stagedSceneIsOnAir = stagedSceneHasVideoStream && stagedScene !== null && activeScene !== null && stagedScene.id === activeScene.id;
+  // A staged scene with a video stream is rendered hidden and muted, so its stream is
+  // already playing when it goes on air (gaulatti/alcantara#357). Both scenes are keyed
+  // by id under one parent: a take swaps them (the staged one goes on air and the one
+  // it replaces is staged), and the keyed layer keeps its mounted tree, so a cut shows
+  // a live frame instead of a cold stream starting over black.
+  const warmStagedScene =
+    stagedScene !== null && sceneIncludesVideoStream(stagedScene) && stagedScene.id !== activeScene?.id ? stagedScene : null;
+  const sceneLayers = [
+    ...(activeScene ? [{ scene: activeScene, onAir: true }] : []),
+    ...(warmStagedScene ? [{ scene: warmStagedScene, onAir: false }] : [])
+  ].sort((a, b) => a.scene.id - b.scene.id);
   const shouldAnimateFadeToBlack = previousFadeToBlackRef.current !== null;
 
   if (confidenceMode) {
@@ -2717,10 +2011,18 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
 
   return (
     <div className='relative overflow-hidden bg-transparent' style={{ width: '1920px', height: '1080px' }}>
-      <div className='pointer-events-none absolute inset-0 opacity-0' aria-hidden='true' style={{ opacity: stagedSceneIsOnAir ? 1 : 0 }}>
-        {stagedSceneHasVideoStream && stagedScene ? renderScene(stagedScene, { forceStreamMuted: !stagedSceneIsOnAir }) : null}
-      </div>
-      <div className='absolute inset-0'>{!stagedSceneIsOnAir ? renderScene(activeScene, { forceStreamMuted: false }) : null}</div>
+      {activeScene ? null : <div className='absolute inset-0'>{renderScene(null, { forceStreamMuted: false })}</div>}
+      {sceneLayers.map(({ scene, onAir }) => (
+        <div
+          key={scene.id}
+          data-scene-layer={onAir ? 'on-air' : 'staged'}
+          className={onAir ? 'absolute inset-0' : 'pointer-events-none absolute inset-0'}
+          aria-hidden={onAir ? undefined : true}
+          style={{ opacity: onAir ? 1 : 0, zIndex: onAir ? 1 : 0 }}
+        >
+          {renderScene(scene, { forceStreamMuted: !onAir })}
+        </div>
+      ))}
       {activeTransition && <SceneTransitionOverlay key={activeTransition.sequence} transition={activeTransition.preset} />}
       <div
         className='pointer-events-none absolute inset-0 z-[2000] bg-black'

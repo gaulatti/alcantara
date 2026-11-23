@@ -583,6 +583,54 @@ export class WebrtcService {
     };
   }
 
+  /**
+   * A token for the desktop console to publish the program it renders to the
+   * program's room (gaulatti/alexandria#9): the very frames and sound the
+   * desktop's PROGRAM monitor and tape take, as one video and one audio track.
+   * Its identity is fixed per program, `desktop-program-feed-<programId>`, so a
+   * second desktop takes over from the first instead of adding a duplicate;
+   * it is distinct from Alana's `program-feed-<programId>`, so the two never
+   * replace each other. It publishes only, and sees no one.
+   */
+  async createDesktopProgramFeedToken(
+    operator: CanonicalIdentity,
+    programIdValue: unknown,
+  ) {
+    this.requireConfiguration();
+    const programId = this.normalizeProgramId(programIdValue);
+    const token = new AccessToken(this.apiKey, this.apiSecret, {
+      identity: `desktop-program-feed-${programId}`,
+      name: `Alcantara desktop program ${programId}`,
+      ttl: '5m',
+      metadata: JSON.stringify({
+        role: 'desktop-program-feed',
+        programId,
+        operator: createHash('sha256')
+          .update(operator.principalId ?? operator.subject)
+          .digest('hex')
+          .slice(0, 20),
+      }),
+    });
+    token.addGrant({
+      room: this.roomName(programId),
+      roomJoin: true,
+      canPublish: true,
+      // The program's picture as screen share and its sound as microphone: LiveKit's Swift
+      // SDK, which the desktop console uses, can publish app audio only as a microphone-source
+      // track, so screen-share audio is not granted.
+      canPublishSources: [TrackSource.SCREEN_SHARE, TrackSource.MICROPHONE],
+      canSubscribe: false,
+      canPublishData: false,
+      hidden: false,
+    });
+    return {
+      serverUrl: this.wsUrl,
+      token: await token.toJwt(),
+      roomName: this.roomName(programId),
+      identity: `desktop-program-feed-${programId}`,
+    };
+  }
+
   private async requireActiveSession(sessionTokenValue: unknown) {
     const token = this.requireString(sessionTokenValue, 'Session token');
     const [invitationId] = token.split('.');

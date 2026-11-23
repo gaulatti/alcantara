@@ -7,35 +7,18 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import { corsOptions } from './cors';
 import { ProgramRealtimeService } from './program/program.realtime.service';
 import { loadRuntimeSecrets } from './config/runtime-secrets';
 import { assertTestAuthSafety } from './auth/test-auth.service';
 import { loadDatabaseSecret } from './config/database-secrets';
-
-function getAllowedOrigins(): Set<string> {
-  const configuredOrigins = (
-    process.env.ALLOWED_ORIGINS ??
-    process.env.FRONTEND_ORIGIN ??
-    ''
-  )
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  return new Set<string>([
-    'https://alcantara.gaulatti.com',
-    'https://alcantara.dev',
-    'https://alcantara.gt',
-    'https://fifthbell.com',
-    'https://cdn.fifthbell.com',
-    ...configuredOrigins,
-  ]);
-}
+import { assertLocalMediaSafety } from './config/local-media';
 
 async function bootstrap() {
   assertTestAuthSafety();
   await loadDatabaseSecret();
   await loadRuntimeSecrets();
+  assertLocalMediaSafety();
   const configuredPort = Number.parseInt(
     process.env.PORT ?? process.env.HTTP_PORT ?? '3000',
     10,
@@ -50,35 +33,11 @@ async function bootstrap() {
   await app.register(multipart, {
     limits: {
       files: 1,
-      fileSize: 100 * 1024 * 1024,
+      fileSize: 200 * 1024 * 1024,
     },
   });
 
-  const allowedOrigins = getAllowedOrigins();
-
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        origin === 'null' ||
-        allowedOrigins.has(origin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
-      ) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error(`Origin ${origin} not allowed by CORS`), false);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Idempotency-Key',
-      'X-Renderer-Key',
-    ],
-  });
+  app.enableCors(corsOptions());
 
   await app.listen(port, '0.0.0.0');
 

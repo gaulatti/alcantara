@@ -88,6 +88,7 @@ function buildService() {
       count: jest.fn(),
     },
     mediaAssetLabel: { findMany: jest.fn() },
+    mediaAssetAnalysis: { findMany: jest.fn().mockResolvedValue([]) },
     mediaLabel: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -235,6 +236,138 @@ describe('MediaAssetsService', () => {
       instant: null,
       song: null,
     });
+  });
+
+  it('includes the stored analysis for an audio asset that has an analysis row', async () => {
+    const { service, prisma } = buildService();
+    prisma.mediaAsset.findMany.mockResolvedValue([songAsset()]);
+    prisma.mediaAsset.count.mockResolvedValue(1);
+    const row = {
+      assetId: 'song:9',
+      status: 'ready',
+      cueInSeconds: 1.2,
+      cueOutSeconds: 170.4,
+      fadeInSeconds: 0.5,
+      fadeOutSeconds: 3,
+      overlapSeconds: 2,
+      integratedLufs: -14.2,
+      truePeakDbtp: -1.1,
+      isrc: 'USRC17607839',
+      musicbrainzRecordingId: 'mb-recording-1',
+      error: null,
+      attempts: 1,
+      nextAttemptAt: null,
+      updatedAt: timestamp,
+    };
+    prisma.mediaAssetAnalysis.findMany.mockResolvedValue([row]);
+
+    const result = await service.findAll(
+      { page: 1, limit: 50 },
+      { permissions: [ALCANTARA_PERMISSIONS.song.read] },
+    );
+
+    expect(prisma.mediaAssetAnalysis.findMany).toHaveBeenCalledWith({
+      where: { assetId: { in: ['song:9'] } },
+      select: {
+        assetId: true,
+        status: true,
+        cueInSeconds: true,
+        cueOutSeconds: true,
+        fadeInSeconds: true,
+        fadeOutSeconds: true,
+        overlapSeconds: true,
+        integratedLufs: true,
+        truePeakDbtp: true,
+        durationSeconds: true,
+        isrc: true,
+        musicbrainzRecordingId: true,
+        error: true,
+        attempts: true,
+        nextAttemptAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(result.data[0]).toMatchObject({ id: 'song:9', analysis: row });
+  });
+
+  it('exposes every analysis field the media console shows, and no others', async () => {
+    const { service, prisma } = buildService();
+    prisma.mediaAsset.findMany.mockResolvedValue([songAsset()]);
+    prisma.mediaAsset.count.mockResolvedValue(1);
+    prisma.mediaAssetAnalysis.findMany.mockResolvedValue([
+      {
+        assetId: 'song:9',
+        status: 'ready',
+        error: null,
+        attempts: 1,
+        nextAttemptAt: null,
+        cueInSeconds: 1,
+        cueOutSeconds: 2,
+        fadeInSeconds: 0.5,
+        fadeOutSeconds: 3,
+        overlapSeconds: 2,
+        integratedLufs: -14,
+        truePeakDbtp: -1,
+        isrc: null,
+        musicbrainzRecordingId: null,
+        updatedAt: timestamp,
+      },
+    ]);
+
+    const result = await service.findAll(
+      { page: 1, limit: 50 },
+      { permissions: [ALCANTARA_PERMISSIONS.song.read] },
+    );
+
+    expect(Object.keys(result.data[0].analysis ?? {}).sort()).toEqual(
+      [
+        'assetId',
+        'attempts',
+        'cueInSeconds',
+        'cueOutSeconds',
+        'error',
+        'fadeInSeconds',
+        'fadeOutSeconds',
+        'integratedLufs',
+        'isrc',
+        'musicbrainzRecordingId',
+        'nextAttemptAt',
+        'overlapSeconds',
+        'status',
+        'truePeakDbtp',
+        'updatedAt',
+      ].sort(),
+    );
+  });
+
+  it('returns analysis null for an audio asset without a row and for non-audio assets', async () => {
+    const { service, prisma } = buildService();
+    prisma.mediaAsset.findMany.mockResolvedValue([songAsset(), imageAsset()]);
+    prisma.mediaAsset.count.mockResolvedValue(2);
+
+    const result = await service.findAll(
+      { page: 1, limit: 50 },
+      { permissions: [ALCANTARA_PERMISSIONS.media.read] },
+    );
+
+    expect(prisma.mediaAssetAnalysis.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { assetId: { in: ['song:9'] } } }),
+    );
+    expect(result.data.map((item) => item.analysis)).toEqual([null, null]);
+  });
+
+  it('skips the analysis query when the page holds no audio assets', async () => {
+    const { service, prisma } = buildService();
+    prisma.mediaAsset.findMany.mockResolvedValue([imageAsset()]);
+    prisma.mediaAsset.count.mockResolvedValue(1);
+
+    const result = await service.findAll(
+      { page: 1, limit: 50 },
+      { permissions: [ALCANTARA_PERMISSIONS.media.read] },
+    );
+
+    expect(prisma.mediaAssetAnalysis.findMany).not.toHaveBeenCalled();
+    expect(result.data[0].analysis).toBeNull();
   });
 
   it('exposes a song cover as an image asset with a derived cover capability', async () => {

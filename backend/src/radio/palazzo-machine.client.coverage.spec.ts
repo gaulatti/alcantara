@@ -766,7 +766,11 @@ describe('PalazzoMachineClient coverage', () => {
     it.each([
       [{ version: 'other', ready: true, status: 'ready' }],
       [{ version: 'v1', ready: false, status: 'ready' }],
-      [{ version: 'v1', ready: true, status: 'pending' }],
+      [{ version: 'v1', ready: true, status: 'failed' }],
+      [{ version: 'v1', ready: true, status: 'preparing' }],
+      [{ version: 'v1', ready: true, status: 'unprepared' }],
+      [{ version: 'v1', ready: true, status: 5 }],
+      [{ version: 'v1', ready: true }],
     ])('rejects %j', async (body) => {
       const { client } = build({}, jest.fn().mockResolvedValue(json(body)));
       await expectError(

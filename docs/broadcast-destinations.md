@@ -2,8 +2,11 @@
 
 Alcantara owns the operator-visible catalog and the decision about which public
 destinations receive each television broadcast. It stores opaque IDs, display
-metadata, and exact AWS Secrets Manager references. It never requests or stores
-the stream key or publish URL held by those references.
+metadata, and exact AWS Secrets Manager references. It does not store the stream
+key or publish URL held by those references, and the television playout path
+(Alana, Croccante) never receives them from Alcantara. The one exception is the
+operator-facing ingest route below, which reads a key for the desktop studio and
+returns it to a signed-in operator without keeping it.
 
 ## Ownership and command flow
 
@@ -40,6 +43,49 @@ The backend independently enforces the three Pompeii-owned decisions:
 Only the management endpoint returns secret identifiers and pinned version
 IDs. View and operation responses, downstream state, logs, and Prometheus
 labels omit references, URLs, stream keys, provider payloads, and user IDs.
+
+## Ingest credential for the desktop studio
+
+The desktop studio publishes straight from the operator's Mac and needs one
+destination's ingest address and key at Go live (gaulatti/carmencita#4).
+
+`POST /broadcast/destinations/{destinationId}/ingest` (no body) requires
+`broadcast.manage`, the same grant that already reads the catalog's Secrets
+Manager references. It reads the exact secret version the catalog pins and
+answers `200` with `Cache-Control: no-store`:
+
+```json
+{ "destinationId": "youtube", "displayName": "YouTube", "ingestUrl": "rtmps://a.rtmps.youtube.com:443/live2", "streamKey": "..." }
+```
+
+`ingestUrl` is `scheme://host[:port]/application`, never the key. The secret
+payload has the same shape Croccante reads (`scheme`, `host`, optional `port`,
+`application`, `streamKey`); anything else is refused.
+
+| Status | Meaning |
+|---|---|
+| 400 | malformed destination ID |
+| 401 | no valid session |
+| 403 | signed in without `broadcast.manage` |
+| 404 | unknown destination |
+| 409 | the destination is retired |
+| 503 | the secret could not be read or was invalid, or the audit row could not be written; nothing is returned |
+
+Every call writes a `BroadcastIngestAccess` row (subject, destination ID,
+time, and a bounded outcome: `issued`, `not_found`, `retired` or
+`unavailable`) before anything is returned, so a failed audit write returns no
+key. The key is never stored, logged, put in an error, a metric label or the
+audit row. The route is not an MCP capability (Appendix A lists it as
+excluded because it returns a credential). `alcantara_broadcast_destination_operations_total`
+counts it as `action="ingest"` with `result` `succeeded` or `failed`.
+
+The list of destinations without keys is the existing
+`GET /broadcast/destinations` (`broadcast.view`). It lists only the caller's team's
+destinations (every destination where no team is configured, which production
+refuses), so it never offers one the ingest route would answer 404 for. A
+destination with no team is not listed until its `teamId` is stamped. A destination created by a
+caller with a team (HTTP or MCP) is stamped with that team; with no team
+configured it is not stamped.
 
 ## Immutability and idempotency
 
@@ -92,9 +138,13 @@ The private metrics endpoint exposes:
 
 - `alcantara_dependency_operations_total{dependency="alana",operation=...}`
   and `alcantara_dependency_duration_seconds` for bounded `status`, `reload`,
-  `start`, and `stop` dependency operations.
+  `start`, `stop`, and (for program fillers) `profile` and `prepare`
+  dependency operations.
 - `alcantara_broadcast_destination_operations_total{action,result}` for bounded
   reload/Start/Stop outcomes.
 
 Exact destination IDs, selection versions, hashes, references, program IDs, and
 error bodies are deliberately absent from metric labels.
+
+Start also binds the program television filler when one is configured; see
+[`program-filler.md`](program-filler.md).

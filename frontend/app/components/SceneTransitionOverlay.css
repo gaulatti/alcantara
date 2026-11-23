@@ -1830,14 +1830,7 @@
 .scene-transition-overlay__festival-lamp,
 .scene-transition-overlay__festival-curtain,
 .scene-transition-overlay__festival-flash,
-.scene-transition-overlay__festival-sparkle,
-.scene-transition-overlay__hit-wash,
-.scene-transition-overlay__hit-marquee,
-.scene-transition-overlay__hit-bar,
-.scene-transition-overlay__hit-pop,
-.scene-transition-overlay__hit-logo-shell,
-.scene-transition-overlay__hit-shine,
-.scene-transition-overlay__hit-flash {
+.scene-transition-overlay__festival-sparkle {
   position: absolute;
 }
 
@@ -1853,8 +1846,7 @@
 .scene-transition-overlay__vector--election,
 .scene-transition-overlay__vector--market,
 .scene-transition-overlay__vector--world,
-.scene-transition-overlay__vector--festival,
-.scene-transition-overlay__vector--hit {
+.scene-transition-overlay__vector--festival {
   animation: sceneTransitionVectorFloat var(--scene-transition-duration) ease-out forwards;
 }
 
@@ -2031,42 +2023,6 @@
   right: 10%;
   clip-path: polygon(22% 8%, 100% 0, 100% 92%, 0 100%);
   animation: sceneTransitionSolidFestivalRight 1500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.scene-transition-overlay__solid--hit-frame {
-  left: 13%;
-  right: 13%;
-  top: 15%;
-  bottom: 15%;
-  border-radius: 40px;
-  background:
-    linear-gradient(180deg, rgba(255, 232, 204, 0.08) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 32%),
-    linear-gradient(180deg, rgba(28, 10, 52, 0.36) 0%, rgba(14, 6, 28, 0.58) 100%);
-  animation: sceneTransitionSolidHitFrame 1420ms ease-out forwards;
-}
-
-.scene-transition-overlay__solid--hit-band-left,
-.scene-transition-overlay__solid--hit-band-right {
-  top: 12%;
-  bottom: 12%;
-  width: 14%;
-  border-radius: 28px;
-}
-
-.scene-transition-overlay__solid--hit-band-left {
-  left: 6%;
-  background:
-    linear-gradient(180deg, rgba(255, 224, 236, 0.1) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 30%),
-    linear-gradient(180deg, rgba(255, 76, 170, 0.28) 0%, rgba(86, 24, 132, 0.54) 100%);
-  animation: sceneTransitionSolidHitBandLeft 1420ms ease-out forwards;
-}
-
-.scene-transition-overlay__solid--hit-band-right {
-  right: 6%;
-  background:
-    linear-gradient(180deg, rgba(255, 240, 214, 0.1) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 30%),
-    linear-gradient(180deg, rgba(255, 200, 92, 0.28) 0%, rgba(86, 24, 132, 0.54) 100%);
-  animation: sceneTransitionSolidHitBandRight 1420ms ease-out forwards;
 }
 
 .scene-transition-overlay__sheen {
@@ -2482,148 +2438,6 @@
   animation: sceneTransitionFestivalSparkle var(--scene-transition-duration) ease-out forwards;
 }
 
-.scene-transition-overlay__hit-wash {
-  inset: 0;
-  opacity: 0;
-  background:
-    linear-gradient(180deg, rgba(26, 8, 44, 0.16) 0%, rgba(24, 10, 52, 0.74) 40%, rgba(10, 6, 20, 0.96) 100%),
-    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 16%);
-  animation: sceneTransitionHitWash var(--scene-transition-duration) ease-out forwards;
-}
-
-.scene-transition-overlay__hit-marquee {
-  left: -6%;
-  right: -6%;
-  height: 14%;
-  opacity: 0;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0) 0 12px,
-      rgba(255, 244, 214, 0.12) 12px 18px,
-      rgba(255, 255, 255, 0) 18px 26px
-    ),
-    linear-gradient(90deg, rgba(255, 120, 224, 0.12) 0%, rgba(255, 196, 92, 0.18) 50%, rgba(255, 120, 224, 0.12) 100%);
-}
-
-.scene-transition-overlay__hit-marquee--top { top: 0; animation: sceneTransitionHitMarqueeTop var(--scene-transition-duration) ease-out forwards; }
-.scene-transition-overlay__hit-marquee--bottom { bottom: 0; animation: sceneTransitionHitMarqueeBottom var(--scene-transition-duration) ease-out forwards; }
-
-.scene-transition-overlay__hit-bar {
-  top: -10%;
-  bottom: -10%;
-  width: 20%;
-  opacity: 0;
-  border-radius: 12px;
-}
-
-.scene-transition-overlay__hit-bar--one {
-  left: 8%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 64, 160, 0.34) 26%, rgba(255, 188, 76, 0.54) 54%, rgba(255, 255, 255, 0) 100%);
-  animation: sceneTransitionHitBarOne var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.scene-transition-overlay__hit-bar--two {
-  left: 30%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(84, 132, 255, 0.28) 26%, rgba(255, 255, 255, 0.5) 54%, rgba(255, 255, 255, 0) 100%);
-  animation: sceneTransitionHitBarTwo var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.scene-transition-overlay__hit-bar--three {
-  right: 30%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(120, 255, 214, 0.28) 26%, rgba(255, 255, 255, 0.5) 54%, rgba(255, 255, 255, 0) 100%);
-  animation: sceneTransitionHitBarThree var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.scene-transition-overlay__hit-bar--four {
-  right: 8%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 64, 160, 0.34) 26%, rgba(255, 188, 76, 0.54) 54%, rgba(255, 255, 255, 0) 100%);
-  animation: sceneTransitionHitBarFour var(--scene-transition-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.scene-transition-overlay__hit-pop {
-  top: 50%;
-  width: 180px;
-  height: 180px;
-  margin-top: -90px;
-  border-radius: 999px;
-  opacity: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.96) 0%, rgba(255, 230, 198, 0.54) 18%, rgba(255, 255, 255, 0) 42%);
-  filter: blur(8px);
-}
-
-.scene-transition-overlay__hit-pop--left { left: 18%; animation: sceneTransitionHitPopLeft var(--scene-transition-duration) ease-out forwards; }
-.scene-transition-overlay__hit-pop--center { left: 50%; margin-left: -90px; animation: sceneTransitionHitPopCenter var(--scene-transition-duration) ease-out forwards; }
-.scene-transition-overlay__hit-pop--right { right: 18%; animation: sceneTransitionHitPopRight var(--scene-transition-duration) ease-out forwards; }
-
-.scene-transition-overlay__hit-logo-shell {
-  inset: auto;
-  top: 50%;
-  left: 50%;
-  z-index: 2;
-  width: min(72vw, 940px);
-  max-width: calc(100vw - 48px);
-  padding: clamp(24px, 3vw, 44px) clamp(40px, 5vw, 72px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 40px;
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.46);
-  background:
-    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.46) 0%, rgba(255, 242, 214, 0.24) 30%, rgba(255, 255, 255, 0.06) 54%, rgba(255, 255, 255, 0) 76%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.12) 100%);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.32),
-    0 0 96px rgba(255, 96, 186, 0.46),
-    0 0 180px rgba(255, 196, 92, 0.34);
-  backdrop-filter: blur(18px);
-  animation: sceneTransitionHitLogoShell var(--scene-transition-duration) cubic-bezier(0.18, 0.92, 0.22, 1) forwards;
-}
-
-.scene-transition-overlay__hit-logo-shell::before {
-  content: '';
-  position: absolute;
-  inset: -30%;
-  border-radius: 999px;
-  opacity: 1;
-  background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.92) 0%, rgba(255, 224, 156, 0.5) 24%, rgba(255, 96, 186, 0.28) 48%, rgba(255, 255, 255, 0) 76%);
-  filter: blur(36px);
-}
-
-.scene-transition-overlay__hit-logo {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: auto;
-  max-width: 820px;
-  filter:
-    brightness(0) invert(1)
-    saturate(0)
-    drop-shadow(0 0 34px rgba(255, 255, 255, 0.72))
-    drop-shadow(0 0 82px rgba(255, 184, 92, 0.56));
-  animation: sceneTransitionHitLogo var(--scene-transition-duration) cubic-bezier(0.18, 0.92, 0.22, 1) forwards;
-}
-
-.scene-transition-overlay__hit-shine {
-  inset: -8%;
-  opacity: 0;
-  background:
-    linear-gradient(100deg, rgba(255, 255, 255, 0) 34%, rgba(255, 255, 255, 0.16) 42%, rgba(255, 255, 255, 0.9) 50%, rgba(255, 255, 255, 0.16) 58%, rgba(255, 255, 255, 0) 66%);
-  filter: blur(8px);
-  animation: sceneTransitionHitShine var(--scene-transition-duration) ease-out forwards;
-}
-
-.scene-transition-overlay__hit-flash {
-  inset: -8%;
-  opacity: 0;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 236, 208, 0.78) 8%, rgba(255, 255, 255, 0) 20%);
-  filter: blur(10px);
-  animation: sceneTransitionHitFlash var(--scene-transition-duration) ease-out forwards;
-}
-
 @keyframes sceneTransitionElectionWash { 0% { opacity: 0; } 22% { opacity: 0.38; } 48% { opacity: 0.86; } 100% { opacity: 0; } }
 @keyframes sceneTransitionElectionGrid { 0% { opacity: 0; transform: scale(0.96); } 30% { opacity: 0.22; } 50% { opacity: 0.44; transform: scale(1); } 100% { opacity: 0; transform: scale(1.04); } }
 @keyframes sceneTransitionElectionColumnOne { 0%, 10% { opacity: 0; transform: translateY(24%); } 32% { opacity: 0.66; } 50% { opacity: 0.92; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20%); } }
@@ -2666,21 +2480,6 @@
 @keyframes sceneTransitionFestivalCurtainRight { 0%, 40% { opacity: 0; transform: translateX(12%); } 54% { opacity: 0.92; transform: translateX(0); } 100% { opacity: 0; transform: translateX(112%); } }
 @keyframes sceneTransitionFestivalFlash { 0%, 36% { opacity: 0; } 50% { opacity: 0.96; } 62% { opacity: 0.24; } 100% { opacity: 0; } }
 @keyframes sceneTransitionFestivalSparkle { 0%, 58% { opacity: 0; } 72% { opacity: 0.62; } 100% { opacity: 0; } }
-
-@keyframes sceneTransitionHitWash { 0% { opacity: 0; } 22% { opacity: 0.34; } 48% { opacity: 0.82; } 100% { opacity: 0; } }
-@keyframes sceneTransitionHitMarqueeTop { 0%, 10% { opacity: 0; transform: translateY(-20px); } 30% { opacity: 0.44; } 50% { opacity: 0.78; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); } }
-@keyframes sceneTransitionHitMarqueeBottom { 0%, 10% { opacity: 0; transform: translateY(20px); } 30% { opacity: 0.44; } 50% { opacity: 0.78; transform: translateY(0); } 100% { opacity: 0; transform: translateY(20px); } }
-@keyframes sceneTransitionHitBarOne { 0%, 14% { opacity: 0; transform: translateY(16%); } 38% { opacity: 0.74; } 50% { opacity: 0.92; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-16%); } }
-@keyframes sceneTransitionHitBarTwo { 0%, 18% { opacity: 0; transform: translateY(-16%); } 40% { opacity: 0.78; } 50% { opacity: 0.94; transform: translateY(0); } 100% { opacity: 0; transform: translateY(16%); } }
-@keyframes sceneTransitionHitBarThree { 0%, 22% { opacity: 0; transform: translateY(16%); } 42% { opacity: 0.78; } 50% { opacity: 0.94; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-16%); } }
-@keyframes sceneTransitionHitBarFour { 0%, 26% { opacity: 0; transform: translateY(-16%); } 44% { opacity: 0.74; } 50% { opacity: 0.92; transform: translateY(0); } 100% { opacity: 0; transform: translateY(16%); } }
-@keyframes sceneTransitionHitPopLeft { 0%, 30% { opacity: 0; transform: scale(0.3); } 50% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(0.18); } }
-@keyframes sceneTransitionHitPopCenter { 0%, 34% { opacity: 0; transform: scale(0.3); } 50% { opacity: 0.92; transform: scale(1.2); } 100% { opacity: 0; transform: scale(0.08); } }
-@keyframes sceneTransitionHitPopRight { 0%, 38% { opacity: 0; transform: scale(0.3); } 50% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(0.18); } }
-@keyframes sceneTransitionHitLogoShell { 0%, 26% { opacity: 0; transform: translate(-50%, -50%) scale(0.46); } 42% { opacity: 0.92; } 52% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2); } }
-@keyframes sceneTransitionHitLogo { 0%, 28% { opacity: 0; transform: scale(0.68); } 48% { opacity: 1; transform: scale(1.14); } 58% { opacity: 1; transform: scale(1.06); } 100% { opacity: 0; transform: scale(1.12); } }
-@keyframes sceneTransitionHitShine { 0%, 30% { opacity: 0; transform: translateX(-16%); } 48% { opacity: 0.9; } 100% { opacity: 0; transform: translateX(16%); } }
-@keyframes sceneTransitionHitFlash { 0%, 36% { opacity: 0; } 50% { opacity: 0.96; } 62% { opacity: 0.24; } 100% { opacity: 0; } }
 
 @keyframes sceneTransitionVectorFloat {
   0%,
@@ -2762,4 +2561,95 @@
   width: 100%;
   height: 100%;
   object-fit: fill;
+}
+
+/* Hit Parade, in Giorgia's language: the bumper's "In onda ora" card as a hard wipe.
+   A navy field led and trailed by the magenta signal bar covers the frame, holds the
+   MI mark across the cut point, and leaves the other way. */
+.scene-transition-overlay--hit-parade::before {
+  display: none;
+}
+
+.scene-transition-overlay__giorgia-panel,
+.scene-transition-overlay__giorgia-light,
+.scene-transition-overlay__giorgia-shade,
+.scene-transition-overlay__giorgia-bar,
+.scene-transition-overlay__giorgia-mark {
+  position: absolute;
+}
+
+.scene-transition-overlay__giorgia-panel {
+  inset: 0;
+  overflow: hidden;
+  background: #09102f;
+  clip-path: inset(0 100% 0 0);
+  animation: sceneTransitionGiorgiaPanel var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__giorgia-light {
+  width: 1100px;
+  height: 1100px;
+  filter: blur(8px);
+  animation: sceneTransitionGiorgiaLight var(--scene-transition-duration) linear forwards;
+}
+
+.scene-transition-overlay__giorgia-light--blue {
+  left: -220px;
+  top: 110px;
+  background: radial-gradient(ellipse at center, rgba(49, 93, 225, 0.72) 0%, transparent 68%);
+  --giorgia-light-shift: 220px, -120px;
+}
+
+.scene-transition-overlay__giorgia-light--magenta {
+  left: 1000px;
+  top: -340px;
+  background: radial-gradient(ellipse at center, rgba(237, 0, 118, 0.68) 0%, transparent 68%);
+  --giorgia-light-shift: -200px, 160px;
+}
+
+.scene-transition-overlay__giorgia-light--violet {
+  left: 560px;
+  top: 520px;
+  background: radial-gradient(ellipse at center, rgba(123, 43, 151, 0.52) 0%, transparent 68%);
+  --giorgia-light-shift: 160px, -140px;
+}
+
+.scene-transition-overlay__giorgia-shade {
+  inset: 0;
+  background: linear-gradient(110deg, rgba(9, 16, 47, 0.08), rgba(9, 16, 47, 0.54) 66%, rgba(9, 16, 47, 0.1));
+}
+
+.scene-transition-overlay__giorgia-mark {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.scene-transition-overlay__giorgia-bar {
+  inset: 0;
+  background: linear-gradient(90deg, #ed0076 0, #ed0076 38px, transparent 38px);
+  transform: translateX(-38px);
+  animation: sceneTransitionGiorgiaBar var(--scene-transition-duration) linear forwards;
+}
+
+/* Fully covered from 38% to 62%, so the scene swap at the cut point is never seen. */
+@keyframes sceneTransitionGiorgiaPanel {
+  0% { clip-path: inset(0 100% 0 0); animation-timing-function: cubic-bezier(0.7, 0, 0.2, 1); }
+  38% { clip-path: inset(0 0 0 0); }
+  62% { clip-path: inset(0 0 0 0); animation-timing-function: cubic-bezier(0.7, 0, 0.2, 1); }
+  100% { clip-path: inset(0 0 0 100%); }
+}
+
+/* The bar rides the panel's leading edge on the way in and its trailing edge on the way out. */
+@keyframes sceneTransitionGiorgiaBar {
+  0% { transform: translateX(-38px); animation-timing-function: cubic-bezier(0.7, 0, 0.2, 1); }
+  38% { transform: translateX(100%); animation-timing-function: step-end; }
+  38.01% { transform: translateX(-38px); }
+  62% { transform: translateX(-38px); animation-timing-function: cubic-bezier(0.7, 0, 0.2, 1); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes sceneTransitionGiorgiaLight {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(var(--giorgia-light-shift)); }
 }

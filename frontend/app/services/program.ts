@@ -122,6 +122,20 @@ export async function activateScene(
   return res.json();
 }
 
+/**
+ * Tells the API that the countdown clock of the scene on air reached zero. The API takes the scene that
+ * countdown points to. Unlike `activateScene` this needs no sign-in, because the on-air page has none.
+ */
+export async function completeSceneCountdown(targetProgramId: string): Promise<ProgramState> {
+  const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/countdown/complete`), { method: 'POST' });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const message = typeof payload?.message === 'string' ? payload.message : `The countdown did not switch scenes (HTTP ${res.status}).`;
+    throw new Error(message);
+  }
+  return res.json();
+}
+
 export async function fetchMediaGroups(targetProgramId: string): Promise<unknown> {
   const res = await fetch(apiUrl(`/program/${encodeURIComponent(targetProgramId)}/media-groups`));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

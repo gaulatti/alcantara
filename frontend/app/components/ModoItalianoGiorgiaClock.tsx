@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BellRing } from 'lucide-react';
+import { GIORGIA, GiorgiaGrade, GiorgiaMark, GiorgiaRule, fitGiorgiaText, giorgiaLabelStyle, useElementHeight } from './giorgiaBroadcast';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { getOverrideClockParts } from '../utils/broadcastTime';
 import { normalizeProgramSongSequence, resolveProgramSongLeaf, type ProgramSongSequence } from '../utils/programSequence';
@@ -32,9 +33,18 @@ interface ModoItalianoGiorgiaClockProps {
   songEaroneRank?: string;
   songEaroneSpins?: string;
   inline?: boolean;
+  /**
+   * Which piece to render. The header (mark and time) sits top-left and the
+   * on-air block bottom-left; a scene row places the two separately.
+   */
+  part?: 'all' | 'header' | 'onAir';
+  /** For scenes shot over a chroma key: solid navy plates, no soft edges. See `GiorgiaGrade`. */
+  keySafe?: boolean;
 }
 
-const SIGNAL = '#ed0076';
+const ON_AIR_TEXT_WIDTH_PX = 560;
+const COVER_PX = 168;
+const ON_AIR_TRANSITION_MS = 450;
 const CITIES: ModoItalianoGiorgiaClockCity[] = [
   { city: 'IT', timezone: 'Europe/Rome' },
   { city: 'ES', timezone: 'Europe/Madrid' },
@@ -102,9 +112,7 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   programId,
   timeOverride = null,
   rotationIntervalMs = 5000,
-  transitionDurationMs = 300,
   shuffleCities = false,
-  widthPx = 220,
   language = 'es',
   showWorldClocks = true,
   showBellIcon = false,
@@ -116,12 +124,13 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   songArtist = '',
   songTitle = '',
   songCoverUrl = '',
-  inline = false
+  inline = false,
+  part = 'all',
+  keySafe = false
 }) => {
   const [now, setNow] = useState(() => new Date());
   const [cityPool, setCityPool] = useState(() => (shuffleCities ? shuffleArray(CITIES) : [...CITIES]));
   const [cityIndex, setCityIndex] = useState(0);
-  const [isFading, setIsFading] = useState(false);
   const [sequenceNowMs, setSequenceNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -132,29 +141,21 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   useEffect(() => {
     setCityPool(shuffleCities ? shuffleArray(CITIES) : [...CITIES]);
     setCityIndex(0);
-    setIsFading(false);
   }, [shuffleCities]);
 
   useEffect(() => {
     if (!showWorldClocks || cityPool.length <= 1) return;
-    let switchTimer: number | undefined;
+    // The city changes with a hard cut, like every other Giorgia transition.
     const timer = window.setInterval(() => {
-      setIsFading(true);
-      switchTimer = window.setTimeout(() => {
-        setCityIndex((current) => {
-          const next = current + 1;
-          if (next < cityPool.length) return next;
-          setCityPool((pool) => (shuffleCities ? shuffleArray(pool) : pool));
-          return 0;
-        });
-        setIsFading(false);
-      }, Math.max(0, transitionDurationMs));
+      setCityIndex((current) => {
+        const next = current + 1;
+        if (next < cityPool.length) return next;
+        setCityPool((pool) => (shuffleCities ? shuffleArray(pool) : pool));
+        return 0;
+      });
     }, Math.max(500, rotationIntervalMs));
-    return () => {
-      window.clearInterval(timer);
-      if (switchTimer !== undefined) window.clearTimeout(switchTimer);
-    };
-  }, [showWorldClocks, cityPool, rotationIntervalMs, transitionDurationMs, shuffleCities]);
+    return () => window.clearInterval(timer);
+  }, [showWorldClocks, cityPool, rotationIntervalMs, shuffleCities]);
 
   const normalizedSequence = useMemo(() => normalizeProgramSongSequence(songSequence), [songSequence]);
   const legacySong = useMemo(() => {
@@ -193,227 +194,189 @@ export const ModoItalianoGiorgiaClock: React.FC<ModoItalianoGiorgiaClockProps> =
   const coverUrl = (liveSong?.coverUrl ?? resolvedSong?.coverUrl ?? songCoverUrl).trim();
   const hasSong = songGateEnabled && Boolean(artist || title) && (!liveSong || audioBus.endedToken !== liveSong.token);
   const progress = Math.max(0, Math.min(1, liveSong ? audioBus.progress : 0));
-  const city = cityPool[cityIndex] ?? CITIES[0];
+
+  const [textColumnRef, textColumnHeight] = useElementHeight<HTMLDivElement>();
+  const coverSize = Math.max(COVER_PX, textColumnHeight);
+  // The on-air block eases in and out instead of cutting: while it leaves, it keeps showing the song that just ended.
+  const [shownSong, setShownSong] = useState({ artist, title, coverUrl });
+  const [onAirMounted, setOnAirMounted] = useState(hasSong);
+  const [onAirVisible, setOnAirVisible] = useState(hasSong);
+  useEffect(() => {
+    if (hasSong) setShownSong({ artist, title, coverUrl });
+  }, [hasSong, artist, title, coverUrl]);
+  useEffect(() => {
+    if (hasSong) {
+      setOnAirMounted(true);
+      const frame = window.requestAnimationFrame(() => setOnAirVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    setOnAirVisible(false);
+    const timer = window.setTimeout(() => setOnAirMounted(false), ON_AIR_TRANSITION_MS);
+    return () => window.clearTimeout(timer);
+  }, [hasSong]);
+  const city = cityPool[cityIndex];
   const timeText = formatClockValue(city.timezone, now, timeOverride);
-  const listeningLabel = language === 'it' ? 'Stai ascoltando' : language === 'en' ? 'Now playing' : 'Estás escuchando';
+  const listeningLabel = language === 'it' ? 'In onda ora' : language === 'en' ? 'On air now' : 'Estás escuchando';
 
   if (!showWorldClocks && !showBellIcon && !showLogo) return null;
 
-  const logoBlock = (
-    <div
-      aria-label='MI'
-      role='img'
-      style={{
-        width: '172px',
-        height: '56px',
-        background: 'rgba(255,255,255,0.94)',
-        WebkitMaskImage: "url('/mi.svg')",
-        WebkitMaskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'center',
-        WebkitMaskSize: 'contain',
-        maskImage: "url('/mi.svg')",
-        maskRepeat: 'no-repeat',
-        maskPosition: 'center',
-        maskSize: 'contain'
-      }}
-    />
-  );
-  const useSplitLayout = hasSong && (showWorldClocks || showLogo || showBellIcon);
-  const wrapperStyle: React.CSSProperties = inline
-    ? { display: 'flex', flexDirection: 'column', width: useSplitLayout ? '100%' : 'fit-content' }
-    : {
-        position: 'absolute',
-        top: '64px',
-        right: '96px',
-        zIndex: 950,
-        display: 'flex',
-        flexDirection: 'column',
-        width: useSplitLayout ? 'min(1420px, calc(100vw - 192px))' : 'fit-content'
-      };
-  const cityClockBlock = (
-    <div
-      style={{
-        minWidth: `${Math.max(160, widthPx)}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '4px'
-      }}
-    >
-      {showLogo ? logoBlock : null}
-      <div
-        style={{
-          height: '62px',
-          minWidth: `${Math.max(176, widthPx)}px`,
-          borderRadius: '999px',
-          background: SIGNAL,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0 24px',
-          boxShadow: '0 8px 24px rgba(237,0,118,0.28)'
-        }}
-      >
-        <span
-          style={{
-            color: '#ffffff',
-            fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
-            fontSize: '38.4px',
-            fontWeight: 600,
-            lineHeight: 1,
-            whiteSpace: 'nowrap',
-            fontVariantNumeric: 'tabular-nums',
-            opacity: isFading ? 0.35 : 1,
-            transition: `opacity ${Math.max(120, transitionDurationMs)}ms ease`
-          }}
-        >
-          {timeText} {city.city.toUpperCase()}
-        </span>
-      </div>
-    </div>
-  );
+  // Key-safe, type carries no shadow: a soft shadow is partly transparent and keys as a dirty edge.
+  const noShadow = keySafe ? { textShadow: 'none' } : null;
 
-  return (
-    <div className='modoitaliano-giorgia-clock' style={wrapperStyle} aria-label='Modo Italiano Giorgia clock'>
-      <style>{`
-        @keyframes modoItalianoGiorgiaClockBgFlow {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .modoitaliano-giorgia-clock,
-          .modoitaliano-giorgia-clock * { transition-duration: 0.01ms !important; animation: none !important; }
-        }
-      `}</style>
-      {hasSong ? (
-        <div
-          style={{
-            marginBottom: '18px',
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-between',
-            gap: '16px',
-            padding: '0 34px'
-          }}
-        >
-          <div
-            style={{
-              color: SIGNAL,
-              fontFamily: "'Outfit', 'Encode Sans', system-ui, sans-serif",
-              fontSize: '38.4px',
-              fontWeight: 500,
-              lineHeight: 1,
-              textShadow: '0 4px 18px rgba(0,0,0,0.96)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}
-          >
-            {listeningLabel}:
-          </div>
-          <img
-            src={coverUrl || '/cover.jpg'}
-            alt='Cover'
-            style={{ width: '198px', height: '198px', borderRadius: '12px', objectFit: 'cover', boxShadow: '0 10px 24px rgba(0,0,0,0.55)', flexShrink: 0 }}
-          />
-        </div>
-      ) : null}
+  const header =
+    part === 'onAir' ? null : (
       <div
+        className='modoitaliano-giorgia-clock-header'
+        aria-label='Modo Italiano Giorgia clock'
         style={{
-          position: 'relative',
-          height: '140px',
+          position: 'absolute',
+          top: `${GIORGIA.safeTop}px`,
+          left: `${GIORGIA.safeX}px`,
+          zIndex: 950,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: useSplitLayout ? 'space-between' : 'flex-start',
-          width: useSplitLayout ? '100%' : undefined,
-          maxWidth: '100%',
-          padding: '0 34px',
-          overflow: 'hidden',
-          borderRadius: '50px',
-          background: hasSong ? 'linear-gradient(125deg, #080d2a 0%, #111c50 48%, #080d2a 100%)' : 'transparent',
-          backgroundSize: hasSong ? '200% 200%' : undefined,
-          animation: hasSong ? 'modoItalianoGiorgiaClockBgFlow 8s ease-in-out infinite' : undefined,
-          boxShadow: hasSong ? `inset 0 0 0 2px rgba(237,0,118,0.62), 0 24px 44px rgba(0,0,0,0.72)` : 'none',
-          filter: hasSong ? 'drop-shadow(0 12px 24px rgba(0,0,0,0.52))' : 'none'
+          gap: '30px',
+          // Key-safe, the header sits on its own navy plate that runs off the top-left corner, so the mark
+          // and the time never touch the key colour. The margin keeps them where they are without it.
+          ...(keySafe
+            ? {
+                background: GIORGIA.plate,
+                padding: `${GIORGIA.safeTop}px ${GIORGIA.platePadding}px ${GIORGIA.platePadding}px ${GIORGIA.safeX}px`,
+                margin: `-${GIORGIA.safeTop}px 0 0 -${GIORGIA.safeX}px`
+              }
+            : null)
         }}
       >
-        {hasSong ? (
+        {showLogo ? <GiorgiaMark keySafe={keySafe} /> : null}
+        {showWorldClocks ? (
+          <span style={{ ...giorgiaLabelStyle, color: 'rgba(255,255,255,0.86)', fontVariantNumeric: 'tabular-nums', ...noShadow }}>
+            {timeText} {city.city.toUpperCase()}
+          </span>
+        ) : null}
+        {showBellIcon ? <BellRing size={34} strokeWidth={2.4} color='#ffffff' /> : null}
+      </div>
+    );
+
+  const artistText = shownSong.artist.toUpperCase();
+  const titleText = shownSong.title.toUpperCase();
+  // Without an artist the title leads, so the block always has one hero line.
+  const heroText = artistText || titleText;
+  const supportText = artistText ? titleText : '';
+  const heroSize = fitGiorgiaText(heroText, ON_AIR_TEXT_WIDTH_PX, 104, 54, 0.5);
+  const heroWraps = heroText.length * 0.5 * 54 > ON_AIR_TEXT_WIDTH_PX;
+  const supportSize = fitGiorgiaText(supportText, ON_AIR_TEXT_WIDTH_PX, 32, 20, 0.78);
+  const supportWraps = supportText.length * 0.78 * 20 > ON_AIR_TEXT_WIDTH_PX;
+
+  const onAir =
+    part === 'header' || !onAirMounted ? null : (
+      <div
+        className='modoitaliano-giorgia-clock-on-air'
+        aria-label='Modo Italiano Giorgia now playing'
+        style={{
+          // No opacity or transform here: either would trap the grade in this block's own layer, where it
+          // would paint over the headline beside it. The content wrapper below carries the motion.
+          ...(inline
+            ? { position: 'relative' }
+            : { position: 'absolute', left: `${GIORGIA.safeX}px`, bottom: `${GIORGIA.safeBottom}px`, zIndex: 950 })
+        }}
+      >
+        <GiorgiaGrade keySafe={keySafe} style={{ opacity: onAirVisible ? 1 : 0, transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease` }} />
+        <div
+          className='modoitaliano-giorgia-clock-on-air-content'
+          style={{
+            display: 'flex',
+            // Not stretched: the text column keeps its own height, which is what the cover is sized from.
+            alignItems: 'flex-end',
+            opacity: onAirVisible ? 1 : 0,
+            transform: onAirVisible ? 'translateY(0px)' : 'translateY(18px)',
+            transition: `opacity ${ON_AIR_TRANSITION_MS}ms ease, transform ${ON_AIR_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
+          }}
+        >
+        <img
+          src={shownSong.coverUrl || '/cover.jpg'}
+          alt=''
+          // The cover is a square exactly as tall as the text beside it, so it and the magenta rule always
+          // start and end together. A fixed size left the rule standing taller than the cover whenever the
+          // text was taller.
+          style={{ width: `${coverSize}px`, height: `${coverSize}px`, objectFit: 'cover', display: 'block', flexShrink: 0 }}
+        />
+        <div
+          ref={textColumnRef}
+          style={{
+            position: 'relative',
+            width: `${ON_AIR_TEXT_WIDTH_PX + GIORGIA.ruleWidth + 28}px`,
+            paddingLeft: `${GIORGIA.ruleWidth + 28}px`,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            minHeight: `${COVER_PX}px`,
+            color: '#ffffff'
+          }}
+        >
+          <GiorgiaRule keySafe={keySafe} />
+          <div style={{ ...giorgiaLabelStyle, color: GIORGIA.signal, ...noShadow }}>{listeningLabel}</div>
           <div
+            className='modoitaliano-giorgia-clock-hero'
             style={{
-              minWidth: 0,
-              flex: useSplitLayout ? '1 1 auto' : undefined,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              marginRight: '28px'
+              marginTop: '14px',
+              fontFamily: GIORGIA.display,
+              fontSize: `${heroWraps ? 54 : heroSize}px`,
+              fontWeight: 800,
+              lineHeight: 0.86,
+              letterSpacing: '-0.035em',
+              textShadow: keySafe ? 'none' : GIORGIA.displayShadow,
+              // Too long for one line at the smallest size: wrap, never clamp or clip.
+              ...(heroWraps ? { textWrap: 'balance', overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
             }}
           >
-            {title ? (
-              <div
-                style={{
-                  color: '#ffffff',
-                  fontFamily: "'Barlow Condensed', system-ui, sans-serif",
-                  fontSize: '44px',
-                  fontWeight: 600,
-                  lineHeight: 1,
-                  letterSpacing: '0.02em',
-                  textTransform: 'uppercase',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}
-              >
-                {title}
-              </div>
-            ) : null}
-            {artist ? (
-              <div
-                style={{
-                  marginTop: title ? '8px' : 0,
-                  color: 'rgba(255,255,255,0.82)',
-                  fontFamily: "'Barlow Condensed', system-ui, sans-serif",
-                  fontSize: '44px',
-                  fontWeight: 500,
-                  lineHeight: 1,
-                  letterSpacing: '0.02em',
-                  textTransform: 'uppercase',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}
-              >
-                {artist}
-              </div>
-            ) : null}
+            {heroText}
           </div>
-        ) : null}
-        {(showWorldClocks || showLogo || showBellIcon) ? (
-          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: useSplitLayout ? '24px' : 0, gap: '20px' }}>
-            {showWorldClocks ? cityClockBlock : showLogo ? logoBlock : null}
-            {showBellIcon ? (
-              <div style={{ width: '72px', height: '72px', borderRadius: '24px', background: '#111c50', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <BellRing size={42} strokeWidth={2} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {hasSong && showPlaybackProgress ? (
-          <div style={{ position: 'absolute', inset: 0, borderRadius: 'inherit', overflow: 'hidden', pointerEvents: 'none' }}>
+          {supportText ? (
             <div
               style={{
-                width: '100%',
-                height: '100%',
-                background: 'linear-gradient(90deg, rgba(237,0,118,0.2), rgba(237,0,118,0.05))',
-                transform: `scaleX(${progress})`,
-                transformOrigin: 'left center',
-                transition: 'transform 140ms linear'
+                marginTop: '14px',
+                fontFamily: GIORGIA.text,
+                fontSize: `${supportSize}px`,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                letterSpacing: '0.18em',
+                color: 'rgba(255,255,255,0.78)',
+                textShadow: keySafe ? 'none' : GIORGIA.labelShadow,
+                ...(supportWraps ? { overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' })
               }}
-            />
-          </div>
-        ) : null}
+            >
+              {supportText}
+            </div>
+          ) : null}
+          {showPlaybackProgress ? (
+            <div
+              className='modoitaliano-giorgia-clock-progress'
+              aria-hidden='true'
+              style={{ marginTop: '16px', height: '2px', background: 'rgba(255,255,255,0.4)' }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  background: GIORGIA.signal,
+                  transform: `scaleX(${progress})`,
+                  transformOrigin: 'left center',
+                  transition: 'transform 140ms linear'
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+        </div>
       </div>
-    </div>
+    );
+
+  if (!header && !onAir) return null;
+
+  return (
+    <>
+      {header}
+      {onAir}
+    </>
   );
 };

@@ -2,6 +2,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ObservabilityModule } from './observability.module';
 import { HttpMetricsInterceptor } from './http-metrics.interceptor';
 import { ManagedMetricsService } from './managed-metrics.service';
+import { PalazzoMetricsPassthrough } from './palazzo-metrics.passthrough';
 import { MetricsTokenGuard } from './metrics-token.guard';
 
 describe('ObservabilityModule wiring', () => {
@@ -12,11 +13,13 @@ describe('ObservabilityModule wiring', () => {
     expect(Reflect.getMetadata('providers', ObservabilityModule)).toEqual([
       ManagedMetricsService,
       MetricsTokenGuard,
+      PalazzoMetricsPassthrough,
       { provide: APP_INTERCEPTOR, useClass: HttpMetricsInterceptor },
     ]);
     expect(Reflect.getMetadata('exports', ObservabilityModule)).toEqual([
       ManagedMetricsService,
       MetricsTokenGuard,
+      PalazzoMetricsPassthrough,
     ]);
   });
 });

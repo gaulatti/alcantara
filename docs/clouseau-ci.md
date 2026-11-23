@@ -35,16 +35,18 @@ where they exist. Changing this scope needs owner confirmation.
 
 ## Local review
 
-`.clouseau-local.json` runs the backend build and coverage suite, then checks
-`backend/src` for exact coverage. See `AGENTS.md` for the required pre-PR review.
+`.clouseau-local.json` runs the backend build and coverage suite and the frontend
+typecheck (`pnpm --dir frontend run typecheck`, which must report 0 errors), then
+checks `backend/src` for exact coverage. The `Frontend Deploy` workflow also runs
+the typecheck before its tests and build. See `AGENTS.md` for the required pre-PR review.
 
 ## Operator setup
 
 Repository secrets used by the workflow: `DEEPSEEK_API_KEY` and
 `TYPESAFE_API_KEY` (CI AI review) and `DEPLOYMENT_TOKEN` (the bounded repair
 author). The Clouseau workflow never deploys. Merging to `main` still triggers
-the existing `Backend Deploy` and `Frontend Deploy` workflows, which are
-unchanged. Protected central Clouseau `main` is resolved at the start of each run
+the existing `Backend Deploy` and `Frontend Deploy` workflows; `Frontend Deploy`
+now runs the frontend typecheck before its tests and build. Protected central Clouseau `main` is resolved at the start of each run
 and frozen for it; there is no static engine pin to update.
 
 Repository settings (not changed by the install PR): enable auto-merge and

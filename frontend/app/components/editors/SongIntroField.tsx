@@ -1,4 +1,4 @@
-import { Button } from '@gaulatti/bleecker';
+import { Button, Select } from '@gaulatti/bleecker';
 import { Volume2 } from 'lucide-react';
 import type { InstantItem } from '../../models/broadcast';
 
@@ -35,23 +35,24 @@ export function SongIntroField({
         </p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <select
-          value={selectedInstantId}
-          onChange={(event) => onChange(event.target.value)}
-          className="min-h-10 flex-1 rounded-lg border border-sand/40 bg-white px-3 text-sm text-text-primary dark:border-sand/50 dark:bg-deep-sea dark:text-text-primary"
-          aria-label="Assigned song intro"
-        >
-          <option value="">No song intro</option>
-          {instants.map((instant) => {
-            const selectable = instant.enabled && (instant.availableForSongIntro !== false || instant.assignedSongId === songId);
-            return (
-              <option key={instant.id} value={instant.id} disabled={!selectable}>
-                {instant.name}
-                {selectable ? '' : ' — unavailable'}
-              </option>
-            );
-          })}
-        </select>
+        <div className="flex-1">
+          <Select
+            value={selectedInstantId}
+            onChange={(value) => onChange(value)}
+            aria-label="Assigned song intro"
+            options={[
+              { value: '', label: 'No song intro' },
+              ...instants.map((instant) => {
+                const selectable = instant.enabled && (instant.availableForSongIntro !== false || instant.assignedSongId === songId);
+                return {
+                  value: String(instant.id),
+                  label: `${instant.name}${selectable ? '' : ' — unavailable'}`,
+                  disabled: !selectable,
+                };
+              }),
+            ]}
+          />
+        </div>
         <Button type="button" variant="secondary" disabled={!selectedInstant || previewing} onClick={() => selectedInstant && onPreview(selectedInstant)}>
           <Volume2 size={15} /> {previewing ? 'Previewing…' : 'Preview intro'}
         </Button>

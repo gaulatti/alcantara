@@ -5,6 +5,7 @@ import {
   Header,
   Post,
   Body,
+  Req,
   Sse,
   Param,
   Delete,
@@ -55,6 +56,8 @@ export class ProgramController {
       type?: string;
       templateUrl?: string | null;
     },
+    // gaulatti/alcantara#336: the Program row takes the caller's team, as the guard resolved it.
+    @Req() request?: { user?: { authorization?: { teamId?: number } } },
   ) {
     this.rejectRadioTemplate(data.type, data.templateUrl);
     const template = await this.resolveTemplateRegistration(data.templateUrl);
@@ -62,6 +65,7 @@ export class ProgramController {
       data.programId,
       data.type,
       template,
+      request?.user?.authorization?.teamId,
     );
   }
 
@@ -264,10 +268,32 @@ export class ProgramController {
   @Public()
   async proxyAudio(@Query('url') url: string): Promise<StreamableFile> {
     const proxied = await this.programService.proxyAudio(url);
+    // Only the type and length of the remote file are passed on; no other
+    // upstream header reaches the client.
     return new StreamableFile(proxied.buffer, {
       type: proxied.contentType,
+      length: proxied.buffer.byteLength,
       disposition: 'inline',
     });
+  }
+
+  /** gaulatti/alcantara#335: a program's public station marks (no team, no internal fields). */
+  @Get(':programId/branding')
+  @Public()
+  async getBranding(@Param('programId') programId: string) {
+    return this.programService.getBranding(programId);
+  }
+
+  /** gaulatti/alcantara#335: write a program's station marks, gated by program.manage. */
+  @Put(':programId/branding')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.manage)
+  async putBranding(
+    @Param('programId') programId: string,
+    // `object`, not Record<string, unknown>: the latter emits a runtime type check in the decorator
+    // metadata that the coverage gate counts as two uncovered branches. parseBrandingInput validates it.
+    @Body() data: object,
+  ) {
+    return this.programService.putBranding(programId, data);
   }
 
   @Get('state')
@@ -365,6 +391,12 @@ export class ProgramController {
       programId,
       data.transitionId,
     );
+  }
+
+  @Post(':programId/countdown/complete')
+  @Public()
+  async completeSceneCountdownById(@Param('programId') programId: string) {
+    return this.programService.completeSceneCountdown(programId);
   }
 
   @Get(':programId/stage')

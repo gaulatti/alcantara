@@ -239,7 +239,7 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
     };
   }, [showWorldClocks, cityPool, rotationIntervalMs, transitionDurationMs, shuffleCities]);
 
-  const currentCity = cityPool[cityIndex] ?? resolvedCities[0];
+  const currentCity = cityPool[cityIndex];
   const timeText = formatClockValue(currentCity.timezone, now, timeOverride);
   const normalizedSongSequence = useMemo(() => normalizeProgramSongSequence(songSequence), [songSequence]);
   const [sequenceNowMs, setSequenceNowMs] = useState(() => Date.now());
@@ -630,9 +630,8 @@ export const ModoItalianoClock: React.FC<ModoItalianoClockProps> = ({
               flexDirection: 'column',
               justifyContent: 'center',
               marginRight: '28px',
-              flex: useSplitSongClockLayout ? '1 1 auto' : undefined,
-              minWidth: useSplitSongClockLayout ? 0 : undefined,
-              maxWidth: useSplitSongClockLayout ? undefined : '980px',
+              flex: '1 1 auto',
+              minWidth: 0,
               opacity: songUiActive ? 1 : 0,
               transform: songUiActive ? 'translateY(0px)' : 'translateY(10px)',
               transition: `opacity ${SONG_UI_FADE_MS}ms ease, transform ${SONG_UI_FADE_MS}ms ease`,

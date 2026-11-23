@@ -4,14 +4,18 @@ import { OperatorPreferencesModule } from './operator-preferences.module';
 import { OperatorPreferencesController } from './operator-preferences.controller';
 import { OperatorPreferencesService } from './operator-preferences.service';
 import { PrismaService } from '../prisma.service';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ManagedMetricsService } from '../observability/managed-metrics.service';
 
 const metrics = { recordDomain: jest.fn() };
 
 @Global()
 @Module({
-  providers: [{ provide: ManagedMetricsService, useValue: metrics }],
-  exports: [ManagedMetricsService],
+  providers: [
+    { provide: ManagedMetricsService, useValue: metrics },
+    { provide: PompeiiService, useValue: { teamId: 7 } },
+  ],
+  exports: [ManagedMetricsService, PompeiiService],
 })
 class PlatformMetricsStubModule {}
 

@@ -396,7 +396,7 @@ function getSelectedSongItem(
   if (sequence.loop !== false) {
     const hasUnknownDuration = itemDurations.some((durationMs) => durationMs === null);
     if (!hasUnknownDuration) {
-      const cycleDurationMs = itemDurations.reduce((sum, durationMs) => sum + (durationMs ?? 0), 0);
+      const cycleDurationMs = itemDurations.reduce<number>((sum, durationMs) => sum + (durationMs ?? 0), 0);
       if (cycleDurationMs <= 0) {
         return sequence.items[baseIndex] ?? null;
       }
@@ -740,6 +740,21 @@ export function countProgramTextSequenceLeafItems(
     }
     return count + 1;
   }, 0);
+}
+
+/** The catalog song ids the playlist already holds, in any nested block. */
+export function songIdsInProgramSongSequence(
+  sequence: ProgramSongSequence | null
+): Set<number> {
+  const ids = new Set<number>();
+  const visit = (current: ProgramSongSequence | null) => {
+    for (const item of current?.items ?? []) {
+      if (item.kind === 'sequence') visit(item.sequence);
+      else if (typeof item.songId === 'number') ids.add(item.songId);
+    }
+  };
+  visit(sequence);
+  return ids;
 }
 
 export function countProgramSongSequenceLeafItems(

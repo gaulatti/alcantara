@@ -121,9 +121,9 @@ describe('UploadsService (coverage)', () => {
     });
 
     it.each([
-      ['instant', 100],
-      ['background', 100],
-      ['song', 100],
+      ['instant', 200],
+      ['background', 200],
+      ['song', 200],
       ['stinger', 50],
       ['artwork', 10],
     ] as const)('rejects oversized %s uploads (%iMB)', async (kind, mb) => {
@@ -490,6 +490,18 @@ describe('UploadsService (coverage)', () => {
 });
 
 describe('UploadsService metadata (coverage)', () => {
+  it('records Object as the paramtype when ManagedMetricsService is unresolved', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../observability/managed-metrics.service', () => ({}));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./uploads.service');
+      expect(
+        Reflect.getMetadata('design:paramtypes', mod.UploadsService),
+      ).toEqual([expect.any(Function), Object]);
+    });
+    jest.dontMock('../observability/managed-metrics.service');
+  });
+
   it('records Object as the paramtype when ConfigService is unresolved', () => {
     jest.isolateModules(() => {
       jest.doMock('@nestjs/config', () => ({}));
@@ -497,7 +509,7 @@ describe('UploadsService metadata (coverage)', () => {
       const mod = require('./uploads.service');
       expect(
         Reflect.getMetadata('design:paramtypes', mod.UploadsService),
-      ).toEqual([Object]);
+      ).toEqual([Object, expect.any(Function)]);
     });
     jest.dontMock('@nestjs/config');
   });

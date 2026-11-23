@@ -251,3 +251,138 @@ describe("RecordingPanel", () => {
     expect(newRecordingCommandKey).toHaveBeenCalledTimes(1);
   });
 });
+
+// gaulatti/alcantara#184: sizes, durations and the remaining states.
+
+const showStatus = (
+  status: RecordingStatus | null,
+  overrides: Partial<Parameters<typeof RecordingStatusView>[0]> = {},
+) =>
+  render(
+    <RecordingStatusView
+      status={status}
+      busy={null}
+      message=""
+      onStart={vi.fn()}
+      onStop={vi.fn()}
+      onRefresh={vi.fn()}
+      {...overrides}
+    />,
+  );
+
+describe("RecordingStatusView details", () => {
+  it("shows a long single-segment take in hours and bytes, with restarts", () => {
+    const status = baseStatus("active");
+    status.durationSeconds = 3_725;
+    status.bytes = 512;
+    status.segmentCount = 1;
+    status.restarts = 2;
+    status.disk = null;
+    showStatus(status);
+    expect(screen.getByText(/1:02:05 · 512 B · 1 segment · 2 restarts/)).toBeInTheDocument();
+    expect(screen.queryByText("Disk warning")).toBeNull();
+  });
+
+  it("shows the verified final size of a complete take", () => {
+    showStatus(baseStatus("complete"));
+    expect(screen.getByText(/0:10 · 1\.9 MB · 2 segments/)).toBeInTheDocument();
+  });
+
+  it("names an unclassified failure and warns when the storage quota is nearly used", () => {
+    const status = baseStatus("failed");
+    status.error = "solar-flare";
+    status.disk = {
+      freeBytes: 8_000_000_000,
+      usageBytes: 46_000_000_000,
+      quotaBytes: 50_000_000_000,
+      minimumFreeBytes: 1_000_000_000,
+    };
+    showStatus(status);
+    expect(screen.getByText("Unclassified recording failure")).toBeInTheDocument();
+    expect(screen.getByText("Disk warning")).toBeInTheDocument();
+  });
+
+  it("does not warn without a quota, and has no failure label without an error", () => {
+    const status = baseStatus("failed");
+    status.error = null;
+    status.disk = {
+      freeBytes: 8_000_000_000,
+      usageBytes: 46_000_000_000,
+      quotaBytes: 0,
+      minimumFreeBytes: 1_000_000_000,
+    };
+    showStatus(status);
+    expect(screen.queryByText("Disk warning")).toBeNull();
+    expect(screen.queryByText(/Capture failed|Unclassified/)).toBeNull();
+  });
+
+  it("labels a stop in progress and a status that could not be read", () => {
+    showStatus(baseStatus("active"), { busy: "stop" });
+    expect(screen.getByRole("button", { name: "Stopping…" })).toBeDisabled();
+    cleanup();
+    const onRefresh = vi.fn();
+    showStatus(null, { onRefresh });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Recording status unavailable",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry status" }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+  });
+});
+
+describe("RecordingPanel status failures", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
+
+  it("explains an unreadable status, refreshing on a visible return only", async () => {
+    vi.mocked(fetchRecordingStatus)
+      .mockRejectedValueOnce(new RecordingApiError(503, "Alana is restarting."))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(baseStatus("idle"));
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    render(<RecordingPanel programId="modoitaliano" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Alana is restarting.",
+    );
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(fetchRecordingStatus).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Recording control is temporarily unavailable.",
+    );
+    window.dispatchEvent(new Event("focus"));
+    expect(await screen.findByText("Ready to record")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the command error when the reload after it also fails", async () => {
+    vi.mocked(fetchRecordingStatus)
+      .mockResolvedValueOnce(baseStatus("active"))
+      .mockRejectedValue(new Error("offline"));
+    vi.mocked(sendRecordingCommand).mockRejectedValue(
+      new RecordingApiError(409, "Already finalizing."),
+    );
+    vi.mocked(newRecordingCommandKey).mockReturnValue("recording-command-1");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<RecordingPanel programId="modoitaliano" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Stop and finalize" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Already finalizing.",
+    );
+    expect(sendRecordingCommand).toHaveBeenCalledWith(
+      "modoitaliano",
+      "stop",
+      "recording-command-1",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Recording status unavailable",
+    );
+  });
+});

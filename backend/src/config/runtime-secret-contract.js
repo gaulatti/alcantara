@@ -7,7 +7,35 @@ const RUNTIME_SECRET_KEYS = Object.freeze([
   'externalSourceConfigCurrentVersion',
   'externalSourceConfigKeys',
 ]);
-const allowedSecretFields = new Set(RUNTIME_SECRET_KEYS);
+// POMPEII_ACCESS_CREDENTIAL (gaulatti/alcantara#224) is optional: absent or
+// blank, the access screens answer access_unavailable and startup is unaffected.
+const ALLOWLISTED_OPTIONAL_SECRET_KEYS = Object.freeze([
+  'programTemplateOrigins',
+  'POMPEII_ACCESS_CREDENTIAL',
+]);
+// gaulatti/alcantara#354: LiveKit and the WebRTC session secret. All four or none:
+// none leaves guest calls and the return feed off, as before; a partial set fails.
+const LIVEKIT_SECRET_KEYS = Object.freeze([
+  'livekitWsUrl',
+  'livekitApiKey',
+  'livekitApiSecret',
+  'webrtcSessionSecret',
+]);
+// The program renderer's key for the WebRTC renderer routes; optional.
+const OPTIONAL_WEBRTC_SECRET_KEYS = Object.freeze(['webrtcRendererKey']);
+// LiveKit refuses an API secret shorter than 32 characters; the session secret
+// signs guest sessions and gets the same floor.
+const MINIMUM_WEBRTC_SECRET_LENGTH = 32;
+const WEBRTC_SECRET_FIELDS = new Set([
+  ...LIVEKIT_SECRET_KEYS,
+  ...OPTIONAL_WEBRTC_SECRET_KEYS,
+]);
+const allowedSecretFields = new Set([
+  ...RUNTIME_SECRET_KEYS,
+  ...ALLOWLISTED_OPTIONAL_SECRET_KEYS,
+  ...LIVEKIT_SECRET_KEYS,
+  ...OPTIONAL_WEBRTC_SECRET_KEYS,
+]);
 const alanaTokenPattern = /^[a-f0-9]{64}$/;
 
 function isValidAlanaControlToken(value) {
@@ -84,6 +112,37 @@ function normalizeAlanaControlUrl(value) {
   return normalized;
 }
 
+function normalizeTemplateOrigin(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== '/' && parsed.pathname !== '')
+  ) {
+    throw new Error('PROGRAM_TEMPLATE_ORIGINS contains an invalid origin');
+  }
+  return parsed.origin;
+}
+
+function validateProgramTemplateOrigins(originsString) {
+  if (typeof originsString !== 'string') {
+    throw new Error('PROGRAM_TEMPLATE_ORIGINS is malformed');
+  }
+  return originsString
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map(normalizeTemplateOrigin);
+}
+
 function validateExternalSourceEncryption(currentVersion, encodedKeys) {
   const current = Number(currentVersion);
   let parsed;
@@ -118,7 +177,73 @@ function validateExternalSourceEncryption(currentVersion, encodedKeys) {
   }
 }
 
-function parseRuntimeSecretPayload(secretString) {
+/** The public LiveKit signalling URL: wss, no credentials, query, fragment or path. */
+function normalizeLivekitWsUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('LIVEKIT_WS_URL contains an invalid URL');
+  }
+  if (
+    parsed.protocol !== 'wss:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== '/' && parsed.pathname !== '')
+  ) {
+    throw new Error('LIVEKIT_WS_URL must be a wss:// origin');
+  }
+  return `wss://${parsed.host}`;
+}
+
+/**
+ * Why the WebRTC group cannot be used, naming fields and never a value; null
+ * when it is valid or absent. All four LiveKit fields or none; the renderer key
+ * is optional but must be a non-blank string.
+ */
+function livekitSecretGroupProblem(selected, invalidFields) {
+  if (invalidFields.length) {
+    return `Alcantara runtime configuration field ${invalidFields.join(', ')} is malformed`;
+  }
+  const present = LIVEKIT_SECRET_KEYS.filter(
+    (key) => selected[key] !== undefined,
+  );
+  if (!present.length) return null;
+  const missing = LIVEKIT_SECRET_KEYS.filter(
+    (key) => selected[key] === undefined,
+  );
+  if (missing.length) {
+    return `Alcantara runtime configuration is incomplete; LiveKit needs all of its keys, missing: ${missing.join(', ')}`;
+  }
+  try {
+    selected.livekitWsUrl = normalizeLivekitWsUrl(selected.livekitWsUrl);
+  } catch (error) {
+    return error.message;
+  }
+  if (/\s/.test(selected.livekitApiKey)) return 'LIVEKIT_API_KEY is invalid';
+  for (const [key, name] of [
+    ['livekitApiSecret', 'LIVEKIT_API_SECRET'],
+    ['webrtcSessionSecret', 'WEBRTC_SESSION_SECRET'],
+  ]) {
+    if (
+      /\s/.test(selected[key]) ||
+      selected[key].length < MINIMUM_WEBRTC_SECRET_LENGTH
+    ) {
+      return `${name} must be at least ${MINIMUM_WEBRTC_SECRET_LENGTH} characters with no spaces`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse the runtime secret. With `strictWebrtc` (the default: the deploy's
+ * contract gate and the LiveKit renderer), an invalid WebRTC group fails. Without
+ * it (backend start-up), the group is dropped and `webrtcProblem` names the fields,
+ * so a mistake in an optional feature never stops the backend.
+ */
+function parseRuntimeSecretPayload(secretString, { strictWebrtc = true } = {}) {
   let payload;
   try {
     payload = JSON.parse(secretString ?? '');
@@ -130,9 +255,22 @@ function parseRuntimeSecretPayload(secretString) {
   }
 
   const selected = {};
+  const invalidWebrtcFields = [];
   for (const [key, value] of Object.entries(payload)) {
     if (!allowedSecretFields.has(key)) continue;
-    if (typeof value !== 'string' || !value.trim()) {
+    if (WEBRTC_SECRET_FIELDS.has(key)) {
+      // Judged with the LiveKit group below, so a lenient caller can drop it.
+      if (typeof value !== 'string' || !value.trim())
+        invalidWebrtcFields.push(key);
+      else selected[key] = value.trim();
+      continue;
+    }
+    if (typeof value !== 'string') {
+      throw new Error(
+        `Alcantara runtime configuration field ${key} is malformed`,
+      );
+    }
+    if (!ALLOWLISTED_OPTIONAL_SECRET_KEYS.includes(key) && !value.trim()) {
       throw new Error(
         `Alcantara runtime configuration field ${key} is malformed`,
       );
@@ -147,6 +285,9 @@ function parseRuntimeSecretPayload(secretString) {
     throw new Error(
       `Alcantara runtime configuration is incomplete; missing keys: ${missingKeys.join(', ')}`,
     );
+  }
+  if (selected.programTemplateOrigins !== undefined) {
+    validateProgramTemplateOrigins(selected.programTemplateOrigins);
   }
   const palazzoUrls = selected.palazzoAllowedUrls
     .split(',')
@@ -164,6 +305,19 @@ function parseRuntimeSecretPayload(secretString) {
     selected.externalSourceConfigCurrentVersion,
     selected.externalSourceConfigKeys,
   );
+  const livekitProblem = livekitSecretGroupProblem(
+    selected,
+    invalidWebrtcFields,
+  );
+  if (livekitProblem) {
+    if (strictWebrtc) throw new Error(livekitProblem);
+    // An optional feature: drop the whole WebRTC group and report it by field name.
+    for (const key of WEBRTC_SECRET_FIELDS) delete selected[key];
+    Object.defineProperty(selected, 'webrtcProblem', {
+      value: livekitProblem,
+      enumerable: false,
+    });
+  }
   return selected;
 }
 
@@ -194,12 +348,18 @@ async function main() {
 }
 
 module.exports = {
+  ALLOWLISTED_OPTIONAL_SECRET_KEYS,
+  LIVEKIT_SECRET_KEYS,
+  OPTIONAL_WEBRTC_SECRET_KEYS,
   RUNTIME_SECRET_KEYS,
   isPrivateServiceHostname,
   isValidAlanaControlToken,
   main,
   normalizeAlanaControlUrl,
+  normalizeLivekitWsUrl,
   normalizePrivateServiceUrl,
+  normalizeTemplateOrigin,
   parseRuntimeSecretPayload,
   validateExternalSourceEncryption,
+  validateProgramTemplateOrigins,
 };

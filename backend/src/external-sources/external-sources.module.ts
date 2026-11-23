@@ -4,10 +4,12 @@ import { ExternalSourceSecurity } from './external-source.security';
 import { ExternalSourcesService } from './external-sources.service';
 import { PrismaService } from '../prisma.service';
 import { ExternalSourceMetricsInterceptor } from './external-source-metrics.interceptor';
+import { ExternalSourcesMcpTools } from '../mcp/capabilities/external-sources';
 
 @Module({
   controllers: [ExternalSourcesController],
   providers: [
+    ExternalSourcesMcpTools,
     ExternalSourcesService,
     ExternalSourceSecurity,
     ExternalSourceMetricsInterceptor,

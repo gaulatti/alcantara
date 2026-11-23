@@ -96,10 +96,11 @@ it("sends every rendered channel through the route's normal debounced audio-bus 
     />,
   );
   for (const [index, channel] of channels.entries()) {
-    const volume = (index + 1) / 10;
-    fireEvent.change(
+    // Home takes the console fader to silence: position 0.
+    const volume = 0;
+    fireEvent.keyDown(
       screen.getByRole("slider", { name: `${channel.label} fader` }),
-      { target: { value: String(volume) } },
+      { key: "Home" },
     );
     if (channel.id !== "main") {
       fireEvent.click(

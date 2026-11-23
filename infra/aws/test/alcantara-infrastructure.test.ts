@@ -37,6 +37,17 @@ test("owns only the Alcantara application permissions needed on Cumulus", () => 
   rendered.resourceCountIs("AWS::Logs::LogGroup", 0);
 });
 
+test("points the LiveKit name at Helix", () => {
+  const rendered = template();
+  rendered.hasResourceProperties("AWS::Route53::RecordSet", {
+    Name: "livekit.alcantara.gaulatti.com.",
+    ResourceRecords: ["helix.gaulatti.com"],
+    TTL: "300",
+    Type: "CNAME",
+  });
+  rendered.resourceCountIs("AWS::Route53::RecordSet", 2);
+});
+
 test("owns the API record and main-branch deployment role", () => {
   const rendered = template();
   rendered.hasResourceProperties("AWS::Route53::RecordSet", {

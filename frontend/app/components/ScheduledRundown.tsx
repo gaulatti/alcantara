@@ -48,8 +48,7 @@ function nextLocalStart(): string {
   return local.toISOString().slice(0, 16);
 }
 
-function formatClock(seconds: number | undefined): string {
-  if (seconds === undefined) return "After previous";
+function formatClock(seconds: number): string {
   return `+${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
@@ -77,9 +76,13 @@ export default function ScheduledRundown({
   const [items, setItems] = useState<FlightCue[]>([]);
   const [startTime, setStartTime] = useState(nextLocalStart);
   const [busy, setBusy] = useState(false);
+  // A preflight result belongs to one block revision. It is kept when it was
+  // produced for the revision now selected (check and publish save first, which
+  // bumps the revision) and cleared when the block or its revision moves on.
   const [preflight, setPreflight] = useState<{
     ready: boolean;
     issues: string[];
+    forRevision?: string;
   } | null>(null);
   const [inspector, setInspector] = useState<"event" | "fillers" | "build">(
     "event",
@@ -155,7 +158,8 @@ export default function ScheduledRundown({
   }, [load]);
   useEffect(() => {
     setItems(selected?.items ?? []);
-    setPreflight(null);
+    const current = `${selectedId}:${selected?.revision}`;
+    setPreflight((result) => (result?.forRevision === current ? result : null));
     setSelectedCueId(null);
   }, [selectedId, selected?.revision]);
 
@@ -218,7 +222,10 @@ export default function ScheduledRundown({
     try {
       const updated = dirty ? await save() : selected;
       const result = await preflightFlightSequence(programId, updated.id);
-      setPreflight(result);
+      setPreflight({
+        ...result,
+        forRevision: `${updated.id}:${updated.revision}`,
+      });
       if (result.ready)
         showAlert("All scheduled audio is available.", "success");
     } catch (cause) {
@@ -242,7 +249,11 @@ export default function ScheduledRundown({
       setLogs((current) =>
         current.map((log) => (log.id === published.id ? published : log)),
       );
-      setPreflight({ ready: true, issues: [] });
+      setPreflight({
+        ready: true,
+        issues: [],
+        forRevision: `${published.id}:${published.revision}`,
+      });
       showAlert("Rundown published for automatic start.", "success");
     } catch (cause) {
       setError(message(cause));

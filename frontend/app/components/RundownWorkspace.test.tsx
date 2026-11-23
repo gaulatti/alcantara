@@ -65,3 +65,15 @@ it("gives simulcast timing views within one Rundown", async () => {
     "true",
   );
 });
+it("shows the workspace loading state until the program type is known", () => {
+  render(
+    <MemoryRouter>
+      <RundownWorkspace programType={null} />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Opening your workspace…",
+  );
+  expect(screen.queryByText("Scheduled rundown")).not.toBeInTheDocument();
+  expect(screen.queryByText("Operator rundown")).not.toBeInTheDocument();
+});

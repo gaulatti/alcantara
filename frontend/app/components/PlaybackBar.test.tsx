@@ -1,7 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PlaybackBar } from "./PlaybackBar";
-import type { ProgramSongSequence } from "../utils/programSequence";
+import type {
+  ProgramSongSequence,
+  ProgramSongSequenceLeafItem,
+} from "../utils/programSequence";
+import type { ProgramSongPlaybackState } from "../models/broadcast";
 
 const sequence: ProgramSongSequence = {
   mode: "manual",
@@ -38,6 +42,9 @@ const sequence: ProgramSongSequence = {
     },
   ],
 };
+
+/** The fixture's songs, typed as the leaves they are. */
+const songs = sequence.items as ProgramSongSequenceLeafItem[];
 
 afterEach(() => cleanup());
 
@@ -217,4 +224,583 @@ it("routes Stop through the authoritative off-air action only", () => {
   expect(onTakeOffAir).toHaveBeenCalledTimes(1);
   expect(onTakeSelection).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
+});
+
+const playing = (
+  overrides: Partial<ProgramSongPlaybackState> = {},
+): ProgramSongPlaybackState => ({
+  token: "",
+  audioUrl: "",
+  progress: 0.5,
+  currentTimeMs: 30_000,
+  durationMs: 60_000,
+  isPlaying: true,
+  updatedAt: "2026-09-11T12:00:30.000Z",
+  ...overrides,
+});
+
+it("plays nested playlists as one flat list and falls back to the first song", () => {
+  const onChange = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{
+        mode: "manual",
+        loop: true,
+        activeItemId: "block",
+        items: [
+          {
+            id: "block",
+            kind: "sequence",
+            label: "Block",
+            sequence: { mode: "manual", items: [sequence.items[0]] },
+          },
+          sequence.items[2],
+        ],
+      }}
+      programSongPlayback={null}
+      onChange={onChange}
+    />,
+  );
+  // The block itself is not a song, so its first song is the selection.
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-3" }),
+  );
+  expect(onChange.mock.lastCall?.[0].items.map((i: { id: string }) => i.id))
+    .toEqual(["song-1", "song-3"]);
+  expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+});
+
+it("selects through onChange when there is no take or off-air action", () => {
+  const onChange = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{ ...sequence, activeItemId: null }}
+      programSongPlayback={null}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByText("Nothing on air")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Play selection" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-1" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "manual", activeItemId: null }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Manual" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "manual", activeItemId: null }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Shuffle playlist" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "shuffle" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Loop playlist: off" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ loop: true }),
+  );
+});
+
+it("takes Stop off air through the take action when there is no off-air action", async () => {
+  const onTakeSelection = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop / Take Off Air" }));
+  expect(onTakeSelection).toHaveBeenCalledWith(
+    expect.objectContaining({ mode: "manual", activeItemId: null }),
+  );
+});
+
+it("shows the loop as on and turns it off", () => {
+  const onChange = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{ ...sequence, loop: true }}
+      programSongPlayback={null}
+      onChange={onChange}
+    />,
+  );
+  const loop = screen.getByRole("button", { name: "Loop playlist: on" });
+  expect(loop).toHaveAttribute("aria-pressed", "true");
+  expect(loop).toHaveTextContent("Loop on");
+  fireEvent.click(loop);
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ loop: false }),
+  );
+});
+
+it("wraps Advance to the first song on a looped playlist", () => {
+  const onTakeSelection = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{ ...sequence, loop: true, activeItemId: "song-3" }}
+      programSongPlayback={playing({
+        token: "song-3:https://example.test/song-3.mp3",
+      })}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Advance" }));
+  expect(onTakeSelection).toHaveBeenCalledWith(
+    expect.objectContaining({ activeItemId: "song-1" }),
+  );
+});
+
+it("reshuffles a playing playlist without restarting its clock", () => {
+  const onChange = vi.fn();
+  render(
+    <PlaybackBar
+      sequence={{ ...sequence, startedAt: 1_000 }}
+      programSongPlayback={playing({
+        token: "song-2:https://example.test/song-2.mp3",
+      })}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Shuffle playlist" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "shuffle", activeItemId: "song-2" }),
+  );
+  expect(onChange.mock.lastCall?.[0].startedAt).not.toBeGreaterThan(1_000);
+});
+
+it("identifies the on-air song by its audio URL when the token does not name it", () => {
+  const onTakeSelection = vi.fn();
+  const { rerender } = render(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={playing({
+        token: "unknown:token",
+        audioUrl: " https://example.test/song-1.mp3 ",
+      })}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  // song-1 is on air, so Previous has nowhere to go and Next goes to song-2.
+  expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-2" }),
+  );
+
+  // Two songs share one URL: the selected one is the on-air one.
+  const shared = {
+    ...sequence,
+    activeItemId: "song-3",
+    items: [
+      sequence.items[0],
+      { ...songs[1], audioUrl: "https://example.test/same.mp3" },
+      { ...songs[2], audioUrl: "https://example.test/same.mp3" },
+      { ...songs[0], id: "song-4", audioUrl: undefined },
+    ],
+  };
+  rerender(
+    <PlaybackBar
+      sequence={shared}
+      programSongPlayback={playing({
+        audioUrl: "https://example.test/same.mp3",
+      })}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-2" }),
+  );
+});
+
+it("uses the scheduled song to break a shared URL, and the selection when neither matches", () => {
+  const onTakeSelection = vi.fn();
+  const scheduled = render(
+    <PlaybackBar
+      sequence={{
+        mode: "autoplay",
+        loop: true,
+        // song-3 started 70 s ago, so the schedule has moved on to song-1.
+        startedAt: Date.now() - 70_000,
+        activeItemId: "song-3",
+        items: [
+          { ...songs[0], audioUrl: "https://example.test/same.mp3" },
+          { ...songs[1], audioUrl: "https://example.test/same.mp3" },
+          sequence.items[2],
+        ],
+      }}
+      programSongPlayback={playing({
+        audioUrl: "https://example.test/same.mp3",
+      })}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-2" }),
+  );
+  scheduled.unmount();
+
+  // Neither the selection nor the schedule is one of the URL matches, so the
+  // on-air song stays unidentified and the selection (song-2) is current.
+  render(
+    <PlaybackBar
+      sequence={{
+        ...sequence,
+        loop: true,
+        items: [
+          { ...songs[0], audioUrl: "https://example.test/same.mp3" },
+          sequence.items[1],
+          { ...songs[2], audioUrl: "https://example.test/same.mp3" },
+        ],
+      }}
+      programSongPlayback={playing({
+        audioUrl: "https://example.test/same.mp3",
+      })}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-3" }),
+  );
+});
+
+it("keeps the last identified song while playback continues and drops it when it leaves the playlist or stops", () => {
+  const onTakeSelection = vi.fn();
+  const props = {
+    onChange: vi.fn(),
+    onTakeSelection,
+  };
+  const { rerender } = render(
+    <PlaybackBar
+      {...props}
+      sequence={sequence}
+      programSongPlayback={playing({
+        token: "song-3:https://example.test/song-3.mp3",
+      })}
+    />,
+  );
+  // Telemetry stops naming a song: the bar still shows song-3 as current.
+  rerender(
+    <PlaybackBar
+      {...props}
+      sequence={sequence}
+      programSongPlayback={playing({ token: "", audioUrl: "" })}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-2" }),
+  );
+
+  // song-3 is removed from the playlist: the bar falls back to the selection.
+  rerender(
+    <PlaybackBar
+      {...props}
+      sequence={{ ...sequence, items: sequence.items.slice(0, 2) }}
+      programSongPlayback={playing({ token: "", audioUrl: "" })}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-1" }),
+  );
+
+  rerender(
+    <PlaybackBar
+      {...props}
+      sequence={sequence}
+      programSongPlayback={playing({
+        token: "song-3:https://example.test/song-3.mp3",
+      })}
+    />,
+  );
+  rerender(
+    <PlaybackBar {...props} sequence={sequence} programSongPlayback={null} />,
+  );
+  // Off air, the selection (song-2) is current again.
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-3" }),
+  );
+});
+
+it("follows the schedule in automatic modes when nothing is selected", () => {
+  const onTakeSelection = vi.fn();
+  const scheduled = {
+    ...sequence,
+    mode: "autoplay" as const,
+    activeItemId: null,
+    startedAt: Date.now(),
+  };
+  const { rerender } = render(
+    <PlaybackBar
+      sequence={scheduled}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+  rerender(
+    <PlaybackBar
+      sequence={{ ...scheduled, activeItemId: undefined }}
+      programSongPlayback={playing()}
+      onChange={vi.fn()}
+      onTakeSelection={onTakeSelection}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(onTakeSelection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeItemId: "song-2" }),
+  );
+});
+
+it("describes the on-air track, its intro and its remaining time", () => {
+  const { rerender } = render(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={playing({
+        title: "On-air title",
+        artist: "On-air artist",
+        coverUrl: "https://example.test/cover.jpg",
+        currentTimeMs: 75_000,
+        durationMs: 60_000,
+        introStatus: "degraded",
+        introFailureReason: "voice file missing",
+        telemetryStale: true,
+      })}
+      onChange={vi.fn()}
+    />,
+  );
+  const player = screen.getByRole("region", { name: "On-air player" });
+  expect(player).toHaveTextContent("On-air title");
+  expect(player).toHaveTextContent("On-air artist");
+  expect(player).toHaveTextContent("Intro unavailable: voice file missing");
+  expect(player).toHaveTextContent("Last reported remaining");
+  expect(player).toHaveTextContent("00:00");
+  expect(player).toHaveTextContent("01:00 elapsed");
+  expect(screen.getByRole("progressbar", { name: "Track progress" }))
+    .toHaveAttribute("aria-valuenow", "100");
+  expect(player.querySelector("img")).toHaveAttribute(
+    "src",
+    "https://example.test/cover.jpg",
+  );
+
+  rerender(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={playing({
+        currentTimeMs: -5,
+        durationMs: null,
+        introStatus: "degraded",
+      })}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(player).toHaveTextContent("Title unavailable");
+  expect(player).toHaveTextContent("Artist unavailable");
+  expect(player).toHaveTextContent(/Intro unavailable(?!:)/);
+  expect(player).toHaveTextContent("Remaining");
+  expect(player).toHaveTextContent("—:—");
+  expect(player).toHaveTextContent("00:00 elapsed");
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.queryByText(/Feedback/)).toBeNull();
+
+  rerender(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={playing({ introStatus: "playing" })}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(player).toHaveTextContent("Intro playing");
+});
+
+it("drives a rundown log instead of the playlist when one is attached", () => {
+  const logTransport = {
+    isRunning: true,
+    canStart: false,
+    canAdvance: true,
+    busy: false,
+    label: "Rundown running",
+    onStart: vi.fn(),
+    onStop: vi.fn(),
+    onAdvance: vi.fn(),
+  };
+  const { rerender } = render(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      logTransport={logTransport}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "Play selection" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Playback mode" })).toBeNull();
+  expect(screen.getByRole("status")).toHaveTextContent("Rundown running");
+  expect(screen.getByRole("status")).toHaveAttribute("data-tone", "ready");
+  expect(screen.getByRole("button", { name: "Start rundown" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Advance rundown" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stop rundown / Take Off Air" }),
+  );
+  expect(logTransport.onAdvance).toHaveBeenCalledTimes(1);
+  expect(logTransport.onStop).toHaveBeenCalledTimes(1);
+
+  rerender(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      logTransport={{
+        ...logTransport,
+        isRunning: false,
+        canStart: true,
+        busy: true,
+        label: "Rundown stopped",
+      }}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveAttribute("data-tone", "warning");
+  expect(screen.getByRole("button", { name: "Start rundown" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Stop rundown / Take Off Air" }),
+  ).toBeDisabled();
+  rerender(
+    <PlaybackBar
+      sequence={sequence}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+      logTransport={{ ...logTransport, isRunning: false, canStart: true }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Start rundown" }));
+  expect(logTransport.onStart).toHaveBeenCalledTimes(1);
+});
+
+it("has nothing to play when the playlist holds only an empty block", () => {
+  render(
+    <PlaybackBar
+      sequence={{
+        mode: "manual",
+        activeItemId: "block",
+        items: [
+          {
+            id: "block",
+            kind: "sequence",
+            label: "Empty block",
+            sequence: { mode: "manual", items: [] },
+          },
+        ],
+      }}
+      programSongPlayback={null}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Play selection" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Shuffle playlist" })).toBeDisabled();
+});
+
+it("has no current song on air when nothing is selected and nothing identifies it", () => {
+  const onChange = vi.fn();
+  const cleared = { ...sequence, activeItemId: null };
+  const { rerender } = render(
+    <PlaybackBar
+      sequence={{ ...cleared, mode: "autoplay" }}
+      programSongPlayback={playing()}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  rerender(
+    <PlaybackBar
+      sequence={cleared}
+      programSongPlayback={playing()}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Autoplay" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "autoplay", activeItemId: null }),
+  );
+});
+
+it("shows an empty manual playlist when the sequence from the API is malformed", () => {
+  const onChange = vi.fn();
+  render(
+    <PlaybackBar
+      // A response that is not a sequence object, as a bad API payload would
+      // arrive; the prop type cannot rule this out at runtime.
+      sequence={null as unknown as ProgramSongSequence}
+      programSongPlayback={null}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Manual" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByRole("button", { name: "Play selection" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Shuffle playlist" })).toBeDisabled();
+  expect(screen.getByText("Nothing on air")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Loop playlist: on" }));
+  expect(onChange).toHaveBeenCalledWith(
+    expect.objectContaining({ mode: "manual", items: [], loop: false }),
+  );
+});
+
+// gaulatti/alcantara#189: control-room help is Bleecker's tooltip, not a native
+// title (BleeckerButtons moves `title` into the tooltip). Keyboard focus opens
+// it at once, as hover does after its delay. The tooltip carries the loop
+// state, and its text uses the readable dark-console colour that Bleecker
+// 0.1.42 and later give it (gaulatti/alcantara#191 removed #189's local class).
+it("shows the loop help in a readable tooltip when the loop toggle is focused", () => {
+  // jsdom has no ResizeObserver; Radix measures the open tooltip with one.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const view = render(
+    <PlaybackBar sequence={sequence} programSongPlayback={null} onChange={vi.fn()} />,
+  );
+  const loop = screen.getByLabelText("Loop playlist: off");
+  expect(loop).not.toHaveAttribute("title");
+  expect(document.querySelector("[role=tooltip]")).toBeNull();
+
+  act(() => {
+    fireEvent.focus(loop);
+  });
+  const tooltip = document.querySelector("[role=tooltip]")!;
+  expect(tooltip.textContent).toBe("Loop is off");
+  expect(loop).toHaveAttribute("aria-describedby", tooltip.id);
+  const content = document.querySelector("[data-radix-popper-content-wrapper] [data-state]")!;
+  expect(content).toHaveClass("dark:text-text-primary");
+  expect(content).not.toHaveClass("dark:text-deep-sea");
+
+  act(() => {
+    fireEvent.blur(loop);
+  });
+  view.unmount();
+  vi.unstubAllGlobals();
 });

@@ -1,0 +1,50 @@
+# LOCAL BROWSER CHECK ONLY. Never part of a production image or deploy path.
+# Layer over the root stack:
+#   docker compose -p a224 -f compose.yml -f scripts/access-fake/compose.yml up --build -d
+# The fake answers pompeii.access.v1.ApplicationAccessService on the address the
+# backend already resolves outside production (host.docker.internal:50087), by
+# holding that name as a network alias, so no new environment variable exists.
+services:
+  access-fake:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command:
+      [
+        "node",
+        "/app/access-fake/fake-pompeii-access.mjs",
+        "/app/src/proto/application_access.proto",
+        "50087",
+      ]
+    environment:
+      # manager (default) or member; decides whether the caller holds
+      # alcantara:access:manage.
+      FAKE_CALLER: ${FAKE_CALLER:-manager}
+    volumes:
+      - ./scripts/access-fake/fake-pompeii-access.mjs:/app/access-fake/fake-pompeii-access.mjs:ro
+      - ./backend/src/proto:/app/src/proto:ro
+    networks:
+      default:
+        aliases:
+          - host.docker.internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(50087,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  backend:
+    environment:
+      # Obviously fake: pmp_svc_ plus 43 base64url characters.
+      POMPEII_ACCESS_CREDENTIAL: pmp_svc_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAK
+    depends_on:
+      access-fake:
+        condition: service_healthy

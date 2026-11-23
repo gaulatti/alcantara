@@ -136,7 +136,7 @@ describe('FlightService cue sequencing', () => {
     const h = setup(runtime);
     const stop = jest.spyOn(h.service, 'stop').mockResolvedValue({ ok: true });
     await run(h, 0);
-    expect(stop).toHaveBeenCalledWith('radio-1');
+    expect(stop).toHaveBeenCalledWith('radio-1', { flightDriven: true });
   });
 
   it('waits for a fixed clock offset before executing a cue', async () => {
@@ -262,7 +262,7 @@ describe('FlightService cue sequencing', () => {
       await run(h, 0);
       expect(h.errors).toHaveBeenCalled();
       expect(h.recorded).toHaveBeenCalledWith('cue-failed');
-      expect(stop).toHaveBeenCalledWith('radio-1');
+      expect(stop).toHaveBeenCalledWith('radio-1', { flightDriven: true });
       expect(h.program.broadcastUpdate).toHaveBeenCalledWith('radio-1', {
         type: 'radio_log_cue_failed',
         sequenceId: 7,
@@ -640,11 +640,27 @@ describe('FlightService automatic advance and block completion', () => {
     expect(last.finish).toHaveBeenCalledWith(ending);
   });
 
+  it('lets an operator flight stop during a running flight halt the rotation (#173)', async () => {
+    const h = harness();
+    h.internals.runtimes.set('radio-1', runtimeState());
+    await h.service.stop('radio-1');
+    expect(h.program.takeProgramSongOffAir).toHaveBeenCalledWith('radio-1');
+  });
+
+  it('passes a flight-driven stop through to the song stop (#173)', async () => {
+    const h = harness();
+    h.internals.runtimes.set('radio-1', runtimeState());
+    await h.service.stop('radio-1', { flightDriven: true });
+    expect(h.program.takeProgramSongOffAir).toHaveBeenCalledWith('radio-1', {
+      flightDriven: true,
+    });
+  });
+
   it('stops an unscheduled sequence when it finishes', async () => {
     const h = harness();
     const stop = jest.spyOn(h.service, 'stop').mockResolvedValue({ ok: true });
     await h.internals.finishBlock(runtimeState());
-    expect(stop).toHaveBeenCalledWith('radio-1');
+    expect(stop).toHaveBeenCalledWith('radio-1', { flightDriven: true });
     expect(h.program.prepareContinuousRotationResume).not.toHaveBeenCalled();
   });
 
@@ -671,7 +687,8 @@ describe('FlightService automatic advance and block completion', () => {
     const stop = jest.spyOn(h.service, 'stop').mockResolvedValue({ ok: true });
     await h.internals.finishBlock(runtimeState({ scheduledAtMs: 1 }));
     expect(h.recorded).toHaveBeenCalledWith('resume-failed');
-    expect(stop).toHaveBeenCalledWith('radio-1');
+    // An automated stop: it keeps the rotation's mode (#173).
+    expect(stop).toHaveBeenCalledWith('radio-1', { flightDriven: true });
     expect(h.program.broadcastUpdate).toHaveBeenCalledWith('radio-1', {
       type: 'radio_rotation_resume_failed',
       sequenceId: 7,
@@ -722,7 +739,9 @@ describe('FlightService cue execution', () => {
   it('cuts the song according to ownership of the clocked log', async () => {
     const { internals, program } = harness();
     await internals.executeCue('radio-1', cue({ kind: 'stopSong' }));
-    expect(program.takeProgramSongOffAir).toHaveBeenCalledWith('radio-1');
+    expect(program.takeProgramSongOffAir).toHaveBeenCalledWith('radio-1', {
+      flightDriven: true,
+    });
     expect(program.stopProgramSongForTimedBlock).not.toHaveBeenCalled();
     internals.runtimes.set(
       'radio-1',

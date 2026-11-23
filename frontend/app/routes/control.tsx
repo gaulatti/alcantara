@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { useSSE, type SSEConnectionState } from "../hooks/useSSE";
+import { cartModifierHeld, platformIsMac } from "../utils/cartModifier";
 import {
   OVERLAY_COMPONENTS,
   getDefaultPropsForComponent as getStaticDefaultProps,
@@ -45,6 +46,7 @@ import { BroadcastSwitcherDeck } from "../components/BroadcastSwitcherDeck";
 import { useConsolePreferences } from "../contexts/ConsolePreferencesContext";
 import { RadioPanel } from "../components/RadioPanel";
 import { RecordingPanel } from "../components/RecordingPanel";
+import { TapePanel } from "../components/TapePanel";
 import { SimulcastStatusRail } from "../components/SimulcastStatusRail";
 import {
   PlaylistSheetPanel,
@@ -56,7 +58,6 @@ import type {
   ComponentPropsMap,
   InstantItem,
   InstantPlaybackState,
-  Layout,
   MediaGroup,
   MediaLabel,
   MixerTakeApplyingMap,
@@ -77,6 +78,8 @@ import type {
   PaginatedResponse,
   SongCatalogItem,
 } from "../models/broadcast";
+import { songRequestFailureNotice } from "../utils/songRequestFailure";
+import { failureMessage, responseFailure } from "../utils/responseFailure";
 import {
   DEFAULT_MIXER_TAKE_APPLYING,
   DEFAULT_MIXER_TAKE_PRESETS_DB,
@@ -85,12 +88,12 @@ import {
   FIFTHBELL_AVAILABLE_WEATHER_CITIES,
   INSTANT_PLAYBACK_PULSE_ANIMATION,
   INSTANT_PLAYBACK_SWEEP_ANIMATION,
-  INSTANT_SHORTCUT_KEYS,
   MIXER_TAKE_CHANNELS,
   SONG_PROGRESS_FILL_ANIMATION,
   TAKE_VOLUME_PRESET_FADE_STEP_MIN_MS,
   createEmptyMeterChannel,
   defaultMixerChannelsFromScalars,
+  getInstantShortcutIndex,
   getInstantShortcutLetter,
   isEditableTarget,
   meterLevelToFill,
@@ -162,6 +165,16 @@ export default function Control() {
   const [isLoadingInstants, setIsLoadingInstants] = useState(false);
   const [instantSearch, setInstantSearch] = useState("");
   const [songCatalog, setSongCatalog] = useState<SongCatalogItem[]>([]);
+  // Why the song library or the cartwall did not load, shown with a retry
+  // instead of an empty list (gaulatti/alcantara#253).
+  const [songCatalogLoadError, setSongCatalogLoadError] = useState<
+    string | null
+  >(null);
+  const [instantsLoadError, setInstantsLoadError] = useState<string | null>(
+    null,
+  );
+  // The last refused instant or Stop all, cleared when the next one starts.
+  const [instantError, setInstantError] = useState<string | null>(null);
   const [mediaGroups, setMediaGroups] = useState<MediaGroup[]>([]);
   const [isLoadingMediaGroups, setIsLoadingMediaGroups] = useState(false);
   const [mediaLabels, setMediaLabels] = useState<MediaLabel[]>([]);
@@ -176,7 +189,9 @@ export default function Control() {
   >({});
   const instantDurationByUrlRef = useRef<Record<string, number | null>>({});
   const instantPlaybackTimeoutsRef = useRef<Record<number, number>>({});
-  const [layouts, setLayouts] = useState<Layout[]>([]);
+  // A scene catalog that failed to load is shown, not hidden behind an empty
+  // list.
+  const [sceneCatalogError, setSceneCatalogError] = useState<string | null>(null);
   const componentTypes = OVERLAY_COMPONENTS.map((c) => ({
     type: c.id,
     name: c.name,
@@ -210,20 +225,6 @@ export default function Control() {
   const sceneAttributeRetryTimerRef = useRef<number | null>(null);
   const sceneAttributeFlushKickTimerRef = useRef<number | null>(null);
   const sceneAttributeRetryDelayMsRef = useRef<number>(800);
-  const [editingScene, setEditingScene] = useState<Scene | null>(null);
-
-  const [showSceneModal, setShowSceneModal] = useState(false);
-  const [newSceneName, setNewSceneName] = useState("");
-  const [selectedLayoutId, setSelectedLayoutId] = useState<number | null>(null);
-  const [sceneComponentProps, setSceneComponentProps] = useState<
-    Record<string, any>
-  >({});
-  const [sceneErrors, setSceneErrors] = useState({
-    name: "",
-    layout: "",
-    props: "",
-  });
-  const [isCreatingScene, setIsCreatingScene] = useState(false);
   const [selectedTransitionId, setSelectedTransitionId] =
     useGlobalTransitionId(activeProgramId);
   const consoleWorkspace = consolePreferences.profile.workspace;
@@ -452,7 +453,6 @@ export default function Control() {
 
   useEffect(() => {
     fetchScenes();
-    fetchLayouts();
     fetchComponentTypes();
     fetchSongCatalog();
   }, []);
@@ -474,6 +474,8 @@ export default function Control() {
     });
     instantPlaybackTimeoutsRef.current = {};
     setInstantPlayback({});
+    // A refusal belongs to the program it was made on.
+    setInstantError(null);
     setProgramAudioMeterLevels({
       song: createEmptyMeterChannel(),
       instants: createEmptyMeterChannel(),
@@ -804,6 +806,7 @@ export default function Control() {
             return {
               ...prev,
               activeSceneId: null,
+              activeScene: null,
             };
           });
           return;
@@ -1013,20 +1016,19 @@ export default function Control() {
   const fetchScenes = async () => {
     try {
       const res = await fetch(apiUrl("/scenes"));
-      const data = await res.json();
-      setScenes(data);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as unknown;
+      if (!Array.isArray(data)) {
+        throw new Error("Scenes answer is not a list");
+      }
+      setScenes(data as Scene[]);
+      setSceneCatalogError(null);
     } catch (err) {
+      // Keep the last good list; the message says it may be out of date.
       console.error("Failed to fetch scenes:", err);
-    }
-  };
-
-  const fetchLayouts = async () => {
-    try {
-      const res = await fetch(apiUrl("/layouts"));
-      const data = await res.json();
-      setLayouts(data);
-    } catch (err) {
-      console.error("Failed to fetch layouts:", err);
+      setSceneCatalogError("Scenes could not be loaded. The list may be out of date.");
     }
   };
 
@@ -1039,13 +1041,16 @@ export default function Control() {
       setIsLoadingInstants(true);
       const res = await fetch(apiUrl("/instants"));
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
       const data = (await res.json()) as InstantItem[];
       setInstants(data);
+      setInstantsLoadError(null);
     } catch (err) {
       console.error("Failed to fetch instants:", err);
-      setInstants([]);
+      // The list is the same for every program (it is read without one), so
+      // a failed reload keeps the pads that loaded (gaulatti/alcantara#253).
+      setInstantsLoadError(failureMessage(err));
     } finally {
       setIsLoadingInstants(false);
     }
@@ -1055,13 +1060,15 @@ export default function Control() {
     try {
       const res = await fetch(apiUrl("/songs?limit=0"));
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
       const body = (await res.json()) as PaginatedResponse<SongCatalogItem>;
       setSongCatalog(Array.isArray(body.data) ? body.data : []);
+      setSongCatalogLoadError(null);
     } catch (err) {
       console.error("Failed to fetch songs catalog:", err);
-      setSongCatalog([]);
+      // The library is the station's: a failed reload keeps what it had.
+      setSongCatalogLoadError(failureMessage(err));
     }
   };
 
@@ -1689,7 +1696,7 @@ export default function Control() {
         },
       );
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
 
       const payload =
@@ -1752,7 +1759,7 @@ export default function Control() {
         body: JSON.stringify({ itemId }),
       },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
@@ -1762,7 +1769,7 @@ export default function Control() {
       `/program/${encodeURIComponent(targetProgramId)}/song-queue/${encodeURIComponent(entryId)}`,
       { method: "DELETE" },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
@@ -1776,7 +1783,7 @@ export default function Control() {
         body: JSON.stringify({ entryIds }),
       },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
     applySongQueueMutationResponse(await res.json(), targetProgramId);
   };
 
@@ -1813,7 +1820,28 @@ export default function Control() {
         }),
       },
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await responseFailure(res);
+  };
+
+  // A library song that is not in the rotation, on air now: the same command the rotation take
+  // posts, without changing the rotation (#298).
+  const playLibrarySongNow = async (song: SongCatalogItem) => {
+    const res = await fetch(
+      apiUrl(`/radio/${encodeURIComponent(activeProgramId)}/song`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: song.audioUrl,
+          title: song.title,
+          artist: song.artist,
+          coverUrl: song.coverUrl,
+          durationMs: song.durationMs,
+          songId: song.id,
+        }),
+      },
+    );
+    if (!res.ok) throw await responseFailure(res);
   };
 
   const takeProgramSongOffAir = async (
@@ -1829,7 +1857,7 @@ export default function Control() {
       );
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
       console.log(`[Control] takeProgramSongOffAir response ${res.status}`);
     } catch (err) {
@@ -1916,9 +1944,13 @@ export default function Control() {
       (programScene) => programScene.sceneId === sceneId,
     );
 
+  // TAKE adds a scene the show does not list yet. A refused or failed add
+  // stops the TAKE with the reason, instead of taking a scene the show never
+  // accepted; the show's state is reloaded either way.
   const assignSceneToProgram = async (sceneId: number) => {
+    let response: Response;
     try {
-      await fetch(
+      response = await fetch(
         apiUrl(`/program/${encodeURIComponent(activeProgramId)}/scenes`),
         {
           method: "POST",
@@ -1926,11 +1958,22 @@ export default function Control() {
           body: JSON.stringify({ sceneId }),
         },
       );
-      if (!isProgramRealtimeConnected) {
-        await fetchProgramState(activeProgramId);
-      }
     } catch (err) {
       console.error("Failed to assign scene to program:", err);
+      throw new Error("The scene could not be added to this show. Check the connection and try again.");
+    }
+    if (!isProgramRealtimeConnected) {
+      await fetchProgramState(activeProgramId);
+    }
+    if (!response.ok) {
+      let reason = "";
+      try {
+        const body = (await response.json()) as { message?: unknown };
+        if (typeof body.message === "string") reason = body.message.trim();
+      } catch {
+        // No readable reason in the answer.
+      }
+      throw new Error(reason ? `The scene could not be added to this show: ${reason}` : "The scene could not be added to this show.");
     }
   };
 
@@ -2116,6 +2159,8 @@ export default function Control() {
   };
 
   const triggerInstant = async (instantId: number) => {
+    const targetProgramId = activeProgramId;
+    setInstantError(null);
     try {
       const res = await fetch(
         apiUrl(
@@ -2127,7 +2172,7 @@ export default function Control() {
       );
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
 
       const startedAtMs = Date.now();
@@ -2164,10 +2209,18 @@ export default function Control() {
       }
     } catch (err) {
       console.error("Failed to trigger instant:", err);
+      // A refusal for a program the operator has left is not shown.
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      const name =
+        instants.find((instant) => instant.id === instantId)?.name ??
+        "the instant";
+      setInstantError(`Could not play ${name}: ${failureMessage(err)}`);
     }
   };
 
   const stopAllInstants = async () => {
+    const targetProgramId = activeProgramId;
+    setInstantError(null);
     try {
       const res = await fetch(
         apiUrl(
@@ -2179,7 +2232,7 @@ export default function Control() {
       );
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw await responseFailure(res);
       }
 
       Object.values(instantPlaybackTimeoutsRef.current).forEach((timeoutId) => {
@@ -2189,6 +2242,8 @@ export default function Control() {
       setInstantPlayback({});
     } catch (err) {
       console.error("Failed to stop all instants:", err);
+      if (targetProgramId !== activeProgramIdRef.current) return;
+      setInstantError(`Could not stop all instants: ${failureMessage(err)}`);
     }
   };
 
@@ -2682,66 +2737,6 @@ export default function Control() {
     };
   }, [flushQueuedSceneAttributeSaves, flushSceneAttributeAutosaveForScene]);
 
-  const openSceneModal = () => {
-    if (layouts.length === 0) {
-      alert("Please create a layout first");
-      return;
-    }
-    setEditingScene(null);
-    setNewSceneName("");
-    setSelectedLayoutId(null);
-    setSceneComponentProps({});
-    setSceneErrors({ name: "", layout: "", props: "" });
-    setShowSceneModal(true);
-  };
-
-  const openEditSceneModal = (scene: Scene) => {
-    setEditingScene(scene);
-    setNewSceneName(scene.name);
-    setSelectedLayoutId(scene.layoutId);
-
-    try {
-      const metadata = parseSceneMetadata(scene.metadata);
-      if (
-        metadata &&
-        typeof metadata === "object" &&
-        !Array.isArray(metadata)
-      ) {
-        setSceneComponentProps(buildComponentPropsForScene(scene));
-      } else {
-        handleLayoutSelect(scene.layoutId);
-      }
-    } catch (err) {
-      console.error("Failed to parse scene metadata:", err);
-      handleLayoutSelect(scene.layoutId);
-    }
-
-    setSceneErrors({ name: "", layout: "", props: "" });
-    setShowSceneModal(true);
-  };
-
-  const closeSceneModal = () => {
-    setShowSceneModal(false);
-    setEditingScene(null);
-    setNewSceneName("");
-    setSelectedLayoutId(null);
-    setSceneComponentProps({});
-    setSceneErrors({ name: "", layout: "", props: "" });
-  };
-
-  const handleLayoutSelect = (layoutId: number) => {
-    setSelectedLayoutId(layoutId);
-    const layout = layouts.find((l) => l.id === layoutId);
-    if (layout) {
-      const components = layout.componentType.split(",").filter(Boolean);
-      const initialProps: Record<string, any> = {};
-      components.forEach((comp) => {
-        initialProps[comp] = getDefaultPropsForComponent(comp);
-      });
-      setSceneComponentProps(initialProps);
-    }
-  };
-
   const getDefaultPropsForComponent = (componentType: string): any => {
     const base = getStaticDefaultProps(componentType);
     switch (componentType) {
@@ -2785,109 +2780,6 @@ export default function Control() {
     }
   };
 
-  const updateComponentProp = (
-    componentType: string,
-    propName: string,
-    value: any,
-  ) => {
-    setSceneComponentProps((prev) => ({
-      ...prev,
-      [componentType]: {
-        ...prev[componentType],
-        [propName]: value,
-      },
-    }));
-  };
-
-  const replaceSceneComponentProps = (
-    componentType: string,
-    nextProps: any,
-  ) => {
-    setSceneComponentProps((prev) => ({
-      ...prev,
-      [componentType]: nextProps,
-    }));
-  };
-
-  const createScene = async () => {
-    const errors = { name: "", layout: "", props: "" };
-
-    if (!newSceneName.trim()) {
-      errors.name = "Please enter a scene name";
-    }
-
-    if (!selectedLayoutId) {
-      errors.layout = "Please select a layout";
-    }
-
-    if (errors.name || errors.layout) {
-      setSceneErrors(errors);
-      return;
-    }
-
-    setIsCreatingScene(true);
-
-    try {
-      const existingMetadata = editingScene
-        ? parseSceneMetadata(editingScene.metadata)
-        : {};
-      const payload = {
-        name: newSceneName,
-        layoutId: selectedLayoutId,
-        metadata: withIndependentProgramClockMetadata({
-          ...existingMetadata,
-          ...sceneComponentProps,
-        }),
-      };
-
-      const url = editingScene
-        ? apiUrl(`/scenes/${editingScene.id}`)
-        : apiUrl("/scenes");
-      const method = editingScene ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      await fetchScenes();
-      closeSceneModal();
-    } catch (err) {
-      console.error("Failed to save scene:", err);
-      setSceneErrors({
-        ...errors,
-        name: "Failed to save scene. Please try again.",
-      });
-    } finally {
-      setIsCreatingScene(false);
-    }
-  };
-
-  const deleteScene = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this scene?")) return;
-
-    try {
-      await fetch(apiUrl(`/scenes/${id}`), {
-        method: "DELETE",
-      });
-      if (selectedScene === id) {
-        setSelectedScene(null);
-        void stageSceneForProgram(null);
-      }
-      fetchScenes();
-      if (!isProgramRealtimeConnected) {
-        fetchProgramState(activeProgramId);
-      }
-    } catch (err) {
-      console.error("Failed to delete scene:", err);
-    }
-  };
-
   useEffect(() => {
     let sceneHotkeyArmedUntil = 0;
 
@@ -2904,12 +2796,8 @@ export default function Control() {
         return;
       }
 
-      if (!event.ctrlKey) {
-        return;
-      }
-
       const match = event.code.match(/^Digit(\d)$/);
-      if (match && Date.now() <= sceneHotkeyArmedUntil) {
+      if (event.ctrlKey && match && Date.now() <= sceneHotkeyArmedUntil) {
         const pressedDigit = Number(match[1]);
         const shortcutIndex = pressedDigit === 0 ? 9 : pressedDigit - 1;
         const shortcutScene = assignedScenes[shortcutIndex];
@@ -2924,15 +2812,12 @@ export default function Control() {
         return;
       }
 
-      if (event.metaKey || event.altKey || event.shiftKey) {
+      // A cart plays on this platform's modifier only (Ctrl on macOS, Alt elsewhere).
+      if (!cartModifierHeld(event, platformIsMac())) {
         return;
       }
 
-      if (!/^[a-z]$/.test(key)) {
-        return;
-      }
-
-      const shortcutIndex = INSTANT_SHORTCUT_KEYS.indexOf(key);
+      const shortcutIndex = getInstantShortcutIndex(key, platformIsMac());
       if (shortcutIndex === -1) {
         return;
       }
@@ -2958,7 +2843,13 @@ export default function Control() {
   ]);
 
   const [radioPlayoutError, setRadioPlayoutError] = useState<string | null>(null);
-  useEffect(() => setRadioPlayoutError(null), [activeProgramId]);
+  // The last song Palazzo could not load (#175). It stays after the next song
+  // starts, so the operator still sees which one was skipped.
+  const [radioSongFailure, setRadioSongFailure] = useState<string | null>(null);
+  useEffect(() => {
+    setRadioPlayoutError(null);
+    setRadioSongFailure(null);
+  }, [activeProgramId]);
 
   const handleProgramEvent = useCallback(
     (data: any) => {
@@ -2972,6 +2863,10 @@ export default function Control() {
         return;
       }
 
+      if (data.type === "song_request_failed") {
+        setRadioSongFailure(songRequestFailureNotice(data));
+        return;
+      }
       if (data.type === "radio_rotation_resume_failed") {
         setRadioPlayoutError(
           "The timed block ended, but continuous fillers could not resume. Check the engine before starting the rotation.",
@@ -3048,6 +2943,7 @@ export default function Control() {
           return {
             ...prev,
             activeSceneId: null,
+            activeScene: null,
           };
         });
         return;
@@ -3350,7 +3246,7 @@ export default function Control() {
     return (
       <RadioPanel
         programId={activeProgramId}
-        playoutError={radioPlayoutError}
+        playoutError={radioPlayoutError ?? radioSongFailure}
         songSequence={programAudioBusSongSequence}
         songQueue={normalizeProgramSongQueue(programAudioBusSettings.songQueue)}
         songCatalog={songCatalog}
@@ -3365,26 +3261,38 @@ export default function Control() {
         onTakeOffAir={async () => {
           await takeProgramSongOffAir(activeProgramId);
         }}
+        onPlaySongNow={playLibrarySongNow}
         instants={instants}
         instantSearch={instantSearch}
         onInstantSearchChange={setInstantSearch}
         onTriggerInstant={(id) => triggerInstant(id)}
         onStopAllInstants={stopAllInstants}
+        instantError={instantError}
+        instantsLoadError={instantsLoadError}
+        onRetryInstants={() => void fetchInstants()}
+        songCatalogLoadError={songCatalogLoadError}
+        onRetrySongCatalog={() => void fetchSongCatalog()}
         instantPlayback={instantPlayback}
         mixer={{
           song: {
             volume: mixerLevels.songMasterVolume,
             muted: mixerLevels.songMuted,
             peak: programAudioMeterLevels.song.peak,
+            vu: programAudioMeterLevels.song.vu,
+            peakHold: programAudioMeterLevels.song.peakHold,
           },
           instants: {
             volume: mixerLevels.instantMasterVolume,
             muted: mixerLevels.instantMuted,
             peak: programAudioMeterLevels.instants.peak,
+            vu: programAudioMeterLevels.instants.vu,
+            peakHold: programAudioMeterLevels.instants.peakHold,
           },
           main: {
             volume: mixerLevels.mainMasterVolume,
             peak: programAudioMeterLevels.main.peak,
+            vu: programAudioMeterLevels.main.vu,
+            peakHold: programAudioMeterLevels.main.peakHold,
           },
           saving: isSavingMixerLevels,
           error: mixerSaveError,
@@ -3421,6 +3329,31 @@ export default function Control() {
       </style>
       {programState?.type === "both" ? (
         <SimulcastStatusRail programId={activeProgramId} />
+      ) : null}
+      {sceneCatalogError ? (
+        <div role="alert" className="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-button)] border border-terracotta/40 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p>{sceneCatalogError}</p>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void fetchScenes();
+            }}
+          >
+            Retry
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSceneCatalogError(null);
+            }}
+          >
+            Dismiss
+          </Button>
+        </div>
       ) : null}
       <BroadcastSwitcherDeck
         programId={activeProgramId}
@@ -3488,7 +3421,12 @@ export default function Control() {
               onToggle={(event) => setRecordingOpen(event.currentTarget.open)}
             >
               <summary>Program recording</summary>
-              {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+              {recordingOpen && (
+                <>
+                  <TapePanel programId={activeProgramId} />
+                  <RecordingPanel programId={activeProgramId} />
+                </>
+              )}
             </details>
           }
         />
@@ -3501,7 +3439,12 @@ export default function Control() {
             <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-text-secondary">
               Program recording
             </summary>
-            {recordingOpen && <RecordingPanel programId={activeProgramId} />}
+            {recordingOpen && (
+              <>
+                <TapePanel programId={activeProgramId} />
+                <RecordingPanel programId={activeProgramId} />
+              </>
+            )}
           </details>
           <div
             className={`console-scene-workspace w-full ${consoleWorkspace === "compact" ? "hidden" : ""}`}
@@ -3559,7 +3502,6 @@ export default function Control() {
           <PlaybackBar
             sequence={programAudioBusSongSequence}
             programSongPlayback={programSongPlaybackState}
-            sceneQuickActions={[]}
             onChange={(nextSequence) => {
               void saveProgramAudioBusSongSequence(nextSequence);
             }}
@@ -3571,9 +3513,6 @@ export default function Control() {
             }}
             onStopAllInstants={() => {
               void stopAllInstants();
-            }}
-            onStageScene={(sceneId) => {
-              void stageSceneForProgram(sceneId);
             }}
           />
         </div>

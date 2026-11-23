@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
 import {
+  COMMAND_RETRY_BASE_MS,
+  COMMAND_RETRY_MAX_MS,
+  NO_PLAYBACK_BOUND_MS,
   SongExecutionEngine,
   type SongEngineEvent,
 } from './song-execution.engine';
@@ -67,6 +70,28 @@ function idle(sequence = 1): PalazzoPlaybackState {
       instant: { rms: 0, peak: 0 },
       output: { rms: 0, peak: 0 },
     },
+    live: { onAir: false },
+  };
+}
+
+function playing(
+  requestId: string,
+  url: string,
+  sequence = 2,
+): PalazzoPlaybackState {
+  return {
+    ...idle(sequence),
+    status: 'playing',
+    track: {
+      playbackRequestId: requestId,
+      url,
+      title: 'Fictional',
+      artist: 'Fictional',
+      coverUrl: null,
+      startedAt: new Date().toISOString(),
+    } as unknown as PalazzoPlaybackState['track'],
+    positionSeconds: 30,
+    remainingSeconds: 60,
   };
 }
 
@@ -121,11 +146,16 @@ function setup(
   };
   const metrics = {
     recordTrackTransition: jest.fn(),
+    recordCursorWrite: jest.fn(),
+    recordInheritedAdoption: jest.fn(),
     recordIntroTransition: jest.fn(),
     recordSongQueueAction: jest.fn(),
     recordSongQueueDepth: jest.fn(),
     recordHighRotationAction: jest.fn(),
     recordHighRotationFavorites: jest.fn(),
+    recordAutomaticPrograms: jest.fn(),
+    recordEngineResync: jest.fn(),
+    recordEngineDegraded: jest.fn(),
   };
   const engine = new SongExecutionEngine(
     radioService as unknown as RadioService,
@@ -137,7 +167,15 @@ function setup(
   const events: SongEngineEvent[] = [];
   engine.setBroadcastHandler((event) => events.push(event));
   let reconciled = true;
-  engine.setPalazzoTelemetry({ isReconciled: () => reconciled });
+  // What Palazzo reports when the engine asks for its state (#230).
+  const palazzo: { state: PalazzoPlaybackState | null } = { state: null };
+  const currentState = jest.fn((_programId: string) =>
+    Promise.resolve(palazzo.state),
+  );
+  engine.setPalazzoTelemetry({
+    isReconciled: () => reconciled,
+    currentState,
+  });
   engine.registerRadioProgram('radio-1');
   return {
     engine,
@@ -151,6 +189,8 @@ function setup(
     setTelemetryReconciled: (value: boolean) => {
       reconciled = value;
     },
+    palazzo,
+    currentState,
   };
 }
 
@@ -670,6 +710,96 @@ describe('SongExecutionEngine high rotation selection', () => {
 });
 
 describe('SongExecutionEngine authoritative track end', () => {
+  // gaulatti/alcantara#230: the backend restarted while Palazzo played a track
+  // the new engine could not adopt (here an announced song outside the
+  // sequence), so it withheld commands. When that track ended, it waited for an
+  // idle snapshot that Palazzo only sends on a new SSE connection: the radio
+  // played no programmed song for ten hours. The end must end the wait.
+  it('resumes the rotation when a foreign track that a restart found on air ends', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('inherited-intro-song', 'https://example.test/announced.mp3'),
+    );
+    await flush(40);
+    expect(stateOf(ctx.engine).busyWithForeignTrack).toBe(true);
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+
+    // The foreign track ends; the connection stays up, so no snapshot comes by
+    // itself. Asked for its state, Palazzo reports idle.
+    ctx.palazzo.state = idle(3);
+    end(ctx, 'inherited-intro-song');
+    await flush(80);
+
+    expect(ctx.currentState).toHaveBeenCalledWith('radio-1');
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'resumed',
+    );
+    expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+  });
+
+  // 2026-11-21 00:28Z: a deploy restarted the backend mid-song. The track was
+  // foreign at boot (no sequence loaded yet) and ended 12 s later. The state
+  // read for the foreign end still named the ended track; the engine adopted
+  // it, and every watchdog resume after that ignored it as an already-ended
+  // song, so the filler held the air for five minutes.
+  it('never adopts a track whose end it accepted, even when the state read after the end still names it', async () => {
+    const ctx = setup();
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('inherited', 'https://example.test/b.mp3'),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    await flush(40);
+    expect(stateOf(ctx.engine).busyWithForeignTrack).toBe(true);
+    // The end arrives; Palazzo's state read still names the ended track.
+    ctx.palazzo.state = playing('inherited', 'https://example.test/b.mp3', 3);
+    end(ctx, 'inherited');
+    await flush(80);
+    expect(ctx.engine.getPlaybackState('radio-1')?.playbackRequestId).not.toBe(
+      'inherited',
+    );
+    expect(playedUrls(ctx)).toHaveLength(1);
+  });
+
+  it('drops an ended song held as active and commands one when Palazzo is idle past the watchdog bound', async () => {
+    const ctx = setup();
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('inherited', 'https://example.test/b.mp3'),
+    );
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    await flush(40);
+    // Simulates the state before the fix: the ended track was adopted, so the
+    // engine holds an active song whose id it has already seen end.
+    ctx.palazzo.state = playing('inherited', 'https://example.test/b.mp3', 3);
+    end(ctx, 'inherited');
+    await flush(80);
+    const held = stateOf(ctx.engine);
+    held.activeSong = {
+      ...(held.activeSong ?? {}),
+      playbackRequestId: 'inherited',
+      audioUrl: 'https://example.test/b.mp3',
+    } as never;
+    ctx.radioService.playSong.mockClear();
+    // Palazzo idle (no live input) for longer than the bound.
+    ctx.palazzo.state = { ...idle(4), live: { onAir: false } };
+    await ctx.engine.checkPlayback();
+    jest.setSystemTime(Date.now() + 46_000);
+    await ctx.engine.checkPlayback();
+    await flush(80);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'resumed',
+    );
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(ctx.engine.getPlaybackState('radio-1')?.playbackRequestId).not.toBe(
+      'inherited',
+    );
+  });
+
   it('ignores an end event without a request id', async () => {
     const ctx = setup();
     await startAutomatic(ctx);
@@ -1117,3 +1247,629 @@ const FAVORITES_FOR_MANUAL = sequenceOf([
   { ...SONG_A, id: 'fav', highRotation: true },
   SONG_B,
 ]);
+
+// gaulatti/alcantara#230: a watchdog on Palazzo's own report of no playback.
+describe('SongExecutionEngine playback watchdog', () => {
+  const tick = async (ctx: ReturnType<typeof setup>) => {
+    await ctx.engine.checkPlayback();
+    await flush(80);
+  };
+
+  it('starts the sequence when an empty engine and an idle Palazzo stay that way past the bound', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.palazzo.state = idle(5);
+    await tick(ctx);
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS - 1);
+    await tick(ctx);
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    await tick(ctx);
+    expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'resumed',
+    );
+  });
+
+  it('ends a song the engine still believes in when Palazzo reports no playback, and starts the next', async () => {
+    const ctx = setup();
+    const first = await startAutomatic(ctx);
+    ctx.palazzo.state = idle(9);
+    await tick(ctx);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(ctx);
+    expect(activeRequestId(ctx.engine)).not.toBe(first);
+    expect(playedUrls(ctx)).toEqual([
+      'https://example.test/a.mp3',
+      'https://example.test/b.mp3',
+    ]);
+  });
+
+  it('does nothing while Palazzo reports playback, and restarts the bound when it does', async () => {
+    const ctx = setup();
+    await startAutomatic(ctx);
+    ctx.palazzo.state = idle(9);
+    await tick(ctx);
+    ctx.palazzo.state = playing(
+      activeRequestId(ctx.engine),
+      'https://example.test/a.mp3',
+      10,
+    );
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(ctx);
+    ctx.palazzo.state = idle(11);
+    await tick(ctx);
+    expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+  });
+
+  it('never acts in manual mode, while a command is pending, frozen, or with a stale stream', async () => {
+    const manual = setup();
+    manual.engine.handleSequenceUpdated(
+      'radio-1',
+      sequenceOf([SONG_A], 'manual'),
+    );
+    manual.palazzo.state = idle(5);
+    await tick(manual);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(manual);
+    expect(manual.radioService.playSong).not.toHaveBeenCalled();
+
+    // A command sent after the first idle read restarts the bound.
+    const pending = setup();
+    await startAutomatic(pending);
+    pending.palazzo.state = idle(5);
+    await tick(pending);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS - 1000);
+    stateOf(pending.engine).noPlaybackSince = null; // as a new command does
+    jest.advanceTimersByTime(1000);
+    await tick(pending);
+    expect(pending.radioService.playSong).toHaveBeenCalledTimes(1);
+
+    const frozen = setup();
+    frozen.engine.handleSequenceUpdated('radio-1', AUTO);
+    stateOf(frozen.engine).frozen = true;
+    frozen.palazzo.state = idle(5);
+    await tick(frozen);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(frozen);
+    expect(frozen.radioService.playSong).not.toHaveBeenCalled();
+
+    const stale = setup();
+    stale.engine.handleSequenceUpdated('radio-1', AUTO);
+    stale.setTelemetryReconciled(false);
+    stale.palazzo.state = idle(5);
+    await tick(stale);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(stale);
+    expect(stale.radioService.playSong).not.toHaveBeenCalled();
+    expect(stale.currentState).not.toHaveBeenCalled();
+  });
+
+  // GM's two conditions on #230: the bound covers a song still being prepared,
+  // and nothing on the air (intro, instant, live input) is read as a stall.
+  const stays = async (state: PalazzoPlaybackState) => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.palazzo.state = state;
+    await tick(ctx);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS * 3);
+    await tick(ctx);
+    return ctx;
+  };
+
+  it("sits above Palazzo's 29 s song request limit with margin", () => {
+    expect(NO_PLAYBACK_BOUND_MS).toBeGreaterThanOrEqual(29_000 + 15_000);
+  });
+
+  it('does not act on a song still being prepared within the request limit', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.palazzo.state = idle(5);
+    await tick(ctx);
+    jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+    await tick(ctx);
+    // The watchdog sent the first song; Palazzo keeps reporting idle while
+    // it loads, up to its 29 s limit. No second command in that time.
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    await tick(ctx);
+    jest.advanceTimersByTime(29_000);
+    await tick(ctx);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes no action while an intro, an instant or the live input is on the air', async () => {
+    const intro = await stays({
+      ...idle(5),
+      intro: {
+        playbackId: 'intro-1',
+        parentPlaybackId: 'parent-1',
+        programId: 'radio-1',
+        playbackRequestId: 'intro-request-1',
+        url: 'https://example.test/intro.mp3',
+        startedAt: new Date().toISOString(),
+        status: 'playing',
+      },
+    });
+    expect(intro.radioService.playSong).not.toHaveBeenCalled();
+
+    const instant = await stays({
+      ...idle(5),
+      levels: { ...idle(5).levels, instant: { rms: 0.2, peak: 0.4 } },
+    });
+    expect(instant.radioService.playSong).not.toHaveBeenCalled();
+    const instantPeakOnly = await stays({
+      ...idle(5),
+      levels: { ...idle(5).levels, instant: { rms: 0, peak: 0.1 } },
+    });
+    expect(instantPeakOnly.radioService.playSong).not.toHaveBeenCalled();
+
+    const live = await stays({ ...idle(5), live: { onAir: true } });
+    expect(live.radioService.playSong).not.toHaveBeenCalled();
+    expect(live.metrics.recordEngineResync).not.toHaveBeenCalledWith(
+      'watchdog',
+      'undecided',
+    );
+  });
+
+  it('holds when Palazzo cannot rule a live show out or reports itself degraded', async () => {
+    const { live: _omitted, ...older } = idle(5);
+    const unknown = await stays(older);
+    expect(unknown.radioService.playSong).not.toHaveBeenCalled();
+    expect(unknown.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'undecided',
+    );
+
+    const degraded = await stays({ ...idle(5), availability: 'degraded' });
+    expect(degraded.radioService.playSong).not.toHaveBeenCalled();
+    expect(degraded.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'undecided',
+    );
+  });
+
+  it('counts a state it cannot read and acts on nothing', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.palazzo.state = null;
+    await tick(ctx);
+    ctx.currentState.mockRejectedValueOnce(new Error('unreachable'));
+    await tick(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'unavailable',
+    );
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+  });
+});
+
+describe('SongExecutionEngine reads of Palazzo state (#230)', () => {
+  const foreignThenEnd = async (ctx: ReturnType<typeof setup>) => {
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing('announced', 'https://example.test/announced.mp3'),
+    );
+    await flush(40);
+    end(ctx, 'announced');
+    await flush(80);
+  };
+
+  it('counts a state it cannot read after a foreign end and starts nothing', async () => {
+    const ctx = setup();
+    ctx.currentState.mockRejectedValueOnce(new Error('unreachable'));
+    await foreignThenEnd(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'unavailable',
+    );
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+  });
+
+  it('reconciles from a playing state after a foreign end without starting a song', async () => {
+    const ctx = setup();
+    ctx.palazzo.state = playing('another', 'https://example.test/other.mp3', 9);
+    await foreignThenEnd(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'playing',
+    );
+    expect(ctx.radioService.playSong).not.toHaveBeenCalled();
+  });
+
+  it('treats a telemetry source that cannot read state as unavailable', async () => {
+    const ctx = setup();
+    ctx.engine.setPalazzoTelemetry({ isReconciled: () => true });
+    await foreignThenEnd(ctx);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'foreign_ended',
+      'unavailable',
+    );
+    await ctx.engine.checkPlayback();
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'unavailable',
+    );
+  });
+
+  it('skips a registered radio program that has no engine state yet', async () => {
+    const ctx = setup();
+    ctx.engine.registerRadioProgram('radio-2');
+    await expect(ctx.engine.checkPlayback()).resolves.toBeUndefined();
+    expect(ctx.currentState).not.toHaveBeenCalled();
+  });
+});
+
+// gaulatti/alcantara#230 acceptance: a backend restarted mid-song, with an intro
+// and without, resumes the rotation within the bound whether the song ends
+// while the backend is down or while it is starting.
+describe('SongExecutionEngine after a restart mid-song', () => {
+  const withIntro = (state: PalazzoPlaybackState): PalazzoPlaybackState => ({
+    ...state,
+    intro: {
+      playbackId: 'intro-1',
+      status: 'ended',
+      url: 'https://example.test/intro.mp3',
+    } as unknown as PalazzoPlaybackState['intro'],
+  });
+
+  for (const intro of [false, true]) {
+    const label = intro ? 'with an intro' : 'without an intro';
+
+    it(`song ended while the backend was down (${label}): the connect snapshot is idle and the next song starts`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      ctx.engine.handlePalazzoSnapshot('radio-1', idle(4));
+      await flush(60);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+    });
+
+    it(`song ends while the backend is starting (${label}): an adopted song advances on its end`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const snap = playing('inherited', 'https://example.test/a.mp3');
+      ctx.engine.handlePalazzoSnapshot(
+        'radio-1',
+        intro ? withIntro(snap) : snap,
+      );
+      await flush(40);
+      end(ctx, 'inherited');
+      await flush(80);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/b.mp3']);
+    });
+
+    it(`song ends while the backend is starting (${label}): a song it cannot adopt still lets the rotation resume`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const snap = playing('announced', 'https://example.test/announced.mp3');
+      ctx.engine.handlePalazzoSnapshot(
+        'radio-1',
+        intro ? withIntro(snap) : snap,
+      );
+      await flush(40);
+      ctx.palazzo.state = idle(6);
+      end(ctx, 'announced');
+      await flush(80);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+    });
+
+    it(`the end event itself is lost (${label}): the watchdog resumes within the bound`, async () => {
+      const ctx = setup();
+      ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+      const snap = playing('announced', 'https://example.test/announced.mp3');
+      ctx.engine.handlePalazzoSnapshot(
+        'radio-1',
+        intro ? withIntro(snap) : snap,
+      );
+      await flush(40);
+      // No track.ended arrives; Palazzo goes idle and says so when asked.
+      ctx.palazzo.state = idle(7);
+      await ctx.engine.checkPlayback();
+      jest.advanceTimersByTime(NO_PLAYBACK_BOUND_MS);
+      await ctx.engine.checkPlayback();
+      await flush(80);
+      expect(playedUrls(ctx)).toEqual(['https://example.test/a.mp3']);
+    });
+  }
+});
+
+// gaulatti/alcantara#230, 2026-11-20 20:13Z: every Palazzo restart unfroze
+// automation before Palazzo could play; the first command failed and nothing
+// followed it until a person restarted the backend.
+describe('SongExecutionEngine after a failed song command', () => {
+  const failFirst = async (failures: number) => {
+    const ctx = setup();
+    for (let i = 0; i < failures; i++)
+      ctx.radioService.playSong.mockResolvedValueOnce({ ok: false });
+    ctx.palazzo.state = idle(5);
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+    await flush(80);
+    return ctx;
+  };
+
+  it("resumes from Palazzo's state after the base delay", async () => {
+    const ctx = await failFirst(1);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS - 1);
+    await flush(60);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(1);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'command_failed',
+      'resumed',
+    );
+  });
+
+  it('backs off while commands keep failing, up to the cap', async () => {
+    const ctx = await failFirst(5);
+    let expected = 1;
+    for (const delay of [2_000, 4_000, 8_000, 16_000, COMMAND_RETRY_MAX_MS]) {
+      jest.advanceTimersByTime(delay - 1);
+      await flush(60);
+      expect(ctx.radioService.playSong).toHaveBeenCalledTimes(expected);
+      jest.advanceTimersByTime(1);
+      await flush(80);
+      expected += 1;
+      expect(ctx.radioService.playSong).toHaveBeenCalledTimes(expected);
+    }
+    // The sixth command (the fifth retry) succeeded; no retry is pending.
+    expect(stateOf(ctx.engine).commandRetryTimer).toBeNull();
+    expect(stateOf(ctx.engine).activeSong).not.toBeNull();
+  });
+
+  it('starts the backoff over once a song is on the air', async () => {
+    const ctx = await failFirst(1);
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    const second = activeRequestId(ctx.engine);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing(second, 'https://example.test/b.mp3', 6),
+    );
+    await flush(40);
+    expect(stateOf(ctx.engine).commandRetries).toBe(0);
+  });
+
+  it('stands down when something else has taken over, and in manual mode', async () => {
+    const taken = await failFirst(1);
+    taken.engine.handlePalazzoSnapshot('radio-1', idle(6));
+    await flush(80);
+    const calls = taken.radioService.playSong.mock.calls.length;
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(taken.radioService.playSong).toHaveBeenCalledTimes(calls);
+
+    const frozen = await failFirst(1);
+    stateOf(frozen.engine).frozen = true;
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(frozen.radioService.playSong).toHaveBeenCalledTimes(1);
+
+    const stale = await failFirst(1);
+    stale.setTelemetryReconciled(false);
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(stale.radioService.playSong).toHaveBeenCalledTimes(1);
+
+    const manual = setup();
+    manual.radioService.playSong.mockResolvedValueOnce({ ok: false });
+    manual.engine.handleSequenceUpdated(
+      'radio-1',
+      sequenceOf([SONG_A, SONG_B], 'manual'),
+    );
+    manual.engine.handlePalazzoSnapshot('radio-1', idle());
+    await manual.engine.playNow?.('radio-1');
+    await flush(80);
+    jest.advanceTimersByTime(COMMAND_RETRY_MAX_MS);
+    await flush(80);
+    expect(stateOf(manual.engine).commandRetryTimer).toBeNull();
+  });
+
+  it('retries in shuffle too, keeps one retry pending, and needs a sequence', async () => {
+    const shuffle = setup();
+    shuffle.radioService.playSong.mockResolvedValueOnce({ ok: false });
+    shuffle.palazzo.state = idle(5);
+    shuffle.engine.handleSequenceUpdated(
+      'radio-1',
+      sequenceOf([SONG_A, SONG_B], 'shuffle'),
+    );
+    shuffle.engine.handlePalazzoSnapshot('radio-1', idle());
+    await flush(80);
+    const timer = stateOf(shuffle.engine).commandRetryTimer;
+    expect(timer).not.toBeNull();
+    // A second failure while the retry waits schedules no second one.
+    const engine = shuffle.engine as unknown as {
+      scheduleCommandRetry(id: string, state: unknown): void;
+    };
+    engine.scheduleCommandRetry('radio-1', stateOf(shuffle.engine));
+    expect(stateOf(shuffle.engine).commandRetryTimer).toBe(timer);
+    expect(stateOf(shuffle.engine).commandRetries).toBe(1);
+
+    const none = setup();
+    const bare = {
+      sequence: null,
+      commandRetryTimer: null,
+      commandRetries: 0,
+    };
+    engine.scheduleCommandRetry.call(none.engine, 'radio-1', bare);
+    expect(bare.commandRetryTimer).toBeNull();
+    expect(bare.commandRetries).toBe(0);
+  });
+
+  // Tonight's case end to end: Palazzo restarts under a playing song, the
+  // engine freezes and unfreezes, its first commands land before Palazzo can
+  // play and fail, and the retries bring a song on the air with nobody acting.
+  const status = (connection: string) =>
+    ({ programId: 'radio-1', connection }) as never;
+
+  it('recovers a Palazzo restart: commands fail, freeze, unfreeze, song', async () => {
+    const ctx = setup();
+    const first = await startAutomatic(ctx);
+    ctx.engine.handlePalazzoSnapshot(
+      'radio-1',
+      playing(first, 'https://example.test/a.mp3', 3),
+    );
+    await flush(40);
+
+    ctx.engine.handlePalazzoStatus('radio-1', status('unavailable'));
+    expect(stateOf(ctx.engine).frozen).toBe(true);
+    ctx.engine.handlePalazzoStatus('radio-1', status('connected'));
+    ctx.radioService.playSong
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: false });
+    ctx.palazzo.state = { ...idle(1), bootId: 'boot-2' };
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...idle(1),
+      bootId: 'boot-2',
+    });
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+    expect(stateOf(ctx.engine).activeSong).toBeNull();
+
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(3);
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS * 2);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(4);
+    const onAir = activeRequestId(ctx.engine);
+    ctx.engine.handlePalazzoSnapshot('radio-1', {
+      ...playing(onAir, playedUrls(ctx)[3], 2),
+      bootId: 'boot-2',
+    });
+    await flush(40);
+    expect(stateOf(ctx.engine).commandRetries).toBe(0);
+    expect(stateOf(ctx.engine).commandRetryTimer).toBeNull();
+  });
+
+  it('a retry that meets a freeze stands down, and the unfreeze path resumes', async () => {
+    const ctx = await failFirst(1);
+    ctx.engine.handlePalazzoStatus('radio-1', status('unavailable'));
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+    expect(stateOf(ctx.engine).commandRetryTimer).toBeNull();
+    // Nothing re-arms the retry; the unfreeze and its snapshot start the song.
+    ctx.engine.handlePalazzoStatus('radio-1', status('connected'));
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle(9));
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(2);
+    expect(stateOf(ctx.engine).activeSong).not.toBeNull();
+  });
+
+  it('clears a pending retry when the module stops', async () => {
+    const ctx = await failFirst(1);
+    expect(stateOf(ctx.engine).commandRetryTimer).not.toBeNull();
+    ctx.engine.onModuleDestroy();
+    expect(stateOf(ctx.engine).commandRetryTimer).toBeNull();
+    jest.advanceTimersByTime(COMMAND_RETRY_BASE_MS);
+    await flush(80);
+    expect(ctx.radioService.playSong).toHaveBeenCalledTimes(1);
+  });
+});
+
+// gaulatti/alcantara#237: every engine path that degrades instead of failing
+// says so once at warn, with the program and the error class only, and counts.
+describe('degraded engine paths are logged and counted', () => {
+  const degraded = (ctx: ReturnType<typeof setup>) => {
+    const warn = jest
+      .spyOn(ctx.engine['logger'], 'warn')
+      .mockImplementation(() => undefined);
+    return warn;
+  };
+
+  it('an unreadable Palazzo state at resync', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    ctx.currentState.mockRejectedValueOnce(new TypeError('secret detail'));
+    await ctx.engine['resync']('radio-1', 'watchdog');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'Resync could not read Palazzo state for radio-1 (TypeError)',
+    );
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+      'telemetry_state',
+    );
+    expect(ctx.metrics.recordEngineResync).toHaveBeenCalledWith(
+      'watchdog',
+      'unavailable',
+    );
+  });
+
+  it('unreadable radio settings when an announced bumper ends', async () => {
+    const ctx = setup();
+    const state = ctx.engine['ensureState']('radio-1');
+    state.announcement = {
+      status: 'accepted',
+      forRequestId: 'ended-1',
+      bumper: { index: 0, name: 'Spot' },
+    } as never;
+    state.nextBumperIdx = 4;
+    const warn = degraded(ctx);
+    ctx.radioService.getRadioSettings.mockRejectedValueOnce(
+      new Error('secret detail'),
+    );
+    await ctx.engine['bumperAtEnd']('radio-1', 'ended-1');
+    expect(state.nextBumperIdx).toBe(4);
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes('radio settings unreadable'),
+      ),
+    ).toEqual([
+      [
+        'Bumper sequence not advanced on radio-1: radio settings unreadable (Error)',
+      ],
+    ]);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+      'bumper_settings',
+    );
+  });
+
+  it('a bumper attempt that fails before its send', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    ctx.radioService.getRadioSettings.mockRejectedValueOnce(
+      new RangeError('secret detail'),
+    );
+    await ctx.engine['maybeBumper']('radio-1');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'Bumper attempt failed before its send on radio-1 (RangeError)',
+    );
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledTimes(1);
+    expect(ctx.metrics.recordEngineDegraded).toHaveBeenCalledWith(
+      'bumper_attempt',
+    );
+    expect(ctx.radioService.playInstant).not.toHaveBeenCalled();
+  });
+
+  it('names an Error without a name as Error', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    const nameless = new Error('secret detail');
+    nameless.name = '';
+    ctx.currentState.mockRejectedValueOnce(nameless);
+    await ctx.engine['resync']('radio-1', 'watchdog');
+    expect(warn).toHaveBeenCalledWith(
+      'Resync could not read Palazzo state for radio-1 (Error)',
+    );
+  });
+
+  it('never logs the error message', async () => {
+    const ctx = setup();
+    const warn = degraded(ctx);
+    ctx.currentState.mockRejectedValueOnce('a thrown string');
+    await ctx.engine['resync']('radio-1', 'watchdog');
+    expect(warn).toHaveBeenCalledWith(
+      'Resync could not read Palazzo state for radio-1 (string)',
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret');
+  });
+});

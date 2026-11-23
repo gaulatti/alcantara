@@ -31,7 +31,7 @@ export const ChyronHolder: React.FC<ChyronHolderProps> = ({ text = '', show = fa
   }
 
   return (
-    <div className={`chyron-holder ${visible ? 'chyron-visible' : ''}`}>
+    <div className='chyron-holder chyron-visible'>
       <div className='chyron-content'>
         <div className={`chyron-text ${isChanging ? 'is-changing' : ''}`}>{displayText}</div>
       </div>

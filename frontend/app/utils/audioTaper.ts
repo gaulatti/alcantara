@@ -3,7 +3,8 @@ interface TaperPoint {
   db: number;
 }
 
-const CONSOLE_SILENCE_DB = -80;
+/** The console's silence floor: a fader at the bottom (position 0) reads as −∞. */
+export const CONSOLE_SILENCE_DB = -80;
 const METER_FLOOR_DB = -24;
 const METER_VISUAL_CURVE = 1.6;
 const CONSOLE_TAPER: TaperPoint[] = [

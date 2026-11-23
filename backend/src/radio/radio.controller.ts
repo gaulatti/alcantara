@@ -103,7 +103,7 @@ export class RadioController {
 
   @Get(':programId/palazzo-status')
   async getPalazzoStatus(@Param('programId') programId: string) {
-    return this.palazzoTelemetry.getStatus(programId);
+    return this.palazzoTelemetry.getStatusWithReason(programId);
   }
 
   @Get(':programId/output-confidence')
@@ -146,6 +146,11 @@ export class RadioController {
     return this.nowPlayingPublisherService.listConsumers(programId);
   }
 
+  @Get(':programId/now-playing-publishing')
+  nowPlayingPublishing() {
+    return { publishing: this.nowPlayingPublisherService.outboundPublishing() };
+  }
+
   @Put(':programId/now-playing-consumers')
   @RequirePermission(ALCANTARA_PERMISSIONS.radio.manage)
   async replaceNowPlayingConsumers(
@@ -161,7 +166,9 @@ export class RadioController {
         data.consumers,
       );
     } catch (err) {
-      throw new BadRequestException(String(err));
+      throw new BadRequestException(
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 

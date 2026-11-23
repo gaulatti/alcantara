@@ -3,12 +3,14 @@ import { PrismaService } from '../prisma.service';
 import { MediaAssetsController } from './media-assets.controller';
 import { MediaAssetsReconciliationService } from './media-assets-reconciliation.service';
 import { MediaAssetsService } from './media-assets.service';
+import { MediaAssetsMcpTools } from '../mcp/capabilities/media-assets';
 
 @Module({
   controllers: [MediaAssetsController],
   providers: [
     MediaAssetsReconciliationService,
     MediaAssetsService,
+    MediaAssetsMcpTools,
     PrismaService,
   ],
 })

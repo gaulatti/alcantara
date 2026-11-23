@@ -232,6 +232,47 @@ describe('PalazzoProgramClient', () => {
     expect(callbacks.onEvent).toHaveBeenCalledWith('radio-1', ended);
   });
 
+  // gaulatti/alcantara#230: the engine reads Palazzo's state on request,
+  // because Palazzo sends a snapshot only when a stream connects.
+  it('reads the current state on request without emitting it or touching the stream', async () => {
+    const initial = idleState('palazzo-a', 'boot-1', 1);
+    let answer: unknown = playingState('palazzo-a', 'boot-1', 4);
+    const fetchImpl = jest.fn((url: string) =>
+      url.includes('/playback/events')
+        ? Promise.resolve(
+            sseResponse([
+              frame(snapshotEvent('palazzo-a', 'boot-1', 1, initial)),
+            ]),
+          )
+        : answer instanceof Error
+          ? Promise.reject(answer)
+          : Promise.resolve(Response.json(answer)),
+    );
+    const { client, callbacks } = createClient(fetchImpl);
+    // Before any accepted snapshot the instance is unknown: nothing to read.
+    expect(await client.currentState()).toBeNull();
+
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const snapshots = (callbacks.onSnapshot as jest.Mock).mock.calls.length;
+
+    expect(await client.currentState()).toEqual(answer);
+    // Read, not emitted: the engine applies it.
+    expect((callbacks.onSnapshot as jest.Mock).mock.calls.length).toBe(
+      snapshots,
+    );
+
+    answer = playingState('palazzo-b', 'boot-1', 5);
+    expect(await client.currentState()).toBeNull();
+    answer = playingState('palazzo-a', 'boot-2', 1);
+    expect(await client.currentState()).toBeNull();
+    answer = new Error('unreachable');
+    expect(await client.currentState()).toBeNull();
+
+    client.stop();
+    expect(await client.currentState()).toBeNull();
+  });
+
   it('accepts CRLF-delimited Palazzo SSE frames', async () => {
     const snapshot = idleState('palazzo-a', 'boot-1', 1);
     const fetchImpl = jest

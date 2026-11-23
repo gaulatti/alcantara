@@ -1,23 +1,13 @@
-import {
-  AlertContainer,
-  Button,
-  Card,
-  Checkbox,
-  Empty,
-  FileInput,
-  IconButton,
-  Input,
-  LoadingSpinner,
-  Modal,
-  SectionHeader,
-  showAlert
-} from '@gaulatti/bleecker';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { AlertContainer, Button, Checkbox, FileInput, Input, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import type { ColumnDef, SortState } from '@gaulatti/bleecker';
+import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { Route } from './+types/stingers';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { AppPage } from '../components/AppPage';
+import { EnabledPill, LibraryList, LibraryRowActions } from '../components/library/LibraryList';
+import type { LibraryStatus } from '../components/library/LibraryList';
 
 interface StingerItem {
   id: number;
@@ -57,7 +47,7 @@ export function meta({}: Route.MetaArgs) {
 
 export default function StingersAdmin() {
   const [stingers, setStingers] = useState<StingerItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState<LibraryStatus>('loading');
 
   const [showModal, setShowModal] = useState(false);
   const [editingStinger, setEditingStinger] = useState<StingerItem | null>(null);
@@ -79,23 +69,41 @@ export default function StingersAdmin() {
     setStingers(payload);
   };
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        await fetchStingers();
-      } catch (err) {
-        console.error('Failed to load stingers:', err);
-        showAlert('Failed to load stingers.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const load = async () => {
+    setStatus('loading');
+    try {
+      await fetchStingers();
+      setStatus('ready');
+    } catch (err) {
+      console.error('Failed to load stingers:', err);
+      setStatus('error');
+    }
+  };
 
+  useEffect(() => {
     void load();
   }, []);
 
-  const sortedStingers = useMemo(() => [...stingers].sort((a, b) => a.id - b.id), [stingers]);
+  const [sort, setSort] = useState<SortState>({ field: 'id', order: 'asc' });
+
+  const columns: ColumnDef<StingerItem>[] = [
+    { key: 'name', header: 'Name', className: 'font-medium text-text-primary' },
+    { key: 'cutPointMs', header: 'Cut point', align: 'right', cell: (stinger) => <span className='tabular-nums'>{Number.isFinite(stinger.cutPointMs) ? `${stinger.cutPointMs} ms` : '—'}</span> },
+    { key: 'enabled', header: 'Status', cell: (stinger) => <EnabledPill enabled={stinger.enabled} /> },
+    {
+      key: 'actions',
+      header: '',
+      sortable: false,
+      cell: (stinger) => (
+        <LibraryRowActions
+          name={stinger.name}
+          primary={{ label: 'Edit', onSelect: () => openEditModal(stinger) }}
+          onDelete={() => deleteStinger(stinger)}
+          deleteTitle={`Delete transition "${stinger.name}"?`}
+        />
+      )
+    }
+  ];
 
   const openCreateModal = () => {
     setEditingStinger(null);
@@ -194,8 +202,6 @@ export default function StingersAdmin() {
   };
 
   const deleteStinger = async (stinger: StingerItem) => {
-    if (!confirm(`Delete stinger "${stinger.name}"?`)) return;
-
     try {
       const res = await fetch(apiUrl(`/stingers/${stinger.id}`), {
         method: 'DELETE'
@@ -211,6 +217,7 @@ export default function StingersAdmin() {
     } catch (err) {
       console.error('Failed to delete stinger:', err);
       showAlert('Failed to delete transition.', 'error');
+      throw err;
     }
   };
 
@@ -228,62 +235,18 @@ export default function StingersAdmin() {
           </div>
         </div>
 
-        <Card className='space-y-4'>
-          {isLoading ? (
-            <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
-              <LoadingSpinner />
-              <p>Loading transitions...</p>
-            </div>
-          ) : sortedStingers.length === 0 ? (
-            <Empty
-              title='No transitions yet'
-              description='Upload your first .webm transition video.'
-              action={<Button onClick={openCreateModal}>Create transition</Button>}
-            />
-          ) : (
-            <div className='space-y-3'>
-              {sortedStingers.map((stinger) => (
-                <article
-                  key={stinger.id}
-                  className='rounded-2xl border border-sand/20 bg-white/80 p-4 transition-colors hover:border-sea/40 dark:border-sand/40 dark:bg-dark-sand/60'
-                >
-                  <div className='flex items-start justify-between gap-4'>
-                    <div className='min-w-0 flex-1'>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <h3 className='text-lg font-semibold text-text-primary dark:text-text-primary'>{stinger.name}</h3>
-                        {!stinger.enabled ? (
-                          <span className='inline-flex rounded-full border border-sand/30 bg-sand/10 px-2 py-0.5 text-xs font-medium text-text-secondary dark:border-sand/40 dark:bg-sand/15 dark:text-text-secondary'>
-                            Disabled
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className='mt-2 truncate text-sm text-text-secondary dark:text-text-secondary'>{stinger.videoUrl}</p>
-                      <p className='mt-1 text-xs text-text-secondary dark:text-text-secondary'>Cut point: {stinger.cutPointMs}ms</p>
-                    </div>
-                    <div className='flex items-start gap-2'>
-                      <IconButton
-                        onClick={() => openEditModal(stinger)}
-                        className='text-sea'
-                        title={`Edit ${stinger.name}`}
-                        aria-label={`Edit ${stinger.name}`}
-                      >
-                        <Pencil size={16} />
-                      </IconButton>
-                      <IconButton
-                        onClick={() => { void deleteStinger(stinger); }}
-                        className='text-terracotta'
-                        title={`Delete ${stinger.name}`}
-                        aria-label={`Delete ${stinger.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </Card>
+        <LibraryList
+          caption='Transitions'
+          columns={columns}
+          data={stingers}
+          getRowKey={(stinger) => String(stinger.id)}
+          status={status}
+          onRetry={() => void load()}
+          errorTitle='Failed to load transitions'
+          empty={{ title: 'No transitions yet', description: 'Upload your first .webm transition video.', action: <Button onClick={openCreateModal}>Create transition</Button> }}
+          sort={sort}
+          onSortChange={setSort}
+        />
 
         <Modal isOpen={showModal} onClose={closeModal} title={editingStinger ? 'Edit transition' : 'Create transition'}>
           <div className='space-y-5'>

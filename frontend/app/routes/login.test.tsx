@@ -3,12 +3,18 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Login, { type LoginFixtureState } from './login';
 
-const { authStatus, signInWithRedirect } = vi.hoisted(() => ({
+const { authStatus, signInWithRedirect, checkAppSession, clearAppSession, dispatch } = vi.hoisted(() => ({
   authStatus: { isAuthenticated: false, isLoaded: true },
   signInWithRedirect: vi.fn(),
+  checkAppSession: vi.fn(),
+  clearAppSession: vi.fn(),
+  dispatch: vi.fn(),
 }));
 
 vi.mock('aws-amplify/auth', () => ({ signInWithRedirect }));
+vi.mock('react-redux', () => ({ useDispatch: () => dispatch }));
+vi.mock('../services/sessionCheck', () => ({ checkAppSession }));
+vi.mock('../services/session', () => ({ clearAppSession }));
 vi.mock('../hooks/useAuth', () => ({
   useAuthStatus: () => authStatus,
 }));
@@ -26,6 +32,9 @@ describe('Login', () => {
     authStatus.isAuthenticated = false;
     authStatus.isLoaded = true;
     signInWithRedirect.mockReset();
+    checkAppSession.mockReset();
+    clearAppSession.mockReset();
+    dispatch.mockReset();
   });
   afterEach(cleanup);
 
@@ -96,5 +105,62 @@ describe('Login', () => {
     );
     fireEvent.click(button);
     expect(signInWithRedirect).toHaveBeenCalledTimes(2);
+  });
+
+  describe('when the provider still holds a sign-in', () => {
+    const alreadySignedIn = Object.assign(new Error('There is already a signed in user.'), { name: 'UserAlreadyAuthenticatedException' });
+    const submit = () => fireEvent.submit(screen.getByRole('button', { name: /sign in with google/i }).closest('form')!);
+
+    it('uses that session when the API accepts it, instead of refusing to start', async () => {
+      signInWithRedirect.mockRejectedValue(alreadySignedIn);
+      const user = { id: 'sub-1', principalId: 'p-1', email: 'a@example.test' };
+      checkAppSession.mockResolvedValue({ status: 'signed-in', user });
+      renderLogin('ready');
+      submit();
+      await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: 'LOGIN', payload: user }));
+      expect(checkAppSession).toHaveBeenCalledWith(true);
+      expect(clearAppSession).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('drops the leftover sign-in when the API rejects it, so the next attempt can start', async () => {
+      signInWithRedirect.mockRejectedValue(alreadySignedIn);
+      checkAppSession.mockResolvedValue({ status: 'unauthorized' });
+      clearAppSession.mockResolvedValue(undefined);
+      renderLogin('ready');
+      submit();
+      await waitFor(() => expect(clearAppSession).toHaveBeenCalledTimes(1));
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('shows the generic message when the leftover sign-in cannot be dropped', async () => {
+      signInWithRedirect.mockRejectedValue(alreadySignedIn);
+      checkAppSession.mockResolvedValue({ status: 'unauthorized' });
+      clearAppSession.mockRejectedValue(new Error('provider unreachable'));
+      renderLogin('ready');
+      submit();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in could not begin. Please retry or contact your administrator.');
+      expect(clearAppSession).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
+    });
+
+    it('says the service is unreachable, without signing anything out, when the API cannot answer', async () => {
+      signInWithRedirect.mockRejectedValue(alreadySignedIn);
+      checkAppSession.mockResolvedValue({ status: 'unavailable' });
+      renderLogin('ready');
+      submit();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Alcántara is not reachable right now. Wait a moment and try again.');
+      expect(clearAppSession).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /sign in with google/i })).toBeEnabled();
+    });
+
+    it('still shows the generic message for any other sign-in failure', async () => {
+      signInWithRedirect.mockRejectedValue(new Error('popup blocked'));
+      renderLogin('ready');
+      submit();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in could not begin. Please retry or contact your administrator.');
+      expect(checkAppSession).not.toHaveBeenCalled();
+    });
   });
 });

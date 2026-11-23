@@ -34,7 +34,8 @@ The external-source control plane is documented in
 Set `METRICS_TOKEN_FILE` to a root-readable file containing one bearer token;
 the default path is `/run/secrets/alcantara-metrics-token`. The endpoint returns
 `503` when the file is absent and `401` when the request does not provide the
-matching `Authorization: Bearer …` header. See
+matching `Authorization: Bearer …` header. Deploys provision that file from the
+`metrics_bearer_token` field of the production config secret. See
 [`../docs/radio-telemetry.md`](../docs/radio-telemetry.md#metrics) for metric
 families, bounded-label rules, verification, and the central deployment
 dependency.
@@ -70,6 +71,23 @@ $ pnpm run test:e2e
 # test coverage
 $ pnpm run test:cov
 ```
+
+HTTP specs that use supertest start their app with `listenOnLoopback`
+(`backend/test/loopback-supertest.ts`) before the first request. supertest's own
+idle `listen(0)` binds every address, and on macOS the kernel can give it a port
+that another process holds on `127.0.0.1` alone; the request then reaches that
+process and the spec sees a 404 or an empty answer. Do not call
+`request(app.getHttpServer())` on an app that was not started this way
+(gaulatti/alcantara#310).
+
+`src/tenancy/scoped-prisma.spec.ts` runs against a real, migrated PostgreSQL
+database named `alcantara_ci` on localhost; it never mocks Prisma. CI starts and
+migrates that database before `test:coverage`, so the spec uses CI's documented
+URL when `DATABASE_URL` is unset. Locally, start a disposable PostgreSQL, run
+`pnpm run db:migrate:deploy` against its `alcantara_ci` database and set
+`DATABASE_URL` to it; without one, this spec fails with a message naming the
+missing database. It refuses any host other than localhost and any database other
+than `alcantara_ci`.
 
 ## Deployment
 
@@ -124,13 +142,18 @@ before success is recorded. See
 [`../docs/production-database-backups.md`](../docs/production-database-backups.md)
 for paths, metrics, recovery checks, and the separate retention-policy boundary.
 
+Before the running container is stopped, the Cumulus deploy starts the new
+image once as a read-only deploy candidate and requires it to answer; a
+candidate that fails leaves the running backend untouched. See
+[`../docs/deploy-candidate.md`](../docs/deploy-candidate.md).
+
 The Cumulus path deliberately refuses to migrate or start against a fresh,
 empty Arauco database. Restore the production backup first. Deployment checks
 for the restored `ProgramState` table and at least one program row before it
 runs the committed Prisma migrations. The backend listens only on loopback and
 nginx terminates TLS for `api.alcantara.gaulatti.com` with buffering disabled
-for SSE and WebSocket traffic. Cumulus nginx accepts request bodies up to 110 MB
-so multipart overhead does not prevent the backend from enforcing its 100 MB
+for SSE and WebSocket traffic. Cumulus nginx accepts request bodies up to 210 MB
+so multipart overhead does not prevent the backend from enforcing its 200 MB
 per-file upload limit. LiveKit remains disabled on Cumulus until its separate
 public media-port and secret contract is provisioned.
 

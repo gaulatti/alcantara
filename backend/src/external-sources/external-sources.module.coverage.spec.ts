@@ -1,12 +1,26 @@
+import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
+import { PompeiiService } from '../auth/pompeii.service';
 import { ObservabilityModule } from '../observability/observability.module';
 import { PrismaService } from '../prisma.service';
+import { ProgramService } from '../program/program.service';
 import { ExternalSourceMetricsInterceptor } from './external-source-metrics.interceptor';
 import { ExternalSourceSecurity } from './external-source.security';
 import { ExternalSourcesController } from './external-sources.controller';
 import { ExternalSourcesModule } from './external-sources.module';
 import { ExternalSourcesService } from './external-sources.service';
+
+// The global services the MCP capabilities of this module call.
+@Global()
+@Module({
+  providers: [
+    { provide: PompeiiService, useValue: { teamId: 3 } },
+    { provide: ProgramService, useValue: {} },
+  ],
+  exports: [PompeiiService, ProgramService],
+})
+class PlatformStubModule {}
 
 describe('ExternalSourcesModule', () => {
   it('compiles and wires the controller, service, security and interceptor', async () => {
@@ -15,6 +29,7 @@ describe('ExternalSourcesModule', () => {
       imports: [
         ConfigModule.forRoot({ ignoreEnvFile: true, isGlobal: true }),
         ObservabilityModule,
+        PlatformStubModule,
         ExternalSourcesModule,
       ],
     })

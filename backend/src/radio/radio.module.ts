@@ -11,11 +11,14 @@ import { RadioOutputConfidenceService } from './radio-output-confidence.service'
 import { PalazzoMachineClient } from './palazzo-machine.client';
 import { SongSimilarityService } from './song-similarity.service';
 import { PrismaService } from '../prisma.service';
+import { SimilarityMcpTools } from '../mcp/capabilities/similarity';
+import { RadioMcpTools } from '../mcp/capabilities/radio';
 
 @Global()
 @Module({
   controllers: [RadioController, RadioMonitorController],
   providers: [
+    RadioMcpTools,
     RadioService,
     RadioMonitorService,
     SongExecutionEngine,
@@ -25,6 +28,7 @@ import { PrismaService } from '../prisma.service';
     RadioOutputConfidenceService,
     PalazzoMachineClient,
     SongSimilarityService,
+    SimilarityMcpTools,
     PrismaService,
   ],
   exports: [

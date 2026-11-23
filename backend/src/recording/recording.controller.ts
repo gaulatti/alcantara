@@ -57,7 +57,7 @@ export class RecordingController {
   }
 }
 
-function normalizeProgramId(value: string): string {
+export function normalizeProgramId(value: string): string {
   const normalized = value.trim();
   if (
     !normalized ||
@@ -73,7 +73,7 @@ function normalizeProgramId(value: string): string {
   return normalized;
 }
 
-function normalizeCommandKey(value?: string): string {
+export function normalizeCommandKey(value?: string): string {
   const normalized = value?.trim() ?? '';
   if (!COMMAND_KEY.test(normalized)) {
     throw new BadRequestException({

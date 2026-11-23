@@ -1,5 +1,27 @@
 import { type RouteConfig, index, route, layout } from '@react-router/dev/routes';
 
+// The component bench and the test fixtures are for development and tests only
+// (gaulatti/alcantara#352): a production build does not register their routes, so
+// their modules are not part of the production route table. A development server,
+// the test suite, and the local test-auth stack (VITE_AUTH_MODE=test) keep them.
+const developmentRoutes = import.meta.env.DEV || import.meta.env.MODE === 'test' || import.meta.env.VITE_AUTH_MODE === 'test'
+  ? [
+      route('preview', 'routes/preview.tsx'),
+      route('layout-demo', 'routes/layout-demo.tsx'),
+      route('console-fixture', 'routes/console-fixture.tsx'),
+      route('media-fixture', 'routes/media-fixture.tsx'),
+      route('labels-fixture', 'routes/labels-fixture.tsx'),
+      route('song-intro-fixture', 'routes/song-intro-fixture.tsx'),
+      route('similarity-fixture', 'routes/similarity-fixture.tsx'),
+      route('slideshow-fixture', 'routes/slideshow-fixture.tsx'),
+      route('recording-fixture', 'routes/recording-fixture.tsx'),
+      route('filler-fixture', 'routes/filler-fixture.tsx'),
+      route('sources-fixture', 'routes/sources-fixture.tsx'),
+      route('access-fixture', 'routes/access-fixture.tsx'),
+      route('library-fixture', 'routes/library-fixture.tsx'),
+    ]
+  : [];
+
 export default [
   route('login', 'routes/login.tsx'),
   route('logout', 'routes/logout.tsx'),
@@ -13,25 +35,21 @@ export default [
       route('songs', 'routes/songs.tsx'),
       route('media', 'routes/media.tsx'),
       route('calls', 'routes/calls.tsx'),
+      route('sources', 'routes/sources.tsx'),
       route('scenes', 'routes/scenes.tsx'),
       route('programs', 'routes/programs.tsx'),
       route('broadcasts', 'routes/broadcasts.tsx'),
       route('radio-settings', 'routes/radio-settings.tsx'),
       route('radio-log', 'routes/radio-log.tsx'),
       route('layouts', 'routes/layouts.tsx'),
-      route('preview', 'routes/preview.tsx'),
-      route('layout-demo', 'routes/layout-demo.tsx'),
-      route('console-fixture', 'routes/console-fixture.tsx'),
-      route('media-fixture', 'routes/media-fixture.tsx'),
-      route('song-intro-fixture', 'routes/song-intro-fixture.tsx'),
-      route('similarity-fixture', 'routes/similarity-fixture.tsx'),
-      route('slideshow-fixture', 'routes/slideshow-fixture.tsx'),
-      route('recording-fixture', 'routes/recording-fixture.tsx'),
-      route('flight', 'routes/flight.tsx')
+      ...developmentRoutes,
+      route('flight', 'routes/flight.tsx'),
+      route('access', 'routes/access.tsx')
     ]),
     route('overlay', 'routes/overlay.tsx')
   ]),
   route('guest/:invitation', 'routes/guest.tsx'),
+  route('connect', 'routes/connect.tsx'),
   route('return-router/:programId', 'routes/return-router.tsx'),
   route('program/:id', 'routes/program.tsx')
 ] satisfies RouteConfig;
