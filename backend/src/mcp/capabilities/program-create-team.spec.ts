@@ -4,7 +4,17 @@ import { ProgramMcpTools } from './program';
 
 describe('program_create_program records the caller team', () => {
   it('passes the deployment team to createProgram', async () => {
-    const createProgram = jest.fn().mockResolvedValue({ programId: 'news' });
+    const createProgram = jest.fn().mockResolvedValue({
+      programId: 'news',
+      type: 'tv',
+      activeSceneId: null,
+      stagedSceneId: null,
+      fadeToBlack: false,
+      scenes: [],
+      mediaGroups: [],
+      stingers: [],
+      version: 1,
+    });
     const tools = new ProgramMcpTools(
       { createProgram } as never,
       { inspect: jest.fn() } as never,

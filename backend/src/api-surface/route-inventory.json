@@ -612,6 +612,18 @@
     "permission": "alcantara:program:read"
   },
   {
+    "method": "GET",
+    "path": "/program/:programId/branding",
+    "public": true,
+    "permission": "alcantara:program:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/program/:programId/branding",
+    "public": false,
+    "permission": "alcantara:program:manage"
+  },
+  {
     "method": "POST",
     "path": "/program/:programId/countdown/complete",
     "public": true,

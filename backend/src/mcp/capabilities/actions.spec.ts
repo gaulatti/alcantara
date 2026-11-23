@@ -97,11 +97,14 @@ const ROWS: Row[] = [
       { args: { program_id: 'news', type: 'tv', template_url: URL } },
     ],
     rest: (c, a) =>
-      c.program.createProgram({
-        programId: a.program_id as string,
-        type: a.type as string,
-        templateUrl: a.template_url as string,
-      }),
+      c.program.createProgram(
+        {
+          programId: a.program_id as string,
+          type: a.type as string,
+          templateUrl: a.template_url as string,
+        },
+        { user: { authorization: { teamId: 7 } } } as never,
+      ),
     service: (f) => f.programs.createProgram,
     expected: stateIds,
   },

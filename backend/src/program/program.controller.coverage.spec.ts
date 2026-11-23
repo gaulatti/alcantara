@@ -363,6 +363,7 @@ describe('ProgramController templates', () => {
       'p',
       undefined,
       undefined,
+      undefined,
     );
   });
 

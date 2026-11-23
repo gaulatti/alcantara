@@ -133,7 +133,7 @@ describe('ProgramService branding and program creation', () => {
     await service.createProgram('fresh');
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(programUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { programId: 'fresh' }, create: { programId: 'fresh' } }),
+      expect.objectContaining({ where: { programId: 'fresh' }, create: { programId: 'fresh', teamId: null } }),
     );
     expect(stateCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ programId: 'fresh' }) }),

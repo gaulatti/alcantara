@@ -4,6 +4,7 @@ describe('capability provider decorator metadata under unresolved circular impor
     jest.isolateModules(() => {
       jest.doMock('../../program/program.service', () => ({}));
       jest.doMock('../../program/program-template.service', () => ({}));
+      jest.doMock('../../auth/pompeii.service', () => ({}));
       jest.doMock('../../scenes/scenes.service', () => ({}));
       jest.doMock('../../layouts/layouts.service', () => ({}));
       jest.doMock('../../media-groups/media-groups.service', () => ({}));
@@ -17,10 +18,9 @@ describe('capability provider decorator metadata under unresolved circular impor
         LayoutsMcpTools,
         MediaGroupsMcpTools,
       ])
-        expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual([
-          Object,
-          Object,
-        ]);
+        expect(Reflect.getMetadata('design:paramtypes', provider)).toEqual(
+          provider === ProgramMcpTools ? [Object, Object, Object] : [Object, Object],
+        );
     });
   });
 
