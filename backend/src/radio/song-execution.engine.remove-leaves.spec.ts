@@ -196,6 +196,27 @@ describe('SongExecutionEngine.removeSongLeaves (#327)', () => {
     );
   });
 
+  it('lets the last leaf of a playlist that does not loop go: nothing is left to move to', async () => {
+    const row = {
+      programId: 'radio-1',
+      type: 'radio',
+      songSequence: {
+        ...stored(),
+        loop: false,
+        items: [leaf('a', 1), leaf('b', 2)],
+        activeItemId: 'b',
+      },
+      songQueue: [],
+      updatedAt: new Date(1),
+    };
+    const h = harness({ row });
+    const result = await remove(h, ['b'], { keepRotation: true });
+    expect(result.cursorMovedTo).toBeNull();
+    expect(
+      (h.stored() as any).songSequence.items.map((i: { id: string }) => i.id),
+    ).toEqual(['a']);
+  });
+
   it('a dry run reports the leaves and counts and writes nothing', async () => {
     const h = harness();
     const result = await remove(h, ['b', 'c'], { dryRun: true });

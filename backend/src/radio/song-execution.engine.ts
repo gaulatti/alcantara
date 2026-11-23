@@ -881,13 +881,10 @@ export class SongExecutionEngine implements OnModuleInit, OnModuleDestroy {
             throw new BadRequestException(
               `Leaf ${active} is the active leaf; set keep_rotation to move the rotation to the next leaf`,
             );
-          for (
-            let moves = 0, now = active;
-            now && wanted.has(now) && moves <= known.size;
-            moves += 1
-          ) {
-            if (!advanceProgramSongSequence(base, now)) break;
-            now = activeProgramSongLeafId(base) ?? '';
+          for (let moves = 0; moves <= known.size; moves += 1) {
+            const now = activeProgramSongLeafId(base);
+            if (!wanted.has(now as string)) break;
+            if (!advanceProgramSongSequence(base, now as string)) break;
           }
           const next = activeProgramSongLeafId(base);
           if (next && wanted.has(next))

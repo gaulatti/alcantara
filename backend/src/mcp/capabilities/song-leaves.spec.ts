@@ -121,3 +121,16 @@ describe('program_remove_program_song_leaves_by_id (#327)', () => {
     expect(JSON.stringify(outcome.result)).toContain('"leafCountBefore":3');
   });
 });
+
+describe('SongLeavesMcpTools decorator metadata under an unresolved circular import', () => {
+  it('records Object for a ProgramService that is not yet defined', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../../program/program.service', () => ({}));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { SongLeavesMcpTools: Isolated } = require('./song-leaves');
+      expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
+        Object,
+      ]);
+    });
+  });
+});
