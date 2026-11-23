@@ -160,16 +160,10 @@ export function ModoItalianoBracketEditorFields({
     drawPreview.drawnSongIds.length === 1;
 
   const drawFromPool = () => {
-    if (!canDrawFromPool) {
-      return;
-    }
-
+    // The button is disabled unless canDrawFromPool holds. With that true, the seeded draw always
+    // returns exactly one song: the pool size and the empty-slot count do not depend on the seed.
     const now = Date.now();
     const effectiveSeed = drawSeed + now;
-    const drawResult = drawModoItalianoBracketOpeningSongs(safeMatches, startRound, randomSongPoolIds, effectiveSeed);
-    if (drawResult.drawnSongIds.length !== 1) {
-      return;
-    }
 
     if (!sceneId) return;
     setIsDrawPending(true);
@@ -267,30 +261,11 @@ export function ModoItalianoBracketEditorFields({
   };
 
   const updateMatch = (matchId: number, field: keyof ModoItalianoBracketMatch, value: any) => {
-    if ((field === 'songAId' || field === 'songBId') && !openingMatchIdSet.has(matchId)) {
-      return;
-    }
-
     const newMatches = [...safeMatches];
     const index = matchId - 1;
 
-    if ((field === 'songAId' || field === 'songBId') && typeof value === 'number') {
-      const songAlreadySelected = newMatches.some((match) => {
-        if (!openingMatchIdSet.has(match.id)) {
-          return false;
-        }
-
-        if (match.id === matchId) {
-          return (field !== 'songAId' && match.songAId === value) || (field !== 'songBId' && match.songBId === value);
-        }
-
-        return match.songAId === value || match.songBId === value;
-      });
-
-      if (songAlreadySelected) {
-        return;
-      }
-    }
+    // A song already used in another opening slot is never offered: getSongOptionsForSlot
+    // excludes it, so the select cannot submit one.
 
     newMatches[index] = { ...newMatches[index], [field]: value };
 
