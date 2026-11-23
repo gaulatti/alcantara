@@ -1,72 +1,26 @@
 import React from 'react';
-import { Header } from './Header';
+import { BroadcastLayout as BleeckerBroadcastLayout, type BroadcastLayoutProps } from '../bleecker';
 import { ClockWidget } from './ClockWidget';
-import { QRCodeWidget } from './QRCodeWidget';
-import { LiveIndicator } from './LiveIndicator';
-import { Ticker } from './Ticker';
-import { ChyronHolder } from './ChyronHolder';
-import './BroadcastLayout.css';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 
-interface BroadcastLayoutProps {
-  children?: React.ReactNode;
-  headerTitle?: string;
-  headerDate?: string;
-  hashtag?: string;
-  url?: string;
-  chyronText?: string;
-  showChyron?: boolean;
+interface AppBroadcastLayoutProps extends Omit<BroadcastLayoutProps, 'clock'> {
+  /** Not used by the layout today; kept so stored scenes that carry it keep their shape. */
   chyronDuration?: number;
-  qrCodeUrl?: string;
-  qrCodeContent?: string;
   clockIconUrl?: string;
   clockTimezone?: string;
-  showLiveIndicator?: boolean;
   timeOverride?: GlobalTimeOverride | null;
 }
 
-export const BroadcastLayout: React.FC<BroadcastLayoutProps> = ({
-  children,
-  headerTitle,
-  headerDate,
-  hashtag,
-  url,
-  chyronText,
-  showChyron = false,
-  chyronDuration = 5000,
-  qrCodeUrl,
-  qrCodeContent,
+/** The broadcast frame with this app's clock (which owns the broadcast time override) in its clock slot. */
+export const BroadcastLayout: React.FC<AppBroadcastLayoutProps> = ({
+  chyronDuration: _chyronDuration,
   clockIconUrl,
   clockTimezone,
-  showLiveIndicator = true,
-  timeOverride = null
-}) => {
-  return (
-    <div className='broadcast-layout'>
-      {/* Top Header */}
-      <Header title={headerTitle} date={headerDate} />
-
-      {/* Clock Widget - Top Left */}
-      <ClockWidget
-        iconUrl={clockIconUrl}
-        timezone={clockTimezone}
-        timeOverride={timeOverride}
-      />
-
-      {/* QR Code - Middle Left */}
-      {qrCodeUrl || qrCodeContent ? <QRCodeWidget qrCodeUrl={qrCodeUrl} content={qrCodeContent} /> : null}
-
-      {/* Live Indicator - Top Right */}
-      {showLiveIndicator && <LiveIndicator />}
-
-      {/* Main Content Area */}
-      <div className='broadcast-content'>{children}</div>
-
-      {/* Chyron - Above Ticker */}
-      <ChyronHolder text={chyronText} show={showChyron} />
-
-      {/* Ticker - Bottom */}
-      <Ticker hashtag={hashtag} url={url} />
-    </div>
-  );
-};
+  timeOverride = null,
+  ...frame
+}) => (
+  <BleeckerBroadcastLayout
+    {...frame}
+    clock={<ClockWidget iconUrl={clockIconUrl} timezone={clockTimezone} timeOverride={timeOverride} />}
+  />
+);
