@@ -11,6 +11,14 @@ vi.mock('react-redux', () => ({ useDispatch: () => dispatch }));
 vi.mock('../../hooks/useAuth', () => ({ useAuthStatus: () => authStatus }));
 vi.mock('../../services/sessionCheck', () => ({ checkAppSession }));
 vi.mock('../../services/session', () => ({ clearAppSession }));
+// gaulatti/alcantara#431: no desktop host unless a test plugs one in.
+const desktop = vi.hoisted(() => ({ host: null as null | Record<string, unknown> }));
+vi.mock('@desktop-host', () => ({
+  get default() {
+    return desktop.host;
+  },
+}));
+
 
 import { SESSION_INVALID_EVENT } from '../../services/session-events';
 import AuthListener, { SESSION_RETRY_MS } from './AuthListener';
@@ -28,6 +36,35 @@ describe('AuthListener', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    desktop.host = null;
+  });
+
+  it('checks the session again when a desktop app signs in, signs out on its sign-out, and unsubscribes', async () => {
+  const listeners: Array<(change: { signedIn: boolean; error: string | null }) => void> = [];
+  const unsubscribe = vi.fn();
+  const auth = {
+    currentSession: vi.fn(),
+    signIn: vi.fn(async () => undefined),
+    signOut: vi.fn(),
+    onChange: vi.fn((listener: (change: { signedIn: boolean; error: string | null }) => void) => {
+      listeners.push(listener);
+      return unsubscribe;
+    }),
+  };
+    desktop.host = { auth };
+    authStatus.isLoaded = true;
+    checkAppSession.mockResolvedValue({ status: 'signed-in', user });
+    const view = render(<AuthListener />);
+    expect(auth.onChange).toHaveBeenCalledTimes(1);
+    expect(checkAppSession).not.toHaveBeenCalled();
+    await act(async () => listeners[0]({ signedIn: true, error: null }));
+    await flush();
+    expect(dispatch).toHaveBeenCalledWith({ type: 'LOGIN', payload: user });
+    dispatch.mockReset();
+    act(() => listeners[0]({ signedIn: false, error: null }));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'LOGOUT' });
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it('signs in when the session checks out', async () => {

@@ -10,6 +10,14 @@ import {
   type ReturnSource,
 } from "../utils/programReturn";
 import type { Scene } from "../models/broadcast";
+// gaulatti/alcantara#431: no desktop host unless a test plugs one in.
+const desktop = vi.hoisted(() => ({ host: null as null | Record<string, unknown> }));
+vi.mock("@desktop-host", () => ({
+  get default() {
+    return desktop.host;
+  },
+}));
+
 
 // gaulatti/alcantara#301: the PROGRAM monitor says what it really is. Today it
 // is the program page rendered again in this browser, silent, never the output.
@@ -184,5 +192,37 @@ describe("visual fixtures (alcantara#301)", () => {
     const { fireEvent } = await import("@testing-library/react");
     fireEvent.change(message, { target: { value: "Hi" } });
     expect(message).toHaveValue("Hi");
+  });
+});
+
+describe("a desktop host's program monitor (gaulatti/alcantara#431)", () => {
+  afterEach(() => {
+    desktop.host = null;
+  });
+
+  it("shows the program's own picture in PROGRAM, labelled as the source, without the local-render ribbon", () => {
+    desktop.host = {
+      programMonitor: ({ programId }: { programId: string }) => <div data-testid="native-monitor">{programId}</div>,
+    };
+    render(
+      <ConfidenceMonitor label="PROGRAM" tone="program" programId="main" scene={{ id: 1, name: "Desk" } as Scene} src="/program/main?confidence=program" />,
+    );
+    const tile = screen.getByRole("region", { name: "PROGRAM monitor, program source" });
+    expect(within(tile).getByTestId("native-monitor")).toHaveTextContent("main");
+    expect(within(tile).getByText("program source")).toBeInTheDocument();
+    expect(within(tile).queryByText("Local render · not the output")).toBeNull();
+    expect(tile.querySelector("iframe")).toBeNull();
+  });
+
+  it("leaves PREVIEW, and PROGRAM without a show, to the local render", () => {
+    desktop.host = { programMonitor: () => <div data-testid="native-monitor" /> };
+    render(
+      <>
+        <ConfidenceMonitor label="PREVIEW" tone="preview" programId="main" scene={{ id: 1, name: "Desk" } as Scene} src="/p" />
+        <ConfidenceMonitor label="PROGRAM" tone="program" scene={{ id: 1, name: "Desk" } as Scene} src="/p" />
+      </>,
+    );
+    expect(screen.queryByTestId("native-monitor")).toBeNull();
+    expect(screen.getByText("Local render · not the output")).toBeInTheDocument();
   });
 });

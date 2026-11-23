@@ -1,3 +1,4 @@
+import { getDesktopHost } from "../platform/desktopHost";
 import { TooltipButton } from "./BleeckerButtons";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
@@ -358,11 +359,14 @@ export function ConfidenceMonitor({
   state: airState,
   returnSource = { kind: "local" },
   returnMedia,
+  programId,
 }: {
   label: string;
   tone: "preview" | "program";
   scene: Scene | null;
   src: string;
+  /** With a desktop host's program monitor (gaulatti/alcantara#431), PROGRAM shows the program's own picture. */
+  programId?: string;
   /** What is going out, shown on the Program monitor: on air, or faded to black. */
   state?: { tone: StatePillTone; label: string; pulse?: boolean };
   /**
@@ -405,11 +409,13 @@ export function ConfidenceMonitor({
     returnSource.kind === "return" ? behindLabel(returnSource.latencyMs) : null;
   const lastFrameAt =
     returnSource.kind === "return" ? returnSource.lastFrameAt : null;
+  const HostMonitor = getDesktopHost()?.programMonitor;
+  const nativeMonitor = !preview && !fromReturn && Boolean(programId) && HostMonitor ? HostMonitor : null;
   return (
     <section
       data-tone={tone}
       data-return-state={preview ? undefined : state}
-      aria-label={preview ? `${label} monitor` : fromReturn ? "Program return" : `${label} monitor, local render`}
+      aria-label={preview ? `${label} monitor` : fromReturn ? "Program return" : nativeMonitor ? `${label} monitor, program source` : `${label} monitor, local render`}
       className={`switcher-monitor min-w-0 overflow-hidden border bg-black md:order-2 ${preview ? "border-amber-400/60 opacity-95" : "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.45),0_12px_32px_-12px_rgba(239,68,68,0.55)]"}`}
     >
       <header
@@ -425,7 +431,7 @@ export function ConfidenceMonitor({
             {RETURN_STATE_LABEL[state]}
           </span>
         ) : (
-          <span className="switcher-return-local">local render</span>
+          <span className="switcher-return-local">{nativeMonitor ? "program source" : "local render"}</span>
         )}
         {behind && state !== "lost" ? (
           <span className="switcher-return-behind">{behind}</span>
@@ -469,6 +475,11 @@ export function ConfidenceMonitor({
               No return picture
             </div>
           ))
+        ) : nativeMonitor ? (
+          (() => {
+            const Monitor = nativeMonitor;
+            return <Monitor programId={programId ?? ""} />;
+          })()
         ) : scene ? (
           <iframe
             title={`${label} confidence monitor`}
@@ -492,7 +503,7 @@ export function ConfidenceMonitor({
             </span>
           </div>
         )}
-        {!preview && state === "local" ? (
+        {!preview && state === "local" && !nativeMonitor ? (
           <p className="switcher-return-ribbon" role="note">
             Local render · not the output
           </p>
@@ -850,6 +861,7 @@ export function BroadcastSwitcherDeck(props: Props) {
           <ConfidenceMonitor
             label="PROGRAM"
             tone="program"
+            programId={props.programId}
             scene={props.activeScene}
             src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
             state={

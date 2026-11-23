@@ -15,6 +15,14 @@ vi.mock('aws-amplify/auth', () => ({ signInWithRedirect }));
 vi.mock('react-redux', () => ({ useDispatch: () => dispatch }));
 vi.mock('../services/sessionCheck', () => ({ checkAppSession }));
 vi.mock('../services/session', () => ({ clearAppSession }));
+// gaulatti/alcantara#431: no desktop host unless a test plugs one in.
+const desktop = vi.hoisted(() => ({ host: null as null | Record<string, unknown> }));
+vi.mock('@desktop-host', () => ({
+  get default() {
+    return desktop.host;
+  },
+}));
+
 vi.mock('../hooks/useAuth', () => ({
   useAuthStatus: () => authStatus,
 }));
@@ -36,7 +44,31 @@ describe('Login', () => {
     clearAppSession.mockReset();
     dispatch.mockReset();
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    desktop.host = null;
+  });
+
+  it('signs in through a desktop app instead of the browser redirect, and shows its failure', async () => {
+  const listeners: Array<(change: { signedIn: boolean; error: string | null }) => void> = [];
+  const unsubscribe = vi.fn();
+  const auth = {
+    currentSession: vi.fn(),
+    signIn: vi.fn(async () => undefined),
+    signOut: vi.fn(),
+    onChange: vi.fn((listener: (change: { signedIn: boolean; error: string | null }) => void) => {
+      listeners.push(listener);
+      return unsubscribe;
+    }),
+  };
+    desktop.host = { auth };
+    renderLogin('ready');
+    fireEvent.submit(screen.getByRole('button', { name: /sign in with google/i }).closest('form')!);
+    await waitFor(() => expect(auth.signIn).toHaveBeenCalledTimes(1));
+    expect(signInWithRedirect).not.toHaveBeenCalled();
+    listeners[0]({ signedIn: false, error: 'The sign-in return did not match' });
+    expect(await screen.findByText('Sign-in could not begin. Please retry or contact your administrator.')).toBeInTheDocument();
+  });
 
   it.each([
     ['loading', 'Checking your session…'],

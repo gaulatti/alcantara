@@ -6,7 +6,7 @@ import {
   LoadingSpinner,
 } from '@gaulatti/bleecker';
 import { LogIn } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { signInWithRedirect } from 'aws-amplify/auth';
 import { useDispatch } from 'react-redux';
@@ -14,6 +14,7 @@ import type { Dispatch } from 'redux';
 import { useAuthStatus } from '../hooks/useAuth';
 import { clearAppSession } from '../services/session';
 import { checkAppSession } from '../services/sessionCheck';
+import { getDesktopHost } from '../platform/desktopHost';
 import { login } from '../state/dispatchers/auth';
 import type { ReduxAction } from '../state/dispatchers/base';
 
@@ -34,6 +35,8 @@ const fixtureStates = new Set<LoginFixtureState>([
 
 const loginError = 'Sign-in could not begin. Please retry or contact your administrator.';
 const unavailableError = 'Alcántara is not reachable right now. Wait a moment and try again.';
+/** In a desktop app the button comes back after this, so a sign-in abandoned in the browser can be started again. */
+export const DESKTOP_RETRY_MS = 4000;
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -54,11 +57,40 @@ export default function Login() {
   );
   const signInPending = useRef(fixtureState === 'submitting');
 
+  // In a desktop app (gaulatti/alcantara#431), a sign-in that fails after the browser returns says so here.
+  useEffect(
+    () =>
+      getDesktopHost()?.auth?.onChange((change) => {
+        if (change.error) {
+          signInPending.current = false;
+          setIsSigningIn(false);
+          setErrorMessage(loginError);
+        }
+      }),
+    [],
+  );
+
   const handleGoogleSignIn = async (): Promise<void> => {
     if (signInPending.current) return;
     signInPending.current = true;
     setIsSigningIn(true);
     setErrorMessage(null);
+    const desktop = getDesktopHost()?.auth;
+    if (desktop) {
+      // The desktop app opens the system browser; AuthListener hears the result.
+      try {
+        await desktop.signIn();
+        window.setTimeout(() => {
+          signInPending.current = false;
+          setIsSigningIn(false);
+        }, DESKTOP_RETRY_MS);
+      } catch {
+        signInPending.current = false;
+        setIsSigningIn(false);
+        setErrorMessage(loginError);
+      }
+      return;
+    }
     try {
       await signInWithRedirect({ provider: 'Google' });
     } catch (error) {
