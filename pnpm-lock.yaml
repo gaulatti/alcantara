@@ -178,8 +178,8 @@ importers:
         specifier: 0.1.82
         version: 0.1.82(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@gaulatti/bleecker':
-        specifier: ^0.1.50
-        version: 0.1.50(@types/dom-mediacapture-record@1.0.22)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)
+        specifier: 0.1.51
+        version: 0.1.51(@types/dom-mediacapture-record@1.0.22)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)
       '@modoitaliano/giorgia':
         specifier: 0.1.119
         version: 0.1.119(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1219,8 +1219,8 @@ packages:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@gaulatti/bleecker@0.1.50':
-    resolution: {integrity: sha512-yY9hvLq9P6ghVJJeLhQE7RjMxk5gwYG6FsmntssRFEw4Dbw9oPhlWHew/jvmeC+6F29ejkSG682BJ/1YUupqpQ==}
+  '@gaulatti/bleecker@0.1.51':
+    resolution: {integrity: sha512-WwZf/+aTdtPjcrQhgnq626qWpFyrFNSBsUCeoyFc3EnaDVZknVXeS+ujTIYegvB4UQayjmvpXlPZjgE0cj5KCw==}
     peerDependencies:
       react: ^18.2.0 || ^19.0.0
       react-dom: ^18.2.0 || ^19.0.0
@@ -8872,7 +8872,7 @@ snapshots:
       - react-is
       - redux
 
-  '@gaulatti/bleecker@0.1.50(@types/dom-mediacapture-record@1.0.22)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)':
+  '@gaulatti/bleecker@0.1.51(@types/dom-mediacapture-record@1.0.22)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)':
     dependencies:
       '@radix-ui/react-collapsible': 1.1.20(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.13)(react@19.2.4)
