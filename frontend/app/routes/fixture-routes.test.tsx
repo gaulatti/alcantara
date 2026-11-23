@@ -59,6 +59,38 @@ it("draws exactly the station marks the overlay URL gives", () => {
   window.history.replaceState(null, "", "/");
 });
 
+it("draws the program's own marks from its active scene, with URL marks overriding them", async () => {
+  const fetchMock = vi.fn(async () =>
+    new Response(
+      JSON.stringify({
+        activeScene: {
+          chyronText: "From the program",
+          metadata: JSON.stringify({ "toni-logo": { callsign: "PG", subtitle: "PROGRAM" } }),
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/overlay?program=tv-one&subtitle=OVERRIDE");
+  const { container } = render(<Overlay />);
+  expect(await screen.findByText("From the program")).toBeInTheDocument();
+  expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/program\/tv-one\/state$/);
+  expect(container.querySelector(".toni-logo img")?.getAttribute("alt")).toBe("PG OVERRIDE");
+  window.history.replaceState(null, "", "/");
+});
+
+it("draws no marks when the program cannot be read", async () => {
+  const fetchMock = vi.fn(async () => new Response("", { status: 404 }));
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/overlay?program=missing");
+  const { container } = render(<Overlay />);
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(container.querySelector(".toni-logo")).toBeNull();
+  expect(container.querySelector(".fifthbell-chyron, [class*=chyron]")).toBeNull();
+  window.history.replaceState(null, "", "/");
+});
+
 it("shows the slideshow fixture frames", () => {
   const { container } = render(<SlideshowFixture />);
   expect(
