@@ -1,4 +1,4 @@
-import type { FlightCue, FlightCueKind, FlightMixerChange, FlightSequence } from '../models/broadcast';
+import type { FlightCue, FlightCueKind, FlightMixerChange, FlightRecipeUse, FlightSequence } from '../models/broadcast';
 
 const VALID_CUE_KINDS: Set<FlightCueKind> = new Set([
   'scene',
@@ -40,6 +40,36 @@ function normalizeOptionalNumber(value: unknown): number | undefined {
     return Math.round(value);
   }
   return undefined;
+}
+
+/**
+ * Keeps a well-formed recipe-use tag (C1), with the same rules as the backend. A malformed tag is
+ * dropped and the cue kept.
+ */
+export function normalizeRecipeUse(value: unknown): FlightRecipeUse | undefined {
+  if (!isRecord(value)) return undefined;
+  const text = (input: unknown): string | null =>
+    typeof input === 'string' && input.trim().length > 0 && input.length <= 64 ? input : null;
+  const positiveInteger = (input: unknown): number | null =>
+    Number.isInteger(input) && (input as number) > 0 ? (input as number) : null;
+  const params = isRecord(value.params) ? value.params : {};
+  const useId = text(value.useId);
+  const step = text(value.step);
+  const recipeId = positiveInteger(value.recipeId);
+  const recipeRevision = positiveInteger(value.recipeRevision);
+  const songId = positiveInteger(params.songId);
+  if (!useId || !step || !recipeId || !recipeRevision || !songId) return undefined;
+  if (params.labelId !== undefined && params.labelId !== null && typeof params.labelId !== 'string') {
+    return undefined;
+  }
+  const labelId = params.labelId === undefined ? undefined : (params.labelId as string | null);
+  return {
+    useId,
+    recipeId,
+    recipeRevision,
+    step,
+    params: labelId === undefined ? { songId } : { songId, labelId }
+  };
 }
 
 export function normalizeFlightCue(value: unknown): FlightCue | null {
@@ -117,6 +147,9 @@ export function normalizeFlightCue(value: unknown): FlightCue | null {
     cue.mixerChange = change;
   }
 
+
+  const recipeUse = normalizeRecipeUse(value.recipeUse);
+  if (recipeUse) cue.recipeUse = recipeUse;
   return cue;
 }
 

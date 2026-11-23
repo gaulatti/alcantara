@@ -19,6 +19,7 @@ import { fillRadioRundown, parseFillerRules } from './radio-rundown-filler';
 import type {
   FlightCue,
   FlightCueKind,
+  FlightRecipeUse,
   FlightRuntimeState,
   FlightSequence,
 } from './flight.types';
@@ -58,6 +59,40 @@ function normalizeOptionalNumber(value: unknown): number | undefined {
     return Math.round(value);
   }
   return undefined;
+}
+
+/**
+ * Keeps a well-formed recipe-use tag (C1). A malformed tag is dropped and the cue kept: the cue still
+ * plays, it just stops being grouped with its use.
+ */
+export function normalizeRecipeUse(value: unknown): FlightRecipeUse | undefined {
+  if (!isRecord(value)) return undefined;
+  const text = (input: unknown): string | null =>
+    typeof input === 'string' && input.trim().length > 0 && input.length <= 64
+      ? input
+      : null;
+  const positiveInteger = (input: unknown): number | null =>
+    Number.isInteger(input) && (input as number) > 0 ? (input as number) : null;
+  const params = isRecord(value.params) ? value.params : {};
+  const useId = text(value.useId);
+  const step = text(value.step);
+  const recipeId = positiveInteger(value.recipeId);
+  const recipeRevision = positiveInteger(value.recipeRevision);
+  const songId = positiveInteger(params.songId);
+  if (!useId || !step || !recipeId || !recipeRevision || !songId) {
+    return undefined;
+  }
+  if (params.labelId !== undefined && params.labelId !== null && typeof params.labelId !== 'string') {
+    return undefined;
+  }
+  const labelId = params.labelId === undefined ? undefined : (params.labelId as string | null);
+  return {
+    useId,
+    recipeId,
+    recipeRevision,
+    step,
+    params: labelId === undefined ? { songId } : { songId, labelId },
+  };
 }
 
 function normalizeFlightCue(value: unknown): FlightCue | null {
@@ -162,10 +197,15 @@ function normalizeFlightCue(value: unknown): FlightCue | null {
     cue.mixerChange = change;
   }
 
+  const recipeUse = normalizeRecipeUse(value.recipeUse);
+  if (recipeUse) {
+    cue.recipeUse = recipeUse;
+  }
+
   return cue;
 }
 
-function normalizeFlightItems(value: unknown): FlightCue[] {
+export function normalizeFlightItems(value: unknown): FlightCue[] {
   if (!Array.isArray(value)) {
     return [];
   }

@@ -289,8 +289,19 @@ export interface FlightMixerChange {
   solo?: boolean;
 }
 
+/** The recipe use a rundown cue belongs to (gaulatti/alcantara#222, contract C1). */
+export interface FlightRecipeUse {
+  useId: string;
+  recipeId: number;
+  recipeRevision: number;
+  step: string;
+  params: { songId: number; labelId?: string | null };
+}
+
 export interface FlightCue {
   isFiller?: boolean;
+  // The recipe use this cue belongs to, when it came from a recipe (gaulatti/alcantara#422).
+  recipeUse?: FlightRecipeUse;
   id: string;
   kind: FlightCueKind;
   clockOffsetSeconds?: number;
