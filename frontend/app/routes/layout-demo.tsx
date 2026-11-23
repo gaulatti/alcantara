@@ -37,15 +37,15 @@ export default function BroadcastLayoutExample() {
     <div ref={frameRef} data-testid='layout-demo-frame' className='w-full overflow-hidden' style={{ height: STAGE_HEIGHT * scale }}>
       <div data-testid='layout-demo-stage' style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
     <BroadcastLayout
-      headerTitle='ModoSanremo | La evolución gráfica del Festival (1969-1989)'
+      headerTitle='Program title'
       headerDate='23/01/2026'
-      hashtag='#ModoSanremoMR'
-      url='modoradio.cl'
+      hashtag='#ProgramHashtag'
+      url='example.com'
       chyronText={chyronText}
       showChyron={showChyron}
       chyronDuration={5000}
       showLiveIndicator={true}
-      qrCodeContent='https://modoradio.cl'
+      qrCodeContent='https://example.com'
     >
       <div className='flex h-full flex-col items-center justify-center px-6 py-10 text-white'>
         <h1 className='text-center text-4xl font-semibold'>Broadcast Layout Demo</h1>
@@ -53,7 +53,7 @@ export default function BroadcastLayoutExample() {
         <Card className='mt-12 w-full max-w-2xl space-y-4 bg-white/10 p-8 text-white ring-white/20'>
           <h2 className='text-2xl font-semibold'>Test Chyron Messages</h2>
           <div className='flex flex-col gap-3'>
-            <Button onClick={() => displayChyron('LAS INTROS DEL FESTIVAL DE SANREMO')} variant='primary' size='lg'>
+            <Button onClick={() => displayChyron('PROGRAM TITLE MESSAGE')} variant='primary' size='lg'>
               Show Title Message
             </Button>
             <Button onClick={() => displayChyron('Ahora suena: Beautiful Song - Amazing Artist')} variant='primary' size='lg'>

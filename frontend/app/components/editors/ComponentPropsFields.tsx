@@ -427,6 +427,26 @@ export function ComponentPropsFields({
           />
         </Field>
       );
+    case 'reloj-clone':
+      return (
+        <div className='space-y-3'>
+          <Field label='Timezone'>
+            <Select
+              value={props.timezone || 'America/Argentina/Buenos_Aires'}
+              onChange={(v) => updateProp(componentType, 'timezone', v)}
+              options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
+            />
+          </Field>
+          <Field label='Logo URL (optional)'>
+            <Input
+              type='text'
+              value={props.logoUrl || ''}
+              onChange={(e) => updateProp(componentType, 'logoUrl', e.target.value)}
+              placeholder='https://example.com/logo.svg'
+            />
+          </Field>
+        </div>
+      );
     case 'reloj-clock':
       return (
         <Field label='Timezone'>

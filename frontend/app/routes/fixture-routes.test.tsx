@@ -42,9 +42,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("shows the broadcast overlay's welcome chyron", () => {
-  render(<Overlay />);
-  expect(screen.getByText("Bienvenidos a Modoradio")).toBeInTheDocument();
+it("draws no station marks on the overlay when none are given", () => {
+  window.history.replaceState(null, "", "/overlay");
+  const { container } = render(<Overlay />);
+  expect(container.querySelector(".toni-logo")).toBeNull();
+  expect(container.textContent).not.toMatch(/bienvenidos|modoradio/i);
+});
+
+it("draws exactly the station marks the overlay URL gives", () => {
+  window.history.replaceState(null, "", "/overlay?callsign=XY&subtitle=STATION&logo=/x.png&chyron=Welcome%20to%20XY");
+  const { container } = render(<Overlay />);
+  expect(screen.getByText("Welcome to XY")).toBeInTheDocument();
+  const logo = container.querySelector(".toni-logo img");
+  expect(logo?.getAttribute("src")).toBe("/x.png");
+  expect(logo?.getAttribute("alt")).toBe("XY STATION");
+  window.history.replaceState(null, "", "/");
 });
 
 it("shows the slideshow fixture frames", () => {

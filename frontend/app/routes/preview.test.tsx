@@ -73,7 +73,7 @@ it("lists every overlay component and opens the ticker first", () => {
   }
   expect(screen.getByText("Ticker Preview")).toBeVisible();
   expect(screen.getByTestId("Ticker")).toHaveTextContent(
-    '"hashtag":"#ModoSanremoMR"',
+    '"hashtag":"#ProgramHashtag"',
   );
 });
 

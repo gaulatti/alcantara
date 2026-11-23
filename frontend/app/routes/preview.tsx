@@ -39,7 +39,7 @@ const GIORGIA_CTA_SEQUENCE = {
 
 export default function Preview() {
   const [activeDemo, setActiveDemo] = useState<string>('ticker');
-  const [chyronText, setChyronText] = useState('LAS INTROS DEL FESTIVAL DE SANREMO');
+  const [chyronText, setChyronText] = useState('PROGRAM TITLE MESSAGE');
   const [showChyron, setShowChyron] = useState(false);
   const previewRef = useRef<HTMLElement>(null);
   const [previewWidth, setPreviewWidth] = useState(1920);
@@ -82,7 +82,7 @@ export default function Preview() {
             <div className={STAGE_CENTER_CLASS}>
               <p className='text-3xl'>Ticker Preview</p>
             </div>
-            <Ticker hashtag='#ModoSanremoMR' url='modoradio.cl' />
+            <Ticker hashtag='#ProgramHashtag' url='example.com' />
           </div>
         );
       case 'chyron':
@@ -93,7 +93,7 @@ export default function Preview() {
               <Input value={chyronText} onChange={(e) => setChyronText(e.target.value)} placeholder='Enter chyron text' />
               <Button onClick={() => setShowChyron(!showChyron)}>{showChyron ? 'Hide' : 'Show'} Chyron</Button>
             </Card>
-            <Ticker hashtag='#ModoSanremoMR' url='modoradio.cl' />
+            <Ticker hashtag='#ProgramHashtag' url='example.com' />
             <ChyronHolder text={chyronText} show={showChyron} />
           </div>
         );
@@ -109,7 +109,7 @@ export default function Preview() {
       case 'qr-code':
         return (
           <div className={`${STAGE_CLASS} p-8`}>
-            <QRCodeWidget content='https://modoradio.cl' />
+            <QRCodeWidget content='https://example.com' />
             <div className={STAGE_CENTER_CLASS}>
               <p className='text-3xl'>QR Code Widget Preview</p>
             </div>
@@ -127,7 +127,7 @@ export default function Preview() {
       case 'header':
         return (
           <div className={`${STAGE_CLASS} p-8`}>
-            <Header title='ModoSanremo | La evolución gráfica del Festival' date='23/01/2026' />
+            <Header title='Program title' date='23/01/2026' />
             <div className={STAGE_CENTER_CLASS}>
               <p className='text-3xl'>Header Component Preview</p>
             </div>
