@@ -181,8 +181,8 @@ importers:
         specifier: 0.1.49
         version: 0.1.49(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react-is@18.3.1)(react@19.2.4)(redux@5.0.1)
       '@modoitaliano/giorgia':
-        specifier: 0.1.106
-        version: 0.1.106(@types/react@19.2.13)
+        specifier: 0.1.117
+        version: 0.1.117(@types/react@19.2.13)
       '@react-router/node':
         specifier: 7.12.0
         version: 7.12.0(react-router@7.12.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(typescript@5.9.3)
@@ -1672,8 +1672,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@modoitaliano/giorgia@0.1.106':
-    resolution: {integrity: sha512-7u4S/wPvMcE4h/jODtgXKXoLIT8x5Z1aZ1ApoILrpye8XcMX7ysBtl0hsNl2bJlDo41EOHfPbyg2uGZkoSLlmQ==}
+  '@modoitaliano/giorgia@0.1.117':
+    resolution: {integrity: sha512-UXkdDwF0qnOXyeWOlxTsGQADi2LbVtfqiYGPRKQcXc8xdoAgT+GxE8X052NvMG9HJ1ZHc4OATnsH+h0YfyeJGA==}
     engines: {node: '>=20.0.0'}
 
   '@mrleebo/prisma-ast@0.13.1':
@@ -9551,7 +9551,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@modoitaliano/giorgia@0.1.106(@types/react@19.2.13)':
+  '@modoitaliano/giorgia@0.1.117(@types/react@19.2.13)':
     dependencies:
       '@fontsource/barlow': 5.3.0
       '@fontsource/barlow-condensed': 5.3.0

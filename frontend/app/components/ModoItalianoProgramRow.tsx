@@ -4,8 +4,8 @@ import type { ProgramRowPlan } from '../utils/programRow';
 import { ModoItalianoChyron } from './ModoItalianoChyron';
 import { ModoItalianoClock } from './ModoItalianoClock';
 import { ModoItalianoDisclaimer } from './ModoItalianoDisclaimer';
-import { ModoItalianoGiorgiaChyron } from './ModoItalianoGiorgiaChyron';
-import { ModoItalianoGiorgiaClock } from './ModoItalianoGiorgiaClock';
+import { GiorgiaChyronRenderer as ModoItalianoGiorgiaChyron } from './GiorgiaChyronRenderer';
+import { GiorgiaClockRenderer as ModoItalianoGiorgiaClock } from './GiorgiaClockRenderer';
 import { GIORGIA } from './giorgiaBroadcast';
 
 interface ModoItalianoProgramRowProps {
