@@ -30,8 +30,13 @@ it("reports a failed or malformed list, with the reason when the API gives one",
 });
 
 it("saves with the revision, and tells a stale revision from any other refusal", async () => {
-  answer(new Response(JSON.stringify({ ...recipe, revision: 4 })));
-  await expect(updateRecipe("tv", recipe)).resolves.toMatchObject({ revision: 4 });
+  answer(new Response(JSON.stringify({ ...recipe, revision: 4, rebuilt: 2 })));
+  await expect(updateRecipe("tv", recipe)).resolves.toEqual({ recipe: { ...recipe, revision: 4 }, rebuilt: 2 });
+  // An answer without the count (an older backend) means nothing was reported rebuilt.
+  answer(new Response(JSON.stringify({ ...recipe, revision: 5 })));
+  await expect(updateRecipe("tv", recipe)).resolves.toEqual({ recipe: { ...recipe, revision: 5 }, rebuilt: 0 });
+  answer(new Response(JSON.stringify({ ...recipe, revision: 4, rebuilt: 2 })));
+  await updateRecipe("tv", recipe);
   const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
   expect(url).toContain("/program/tv/recipes/5");
   expect(init.method).toBe("PUT");

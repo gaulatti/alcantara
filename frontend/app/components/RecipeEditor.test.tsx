@@ -65,6 +65,7 @@ const sequence = (overrides: Partial<FlightSequence> = {}): FlightSequence =>
   }) as FlightSequence;
 
 interface Options {
+  rebuilt?: number;
   state?: Response;
   songs?: Response;
   putFails?: unknown;
@@ -91,7 +92,7 @@ function stubApi(options: Options = {}) {
       }
       if (url.includes("/recipes/5") && method === "PUT") {
         if (options.putFails !== undefined) throw options.putFails;
-        return options.put ? options.put(body!) : new Response(JSON.stringify({ ...recipe, ...body, revision: 4 }));
+        return options.put ? options.put(body!) : new Response(JSON.stringify({ ...recipe, ...body, revision: 4, rebuilt: options.rebuilt ?? 2 }));
       }
       if (url.includes("/recipes"))
         return new Response(JSON.stringify(options.recipes ?? [recipe]), { status: options.recipesStatus ?? 200 });
@@ -124,7 +125,7 @@ it("saves an edit with the revision it was loaded at, after naming how many uses
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   expect(screen.getByRole("status").textContent).toContain("2 uses that have not aired yet will be rebuilt");
   fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
-  await screen.findByText("Recipe saved. 2 upcoming uses will follow it.");
+  await screen.findByText("Recipe saved. 2 upcoming uses were rebuilt from it.");
   const put = calls.find((call) => call.method === "PUT")!;
   expect(put.url).toContain("/program/tv-main/recipes/5");
   expect(put.body).toEqual({
@@ -337,7 +338,7 @@ it("reports a load that fails with something that is not an Error", async () => 
 });
 
 it("picks a scene by id, and says nothing was rebuilt when no upcoming use follows the recipe", async () => {
-  stubApi({ sequences: [] });
+  stubApi({ sequences: [], rebuilt: 0 });
   await open();
   fireEvent.change(screen.getByLabelText("Bumper scene"), { target: { value: "20" } });
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
@@ -347,12 +348,26 @@ it("picks a scene by id, and says nothing was rebuilt when no upcoming use follo
 });
 
 it("names one use in the singular", async () => {
-  stubApi({ sequences: [sequence({ items: [cue("use_a.show", { ...tag("use_a", "bumper") })] })] });
+  stubApi({ rebuilt: 1, sequences: [sequence({ items: [cue("use_a.show", { ...tag("use_a", "bumper") })] })] });
   await open();
   expect(screen.getByText("Revision 3 · 1 use")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Transition"), { target: { value: "cut" } });
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   expect(screen.getByRole("status").textContent).toContain("1 use that has not aired yet will be rebuilt");
+  fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
+  await screen.findByText("Recipe saved. 1 upcoming use was rebuilt from it.");
+});
+
+it("reads the saved recipe and the count of rebuilt uses from the update, and keeps the count out of the recipe", async () => {
+  const calls = stubApi({ rebuilt: 3 });
+  await open();
+  fireEvent.change(screen.getByLabelText("Transition"), { target: { value: "cut" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm save" }));
+  await screen.findByText("Recipe saved. 3 upcoming uses were rebuilt from it.");
+  // The saved recipe is not dirty (the count is not a field of it), so there is nothing more to save.
+  expect(screen.getByRole("button", { name: "Save recipe" })).toBeDisabled();
+  expect(calls.find((call) => call.method === "PUT")!.body).not.toHaveProperty("rebuilt");
 });
 
 it("reports a save or a preview that fails with something that is not an Error", async () => {
