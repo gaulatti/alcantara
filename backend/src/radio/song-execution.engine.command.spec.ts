@@ -724,3 +724,73 @@ describe('SongExecutionEngine progress and queue application', () => {
     );
   });
 });
+
+describe('state removed while an asynchronous step is in flight (gaulatti/alcantara#82)', () => {
+  type Privates = {
+    states: Map<string, unknown>;
+    handleCommandFailure(programId: string, requestId: string): void;
+    setTimer(programId: string, durationMs: number): void;
+    startProgress(programId: string): void;
+    playNext(programId: string): boolean;
+    claimQueueHead(
+      programId: string,
+      entryId: string,
+      requestId: string,
+    ): Promise<boolean>;
+    handleSongEnded(programId: string): void;
+  };
+  const privates = (ctx: ReturnType<typeof setup>) =>
+    ctx.engine as unknown as Privates;
+
+  it('drops a Palazzo answer when the program state is gone', async () => {
+    const ctx = setup();
+    ctx.radioService.playSong.mockImplementationOnce(() => {
+      privates(ctx).states.delete('radio-1');
+      return Promise.resolve({ ok: true, playbackRequestId: 'late' });
+    });
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    ctx.engine.handlePalazzoSnapshot('radio-1', idle());
+    await flush(60);
+    expect(privates(ctx).states.has('radio-1')).toBe(false);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores a command failure, a timer and a progress tick for a program with no state', () => {
+    const ctx = setup();
+    const timers = jest.getTimerCount();
+    expect(() =>
+      privates(ctx).handleCommandFailure('gone', 'request'),
+    ).not.toThrow();
+    privates(ctx).setTimer('gone', 1000);
+    privates(ctx).startProgress('gone');
+    expect(jest.getTimerCount()).toBe(timers);
+  });
+
+  it('does not end a song when the state was removed before its timer fired', () => {
+    const ctx = setup();
+    const ended = jest
+      .spyOn(privates(ctx), 'handleSongEnded')
+      .mockImplementation(() => undefined);
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    expect(privates(ctx).states.has('radio-1')).toBe(true);
+    privates(ctx).setTimer('radio-1', 100);
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    privates(ctx).states.delete('radio-1');
+    jest.advanceTimersByTime(200);
+    expect(ended).not.toHaveBeenCalled();
+  });
+
+  it('stops quietly when the state is removed while a queue claim is pending', async () => {
+    const ctx = setup();
+    ctx.engine.handleSequenceUpdated('radio-1', AUTO);
+    const state = stateOf(ctx.engine);
+    state.queue = [{ id: 'queued-1', active: false }];
+    jest.spyOn(privates(ctx), 'claimQueueHead').mockImplementation(() => {
+      privates(ctx).states.delete('radio-1');
+      return Promise.resolve(true);
+    });
+    expect(() => privates(ctx).playNext('radio-1')).not.toThrow();
+    await flush(20);
+    expect(privates(ctx).states.has('radio-1')).toBe(false);
+  });
+});

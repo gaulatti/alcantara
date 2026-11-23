@@ -1,4 +1,8 @@
-import { routeGroupOf, UNMATCHED_ROUTE, HttpMetricsHook } from './http-metrics.hook';
+import {
+  routeGroupOf,
+  UNMATCHED_ROUTE,
+  HttpMetricsHook,
+} from './http-metrics.hook';
 
 type Handler = (request: unknown, reply: unknown, done: () => void) => void;
 
@@ -11,19 +15,40 @@ function hookWith(addHook: (name: string, handler: Handler) => void) {
 
 describe('routeGroupOf', () => {
   it('labels a matched route by its first static segment of the route pattern', () => {
-    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/songs/:id' } })).toBe('songs');
-    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/program/:programId/tape' } })).toBe('program');
-    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/metrics' } })).toBe('metrics');
+    expect(
+      routeGroupOf({ method: 'GET', routeOptions: { url: '/songs/:id' } }),
+    ).toBe('songs');
+    expect(
+      routeGroupOf({
+        method: 'GET',
+        routeOptions: { url: '/program/:programId/tape' },
+      }),
+    ).toBe('program');
+    expect(
+      routeGroupOf({ method: 'GET', routeOptions: { url: '/metrics' } }),
+    ).toBe('metrics');
   });
 
   it('labels a request with no matched route, or a pattern with no static segment, as unmatched', () => {
     expect(routeGroupOf({ method: 'GET' })).toBe(UNMATCHED_ROUTE);
-    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/:slug' } })).toBe(UNMATCHED_ROUTE);
-    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/*' } })).toBe(UNMATCHED_ROUTE);
+    expect(
+      routeGroupOf({ method: 'GET', routeOptions: { url: '/:slug' } }),
+    ).toBe(UNMATCHED_ROUTE);
+    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/*' } })).toBe(
+      UNMATCHED_ROUTE,
+    );
+  });
+
+  it('labels the root pattern, which has no segment at all, as unmatched', () => {
+    expect(routeGroupOf({ method: 'GET', routeOptions: { url: '/' } })).toBe(
+      UNMATCHED_ROUTE,
+    );
   });
 
   it('never reads the raw URL: a scanner path cannot become a label', () => {
-    expect(routeGroupOf({ method: 'GET', routeOptions: undefined })).toBe(UNMATCHED_ROUTE);
+    expect(routeGroupOf({ method: 'GET', routeOptions: undefined })).toBe(
+      UNMATCHED_ROUTE,
+    );
   });
 });
 
@@ -51,8 +76,17 @@ describe('HttpMetricsHook', () => {
       handler = fn;
     });
     hook.onModuleInit();
-    handler?.({ method: 'GET' }, { statusCode: 404, elapsedTime: 3 }, jest.fn());
-    expect(metrics.recordHttp).toHaveBeenCalledWith('GET', UNMATCHED_ROUTE, 404, 0.003);
+    handler?.(
+      { method: 'GET' },
+      { statusCode: 404, elapsedTime: 3 },
+      jest.fn(),
+    );
+    expect(metrics.recordHttp).toHaveBeenCalledWith(
+      'GET',
+      UNMATCHED_ROUTE,
+      404,
+      0.003,
+    );
   });
 
   it('refuses to start on an adapter that has no hooks', () => {
@@ -62,5 +96,24 @@ describe('HttpMetricsHook', () => {
       metrics as never,
     );
     expect(() => hook.onModuleInit()).not.toThrow();
+  });
+
+  it('starts without a hook when the adapter hands back no instance at all', () => {
+    const metrics = { recordHttp: jest.fn() };
+    const hook = new HttpMetricsHook(
+      { httpAdapter: { getInstance: () => undefined } } as never,
+      metrics as never,
+    );
+    expect(() => hook.onModuleInit()).not.toThrow();
+  });
+
+  it('does nothing in a context with no HTTP adapter at all', () => {
+    const metrics = { recordHttp: jest.fn() };
+    const hook = new HttpMetricsHook(
+      { httpAdapter: undefined } as never,
+      metrics as never,
+    );
+    expect(() => hook.onModuleInit()).not.toThrow();
+    expect(metrics.recordHttp).not.toHaveBeenCalled();
   });
 });
