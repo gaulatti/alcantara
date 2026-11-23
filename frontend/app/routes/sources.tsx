@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PageHeader, Alert } from '@gaulatti/bleecker';
+import { PageHeader } from '@gaulatti/bleecker';
+import type { StatePillTone } from '@gaulatti/bleecker';
 import { AppPage } from '../components/AppPage';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { apiUrl } from '../utils/apiBaseUrl';
@@ -26,6 +27,14 @@ export const PREVIEW_UNAVAILABLE_MESSAGES: Record<Exclude<PreviewAvailability, '
   failed: 'Live preview could not connect.',
 };
 
+const PREVIEW_STATUS: Record<PreviewAvailability, { tone: StatePillTone; label: string }> = {
+  connecting: { tone: 'info', label: 'Preview connecting' },
+  ready: { tone: 'ok', label: 'Preview ready' },
+  unconfigured: { tone: 'warn', label: 'Preview unavailable' },
+  denied: { tone: 'bad', label: 'Preview not permitted' },
+  failed: { tone: 'bad', label: 'Preview failed' },
+};
+
 export function meta() {
   return [{ title: 'External Sources - Alcántara' }];
 }
@@ -34,6 +43,7 @@ function SourcesManagerContent({
   sources,
   currentProgramId,
   isLoading,
+  hasLoaded,
   error,
   onRefresh,
   previewAvailability,
@@ -44,6 +54,7 @@ function SourcesManagerContent({
   sources: ExternalSource[];
   currentProgramId: string;
   isLoading: boolean;
+  hasLoaded: boolean;
   error: string | null;
   onRefresh: () => void;
 }) {
@@ -102,21 +113,6 @@ function SourcesManagerContent({
         </section>
       )}
 
-      {previewAvailability !== 'ready' && (
-        <div role="status" data-testid="preview-availability" className="flex items-center gap-3 text-sm text-amber-300">
-          <span>{PREVIEW_UNAVAILABLE_MESSAGES[previewAvailability]}</span>
-          {previewAvailability === 'failed' && (
-            <button
-              type="button"
-              onClick={onRetryPreview}
-              className="rounded border border-zinc-600 px-2 py-0.5 text-xs text-zinc-100 hover:bg-zinc-800"
-            >
-              Retry
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Source List Section */}
       <section aria-label="External sources registry">
         <SourceList
@@ -129,7 +125,13 @@ function SourcesManagerContent({
           }
           onRefresh={onRefresh}
           isLoading={isLoading}
+          hasLoaded={hasLoaded}
           error={error}
+          preview={{
+            ...PREVIEW_STATUS[previewAvailability],
+            reason: previewAvailability === 'ready' ? null : PREVIEW_UNAVAILABLE_MESSAGES[previewAvailability],
+            onRetry: previewAvailability === 'failed' ? onRetryPreview : undefined,
+          }}
         />
       </section>
     </div>
@@ -145,6 +147,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
   const [programId] = useGlobalProgramId();
   const [sources, setSources] = useState<ExternalSource[]>(initialSources ?? []);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasLoaded, setHasLoaded] = useState<boolean>(initialSources !== undefined);
   const [error, setError] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<any>(testRoom ?? null);
   const roomRef = useRef<any>(testRoom ?? null);
@@ -160,6 +163,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
       const data = await fetchExternalSources();
       setSources(data);
       setError(null);
+      setHasLoaded(true);
     } catch (err: any) {
       setError(err?.message || 'Failed to fetch external sources');
     } finally {
@@ -257,6 +261,7 @@ export default function SourcesRoute({ initialSources, room: testRoom }: Sources
             sources={sources}
             currentProgramId={programId}
             isLoading={isLoading}
+            hasLoaded={hasLoaded}
             error={error}
             onRefresh={loadSources}
             previewAvailability={previewAvailability}

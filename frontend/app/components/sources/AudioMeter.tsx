@@ -109,7 +109,7 @@ export function AudioMeter({
           );
         })}
       </div>
-      <span className="text-[10px] font-mono tabular-nums text-zinc-400 w-7 text-right">
+      <span className="text-xs font-mono tabular-nums text-zinc-400 w-7 text-right">
         {level}%
       </span>
     </div>

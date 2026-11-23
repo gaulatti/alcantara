@@ -124,7 +124,7 @@ export function SourceRow({
           <span data-testid={`source-name-${source.id}`} className="truncate max-w-xs sm:max-w-md">
             {source.name}
           </span>
-          <span className="text-[10px] text-zinc-500 font-mono">
+          <span className="text-xs text-zinc-400 font-mono">
             {source.participantIdentity ?? 'no participant'}
           </span>
         </div>
@@ -144,7 +144,7 @@ export function SourceRow({
       <td className="px-3 py-2.5 text-xs">
         <span
           data-testid={`source-lifecycle-${source.id}`}
-          className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider ${lifecycleInfo.colorClass}`}
+          className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-xs font-medium uppercase tracking-wider ${lifecycleInfo.colorClass}`}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-current" />
           {lifecycleInfo.label}

@@ -155,4 +155,53 @@ describe('SourceList', () => {
     fireEvent.click(refreshedButton1!);
     expect(refreshedButton1).toHaveAttribute('aria-pressed', 'false');
   });
+
+  const props = {
+    currentProgramId: 'prog-alpha',
+    selectedIds: new Set<string>(),
+    onToggleSelect: vi.fn(),
+  };
+
+  it('shows skeleton rows until the first list has arrived', () => {
+    render(<SourceList {...props} sources={[]} onRefresh={vi.fn()} isLoading hasLoaded={false} />);
+    expect(screen.getByTestId('source-list-loading')).toBeInTheDocument();
+    expect(screen.queryByText('No external sources assigned')).not.toBeInTheDocument();
+  });
+
+  it('shows an error state with a retry when the first load failed', () => {
+    const onRefresh = vi.fn();
+    render(<SourceList {...props} sources={[]} onRefresh={onRefresh} hasLoaded={false} error="HTTP 503" />);
+    expect(screen.getByText('External sources could not be loaded')).toBeInTheDocument();
+    expect(screen.getByText('The list could not be loaded. Check the connection and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('HTTP 503')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading sources' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('source-list-error')).not.toBeInTheDocument();
+  });
+
+  it('keeps the list and shows a banner when a later refresh fails', () => {
+    render(<SourceList {...props} sources={mockSources} onRefresh={vi.fn()} error="HTTP 500" />);
+    expect(screen.getByTestId('source-list-error')).toHaveTextContent('Retaining current list');
+    expect(screen.getByText('Studio Camera 1')).toBeInTheDocument();
+    expect(screen.queryByTestId('source-list-load-error')).not.toBeInTheDocument();
+  });
+
+  it('shows an empty state once the list has loaded with nothing assigned', () => {
+    render(<SourceList {...props} sources={[]} onRefresh={vi.fn()} />);
+    expect(screen.getByText('No external sources assigned')).toBeInTheDocument();
+  });
+
+  it('shows preview availability as a state with its reason, and a retry only when offered', () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(
+      <SourceList {...props} sources={mockSources} onRefresh={vi.fn()} preview={{ tone: 'bad', label: 'Preview failed', reason: 'Live preview could not connect.', onRetry }} />,
+    );
+    expect(screen.getByText('Preview failed')).toBeInTheDocument();
+    expect(screen.getByTestId('preview-availability')).toHaveTextContent('Live preview could not connect.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    rerender(<SourceList {...props} sources={mockSources} onRefresh={vi.fn()} preview={{ tone: 'ok', label: 'Preview ready', reason: null }} />);
+    expect(screen.getByText('Preview ready')).toBeInTheDocument();
+    expect(screen.queryByTestId('preview-availability')).not.toBeInTheDocument();
+  });
 });

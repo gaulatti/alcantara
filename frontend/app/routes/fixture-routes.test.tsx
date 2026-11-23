@@ -16,6 +16,7 @@ import BroadcastLayoutExample from "./layout-demo";
 import SongIntroFixture from "./song-intro-fixture";
 import MediaFixture from "./media-fixture";
 import LabelsFixture from "./labels-fixture";
+import SourcesFixture from "./sources-fixture";
 import RecordingFixture from "./recording-fixture";
 import AccessFixture from "./access-fixture";
 import LibraryFixture from "./library-fixture";
@@ -280,6 +281,31 @@ it.each([
     ),
   );
   expect(screen.getByText("Studio laptop")).toBeInTheDocument();
+});
+
+it.each([
+  ["ready", "Studio camera"],
+  ["empty", "No external sources assigned"],
+  ["error", "External sources could not be loaded"],
+  ["preview-failed", "Live preview could not connect."],
+  ["preview-unconfigured", "Preview unavailable"],
+  ["nonsense", "Preview ready"],
+])("opens the sources fixture in its %s state", (state, text) => {
+  render(
+    <MemoryRouter initialEntries={[`/sources-fixture?state=${state}`]}>
+      <SourcesFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(text)).toBeInTheDocument();
+});
+
+it("opens the sources fixture while loading", () => {
+  render(
+    <MemoryRouter initialEntries={["/sources-fixture?state=loading"]}>
+      <SourcesFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByTestId("source-list-loading")).toBeInTheDocument();
 });
 
 it("opens the access fixture with the service not available yet, and a manager by default", async () => {
