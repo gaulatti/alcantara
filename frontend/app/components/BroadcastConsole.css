@@ -71,7 +71,7 @@
 }
 .console-panel-actions a {
   color: var(--console-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .console-panel-actions a:hover {
   color: var(--console-text);
@@ -80,7 +80,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -158,7 +158,7 @@
   line-height: 1.3;
 }
 .radio-next p {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .radio-next .console-next-foot {
@@ -166,7 +166,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .radio-output-monitor:focus {
@@ -220,7 +220,7 @@
   border-color: var(--console-ready);
 }
 .console-count {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--console-muted);
 }
@@ -253,20 +253,20 @@
   box-shadow: inset 3px 0 var(--console-ready);
 }
 .console-log-row time {
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--console-muted);
 }
 .console-log-row small {
   color: var(--console-muted);
-  font-size: 10px;
+  font-size: 12px;
   display: block;
   margin-top: 3px;
 }
 .console-log-summary {
   padding: 10px 14px;
   border-bottom: 1px solid var(--console-border);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .console-mixer {
@@ -281,7 +281,7 @@
   min-width: 0;
 }
 .console-channel-label {
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 650;
@@ -316,7 +316,7 @@
   padding: 3px;
   border: 1px solid var(--console-border);
   border-radius: var(--radius-button);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--console-muted);
 }
@@ -331,13 +331,13 @@
 .console-recovery summary {
   cursor: pointer;
   padding: 12px 14px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--console-muted);
 }
 .console-recovery-content {
   padding: 0 14px 14px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .console-recovery-content p {
@@ -455,7 +455,7 @@
 .console-cart-top {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--console-muted);
   margin-bottom: 7px;
@@ -469,7 +469,7 @@
   position: relative;
   z-index: 1;
   color: var(--console-live);
-  font-size: 9px;
+  font-size: 12px;
 }
 .broadcast-console :is(button, input, select, a, summary):focus-visible {
   outline: 2px solid var(--console-ready);
@@ -508,7 +508,7 @@
   width: 30px;
   height: 30px;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
   background: var(--console-raised);
   border-radius: 4px;
@@ -540,7 +540,7 @@
 }
 .switcher-monitor header > span:first-child {
   color: var(--console-preview);
-  font-size: 10px;
+  font-size: 12px;
 }
 .switcher-monitor[data-tone="program"] header > span:first-child {
   color: var(--console-live);
@@ -608,7 +608,7 @@
     flex: 1;
   }
   .console-toolbar .console-status {
-    font-size: 9px;
+    font-size: 12px;
   }
   .radio-next {
     min-height: 85px;
@@ -766,7 +766,7 @@
   padding: 8px;
 }
 .radio-cartwall .console-cart-name {
-  font-size: 11px;
+  font-size: 12px;
 }
 .radio-tools .console-panel-heading {
   min-height: 42px;
@@ -814,7 +814,7 @@
   }
   .broadcast-console .playlist-column-heading > span:nth-child(5) {
     padding-left: 4px !important;
-    font-size: 8px;
+    font-size: 12px;
     letter-spacing: 0;
   }
   .radio-console .console-toolbar-title {
@@ -896,7 +896,7 @@
   border-radius: var(--radius-button);
 }
 .tv-audio-channel h3 {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   text-align: center;
   margin: 0;
@@ -922,7 +922,7 @@
   border: 1px solid var(--console-border);
   border-radius: var(--radius-button);
   color: var(--console-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   cursor: pointer;
 }
@@ -985,7 +985,7 @@
 .tv-audio-meter-unavailable {
   color: var(--console-muted);
   align-self: center;
-  font-size: 10px;
+  font-size: 12px;
 }
 .tv-audio-level {
   display: flex;
@@ -1006,7 +1006,7 @@
   color: var(--console-text);
 }
 .tv-audio-level span {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .tv-audio-presets {
@@ -1021,16 +1021,16 @@
   gap: 4px;
 }
 .tv-audio-presets input {
-  font-size: 10px;
+  font-size: 12px;
 }
 .tv-audio-presets button {
-  font-size: 9px;
+  font-size: 12px;
   white-space: nowrap;
   padding: 0 2px;
   color: var(--console-ready);
 }
 .tv-audio-master-note {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
   text-align: center;
   min-height: 64px;
@@ -1042,13 +1042,13 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .tv-audio-fade input {
   width: 65px;
   padding: 4px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .tv-audio-mixer-status {
   display: flex;
@@ -1057,7 +1057,7 @@
   gap: 4px;
   border-top: 1px solid var(--console-border);
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .tv-audio-mixer-status p {
@@ -1097,7 +1097,7 @@
 }
 .tv-audio-confidence .console-recording summary {
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 .tv-audio-cartwall {
@@ -1178,7 +1178,7 @@
   flex-shrink: 0;
   border-radius: 999px;
   padding: 1px 7px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -1208,7 +1208,7 @@
   flex-shrink: 0;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .switcher-return-listen:disabled {
@@ -1221,7 +1221,7 @@
   padding: 4px 8px;
   background: color-mix(in srgb, var(--console-canvas) 82%, transparent);
   color: var(--console-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-align: center;
 }

@@ -86,3 +86,12 @@ it('cannot preview without a choice or while previewing, and warns before removi
   );
   expect(screen.getByRole('button', { name: 'Previewing…' })).toBeDisabled();
 });
+
+// gaulatti/alcantara#392 (audit of #350): choosing "No song intro" reports the empty id the
+// save path reads as "remove the assignment", exactly as the native select did.
+it('reports an empty choice when the intro is cleared', () => {
+  const onChange = vi.fn();
+  render(<SongIntroField instants={instants} songId={9} selectedInstantId='4' onChange={onChange} onPreview={vi.fn()} />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Assigned song intro' }), { target: { value: '' } });
+  expect(onChange).toHaveBeenCalledWith('');
+});

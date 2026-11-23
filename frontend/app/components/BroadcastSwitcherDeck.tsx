@@ -6,7 +6,7 @@ import {
   IconButton,
   Input,
   Select,
-  Slider,
+  Fader,
   StatePill,
   type StatePillTone,
 } from "@gaulatti/bleecker";
@@ -190,6 +190,7 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
   return (
     <div className="relative flex items-center gap-2">
       <StatePill
+        className="text-xs"
         tone={SYNC_TONE[preferences.syncState] ?? "warn"}
         label={`Preferences ${preferences.syncState}`}
       />
@@ -434,7 +435,7 @@ export function ConfidenceMonitor({
         </span>
         {airState ? (
           <StatePill
-            className="shrink-0 border-white/40 bg-black/30 text-white"
+            className="shrink-0 border-white/40 bg-black/30 text-xs text-white"
             tone={airState.tone}
             label={airState.label}
             pulse={airState.pulse}
@@ -706,12 +707,12 @@ export function BroadcastSwitcherDeck(props: Props) {
               </span>
               {isProgram ? (
                 <StatePill
-                  className="shrink-0"
+                  className="shrink-0 text-xs"
                   tone="live"
                   label={isPreview ? "Preview · Program" : "Program"}
                 />
               ) : isPreview ? (
-                <StatePill className="shrink-0" tone="arm" label="Preview" />
+                <StatePill className="shrink-0 text-xs" tone="arm" label="Preview" />
               ) : (
                 <span className="shrink-0 text-xs text-text-secondary">
                   Stage
@@ -813,13 +814,19 @@ export function BroadcastSwitcherDeck(props: Props) {
                 <Expand size={17} />
               </IconButton>
             </div>
-            <Slider
+            <Fader
               className="mt-3"
               label="Source panel width"
+              orientation="horizontal"
+              length="100%"
+              unit="percent"
+              format={(value) => `${Math.round(value)} px`}
               min={260}
               max={520}
+              step={10}
+              coarseStep={40}
               value={dockWidth}
-              onChange={(value) =>
+              onValueChange={(value) =>
                 preferences.updateProfile({ dockWidth: value })
               }
             />
@@ -906,6 +913,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                 <div className="flex items-center gap-2">
                   {ftbArmed ? (
                     <StatePill
+                      className="text-xs"
                       tone="arm"
                       label="Fade to black armed: Alt+B again"
                     />
