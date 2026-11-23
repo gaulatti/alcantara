@@ -1,32 +1,14 @@
-import {
-  AlertContainer,
-  Button,
-  Card,
-  Checkbox,
-  Empty,
-  FileInput,
-  IconButton,
-  Input,
-  LoadingSpinner,
-  Modal,
-  SectionHeader,
-  SortableTableHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  showAlert
-} from '@gaulatti/bleecker';
-import type { SortState } from '@gaulatti/bleecker';
-import { Play, Plus, Pencil, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { AlertContainer, AlertDialog, Button, Checkbox, FileInput, Input, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import type { ColumnDef, SortState } from '@gaulatti/bleecker';
+import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { Route } from './+types/instants';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { uploadFileToMediaBucket } from '../services/uploads';
 import { useGlobalProgramId } from '../utils/globalProgram';
 import { AppPage } from '../components/AppPage';
+import { EnabledPill, LibraryList, LibraryRowActions, VolumeCell } from '../components/library/LibraryList';
+import type { LibraryStatus } from '../components/library/LibraryList';
 
 interface InstantItem {
   id: number;
@@ -75,7 +57,8 @@ export function meta({}: Route.MetaArgs) {
 export default function InstantsAdmin() {
   const [activeProgramId] = useGlobalProgramId();
   const [instants, setInstants] = useState<InstantItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState<LibraryStatus>('loading');
+  const [confirmingStopAll, setConfirmingStopAll] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [editingInstant, setEditingInstant] = useState<InstantItem | null>(null);
@@ -97,19 +80,18 @@ export default function InstantsAdmin() {
     setInstants(payload);
   };
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        await fetchInstants();
-      } catch (err) {
-        console.error('Failed to load instants:', err);
-        showAlert('Failed to load audio clips.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const load = async () => {
+    setStatus('loading');
+    try {
+      await fetchInstants();
+      setStatus('ready');
+    } catch (err) {
+      console.error('Failed to load instants:', err);
+      setStatus('error');
+    }
+  };
 
+  useEffect(() => {
     void load();
   }, []);
 
@@ -163,6 +145,7 @@ export default function InstantsAdmin() {
   };
 
   const stopAllInstants = async () => {
+    setConfirmingStopAll(false);
     try {
       const res = await fetch(apiUrl(`/instants/stop-all?programId=${encodeURIComponent(activeProgramId)}`), {
         method: 'POST'
@@ -242,8 +225,6 @@ export default function InstantsAdmin() {
   };
 
   const deleteInstant = async (instant: InstantItem) => {
-    if (!confirm(`Delete instant "${instant.name}"?`)) return;
-
     try {
       const res = await fetch(apiUrl(`/instants/${instant.id}`), {
         method: 'DELETE'
@@ -267,21 +248,26 @@ export default function InstantsAdmin() {
     order: 'asc'
   });
 
-  const handleSort = (field: string, order: 'asc' | 'desc') => {
-    setSort({ field, order });
-  };
-
-  const sortedInstants = useMemo(() => {
-    return [...instants].sort((a, b) => {
-      const field = sort.field as keyof InstantItem;
-      const av = a[field];
-      const bv = b[field];
-      if (typeof av === 'number' && typeof bv === 'number') {
-        return sort.order === 'asc' ? av - bv : bv - av;
-      }
-      return sort.order === 'asc' ? String(av ?? '').localeCompare(String(bv ?? '')) : String(bv ?? '').localeCompare(String(av ?? ''));
-    });
-  }, [instants, sort]);
+  const columns: ColumnDef<InstantItem>[] = [
+    { key: 'position', header: '#', className: 'w-12 text-text-secondary' },
+    { key: 'name', header: 'Name', className: 'font-medium text-text-primary' },
+    { key: 'volume', header: 'Volume', align: 'right', cell: (instant) => <VolumeCell volume={instant.volume} /> },
+    { key: 'enabled', header: 'Status', cell: (instant) => <EnabledPill enabled={instant.enabled} /> },
+    {
+      key: 'actions',
+      header: '',
+      sortable: false,
+      cell: (instant) => (
+        <LibraryRowActions
+          name={instant.name}
+          primary={{ label: 'Play', onSelect: () => void playInstant(instant.id) }}
+          more={[{ label: 'Edit', onSelect: () => openEditModal(instant) }]}
+          onDelete={() => deleteInstant(instant)}
+          deleteTitle={`Delete audio clip "${instant.name}"?`}
+        />
+      )
+    }
+  ];
 
   return (
     <AppPage width='wide'>
@@ -290,9 +276,6 @@ export default function InstantsAdmin() {
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <SectionHeader title='Audio clips' description='Reusable sounders, bumpers, and instant audio for every broadcast mode.' />
           <div className='flex flex-wrap items-center gap-3'>
-            <Button variant='secondary' onClick={() => void stopAllInstants()}>
-              Stop all
-            </Button>
             <Button onClick={openCreateModal}>
               <Plus size={16} />
               Create audio clip
@@ -300,100 +283,37 @@ export default function InstantsAdmin() {
           </div>
         </div>
 
-        <Card className='space-y-4'>
-          {isLoading ? (
-            <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
-              <LoadingSpinner />
-              <p>Loading audio clips...</p>
+        <LibraryList
+          caption='Audio clips'
+          columns={columns}
+          data={instants}
+          getRowKey={(instant) => String(instant.id)}
+          status={status}
+          onRetry={() => void load()}
+          errorTitle='Failed to load audio clips'
+          empty={{ title: 'No audio clips yet', description: 'Create your first reusable sounder or bumper.', action: <Button onClick={openCreateModal}>Create audio clip</Button> }}
+          sort={sort}
+          onSortChange={setSort}
+          toolbar={
+            <div className='flex items-center justify-between gap-3 border-b border-sand/20 pb-3 dark:border-white/10'>
+              <p className='text-xs text-text-secondary'>Playback on the active program</p>
+              <Button variant='destructive' size='sm' onClick={() => setConfirmingStopAll(true)}>
+                Stop all
+              </Button>
             </div>
-          ) : sortedInstants.length === 0 ? (
-            <Empty title='No audio clips yet' description='Create your first reusable sounder or bumper.' action={<Button onClick={openCreateModal}>Create audio clip</Button>} />
-          ) : (
-            <>
-              <div className='space-y-3 md:hidden'>
-                {sortedInstants.map((instant) => (
-                  <article key={instant.id} className='rounded-[var(--radius-card)] border border-sand/25 bg-white/80 p-4 dark:border-white/10 dark:bg-dark-sand/60'>
-                    <div className='flex items-start justify-between gap-3'>
-                      <div className='min-w-0'>
-                        <p className='truncate font-medium text-text-primary'>{instant.name}</p>
-                        <p className='mt-1 text-xs text-text-secondary'>
-                          Position {instant.position} · Volume {instant.volume.toFixed(2)} · {instant.enabled ? 'Enabled' : 'Disabled'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className='mt-3 grid grid-cols-3 gap-2'>
-                      <Button size='sm' variant='secondary' onClick={() => void playInstant(instant.id)}>
-                        <Play size={14} /> Play
-                      </Button>
-                      <Button size='sm' variant='secondary' onClick={() => openEditModal(instant)}>
-                        <Pencil size={14} /> Edit
-                      </Button>
-                      <Button size='sm' variant='destructive' onClick={() => void deleteInstant(instant)}>
-                        <Trash2 size={14} /> Delete
-                      </Button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <div className='hidden overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40 md:block'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <SortableTableHeader field='name' label='Name' currentSort={sort} onSort={handleSort} />
-                      <SortableTableHeader field='volume' label='Volume' currentSort={sort} onSort={handleSort} />
-                      <SortableTableHeader field='enabled' label='Status' currentSort={sort} onSort={handleSort} />
-                      <TableHead />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedInstants.map((instant) => (
-                      <TableRow key={instant.id}>
-                        <TableCell className='text-xs text-text-secondary dark:text-text-secondary'>{instant.position}</TableCell>
-                        <TableCell className='font-medium text-text-primary dark:text-text-primary'>{instant.name}</TableCell>
-                        <TableCell>{instant.volume.toFixed(2)}</TableCell>
-                        <TableCell>
-                          {instant.enabled ? (
-                            <span className='text-xs font-medium text-green-600 dark:text-green-400'>Enabled</span>
-                          ) : (
-                            <span className='text-xs text-text-secondary dark:text-text-secondary'>Disabled</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className='flex items-center justify-end gap-1'>
-                            <IconButton
-                              onClick={() => {
-                                void playInstant(instant.id);
-                              }}
-                              className='text-sea '
-                              title={`Play ${instant.name}`}
-                              aria-label={`Play ${instant.name}`}
-                            >
-                              <Play size={14} />
-                            </IconButton>
-                            <IconButton onClick={() => openEditModal(instant)} className='text-sea ' title={`Edit ${instant.name}`} aria-label={`Edit ${instant.name}`}>
-                              <Pencil size={14} />
-                            </IconButton>
-                            <IconButton
-                              onClick={() => {
-                                void deleteInstant(instant);
-                              }}
-                              className='text-terracotta'
-                              title={`Delete ${instant.name}`}
-                              aria-label={`Delete ${instant.name}`}
-                            >
-                              <Trash2 size={14} />
-                            </IconButton>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
-        </Card>
+          }
+        />
+
+        <AlertDialog
+          isOpen={confirmingStopAll}
+          title='Stop all audio clips?'
+          description='Every audio clip playing on the active program stops immediately, including any on air.'
+          confirmLabel='Stop all'
+          cancelLabel='Cancel'
+          variant='destructive'
+          onCancel={() => setConfirmingStopAll(false)}
+          onConfirm={() => void stopAllInstants()}
+        />
 
         <Modal isOpen={showModal} onClose={closeModal} title={editingInstant ? 'Edit audio clip' : 'Create audio clip'}>
           <div className='space-y-5'>

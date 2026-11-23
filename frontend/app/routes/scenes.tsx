@@ -1,30 +1,13 @@
-import {
-  AlertContainer,
-  Button,
-  Card,
-  Empty,
-  IconButton,
-  Input,
-  LoadingSpinner,
-  Modal,
-  SectionHeader,
-  Select,
-  SortableTableHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  showAlert
-} from '@gaulatti/bleecker';
-import type { SortState } from '@gaulatti/bleecker';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { AlertContainer, Button, Card, Empty, Input, Modal, SectionHeader, Select, showAlert } from '@gaulatti/bleecker';
+import type { ColumnDef, SortState } from '@gaulatti/bleecker';
+import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { Route } from './+types/scenes';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { AppPage } from '../components/AppPage';
+import { LibraryList, LibraryRowActions } from '../components/library/LibraryList';
+import type { LibraryStatus } from '../components/library/LibraryList';
 
 interface LayoutSummary {
   id: number;
@@ -46,7 +29,7 @@ export default function ScenesAdmin() {
   const navigate = useNavigate();
   const [scenes, setScenes] = useState<SceneSummary[]>([]);
   const [layouts, setLayouts] = useState<LayoutSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState<LibraryStatus>('loading');
 
   const [showModal, setShowModal] = useState(false);
   const [editingScene, setEditingScene] = useState<SceneSummary | null>(null);
@@ -73,35 +56,22 @@ export default function ScenesAdmin() {
     setLayouts(payload);
   };
 
+  const load = async () => {
+    setStatus('loading');
+    try {
+      await Promise.all([fetchScenes(), fetchLayouts()]);
+      setStatus('ready');
+    } catch (err) {
+      console.error('Failed to load scenes admin data:', err);
+      setStatus('error');
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        await Promise.all([fetchScenes(), fetchLayouts()]);
-      } catch (err) {
-        console.error('Failed to load scenes admin data:', err);
-        showAlert('Failed to load scenes. Please refresh and try again.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
     void load();
   }, []);
 
   const [sort, setSort] = useState<SortState>({ field: 'name', order: 'asc' });
-
-  const handleSort = (field: string, order: 'asc' | 'desc') => {
-    setSort({ field, order });
-  };
-
-  const sortedScenes = useMemo(() => {
-    return [...scenes].sort((a, b) => {
-      if (sort.field === 'name') {
-        return sort.order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      }
-      return 0;
-    });
-  }, [scenes, sort]);
 
   const openCreateModal = () => {
     setEditingScene(null);
@@ -171,8 +141,6 @@ export default function ScenesAdmin() {
   };
 
   const deleteScene = async (scene: SceneSummary) => {
-    if (!confirm(`Delete scene "${scene.name}"?`)) return;
-
     try {
       const res = await fetch(apiUrl(`/scenes/${scene.id}`), {
         method: 'DELETE'
@@ -190,6 +158,30 @@ export default function ScenesAdmin() {
     }
   };
 
+  const columns: ColumnDef<SceneSummary>[] = [
+    { key: 'name', header: 'Name', className: 'font-medium text-text-primary' },
+    {
+      key: 'layout',
+      header: 'Scene template',
+      sortable: false,
+      className: 'text-text-secondary',
+      cell: (scene) => scene.layout?.name || `#${scene.layoutId}`
+    },
+    {
+      key: 'actions',
+      header: '',
+      sortable: false,
+      cell: (scene) => (
+        <LibraryRowActions
+          name={scene.name}
+          primary={{ label: 'Edit', onSelect: () => openEditModal(scene) }}
+          onDelete={() => deleteScene(scene)}
+          deleteTitle={`Delete scene "${scene.name}"?`}
+        />
+      )
+    }
+  ];
+
   return (
     <AppPage width='wide'>
       <AlertContainer />
@@ -204,7 +196,7 @@ export default function ScenesAdmin() {
           </div>
         </div>
 
-        {layouts.length === 0 ? (
+        {status === 'ready' && layouts.length === 0 ? (
           <Card>
             <Empty
               title='Create a layout first'
@@ -213,58 +205,18 @@ export default function ScenesAdmin() {
             />
           </Card>
         ) : (
-          <Card className='space-y-4'>
-            {isLoading ? (
-              <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
-                <LoadingSpinner />
-                <p>Loading scenes...</p>
-              </div>
-            ) : scenes.length === 0 ? (
-              <Empty title='No scenes yet' description='Create your first scene.' action={<Button onClick={openCreateModal}>Create Scene</Button>} />
-            ) : (
-              <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <SortableTableHeader field='name' label='Name' currentSort={sort} onSort={handleSort} />
-                      <TableHead>Scene template</TableHead>
-                      <TableHead />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedScenes.map((scene) => (
-                      <TableRow key={scene.id}>
-                        <TableCell className='font-medium text-text-primary dark:text-text-primary'>{scene.name}</TableCell>
-                        <TableCell className='text-text-secondary dark:text-text-secondary'>{scene.layout?.name || `#${scene.layoutId}`}</TableCell>
-                        <TableCell>
-                          <div className='flex items-center justify-end gap-1'>
-                            <IconButton
-                              onClick={() => openEditModal(scene)}
-                              className='text-sea '
-                              title={`Edit ${scene.name}`}
-                              aria-label={`Edit ${scene.name}`}
-                            >
-                              <Pencil size={14} />
-                            </IconButton>
-                            <IconButton
-                              onClick={() => {
-                                void deleteScene(scene);
-                              }}
-                              className='text-terracotta'
-                              title={`Delete ${scene.name}`}
-                              aria-label={`Delete ${scene.name}`}
-                            >
-                              <Trash2 size={14} />
-                            </IconButton>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </Card>
+          <LibraryList
+            caption='Scenes'
+            columns={columns}
+            data={scenes}
+            getRowKey={(scene) => String(scene.id)}
+            status={status}
+            onRetry={() => void load()}
+            errorTitle='Failed to load scenes'
+            empty={{ title: 'No scenes yet', description: 'Create your first scene.', action: <Button onClick={openCreateModal}>Create Scene</Button> }}
+            sort={sort}
+            onSortChange={setSort}
+          />
         )}
 
         <Modal isOpen={showModal} onClose={closeModal} title={editingScene ? 'Edit Scene' : 'Create Scene'}>

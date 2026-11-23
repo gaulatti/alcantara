@@ -1,30 +1,13 @@
-import {
-  AlertContainer,
-  Button,
-  Card,
-  Checkbox,
-  Empty,
-  IconButton,
-  Input,
-  LoadingSpinner,
-  Modal,
-  SectionHeader,
-  SortableTableHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  showAlert
-} from '@gaulatti/bleecker';
-import type { SortState } from '@gaulatti/bleecker';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { AlertContainer, Button, Checkbox, Input, Modal, SectionHeader, showAlert } from '@gaulatti/bleecker';
+import type { ColumnDef, SortState } from '@gaulatti/bleecker';
+import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { Route } from './+types/layouts';
 import { apiUrl } from '../utils/apiBaseUrl';
 import { OVERLAY_COMPONENTS } from '../models/components';
 import { AppPage } from '../components/AppPage';
+import { LibraryList, LibraryRowActions } from '../components/library/LibraryList';
+import type { LibraryStatus } from '../components/library/LibraryList';
 
 interface Layout {
   id: number;
@@ -46,7 +29,7 @@ export function meta({}: Route.MetaArgs) {
 export default function LayoutsAdmin() {
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState<LibraryStatus>('loading');
 
   const [showModal, setShowModal] = useState(false);
   const [editingLayout, setEditingLayout] = useState<Layout | null>(null);
@@ -62,20 +45,20 @@ export default function LayoutsAdmin() {
     setLayouts(data);
   };
 
+  const load = async () => {
+    setStatus('loading');
+    try {
+      setComponentTypes(OVERLAY_COMPONENTS.map((c) => ({ type: c.id, name: c.name, description: c.description })));
+      await fetchLayouts();
+      setStatus('ready');
+    } catch (err) {
+      console.error(err);
+      setStatus('error');
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        setComponentTypes(OVERLAY_COMPONENTS.map((c) => ({ type: c.id, name: c.name, description: c.description })));
-        await fetchLayouts();
-      } catch (err) {
-        console.error(err);
-        showAlert('Failed to load scene templates. Please refresh and try again.', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
+    void load();
   }, []);
 
   const openCreateModal = () => {
@@ -156,8 +139,6 @@ export default function LayoutsAdmin() {
   };
 
   const deleteLayout = async (layoutId: number) => {
-    if (!confirm('Are you sure you want to delete this scene template?')) return;
-
     try {
       const res = await fetch(apiUrl(`/layouts/${layoutId}`), {
         method: 'DELETE'
@@ -175,18 +156,46 @@ export default function LayoutsAdmin() {
 
   const [sort, setSort] = useState<SortState>({ field: 'name', order: 'asc' });
 
-  const handleSort = (field: string, order: 'asc' | 'desc') => {
-    setSort({ field, order });
-  };
-
-  const sortedLayouts = useMemo(() => {
-    return [...layouts].sort((a, b) => {
-      if (sort.field === 'name') {
-        return sort.order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      }
-      return 0;
-    });
-  }, [layouts, sort]);
+  const columns: ColumnDef<Layout>[] = [
+    { key: 'name', header: 'Name', className: 'font-medium text-text-primary' },
+    {
+      key: 'componentType',
+      header: 'Components',
+      sortable: false,
+      cell: (layout) => (
+        <div className='flex flex-wrap gap-1'>
+          {layout.componentType
+            .split(',')
+            .filter(Boolean)
+            .map((component) => {
+              const info = componentTypes.find((ct) => ct.type === component);
+              return (
+                <span
+                  key={component}
+                  className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea dark:border-accent-blue/30 dark:bg-accent-blue/10 dark:text-accent-blue'
+                  title={info?.description}
+                >
+                  {info?.name || component}
+                </span>
+              );
+            })}
+        </div>
+      )
+    },
+    {
+      key: 'actions',
+      header: '',
+      sortable: false,
+      cell: (layout) => (
+        <LibraryRowActions
+          name={layout.name}
+          primary={{ label: 'Edit', onSelect: () => openEditModal(layout) }}
+          onDelete={() => deleteLayout(layout.id)}
+          deleteTitle={`Delete scene template "${layout.name}"?`}
+        />
+      )
+    }
+  ];
 
   return (
     <AppPage width='wide'>
@@ -202,85 +211,27 @@ export default function LayoutsAdmin() {
           </div>
         </div>
 
-        <Card className='space-y-4'>
-          {isLoading ? (
-            <div className='flex flex-col items-center justify-center gap-3 py-10 text-center text-text-secondary dark:text-text-secondary'>
-              <LoadingSpinner />
-              <p>Loading scene templates...</p>
-            </div>
-          ) : layouts.length === 0 ? (
-            <Empty
-              title='No scene templates yet'
-              description='Create a reusable template to speed up scene creation.'
-              action={
-                <Button onClick={openCreateModal}>
-                  <Plus size={16} />
-                  Create your first template
-                </Button>
-              }
-            />
-          ) : (
-            <div className='overflow-hidden rounded-xl border border-sand/20 dark:border-sand/40'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableTableHeader field='name' label='Name' currentSort={sort} onSort={handleSort} />
-                    <TableHead>Components</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedLayouts.map((layout) => {
-                    const components = layout.componentType.split(',').filter(Boolean);
-                    return (
-                      <TableRow key={layout.id}>
-                        <TableCell className='font-medium text-text-primary dark:text-text-primary'>{layout.name}</TableCell>
-                        <TableCell>
-                          <div className='flex flex-wrap gap-1'>
-                            {components.map((component) => {
-                              const info = componentTypes.find((ct) => ct.type === component);
-                              return (
-                                <span
-                                  key={component}
-                                  className='inline-flex rounded-full border border-sea/30 bg-sea/10 px-2 py-0.5 text-xs font-medium text-sea dark:border-accent-blue/30 dark:bg-accent-blue/10 dark:text-accent-blue'
-                                  title={info?.description}
-                                >
-                                  {info?.name || component}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className='flex items-center justify-end gap-1'>
-                            <IconButton
-                              onClick={() => openEditModal(layout)}
-                              className='text-sea '
-                              title={`Edit ${layout.name}`}
-                              aria-label={`Edit ${layout.name}`}
-                            >
-                              <Pencil size={14} />
-                            </IconButton>
-                            <IconButton
-                              onClick={() => {
-                                void deleteLayout(layout.id);
-                              }}
-                              className='text-terracotta'
-                              title={`Delete ${layout.name}`}
-                              aria-label={`Delete ${layout.name}`}
-                            >
-                              <Trash2 size={14} />
-                            </IconButton>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </Card>
+        <LibraryList
+          caption='Scene templates'
+          columns={columns}
+          data={layouts}
+          getRowKey={(layout) => String(layout.id)}
+          status={status}
+          onRetry={() => void load()}
+          errorTitle='Failed to load scene templates'
+          empty={{
+            title: 'No scene templates yet',
+            description: 'Create a reusable template to speed up scene creation.',
+            action: (
+              <Button onClick={openCreateModal}>
+                <Plus size={16} />
+                Create your first template
+              </Button>
+            )
+          }}
+          sort={sort}
+          onSortChange={setSort}
+        />
 
         <Modal isOpen={showModal} onClose={closeModal} title={editingLayout ? 'Edit scene template' : 'Create template'} className='max-w-3xl'>
           <div className='space-y-6'>
