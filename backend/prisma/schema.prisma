@@ -694,6 +694,8 @@ model MediaAssetAnalysis {
   overlapSeconds         Float?
   integratedLufs         Float?
   truePeakDbtp           Float?
+  /// The decoded length of the file, from the same pass that measures the cue points; null until measured.
+  durationSeconds        Float?
   isrc                   String?
   musicbrainzRecordingId String?
   error                  String?

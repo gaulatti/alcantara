@@ -25,6 +25,7 @@ export const MEDIA_ANALYSIS_SELECT = {
   overlapSeconds: true,
   integratedLufs: true,
   truePeakDbtp: true,
+  durationSeconds: true,
   isrc: true,
   musicbrainzRecordingId: true,
   error: true,
@@ -77,6 +78,7 @@ export interface SongAnalysis {
   error: string | null;
   attempts: number;
   nextAttemptAt: Date | null;
+  durationSeconds: number | null;
   updatedAt: Date;
 }
 
@@ -300,7 +302,10 @@ export class SongsService {
       );
     }
 
-    if (data.earoneSpins !== undefined || data.externalChartSpins !== undefined) {
+    if (
+      data.earoneSpins !== undefined ||
+      data.externalChartSpins !== undefined
+    ) {
       updateData.earoneSpins = this.toOptionalStringValue(
         data.earoneSpins ?? data.externalChartSpins,
       );
@@ -487,15 +492,31 @@ export class SongsService {
   // An update without a provider keeps the stored one; a new row without one is 'earone', the only provider today.
   private async syncChartIdentity(
     tx: Prisma.TransactionClient,
-    song: { id: number; earoneSongId: string | null; earoneRank: string | null; earoneSpins: string | null },
+    song: {
+      id: number;
+      earoneSongId: string | null;
+      earoneRank: string | null;
+      earoneSpins: string | null;
+    },
     requestedProvider?: string | null,
   ) {
-    if (song.earoneSongId === null && song.earoneRank === null && song.earoneSpins === null) {
+    if (
+      song.earoneSongId === null &&
+      song.earoneRank === null &&
+      song.earoneSpins === null
+    ) {
       await tx.songChartIdentity.deleteMany({ where: { songId: song.id } });
       return;
     }
-    const values = { externalId: song.earoneSongId, rank: song.earoneRank, spins: song.earoneSpins };
-    const provider = typeof requestedProvider === 'string' && requestedProvider.trim() ? requestedProvider.trim() : undefined;
+    const values = {
+      externalId: song.earoneSongId,
+      rank: song.earoneRank,
+      spins: song.earoneSpins,
+    };
+    const provider =
+      typeof requestedProvider === 'string' && requestedProvider.trim()
+        ? requestedProvider.trim()
+        : undefined;
     await tx.songChartIdentity.upsert({
       where: { songId: song.id },
       create: { songId: song.id, provider: provider ?? 'earone', ...values },

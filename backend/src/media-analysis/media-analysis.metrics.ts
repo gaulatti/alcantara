@@ -31,6 +31,7 @@ export class MediaAnalysisMetrics {
   private readonly duration: Histogram<string>;
   private readonly backlog: Gauge<string>;
   private readonly writes: Counter<string>;
+  private readonly durationBackfill: Gauge<string>;
 
   constructor(managed: ManagedMetricsService) {
     this.analyses = new Counter({
@@ -60,6 +61,11 @@ export class MediaAnalysisMetrics {
     for (const outcome of WRITE_OUTCOMES) {
       this.writes.inc({ outcome }, 0);
     }
+    this.durationBackfill = new Gauge({
+      name: 'alcantara_media_analysis_duration_backfill_assets',
+      help: 'Analysed audio assets still without a stored length that can be measured now, at the last poll (#296).',
+      registers: [managed.registry],
+    });
     for (const result of RESULTS) {
       this.analyses.inc({ result }, 0);
     }
@@ -73,6 +79,10 @@ export class MediaAnalysisMetrics {
     this.writes.inc({
       outcome: WRITE_OUTCOMES.has(outcome) ? outcome : 'dropped',
     });
+  }
+
+  setDurationBackfill(assets: number): void {
+    this.durationBackfill.set(Math.max(0, assets));
   }
 
   record(result: MediaAnalysisResult, seconds: number): void {

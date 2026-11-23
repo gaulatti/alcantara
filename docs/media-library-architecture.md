@@ -222,6 +222,25 @@ warning with the cause class is logged at each step, never the message. A write
 that fails for any other reason is logged as an error and not retried. The held
 result is lost on a restart; the lease path then applies, as before.
 
+**Stored length (#296).** The pass that measures the cue points also decodes the
+file, so its length is stored as `MediaAssetAnalysis.durationSeconds` (null until
+measured, and never a value that is not a positive number). The Audio tab and the
+songs list read it, and the media list uses it for assets that have no song length.
+Assets analysed before the column existed are filled in by the job itself, with no
+bulk write and no script: after every asset that needs a first, repeated or retried
+analysis (new uploads always go first), the candidate query also takes an analysed
+asset (`status = 'success'`, no `durationSeconds`, no retry time), newest first, one at
+a time at the same duty cycle (a wait of three times the run, 5 seconds to 10 minutes).
+That run only stores the length: the row stays a success and keeps its cue points and
+loudness whatever happens, so a file that can no longer be read costs an attempt and
+nothing else. Each such row is tried at most `MAX_ATTEMPTS` times counting the attempts
+it already has, and not again within 30 minutes of its last change (the attempt count
+update is what keeps another instance from taking it at the same time). A row whose
+length is stored is never selected again. Progress is
+`alcantara_media_analysis_duration_backfill_assets` (no labels): the analysed assets
+that still lack a length and can be measured now, at the last poll. It falls to zero
+when the library is done.
+
 **Rollback.** A forward fix. The job only writes `MediaAssetAnalysis`, which
 playback reads only for programs with `segueMode` `on`.
 
