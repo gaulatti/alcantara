@@ -80,7 +80,10 @@ excluded because it returns a credential). `alcantara_broadcast_destination_oper
 counts it as `action="ingest"` with `result` `succeeded` or `failed`.
 
 The list of destinations without keys is the existing
-`GET /broadcast/destinations` (`broadcast.view`).
+`GET /broadcast/destinations` (`broadcast.view`). It lists only the caller's team's
+destinations (every destination where no team is configured, which production
+refuses), so it never offers one the ingest route would answer 404 for. A
+destination with no team is not listed until its `teamId` is stamped.
 
 ## Immutability and idempotency
 

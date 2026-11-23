@@ -51,8 +51,14 @@ export class BroadcastDestinationsService {
     private readonly fillers: FillerBindingService,
   ) {}
 
-  async listDestinations() {
+  /**
+   * `callerTeam` narrows the list to that team's destinations, so it never offers one the ingest
+   * route would refuse (gaulatti/carmencita#4). `0` (no team configured, never production) and the
+   * in-process callers that pass nothing see every destination, as before.
+   */
+  async listDestinations(callerTeam = 0) {
     const destinations = await this.prisma.broadcastDestination.findMany({
+      where: callerTeam === 0 ? undefined : { teamId: callerTeam },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
     return destinations.map((destination) => ({

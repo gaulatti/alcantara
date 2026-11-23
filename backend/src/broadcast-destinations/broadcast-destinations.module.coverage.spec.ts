@@ -26,7 +26,11 @@ describe('BroadcastDestinationsModule', () => {
     expect(moduleRef.get(BroadcastDestinationsService)).toBeInstanceOf(
       BroadcastDestinationsService,
     );
-    await expect(controller.listDestinations()).resolves.toEqual([]);
+    await expect(
+      controller.listDestinations({
+        user: { sub: 'u', authorization: { teamId: 0 } },
+      } as never),
+    ).resolves.toEqual([]);
     expect(findMany).toHaveBeenCalledTimes(1);
     await moduleRef.close();
   });

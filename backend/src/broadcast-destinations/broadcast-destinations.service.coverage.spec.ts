@@ -183,6 +183,23 @@ async function caught(promise: Promise<unknown>): Promise<any> {
 
 describe('BroadcastDestinationsService coverage', () => {
   describe('catalog', () => {
+    it('narrows the list to the caller team, and to nothing where no team is configured', async () => {
+      const h = harness();
+      h.prisma.broadcastDestination.findMany.mockResolvedValue([]);
+      await h.service.listDestinations(7);
+      expect(h.prisma.broadcastDestination.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { teamId: 7 } }),
+      );
+      await h.service.listDestinations(0);
+      expect(
+        h.prisma.broadcastDestination.findMany.mock.calls.at(-1)?.[0],
+      ).not.toHaveProperty('where.teamId');
+      await h.service.listDestinations();
+      expect(
+        h.prisma.broadcastDestination.findMany.mock.calls.at(-1)?.[0],
+      ).not.toHaveProperty('where.teamId');
+    });
+
     it('lists destinations flagging retired entries', async () => {
       const h = harness();
       h.prisma.broadcastDestination.findMany.mockResolvedValue([

@@ -28,8 +28,8 @@ export class BroadcastDestinationsController {
 
   @Get('destinations')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.view)
-  listDestinations() {
-    return this.service.listDestinations();
+  listDestinations(@Req() request: TeamRequest) {
+    return this.service.listDestinations(request.user.authorization.teamId);
   }
 
   @Get('destinations/catalog')

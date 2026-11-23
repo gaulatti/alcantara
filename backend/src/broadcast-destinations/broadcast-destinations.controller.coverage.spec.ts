@@ -30,7 +30,12 @@ describe('BroadcastDestinationsController coverage', () => {
     service.reorderDestinations.mockResolvedValue(['ordered']);
     service.updateDestination.mockResolvedValue({ id: 'updated' });
 
-    await expect(controller.listDestinations()).resolves.toEqual(['list']);
+    await expect(
+      controller.listDestinations({
+        user: { sub: 'operator-1', authorization: { teamId: 7 } },
+      }),
+    ).resolves.toEqual(['list']);
+    expect(service.listDestinations).toHaveBeenCalledWith(7);
     await expect(controller.listCatalog()).resolves.toEqual(['catalog']);
     await expect(controller.createDestination({ id: 'x' })).resolves.toEqual({
       id: 'created',
