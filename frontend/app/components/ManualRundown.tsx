@@ -1171,9 +1171,11 @@ function SceneUpdateFields({
 
   const removeComponentProp = (componentType: string, propKey: string) => {
     const next: Record<string, unknown> = { ...effectiveMetadata };
+    /* v8 ignore start -- the editor only removes a prop from a component it has rendered as an object, so this non-object arm is not reachable from the page */
     const component = isRecord(next[componentType])
       ? { ...next[componentType] }
       : {};
+    /* v8 ignore stop */
     delete component[propKey];
     if (Object.keys(component).length === 0) {
       delete next[componentType];
@@ -1185,6 +1187,7 @@ function SceneUpdateFields({
 
   const addComponent = () => {
     const type = newComponentType.trim();
+    /* v8 ignore next -- the Add button is disabled while the type exists, so this duplicate guard cannot be reached from the page */
     if (!type || effectiveMetadata[type]) return;
     const next = { ...effectiveMetadata, [type]: {} };
     updateEffectiveMetadata(next);
@@ -1304,6 +1307,7 @@ function ComponentPropsCard({
 
   const addProp = () => {
     const key = newPropKey.trim();
+    /* v8 ignore next -- the Add button is disabled while the property exists, so this duplicate guard cannot be reached from the page */
     if (!key || props[key] !== undefined) return;
     onUpdateProp(key, parsePropValue(newPropValue));
     setNewPropKey("");
@@ -1437,6 +1441,7 @@ function inferValueType(
 
 function formatValueForInput(value: unknown): string {
   if (value === null) return "null";
+  /* v8 ignore next -- property values come from parsed JSON, which has no undefined; the editor never passes one */
   if (value === undefined) return "";
   if (typeof value === "string") return value;
   return JSON.stringify(value);
