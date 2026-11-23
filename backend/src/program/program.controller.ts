@@ -273,6 +273,23 @@ export class ProgramController {
     });
   }
 
+  /** gaulatti/alcantara#335: a program's public station marks (no team, no internal fields). */
+  @Get(':programId/branding')
+  @Public()
+  async getBranding(@Param('programId') programId: string) {
+    return this.programService.getBranding(programId);
+  }
+
+  /** gaulatti/alcantara#335: write a program's station marks, gated by program.manage. */
+  @Put(':programId/branding')
+  @RequirePermission(ALCANTARA_PERMISSIONS.program.manage)
+  async putBranding(
+    @Param('programId') programId: string,
+    @Body() data: Record<string, unknown>,
+  ) {
+    return this.programService.putBranding(programId, data);
+  }
+
   @Get('state')
   @Public()
   async getState() {

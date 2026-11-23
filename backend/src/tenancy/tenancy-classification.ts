@@ -43,6 +43,8 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
 
   // Program-owned: a programId.
   ProgramState: program,
+  // Owned through the Program row (its team), gaulatti/alcantara#335.
+  ProgramBranding: childOf('Program'),
   BroadcastDestinationSelection: program,
   BroadcastDestinationCommand: program,
   BroadcastDestinationRuntime: program,

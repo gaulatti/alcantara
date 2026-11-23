@@ -48,7 +48,24 @@ model Program {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  branding  ProgramBranding?
+
   @@index([teamId])
+}
+
+// gaulatti/alcantara#335: per-program station marks, one row per Program. Owned through the Program
+// row (which carries the team), and written through the program.manage permission.
+model ProgramBranding {
+  programId     String   @id
+  program       Program  @relation(fields: [programId], references: [programId], onDelete: Cascade)
+  displayName   String?
+  callsign      String?
+  subtitle      String?
+  logoUrl       String?
+  hashtag       String?
+  siteUrl       String?
+  defaultChyron String?
+  updatedAt     DateTime     @updatedAt
 }
 
 model ProgramState {
