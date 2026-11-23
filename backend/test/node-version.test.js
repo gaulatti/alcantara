@@ -21,7 +21,11 @@ for (const file of ['frontend/Dockerfile', 'frontend/Dockerfile.dev', 'backend/D
   });
 }
 
-for (const file of ['.github/workflows/ci.yml', '.github/workflows/frontend-deploy.yml']) {
+for (const file of [
+  '.github/workflows/ci.yml',
+  '.github/workflows/frontend-deploy.yml',
+  '.github/workflows/backend-deploy.yml',
+]) {
   test(`every node-version in ${file} is the pinned version`, () => {
     const versions = [...read(file).matchAll(/node-version:\s*["']?([\d.]+)["']?/g)].map((match) => match[1]);
     assert.ok(versions.length > 0);
