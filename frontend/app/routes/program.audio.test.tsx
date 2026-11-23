@@ -65,6 +65,10 @@ class FakeAudio {
   onended: (() => void) | null = null;
   onerror: (() => void) | null = null;
   static stream: unknown = null;
+  // A real element reports null until crossOrigin is set. "anonymous" models a
+  // source loaded in CORS mode, which Web Audio may read.
+  static crossOriginMode: string | null = null;
+  crossOrigin: string | null = FakeAudio.crossOriginMode;
   static mozStream: unknown = null;
   constructor(public src: string) {
     FakeAudio.instances.push(this);
@@ -191,6 +195,7 @@ beforeEach(() => {
   FakeAudio.instances = [];
   FakeAudio.playResult = "ok";
   FakeAudio.stream = null;
+  FakeAudio.crossOriginMode = null;
   FakeAudio.mozStream = null;
   FakeAudioContext.instances = [];
   FakeAudioContext.initialState = "running";
@@ -407,6 +412,8 @@ describe("instants", () => {
 
 describe("the level meter attached to an instant", () => {
   const attach = async () => {
+    // These cases meter a source Web Audio can read; the unreadable one is below.
+    FakeAudio.crossOriginMode = "anonymous";
     open();
     await flush();
   };
@@ -681,6 +688,7 @@ describe("scene instants", () => {
   });
 
   it("disconnects the meter when a scene instant stops, even if the nodes refuse", async () => {
+    FakeAudio.crossOriginMode = "anonymous";
     open();
     await flush();
     sceneTake();
@@ -707,6 +715,7 @@ describe("scene instants", () => {
   });
 
   it("gives the element its sound back when a scene instant ends or fails, whatever the meter nodes do", async () => {
+    FakeAudio.crossOriginMode = "anonymous";
     open();
     await flush();
     sceneTake();
@@ -1142,5 +1151,29 @@ describe("fade to black", () => {
     });
     await advance(1100);
     expect(audio.volume).toBeCloseTo(0.8, 2);
+  });
+});
+
+describe("an instant from another origin without CORS", () => {
+  it("keeps its own sound instead of going silent through the meter", async () => {
+    // Web Audio outputs silence for a cross-origin source loaded without CORS,
+    // and the meter mutes the element it routes: the instant must not be routed.
+    open();
+    await flush();
+    playInstant();
+    const audio = FakeAudio.instances[0];
+    expect(audio.crossOrigin).toBeNull();
+    expect(audio.muted).toBe(false);
+    expect(FakeAudioContext.instances[0]?.nodes ?? []).toHaveLength(0);
+  });
+
+  it("is not routed when a suspended context resumes either", async () => {
+    open();
+    await flush();
+    FakeAudioContext.initialState = "suspended";
+    playInstant();
+    await flush();
+    expect(FakeAudio.instances[0].muted).toBe(false);
+    expect(FakeAudioContext.instances[0]?.nodes ?? []).toHaveLength(0);
   });
 });
