@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./BroadcastConsole.css";
 import { ConfidenceMonitor } from "./BroadcastSwitcherDeck";
 import { GuestStrip, type StripParticipant } from "./GuestStrip";
@@ -12,7 +12,13 @@ import type { Scene } from "../models/broadcast";
 const scene = { id: 1, name: "Morning desk" } as Scene;
 
 export function ProgramReturnFixture() {
-  const [now] = useState(() => Date.now());
+  // The clock keeps moving, so Live and Delayed keep a fresh last frame and the frozen and lost
+  // timers count, as a real return would.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, []);
   const sources: Array<[string, ReturnSource]> = [
     ["Today: local render", { kind: "local" }],
     ["Live", { kind: "return", from: "Alana", connected: true, latencyMs: 1_800, lastFrameAt: now }],
