@@ -48,6 +48,8 @@ media-assets	POST	/media-labels	media.manage	createLabel	media_asset_create_labe
 media-assets	PUT	/media-labels/:id	media.manage	updateLabel	media_asset_update_label	W
 media-assets	PUT	/media-labels/:id/assets	media.manage	replaceLabelAssets	media_asset_replace_label_assets	W
 media-assets	DELETE	/media-labels/:id	media.manage	removeLabel	media_asset_remove_label	D
+artist-labels	GET	/artist-labels	media.read	list	media_list_artist_labels	R
+artist-labels	PUT	/artist-labels	media.manage	set	media_set_artist_label	W
 media-groups	GET	/media-groups	media.read	findAll	media_group_find_all	R
 media-groups	POST	/media-groups	media.manage	create	media_group_create	W
 media-groups	PUT	/media-groups/:id	media.manage	update	media_group_update	W

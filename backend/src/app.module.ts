@@ -23,6 +23,7 @@ import { FillerModule } from './filler/filler.module';
 import { ExternalSourcesModule } from './external-sources/external-sources.module';
 import { RecordingModule } from './recording/recording.module';
 import { DatabaseBackupModule } from './database-backup/database-backup.module';
+import { ArtistLabelsModule } from './artist-labels/artist-labels.module';
 import { MediaAssetsModule } from './media-assets/media-assets.module';
 import { AsRunModule } from './as-run/as-run.module';
 import { MediaAnalysisModule } from './media-analysis/media-analysis.module';
@@ -54,6 +55,7 @@ import { AccessModule } from './access/access.module';
     ExternalSourcesModule,
     RecordingModule,
     DatabaseBackupModule,
+    ArtistLabelsModule,
     MediaAssetsModule,
     AsRunModule,
     MediaAnalysisModule,

@@ -39,6 +39,8 @@ export const TENANCY_CLASSIFICATION: Readonly<Record<string, TenancyClass>> = {
   BroadcastDestination: tenant,
   BroadcastSettings: tenant,
   // Audit of ingest-credential requests (gaulatti/carmencita#4): the destination's team.
+  // Artist to media label link (gaulatti/alcantara#423): scoped by the caller's team.
+  ArtistLabel: tenant,
   BroadcastIngestAccess: tenant,
   // Audit of key set/replace (gaulatti/alcantara#376): the destination's team.
   BroadcastDestinationKeyChange: tenant,

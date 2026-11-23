@@ -104,6 +104,28 @@ replacements (`success`) and failed replacement transactions (`failure`). The
 only other possible result is `unknown` for unrecognized instrumentation input;
 no asset or label identifier appears in this metric.
 
+## Artist labels
+
+An operator attaches a media label to an artist once (gaulatti/alcantara#423, contract C4 of #222),
+and everything that needs "this artist's pictures" reads it: the song recipe's slideshow and bumper
+and, later, the artist bumper's editor. There is no artist record: `Song.artist` stays free text, and
+the link (`ArtistLabel`) is keyed on the same normalised text artist separation, as-run and charts use,
+`artistKey(artist) = artist.trim().toLocaleLowerCase()` (`backend/src/artist-labels/artist-key.ts`, the
+one definition the radio log generator and the filler use too). It is unique per team and key, stores
+the artist as last saved for display, and goes with its label (`ON DELETE CASCADE`).
+
+- `GET /artist-labels` (`media.read`) answers `[{artistKey, artist, labelId}]` for the caller's team.
+- `PUT /artist-labels` (`media.manage`) takes `{artist, labelId|null}`; `null` removes the link. A label
+  that does not exist or belongs to another team is a 400.
+- The backend lookup is `ArtistLabelsService.artistLabelFor(teamId, artist)`.
+- MCP: `media_list_artist_labels` (R) and `media_set_artist_label` (W), with the same permissions.
+- Console: the Songs page lists each artist's label, with the label's image count and a warning when it
+  has none; saving sets the link for every song by that artist.
+- `alcantara_artist_label_writes_total{result}` counts `set`, `cleared` and `rejected` writes (and
+  `unknown` for unrecognised instrumentation input); the artist and the label never appear in it.
+- Two spellings that differ by more than case and outer spaces stay two artists, as they already are
+  for separation. Merging spellings and an artist entity are out of scope.
+
 ## Audio analysis
 
 Every `AUDIO` asset (songs and audio clips) is measured once per source URL by

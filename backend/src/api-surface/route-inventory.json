@@ -97,6 +97,18 @@
   },
   {
     "method": "GET",
+    "path": "/artist-labels",
+    "public": false,
+    "permission": "alcantara:media:read"
+  },
+  {
+    "method": "PUT",
+    "path": "/artist-labels",
+    "public": false,
+    "permission": "alcantara:media:manage"
+  },
+  {
+    "method": "GET",
     "path": "/auth/me",
     "public": false,
     "permission": "alcantara:access"

@@ -412,10 +412,27 @@ model MediaLabel {
   teamId      Int?
   description String?
   assets      MediaAssetLabel[]
+  artists     ArtistLabel[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
   @@index([teamId])
+}
+
+/// The media label whose pictures stand for an artist (gaulatti/alcantara#423). Keyed on the same
+/// normalised text artist separation, as-run and charts use, so there is no second notion of artist.
+model ArtistLabel {
+  id        Int        @id @default(autoincrement())
+  artistKey String
+  teamId    Int?
+  /// The artist as last saved, for display; the key is what matches.
+  artist    String
+  labelId   String
+  label     MediaLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  updatedAt DateTime   @updatedAt
+
+  @@unique([teamId, artistKey])
+  @@index([labelId])
 }
 
 model MediaAssetLabel {

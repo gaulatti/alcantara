@@ -42,6 +42,13 @@ vi.mock("@gaulatti/bleecker", async (original) => {
 vi.mock("../services/songs", () => ({ fetchSongsPage }));
 vi.mock("../services/instants", () => ({ fetchInstants }));
 vi.mock("../services/uploads", () => ({ uploadFileToMediaBucket }));
+// The edit dialog's artist label field loads its own lists (covered in ArtistLabelField.test).
+vi.mock("../services/mediaLabels", () => ({ fetchAllMediaLabels: vi.fn(async () => []) }));
+vi.mock("../services/artistLabels", () => ({
+  artistKeyOf: (artist: string) => artist.trim().toLocaleLowerCase(),
+  fetchArtistLabels: vi.fn(async () => []),
+  saveArtistLabel: vi.fn(),
+}));
 vi.mock("../utils/globalProgram", () => ({
   useGlobalProgramId: () => ["radio one"],
 }));
