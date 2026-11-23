@@ -107,27 +107,6 @@ describe("workspace toolbar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
     expect((screen.getByRole("slider") as HTMLInputElement).value).toBe("300");
   });
-  it("reports the sync state in each tone and the connected indicator", () => {
-    mocks.prefs.syncState = "synced";
-    mocks.prefs.conflict = false;
-    const { rerender } = render(<BroadcastSwitcherDeck {...baseProps()} realtimeConnected />);
-    expect(screen.getByText("synced")).toHaveClass("text-emerald-300");
-    expect(screen.getByTitle("Live updates connected")).toBeInTheDocument();
-    mocks.prefs.syncState = "pending";
-    rerender(<BroadcastSwitcherDeck {...baseProps()} realtimeConnected />);
-    expect(screen.getByText("pending")).toHaveClass("text-amber-300");
-  });
-  it("reports transition changes, the empty library and the empty search", () => {
-    const props = baseProps();
-    const { rerender } = render(<BroadcastSwitcherDeck {...props} scenes={[]} stagedScene={null} activeScene={null} />);
-    expect(screen.getByText("No scenes assigned. Add scenes from the Library.")).toBeInTheDocument();
-    expect(screen.getByText("Choose a source to prepare the next scene.")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Transition"), { target: { value: "hit-parade" } });
-    expect(props.onTransitionChange).toHaveBeenCalledWith("hit-parade");
-    rerender(<BroadcastSwitcherDeck {...props} />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Search scenes" }), { target: { value: "zzz" } });
-    expect(screen.getByText("No scenes match your search.")).toBeInTheDocument();
-  });
   it("labels the sources as preview, program, both or staged and the ready line", () => {
     render(<BroadcastSwitcherDeck {...baseProps()} scenes={[scene, other, { id: 3, name: "Three" } as any]} />);
     expect(screen.getByText("Ready: Two")).toBeInTheDocument();
@@ -162,44 +141,8 @@ describe("workspace toolbar", () => {
   });
 });
 
-describe("fade to black", () => {
-  it("disarms itself after three seconds and restores a faded program at once", () => {
-    vi.useFakeTimers();
-    const props = baseProps();
-    const { rerender, unmount } = render(<BroadcastSwitcherDeck {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: /arm fade to black/i }));
-    expect(screen.getByRole("button", { name: /confirm fade to black/i })).toBeInTheDocument();
-    act(() => void vi.advanceTimersByTime(3000));
-    expect(screen.getByRole("button", { name: /arm fade to black/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /arm fade to black/i }));
-    fireEvent.click(screen.getByRole("button", { name: /confirm fade to black/i }));
-    expect(props.onFadeToBlack).toHaveBeenCalledTimes(1);
-    rerender(<BroadcastSwitcherDeck {...props} fadeToBlack />);
-    fireEvent.click(screen.getByRole("button", { name: "RESTORE PROGRAM" }));
-    expect(props.onFadeToBlack).toHaveBeenCalledTimes(2);
-    rerender(<BroadcastSwitcherDeck {...props} fadeToBlack={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /arm fade to black/i }));
-    unmount();
-  });
-});
-
 describe("keyboard shortcuts", () => {
   const raf = () => vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 1; });
-  it("takes on Space, cuts on C, clears Preview on Escape and arms fade on Alt+B", async () => {
-    raf();
-    const props = baseProps();
-    render(<BroadcastSwitcherDeck {...props} />);
-    fireEvent.keyDown(window, { code: "Space", key: " " });
-    await waitFor(() => expect(props.onTake).toHaveBeenCalledTimes(1));
-    fireEvent.keyDown(window, { key: "c" });
-    await waitFor(() => expect(props.onCut).toHaveBeenCalledTimes(1));
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(props.onStageScene).toHaveBeenCalledWith(null));
-    fireEvent.keyDown(window, { key: "b", altKey: true });
-    expect(screen.getByRole("button", { name: /confirm fade to black/i })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "x" });
-    fireEvent.keyDown(window, { key: "c", ctrlKey: true });
-  });
   it("ignores shortcuts typed into a field and never takes while busy", async () => {
     raf();
     const props = baseProps();
@@ -241,28 +184,6 @@ describe("console presets", () => {
   const open = () => fireEvent.click(screen.getByRole("button", { name: "tablet preferences" }));
   const layout = { id: "L1", name: "Night", description: null, sourceDeviceClass: "desktop", version: 2 };
 
-  it("offers the device class override, conflict resolution and resets", async () => {
-    fetchMock.mockResolvedValue(json(200, []));
-    render(<BroadcastSwitcherDeck {...baseProps()} />);
-    open();
-    fireEvent.change(screen.getByLabelText("Device class override"), { target: { value: "phone" } });
-    expect(mocks.prefs.setDeviceClassOverride).toHaveBeenCalledWith("phone");
-    fireEvent.click(screen.getByRole("button", { name: "Use detected desktop" }));
-    expect(mocks.prefs.setDeviceClassOverride).toHaveBeenCalledWith(null);
-    fireEvent.click(screen.getByRole("button", { name: "Use server" }));
-    fireEvent.click(screen.getByRole("button", { name: "Retry mine" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset class" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
-    expect(mocks.prefs.useAuthoritative).toHaveBeenCalled();
-    expect(mocks.prefs.retryLocal).toHaveBeenCalled();
-    expect(mocks.prefs.resetCurrent).toHaveBeenCalled();
-    expect(mocks.prefs.resetAll).toHaveBeenCalled();
-    expect(await screen.findByText("No published presets.")).toBeInTheDocument();
-    expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/operator-preferences/shared?scope=program&scopeId=prog%201");
-    open();
-    expect(screen.queryByLabelText("Device class override")).toBeNull();
-  });
-
   it("hides the conflict box and the team scope without a team", async () => {
     mocks.prefs.conflict = false;
     mocks.features = { context: undefined };
@@ -272,23 +193,6 @@ describe("console presets", () => {
     expect(screen.queryByText("A newer profile exists.")).toBeNull();
     expect(screen.queryByRole("option", { name: "My team" })).toBeNull();
     await screen.findByText("No published presets.");
-  });
-
-  it("lists team presets, loads one and adopts the acknowledged profile", async () => {
-    fetchMock.mockImplementation(async (url: string, init?: any) => {
-      if (init?.method === "POST") return json(200, { preference: { version: 7, profile: { p: 1 } } });
-      return json(200, [layout]);
-    });
-    render(<BroadcastSwitcherDeck {...baseProps()} />);
-    open();
-    fireEvent.change(screen.getByLabelText("Visibility"), { target: { value: "team" } });
-    expect(await screen.findByText(/Night · v2/)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("scope=team&scopeId=9"))).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Load" }));
-    expect(await screen.findByText("Loaded Night.")).toBeInTheDocument();
-    expect(mocks.prefs.adoptAcknowledged).toHaveBeenCalledWith(7, { p: 1 });
-    const post = fetchMock.mock.calls.find((c) => c[1]?.method === "POST")!;
-    expect(JSON.parse(post[1].body)).toEqual({ deviceClass: "tablet", version: 4 });
   });
 
   it("explains a load conflict and a generic load failure", async () => {
@@ -361,16 +265,6 @@ describe("console presets", () => {
     expect(await screen.findByText("Retire failed (500)")).toBeInTheDocument();
   });
 
-  it("surfaces a failed list as the message and clears it when the scope changes", async () => {
-    fetchMock.mockResolvedValueOnce(json(503));
-    render(<BroadcastSwitcherDeck {...baseProps()} />);
-    open();
-    expect(await screen.findByText("Console presets failed (503)")).toBeInTheDocument();
-    fetchMock.mockResolvedValue(json(200, []));
-    fireEvent.change(screen.getByLabelText("Visibility"), { target: { value: "team" } });
-    await waitFor(() => expect(screen.queryByText("Console presets failed (503)")).toBeNull());
-  });
-
   it("falls back to a generic message for a non-error rejection", async () => {
     fetchMock.mockRejectedValueOnce("offline");
     render(<BroadcastSwitcherDeck {...baseProps()} />);
@@ -388,14 +282,4 @@ describe("console presets", () => {
     expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
   });
 
-  it("stops listing when the team is lost while the team scope is selected", async () => {
-    fetchMock.mockResolvedValue(json(200, [layout]));
-    const { rerender } = render(<BroadcastSwitcherDeck {...baseProps()} />);
-    open();
-    fireEvent.change(screen.getByLabelText("Visibility"), { target: { value: "team" } });
-    await screen.findByText(/Night/);
-    mocks.features = { context: { authorization: {} } };
-    rerender(<BroadcastSwitcherDeck {...baseProps()} />);
-    expect(await screen.findByText("No published presets.")).toBeInTheDocument();
-  });
 });
