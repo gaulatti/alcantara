@@ -572,7 +572,9 @@ function ConsoleShell() {
         icon: <Cable size={16} />,
         onSelect: () => navigate('/radio-settings')
       },
-      {
+      // The component bench is a development route (gaulatti/alcantara#352): the command
+      // exists only in development builds, where /preview is registered.
+      ...(import.meta.env.DEV ? [{
         id: 'nav-preview',
         title: 'Open Preview',
         description: 'Open component preview in a new tab',
@@ -582,7 +584,7 @@ function ConsoleShell() {
           if (typeof window === 'undefined') return;
           window.open('/preview', '_blank', 'noopener,noreferrer');
         }
-      },
+      }] : []),
       {
         id: 'open-selected-program',
         title: selectedProgramTitle,
