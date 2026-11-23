@@ -1,3 +1,4 @@
+import { FileInput } from "@gaulatti/bleecker";
 import { useRef, useState } from "react";
 import { uploadFileToMediaBucket, type UploadKind } from "../../services/uploads";
 
@@ -83,11 +84,10 @@ export function FileDropField({
       >
         {isUploading ? "Uploading…" : label}
       </div>
-      <input
+      <FileInput
         ref={inputRef}
-        type="file"
         accept={accept}
-        className="hidden"
+        className="sr-only"
         data-testid="file-drop-input"
         disabled={disabled || isUploading}
         onChange={(event) => void handleFile(event.target.files?.[0])}

@@ -1,4 +1,10 @@
-import { Button } from "@gaulatti/bleecker";
+import {
+  Button,
+  Checkbox,
+  Field,
+  FileInput,
+  Select,
+} from "@gaulatti/bleecker";
 import { useCallback, useEffect, useState } from "react";
 import {
   exportSimilaritySongs,
@@ -169,23 +175,22 @@ export function SongSimilarityPanel({
       ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="text-sm">
-          Mode
-          <select
-            className={field}
+        <Field label="Mode">
+          <Select
             value={settings.similarityMode}
-            onChange={(e) =>
+            onChange={(value) =>
               setSettings({
                 ...settings,
-                similarityMode: e.target.value as SimilarityMode,
+                similarityMode: value as SimilarityMode,
               })
             }
-          >
-            <option value="off">Off</option>
-            <option value="shadow">Shadow</option>
-            <option value="on">On</option>
-          </select>
-        </label>
+            options={[
+              { value: "off", label: "Off" },
+              { value: "shadow", label: "Shadow" },
+              { value: "on", label: "On" },
+            ]}
+          />
+        </Field>
         <label className="text-sm">
           Threshold (−1 to 1)
           <input
@@ -219,22 +224,21 @@ export function SongSimilarityPanel({
             }
           />
         </label>
-        <label className="text-sm">
-          Candidates
-          <select
-            className={field}
+        <Field label="Candidates">
+          <Select
             value={settings.similarityPool}
-            onChange={(e) =>
+            onChange={(value) =>
               setSettings({
                 ...settings,
-                similarityPool: e.target.value as SimilarityPool,
+                similarityPool: value as SimilarityPool,
               })
             }
-          >
-            <option value="sequence">Playlist only</option>
-            <option value="catalog">Playlist, then whole catalog</option>
-          </select>
-        </label>
+            options={[
+              { value: "sequence", label: "Playlist only" },
+              { value: "catalog", label: "Playlist, then whole catalog" },
+            ]}
+          />
+        </Field>
       </div>
       <p className="mt-2 text-xs text-text-secondary">
         {MODE_HELP[settings.similarityMode]} Changing the window needs a new
@@ -266,25 +270,22 @@ export function SongSimilarityPanel({
         >
           Save
         </Button>
-        <label className="text-sm">
-          Export scope
-          <select
-            className={field}
+        <Field label="Export scope">
+          <Select
             value={scope}
-            onChange={(e) => setScope(e.target.value as "sequence" | "catalog")}
-          >
-            <option value="sequence">Songs in the playlist</option>
-            <option value="catalog">Whole catalog</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-2 pb-2 text-sm">
-          <input
-            type="checkbox"
-            checked={missingOnly}
-            onChange={(e) => setMissingOnly(e.target.checked)}
+            onChange={(value) => setScope(value as "sequence" | "catalog")}
+            options={[
+              { value: "sequence", label: "Songs in the playlist" },
+              { value: "catalog", label: "Whole catalog" },
+            ]}
           />
-          Only songs without embeddings
-        </label>
+        </Field>
+        <Checkbox
+          containerClassName="pb-2"
+          checked={missingOnly}
+          onChange={(e) => setMissingOnly(e.target.checked)}
+          label="Only songs without embeddings"
+        />
         <Button
           type="button"
           variant="secondary"
@@ -300,11 +301,8 @@ export function SongSimilarityPanel({
         >
           Export songs to analyze
         </Button>
-        <label className="text-sm">
-          <span className="block">Upload embeddings.json</span>
-          <input
-            className="mt-1 text-sm"
-            type="file"
+        <Field label="Upload embeddings.json">
+          <FileInput
             accept="application/json,.json"
             disabled={busy}
             onChange={(e) => {
@@ -312,7 +310,7 @@ export function SongSimilarityPanel({
               e.target.value = "";
             }}
           />
-        </label>
+        </Field>
       </div>
 
       <div className="mt-6 flex items-center justify-between">
