@@ -1,18 +1,2 @@
-import React from 'react';
-import './Ticker.css';
-
-interface TickerProps {
-  hashtag?: string;
-  url?: string;
-}
-
-export const Ticker: React.FC<TickerProps> = ({ hashtag = '', url = '' }) => {
-  return (
-    <div className='ticker'>
-      <div className='ticker-content'>
-        <span className='ticker-hashtag'>{hashtag}</span>
-        <span className='ticker-url'>{url}</span>
-      </div>
-    </div>
-  );
-};
+// The widget lives in @gaulatti/bleecker; this module keeps the app's import path.
+export { Ticker } from '../bleecker';

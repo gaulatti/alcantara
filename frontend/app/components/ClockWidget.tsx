@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import './ClockWidget.css';
+import { useCallback } from 'react';
+import { ClockWidget as BleeckerClockWidget } from '../bleecker';
 import type { GlobalTimeOverride } from '../utils/broadcastTime';
 import { formatClockParts, getOverrideClockParts } from '../utils/broadcastTime';
 
@@ -10,53 +10,42 @@ interface ClockWidgetProps {
   timeOverride?: GlobalTimeOverride | null;
 }
 
-export const ClockWidget: React.FC<ClockWidgetProps> = ({
+/** The broadcast face artwork for the clock, supplied to the Bleecker widget. */
+const CLOCK_BACKGROUND_URL = '/reloj.png';
+
+function localTime(now: Date, timezone: string): string {
+  try {
+    return now.toLocaleTimeString('es-AR', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    console.error('Invalid timezone:', timezone);
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+}
+
+/** The on-air clock: the broadcast time override when one is set, else the local time in the given zone. */
+export function ClockWidget({
   showIcon = true,
   iconUrl,
   timezone = 'America/Argentina/Buenos_Aires',
   timeOverride = null,
-}) => {
-  const [time, setTime] = useState('');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-
+}: ClockWidgetProps) {
+  const formatTime = useCallback(
+    (now: Date) => {
       if (timeOverride) {
         const overrideParts = getOverrideClockParts(timeOverride, now);
-        if (overrideParts) {
-          setTime(formatClockParts(overrideParts));
-          return;
-        }
+        if (overrideParts) return formatClockParts(overrideParts);
       }
-
-      try {
-        const timeString = now.toLocaleTimeString('es-AR', {
-          timeZone: timezone,
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        });
-        setTime(timeString);
-      } catch (err) {
-        console.error('Invalid timezone:', timezone);
-        // Fallback to default format
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        setTime(`${hours}:${minutes}`);
-      }
-    };
-
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-
-    return () => clearInterval(interval);
-  }, [timezone, timeOverride?.startTime, timeOverride?.startedAt]);
+      return localTime(now, timezone);
+    },
+    [timeOverride, timezone],
+  );
 
   return (
-    <div className='clock-widget'>
-      <div className='clock-time'>{time}</div>
-      {showIcon && <div className='clock-icon'>{iconUrl ? <img src={iconUrl} alt='icon' /> : null}</div>}
-    </div>
+    <BleeckerClockWidget
+      showIcon={showIcon}
+      iconUrl={iconUrl}
+      formatTime={formatTime}
+      backgroundUrl={CLOCK_BACKGROUND_URL}
+    />
   );
-};
+}

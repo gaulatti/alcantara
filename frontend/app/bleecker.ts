@@ -48,3 +48,15 @@ export { Button, IconButton } from './components/BleeckerButtons';
 export * from '@gaulatti/bleecker/components/tooltip';
 export * from '@gaulatti/bleecker/components/slider';
 export * from '@gaulatti/bleecker/components/fader';
+
+// Generic live widgets (alcantara#383): the scene widgets now come from the library.
+export * from '@gaulatti/bleecker/components/live-indicator';
+export * from '@gaulatti/bleecker/components/ticker';
+export * from '@gaulatti/bleecker/components/qr-code-widget';
+export * from '@gaulatti/bleecker/components/chyron-holder';
+export * from '@gaulatti/bleecker/components/logo-widget';
+export * from '@gaulatti/bleecker/components/stream-wall';
+export * from '@gaulatti/bleecker/components/slideshow';
+export * from '@gaulatti/bleecker/components/video-stream';
+export * from '@gaulatti/bleecker/components/clock-widget';
+export * from '@gaulatti/bleecker/components/webrtc-guest-source';

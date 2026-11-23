@@ -1,6 +1,2 @@
-import React from 'react';
-import './CronicaLayout.css';
-
-export const CronicaBackground: React.FC = () => {
-  return <div className='cronica-background' />;
-};
+// The Crónica background panel is Bleecker's; this module keeps the app's import path.
+export { CronicaBackground } from '@gaulatti/bleecker/components/cronica-background';
