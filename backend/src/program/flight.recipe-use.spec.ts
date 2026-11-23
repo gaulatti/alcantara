@@ -31,6 +31,8 @@ describe('normalizeRecipeUse', () => {
     ['a recipeRevision that is fractional', { recipeRevision: 1.5 }],
     ['a songId that is negative', { params: { songId: -1 } }],
     ['a labelId that is a number', { params: { songId: 42, labelId: 9 } }],
+    ['params that is not an object', { params: 'song-42' }],
+    ['params that is an array', { params: [42] }],
   ])('drops a tag with %s', (_name, change) => {
     expect(normalizeRecipeUse({ ...tag, ...change })).toBeUndefined();
   });
