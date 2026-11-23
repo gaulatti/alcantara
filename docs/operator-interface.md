@@ -79,7 +79,7 @@ The broadcast deck reserves a separate semantic action grammar:
   `Select`; the source panel width is a Bleecker `Slider`. No text on the deck
   is smaller than 12 px.
 
-Keyboard shortcuts apply when the keyboard toggle in Workspace options is on.
+Keyboard shortcuts apply when the keyboard toggle in Workspace options is on. Only a fresh key press acts: a held key's repeats are ignored, so holding Alt+B arms and never takes.
 
 | Action | Mouse | Keyboard |
 |---|---|---|
