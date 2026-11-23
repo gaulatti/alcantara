@@ -18,6 +18,7 @@ import MediaFixture from "./media-fixture";
 import LabelsFixture from "./labels-fixture";
 import RecordingFixture from "./recording-fixture";
 import AccessFixture from "./access-fixture";
+import LibraryFixture from "./library-fixture";
 
 // The visual fixture routes: each opens its fictional states with the real
 // components, as a reviewer sees them.
@@ -297,4 +298,27 @@ it("opens the access fixture with the service not available yet, and a manager b
     </MemoryRouter>,
   );
   expect(await screen.findByRole("tab", { name: "People" })).toBeInTheDocument();
+});
+
+it.each([
+  ["ready", "Station ident"],
+  ["empty", "No audio clips yet"],
+  ["error", "Failed to load audio clips"],
+  ["nonsense", "Station ident"],
+])("opens the library fixture in its %s state", (state, text) => {
+  render(
+    <MemoryRouter initialEntries={[`/library-fixture?state=${state}`]}>
+      <LibraryFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(text)).toBeInTheDocument();
+});
+
+it("opens the library fixture while loading", () => {
+  render(
+    <MemoryRouter initialEntries={["/library-fixture?state=loading"]}>
+      <LibraryFixture />
+    </MemoryRouter>,
+  );
+  expect(screen.getByLabelText("Loading Audio clips")).toBeInTheDocument();
 });

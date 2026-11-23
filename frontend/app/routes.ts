@@ -17,6 +17,7 @@ const developmentRoutes = import.meta.env.DEV || import.meta.env.MODE === 'test'
       route('recording-fixture', 'routes/recording-fixture.tsx'),
       route('filler-fixture', 'routes/filler-fixture.tsx'),
       route('access-fixture', 'routes/access-fixture.tsx'),
+      route('library-fixture', 'routes/library-fixture.tsx'),
     ]
   : [];
 

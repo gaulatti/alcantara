@@ -9,6 +9,19 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import LayoutsAdmin, { meta } from "./layouts";
 import { routeFetch } from "../../test/routeKit";
+import {
+  cancelConfirmation,
+  chooseFromRowMenu,
+  confirmWith,
+  submitConfirmation,
+  confirmation,
+} from "../../test/libraryKit";
+
+vi.mock("@gaulatti/bleecker", async (original) =>
+  (await import("../../test/libraryKit")).libraryBleecker(
+    original as () => Promise<typeof import("@gaulatti/bleecker")>,
+  ),
+);
 
 // A short component catalog keeps the dialog small; the route lists whatever
 // the catalog holds.
@@ -123,7 +136,7 @@ it("has a page title and description", () => {
 it("lists templates by name with their components", async () => {
   serve();
   render(<LayoutsAdmin />);
-  expect(screen.getByText("Loading scene templates...")).toBeVisible();
+  expect(screen.getByLabelText("Loading Scene templates")).toBeVisible();
   const news = (await screen.findByText("News desk")).closest("tr")!;
   expect(within(news).getByText("Ticker")).toHaveAttribute(
     "title",
@@ -144,10 +157,13 @@ it("lists templates by name with their components", async () => {
   expect(rows()[0]).toMatch(/^News desk/);
 });
 
-it("explains a load failure", async () => {
+it("explains a load failure with a retry", async () => {
   serve({ "GET /layouts": () => new Response(null, { status: 500 }) });
   render(<LayoutsAdmin />);
-  await toast("Failed to load scene templates. Please refresh and try again.");
+  expect(await screen.findByText("Failed to load scene templates")).toBeVisible();
+  serve();
+  fireEvent.click(screen.getByText("Retry").closest("button")!);
+  expect(await screen.findByText("News desk")).toBeVisible();
 });
 
 it("creates a template, requiring a name and at least one component", async () => {
@@ -271,22 +287,26 @@ it("reports a save that fails without a message", async () => {
 
 it("deletes a template only after confirmation, and explains a template in use", async () => {
   serve();
-  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
-  vi.stubGlobal("confirm", confirm);
   render(<LayoutsAdmin />);
   await screen.findByText("Archive");
-  fireEvent.click(screen.getByLabelText("Delete Archive"));
+  await chooseFromRowMenu("Archive", "Delete");
+  expect(
+    within(await confirmation()).getByText('Delete scene template "Archive"?'),
+  ).toBeVisible();
+  await cancelConfirmation();
   expect(screen.getByText("Archive")).toBeVisible();
-  fireEvent.click(screen.getByLabelText("Delete Archive"));
+  await chooseFromRowMenu("Archive", "Delete");
+  await confirmWith("Delete");
   await toast("Scene template deleted.");
   await waitFor(() =>
     expect(screen.queryByText("Archive")).not.toBeInTheDocument(),
   );
 
   serve({ "DELETE /layouts/1": () => new Response(null, { status: 409 }) });
-  vi.stubGlobal("confirm", () => true);
-  fireEvent.click(screen.getByLabelText("Delete News desk"));
+  await chooseFromRowMenu("News desk", "Delete");
+  await submitConfirmation("Delete");
   await toast(
     "Cannot delete this scene template because it may be in use by scenes.",
   );
+  expect(await confirmation()).toBeVisible();
 });

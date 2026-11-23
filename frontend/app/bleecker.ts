@@ -1,5 +1,6 @@
 /** Runtime compatibility entry that keeps Bleecker subpath imports centralized. */
 export * from '@gaulatti/bleecker/components/alert';
+export * from '@gaulatti/bleecker/components/alert-dialog';
 export * from '@gaulatti/bleecker/components/arm-take';
 export * from '@gaulatti/bleecker/components/brand-lockup';
 export * from '@gaulatti/bleecker/components/button';
@@ -27,6 +28,7 @@ export * from '@gaulatti/bleecker/components/skeleton';
 export * from '@gaulatti/bleecker/components/select';
 export * from '@gaulatti/bleecker/components/state-pill';
 export * from '@gaulatti/bleecker/components/sidebar';
+export * from '@gaulatti/bleecker/components/skeleton';
 export * from '@gaulatti/bleecker/components/sheet';
 export * from '@gaulatti/bleecker/components/stat-card';
 export * from '@gaulatti/bleecker/components/status-badge';
