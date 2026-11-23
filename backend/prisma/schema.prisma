@@ -551,7 +551,7 @@ model RadioSettings {
   programState     ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
   palazzoUrl       String       @default("http://palazzo:3100")
   listenerUrl      String?
-  bumperEnabled    Boolean      @default(false)
+  bumperEnabled    Boolean      @default(true)
   bumperInterval   Int?
   bumperInstantIds Int[]        @default([])
   bumperMode       String       @default("sequential")
@@ -561,7 +561,7 @@ model RadioSettings {
   segueMode        String       @default("on")
   /// segueMode before #180 turned it on for existing programs; null when it was already on. Kept for a put-back.
   segueModeBeforeDefaultOn String?
-  similarityMode          String @default("off")
+  similarityMode          String @default("on")
   similarityThreshold     Float  @default(0.8)
   similarityWindowSeconds Int    @default(30)
   similarityPool          String @default("sequence")
