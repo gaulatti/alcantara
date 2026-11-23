@@ -61,6 +61,8 @@ async function readError(response: Response) {
   }
 }
 
+const CONTROL_PLANE_UNREACHABLE = "The guest-call control plane can't be reached. Guests can't join until it is back.";
+
 export default function CallsRoute() {
   const [programId] = useGlobalProgramId();
   const { hasPermission } = useFeatures();
@@ -75,6 +77,8 @@ export default function CallsRoute() {
   const [busy, setBusy] = useState<string | null>(null);
   const [livekitEnabled, setLivekitEnabled] = useState<boolean | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  // The control plane being unreachable is named; any other failure (server text included) is not shown.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const talkbackRef = useRef<{
     room: Room;
     track: Awaited<ReturnType<typeof createLocalAudioTrack>>;
@@ -83,7 +87,7 @@ export default function CallsRoute() {
   const refresh = useCallback(async () => {
     // A network failure names the missing control plane, not "fetch failed".
     const configResponse = await fetch(apiUrl('/webrtc/config')).catch(() => {
-      throw new Error("The guest-call control plane can't be reached. Guests can't join until it is back.");
+      throw new Error(CONTROL_PLANE_UNREACHABLE);
     });
     if (!configResponse.ok) throw new Error(await readError(configResponse));
     const config = (await configResponse.json()) as { enabled?: boolean };
@@ -111,9 +115,13 @@ export default function CallsRoute() {
   const load = useCallback(() => {
     setLoadState('loading');
     return refresh().then(
-      () => setLoadState('ready'),
+      () => {
+        setLoadError(null);
+        setLoadState('ready');
+      },
       (error) => {
         console.error('Unable to load guest calls:', error);
+        setLoadError(error instanceof Error && error.message === CONTROL_PLANE_UNREACHABLE ? CONTROL_PLANE_UNREACHABLE : null);
         setLoadState('error');
       }
     );
@@ -384,7 +392,7 @@ export default function CallsRoute() {
                 <SkeletonCard rows={3} />
               </div>
             ) : loadState === 'error' ? (
-              <ErrorState title='Guest calls could not be loaded' description='The guest-call list could not be loaded. Check the connection and try again.' onRetry={() => void load()} retryLabel='Retry' />
+              <ErrorState title='Guest calls could not be loaded' description={loadError ?? 'The guest-call list could not be loaded. Check the connection and try again.'} onRetry={() => void load()} retryLabel='Retry' />
             ) : participants.length === 0 ? (
               <Empty title='No assigned guest slots' description='Name a guest, then create a private link to reserve the first reusable slot.' action={createLink} />
             ) : (
