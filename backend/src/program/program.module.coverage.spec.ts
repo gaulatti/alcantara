@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { RealtimeTicketService } from '../auth/realtime-ticket.service';
 import { FlightMcpTools } from '../mcp/capabilities/flight';
 import { ProgramMcpTools } from '../mcp/capabilities/program';
+import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 import { PrismaService } from '../prisma.service';
 import { FlightService } from './flight.service';
 import { ProgramController } from './program.controller';
@@ -123,6 +124,7 @@ describe('ProgramModule wiring', () => {
       FlightService,
       ProgramTemplateService,
       ProgramMcpTools,
+      SongLeavesMcpTools,
       FlightMcpTools,
       PrismaService,
     ]);
