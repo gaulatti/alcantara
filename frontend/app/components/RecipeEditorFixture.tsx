@@ -11,13 +11,13 @@ const recipe: Recipe = {
   name: "Song",
   revision: 4,
   steps: [
-    "point-bumper",
-    "show-bumper",
-    "hold-bumper",
-    "play-song",
-    "point-slideshow",
-    "show-slideshow",
-    "hold-for-song",
+    "bumperPoint",
+    "bumper",
+    "hold",
+    "song",
+    "slideshowPoint",
+    "slideshow",
+    "songEnd",
     "back",
   ],
   returnSceneId: 30,
@@ -27,7 +27,7 @@ const recipe: Recipe = {
   holdMs: 3000,
 };
 const use = (useId: string) =>
-  ({ id: `${useId}.show-bumper`, kind: "scene", sceneId: 10, recipeUse: { useId, recipeId: 1, step: "show-bumper" } }) as FlightCue;
+  ({ id: `${useId}.show-bumper`, kind: "scene", sceneId: 10, recipeUse: { useId, recipeId: 1, step: "bumper" } }) as FlightCue;
 const sequence = {
   id: 1,
   name: "Evening",

@@ -15,17 +15,18 @@ import { TRANSITION_OPTIONS } from "../utils/transitionOptions";
 
 /**
  * The steps of the song recipe, in order (the design note of gaulatti/alcantara#222). A recipe's
- * `steps` lists the keys it runs; a step left out is skipped. A key this list does not know is shown
+ * `steps` lists the keys it runs (the backend stores them in airing order and refuses an unknown key); a
+ * step left out is skipped. A key this list does not know is shown
  * as it came, so a step the backend adds is not lost on save.
  */
 export const RECIPE_STEPS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: "point-bumper", label: "Point the artist bumper at the song" },
-  { key: "show-bumper", label: "Show the bumper" },
-  { key: "hold-bumper", label: "Hold the bumper" },
-  { key: "play-song", label: "Play the song" },
-  { key: "point-slideshow", label: "Point the slideshow at the artist's label" },
-  { key: "show-slideshow", label: "Show the slideshow" },
-  { key: "hold-for-song", label: "Hold for the song" },
+  { key: "bumperPoint", label: "Point the artist bumper at the song" },
+  { key: "bumper", label: "Show the bumper" },
+  { key: "hold", label: "Hold the bumper" },
+  { key: "song", label: "Play the song" },
+  { key: "slideshowPoint", label: "Point the slideshow at the artist's label" },
+  { key: "slideshow", label: "Show the slideshow" },
+  { key: "songEnd", label: "Hold for the song" },
   { key: "back", label: "Go back to the return scene" },
 ];
 
@@ -112,7 +113,7 @@ export function describeCue(cue: FlightCue, scenes: readonly Scene[]): string {
 }
 
 /**
- * A program's recipes (gaulatti/alcantara#426, contract C3 of #222): the list with how many uses each
+ * A program's recipes (gaulatti/alcantara#426, contract C3 of #222, at `/program/:programId/recipes`): the list with how many uses each
  * has, and a form for the scenes, transition, hold and steps, with a preview of what a use would be.
  * Read-only without `flight.manage`; an empty state while the backend answers 404.
  */
