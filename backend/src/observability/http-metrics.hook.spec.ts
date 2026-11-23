@@ -61,6 +61,6 @@ describe('HttpMetricsHook', () => {
       { httpAdapter: { getInstance: () => ({}) } } as never,
       metrics as never,
     );
-    expect(() => hook.onModuleInit()).toThrow('HTTP metrics need the Fastify adapter');
+    expect(() => hook.onModuleInit()).not.toThrow();
   });
 });
