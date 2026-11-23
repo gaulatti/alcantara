@@ -1,13 +1,30 @@
-import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Req,
+} from '@nestjs/common';
 import { RequirePermission } from '../auth/require-permission.decorator';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { BroadcastDestinationsService } from './broadcast-destinations.service';
+import { BroadcastIngestService } from './broadcast-ingest.service';
 
 type AuthorizedRequest = { user: { sub: string } };
+type TeamRequest = {
+  user: { sub: string; authorization: { teamId: number } };
+};
 
 @Controller('broadcast')
 export class BroadcastDestinationsController {
-  constructor(private readonly service: BroadcastDestinationsService) {}
+  constructor(
+    private readonly service: BroadcastDestinationsService,
+    private readonly ingest: BroadcastIngestService,
+  ) {}
 
   @Get('destinations')
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.view)
@@ -25,6 +42,26 @@ export class BroadcastDestinationsController {
   @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
   createDestination(@Body() body: Record<string, unknown>) {
     return this.service.createDestination(body);
+  }
+
+  /**
+   * The ingest address and key of one destination, for the desktop studio at Go live
+   * (gaulatti/carmencita#4). A credential: manage permission only, audited on every call,
+   * never cached, and not an MCP capability.
+   */
+  @Post('destinations/:destinationId/ingest')
+  @RequirePermission(ALCANTARA_PERMISSIONS.broadcast.manage)
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  issueIngest(
+    @Param('destinationId') destinationId: string,
+    @Req() request: TeamRequest,
+  ) {
+    return this.ingest.issue(
+      destinationId,
+      request.user.sub,
+      request.user.authorization.teamId,
+    );
   }
 
   @Put('destinations/order')

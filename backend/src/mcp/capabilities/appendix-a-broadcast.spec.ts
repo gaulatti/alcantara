@@ -26,7 +26,7 @@ import { WebrtcMcpTools } from './webrtc';
 // now-playing consumers, manual song and instant), operator preferences,
 // external sources and guests (webrtc). Two groups of rows are not this
 // ticket's: the radio similarity rows (ticket 218) and the rows marked
-// excluded because they return or produce a credential (eight rows in all:
+// excluded because they return or produce a credential (ten rows in all:
 // the realtime, monitor and download tickets, the source credential rotation,
 // the guest link of create and replace invitation, the operator token and the
 // desktop program feed token).
@@ -187,12 +187,14 @@ describe('appendix A rows of ticket #219', () => {
 
   it('keeps the excluded rows out', () => {
     // In this ticket's areas: the monitor and download tickets, the rotation,
-    // both guest-link rows, the operator token and the desktop program feed token.
+    // both guest-link rows, the operator token, the desktop program feed token and
+    // a destination's ingest key.
     expect(excludedRows.map((row) => row[4]).sort()).toEqual([
       'createInvitation',
       'desktopProgramFeedToken',
       'issue',
       'issue',
+      'issueIngest',
       'operatorToken',
       'replaceInvitation',
       'rotate',

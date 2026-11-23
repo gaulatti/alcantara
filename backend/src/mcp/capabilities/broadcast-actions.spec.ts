@@ -168,7 +168,10 @@ function build() {
     },
   };
   const controllers = {
-    destinations: new BroadcastDestinationsController(s.destinations as never),
+    destinations: new BroadcastDestinationsController(
+      s.destinations as never,
+      {} as never,
+    ),
     filler: new FillerController(s.fillers as never),
     recording: new RecordingController(s.recording as never),
     tape: new TapeController(s.recording as never),

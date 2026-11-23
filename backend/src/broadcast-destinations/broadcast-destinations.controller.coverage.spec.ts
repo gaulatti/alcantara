@@ -17,6 +17,7 @@ describe('BroadcastDestinationsController coverage', () => {
   };
   const controller = new BroadcastDestinationsController(
     service as unknown as BroadcastDestinationsService,
+    {} as never,
   );
   const request = { user: { sub: 'operator-1' } };
 
@@ -85,11 +86,15 @@ describe('BroadcastDestinationsController coverage', () => {
       jest.doMock('./broadcast-destinations.service', () => ({
         BroadcastDestinationsService: undefined,
       }));
+      jest.doMock('./broadcast-ingest.service', () => ({
+        BroadcastIngestService: undefined,
+      }));
       const { BroadcastDestinationsController: Isolated } =
         require('./broadcast-destinations.controller') as {
           BroadcastDestinationsController: new (...args: never[]) => unknown;
         };
       expect(Reflect.getMetadata('design:paramtypes', Isolated)).toEqual([
+        Object,
         Object,
       ]);
       expect(
