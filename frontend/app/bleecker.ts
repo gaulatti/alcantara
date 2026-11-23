@@ -60,3 +60,12 @@ export * from '@gaulatti/bleecker/components/slideshow';
 export * from '@gaulatti/bleecker/components/video-stream';
 export * from '@gaulatti/bleecker/components/clock-widget';
 export * from '@gaulatti/bleecker/components/webrtc-guest-source';
+
+// The rest of the scene renderers (alcantara#383): header, scoreboard, Earone badge, the broadcast frame and
+// the scene transition overlays. The host supplies what it owns: the layout's clock, the Earone logo and the
+// hit-parade brand mark.
+export * from '@gaulatti/bleecker/components/broadcast-header';
+export * from '@gaulatti/bleecker/components/scoreboard';
+export * from '@gaulatti/bleecker/components/earone';
+export * from '@gaulatti/bleecker/components/broadcast-layout';
+export * from '@gaulatti/bleecker/components/scene-transition-overlay';
