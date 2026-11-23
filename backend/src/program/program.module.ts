@@ -11,10 +11,16 @@ import { SongLeavesMcpTools } from '../mcp/capabilities/song-leaves';
 import { RecipeMcpTools } from '../mcp/capabilities/recipes';
 import { RecipesController } from './recipes.controller';
 import { RecipesService } from './recipes.service';
-import { ARTIST_LABEL_LOOKUP, NO_ARTIST_LABELS } from './artist-label-lookup';
+import {
+  ARTIST_LABEL_LOOKUP,
+  type ArtistLabelLookup,
+} from './artist-label-lookup';
+import { ArtistLabelsModule } from '../artist-labels/artist-labels.module';
+import { ArtistLabelsService } from '../artist-labels/artist-labels.service';
 
 @Global()
 @Module({
+  imports: [ArtistLabelsModule],
   controllers: [ProgramController, RecipesController],
   providers: [
     ProgramService,
@@ -26,8 +32,16 @@ import { ARTIST_LABEL_LOOKUP, NO_ARTIST_LABELS } from './artist-label-lookup';
     FlightMcpTools,
     RecipesService,
     RecipeMcpTools,
-    // gaulatti/alcantara#424: artist labels answer null until #427 binds #423's service here.
-    { provide: ARTIST_LABEL_LOOKUP, useValue: NO_ARTIST_LABELS },
+    // gaulatti/alcantara#427: the song recipe finds the artist's label through #423's service. A song
+    // with no team is the deployment's own, which that service scopes as team 0.
+    {
+      provide: ARTIST_LABEL_LOOKUP,
+      useFactory: (labels: ArtistLabelsService): ArtistLabelLookup => ({
+        artistLabelFor: (teamId, artist) =>
+          labels.artistLabelFor(teamId ?? 0, artist),
+      }),
+      inject: [ArtistLabelsService],
+    },
     PrismaService,
   ],
   exports: [ProgramService, ProgramRealtimeService, FlightService],
