@@ -7,7 +7,12 @@ import {
   StackProps,
 } from "aws-cdk-lib";
 import { Policy, PolicyStatement, Role } from "aws-cdk-lib/aws-iam";
-import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
+import {
+  ARecord,
+  CnameRecord,
+  HostedZone,
+  RecordTarget,
+} from "aws-cdk-lib/aws-route53";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import { AlcantaraInfrastructureConfig } from "./config";
@@ -67,6 +72,14 @@ export class AlcantaraInfrastructureStack extends Stack {
       zone,
       recordName: "api.alcantara",
       target: RecordTarget.fromIpAddresses(config.serviceHostIp),
+      ttl: Duration.minutes(5),
+    });
+    // gaulatti/alcantara#354: production LiveKit runs on Helix. The alias follows
+    // helix.gaulatti.com, so a change of Helix's address needs no change here.
+    new CnameRecord(this, "LivekitRecord", {
+      zone,
+      recordName: "livekit.alcantara",
+      domainName: "helix.gaulatti.com",
       ttl: Duration.minutes(5),
     });
 
