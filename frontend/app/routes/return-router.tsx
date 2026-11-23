@@ -2,6 +2,7 @@ import { LocalAudioTrack, ConnectionState, Room, RoomEvent, Track, type RemotePa
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { apiUrl } from '../utils/apiBaseUrl';
+import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 
 type RouteState = {
   participantIdentity: string;
@@ -72,14 +73,22 @@ export default function ReturnRouterRoute() {
           .filter((participant) => participant.identity.startsWith('guest-'))
           .map((participant) => participant.identity)
       );
+      const programFeedsWithAudio = new Set(
+        Array.from(inputs.values())
+          .map((input) => input.participantIdentity)
+          .filter((identity) => isProgramFeed(identity, programId))
+      );
       for (const route of routes.filter((item) => connectedGuests.has(item.participantIdentity))) {
         const destination = context.createMediaStreamDestination();
         for (const input of inputs.values()) {
           const isOwnGuest = input.participantIdentity === route.participantIdentity;
           const isOtherGuest = input.participantIdentity.startsWith('guest-') && !isOwnGuest;
-          const isSelectedBus =
-            input.participantIdentity === `${route.returnAudioBus}-feed-${programId}` ||
-            (route.returnAudioBus === 'master' && input.participantIdentity === `program-feed-${programId}`);
+          // The program bus comes from one feed only: the desktop's when it is in the
+          // room, otherwise Alana's (gaulatti/alexandria#9), never both at once.
+          const programBus = route.returnAudioBus === 'master' || route.returnAudioBus === 'program';
+          const isSelectedBus = programBus
+            ? input.participantIdentity === preferredProgramFeed(programId, programFeedsWithAudio)
+            : input.participantIdentity === `${route.returnAudioBus}-feed-${programId}`;
           const isTargetedTalkback =
             input.participantIdentity.startsWith('operator-') &&
             (input.trackName === `talkback:${route.participantIdentity.replace(/^guest-/, '')}` || input.trackName === 'talkback:all');

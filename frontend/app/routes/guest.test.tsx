@@ -519,6 +519,75 @@ it("joins the studio, subscribes only to its return feed and keeps the session",
   expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
 });
 
+// gaulatti/alexandria#9: the program return is the desktop's feed when it is in the
+// room, otherwise Alana's. The switch attaches the new track before detaching the
+// old one, both ways, so the guest never sees the waiting state in between.
+it("switches the program return to the desktop's feed when it joins, and back when it leaves", async () => {
+  await joined();
+  const subscribed: [string, boolean][] = [];
+  const publication = (sid: string, kind: string) => ({
+    kind,
+    trackName: "",
+    setSubscribed: async (value: boolean) => {
+      subscribed.push([sid, value]);
+    },
+  });
+  const events: string[] = [];
+  const remote = (name: string) => ({
+    kind: "video",
+    attach: () => events.push(`attach ${name}`),
+    detach: () => events.push(`detach ${name}`),
+  });
+  const alana = { identity: "program-feed-main" };
+  const desktop = { identity: "desktop-program-feed-main" };
+  const alanaTrack = remote("alana");
+  const desktopTrack = remote("desktop");
+
+  emit("trackPublished", publication("alana-video", "video"), alana);
+  emit("trackSubscribed", alanaTrack, publication("alana-video", "video"), alana);
+  expect(events).toEqual(["attach alana"]);
+
+  // The desktop joins mid-session: both feeds stay subscribed, the desktop's is shown.
+  emit("trackPublished", publication("desktop-video", "video"), desktop);
+  expect(subscribed).toEqual([
+    ["alana-video", true],
+    ["desktop-video", true],
+  ]);
+  emit("trackSubscribed", desktopTrack, publication("desktop-video", "video"), desktop);
+  expect(events).toEqual(["attach alana", "attach desktop", "detach alana"]);
+  expect(screen.queryByText("Waiting for selected return feed")).not.toBeInTheDocument();
+
+  // The desktop leaves: Alana's feed is attached before the desktop's is let go.
+  emit("trackUnsubscribed", desktopTrack, publication("desktop-video", "video"), desktop);
+  expect(events).toEqual([
+    "attach alana",
+    "attach desktop",
+    "detach alana",
+    "attach alana",
+    "detach desktop",
+  ]);
+  expect(screen.queryByText("Waiting for selected return feed")).not.toBeInTheDocument();
+
+  // Alana's feed going away too leaves the guest waiting, as before.
+  emit("trackUnsubscribed", alanaTrack, publication("alana-video", "video"), alana);
+  expect(events.at(-1)).toBe("detach alana");
+  expect(screen.getByText("Waiting for selected return feed")).toBeVisible();
+});
+
+it("keeps the desktop's feed when Alana's arrives after it", async () => {
+  await joined();
+  const events: string[] = [];
+  const publication = { kind: "video", trackName: "", setSubscribed: async () => {} };
+  const remote = (name: string) => ({
+    kind: "video",
+    attach: () => events.push(`attach ${name}`),
+    detach: () => events.push(`detach ${name}`),
+  });
+  emit("trackSubscribed", remote("desktop"), publication, { identity: "desktop-program-feed-main" });
+  emit("trackSubscribed", remote("alana"), publication, { identity: "program-feed-main" });
+  expect(events).toEqual(["attach desktop"]);
+});
+
 it("subscribes to feeds that were already in the room when it joined", async () => {
   const subscribed: [string, boolean][] = [];
   const original = lk.Room.prototype.connect;

@@ -4,6 +4,7 @@ import { Camera, CameraOff, CheckCircle2, Headphones, Mic, MicOff, PhoneOff, Rad
 import { ConnectionState, Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
+import { isProgramFeed, preferredProgramFeed } from '../utils/programFeed';
 import { apiUrl } from '../utils/apiBaseUrl';
 import type { Route } from './+types/guest';
 
@@ -252,23 +253,55 @@ export default function GuestRoute() {
         disconnectOnPageLeave: true
       });
       roomRef.current = room;
+      const programReturn = credentials.returnVideo === 'program';
       const wantedParticipant = (participant: RemoteParticipant) =>
-        participant.identity === `program-feed-${credentials.programId}` ||
+        isProgramFeed(participant.identity, credentials.programId) ||
         participant.identity === `preview-feed-${credentials.programId}` ||
         participant.identity.startsWith('return-router-');
       const wantedTrack = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (!wantedParticipant(participant)) return false;
         if (publication.kind === Track.Kind.Video) {
-          return credentials.returnVideo !== 'none' && participant.identity === `${credentials.returnVideo}-feed-${credentials.programId}`;
+          if (credentials.returnVideo === 'none') return false;
+          // Both program feeds are kept subscribed so the switch between them is
+          // a re-attach; an unattached video track is paused (adaptive stream).
+          if (programReturn) return isProgramFeed(participant.identity, credentials.programId);
+          return participant.identity === `${credentials.returnVideo}-feed-${credentials.programId}`;
         }
         return publication.trackName === `mixminus:${credentials.participantIdentity}:${credentials.returnAudioBus}`;
       };
       const subscribe = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         void publication.setSubscribed(wantedTrack(publication, participant));
       };
+      // The program video on screen, and the program feeds' video tracks by identity
+      // (gaulatti/alexandria#9: the desktop's feed when present, otherwise Alana's).
+      const programTracks = new Map<string, RemoteTrack>();
+      let shownVideo: RemoteTrack | null = null;
+      const show = (next: RemoteTrack | null) => {
+        if (next === shownVideo) return;
+        // Attach the new track before detaching the old one, so the switch shows
+        // no black longer than the handover itself.
+        if (next && returnVideoRef.current) next.attach(returnVideoRef.current);
+        shownVideo?.detach();
+        shownVideo = next;
+        setReturnFeed(next !== null);
+      };
+      const showPreferredProgram = () => {
+        if (!programReturn) return;
+        const present = [...programTracks.keys()];
+        const preferred = programTracks.get(preferredProgramFeed(credentials.programId, present));
+        show(preferred ?? programTracks.values().next().value ?? null);
+      };
       const attach = (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (!wantedTrack(publication, participant)) return;
-        if (track.kind === Track.Kind.Video && returnVideoRef.current) track.attach(returnVideoRef.current);
+        if (track.kind === Track.Kind.Video) {
+          if (programReturn && isProgramFeed(participant.identity, credentials.programId)) {
+            programTracks.set(participant.identity, track);
+            showPreferredProgram();
+            return;
+          }
+          show(track);
+          return;
+        }
         if (track.kind === Track.Kind.Audio && returnAudioRef.current) {
           track.attach(returnAudioRef.current);
           void returnAudioRef.current.play();
@@ -277,7 +310,20 @@ export default function GuestRoute() {
       };
       room.on(RoomEvent.TrackPublished, subscribe);
       room.on(RoomEvent.TrackSubscribed, attach);
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+        if (track.kind === Track.Kind.Video && participant && programTracks.get(participant.identity) === track) {
+          programTracks.delete(participant.identity);
+          if (shownVideo === track) {
+            // Fall back to the other program feed, if any, before letting go of this one.
+            const fallback = programTracks.get(preferredProgramFeed(credentials.programId, programTracks.keys())) ?? null;
+            show(fallback);
+          }
+          return;
+        }
+        if (track === shownVideo) {
+          show(null);
+          return;
+        }
         track.detach();
         setReturnFeed(false);
       });

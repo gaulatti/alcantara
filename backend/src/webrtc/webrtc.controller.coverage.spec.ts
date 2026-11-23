@@ -15,6 +15,7 @@ describe('WebrtcController delegation', () => {
     'acknowledgeCommand',
     'listParticipants',
     'createOperatorToken',
+    'createDesktopProgramFeedToken',
     'controlParticipant',
     'removeParticipant',
     'createRendererToken',
@@ -93,6 +94,16 @@ describe('WebrtcController delegation', () => {
       'createOperatorToken-result',
     );
     expect(webrtc.createOperatorToken).toHaveBeenCalledWith(identity, 'main');
+  });
+
+  it('issues desktop program feed tokens for the requested program', () => {
+    expect(
+      controller.desktopProgramFeedToken(request, { programId: 'main' }),
+    ).toBe('createDesktopProgramFeedToken-result');
+    expect(webrtc.createDesktopProgramFeedToken).toHaveBeenCalledWith(
+      identity,
+      'main',
+    );
   });
 
   it('controls a participant', () => {
