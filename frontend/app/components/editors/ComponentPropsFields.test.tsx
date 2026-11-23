@@ -754,3 +754,13 @@ it("edits a component z-index, defaulting a missing or invalid one to 0", () => 
     expect(screen.getByRole("spinbutton")).toHaveValue(0);
   }
 });
+
+// gaulatti/alcantara#333: the analog clock that renders as reloj-clock takes the
+// station's logo from the scene instead of a fixed image.
+it("sets the reloj-clock's logo from the scene", () => {
+  const { updateProp } = fields("reloj-clock", { logoUrl: "/old.svg" });
+  edits(updateProp, "reloj-clock", "/old.svg", "https://example.com/logo.svg", "logoUrl", "https://example.com/logo.svg");
+  cleanup();
+  fields("reloj-clock");
+  expect(screen.getByPlaceholderText("https://example.com/logo.svg")).toHaveValue("");
+});

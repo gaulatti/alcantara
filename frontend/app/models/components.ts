@@ -146,7 +146,7 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     name: 'Reloj Clock',
     description: 'Analog clock with timezone support',
     hasConfigurableSceneAttributes: true,
-    defaultProps: { timezone: 'America/Argentina/Buenos_Aires' }
+    defaultProps: { timezone: 'America/Argentina/Buenos_Aires', logoUrl: '' }
   },
   {
     id: 'reloj-loop-clock',
@@ -173,8 +173,8 @@ export const OVERLAY_COMPONENTS: ComponentMetadata[] = [
     id: 'reloj-clone',
     name: 'Reloj Clone',
     description: 'Original clock clone',
-    hasConfigurableSceneAttributes: true,
-    defaultProps: { timezone: 'America/Argentina/Buenos_Aires', logoUrl: '' }
+    hasConfigurableSceneAttributes: false,
+    defaultProps: {}
   },
   {
     id: 'toni-chyron',

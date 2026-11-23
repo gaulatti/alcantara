@@ -427,7 +427,7 @@ export function ComponentPropsFields({
           />
         </Field>
       );
-    case 'reloj-clone':
+    case 'reloj-clock':
       return (
         <div className='space-y-3'>
           <Field label='Timezone'>
@@ -446,16 +446,6 @@ export function ComponentPropsFields({
             />
           </Field>
         </div>
-      );
-    case 'reloj-clock':
-      return (
-        <Field label='Timezone'>
-          <Select
-            value={props.timezone || 'America/Argentina/Buenos_Aires'}
-            onChange={(v) => updateProp(componentType, 'timezone', v)}
-            options={withTimezoneOption(timezoneOptions, props.timezone || 'America/Argentina/Buenos_Aires')}
-          />
-        </Field>
       );
     case 'reloj-loop-clock':
       return (
