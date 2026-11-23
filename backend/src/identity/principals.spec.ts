@@ -2,6 +2,7 @@ import {
   applicableChanges,
   formatPlan,
   hasConflicts,
+  identityFilters,
   indexMappings,
   ownsRow,
   planMigration,
@@ -142,6 +143,61 @@ describe('dry run', () => {
     expect(hasConflicts(plan)).toBe(true);
   });
 
+  it('does not group device profiles that resolve to no principal', () => {
+    const plan = planMigration(
+      [
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-a',
+          model: 'OperatorPreference',
+          subject: 'unmapped-a',
+        }),
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-b',
+          model: 'OperatorPreference',
+          subject: 'unmapped-b',
+        }),
+      ],
+      mapping,
+    );
+
+    expect(plan.rows.map((item) => item.classification)).toEqual([
+      'missing',
+      'missing',
+    ]);
+    expect(plan.summary.colliding).toBe(0);
+  });
+
+  it('keeps a conflicting row conflicting when it shares a device profile with another row', () => {
+    const plan = planMigration(
+      [
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-a',
+          model: 'OperatorPreference',
+          subject: 'subject-a',
+        }),
+        row({
+          collisionScope: 'desktop',
+          id: 'preference-b',
+          model: 'OperatorPreference',
+          principalId: 'principal-a',
+          subject: 'subject-b',
+        }),
+      ],
+      [
+        { principalId: 'principal-a', subject: 'subject-a' },
+        { principalId: 'principal-z', subject: 'subject-b' },
+      ],
+    );
+
+    expect(plan.rows.map((item) => item.classification)).toEqual([
+      'colliding',
+      'conflicting',
+    ]);
+  });
+
   it('does not call distinct device profiles a collision', () => {
     const plan = planMigration(
       [
@@ -251,5 +307,14 @@ describe('reads during the migration window', () => {
         { principalId: null, subject: 'subject-a' },
       ),
     ).toBe(false);
+  });
+
+  it('selects reads by exactly the resolved principal and pool subject', () => {
+    expect(
+      identityFilters({ principalId: 'principal-a', subject: 'subject-a' }),
+    ).toEqual({ principalId: 'principal-a', subject: 'subject-a' });
+    expect(
+      identityFilters({ principalId: null, subject: 'subject-a' }),
+    ).toEqual({ principalId: null, subject: 'subject-a' });
   });
 });

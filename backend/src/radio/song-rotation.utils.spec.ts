@@ -85,6 +85,12 @@ describe('radio high rotation scheduling', () => {
   it('scales the repeat gap to the number of favorites', () => {
     expect(highRotationRepeatIntervalMs(4)).toBe(2 * HOUR);
     expect(highRotationRepeatIntervalMs(12)).toBe(6 * HOUR);
+    expect(highRotationRepeatIntervalMs(Number.NaN)).toBe(
+      HIGH_ROTATION_INTERVAL_MS,
+    );
+    expect(highRotationRepeatIntervalMs(Number.POSITIVE_INFINITY)).toBe(
+      HIGH_ROTATION_INTERVAL_MS,
+    );
 
     const selectedSequence = sequence(4);
     const favorite = selectedSequence?.items[1];

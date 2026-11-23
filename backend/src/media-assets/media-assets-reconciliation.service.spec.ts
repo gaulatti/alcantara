@@ -218,4 +218,20 @@ describe('MediaAssetsReconciliationService', () => {
       'failure',
     );
   });
+
+  it('grants no background audio capability for blank, invalid or unresolvable scene references', async () => {
+    const { service, tx } = buildService();
+    tx.scene.findMany.mockResolvedValue([
+      { metadata: null },
+      { metadata: '   ' },
+      { metadata: JSON.stringify({ sceneInstant: { instantId: 0 } }) },
+      { metadata: JSON.stringify({ sceneInstant: { instantId: 2.5 } }) },
+      { metadata: JSON.stringify({ sceneInstant: { instantId: 999 } }) },
+    ]);
+
+    const result = await service.reconcile();
+
+    expect(result.backgroundAudio).toBe(0);
+    expect(tx.backgroundAudioCapability.upsert).not.toHaveBeenCalled();
+  });
 });

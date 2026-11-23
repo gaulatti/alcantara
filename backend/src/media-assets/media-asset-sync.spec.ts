@@ -1,6 +1,7 @@
 import { MediaAssetKind, MediaAssetType } from '@prisma/client';
 import {
   deleteMediaAsset,
+  deleteSongCoverAsset,
   mediaAssetId,
   songCoverAssetId,
   syncAudioClipAsset,
@@ -245,5 +246,168 @@ describe('media asset synchronization', () => {
       },
     });
     expect(tx.media.update).not.toHaveBeenCalled();
+  });
+
+  describe('source timestamps and existing links', () => {
+    const createdAt = new Date('2026-01-01T00:00:00.000Z');
+    const updatedAt = new Date('2026-02-02T00:00:00.000Z');
+
+    it('preserves legacy timestamps on the registry rows and the back-link', async () => {
+      const tx = buildTransaction();
+      await syncImageAsset(tx as never, {
+        id: 1,
+        name: 'Still',
+        imageUrl: 'https://media.test/still.jpg',
+        createdAt,
+        updatedAt,
+      });
+      await syncAudioClipAsset(tx as never, {
+        id: 2,
+        name: 'Bumper',
+        audioUrl: 'https://media.test/bumper.mp3',
+        enabled: true,
+        createdAt,
+        updatedAt,
+      });
+      await syncTransitionAsset(tx as never, {
+        id: 4,
+        name: 'Wipe',
+        videoUrl: 'https://media.test/wipe.webm',
+        enabled: true,
+        createdAt,
+        updatedAt,
+      });
+
+      const upserts = tx.mediaAsset.upsert.mock.calls as unknown as [
+        { create: Record<string, unknown>; update: Record<string, unknown> },
+      ][];
+      expect(upserts).toHaveLength(3);
+      for (const [call] of upserts) {
+        expect(call.create).toMatchObject({ createdAt, updatedAt });
+        expect(call.update).toMatchObject({ updatedAt });
+        expect(call.update).not.toHaveProperty('createdAt');
+      }
+      expect(tx.media.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { assetId: 'image:1', updatedAt },
+      });
+      expect(tx.instant.update).toHaveBeenCalledWith({
+        where: { id: 2 },
+        data: { assetId: 'audio-clip:2', updatedAt },
+      });
+      expect(tx.stinger.update).toHaveBeenCalledWith({
+        where: { id: 4 },
+        data: { assetId: 'transition:4', updatedAt },
+      });
+    });
+
+    it('does not rewrite back-links that already point at the registry row', async () => {
+      const tx = buildTransaction();
+      await syncImageAsset(tx as never, {
+        id: 1,
+        assetId: 'image:1',
+        name: 'Still',
+        imageUrl: 'https://media.test/still.jpg',
+      });
+      await syncAudioClipAsset(tx as never, {
+        id: 2,
+        assetId: 'audio-clip:2',
+        name: 'Bumper',
+        audioUrl: 'https://media.test/bumper.mp3',
+        enabled: true,
+      });
+      await syncTransitionAsset(tx as never, {
+        id: 4,
+        assetId: 'transition:4',
+        name: 'Wipe',
+        videoUrl: 'https://media.test/wipe.webm',
+        enabled: true,
+      });
+      await syncSongAsset(tx as never, {
+        id: 3,
+        assetId: 'song:3',
+        coverAssetId: null,
+        artist: 'Artist',
+        title: 'Song',
+        audioUrl: 'https://media.test/song.mp3',
+        enabled: true,
+      });
+
+      expect(tx.mediaAsset.upsert).toHaveBeenCalledTimes(4);
+      expect(tx.media.update).not.toHaveBeenCalled();
+      expect(tx.instant.update).not.toHaveBeenCalled();
+      expect(tx.stinger.update).not.toHaveBeenCalled();
+      expect(tx.song.update).not.toHaveBeenCalled();
+      expect(tx.mediaAsset.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('carries song and cover timestamps and keeps an already linked cover untouched', async () => {
+      const tx = buildTransaction();
+      await syncSongAsset(tx as never, {
+        id: 9,
+        assetId: 'song:9',
+        coverAssetId: 'song-cover:9',
+        artist: ' Artist ',
+        title: ' Title ',
+        audioUrl: 'https://media.test/song.mp3',
+        coverUrl: ' https://media.test/cover.jpg ',
+        enabled: true,
+        createdAt,
+        updatedAt,
+      });
+
+      expect(tx.mediaAsset.upsert).toHaveBeenNthCalledWith(2, {
+        where: { id: 'song-cover:9' },
+        create: {
+          id: 'song-cover:9',
+          kind: null,
+          mediaType: MediaAssetType.IMAGE,
+          name: 'Artist Title cover',
+          sourceUrl: 'https://media.test/cover.jpg',
+          enabled: true,
+          createdAt,
+          updatedAt,
+        },
+        update: {
+          mediaType: MediaAssetType.IMAGE,
+          name: 'Artist Title cover',
+          sourceUrl: 'https://media.test/cover.jpg',
+          enabled: true,
+          updatedAt,
+        },
+      });
+      expect(tx.song.update).not.toHaveBeenCalled();
+    });
+
+    it('stamps the song update time on a new link and removes a cover whose url was cleared', async () => {
+      const tx = buildTransaction();
+      await syncSongAsset(tx as never, {
+        id: 9,
+        assetId: null,
+        coverAssetId: 'song-cover:9',
+        artist: 'Artist',
+        title: 'Title',
+        audioUrl: 'https://media.test/song.mp3',
+        coverUrl: '   ',
+        enabled: true,
+        updatedAt,
+      });
+
+      expect(tx.song.update).toHaveBeenCalledWith({
+        where: { id: 9 },
+        data: { assetId: 'song:9', coverAssetId: null, updatedAt },
+      });
+      expect(tx.mediaAsset.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'song-cover:9' },
+      });
+    });
+
+    it('deletes song covers explicitly', async () => {
+      const tx = buildTransaction();
+      await deleteSongCoverAsset(tx as never, 9);
+      expect(tx.mediaAsset.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'song-cover:9' },
+      });
+    });
   });
 });
