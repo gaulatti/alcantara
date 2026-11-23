@@ -45,3 +45,4 @@ export * from '@gaulatti/bleecker/layout/page-frame';
 export { Button, IconButton } from './components/BleeckerButtons';
 export * from '@gaulatti/bleecker/components/tooltip';
 export * from '@gaulatti/bleecker/components/slider';
+export * from '@gaulatti/bleecker/components/fader';

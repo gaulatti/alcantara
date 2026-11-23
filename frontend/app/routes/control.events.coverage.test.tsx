@@ -279,7 +279,7 @@ it("keeps a scene staged or cleared before the program has loaded from creating 
 it("moves the TV audio desk's faders and meters with the audio bus and meter events", async () => {
   prefs.workspace = "audio";
   open("tv");
-  const fader = () => screen.getByRole("slider", { name: "Music fader" }) as HTMLInputElement;
+  const fader = () => ({ value: screen.getByRole("slider", { name: "Music fader" }).getAttribute("aria-valuenow") });
   const meter = () => Number(screen.getByRole("meter", { name: "Music live level" }).getAttribute("aria-valuenow"));
   await screen.findByRole("slider", { name: "Music fader" });
   const before = fader().value;

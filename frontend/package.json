@@ -11,7 +11,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
-    "@gaulatti/bleecker": "0.1.47",
+    "@gaulatti/bleecker": "0.1.49",
     "@modoitaliano/giorgia": "0.1.106",
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
