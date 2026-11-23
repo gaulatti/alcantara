@@ -563,6 +563,34 @@ describe("the level meter attached to an instant", () => {
   });
 });
 
+describe("stinger videos", () => {
+  it("keeps the video of a stinger that stays in the list and releases only the removed one", async () => {
+    open();
+    await flush();
+    const stinger = (stingerId: number, name: string) => ({
+      stingerId,
+      stinger: { name, videoUrl: `https://media.example.test/${name}.webm`, cutPointMs: 1000 },
+    });
+    const setList = (list: unknown[]) =>
+      emit({ type: "program_stingers_changed", programId: "main", state: { stingers: list } });
+    const videoFor = (name: string) =>
+      Array.from(document.querySelectorAll("video")).find(
+        (video) => video.getAttribute("src") === `https://media.example.test/${name}.webm`,
+      ) ?? null;
+
+    setList([stinger(1, "a"), stinger(2, "b")]);
+    const kept = videoFor("a");
+    const removed = videoFor("b");
+    expect(kept).not.toBeNull();
+    expect(removed).not.toBeNull();
+
+    setList([stinger(1, "a"), stinger(3, "c")]);
+    expect(videoFor("a")).toBe(kept);
+    expect(removed?.parentNode).toBeNull();
+    expect(videoFor("c")).not.toBeNull();
+  });
+});
+
 describe("scene instants", () => {
   it("plays a scene instant on a loop at its volume scaled by the scene instant channel", async () => {
     open();

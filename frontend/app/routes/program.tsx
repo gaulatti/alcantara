@@ -1062,6 +1062,8 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       }
     }
 
+    // A stinger that left the list releases its video. The others keep theirs, so a transition in
+    // progress still finds the video it needs and an unchanged stinger is not fetched again.
     for (const [id, video] of currentRefs) {
       if (!seen.has(id)) {
         video.removeAttribute('src');
@@ -1072,7 +1074,10 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
         currentRefs.delete(id);
       }
     }
+  }, [programStingers]);
 
+  useEffect(() => {
+    const currentRefs = stingerVideoRefs.current;
     return () => {
       for (const [, video] of currentRefs) {
         video.removeAttribute('src');
@@ -1083,7 +1088,7 @@ function SceneProgram({ programId, confidenceMode, suppressGuestAudio }: { progr
       }
       currentRefs.clear();
     };
-  }, [programStingers]);
+  }, []);
 
   useEffect(() => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
