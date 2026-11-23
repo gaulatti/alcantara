@@ -31,4 +31,8 @@ describe('console text size', () => {
     expect(pills.length).toBeGreaterThan(0);
     expect(pills.filter((pill) => !/className=("|\{`)[^"`]*\btext-xs\b/.test(pill))).toEqual([]);
   });
+
+  it('raises the SIMULCAST badge in the console header to 12px', () => {
+    expect(read('SimulcastStatusRail.tsx')).toMatch(/<StatusBadge[^>]*\[&>span:first-child\]:text-xs[^>]*label='SIMULCAST'/);
+  });
 });
