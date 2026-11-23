@@ -96,6 +96,7 @@ model ProgramState {
   broadcastSelections    BroadcastDestinationSelection[]
   broadcastCommands      BroadcastDestinationCommand[]
   externalSourceAssignments ExternalSourceProgram[]
+  rundownRecipes         RundownRecipe[]
   updatedAt              DateTime             @updatedAt
 }
 
@@ -325,6 +326,27 @@ model FlightSequence {
 
   @@unique([programStateId, name])
   @@unique([programStateId, scheduledAt])
+}
+
+/// gaulatti/alcantara#424 (#222 R3): a named rundown recipe of one program. A use of it is
+/// written into a rundown as ordinary cues tagged with the recipe's id and revision; the
+/// scenes are ones assigned to the program, and `steps` lists the enabled steps.
+model RundownRecipe {
+  id               Int          @id @default(autoincrement())
+  programStateId   Int
+  programState     ProgramState @relation(fields: [programStateId], references: [id], onDelete: Cascade)
+  name             String
+  revision         Int          @default(1)
+  bumperSceneId    Int?
+  slideshowSceneId Int?
+  returnSceneId    Int?
+  transitionId     String       @default("cut")
+  holdMs           Int          @default(3000)
+  steps            Json
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([programStateId, name])
 }
 
 model ProgramScene {

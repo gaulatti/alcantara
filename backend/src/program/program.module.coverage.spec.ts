@@ -12,6 +12,11 @@ import { ProgramModule } from './program.module';
 import { ProgramRealtimeService } from './program.realtime.service';
 import { ProgramService } from './program.service';
 import { ProgramTemplateService } from './program-template.service';
+import { ManagedMetricsService } from '../observability/managed-metrics.service';
+import { RecipeMcpTools } from '../mcp/capabilities/recipes';
+import { RecipesController } from './recipes.controller';
+import { RecipesService } from './recipes.service';
+import { ARTIST_LABEL_LOOKUP, NO_ARTIST_LABELS } from './artist-label-lookup';
 
 @Global()
 @Module({
@@ -40,6 +45,13 @@ class ConsumerModule {}
 })
 class PompeiiStubModule {}
 
+@Global()
+@Module({
+  providers: [{ provide: ManagedMetricsService, useValue: {} }],
+  exports: [ManagedMetricsService],
+})
+class MetricsStubModule {}
+
 describe('ProgramModule wiring', () => {
   const removeListener = jest.fn();
   const fakeProgramService = {
@@ -55,7 +67,14 @@ describe('ProgramModule wiring', () => {
 
   async function compile() {
     return Test.createTestingModule({
-      imports: [TicketsModule, ProgramModule, ConsumerModule, PompeiiStubModule],
+      // The metrics service is global in the application; RecipesService counts its work there.
+      imports: [
+        TicketsModule,
+        MetricsStubModule,
+        ProgramModule,
+        ConsumerModule,
+        PompeiiStubModule,
+      ],
     })
       .overrideProvider(ProgramService)
       .useValue(fakeProgramService)
@@ -126,6 +145,7 @@ describe('ProgramModule wiring', () => {
     ]);
     expect(Reflect.getMetadata('controllers', ProgramModule)).toEqual([
       ProgramController,
+      RecipesController,
     ]);
     expect(Reflect.getMetadata('providers', ProgramModule)).toEqual([
       ProgramService,
@@ -135,6 +155,9 @@ describe('ProgramModule wiring', () => {
       ProgramMcpTools,
       SongLeavesMcpTools,
       FlightMcpTools,
+      RecipesService,
+      RecipeMcpTools,
+      { provide: ARTIST_LABEL_LOOKUP, useValue: NO_ARTIST_LABELS },
       PrismaService,
     ]);
   });

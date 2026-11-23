@@ -63,6 +63,8 @@ const EXTRA_CAPABILITIES: Record<string, [string, McpTier]> = {
   program_remove_program_song_leaves_by_id: ['program.operate', 'A'],
   radio_get_playback_state: ['radio.read', 'R'],
   radio_get_audio_levels: ['radio.read', 'R'],
+  // gaulatti/alcantara#424: add one use of a rundown recipe to a rundown, which has no route of its own.
+  program_add_recipe_use_by_id: ['flight.manage', 'W'],
 };
 
 function permissionKey(short: string): string {
@@ -139,7 +141,7 @@ describe('MCP registry against appendix A', () => {
   // literal (the brand-literal ratchet). Only name, permission and tier are read.
   it('reads all of appendix A: capabilities, covered rows and the 12 exclusions', () => {
     const { rows, excluded, covered } = appendix();
-    expect(rows.size + covered.size).toBe(171);
+    expect(rows.size + covered.size).toBe(175);
     expect(excluded).toBe(12);
     // auth_get_me is whoami (same permission, same tier, the caller's own
     // identity), as is access_my_permissions (the caller's own keys); the

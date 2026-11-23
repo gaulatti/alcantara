@@ -619,6 +619,87 @@ async function main() {
     },
   });
 
+  // gaulatti/alcantara#424: the song recipe on tv-demo. Its bumper and slideshow scenes belong to
+  // tv-demo alone, since each use re-points them; it returns to the program desk.
+  const recipeScenes: Array<[number, string, string, Record<string, unknown>]> =
+    [
+      [
+        9003,
+        'Local artist bumper',
+        'modoitaliano-giorgia-artist-bumper',
+        {
+          'modoitaliano-giorgia-artist-bumper': {
+            show: true,
+            artist: '',
+            songTitle: '',
+            labelId: null,
+          },
+        },
+      ],
+      [
+        9004,
+        'Local song slideshow',
+        'slideshow',
+        {
+          slideshow: {
+            labelId: null,
+            intervalMs: 5000,
+            transitionMs: 900,
+            fitMode: 'cover',
+          },
+        },
+      ],
+    ];
+  for (const [id, name, componentType, metadata] of recipeScenes) {
+    const layout = await prisma.layout.upsert({
+      where: { name },
+      update: { componentType, settings: '{}' },
+      create: { id, name, componentType, settings: '{}' },
+    });
+    await prisma.scene.upsert({
+      where: { id },
+      update: { name, layoutId: layout.id, metadata: JSON.stringify(metadata) },
+      create: {
+        id,
+        name,
+        layoutId: layout.id,
+        metadata: JSON.stringify(metadata),
+      },
+    });
+    await prisma.programScene.upsert({
+      where: {
+        programStateId_sceneId: { programStateId: tvProgram.id, sceneId: id },
+      },
+      update: { position: id },
+      create: { programStateId: tvProgram.id, sceneId: id, position: id },
+    });
+  }
+  await prisma.rundownRecipe.upsert({
+    where: {
+      programStateId_name: { programStateId: tvProgram.id, name: 'Song' },
+    },
+    update: {},
+    create: {
+      programStateId: tvProgram.id,
+      name: 'Song',
+      bumperSceneId: 9003,
+      slideshowSceneId: 9004,
+      returnSceneId: programScene.id,
+      transitionId: 'cut',
+      holdMs: 3000,
+      steps: [
+        'bumperPoint',
+        'bumper',
+        'hold',
+        'song',
+        'slideshowPoint',
+        'slideshow',
+        'songEnd',
+        'back',
+      ],
+    },
+  });
+
   await prisma.$transaction(async (tx) => {
     await syncAudioClipAsset(tx, assignedIntro);
     await syncAudioClipAsset(tx, availableIntro);
