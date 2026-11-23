@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Logger, Injectable, OnModuleInit } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { ManagedMetricsService } from './managed-metrics.service';
 
@@ -29,6 +29,8 @@ export function routeGroupOf(request: MetricRequest): string {
  */
 @Injectable()
 export class HttpMetricsHook implements OnModuleInit {
+  private readonly logger = new Logger('HttpMetricsHook');
+
   constructor(
     private readonly adapter: HttpAdapterHost,
     private readonly metrics: ManagedMetricsService,
@@ -40,8 +42,11 @@ export class HttpMetricsHook implements OnModuleInit {
     const instance = this.adapter.httpAdapter.getInstance() as
       | { addHook?: (name: string, handler: (request: MetricRequest, reply: MetricReply, done: () => void) => void) => void }
       | undefined;
+    // Production runs on Fastify. Another adapter (an Express test app) gets no response hook rather
+    // than failing start-up: counting requests must never stop the app from starting.
     if (typeof instance?.addHook !== 'function') {
-      throw new Error('HTTP metrics need the Fastify adapter');
+      this.logger.warn('HTTP metrics are off: the HTTP adapter is not Fastify');
+      return;
     }
     instance.addHook('onResponse', (request, reply, done) => {
       this.metrics.recordHttp(
