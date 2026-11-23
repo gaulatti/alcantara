@@ -125,6 +125,17 @@ it("renders the complete desk with one monitor, every channel, twelve songs and 
   expect(screen.queryByText(/Program stays visible/)).not.toBeInTheDocument();
   expect(screen.getAllByRole("slider")).toHaveLength(5);
   expect(screen.getAllByRole("meter")).toHaveLength(4);
+  for (const slider of screen.getAllByRole("slider")) {
+    expect(slider).not.toHaveAttribute("aria-orientation");
+    expect(slider).toHaveAttribute(
+      "aria-valuetext",
+      expect.stringMatching(/ dB$/),
+    );
+  }
+  const meter = screen.getByRole("meter", { name: "Music live level" });
+  expect(meter.querySelector(".tv-audio-meter-fill")).toHaveStyle({
+    width: "20%",
+  });
   expect(screen.getByText("Song 12")).toBeInTheDocument();
   expect(
     screen.getAllByRole("textbox", { name: "Search cartwall" }),
@@ -238,7 +249,7 @@ it("shows a mix being saved and a preset take in progress", () => {
   const takeA = screen.getByRole("button", { name: "Take Music preset A" });
   expect(takeA).toHaveTextContent("…");
   expect(takeA).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Take Stream preset A" })).toHaveTextContent(
-    "TAKE A",
-  );
+  expect(
+    screen.getByRole("button", { name: "Take Stream preset A" }),
+  ).toHaveTextContent("TAKE A");
 });

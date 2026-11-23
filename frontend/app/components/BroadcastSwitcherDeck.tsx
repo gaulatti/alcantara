@@ -1,6 +1,15 @@
 import { TooltipButton } from "./BleeckerButtons";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Button, IconButton, Input } from "@gaulatti/bleecker";
+import {
+  ArmTake,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Slider,
+  StatePill,
+  type StatePillTone,
+} from "@gaulatti/bleecker";
 import {
   Expand,
   Keyboard,
@@ -45,6 +54,18 @@ interface SharedLayout {
   sourceDeviceClass: string;
   version: number;
 }
+
+/** How each preference sync state reads as a state pill. */
+const SYNC_TONE: Record<string, StatePillTone> = {
+  synced: "ok",
+  conflict: "bad",
+};
+
+const DEVICE_CLASSES = [
+  { value: "desktop", label: "Desktop" },
+  { value: "tablet", label: "Tablet" },
+  { value: "phone", label: "Phone" },
+];
 
 function ConsolePreferenceControls({ programId }: { programId: string }) {
   const preferences = useConsolePreferences();
@@ -159,11 +180,10 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
 
   return (
     <div className="relative flex items-center gap-2">
-      <span
-        className={`rounded px-2 py-1 text-[10px] font-bold uppercase ${preferences.syncState === "synced" ? "bg-emerald-950 text-emerald-300" : preferences.syncState === "conflict" ? "bg-red-950 text-red-300" : "bg-amber-950 text-amber-300"}`}
-      >
-        {preferences.syncState}
-      </span>
+      <StatePill
+        tone={SYNC_TONE[preferences.syncState] ?? "warn"}
+        label={`Preferences ${preferences.syncState}`}
+      />
       <Button
         type="button"
         size="xs"
@@ -175,22 +195,21 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
       </Button>
       {open ? (
         <div className="absolute right-0 top-10 z-50 max-h-[min(38rem,calc(100vh-5rem))] w-[min(24rem,calc(100vw-1rem))] space-y-4 overflow-y-auto rounded-[var(--radius-card)] border border-sand/30 bg-dark-sand p-4 shadow-[var(--shadow-overlay)]">
-          <label className="block text-xs text-zinc-400">
-            Device class override
-            <select
+          <div className="block text-xs text-text-secondary">
+            <span id="console-device-class">Device class override</span>
+            <Select
+              className="mt-1 w-full"
+              size="sm"
+              aria-label="Device class override"
               value={preferences.deviceClass}
-              onChange={(event) =>
+              options={DEVICE_CLASSES}
+              onChange={(value) =>
                 preferences.setDeviceClassOverride(
-                  event.target.value as "desktop" | "tablet" | "phone",
+                  value as "desktop" | "tablet" | "phone",
                 )
               }
-              className="mt-1 w-full rounded bg-zinc-900 p-2"
-            >
-              <option value="desktop">Desktop</option>
-              <option value="tablet">Tablet</option>
-              <option value="phone">Phone</option>
-            </select>
-          </label>
+            />
+          </div>
           <Button
             type="button"
             size="xs"
@@ -246,20 +265,23 @@ function ConsolePreferenceControls({ programId }: { programId: string }) {
                 Console presets
               </span>
             </div>
-            <label className="mt-2 block text-xs text-zinc-400">
-              Visibility
-              <select
+            <div className="mt-2 block text-xs text-text-secondary">
+              <span>Visibility</span>
+              <Select
+                className="mt-1 w-full"
+                size="sm"
+                aria-label="Preset visibility"
                 value={scope}
-                onChange={(event) => {
-                  setScope(event.target.value as "program" | "team");
+                options={[
+                  { value: "program", label: "This program" },
+                  ...(teamId ? [{ value: "team", label: "My team" }] : []),
+                ]}
+                onChange={(value) => {
+                  setScope(value as "program" | "team");
                   setMessage("");
                 }}
-                className="mt-1 w-full rounded bg-zinc-900 p-2"
-              >
-                <option value="program">This program</option>
-                {teamId ? <option value="team">My team</option> : null}
-              </select>
-            </label>
+              />
+            </div>
             <div className="mt-2 flex gap-2">
               <input
                 aria-label={`New ${scope} console preset name`}
@@ -323,11 +345,14 @@ export function ConfidenceMonitor({
   tone,
   scene,
   src,
+  state,
 }: {
   label: string;
   tone: "preview" | "program";
   scene: Scene | null;
   src: string;
+  /** What is going out, shown on the Program monitor: on air, or faded to black. */
+  state?: { tone: StatePillTone; label: string; pulse?: boolean };
 }) {
   const monitorRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0);
@@ -349,7 +374,7 @@ export function ConfidenceMonitor({
   return (
     <section
       data-tone={tone}
-      className={`switcher-monitor min-w-0 overflow-hidden border bg-black md:order-2 ${preview ? "border-amber-400/80" : "border-red-500/90"}`}
+      className={`switcher-monitor min-w-0 overflow-hidden border bg-black md:order-2 ${preview ? "border-amber-400/60 opacity-95" : "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.45),0_12px_32px_-12px_rgba(239,68,68,0.55)]"}`}
     >
       <header
         className={`flex h-8 items-center gap-2 px-2 sm:px-3 ${preview ? "bg-amber-400 text-zinc-950" : "bg-red-600 text-white"}`}
@@ -360,6 +385,14 @@ export function ConfidenceMonitor({
         <span className="min-w-0 flex-1 truncate text-right text-xs font-semibold">
           {scene?.name || (preview ? "Preview is clear" : "Program is clear")}
         </span>
+        {state ? (
+          <StatePill
+            className="shrink-0 border-white/40 bg-black/30 text-white"
+            tone={state.tone}
+            label={state.label}
+            pulse={state.pulse}
+          />
+        ) : null}
       </header>
       <div
         ref={monitorRef}
@@ -593,17 +626,19 @@ export function BroadcastSwitcherDeck(props: Props) {
               <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                 {scene.name}
               </span>
-              <span
-                className={`shrink-0 text-[10px] font-bold uppercase ${isPreview ? "text-accent-yellow" : isProgram ? "text-terracotta" : "text-text-secondary"}`}
-              >
-                {isPreview && isProgram
-                  ? "Preview · Program"
-                  : isPreview
-                    ? "Preview"
-                    : isProgram
-                      ? "Program"
-                      : "Stage"}
-              </span>
+              {isProgram ? (
+                <StatePill
+                  className="shrink-0"
+                  tone="live"
+                  label={isPreview ? "Preview · Program" : "Program"}
+                />
+              ) : isPreview ? (
+                <StatePill className="shrink-0" tone="arm" label="Preview" />
+              ) : (
+                <span className="shrink-0 text-xs text-text-secondary">
+                  Stage
+                </span>
+              )}
             </TooltipButton>
           );
         })}
@@ -615,7 +650,7 @@ export function BroadcastSwitcherDeck(props: Props) {
           </p>
         )}
       </div>
-      <p className="m-3 text-[10px] text-text-secondary">
+      <p className="m-3 text-xs text-text-secondary">
         Select a source to prepare it in Preview.
       </p>
     </aside>
@@ -674,7 +709,7 @@ export function BroadcastSwitcherDeck(props: Props) {
                 aria-label="Toggle keyboard shortcuts"
                 aria-pressed={shortcutsEnabled}
                 onClick={toggleShortcuts}
-                title="Space: TAKE · C: CUT · Escape: clear Preview"
+                title="Space: TAKE · C: CUT · Escape: clear Preview · Alt+B twice: fade to black"
               >
                 <Keyboard size={17} />
               </IconButton>
@@ -700,21 +735,16 @@ export function BroadcastSwitcherDeck(props: Props) {
                 <Expand size={17} />
               </IconButton>
             </div>
-            <label className="mt-3 block text-xs text-text-secondary">
-              Source panel width
-              <input
-                type="range"
-                min={260}
-                max={520}
-                value={dockWidth}
-                onChange={(event) =>
-                  preferences.updateProfile({
-                    dockWidth: Number(event.target.value),
-                  })
-                }
-                className="mt-1 w-full"
-              />
-            </label>
+            <Slider
+              className="mt-3"
+              label="Source panel width"
+              min={260}
+              max={520}
+              value={dockWidth}
+              onChange={(value) =>
+                preferences.updateProfile({ dockWidth: value })
+              }
+            />
           </div>
         </details>
       </div>
@@ -737,25 +767,29 @@ export function BroadcastSwitcherDeck(props: Props) {
             tone="program"
             scene={props.activeScene}
             src={`/program/${encodeURIComponent(props.programId)}?confidence=program`}
+            state={
+              props.fadeToBlack
+                ? { tone: "bad", label: "Faded to black" }
+                : props.activeScene
+                  ? { tone: "live", label: "On air", pulse: true }
+                  : undefined
+            }
           />
           <div className="switcher-transports order-4 col-span-2 rounded-[var(--radius-ui)] border border-sand/30 bg-dark-sand p-3 md:order-4">
             <div className="flex flex-wrap items-end gap-3">
-              <label className="w-full min-w-0 text-xs text-text-secondary sm:w-auto sm:flex-1">
-                Transition
-                <select
+              <div className="w-full min-w-0 text-xs text-text-secondary sm:w-auto sm:flex-1">
+                <span>Transition</span>
+                <Select
+                  className="mt-1 w-full"
+                  aria-label="Transition"
                   value={props.transitionId}
-                  onChange={(event) =>
-                    props.onTransitionChange(event.target.value)
-                  }
-                  className="mt-1 w-full rounded-[var(--radius-button)] border border-sand/30 bg-dark-sand px-2 py-2 text-text-primary"
-                >
-                  {SCENE_TRANSITIONS.map((transition) => (
-                    <option key={transition.id} value={transition.id}>
-                      {transition.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={SCENE_TRANSITIONS.map((transition) => ({
+                    value: transition.id,
+                    label: transition.name,
+                  }))}
+                  onChange={(value) => props.onTransitionChange(value)}
+                />
+              </div>
               <BroadcastAction
                 kind="cut"
                 className="switcher-cut flex-1 sm:flex-none"
@@ -781,18 +815,30 @@ export function BroadcastSwitcherDeck(props: Props) {
                     ? `Ready: ${props.stagedScene.name}`
                     : "Choose a source to prepare the next scene."}
               </p>
-              <TooltipButton
-                type="button"
-                onClick={requestFadeToBlack}
-                aria-pressed={props.fadeToBlack}
-                className={`rounded-[var(--radius-button)] border px-3 py-2 text-xs font-semibold ${props.fadeToBlack || ftbArmed ? "border-terracotta text-terracotta" : "border-sand/30 text-text-secondary hover:text-text-primary"}`}
-              >
-                {props.fadeToBlack
-                  ? "RESTORE PROGRAM"
-                  : ftbArmed
-                    ? "CONFIRM FADE TO BLACK"
-                    : "ARM FADE TO BLACK"}
-              </TooltipButton>
+              {props.fadeToBlack ? (
+                <TooltipButton
+                  type="button"
+                  onClick={requestFadeToBlack}
+                  aria-pressed
+                  className="rounded-[var(--radius-button)] border border-terracotta px-3 py-2 text-xs font-semibold text-terracotta"
+                >
+                  RESTORE PROGRAM
+                </TooltipButton>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {ftbArmed ? (
+                    <StatePill
+                      tone="arm"
+                      label="Fade to black armed: Alt+B again"
+                    />
+                  ) : null}
+                  {/* Hold, or press twice: one stray click never fades the program. */}
+                  <ArmTake
+                    label="Fade to black"
+                    onTake={() => latestPropsRef.current.onFadeToBlack()}
+                  />
+                </div>
+              )}
             </div>
             {(props.takeError || stageError) && (
               <p

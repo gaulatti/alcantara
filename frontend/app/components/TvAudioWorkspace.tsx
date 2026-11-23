@@ -1,5 +1,5 @@
 import { TooltipButton } from "./BleeckerButtons";
-import { Button, Input } from "@gaulatti/bleecker";
+import { Button, Input, Slider } from "@gaulatti/bleecker";
 import type { ComponentProps, ReactNode } from "react";
 import type {
   MixerTakeChannelKey,
@@ -84,28 +84,6 @@ function AudioChannel({
         )}
       </div>
       <div className="tv-audio-fader-bank">
-        <div className="tv-audio-fader-scale" aria-hidden="true">
-          {[0, -8, -15, -28, -45].map((db) => (
-            <span key={db} style={{ bottom: `${dbToFader(db) * 100}%` }}>
-              {db}
-            </span>
-          ))}
-          <span style={{ bottom: 0 }}>−∞</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.005}
-          value={channel.volume}
-          disabled={loading}
-          aria-label={`${channel.label} fader`}
-          aria-orientation="vertical"
-          aria-valuetext={`${level} dB`}
-          onChange={(event) =>
-            channel.onVolumeChange(Number(event.target.value))
-          }
-        />
         {channel.meter ? (
           <div
             className="tv-audio-meter"
@@ -117,15 +95,15 @@ function AudioChannel({
           >
             <span
               className="tv-audio-meter-fill"
-              style={{ height: `${channel.meter.fill * 100}%` }}
+              style={{ width: `${channel.meter.fill * 100}%` }}
             />
             <span
               className="tv-audio-meter-peak"
-              style={{ bottom: `${channel.meter.peak * 100}%` }}
+              style={{ left: `${channel.meter.peak * 100}%` }}
             />
             <span
               className="tv-audio-meter-hold"
-              style={{ bottom: `${channel.meter.hold * 100}%` }}
+              style={{ left: `${channel.meter.hold * 100}%` }}
             />
           </div>
         ) : (
@@ -136,6 +114,20 @@ function AudioChannel({
             —
           </span>
         )}
+        <Slider
+          min={0}
+          max={1}
+          step={0.005}
+          value={channel.volume}
+          disabled={loading}
+          aria-label={`${channel.label} fader`}
+          aria-valuetext={`${level} dB`}
+          onChange={channel.onVolumeChange}
+        />
+        <div className="tv-audio-fader-scale" aria-hidden="true">
+          <span style={{ left: 0, transform: "none" }}>−∞</span>
+          <span style={{ left: `${dbToFader(0) * 100}%` }}>0</span>
+        </div>
       </div>
       <label className="tv-audio-level">
         <Input

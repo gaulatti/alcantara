@@ -32,10 +32,10 @@
 }
 .console-eyebrow {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--console-muted);
 }
@@ -896,7 +896,7 @@
   border-radius: var(--radius-button);
 }
 .tv-audio-channel h3 {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   text-align: center;
   margin: 0;
@@ -922,7 +922,7 @@
   border: 1px solid var(--console-border);
   border-radius: var(--radius-button);
   color: var(--console-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   cursor: pointer;
 }
@@ -943,35 +943,20 @@
 }
 .tv-audio-fader-bank {
   display: grid;
-  grid-template-columns: 21px minmax(24px, 1fr) 8px;
-  gap: 4px;
-  height: 220px;
-  flex: 1;
-  min-height: 170px;
-  max-height: 300px;
+  grid-template-rows: minmax(8px, auto) auto 16px;
+  gap: 6px;
   padding: 8px 0;
-}
-.tv-audio-fader-bank input[type="range"] {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  height: 100%;
-  width: 100%;
-  min-height: 0;
-  margin: 0;
-  accent-color: var(--console-ready);
-  cursor: ns-resize;
-  touch-action: none;
 }
 .tv-audio-fader-scale {
   position: relative;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--console-muted);
   font-variant-numeric: tabular-nums;
 }
 .tv-audio-fader-scale span {
   position: absolute;
-  right: 0;
-  transform: translateY(50%);
+  top: 0;
+  transform: translateX(-50%);
 }
 .tv-audio-meter {
   position: relative;
@@ -981,15 +966,15 @@
 }
 .tv-audio-meter-fill {
   position: absolute;
-  inset: auto 0 0;
+  inset: 0 auto 0 0;
   background: var(--console-ready);
 }
 .tv-audio-meter-peak,
 .tv-audio-meter-hold {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
   background: var(--console-text);
 }
 .tv-audio-meter-hold {
@@ -998,7 +983,7 @@
 .tv-audio-meter-unavailable {
   color: var(--console-muted);
   align-self: center;
-  font-size: 10px;
+  font-size: 12px;
 }
 .tv-audio-level {
   display: flex;
@@ -1019,7 +1004,7 @@
   color: var(--console-text);
 }
 .tv-audio-level span {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .tv-audio-presets {
@@ -1034,16 +1019,16 @@
   gap: 4px;
 }
 .tv-audio-presets input {
-  font-size: 10px;
+  font-size: 12px;
 }
 .tv-audio-presets button {
-  font-size: 9px;
+  font-size: 12px;
   white-space: nowrap;
   padding: 0 2px;
   color: var(--console-ready);
 }
 .tv-audio-master-note {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
   text-align: center;
   min-height: 64px;
@@ -1055,13 +1040,13 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .tv-audio-fade input {
   width: 65px;
   padding: 4px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .tv-audio-mixer-status {
   display: flex;
@@ -1070,7 +1055,7 @@
   gap: 4px;
   border-top: 1px solid var(--console-border);
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--console-muted);
 }
 .tv-audio-mixer-status p {
@@ -1110,7 +1095,7 @@
 }
 .tv-audio-confidence .console-recording summary {
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 .tv-audio-cartwall {
@@ -1173,10 +1158,6 @@
   .tv-audio-strips {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     row-gap: 20px;
-  }
-  .tv-audio-fader-bank {
-    flex: none;
-    height: 170px;
   }
   .tv-audio-utility {
     display: flex;
