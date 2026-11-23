@@ -469,7 +469,12 @@ returns `502` with an empty body, so the scrape never hangs.
 | `alcantara_palazzo_metrics_scrape_total`            | `result`: `ok`, `unavailable`, `timeout`, `too_large`, `error` | Outcome of each passthrough (`unavailable`: unconfigured or connection failure; `error`: non-2xx, redirect or body read failure) |
 | `alcantara_palazzo_metrics_scrape_duration_seconds` | none                                                 | Wall time of each passthrough, up to the 2 s budget |
 
-The HTTP metrics label the route as the existing `metrics` group.
+The HTTP metrics record every response once, in Fastify's `onResponse` hook, so guard refusals and
+streaming responses are counted as well as handler responses (gaulatti/alcantara#238). The `route` label is
+the first static segment of the matched route pattern (`songs` for `/songs/:id`, `program` for
+`/program/:programId/tape`); the raw URL is never a label. A request that matched no route (a 404 or a
+scanner's path) is labelled `unmatched`. `unknown` is a matched route whose group is not in the bounded
+route list, so it marks a route the list does not name yet. `status_class` is `2xx`, `4xx`, `5xx` and so on.
 
 | Metric family                                  | Bounded labels                      | Operational meaning                            |
 | ---------------------------------------------- | ----------------------------------- | ---------------------------------------------- |

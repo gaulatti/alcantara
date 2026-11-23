@@ -131,6 +131,10 @@ const HTTP_ROUTES = new Set([
   'webrtc',
   'broadcast',
   'external-sources',
+  'mcp',
+  'oauth',
+  'probe',
+  'unmatched',
   'unknown',
 ]);
 const DEPENDENCIES = new Set([
