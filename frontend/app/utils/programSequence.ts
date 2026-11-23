@@ -129,6 +129,17 @@ function asRecord(value: unknown): RecordValue | null {
   return value as RecordValue;
 }
 
+function stableSongId(parts: unknown[]): string {
+  // 32-bit FNV-1a over the JSON of the song's content: the same content, the same id.
+  const text = JSON.stringify(parts);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `song_${hash.toString(36)}`;
+}
+
 function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -202,13 +213,16 @@ function normalizeSongLeafItem(record: RecordValue): ProgramSongSequenceLeafItem
       ? Math.round(record.durationMs)
       : undefined;
 
+  const songId =
+    typeof record.songId === 'number' && Number.isInteger(record.songId) && record.songId > 0
+      ? record.songId
+      : undefined;
   return {
-    id: typeof record.id === 'string' && record.id ? record.id : createId('song'),
+    // A song without a string id is given one from its content, so the same song gets the same id
+    // on every normalisation. A random id would change the playback token on each audio_bus_update.
+    id: typeof record.id === 'string' && record.id ? record.id : stableSongId([songId, audioUrl, title, artist, durationMs]),
     kind: 'preset',
-    songId:
-      typeof record.songId === 'number' && Number.isInteger(record.songId) && record.songId > 0
-        ? record.songId
-        : undefined,
+    songId,
     highRotation: record.highRotation === true,
     artist,
     title,
@@ -550,9 +564,25 @@ export function normalizeProgramSongSequence(
   }
 
   const rawItems = Array.isArray(record.items) ? record.items : [];
-  const items = rawItems
-    .map((item) => normalizeSongSequenceItem(item, depth))
-    .filter((item): item is ProgramSongSequenceItem => item !== null);
+  // Ids stay unique within a sequence. A song without a string id takes its content-derived id; when
+  // the same song appears again, the repeat gets an occurrence suffix (_2, _3, ...), so the first
+  // occurrence keeps the id it would have alone and a repeat never shares an id with it.
+  const used = new Set<string>();
+  const items: ProgramSongSequenceItem[] = [];
+  for (const rawItem of rawItems) {
+    const item = normalizeSongSequenceItem(rawItem, depth);
+    if (!item) continue;
+    const givenId = typeof asRecord(rawItem)?.id === 'string' && (asRecord(rawItem)?.id as string) !== '';
+    let id = item.id;
+    if (!givenId) {
+      const base = item.id;
+      for (let occurrence = 2; used.has(id); occurrence += 1) {
+        id = `${base}_${occurrence}`;
+      }
+    }
+    used.add(id);
+    items.push({ ...item, id });
+  }
 
   return withNormalizedSequenceShape(record, items, 'autoplay');
 }
