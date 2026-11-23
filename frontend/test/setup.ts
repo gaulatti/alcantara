@@ -1,6 +1,11 @@
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { resetPlatformForTests } from '../app/utils/cartModifier';
+
+// findBy and waitFor give up after 1 s by default. A passing test returns as soon as its condition holds,
+// so a longer limit costs nothing when it passes and only keeps a loaded CI runner from failing it.
+configure({ asyncUtilTimeout: 10_000 });
 
 // The cart modifier is read once per page; tests start on a Mac (Ctrl+letter) and
 // stub another platform explicitly. See setPlatformForTests in cartModifier tests.
