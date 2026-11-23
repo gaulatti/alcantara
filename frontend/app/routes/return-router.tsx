@@ -38,9 +38,16 @@ function readRendererKey() {
   return key;
 }
 
+/** A short, fixed message with a code. The raw error text is never shown (gaulatti/alcantara#353). */
+function boundedProblem(code: string, message: string): string {
+  return `${message} (${code})`;
+}
+
 export default function ReturnRouterRoute() {
   const { programId = 'main' } = useParams();
   const [status, setStatus] = useState('Starting isolated return router…');
+  // A failure is shown beside the last good status, never in its place (gaulatti/alcantara#353).
+  const [problem, setProblem] = useState<string | null>(null);
   const [mixCount, setMixCount] = useState(0);
 
   useEffect(() => {
@@ -117,13 +124,14 @@ export default function ReturnRouterRoute() {
       }
       if (!cancelled) {
         setMixCount(mixes.size);
+        setProblem(null);
         setStatus(`${mixes.size} synchronized N-1 return mix${mixes.size === 1 ? '' : 'es'} active`);
       }
     };
 
     const scheduleRebuild = () => {
       window.clearTimeout(rebuildTimer);
-      rebuildTimer = window.setTimeout(() => void rebuild().catch((error) => setStatus(error instanceof Error ? error.message : 'Mix rebuild failed.')), 100);
+      rebuildTimer = window.setTimeout(() => void rebuild().catch(() => setProblem(boundedProblem('mix_rebuild', 'The mix could not be rebuilt. It retries when the room changes.'))), 100);
     };
 
     const addTrack = (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
@@ -181,18 +189,21 @@ export default function ReturnRouterRoute() {
       room.on(RoomEvent.TrackUnsubscribed, removeTrack);
       room.on(RoomEvent.ParticipantConnected, scheduleRebuild);
       room.on(RoomEvent.ParticipantDisconnected, scheduleRebuild);
-      room.on(RoomEvent.Reconnecting, () => setStatus('Reconnecting return router…'));
+      room.on(RoomEvent.Reconnecting, () => {
+        setProblem(null);
+        setStatus('Reconnecting return router…');
+      });
       room.on(RoomEvent.Reconnected, scheduleRebuild);
       await room.connect(credentials.serverUrl, credentials.token, {
         autoSubscribe: true
       });
       await context.resume();
       await loadRoutes();
-      stateTimer = window.setInterval(() => void loadRoutes().catch((error) => setStatus(error instanceof Error ? error.message : 'Route refresh failed.')), 3000);
+      stateTimer = window.setInterval(() => void loadRoutes().catch(() => setProblem(boundedProblem('route_refresh', 'Route refresh failed; the last routes still apply.'))), 3000);
       scheduleRebuild();
     };
 
-    void start().catch((error) => setStatus(error instanceof Error ? error.message : 'Return router failed.'));
+    void start().catch((error) => setStatus(boundedProblem('start', 'The return router could not start. Reload this page to try again.')));
     return () => {
       cancelled = true;
       window.clearTimeout(rebuildTimer);
@@ -209,7 +220,12 @@ export default function ReturnRouterRoute() {
       <div className='max-w-xl text-center'>
         <div className={`mx-auto h-4 w-4 rounded-full ${mixCount ? 'bg-emerald-400' : 'animate-pulse bg-amber-300'}`} />
         <h1 className='mt-5 text-2xl font-semibold'>Alcántara return router</h1>
-        <p className='mt-3 text-white/60'>{status}</p>
+        <p role='status' aria-live='polite' className='mt-3 text-white/60'>{status}</p>
+        {problem ? (
+          <p role='alert' className='mt-2 text-sm text-amber-200'>
+            {problem}
+          </p>
+        ) : null}
         <p className='mt-6 text-xs text-white/35'>
           This machine-only page produces a distinct Program/Monitor/Aux N-1 mix for every connected guest. Keep it isolated with the Alana renderer.
         </p>

@@ -272,7 +272,7 @@ it("has a page title", () => {
 it("needs the renderer key from the URL fragment", async () => {
   await openRouter("");
   expect(
-    screen.getByText("Renderer bootstrap key is required in the URL fragment."),
+    screen.getByText("The return router could not start. Reload this page to try again. (start)"),
   ).toBeVisible();
   expect(fetchCalls).toHaveLength(0);
 });
@@ -286,7 +286,7 @@ it("keeps the key for the session and takes it out of the address", async () => 
   expect(window.location.hash).toBe("");
   expect(window.location.search).toBe("?view=1");
   expect(
-    screen.getByText("Renderer authorization failed (401)."),
+    screen.getByText("The return router could not start. Reload this page to try again. (start)"),
   ).toBeVisible();
   const token = fetchCalls[0];
   expect(new Headers(token.init.headers).get("X-Renderer-Key")).toBe(
@@ -310,7 +310,7 @@ it("reuses the key kept for the session, for the default program", async () => {
 it("explains routing state that cannot be read", async () => {
   stateStatus = 500;
   await openRouter();
-  expect(screen.getByText("Return routing state failed (500).")).toBeVisible();
+  expect(screen.getByText("The return router could not start. Reload this page to try again. (start)")).toBeVisible();
 });
 
 it("explains a failure that is not an error object", async () => {
@@ -324,7 +324,7 @@ it("explains a failure that is not an error object", async () => {
   } finally {
     lk.FakeRoom.prototype.connect = original;
   }
-  expect(screen.getByText("Return router failed.")).toBeVisible();
+  expect(screen.getByText("The return router could not start. Reload this page to try again. (start)")).toBeVisible();
 });
 
 // gaulatti/alexandria#9: the program bus takes one feed, the desktop's when it is in
@@ -534,12 +534,14 @@ it("rebuilds the mixes as tracks, guests and routes change", async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(3000);
   });
-  expect(screen.getByText("Return routing state failed (503).")).toBeVisible();
+  expect(screen.getByText("Route refresh failed; the last routes still apply. (route_refresh)")).toBeVisible();
+  // The last good status stays visible beside the failure (gaulatti/alcantara#353).
+  expect(screen.getByRole("status")).toHaveTextContent(/synchronized N-1 return mix/);
   vi.mocked(fetch).mockRejectedValueOnce("network down");
   await act(async () => {
     await vi.advanceTimersByTimeAsync(3000);
   });
-  expect(screen.getByText("Route refresh failed.")).toBeVisible();
+  expect(screen.getByText("Route refresh failed; the last routes still apply. (route_refresh)")).toBeVisible();
 });
 
 it("does not mix while the room is disconnected, and reports a failed rebuild", async () => {
@@ -557,14 +559,14 @@ it("does not mix while the room is disconnected, and reports a failed rebuild", 
   };
   emit("trackSubscribed", ...audioTrack("anna-mic", "t2", "mic", "guest-anna"));
   await settle();
-  expect(screen.getByText("Publish refused")).toBeVisible();
+  expect(screen.getByText("The mix could not be rebuilt. It retries when the room changes. (mix_rebuild)")).toBeVisible();
 
   room().localParticipant.publishTrack = async () => {
     throw "busy";
   };
   emit("participantConnected");
   await settle();
-  expect(screen.getByText("Mix rebuild failed.")).toBeVisible();
+  expect(screen.getByText("The mix could not be rebuilt. It retries when the room changes. (mix_rebuild)")).toBeVisible();
 });
 
 it("leaves the room and releases audio when the page closes", async () => {
