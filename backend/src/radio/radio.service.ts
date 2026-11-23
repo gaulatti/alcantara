@@ -14,6 +14,8 @@ import {
   type CueGroupShape,
 } from './radio-metrics.service';
 import { PrismaService } from '../prisma.service';
+import { ActorContext } from '../auth/actor-context';
+import { radioSettingsChangeSummary } from '../operator-change/operator-change-summary';
 import {
   PalazzoMachineClient,
   PalazzoMachineError,
@@ -335,35 +337,59 @@ export class RadioService {
     const listenerUrl = this.normalizeListenerUrl(data.listenerUrl);
     const segueMode = this.normalizeSegueMode(data.segueMode);
     const similarity = this.normalizeSimilarityPayload(data);
-    const result = await this.prisma.radioSettings.upsert({
-      where: { programStateId: state.id },
-      update: {
-        ...(data.palazzoUrl !== undefined && { palazzoUrl: data.palazzoUrl }),
-        ...(listenerUrl !== undefined && { listenerUrl }),
-        ...(data.bumperEnabled !== undefined && {
-          bumperEnabled: data.bumperEnabled,
-        }),
-        ...(data.bumperInterval !== undefined && { bumperInterval }),
-        ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
-        ...(data.bumperMode !== undefined && { bumperMode }),
-        ...(data.enabled !== undefined && { enabled: data.enabled }),
-        ...(segueMode !== undefined && { segueMode }),
-        ...similarity,
-      },
-      create: {
-        programStateId: state.id,
-        palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
-        listenerUrl: listenerUrl ?? null,
-        bumperEnabled: data.bumperEnabled ?? true,
-        bumperInterval: bumperInterval ?? null,
-        bumperInstantIds: bumperInstantIds ?? [],
-        bumperMode: bumperMode ?? 'sequential',
-        enabled: data.enabled ?? false,
-        segueMode: segueMode ?? 'on',
-        ...similarity,
-      },
+    const actor = ActorContext.current();
+    const upsertSettings = (tx: Pick<typeof this.prisma, 'radioSettings'>) =>
+      tx.radioSettings.upsert({
+        where: { programStateId: state.id },
+        update: {
+          ...(data.palazzoUrl !== undefined && { palazzoUrl: data.palazzoUrl }),
+          ...(listenerUrl !== undefined && { listenerUrl }),
+          ...(data.bumperEnabled !== undefined && {
+            bumperEnabled: data.bumperEnabled,
+          }),
+          ...(data.bumperInterval !== undefined && { bumperInterval }),
+          ...(data.bumperInstantIds !== undefined && { bumperInstantIds }),
+          ...(data.bumperMode !== undefined && { bumperMode }),
+          ...(data.enabled !== undefined && { enabled: data.enabled }),
+          ...(segueMode !== undefined && { segueMode }),
+          ...similarity,
+        },
+        create: {
+          programStateId: state.id,
+          palazzoUrl: data.palazzoUrl ?? 'http://palazzo:3100',
+          listenerUrl: listenerUrl ?? null,
+          bumperEnabled: data.bumperEnabled ?? true,
+          bumperInterval: bumperInterval ?? null,
+          bumperInstantIds: bumperInstantIds ?? [],
+          bumperMode: bumperMode ?? 'sequential',
+          enabled: data.enabled ?? false,
+          segueMode: segueMode ?? 'on',
+          ...similarity,
+        },
+      });
+    // An operator change is recorded in the same transaction as the change (gaulatti/alcantara#236).
+    // The record carries field names and allowlisted values only, never a URL.
+    if (!actor) return upsertSettings(this.prisma);
+    return this.prisma.$transaction(async (tx) => {
+      const result = await upsertSettings(tx);
+      await tx.operatorChangeRecord.create({
+        data: {
+          teamId: null,
+          programId,
+          principal: actor.principalId,
+          via: actor.via,
+          client: actor.client,
+          capability:
+            actor.via === 'mcp'
+              ? 'radio_update_settings'
+              : 'radio.update-settings',
+          summary: radioSettingsChangeSummary(
+            data as unknown as Record<string, unknown>,
+          ),
+        },
+      });
+      return result;
     });
-    return result;
   }
 
   private normalizeSegueMode(value?: string): string | undefined {
