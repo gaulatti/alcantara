@@ -4,10 +4,14 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { ProgramService } from '../program/program.service';
+import { PREVIOUS_CUE_RULE_VERSION } from '../media-analysis/ffmpeg-audio.analyzer';
 import { PrismaService } from '../prisma.service';
 
 /** The most songs one re-analysis request may name: the rollout of a new cue rule is paced in small batches. */
 export const MAX_REANALYSIS_BATCH = 25;
+
+/** The rule a re-analysis runs on: the current one (default), or the previous one, a way back that needs no deploy. */
+export const REANALYSIS_RULES = ['C', 'previous'] as const;
 
 /**
  * Queues songs for a new audio analysis (gaulatti/alcantara#235). A song that is on air, that is playing on a program
@@ -52,8 +56,13 @@ export class SongReanalysisService {
    * again at queue time so a stale plan cannot take a live song's cues away. Songs that are not found or have no
    * finished analysis are listed, not queued.
    */
-  async request(songIds: unknown, now = new Date()) {
+  async request(songIds: unknown, rule?: unknown, now = new Date()) {
     const ids = this.ids(songIds);
+    if (rule !== undefined && !REANALYSIS_RULES.includes(rule as never)) {
+      throw new BadRequestException(
+        `rule must be one of ${REANALYSIS_RULES.join(', ')}`,
+      );
+    }
     const holding = [...(await this.onAir(ids))].filter(
       ([, programs]) => programs.length > 0,
     );
@@ -76,7 +85,12 @@ export class SongReanalysisService {
     const queued = new Set(rows.map((row) => row.assetId));
     const { count } = await this.prisma.mediaAssetAnalysis.updateMany({
       where: { assetId: { in: [...queued] }, status: 'success' },
-      data: { nextAttemptAt: now },
+      data: {
+        nextAttemptAt: now,
+        // The request names the rule of the next run; the default rule clears an earlier request for the previous one.
+        requestedRuleVersion:
+          rule === 'previous' ? PREVIOUS_CUE_RULE_VERSION : null,
+      },
     });
     return {
       requested: count,

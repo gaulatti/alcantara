@@ -40,7 +40,7 @@ describe('SongReanalysisService', () => {
     const { service, prisma, programs } = build({
       analysed: ['song:1', 'song:3'],
     });
-    await expect(service.request([1, 2, 3], NOW)).resolves.toEqual({
+    await expect(service.request([1, 2, 3], undefined, NOW)).resolves.toEqual({
       requested: 2,
       skipped: [2],
     });
@@ -58,8 +58,32 @@ describe('SongReanalysisService', () => {
     });
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith({
       where: { assetId: { in: ['song:1', 'song:3'] }, status: 'success' },
-      data: { nextAttemptAt: NOW },
+      data: { nextAttemptAt: NOW, requestedRuleVersion: null },
     });
+  });
+
+  it('asks the next analysis for the previous rule, and the default rule clears an earlier request for it', async () => {
+    const { service, prisma } = build({ analysed: ['song:1'] });
+    await service.request([1], 'previous', NOW);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+      where: { assetId: { in: ['song:1'] }, status: 'success' },
+      data: { nextAttemptAt: NOW, requestedRuleVersion: 1 },
+    });
+    await service.request([1], 'C', NOW);
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+      where: { assetId: { in: ['song:1'] }, status: 'success' },
+      data: { nextAttemptAt: NOW, requestedRuleVersion: null },
+    });
+  });
+
+  it('refuses a rule it does not know before queueing anything', async () => {
+    const { service, prisma } = build({ analysed: ['song:1'] });
+    for (const bad of ['B', 2, null, '']) {
+      await expect(service.request([1], bad, NOW)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    }
+    expect(prisma.mediaAssetAnalysis.updateMany).not.toHaveBeenCalled();
   });
 
   it('refuses with 409 on_air, listing each song and its programs, and queues none of the batch', async () => {
@@ -67,7 +91,9 @@ describe('SongReanalysisService', () => {
       analysed: ['song:1', 'song:2', 'song:3'],
       holding: { 2: ['radio-1'], 3: ['radio-1', 'tv'] },
     });
-    const error = await service.request([1, 2, 3], NOW).catch((e) => e);
+    const error = await service
+      .request([1, 2, 3], undefined, NOW)
+      .catch((e) => e);
     expect(error).toBeInstanceOf(ConflictException);
     expect(error.getStatus()).toBe(409);
     expect(error.getResponse()).toEqual({
@@ -81,12 +107,12 @@ describe('SongReanalysisService', () => {
 
   it('checks again at queue time: a song that went on air after the plan is refused', async () => {
     const { service, programs, prisma } = build({ analysed: ['song:1'] });
-    await service.request([1], NOW);
+    await service.request([1], undefined, NOW);
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(1);
     programs.programsHoldingSongs.mockResolvedValueOnce(
       new Map([[1, ['radio-1']]]),
     );
-    await expect(service.request([1], NOW)).rejects.toBeInstanceOf(
+    await expect(service.request([1], undefined, NOW)).rejects.toBeInstanceOf(
       ConflictException,
     );
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledTimes(1);

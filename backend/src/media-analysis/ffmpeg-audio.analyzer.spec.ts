@@ -4,6 +4,7 @@ import {
   AudioAnalysisError,
   assertPlayable,
   CUE_RULE_VERSION,
+  PREVIOUS_CUE_RULE_VERSION,
   cuePoints,
   FfmpegAudioAnalyzer,
   measureArguments,
@@ -294,6 +295,23 @@ describe('FfmpegAudioAnalyzer', () => {
       expect(options.timeoutMs).toBeLessThanOrEqual(180_000);
       expect(options.maxOutputBytes).toBe(4 * 1024 * 1024);
     }
+  });
+
+  it('runs the previous rule when asked: rule 1 cue points from the base detector alone, recorded as ruleVersion 1', async () => {
+    const run = runner({
+      ffprobe: { stdout: PROBE, stderr: '' },
+      ffmpeg: { stdout: MEASURE_STDOUT, stderr: MEASURE_STDERR },
+    });
+    const analyzer = new FfmpegAudioAnalyzer(run);
+    await expect(
+      analyzer.analyze(LOCAL, 180_000, PREVIOUS_CUE_RULE_VERSION),
+    ).resolves.toMatchObject({
+      cueInSeconds: 1.5,
+      // Rule 1's own cue-out (the base detector), not rule 2's 237.2.
+      cueOutSeconds: 238,
+      ruleVersion: 1,
+      cueRule: { head: 'unchanged', tail: 'unchanged' },
+    });
   });
 
   it('maps each process failure to a stored code', async () => {

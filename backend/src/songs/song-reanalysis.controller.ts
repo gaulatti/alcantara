@@ -10,7 +10,7 @@ export class SongReanalysisController {
 
   @Post('reanalysis')
   @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
-  async requestReanalysis(@Body() body: { songIds?: unknown }) {
-    return this.reanalysis.request(body?.songIds);
+  async requestReanalysis(@Body() body: { songIds?: unknown; rule?: unknown }) {
+    return this.reanalysis.request(body?.songIds, body?.rule);
   }
 }

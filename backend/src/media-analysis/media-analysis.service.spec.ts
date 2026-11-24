@@ -141,6 +141,50 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(prisma.mediaAssetAnalysis.create).not.toHaveBeenCalled();
   });
 
+  // gaulatti/alcantara#235: a re-analysis request may ask for the previous cue rule, which the run uses once.
+  it('analyses on the previous rule when the request asked for it, records the rule that ran and clears the request', async () => {
+    const { service, prisma, analyzer } = setup([
+      [
+        candidate({
+          analysisUpdatedAt: new Date('2026-11-23T00:00:00.000Z'),
+          attempts: 1,
+          requestedRuleVersion: 1,
+        }),
+      ],
+    ]);
+    analyzer.analyze.mockResolvedValueOnce({
+      ...ANALYSIS,
+      ruleVersion: 1,
+    } as never);
+
+    await expect(service.runOnce(NOW)).resolves.toBe(true);
+
+    expect(analyzer.analyze).toHaveBeenCalledWith(
+      URL_A,
+      ANALYSIS_TIMEOUT_MS,
+      1,
+    );
+    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+      where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
+      data: expect.objectContaining({
+        status: 'success',
+        ruleVersion: 1,
+        requestedRuleVersion: null,
+      }),
+    });
+  });
+
+  it('reads the requested rule in the candidate query', async () => {
+    const { service, prisma } = setup([[]]);
+    await service.runOnce(NOW);
+    const [query] = prisma.$queryRaw.mock.calls[0] as unknown as [
+      { sql: string },
+    ];
+    expect(query.sql).toContain(
+      'm."requestedRuleVersion" AS "requestedRuleVersion"',
+    );
+  });
+
   it('claims a new asset, analyses it with the per-file timeout and stores a success', async () => {
     const { service, prisma, analyzer, metrics } = setup();
 
@@ -155,7 +199,11 @@ describe('MediaAnalysisService.runOnce', () => {
         sourceUrl: URL_A,
       },
     });
-    expect(analyzer.analyze).toHaveBeenCalledWith(URL_A, ANALYSIS_TIMEOUT_MS);
+    expect(analyzer.analyze).toHaveBeenCalledWith(
+      URL_A,
+      ANALYSIS_TIMEOUT_MS,
+      2,
+    );
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith({
       where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
       data: {
@@ -171,6 +219,7 @@ describe('MediaAnalysisService.runOnce', () => {
         isrc: 'USRC17607839',
         musicbrainzRecordingId: null,
         ruleVersion: 2,
+        requestedRuleVersion: null,
         error: null,
         nextAttemptAt: null,
       },
@@ -406,6 +455,7 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(analyzer.analyze).toHaveBeenCalledWith(
       sourceUrl,
       ANALYSIS_TIMEOUT_MS,
+      2,
     );
   });
 
@@ -743,6 +793,7 @@ describe('MediaAnalysisService schedule', () => {
         expect(analyzer.analyze).toHaveBeenCalledWith(
           URL_A,
           ANALYSIS_TIMEOUT_MS,
+          2,
         );
         expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
           expect.objectContaining({
@@ -1101,6 +1152,7 @@ describe('a database error on the result write (#278)', () => {
     expect(analyzer.analyze).toHaveBeenLastCalledWith(
       URL_A,
       ANALYSIS_TIMEOUT_MS,
+      2,
     );
   });
 
