@@ -604,4 +604,138 @@ export class RecipesService {
       );
     return error;
   }
+
+  /**
+   * gaulatti/alcantara#465: the uses of a recipe in the program's operator rundowns: per rundown, how
+   * many uses and whether the rundown is running. Read by the delete and by its MCP dry run.
+   */
+  async usesOf(
+    programId: string,
+    recipeId: number,
+  ): Promise<{
+    recipe: RecipeView;
+    uses: number;
+    rundowns: Array<{
+      id: number;
+      name: string;
+      uses: number;
+      running: boolean;
+      revision: number;
+    }>;
+  }> {
+    const state = await this.program(programId);
+    const recipe = toView(await this.recipe(state.id, recipeId));
+    const sequences = await this.prisma.flightSequence.findMany({
+      where: { programStateId: state.id, scheduledAt: null },
+      orderBy: { id: 'asc' },
+    });
+    const rundowns = sequences
+      .map((sequence) => {
+        const items = Array.isArray(sequence.items)
+          ? (sequence.items as unknown[])
+          : [];
+        const useIds = new Set(
+          items
+            .map(
+              (item) =>
+                (
+                  item as {
+                    recipeUse?: { recipeId?: unknown; useId?: unknown };
+                  } | null
+                )?.recipeUse,
+            )
+            .filter((tag) => tag?.recipeId === recipeId)
+            .map((tag) => String(tag?.useId)),
+        );
+        return {
+          id: sequence.id,
+          name: sequence.name,
+          uses: useIds.size,
+          running: sequence.isRunning,
+          revision: sequence.revision,
+        };
+      })
+      .filter((rundown) => rundown.uses > 0);
+    return {
+      recipe,
+      uses: rundowns.reduce((sum, rundown) => sum + rundown.uses, 0),
+      rundowns,
+    };
+  }
+
+  /**
+   * gaulatti/alcantara#465: deletes a recipe read at `revision`. Refused (409 `on_air`) while a use of it
+   * is in a running rundown, and (409 `has_uses`, with the count) while uses remain, unless `removeUses`,
+   * which first removes the use cues from those rundowns through their normal update. Cues already aired
+   * in the as-run need no recipe row.
+   */
+  async delete(
+    programId: string,
+    recipeId: number,
+    options: { revision: unknown; removeUses?: boolean },
+  ): Promise<{ deleted: number; removedUses: number }> {
+    const { recipe, uses, rundowns } = await this.usesOf(programId, recipeId);
+    const state = await this.program(programId);
+    const refuse = (result: string, body: Record<string, unknown>) => {
+      this.metrics.recordRecipeDelete(result);
+      return new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        ...body,
+      });
+    };
+    if (options.revision !== recipe.revision)
+      throw refuse('conflict', {
+        code: 'conflict',
+        message: 'The recipe changed. Reload before deleting.',
+      });
+    const running = rundowns.find((rundown) => rundown.running);
+    if (running)
+      throw refuse('refused_on_air', {
+        code: 'on_air',
+        message: `A use of this recipe is in the running rundown "${running.name}". Stop it first.`,
+      });
+    if (uses > 0 && !options.removeUses)
+      throw refuse('refused_has_uses', {
+        code: 'has_uses',
+        uses,
+        message: `This recipe has ${uses} use(s) in ${rundowns.length} rundown(s). Remove them first, or delete with removeUses.`,
+      });
+    for (const rundown of rundowns) {
+      const sequence = await this.prisma.flightSequence.findFirstOrThrow({
+        where: { id: rundown.id },
+      });
+      const items = (
+        Array.isArray(sequence.items) ? (sequence.items as unknown[]) : []
+      ).filter(
+        (item) =>
+          (item as { recipeUse?: { recipeId?: unknown } } | null)?.recipeUse
+            ?.recipeId !== recipeId,
+      );
+      try {
+        await this.flights.updateFlightSequence(programId, rundown.id, {
+          items,
+          revision: sequence.revision,
+        });
+      } catch (error) {
+        if (error instanceof ConflictException)
+          this.metrics.recordRecipeDelete('conflict');
+        throw error;
+      }
+    }
+    const result = await this.prisma.rundownRecipe.deleteMany({
+      where: {
+        id: recipeId,
+        programStateId: state.id,
+        revision: recipe.revision,
+      },
+    });
+    if (result.count !== 1)
+      throw refuse('conflict', {
+        code: 'conflict',
+        message: 'The recipe changed. Reload before deleting.',
+      });
+    this.metrics.recordRecipeDelete('deleted');
+    return { deleted: recipeId, removedUses: uses };
+  }
 }

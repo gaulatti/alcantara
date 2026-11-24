@@ -47,6 +47,7 @@ the program module since gaulatti/alcantara#427; a song with no team is looked u
 | `POST /program/:programId/recipes` | `name` and any of the fields | The recipe. Scenes must be assigned to the program. A `radio` program gets 400 |
 | `PUT /program/:programId/recipes/:recipeId` | `revision` and the fields to change | The recipe as saved, plus `rebuilt` (the count of uses rebuilt). A stale revision gets 409 `{statusCode: 409, message, error: "Conflict"}` |
 | `POST /program/:programId/recipes/:recipeId/expand` | `{params: {songId, labelId?}, useId?}` | `{items, issues}`. A preview: nothing is written |
+| `DELETE /program/:programId/recipes/:recipeId?revision=N[&removeUses=true]` | | `{deleted, removedUses}`. 409 with `code`: `conflict` (stale revision), `on_air` (a use is in a running rundown), `has_uses` (with `uses`, unless `removeUses=true` removes the use cues from their rundowns first). `flight.manage` (gaulatti/alcantara#465) |
 
 **Issue codes:**
 - `song_unavailable`: the song is missing, disabled, or has no audio;
@@ -63,6 +64,8 @@ the program module since gaulatti/alcantara#427; a song with no team is looked u
 
 - `alcantara_recipe_expansions_total{result}`: uses previewed or built. `result` is `ok`, `issues`
   (built, with something to fix) or `rejected` (a refused request).
+- `alcantara_recipe_deletes_total{result}`: recipe deletes; `result` is `deleted`, `refused_on_air`,
+  `refused_has_uses` or `conflict` (gaulatti/alcantara#465).
 - `alcantara_recipe_rebuilds_total{result}`: uses after a recipe change. `result` is `rebuilt`,
   `skipped` (on air or already played) or `conflict` (the rundown changed at the same moment; reload).
 

@@ -209,6 +209,71 @@ export class RecipeMcpTools {
             args.position,
           ),
       }),
+      this.deleteSpec(),
     ];
+  }
+
+  /**
+   * gaulatti/alcantara#465: deletes a recipe, tier D. The dry run names its uses per rundown; a use in a
+   * running rundown is refused `on_air`. With uses left and `remove_uses` unset the service refuses
+   * (`has_uses`); with it, the use cues are removed from those rundowns first.
+   */
+  private deleteSpec(): McpToolSpec {
+    return actionSpec<
+      {
+        program_id: typeof programIdArg;
+        recipe_id: typeof rowIdArg;
+        revision: z.ZodNumber;
+        remove_uses: z.ZodOptional<z.ZodBoolean>;
+      },
+      Awaited<ReturnType<RecipesService['usesOf']>>
+    >({
+      name: 'program_delete_recipe_by_id',
+      title: 'Delete a rundown recipe',
+      description:
+        'Deletes a rundown recipe read at `revision` (a stale one is a conflict). Refused with on_air while a use of it is in a running rundown. With uses left it is refused unless `remove_uses` is true, which first removes the use cues from those rundowns. Cues already aired stay in the as-run. Not recoverable.',
+      permission: permissions.manage,
+      tier: 'D',
+      shape: {
+        program_id: programIdArg,
+        recipe_id: rowIdArg,
+        revision: z.number().int().min(1),
+        remove_uses: z.boolean().optional(),
+      },
+      load: (args) => this.recipes.usesOf(args.program_id, args.recipe_id),
+      id: (args) => `${args.program_id}/recipe/${args.recipe_id}`,
+      label: (_args, loaded) => loaded.recipe.name,
+      plan: (args, loaded) => ({
+        summary: `Deletes recipe ${args.recipe_id} (revision ${loaded.recipe.revision}) of program ${args.program_id}. ${
+          loaded.uses
+            ? `It has ${loaded.uses} use(s) in rundown(s) ${loaded.rundowns.map((rundown) => rundown.id).join(', ')}; ${
+                args.remove_uses
+                  ? 'their cues are removed from those rundowns first.'
+                  : 'without remove_uses the delete is refused.'
+              }`
+            : 'It has no uses.'
+        } The recipe cannot be recovered; recreate it with program_create_recipe_by_id.`,
+        affects: [
+          ...loaded.rundowns.map((rundown) => ({
+            kind: 'flight_sequence',
+            id: String(rundown.id),
+            name: rundown.name,
+          })),
+          { kind: 'program', id: args.program_id, name: args.program_id },
+        ],
+        recoverable: false,
+      }),
+      refuse: (_args, loaded) => {
+        const running = loaded.rundowns.find((rundown) => rundown.running);
+        return running
+          ? `a use of this recipe is in running rundown ${running.id}`
+          : null;
+      },
+      run: (args) =>
+        this.recipes.delete(args.program_id, args.recipe_id, {
+          revision: args.revision,
+          removeUses: args.remove_uses === true,
+        }),
+    });
   }
 }

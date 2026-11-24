@@ -114,6 +114,7 @@ program	GET	/program/:programId/recipes	flight.read	listRecipes	program_list_rec
 program	POST	/program/:programId/recipes	flight.manage	createRecipe	program_create_recipe_by_id	W
 program	PUT	/program/:programId/recipes/:recipeId	flight.manage	updateRecipe	program_update_recipe_by_id	W
 program	POST	/program/:programId/recipes/:recipeId/expand	flight.read	expandRecipe	program_expand_recipe_by_id	R
+program	DELETE	/program/:programId/recipes/:recipeId	flight.manage	deleteRecipe	program_delete_recipe_by_id	D
 radio	POST	/radio/:programId/monitor-ticket	radio.read	issue	—	excluded: returns a credential
 radio	GET	/radio/:programId/similarity/coverage	radio.read	similarityCoverage	radio_similarity_coverage	R
 radio	GET	/radio/:programId/similarity/decisions	radio.read	similarityDecisions	radio_similarity_decisions	R

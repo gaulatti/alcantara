@@ -30,7 +30,9 @@ export interface RecipeExpansion {
 /** The recipe changed since it was loaded: another save landed first (HTTP 409). */
 export class RecipeConflictError extends Error {
   constructor() {
-    super("This recipe changed elsewhere. Reload it, then make your change again.");
+    super(
+      "This recipe changed elsewhere. Reload it, then make your change again.",
+    );
     this.name = "RecipeConflictError";
   }
 }
@@ -52,7 +54,9 @@ const base = (programId: string) =>
   apiUrl(`/program/${encodeURIComponent(programId)}/recipes`);
 
 /** The program's recipes, or null while the API answers 404 (recipes are not on this backend yet). */
-export async function fetchRecipes(programId: string): Promise<Recipe[] | null> {
+export async function fetchRecipes(
+  programId: string,
+): Promise<Recipe[] | null> {
   const response = await fetch(base(programId));
   if (response.status === 404) return null;
   if (!response.ok) throw await recipeError(response);
@@ -89,7 +93,9 @@ export async function updateRecipe(
   if (response.status === 409) throw new RecipeConflictError();
   if (!response.ok) throw await recipeError(response);
   // The answer is the recipe as saved plus `rebuilt`; the count is not part of the recipe.
-  const { rebuilt, ...saved } = (await response.json()) as Recipe & { rebuilt?: number };
+  const { rebuilt, ...saved } = (await response.json()) as Recipe & {
+    rebuilt?: number;
+  };
   return { recipe: saved, rebuilt: typeof rebuilt === "number" ? rebuilt : 0 };
 }
 
@@ -112,4 +118,52 @@ export async function expandRecipe(
     items: Array.isArray(payload.items) ? payload.items : [],
     issues: Array.isArray(payload.issues) ? payload.issues : [],
   };
+}
+
+/** Why the API refused a recipe delete (gaulatti/alcantara#465): a use on air, uses left, or a stale revision. */
+export class RecipeDeleteRefusal extends Error {
+  constructor(
+    readonly code: "on_air" | "has_uses" | "conflict",
+    message: string,
+    readonly uses?: number,
+  ) {
+    super(message);
+    this.name = "RecipeDeleteRefusal";
+  }
+}
+
+/**
+ * Deletes a recipe read at its revision (gaulatti/alcantara#465). `removeUses` removes its use cues from
+ * the rundowns first; without it, a recipe with uses is refused.
+ */
+export async function deleteRecipe(
+  programId: string,
+  recipe: Pick<Recipe, "id" | "revision">,
+  removeUses: boolean,
+): Promise<{ deleted: number; removedUses: number }> {
+  const query = new URLSearchParams({ revision: String(recipe.revision) });
+  if (removeUses) query.set("removeUses", "true");
+  const response = await fetch(`${base(programId)}/${recipe.id}?${query}`, {
+    method: "DELETE",
+  });
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as {
+      code?: unknown;
+      message?: unknown;
+      uses?: unknown;
+    } | null;
+    const code =
+      body?.code === "on_air" || body?.code === "has_uses"
+        ? body.code
+        : "conflict";
+    throw new RecipeDeleteRefusal(
+      code,
+      typeof body?.message === "string"
+        ? body.message
+        : "This recipe changed elsewhere. Reload it first.",
+      typeof body?.uses === "number" ? body.uses : undefined,
+    );
+  }
+  if (!response.ok) throw await recipeError(response);
+  return (await response.json()) as { deleted: number; removedUses: number };
 }

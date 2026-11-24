@@ -786,6 +786,12 @@
     "permission": "alcantara:flight:manage"
   },
   {
+    "method": "DELETE",
+    "path": "/program/:programId/recipes/:recipeId",
+    "public": false,
+    "permission": "alcantara:flight:manage"
+  },
+  {
     "method": "PUT",
     "path": "/program/:programId/recipes/:recipeId",
     "public": false,

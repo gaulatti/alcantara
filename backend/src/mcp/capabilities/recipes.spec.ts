@@ -15,7 +15,7 @@ const spec = (name: string) =>
 const ctx = {} as any;
 
 describe('recipe capabilities (gaulatti/alcantara#424)', () => {
-  it('registers two reads and three writes with the flight permissions', () => {
+  it('registers two reads, three writes and one delete with the flight permissions', () => {
     expect(tools.specs().map((s) => [s.name, s.tier, s.permission])).toEqual([
       ['program_list_recipes_by_id', 'R', ALCANTARA_PERMISSIONS.flight.read],
       ['program_expand_recipe_by_id', 'R', ALCANTARA_PERMISSIONS.flight.read],
@@ -26,6 +26,7 @@ describe('recipe capabilities (gaulatti/alcantara#424)', () => {
         'W',
         ALCANTARA_PERMISSIONS.flight.manage,
       ],
+      ['program_delete_recipe_by_id', 'D', ALCANTARA_PERMISSIONS.flight.manage],
     ]);
   });
 

@@ -287,7 +287,7 @@ it("switches between recipes and clears what belonged to the previous one", asyn
   stubApi({ recipes: [recipe, { ...recipe, id: 6, name: "Jingle", revision: 1 }] });
   await open();
   fireEvent.change(screen.getByLabelText("Transition"), { target: { value: "cut" } });
-  fireEvent.click(screen.getByRole("button", { name: /Jingle/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Jingle/ }));
   await screen.findByRole("region", { name: "Recipe Jingle" });
   expect(screen.getByLabelText("Transition")).toHaveValue("crescendo-prism");
   expect(screen.getByText("Revision 1 · 0 uses")).toBeTruthy();

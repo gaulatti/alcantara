@@ -1,11 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  ParseBoolPipe,
   ParseIntPipe,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { ALCANTARA_PERMISSIONS } from '../auth/permissions';
 import { RequirePermission } from '../auth/require-permission.decorator';
@@ -51,5 +54,24 @@ export class RecipesController {
     body: { params?: { songId?: unknown; labelId?: unknown }; useId?: unknown },
   ) {
     return this.recipes.expand(programId, recipeId, body ?? {});
+  }
+
+  /**
+   * gaulatti/alcantara#465: deletes a recipe read at `revision`. 409 `on_air` while a use is in a running
+   * rundown, 409 `has_uses` while uses remain unless `removeUses=true`, 409 on a stale revision.
+   */
+  @Delete(':programId/recipes/:recipeId')
+  @RequirePermission(ALCANTARA_PERMISSIONS.flight.manage)
+  async deleteRecipe(
+    @Param('programId') programId: string,
+    @Param('recipeId', ParseIntPipe) recipeId: number,
+    @Query('revision', ParseIntPipe) revision: number,
+    @Query('removeUses', new ParseBoolPipe({ optional: true }))
+    removeUses?: boolean,
+  ) {
+    return this.recipes.delete(programId, recipeId, {
+      revision,
+      removeUses: removeUses === true,
+    });
   }
 }
