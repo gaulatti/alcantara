@@ -139,6 +139,7 @@ export function RundownLibrary({
           <span>Recipe</span>
           <select
             aria-label="Recipe"
+            /* v8 ignore next -- recipeMode requires hasRecipes, so recipes is non-empty and chosenRecipe falls back to recipes[0]; chosenRecipe is never null here, so the `?? ""` cannot run. */
             value={chosenRecipe?.id ?? ""}
             onChange={(event) => setRecipeId(Number(event.target.value))}
           >
@@ -196,6 +197,7 @@ export function RundownLibrary({
       </ul>
       <p className="rundown-library-foot">
         {recipeMode
+          /* v8 ignore next -- recipeMode implies a non-empty recipes list, so chosenRecipe is never null and the "the recipe" fallback cannot run; defensive. */
           ? `Select a song and press Enter to add it with ${chosenRecipe?.name ?? "the recipe"}.`
           : footnote}
       </p>
