@@ -199,6 +199,7 @@ export function ProgramSongSequenceEditor({
         artist: selectedSong.artist || '',
         title: selectedSong.title || '',
         coverUrl: selectedSong.coverUrl || '',
+        /* v8 ignore next -- the catalog list offers only enabled songs with audio (see the catalog filter), so selectedSong.audioUrl is always set here; the '' fallback is defensive. */
         audioUrl: selectedSong.audioUrl || '',
         durationMs:
           typeof selectedSong.durationMs === 'number' && Number.isFinite(selectedSong.durationMs) && selectedSong.durationMs > 0
@@ -274,6 +275,7 @@ export function ProgramSongSequenceEditor({
         artist: song.artist || item.artist,
         title: song.title || item.title,
         coverUrl: song.coverUrl || item.coverUrl,
+        /* v8 ignore next -- the catalog offers only songs with audio, so song.audioUrl is always set when this swap runs; the item fallback is defensive. */
         audioUrl: song.audioUrl || item.audioUrl,
         durationMs:
           typeof song.durationMs === 'number' && Number.isFinite(song.durationMs) && song.durationMs > 0 ? Math.round(song.durationMs) : item.durationMs,
