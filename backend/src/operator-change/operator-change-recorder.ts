@@ -98,8 +98,6 @@ export class OperatorChangeRecorder {
         data: {
           teamId: null,
           programId: input.programId,
-          targetKind: input.target,
-          targetId: input.targetId,
           principal: input.actor.principalId,
           via: input.actor.via,
           client: input.actor.client,
@@ -107,7 +105,11 @@ export class OperatorChangeRecorder {
             input.actor.via === 'mcp'
               ? input.capability.mcp
               : input.capability.console,
-          summary: input.summary,
+          // What changed travels in the summary: the table has no column for it.
+          summary: {
+            target: { kind: input.target, id: input.targetId },
+            ...input.summary,
+          },
         },
       });
       this.metrics.recordOperatorChangeRecord(input.target, 'recorded');
@@ -119,3 +121,33 @@ export class OperatorChangeRecorder {
     }
   }
 }
+
+/** Scene fields: the name, layout and external source are valued; the chyron text and the metadata are only named. */
+export const SCENE_CHANGE_FIELDS: OperatorChangeFields = {
+  named: ['chyronText', 'metadata'],
+  valued: ['name', 'layoutId', 'externalSourceId'],
+};
+
+/** Layout fields: the name and component type are valued; the settings are only named. */
+export const LAYOUT_CHANGE_FIELDS: OperatorChangeFields = {
+  named: ['settings'],
+  valued: ['name', 'componentType'],
+};
+
+/** Flight sequence fields: the cues are only named; the name, loop flag and schedule are valued. */
+export const FLIGHT_SEQUENCE_CHANGE_FIELDS: OperatorChangeFields = {
+  named: ['items'],
+  valued: ['name', 'loop', 'scheduledAt'],
+};
+
+/** Publishing a clocked log: when it was published and the revision it moved to. */
+export const FLIGHT_SEQUENCE_PUBLISH_FIELDS: OperatorChangeFields = {
+  named: [],
+  valued: ['publishedAt', 'revision'],
+};
+
+/** Program fields: the id and type are valued; the template address is only named. */
+export const PROGRAM_CHANGE_FIELDS: OperatorChangeFields = {
+  named: ['templateUrl'],
+  valued: ['programId', 'type'],
+};

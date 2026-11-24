@@ -7,6 +7,10 @@ import type {
   FlightRuntimeState,
   FlightSequence,
 } from './flight.types';
+import {
+  mcpActor,
+  noRecorder,
+} from '../operator-change/operator-change-recorder.testing';
 
 describe('FlightService song cues', () => {
   it('takes the catalog song on air after persisting the manual cue sequence', async () => {
@@ -30,6 +34,7 @@ describe('FlightService song cues', () => {
       prisma as any,
       programService as any,
       new RadioMetricsService(),
+      noRecorder(),
     );
 
     await (service as any).executePlaySongCue('radio-1', {
@@ -112,7 +117,7 @@ describe('FlightService clocked logs', () => {
       instant: { findMany: jest.fn().mockResolvedValue([]) },
     } as any;
     const metrics = new RadioMetricsService();
-    const service = new FlightService(prisma, {} as any, metrics);
+    const service = new FlightService(prisma, {} as any, metrics, noRecorder());
     await service.createFlightSequence('radio-1', {
       name: 'Next hour',
       scheduledAt: scheduledAt.toISOString(),
@@ -169,6 +174,7 @@ describe('FlightService clocked logs', () => {
       prisma,
       {} as any,
       new RadioMetricsService(),
+      noRecorder(),
     );
     await expect(
       service.createFlightSequence('radio-1', {
@@ -225,15 +231,28 @@ describe('FlightService tag generation and live log edits', () => {
           .mockResolvedValue({ id: 1, programId: 'radio-1', type: 'radio' }),
       },
       flightSequence: {
-        findFirst: jest.fn().mockResolvedValue(record),
+        findFirst: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve({ ...record })),
+        findUnique: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve({ ...record })),
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest
           .fn()
-          .mockImplementation(({ data }: { data: { items?: FlightCue[] } }) => {
-            if (data.items) record.items = data.items;
-            record.revision++;
-            return Promise.resolve({ count: 1 });
-          }),
+          .mockImplementation(
+            ({
+              data,
+            }: {
+              data: { items?: FlightCue[]; name?: string; publishedAt?: Date };
+            }) => {
+              if (data.items) record.items = data.items;
+              if (data.name) record.name = data.name;
+              if (data.publishedAt) record.publishedAt = data.publishedAt;
+              record.revision++;
+              return Promise.resolve({ count: 1 });
+            },
+          ),
         findUniqueOrThrow: jest
           .fn()
           .mockImplementation(() => Promise.resolve(record)),
@@ -246,13 +265,78 @@ describe('FlightService tag generation and live log edits', () => {
       },
     };
     const metrics = new RadioMetricsService();
+    const recorder = noRecorder();
     const service = new FlightService(
       prisma as unknown as PrismaService,
       {} as ProgramService,
       metrics,
+      recorder,
     );
-    return { record, prisma, metrics, service };
+    return { record, prisma, metrics, service, recorder };
   }
+  it('records who edited a rundown with before and after of its name, never its cues (gaulatti/alcantara#236)', async () => {
+    const { service, record, recorder } = setup();
+    recorder.actor.mockReturnValue(mcpActor);
+    await service.updateFlightSequence('radio-1', 7, {
+      revision: 1,
+      name: 'Renamed',
+      items: record.items,
+    });
+    expect(recorder.record).toHaveBeenCalledTimes(1);
+    expect(recorder.record).toHaveBeenCalledWith({
+      actor: mcpActor,
+      target: 'flight_sequence',
+      targetId: '7',
+      programId: 'radio-1',
+      capability: {
+        mcp: 'program_update_flight_sequence_by_id',
+        console: 'program.update-flight-sequence',
+      },
+      summary: {
+        changed: ['items', 'name'],
+        before: { name: 'Next hour' },
+        after: { name: 'Renamed' },
+      },
+    });
+  });
+
+  it('hands an automatic edit to the recorder with no actor and reads no earlier row', async () => {
+    const { service, prisma, recorder } = setup();
+    await service.updateFlightSequence('radio-1', 7, {
+      revision: 1,
+      loop: false,
+    });
+    expect(recorder.record.mock.calls[0][0].actor).toBeNull();
+    expect(prisma.flightSequence.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('records who published a log with its published time and the revision it moved to', async () => {
+    const { service, record, recorder } = setup();
+    record.items = [
+      { id: 'slot-1', kind: 'playSong', songId: 1, clockOffsetSeconds: 0 },
+    ];
+    recorder.actor.mockReturnValue(mcpActor);
+    const published = await service.publishFlightSequence('radio-1', 7, 1);
+    expect(recorder.record).toHaveBeenCalledWith({
+      actor: mcpActor,
+      target: 'flight_sequence',
+      targetId: '7',
+      programId: 'radio-1',
+      capability: {
+        mcp: 'program_publish_flight_sequence_by_id',
+        console: 'program.publish-flight-sequence',
+      },
+      summary: {
+        changed: ['publishedAt', 'revision'],
+        before: { publishedAt: null, revision: 1 },
+        after: {
+          publishedAt: (published.publishedAt as Date).toISOString(),
+          revision: 2,
+        },
+      },
+    });
+  });
+
   it('preflights a scoped tag preview and saves concrete IDs through the existing revision boundary', async () => {
     const { service, prisma, record, metrics } = setup();
     const { items } = await service.generateTaggedLog('radio-1', 7, {
@@ -531,7 +615,12 @@ describe('continuous rotation around timed blocks', () => {
       resumeContinuousRotation: jest.fn(),
       broadcastUpdate: jest.fn(),
     };
-    const service = new FlightService(prisma as any, program as any, metrics);
+    const service = new FlightService(
+      prisma as any,
+      program as any,
+      metrics,
+      noRecorder(),
+    );
     const internals = service as any;
     jest.spyOn(internals, 'broadcastFlightUpdate').mockResolvedValue(undefined);
     const runtime: FlightRuntimeState = {
@@ -639,7 +728,12 @@ it('marks scheduled runtimes interrupted on startup without replaying them or ch
     takeCatalogSongOnAir: jest.fn(),
   };
   const metrics = new RadioMetricsService();
-  const service = new FlightService(prisma as any, program as any, metrics);
+  const service = new FlightService(
+    prisma as any,
+    program as any,
+    metrics,
+    noRecorder(),
+  );
   await service.onModuleInit();
   service.onModuleDestroy();
   expect(prisma.flightSequence.updateMany).toHaveBeenCalledWith({

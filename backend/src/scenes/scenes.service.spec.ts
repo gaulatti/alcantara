@@ -1,5 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { ScenesService } from './scenes.service';
+import {
+  mcpActor,
+  noRecorder,
+} from '../operator-change/operator-change-recorder.testing';
 
 function fixture(metadata: unknown = {}) {
   let scene: any = {
@@ -41,8 +45,9 @@ function fixture(metadata: unknown = {}) {
       activeSceneId: null,
     })),
   };
-  const service = new ScenesService(prisma as any, programs as any);
-  return { service, prisma, programs, current: () => scene };
+  const recorder = noRecorder();
+  const service = new ScenesService(prisma as any, programs as any, recorder);
+  return { service, prisma, programs, recorder, current: () => scene };
 }
 
 const bracketMetadata = (extra: Record<string, unknown> = {}) => ({
@@ -479,5 +484,45 @@ describe('ScenesService persisted scene and program events', () => {
       }),
     ).rejects.toThrow('Scene not found');
     expect(f.prisma.scene.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScenesService operator change record (gaulatti/alcantara#236)', () => {
+  it('records who changed a scene with before and after of the name, never the chyron text or metadata', async () => {
+    const f = fixture({ url: 'https://x.test?key=1' });
+    f.recorder.actor.mockReturnValue(mcpActor);
+    await f.service.update(7, { name: 'Updated', chyronText: 'Breaking news' });
+    expect(f.recorder.record).toHaveBeenCalledTimes(1);
+    expect(f.recorder.record).toHaveBeenCalledWith({
+      actor: mcpActor,
+      target: 'scene',
+      targetId: '7',
+      programId: null,
+      capability: { mcp: 'scene_update', console: 'scene.update' },
+      summary: {
+        changed: ['chyronText', 'name'],
+        before: { name: 'Opening' },
+        after: { name: 'Updated' },
+      },
+    });
+    expect(JSON.stringify(f.recorder.record.mock.calls)).not.toContain(
+      'Breaking news',
+    );
+  });
+
+  it('hands an automatic change to the recorder with no actor, which stores nothing', async () => {
+    const f = fixture();
+    await f.service.update(7, { name: 'Updated' });
+    expect(f.recorder.record.mock.calls[0][0].actor).toBeNull();
+  });
+
+  it('records nothing for a change that was refused', async () => {
+    const f = fixture();
+    f.recorder.actor.mockReturnValue(mcpActor);
+    f.prisma.scene.findUnique.mockResolvedValueOnce(null as never);
+    await expect(f.service.update(7, { name: 'x' })).rejects.toThrow(
+      'Scene not found',
+    );
+    expect(f.recorder.record).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,11 @@ import {
 } from '@nestjs/common';
 import { MediaAssetKind, type Prisma } from '@prisma/client';
 import { Subject, Observable, type Subscription } from 'rxjs';
+import {
+  OperatorChangeRecorder,
+  PROGRAM_CHANGE_FIELDS,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
 import {
   OUTBOUND_REFUSAL_MESSAGES,
@@ -204,12 +209,14 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly metrics?: ManagedMetricsService,
     @Optional()
     private readonly outputConfidence?: RadioOutputConfidenceService,
+    @Optional() private readonly recorder?: OperatorChangeRecorder,
   ) {}
 
   async onModuleInit(): Promise<void> {
     if (!this.outputConfidence) {
       throw new Error('Radio output confidence service is required');
     }
+
     this.songExecutionEngine.setBroadcastHandler((event: SongEngineEvent) => {
       this.handleEngineEvent(event);
     });
@@ -1464,7 +1471,10 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
       this.prisma.program.upsert({
         where: { programId: normalized },
         // Team 0 is the test-mode value, not a team: it is stored as no team.
-        create: { programId: normalized, teamId: teamId && teamId > 0 ? teamId : null },
+        create: {
+          programId: normalized,
+          teamId: teamId && teamId > 0 ? teamId : null,
+        },
         update: {},
       }),
       this.prisma.programState.create({
@@ -1480,12 +1490,19 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     return this.getProgramStateWithScenes(normalized);
   }
 
+  private requireRecorder(): OperatorChangeRecorder {
+    if (!this.recorder) throw new Error('Operator change recorder is required');
+    return this.recorder;
+  }
+
   async renameProgram(
     programId: string,
     nextProgramId: string,
     type?: string,
     template?: ProgramTemplateRegistration | null,
   ) {
+    const recorder = this.requireRecorder();
+    const actor = recorder.actor();
     const current = this.normalizeProgramId(programId);
     const next = this.normalizeProgramId(nextProgramId);
     if (current === next && type === undefined && template === undefined) {
@@ -1539,6 +1556,26 @@ export class ProgramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.programState.update({
       where: { id: existingSource.id },
       data: updateData,
+    });
+    await recorder.record({
+      actor,
+      target: 'program',
+      targetId: current,
+      programId: next,
+      capability: {
+        mcp: 'program_rename_program',
+        console: 'program.rename',
+      },
+      summary: summarizeChange(
+        PROGRAM_CHANGE_FIELDS,
+        {
+          programId: current !== next ? next : undefined,
+          type: programType,
+          templateUrl: template === undefined ? undefined : true,
+        },
+        { programId: current, type: existingSource.type },
+        { programId: next, type: effectiveType },
+      ),
     });
 
     if (current === next) {
@@ -4145,5 +4182,7 @@ function isHttpsUrl(value: string): boolean {
 
 /** The public marks of a branding row: never the program's team or any internal column. */
 function publicBranding(row: Record<BrandingField, string | null>) {
-  return Object.fromEntries(BRANDING_FIELDS.map((field) => [field, row[field] ?? null]));
+  return Object.fromEntries(
+    BRANDING_FIELDS.map((field) => [field, row[field] ?? null]),
+  );
 }

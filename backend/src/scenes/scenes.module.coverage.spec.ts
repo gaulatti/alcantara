@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { OperatorChangeRecorder } from '../operator-change/operator-change-recorder';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { PrismaService } from '../prisma.service';
 import { ProgramModule } from '../program/program.module';
 import { ProgramService } from '../program/program.service';
@@ -26,6 +28,8 @@ describe('ScenesModule', () => {
     })
       .overrideModule(ProgramModule)
       .useModule(FakeProgramModule)
+      .overrideProvider(OperatorChangeRecorder)
+      .useValue(noRecorder())
       .overrideProvider(PrismaService)
       .useValue(prisma)
       .compile();

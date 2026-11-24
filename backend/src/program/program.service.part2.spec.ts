@@ -5,6 +5,10 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  mcpActor,
+  noRecorder,
+} from '../operator-change/operator-change-recorder.testing';
 import { ProgramService } from './program.service';
 
 type Row = Record<string, unknown>;
@@ -22,7 +26,9 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
     const states = new Map<string, Row>();
     const prisma = {
       program: { upsert: jest.fn().mockResolvedValue({}) },
-      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
       programState: {
         findUnique: jest.fn(({ where }: { where: { programId: string } }) =>
           Promise.resolve(states.get(where.programId) ?? null),
@@ -65,15 +71,19 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
       handleSequenceUpdated: jest.fn(),
       handleQueueUpdated: jest.fn(),
     };
+    const recorder = noRecorder();
     const service = new ProgramService(
       prisma as never,
       radio as never,
       engine as never,
+      undefined,
+      undefined,
+      recorder,
     );
     const put = (programId: string, row: Row = {}) => {
       states.set(programId, { id: 1, programId, type: 'tv', ...row });
     };
-    return { service, prisma, radio, engine, states, put };
+    return { service, prisma, radio, engine, states, put, recorder };
   };
 
   const noVersionBroadcast = (service: ProgramService) =>
@@ -207,6 +217,60 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         templateManifest: null,
         templateVerifiedAt: null,
       });
+    });
+
+    it('records who renamed a program, with its old and new id and type, never the template address (gaulatti/alcantara#236)', async () => {
+      const { service, prisma, put, states, recorder } = build();
+      put('a', { id: 9, type: 'tv' });
+      recorder.actor.mockReturnValue(mcpActor);
+      prisma.programState.update.mockImplementation(
+        ({ data }: { data: Row }) => {
+          states.delete('a');
+          put(data.programId as string, { id: 9, type: 'both' });
+          return Promise.resolve({});
+        },
+      );
+      await service.renameProgram('a', 'c', 'both', {
+        url: 'https://t.test/template.json?key=1',
+      } as never);
+      expect(recorder.record).toHaveBeenCalledWith({
+        actor: mcpActor,
+        target: 'program',
+        targetId: 'a',
+        programId: 'c',
+        capability: {
+          mcp: 'program_rename_program',
+          console: 'program.rename',
+        },
+        summary: {
+          changed: ['templateUrl', 'programId', 'type'],
+          before: { programId: 'a', type: 'tv' },
+          after: { programId: 'c', type: 'both' },
+        },
+      });
+      expect(JSON.stringify(recorder.record.mock.calls)).not.toContain(
+        't.test',
+      );
+    });
+
+    it('records a rename that keeps the id as a change of the type only', async () => {
+      const { service, put, recorder } = build();
+      put('a', { id: 9, type: 'tv' });
+      recorder.actor.mockReturnValue(mcpActor);
+      await service.renameProgram('a', 'a', 'both');
+      expect(recorder.record.mock.calls[0][0].summary).toEqual({
+        changed: ['type'],
+        before: { type: 'tv' },
+        after: { type: 'both' },
+      });
+    });
+
+    it('refuses to rename without a recorder to say who did it', async () => {
+      const { service } = build();
+      (service as any).recorder = undefined;
+      await expect(service.renameProgram('a', 'b')).rejects.toThrow(
+        'Operator change recorder is required',
+      );
     });
 
     it('renames and moves every in-memory map entry', async () => {
@@ -1617,7 +1681,12 @@ describe('ProgramService part 2 (program lifecycle, audio, scene instants)', () 
         }),
       );
       noVersionBroadcast(service);
-      jest.spyOn(service as unknown as { getProgramTopicVersion: () => number }, 'getProgramTopicVersion').mockReturnValue(3);
+      jest
+        .spyOn(
+          service as unknown as { getProgramTopicVersion: () => number },
+          'getProgramTopicVersion',
+        )
+        .mockReturnValue(3);
       const result = await service.removeProgramSongLeaves('radio-1', ['a']);
       expect(result.version).toBe(3);
       expect(result.removed[0]).toEqual({

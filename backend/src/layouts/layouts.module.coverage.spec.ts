@@ -1,6 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ProgramService } from '../program/program.service';
+import { OperatorChangeRecorder } from '../operator-change/operator-change-recorder';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 import { PrismaService } from '../prisma.service';
 import { LayoutsController } from './layouts.controller';
 import { LayoutsModule } from './layouts.module';
@@ -21,6 +23,8 @@ describe('LayoutsModule', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ProgramStubModule, LayoutsModule],
     })
+      .overrideProvider(OperatorChangeRecorder)
+      .useValue(noRecorder())
       .overrideProvider(PrismaService)
       .useValue(prisma)
       .compile();

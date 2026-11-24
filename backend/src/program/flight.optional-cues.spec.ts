@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { FlightService } from './flight.service';
 import { RadioMetricsService } from '../radio/radio-metrics.service';
+import { noRecorder } from '../operator-change/operator-change-recorder.testing';
 
 function fixture(items: unknown[]) {
   const state = { id: 1, programId: 'news', activeFlightSequenceId: 7 };
@@ -42,6 +43,7 @@ function fixture(items: unknown[]) {
     prisma,
     programs,
     new RadioMetricsService(),
+    noRecorder(),
   );
   return { service, state, sequence, prisma, programs, channels };
 }

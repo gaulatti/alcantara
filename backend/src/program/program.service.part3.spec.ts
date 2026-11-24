@@ -85,7 +85,9 @@ function build(opts: { metrics?: boolean; state?: any } = {}) {
     // A v2 snapshot reads the broadcast settings (gaulatti/alcantara#177).
     $executeRawUnsafe: jest.fn().mockResolvedValue(0),
     broadcastSettings: {
-      upsert: jest.fn().mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
+      upsert: jest
+        .fn()
+        .mockResolvedValue({ id: 1, timeOverrideEnabled: false }),
     },
   };
   prisma.$transaction.mockImplementation((fn: any) => fn(prisma));

@@ -1,4 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  OperatorChangeRecorder,
+  SCENE_CHANGE_FIELDS,
+  summarizeChange,
+} from '../operator-change/operator-change-recorder';
 import { PrismaService } from '../prisma.service';
 import { ProgramService } from '../program/program.service';
 
@@ -8,6 +13,7 @@ export class ScenesService {
   constructor(
     private prisma: PrismaService,
     private programService: ProgramService,
+    private readonly recorder: OperatorChangeRecorder,
   ) {}
 
   async findAll() {
@@ -55,6 +61,7 @@ export class ScenesService {
       externalSourceId?: string | null;
     },
   ) {
+    const actor = this.recorder.actor();
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.layoutId !== undefined) updateData.layoutId = data.layoutId;
@@ -83,6 +90,14 @@ export class ScenesService {
       });
     }
 
+    await this.recorder.record({
+      actor,
+      target: 'scene',
+      targetId: String(id),
+      programId: null,
+      capability: { mcp: 'scene_update', console: 'scene.update' },
+      summary: summarizeChange(SCENE_CHANGE_FIELDS, data, existing, scene),
+    });
     return scene;
   }
 

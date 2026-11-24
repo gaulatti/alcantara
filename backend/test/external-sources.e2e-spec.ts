@@ -4,6 +4,7 @@ import { PrismaService } from '../src/prisma.service';
 import { ExternalSourceSecurity } from '../src/external-sources/external-source.security';
 import { ExternalSourcesService } from '../src/external-sources/external-sources.service';
 import { ScenesService } from '../src/scenes/scenes.service';
+import { noRecorder } from '../src/operator-change/operator-change-recorder.testing';
 
 describe('external source registry with PostgreSQL (e2e)', () => {
   const auth = { teamId: 43, permissions: ['alcantara:webrtc:operate'] };
@@ -136,10 +137,14 @@ describe('external source registry with PostgreSQL (e2e)', () => {
         settings: '{}',
       },
     });
-    const scenes = new ScenesService(prisma, {
-      getProgramIdsByAssignedScene: jest.fn().mockResolvedValue([]),
-      broadcastUpdate: jest.fn(),
-    } as any);
+    const scenes = new ScenesService(
+      prisma,
+      {
+        getProgramIdsByAssignedScene: jest.fn().mockResolvedValue([]),
+        broadcastUpdate: jest.fn(),
+      } as any,
+      noRecorder(),
+    );
     await expect(
       scenes.create({
         name: 'Unsafe URL scene',

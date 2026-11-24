@@ -141,11 +141,8 @@ model BroadcastDestinationKeyChange {
 model OperatorChangeRecord {
   id         String   @id @default(uuid())
   teamId     Int?
-  /// The program the change was made in; null for a scene or layout, which belong to none.
+  /// The program the change was made in; null for a scene or layout, which belong to no single program.
   programId  String?
-  /// What changed (scene, layout, flight_sequence, program) and its id; null on the first radio-settings records.
-  targetKind String?
-  targetId   String?
   principal  String?
   via        String
   client     String?
@@ -155,7 +152,6 @@ model OperatorChangeRecord {
 
   @@index([teamId])
   @@index([programId, createdAt])
-  @@index([targetKind, targetId, createdAt])
 }
 
 model BroadcastDestinationSelection {
