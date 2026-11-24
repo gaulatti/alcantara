@@ -31,10 +31,7 @@ export const AS_RUN_ACTOR_VIAS: readonly string[] = ['console', 'mcp'];
  * Palazzo's own and idle-inferred ends.
  */
 export type AsRunEndReason =
-  | 'stopped'
-  | 'replaced'
-  | 'superseded'
-  | 'preempted';
+  'stopped' | 'replaced' | 'superseded' | 'preempted';
 
 export const AS_RUN_END_REASONS: readonly string[] = [
   'stopped',
@@ -58,9 +55,10 @@ export type AsRunInferredFilter = 'include' | 'only' | 'exclude';
  * `short`: an inferred or engine-caused end soon after its start. `no-start`:
  * an end with no recorded start. `unended`: a play whose end never arrived (it
  * ended while the backend was down) closed once a later play ended
- * (gaulatti/alcantara#241).
+ * (gaulatti/alcantara#241). `overlap`: a start that came on air while another
+ * song or a spot was still on the bus, past the allowance (gaulatti/alcantara#242).
  */
-export type AsRunReviewFlag = 'short' | 'no-start' | 'unended';
+export type AsRunReviewFlag = 'short' | 'no-start' | 'unended' | 'overlap';
 
 /**
  * How far back an open play is looked for when a later play ends (#241): at

@@ -50,6 +50,7 @@ describe('real Palazzo client before its first asynchronous transport status', (
       engine as unknown as SongExecutionEngine,
       metrics,
       machine,
+      { observe: jest.fn(), snapshot: jest.fn(), reset: jest.fn() } as never,
     );
     try {
       await service.onModuleInit();

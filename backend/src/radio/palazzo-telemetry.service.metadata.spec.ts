@@ -12,6 +12,9 @@ jest.mock('./palazzo-machine.client', () => ({
 jest.mock('./song-execution.engine', () => ({
   SongExecutionEngine: undefined,
 }));
+jest.mock('./program-bus-overlap.detector', () => ({
+  ProgramBusOverlapDetector: undefined,
+}));
 
 import { PalazzoRadioTelemetryService } from './palazzo-telemetry.service';
 
@@ -19,6 +22,6 @@ describe('PalazzoRadioTelemetryService constructor metadata', () => {
   it('falls back to Object parameter types when dependencies are unresolved', () => {
     expect(
       Reflect.getMetadata('design:paramtypes', PalazzoRadioTelemetryService),
-    ).toEqual([Object, Object, Object, Object]);
+    ).toEqual([Object, Object, Object, Object, Object]);
   });
 });

@@ -29,6 +29,7 @@ function build() {
     handlePalazzoSnapshot: jest.fn(),
     handlePalazzoEvent: jest.fn(),
     handlePalazzoStatus: jest.fn(),
+    isBumperSpot: jest.fn(() => false),
   };
   const metrics = {
     recordDegradedPrograms: jest.fn(),
@@ -38,15 +39,21 @@ function build() {
   const machineClient = {
     validateBaseUrl: jest.fn((value: string) => `approved:${value}`),
   };
+  const overlaps = {
+    observe: jest.fn(),
+    snapshot: jest.fn(),
+    reset: jest.fn(),
+  };
   const service = new PalazzoRadioTelemetryService(
     prisma as any,
     engine as any,
     metrics as any,
     machineClient as any,
+    overlaps as any,
   );
   jest.spyOn(service['logger'], 'log').mockImplementation();
   jest.spyOn(service['logger'], 'error').mockImplementation();
-  return { service, prisma, engine, metrics, machineClient };
+  return { service, prisma, engine, metrics, machineClient, overlaps };
 }
 
 const setting = (
@@ -158,6 +165,61 @@ describe('PalazzoRadioTelemetryService coverage', () => {
       callbacks.onStatus('r1', status);
       expect(engine.handlePalazzoStatus).toHaveBeenCalledWith('r1', status);
       expect(metrics.recordDegradedPrograms).toHaveBeenCalled();
+    });
+  });
+
+  describe('program bus overlap check (gaulatti/alcantara#242)', () => {
+    it('observes snapshots and events after the engine, asking about a spot before the engine forgets it', async () => {
+      const { service, prisma, engine, overlaps } = build();
+      prisma.radioSettings.findFirst.mockResolvedValue({
+        palazzoUrl: 'http://a',
+        programState: { type: 'radio' },
+      });
+      await service.handleRadioSettingsChanged('r1');
+      const { callbacks } = mockClients[0].options;
+
+      const state = { status: 'playing', track: { playbackRequestId: 'a' } };
+      callbacks.onSnapshot('r1', state);
+      expect(overlaps.snapshot).toHaveBeenCalledWith('r1', state);
+      expect(overlaps.snapshot.mock.invocationCallOrder[0]).toBeGreaterThan(
+        engine.handlePalazzoSnapshot.mock.invocationCallOrder[0],
+      );
+
+      engine.isBumperSpot.mockReturnValueOnce(true);
+      const spot = { type: 'instant.started', data: { playbackId: 'spot-1' } };
+      callbacks.onEvent('r1', spot);
+      expect(engine.isBumperSpot).toHaveBeenCalledWith('r1', 'spot-1');
+      expect(engine.isBumperSpot.mock.invocationCallOrder[0]).toBeLessThan(
+        engine.handlePalazzoEvent.mock.invocationCallOrder[0],
+      );
+      expect(overlaps.observe).toHaveBeenLastCalledWith('r1', spot, true);
+
+      const track = { type: 'track.started', data: { playbackRequestId: 'b' } };
+      callbacks.onEvent('r1', track);
+      expect(engine.isBumperSpot).toHaveBeenCalledTimes(1);
+      expect(overlaps.observe).toHaveBeenLastCalledWith('r1', track, false);
+    });
+
+    it('forgets the bus off the live event stream and when the client stops', async () => {
+      const { service, prisma, overlaps } = build();
+      prisma.radioSettings.findFirst.mockResolvedValue({
+        palazzoUrl: 'http://a',
+        programState: { type: 'radio' },
+      });
+      await service.handleRadioSettingsChanged('r1');
+      const { callbacks } = mockClients[0].options;
+      callbacks.onStatus('r1', {
+        connection: 'connected',
+        lastSnapshotAt: 't',
+      });
+      expect(overlaps.reset).not.toHaveBeenCalled();
+      callbacks.onStatus('r1', { connection: 'polling', lastSnapshotAt: 't' });
+      expect(overlaps.reset).toHaveBeenCalledWith('r1');
+
+      overlaps.reset.mockClear();
+      prisma.radioSettings.findFirst.mockResolvedValue(null);
+      await service.handleRadioSettingsChanged('r1');
+      expect(overlaps.reset).toHaveBeenCalledWith('r1');
     });
   });
 
