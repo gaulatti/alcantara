@@ -12,6 +12,7 @@ import { MemoryRouter } from "react-router";
 import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
 import { RadioPanel } from "./RadioPanel";
+import { RadioMonitorProvider } from "./RadioMonitor";
 import { faderToDb } from "../utils/audioTaper";
 import * as flight from "../services/flight";
 vi.mock("../services/flight", () => ({
@@ -1523,4 +1524,57 @@ it("says a rotation take the page refuses without a reason was not taken", async
   mount(p);
   fireEvent.click(screen.getAllByRole("button", { name: "Take on air" })[0]);
   expect(await screen.findByRole("alert")).toHaveTextContent("Rotation command failed");
+});
+
+// gaulatti/alcantara#404 (RadioPanel stronger pass): the desk's M key starts and stops the console's shared listener
+// monitor. The monitor plays only with a grant from the API, and asks for one only while a player is on screen: here the
+// panel's own output player, with no fixture listener URL, attaches to the provider.
+it("starts and stops the shared listener monitor from the desk's M key", async () => {
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+  const grants = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    String(input).includes("/radio/radio-demo/monitor-ticket")
+      ? new Response(
+          JSON.stringify({
+            streamPath: "/radio/radio-demo/monitor-audio?ticket=fixture-grant",
+            expiresInMs: 600_000,
+          }),
+          { status: 201 },
+        )
+      : new Response("{}", { status: 404 }),
+  );
+  const p = props();
+  // Rotation, not a timed log: the transport (with its M key) shows instead of the playback bar.
+  p.fixtureData!.logs = [];
+  delete p.fixtureData!.monitorAudioUrl;
+  render(
+    <MemoryRouter>
+      <RadioMonitorProvider programId="radio-demo">
+        <RadioPanel {...p} />
+      </RadioMonitorProvider>
+    </MemoryRouter>,
+  );
+  const desk = () => screen.getByRole("button", { name: /^Listen M$/ });
+  await waitFor(() =>
+    expect(
+      grants.mock.calls.some(([url]) => String(url).includes("/monitor-ticket")),
+    ).toBe(true),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled(),
+  );
+  expect(desk()).toHaveAttribute("aria-pressed", "false");
+
+  fireEvent.keyDown(window, { key: "m" });
+  await waitFor(() => expect(desk()).toHaveAttribute("aria-pressed", "true"));
+  expect(screen.getByRole("button", { name: "Stop listening" })).toBeInTheDocument();
+  expect(document.querySelector("audio")?.getAttribute("src")).toContain(
+    "/radio/radio-demo/monitor-audio?ticket=fixture-grant",
+  );
+
+  fireEvent.keyDown(window, { key: "M" });
+  await waitFor(() => expect(desk()).toHaveAttribute("aria-pressed", "false"));
+  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Stop listening" })).not.toBeInTheDocument();
 });
