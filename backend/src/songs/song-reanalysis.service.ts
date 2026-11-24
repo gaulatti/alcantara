@@ -4,14 +4,29 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { ProgramService } from '../program/program.service';
-import { PREVIOUS_CUE_RULE_VERSION } from '../media-analysis/ffmpeg-audio.analyzer';
+import {
+  BOUND_KEEPS_RULE_VERSION,
+  CUE_RULE_VERSION,
+  PREVIOUS_CUE_RULE_VERSION,
+} from '../media-analysis/ffmpeg-audio.analyzer';
 import { PrismaService } from '../prisma.service';
 
 /** The most songs one re-analysis request may name: the rollout of a new cue rule is paced in small batches. */
 export const MAX_REANALYSIS_BATCH = 25;
 
-/** The rule a re-analysis runs on: the current one (default), or the previous one, a way back that needs no deploy. */
-export const REANALYSIS_RULES = ['C', 'previous'] as const;
+/**
+ * The rule a re-analysis runs on: C2 (the current rule, the default), C (the rule before the clamp, where a tail
+ * beyond the bound keeps rule 1's edge) or previous (rule 1, before #235). Older rules are a way back that needs no deploy.
+ */
+export const REANALYSIS_RULES = ['C2', 'C', 'previous'] as const;
+export const REANALYSIS_RULE_VERSIONS: Record<
+  (typeof REANALYSIS_RULES)[number],
+  number
+> = {
+  C2: CUE_RULE_VERSION,
+  C: BOUND_KEEPS_RULE_VERSION,
+  previous: PREVIOUS_CUE_RULE_VERSION,
+};
 
 /**
  * Queues songs for a new audio analysis (gaulatti/alcantara#235). A song that is on air, that is playing on a program
@@ -75,6 +90,10 @@ export class SongReanalysisService {
         songs: Object.fromEntries(holding),
       });
     }
+    const requested =
+      REANALYSIS_RULE_VERSIONS[
+        (rule ?? 'C2') as (typeof REANALYSIS_RULES)[number]
+      ];
     const rows = await this.prisma.mediaAssetAnalysis.findMany({
       where: {
         assetId: { in: ids.map((id) => `song:${id}`) },
@@ -88,8 +107,7 @@ export class SongReanalysisService {
       data: {
         nextAttemptAt: now,
         // The request names the rule of the next run; the default rule clears an earlier request for the previous one.
-        requestedRuleVersion:
-          rule === 'previous' ? PREVIOUS_CUE_RULE_VERSION : null,
+        requestedRuleVersion: requested === CUE_RULE_VERSION ? null : requested,
       },
     });
     return {

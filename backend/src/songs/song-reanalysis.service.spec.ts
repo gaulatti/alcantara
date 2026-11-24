@@ -62,18 +62,22 @@ describe('SongReanalysisService', () => {
     });
   });
 
-  it('asks the next analysis for the previous rule, and the default rule clears an earlier request for it', async () => {
+  it('asks the next analysis for an older rule, and the default rule clears an earlier request for one', async () => {
     const { service, prisma } = build({ analysed: ['song:1'] });
-    await service.request([1], 'previous', NOW);
-    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
-      where: { assetId: { in: ['song:1'] }, status: 'success' },
-      data: { nextAttemptAt: NOW, requestedRuleVersion: 1 },
-    });
-    await service.request([1], 'C', NOW);
-    expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
-      where: { assetId: { in: ['song:1'] }, status: 'success' },
-      data: { nextAttemptAt: NOW, requestedRuleVersion: null },
-    });
+    const expected = async (
+      rule: string | undefined,
+      version: number | null,
+    ) => {
+      await service.request([1], rule, NOW);
+      expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith({
+        where: { assetId: { in: ['song:1'] }, status: 'success' },
+        data: { nextAttemptAt: NOW, requestedRuleVersion: version },
+      });
+    };
+    await expected('previous', 1);
+    await expected('C', 2);
+    await expected('C2', null);
+    await expected(undefined, null);
   });
 
   it('refuses a rule it does not know before queueing anything', async () => {

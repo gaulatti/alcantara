@@ -68,11 +68,13 @@ describe('song_request_reanalysis (gaulatti/alcantara#235)', () => {
     const dflt = (await spec.dryRun!({ song_ids: [4] }, ctx)) as {
       summary: string;
     };
-    expect(dflt.summary).toContain('on rule C');
+    expect(dflt.summary).toContain('on rule C2');
     await spec.run({ song_ids: [4], rule: 'previous' }, ctx);
     expect(reanalysis.request).toHaveBeenLastCalledWith([4], 'previous');
     expect(spec.shape.rule.safeParse('B').success).toBe(false);
     expect(spec.shape.rule.safeParse('previous').success).toBe(true);
+    expect(spec.shape.rule.safeParse('C').success).toBe(true);
+    expect(spec.shape.rule.safeParse('C2').success).toBe(true);
     expect(spec.shape.rule.safeParse(undefined).success).toBe(true);
   });
 });
@@ -83,7 +85,7 @@ describe('SongReanalysisMcpTools dependency metadata', () => {
       jest.doMock('../../songs/song-reanalysis.service', () => ({
         SongReanalysisService: undefined,
         MAX_REANALYSIS_BATCH: 25,
-        REANALYSIS_RULES: ['C', 'previous'],
+        REANALYSIS_RULES: ['C2', 'C', 'previous'],
       }));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const loaded = require('./song-reanalysis') as {

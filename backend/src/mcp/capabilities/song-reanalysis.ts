@@ -21,7 +21,7 @@ export class SongReanalysisMcpTools {
       actionSpec({
         name: 'song_request_reanalysis',
         title: 'Analyse songs again',
-        description: `Queues up to ${MAX_REANALYSIS_BATCH} songs for a new audio analysis (cue points and loudness). The media-analysis job takes them one at a time at low priority; a song keeps its current cue points until its new result replaces them, and plays without cue points while its analysis runs, so a song that is playing on a program or announced there as the next song is refused with on_air (listed per song in the dry run). Songs that are not found or have no finished analysis are listed, not queued. rule is C (the default, the current cue rule) or previous (the cue rule before gaulatti/alcantara#235, a way back for a bad batch that needs no deploy); the rule that ran is recorded as the song's ruleVersion.`,
+        description: `Queues up to ${MAX_REANALYSIS_BATCH} songs for a new audio analysis (cue points and loudness). The media-analysis job takes them one at a time at low priority; a song keeps its current cue points until its new result replaces them, and plays without cue points while its analysis runs, so a song that is playing on a program or announced there as the next song is refused with on_air (listed per song in the dry run). Songs that are not found or have no finished analysis are listed, not queued. rule is C2 (the default, the current cue rule: a quiet tail longer than the 1.5 s bound is cut exactly 1.5 s past the old cue-out), C (the rule before that, which keeps the old cue-out there) or previous (the cue rule before gaulatti/alcantara#235); C and previous are a way back for a bad batch that needs no deploy; the rule that ran is recorded as the song's ruleVersion.`,
         permission: ALCANTARA_PERMISSIONS.song.manage,
         tier: 'W',
         shape: {
@@ -33,7 +33,7 @@ export class SongReanalysisMcpTools {
         }),
         id: (args) => args.song_ids.join(','),
         plan: (args, { onAir }) => ({
-          summary: `Queues ${args.song_ids.length} song(s) for a new analysis on rule ${args.rule ?? 'C'}: ${args.song_ids.join(', ')}. Their cue points and loudness are replaced as each analysis finishes; nothing else changes. On air now: ${
+          summary: `Queues ${args.song_ids.length} song(s) for a new analysis on rule ${args.rule ?? 'C2'}: ${args.song_ids.join(', ')}. Their cue points and loudness are replaced as each analysis finishes; nothing else changes. On air now: ${
             [...onAir]
               .filter(([, programs]) => programs.length > 0)
               .map(([id, programs]) => `song ${id} on ${programs.join(', ')}`)

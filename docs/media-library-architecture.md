@@ -172,12 +172,12 @@ fraction of one core:
 | `truePeakDbtp` | ebur128 true peak |
 | `cueInSeconds` | end of a silence that starts the file (cue rule 2, below), else null |
 | `cueOutSeconds` | start of a silence that ends the file (cue rule 2, below), else null |
-| `ruleVersion` | the cue rule that placed the cues: 2 for the rule below, null for analyses made before it (rule 1: -50 dBFS held 0.5 s at both edges) |
+| `ruleVersion` | the cue rule that placed the cues: 3 for the rule below (2 before the clamp described there), null or 1 for analyses made before it (rule 1: -50 dBFS held 0.5 s at both edges) |
 | `isrc` | `ISRC` or `TSRC` tag, normalized (`USRC17607839`), else null |
 | `musicbrainzRecordingId` | `MUSICBRAINZ_TRACKID` / `MusicBrainz Track Id` tag, else null |
 | `fadeInSeconds`, `fadeOutSeconds`, `overlapSeconds` | not measured, always null |
 
-**Cue rule 2 (gaulatti/alcantara#235).** A silence within 0.05 s of an edge
+**Cue rule 2 and 3 (gaulatti/alcantara#235).** A silence within 0.05 s of an edge
 touches it. The head is a leading run below −50 dBFS held for at least 0.2 s. The
 tail is a trailing run below a threshold that follows how loud the song is on air,
 held for at least 0.3 s: Palazzo plays a song with gain
@@ -187,13 +187,16 @@ LUFS, ceiling −1 dBTP; gaulatti/palazzo `src/stream/stream.service.ts:372-385`
 whole dB within [−50, −35], which is where the song is quieter than −45 dBFS on
 air. One `ffmpeg` pass reads every needed threshold (a detector for rule 1, one for
 the head, one per whole dB from −50 to −35) and the tail detector the loudness
-selects is the one used. An edge moves at most 1.5 s beyond where rule 1 would put
-it; beyond that rule 1's edge is kept, and a tail that would reach the cue-in keeps
-rule 1's. The constants live in `ffmpeg-audio.analyzer.ts`; `PLAYOUT_TARGET_LUFS`
+selects is the one used. The head moves at most 1.5 s beyond where rule 1 would put
+it; beyond that rule 1's edge is kept. Rule 2 kept rule 1's tail edge too when the
+quiet tail began more than 1.5 s before it; rule 3 (the current one, `ruleVersion` 3)
+cuts exactly 1.5 s before it instead (`clamped`). Everything from the tail's start on is
+below the on-air floor, so the clamp removes only quiet and cannot clip an audible fade.
+A tail that would reach the cue-in, or a clamp that would cross it, keeps rule 1's. The constants live in `ffmpeg-audio.analyzer.ts`; `PLAYOUT_TARGET_LUFS`
 and `PLAYOUT_TRUE_PEAK_CEILING_DBTP` there repeat Palazzo's defaults and must follow
 its configuration. `alcantara_media_analysis_cue_rule_total{edge,result}` counts,
-per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged`
-or `bounded`. Continuous audio gets no cue points.
+per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged`,
+`bounded` or `clamped`. Continuous audio gets no cue points.
 
 **Re-analysing songs.** `POST /songs/reanalysis` (`song.manage`; MCP
 `song_request_reanalysis`) takes 1 to 25 song ids and makes their finished
@@ -205,11 +208,12 @@ the dry run) for a song a program is playing or has announced to Palazzo as the 
 song, checked again when the songs are queued. None of the batch is queued then.
 Nothing re-analyses the catalogue by itself: a new rule is rolled out in staged,
 paced batches, and `ruleVersion` says which rule each song has. Reverting needs no
-deploy: the request takes an optional `rule` (`C`, the default and current rule, or
-`previous`, the rule before #235: rule 1, the `base` detector alone). `previous` is
-stored on the row as `requestedRuleVersion = 1`, the next analysis of that song runs
-rule 1, records `ruleVersion = 1` and clears the request; a later request with the
-default rule clears an unrun `previous`. An unknown rule is refused `400` before
+deploy: the request takes an optional `rule`: `C2` (the default and current rule, version 3),
+`C` (version 2: a tail beyond the bound keeps rule 1's edge) or `previous` (the rule
+before #235: version 1, the `base` detector alone). An older rule is stored on the row as
+`requestedRuleVersion` (1 or 2), the next analysis of that song runs it, records that
+`ruleVersion` and clears the request; a later request with the default rule clears an
+unrun one. An unknown rule is refused `400` before
 anything is queued. A stored success always
 passes the bounds the Palazzo client enforces on a song command
 (`validateSongSegue` and `validateSongLoudness`), with a missing cue checked as

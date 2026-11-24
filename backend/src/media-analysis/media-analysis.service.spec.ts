@@ -174,6 +174,30 @@ describe('MediaAnalysisService.runOnce', () => {
     });
   });
 
+  it('analyses on rule C when the request asked for it, and on the current rule for any other request value', async () => {
+    for (const [requested, ran] of [
+      [2, 2],
+      [null, 3],
+      [7, 3],
+    ] as const) {
+      const { service, analyzer } = setup([
+        [
+          candidate({
+            analysisUpdatedAt: new Date('2026-11-23T00:00:00.000Z'),
+            attempts: 1,
+            requestedRuleVersion: requested,
+          }),
+        ],
+      ]);
+      await service.runOnce(NOW);
+      expect(analyzer.analyze).toHaveBeenCalledWith(
+        URL_A,
+        ANALYSIS_TIMEOUT_MS,
+        ran,
+      );
+    }
+  });
+
   it('reads the requested rule in the candidate query', async () => {
     const { service, prisma } = setup([[]]);
     await service.runOnce(NOW);
@@ -202,7 +226,7 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(analyzer.analyze).toHaveBeenCalledWith(
       URL_A,
       ANALYSIS_TIMEOUT_MS,
-      2,
+      3,
     );
     expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenCalledWith({
       where: { assetId: 'song:1', sourceUrl: URL_A, status: 'pending' },
@@ -455,7 +479,7 @@ describe('MediaAnalysisService.runOnce', () => {
     expect(analyzer.analyze).toHaveBeenCalledWith(
       sourceUrl,
       ANALYSIS_TIMEOUT_MS,
-      2,
+      3,
     );
   });
 
@@ -793,7 +817,7 @@ describe('MediaAnalysisService schedule', () => {
         expect(analyzer.analyze).toHaveBeenCalledWith(
           URL_A,
           ANALYSIS_TIMEOUT_MS,
-          2,
+          3,
         );
         expect(prisma.mediaAssetAnalysis.updateMany).toHaveBeenLastCalledWith(
           expect.objectContaining({
@@ -1152,7 +1176,7 @@ describe('a database error on the result write (#278)', () => {
     expect(analyzer.analyze).toHaveBeenLastCalledWith(
       URL_A,
       ANALYSIS_TIMEOUT_MS,
-      2,
+      3,
     );
   });
 
