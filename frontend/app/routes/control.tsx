@@ -2703,15 +2703,19 @@ export default function Control() {
       return;
     }
 
+    /* v8 ignore start -- React runs the cleanup before every re-run of this effect, and the cleanup clears the pending timer, so no timer is pending here */
     if (sceneEditorAutosaveTimerRef.current !== null) {
       window.clearTimeout(sceneEditorAutosaveTimerRef.current);
     }
+    /* v8 ignore stop */
 
     sceneEditorAutosaveTimerRef.current = window.setTimeout(() => {
       sceneEditorAutosaveTimerRef.current = null;
+      /* v8 ignore start -- the effect cleanup clears this timer whenever the selected scene changes, so the callback cannot run with no scene selected */
       if (!selectedSceneRef.current) {
         return;
       }
+      /* v8 ignore stop */
       queueSceneAttributePersist(
         selectedSceneRef.current,
         sceneEditorPropsRef.current,
