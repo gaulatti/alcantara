@@ -25,6 +25,10 @@ const WRITE_OUTCOMES = new Set<string>([
   'dropped',
 ]);
 
+/** What cue rule 2 did to one edge of an analysed song (gaulatti/alcantara#235). */
+const CUE_RULE_EDGES = new Set<string>(['head', 'tail']);
+const CUE_RULE_RESULTS = new Set<string>(['applied', 'unchanged', 'bounded']);
+
 @Injectable()
 export class MediaAnalysisMetrics {
   private readonly analyses: Counter<string>;
@@ -32,6 +36,7 @@ export class MediaAnalysisMetrics {
   private readonly backlog: Gauge<string>;
   private readonly writes: Counter<string>;
   private readonly durationBackfill: Gauge<string>;
+  private readonly cueRule: Counter<string>;
 
   constructor(managed: ManagedMetricsService) {
     this.analyses = new Counter({
@@ -69,6 +74,17 @@ export class MediaAnalysisMetrics {
     for (const result of RESULTS) {
       this.analyses.inc({ result }, 0);
     }
+    this.cueRule = new Counter({
+      name: 'alcantara_media_analysis_cue_rule_total',
+      help: 'Cue rule 2 outcome per edge of an analysed song: applied (the edge moved), unchanged, or bounded (it would move too far, so the earlier rule is kept).',
+      labelNames: ['edge', 'result'],
+      registers: [managed.registry],
+    });
+    for (const edge of CUE_RULE_EDGES) {
+      for (const result of CUE_RULE_RESULTS) {
+        this.cueRule.inc({ edge, result }, 0);
+      }
+    }
   }
 
   setBacklog(assets: number): void {
@@ -79,6 +95,17 @@ export class MediaAnalysisMetrics {
     this.writes.inc({
       outcome: WRITE_OUTCOMES.has(outcome) ? outcome : 'dropped',
     });
+  }
+
+  recordCueRule(outcome: { head: string; tail: string }): void {
+    for (const edge of ['head', 'tail'] as const) {
+      this.cueRule.inc({
+        edge,
+        result: CUE_RULE_RESULTS.has(outcome[edge])
+          ? outcome[edge]
+          : 'unchanged',
+      });
+    }
   }
 
   setDurationBackfill(assets: number): void {

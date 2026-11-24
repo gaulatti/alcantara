@@ -158,4 +158,35 @@ describe('MediaAnalysisMetrics', () => {
       { name, labels: {}, value: 4799 },
     ]);
   });
+
+  it('counts cue rule 2 outcomes per edge on /metrics with bounded labels only', async () => {
+    const managed = new ManagedMetricsService();
+    const metrics = new MediaAnalysisMetrics(managed);
+    const controller = new MetricsController(
+      new RadioMetricsService(),
+      managed,
+      undefined as never,
+    );
+    const name = 'alcantara_media_analysis_cue_rule_total';
+    expect(samples(await controller.getMetrics(), name)).toHaveLength(6);
+
+    metrics.recordCueRule({ head: 'applied', tail: 'bounded' });
+    metrics.recordCueRule({ head: 'applied', tail: 'applied' });
+    metrics.recordCueRule({ head: 'surprise', tail: 'unchanged' });
+
+    const totals = Object.fromEntries(
+      samples(await controller.getMetrics(), name).map((s) => [
+        `${s.labels.edge}:${s.labels.result}`,
+        s.value,
+      ]),
+    );
+    expect(totals).toEqual({
+      'head:applied': 2,
+      'head:unchanged': 1,
+      'head:bounded': 0,
+      'tail:applied': 1,
+      'tail:unchanged': 1,
+      'tail:bounded': 1,
+    });
+  });
 });

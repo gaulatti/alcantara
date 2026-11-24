@@ -38,6 +38,8 @@ const ANALYSIS: AudioAnalysis = {
   truePeakDbtp: -0.8,
   isrc: 'USRC17607839',
   musicbrainzRecordingId: null,
+  ruleVersion: 2,
+  cueRule: { head: 'applied', tail: 'bounded' },
 };
 
 const EMPTY = {
@@ -50,6 +52,7 @@ const EMPTY = {
   truePeakDbtp: null,
   isrc: null,
   musicbrainzRecordingId: null,
+  ruleVersion: null,
 };
 
 function candidate(overrides: Record<string, unknown> = {}) {
@@ -77,6 +80,7 @@ function setup(rows: unknown[][] = [[candidate()]]) {
     record: jest.fn(),
     setBacklog: jest.fn(),
     recordWrite: jest.fn(),
+    recordCueRule: jest.fn(),
     setDurationBackfill: jest.fn(),
   };
   const analyzer = {
@@ -166,11 +170,16 @@ describe('MediaAnalysisService.runOnce', () => {
         durationSeconds: 240,
         isrc: 'USRC17607839',
         musicbrainzRecordingId: null,
+        ruleVersion: 2,
         error: null,
         nextAttemptAt: null,
       },
     });
     expect(metrics.record).toHaveBeenCalledWith('success', expect.any(Number));
+    expect(metrics.recordCueRule).toHaveBeenCalledWith({
+      head: 'applied',
+      tail: 'bounded',
+    });
     expect(Logger.prototype.warn).not.toHaveBeenCalled();
   });
 
@@ -1136,7 +1145,8 @@ describe('a database error on the result write (#278)', () => {
     }
 
     const writtenData = prisma.mediaAssetAnalysis.updateMany.mock.calls.map(
-      (call) => ((call as unknown[])[0] as { data: Record<string, unknown> }).data,
+      (call) =>
+        ((call as unknown[])[0] as { data: Record<string, unknown> }).data,
     );
     expect(writtenData.some((data) => data.error === 'interrupted')).toBe(
       false,

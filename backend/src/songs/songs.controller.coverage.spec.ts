@@ -7,6 +7,7 @@ describe('SongsController', () => {
     create: jest.fn().mockResolvedValue('created'),
     update: jest.fn().mockResolvedValue('updated'),
     remove: jest.fn().mockResolvedValue('removed'),
+    requestReanalysis: jest.fn().mockResolvedValue('queued'),
   };
   const controller = new SongsController(service as never);
 
@@ -60,5 +61,14 @@ describe('SongsController', () => {
     expect(service.update).toHaveBeenCalledWith(3, { title: 'u' });
     await expect(controller.remove('4')).resolves.toBe('removed');
     expect(service.remove).toHaveBeenCalledWith(4);
+  });
+
+  it('queues songs for a new analysis, with no body treated as none', async () => {
+    await expect(
+      controller.requestReanalysis({ songIds: [1, 2] }),
+    ).resolves.toBe('queued');
+    expect(service.requestReanalysis).toHaveBeenLastCalledWith([1, 2]);
+    await controller.requestReanalysis(undefined as never);
+    expect(service.requestReanalysis).toHaveBeenLastCalledWith(undefined);
   });
 });

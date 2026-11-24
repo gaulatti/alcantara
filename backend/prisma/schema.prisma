@@ -809,6 +809,8 @@ model MediaAssetAnalysis {
   durationSeconds        Float?
   isrc                   String?
   musicbrainzRecordingId String?
+  /// The cue rule that placed cueInSeconds and cueOutSeconds (gaulatti/alcantara#235); null for rule 1, analysed before it existed.
+  ruleVersion            Int?
   error                  String?
   /// Analysis runs claimed for the current source, bounded by the analysis job.
   attempts               Int        @default(0)

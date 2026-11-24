@@ -170,14 +170,39 @@ fraction of one core:
 | --- | --- |
 | `integratedLufs` | ebur128 integrated loudness |
 | `truePeakDbtp` | ebur128 true peak |
-| `cueInSeconds` | end of a silence that starts the file, else null |
-| `cueOutSeconds` | start of a silence that ends the file, else null |
+| `cueInSeconds` | end of a silence that starts the file (cue rule 2, below), else null |
+| `cueOutSeconds` | start of a silence that ends the file (cue rule 2, below), else null |
+| `ruleVersion` | the cue rule that placed the cues: 2 for the rule below, null for analyses made before it (rule 1: -50 dBFS held 0.5 s at both edges) |
 | `isrc` | `ISRC` or `TSRC` tag, normalized (`USRC17607839`), else null |
 | `musicbrainzRecordingId` | `MUSICBRAINZ_TRACKID` / `MusicBrainz Track Id` tag, else null |
 | `fadeInSeconds`, `fadeOutSeconds`, `overlapSeconds` | not measured, always null |
 
-Silence is below −50 dBFS for at least 0.5 s; a silence within 0.05 s of an
-edge touches it. Continuous audio gets no cue points. A stored success always
+**Cue rule 2 (gaulatti/alcantara#235).** A silence within 0.05 s of an edge
+touches it. The head is a leading run below −50 dBFS held for at least 0.2 s. The
+tail is a trailing run below a threshold that follows how loud the song is on air,
+held for at least 0.3 s: Palazzo plays a song with gain
+`min(target − integrated LUFS, ceiling − true peak)` dB (its defaults: target −16
+LUFS, ceiling −1 dBTP; gaulatti/palazzo `src/stream/stream.service.ts:372-385`,
+`docs/program-playout.md:142-148`), so the tail threshold is `−45 − gain` dB, in
+whole dB within [−50, −35], which is where the song is quieter than −45 dBFS on
+air. One `ffmpeg` pass reads every needed threshold (a detector for rule 1, one for
+the head, one per whole dB from −50 to −35) and the tail detector the loudness
+selects is the one used. An edge moves at most 1.5 s beyond where rule 1 would put
+it; beyond that rule 1's edge is kept, and a tail that would reach the cue-in keeps
+rule 1's. The constants live in `ffmpeg-audio.analyzer.ts`; `PLAYOUT_TARGET_LUFS`
+and `PLAYOUT_TRUE_PEAK_CEILING_DBTP` there repeat Palazzo's defaults and must follow
+its configuration. `alcantara_media_analysis_cue_rule_total{edge,result}` counts,
+per analysed song and edge, `applied` (the edge moved from rule 1's), `unchanged`
+or `bounded`. Continuous audio gets no cue points.
+
+**Re-analysing songs.** `POST /songs/reanalysis` (`song.manage`; MCP
+`song_request_reanalysis`) takes 1 to 25 song ids and makes their finished
+analyses due now. The job takes them one at a time under the duty cycle above; a
+song keeps its current cue points until its new result replaces them, and while
+its analysis runs it is `pending` (it plays without cue points for those seconds).
+Nothing re-analyses the catalogue by itself: a new rule is rolled out in staged,
+paced batches, and `ruleVersion` says which rule each song has. Reverting is
+re-running with the old constants. A stored success always
 passes the bounds the Palazzo client enforces on a song command
 (`validateSongSegue` and `validateSongLoudness`), with a missing cue checked as
 the file's own edge; anything else is recorded as a failure.

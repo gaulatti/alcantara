@@ -24,6 +24,28 @@ import {
 /** Below this level, held for at least SILENCE_MIN_SECONDS, audio is silence. */
 export const SILENCE_THRESHOLD_DB = -50;
 export const SILENCE_MIN_SECONDS = 0.5;
+/**
+ * Cue rule 2 (gaulatti/alcantara#235). The head is the leading run below the same -50 dB held for at least
+ * HEAD_SILENCE_MIN_SECONDS. The tail is the trailing run below a threshold that follows how loud the song is on
+ * air, held for at least TAIL_SILENCE_MIN_SECONDS: the audio below TAIL_AIR_FLOOR_DB once Palazzo's loudness gain
+ * is applied is the quiet stretch heard before every change, so it is cut. The threshold is kept within
+ * [TAIL_THRESHOLD_MIN_DB, TAIL_THRESHOLD_MAX_DB], and a cue is moved by at most MAX_EXTRA_TRIM_SECONDS beyond the
+ * cue rule 1 would give (otherwise rule 1's cue is kept).
+ */
+export const CUE_RULE_VERSION = 2;
+export const HEAD_SILENCE_MIN_SECONDS = 0.2;
+export const TAIL_SILENCE_MIN_SECONDS = 0.3;
+export const TAIL_AIR_FLOOR_DB = -45;
+export const TAIL_THRESHOLD_MIN_DB = -50;
+export const TAIL_THRESHOLD_MAX_DB = -35;
+export const MAX_EXTRA_TRIM_SECONDS = 1.5;
+/**
+ * Palazzo's playout loudness (gaulatti/palazzo, src/stream/stream.service.ts:372-385; docs/program-playout.md:142-148):
+ * the song is played with gain min(target - integrated LUFS, ceiling - true peak) dB. These are Palazzo's defaults;
+ * keep them in step with its PLAYOUT_TARGET_LUFS and PLAYOUT_TRUE_PEAK_CEILING_DBTP.
+ */
+export const PLAYOUT_TARGET_LUFS = -16;
+export const PLAYOUT_TRUE_PEAK_CEILING_DBTP = -1;
 /** A silence this close to the start or the end of the file touches that edge. */
 export const EDGE_TOLERANCE_SECONDS = 0.05;
 /** Output kept from one tool run; anything larger is treated as a failure. */
@@ -77,6 +99,17 @@ export interface AudioAnalysis {
   truePeakDbtp: number;
   isrc: string | null;
   musicbrainzRecordingId: string | null;
+  /** The cue rule that placed the cue points (CUE_RULE_VERSION). */
+  ruleVersion: number;
+  /** What rule 2 did to each edge, for the analysis metric: never stored. */
+  cueRule: CueRuleOutcome;
+}
+
+/** applied: the edge moved from rule 1's; unchanged: the same; bounded: it would move too far, rule 1's edge is kept. */
+export type EdgeOutcome = 'applied' | 'unchanged' | 'bounded';
+export interface CueRuleOutcome {
+  head: EdgeOutcome;
+  tail: EdgeOutcome;
 }
 
 export interface SilencePeriod {
@@ -130,6 +163,30 @@ export function probeArguments(input: string): string[] {
   ];
 }
 
+/**
+ * One pass reads the song's silence at every threshold the cue rule may need, because the tail threshold depends on
+ * the loudness, which the same pass measures: the rule-1 detector (today's cue, the bound), the head detector and one
+ * tail detector per whole dB from TAIL_THRESHOLD_MIN_DB to TAIL_THRESHOLD_MAX_DB, then the loudness.
+ */
+export function silenceFilterChain(): string {
+  const filters = [
+    `silencedetect@base=noise=${SILENCE_THRESHOLD_DB}dB:d=${SILENCE_MIN_SECONDS}`,
+    `silencedetect@head=noise=${SILENCE_THRESHOLD_DB}dB:d=${HEAD_SILENCE_MIN_SECONDS}`,
+  ];
+  for (let db = TAIL_THRESHOLD_MIN_DB; db <= TAIL_THRESHOLD_MAX_DB; db += 1) {
+    filters.push(
+      `silencedetect@${tailFilterName(db)}=noise=${db}dB:d=${TAIL_SILENCE_MIN_SECONDS}`,
+    );
+  }
+  filters.push('ebur128=peak=true:framelog=quiet');
+  return filters.join(',');
+}
+
+/** The instance name of the tail detector for a threshold in whole dB (negative). */
+export function tailFilterName(db: number): string {
+  return `tail${Math.abs(db)}`;
+}
+
 export function measureArguments(input: string): string[] {
   return [
     '-nostdin',
@@ -148,7 +205,7 @@ export function measureArguments(input: string): string[] {
     '-map',
     '0:a:0',
     '-af',
-    `silencedetect=noise=${SILENCE_THRESHOLD_DB}dB:d=${SILENCE_MIN_SECONDS},ebur128=peak=true:framelog=quiet`,
+    silenceFilterChain(),
     '-f',
     'null',
     '-',
@@ -214,13 +271,19 @@ export function parseProbe(output: string): {
   };
 }
 
-export function parseSilence(stderr: string): SilencePeriod[] {
+/**
+ * The silence periods one detector logged. `filter` is the detector's instance name (`silencedetect@name`); without
+ * one, the unnamed detector's lines are read.
+ */
+export function parseSilence(stderr: string, filter?: string): SilencePeriod[] {
   const periods: SilencePeriod[] = [];
+  const name = filter === undefined ? '' : `@${filter}`;
   for (const match of stderr.matchAll(
-    /silence_(start|end):\s*(-?\d+(?:\.\d+)?)/g,
+    /(?:\[silencedetect(@\w+)? @ [^\]]*\]\s*)?silence_(start|end):\s*(-?\d+(?:\.\d+)?)/g,
   )) {
-    const value = Number(match[2]);
-    if (match[1] === 'start') {
+    if ((match[1] ?? '') !== name) continue;
+    const value = Number(match[3]);
+    if (match[2] === 'start') {
       periods.push({ start: value, end: null });
     } else if (periods.length && periods[periods.length - 1].end === null) {
       periods[periods.length - 1].end = value;
@@ -277,6 +340,85 @@ export function cuePoints(
     cueInSeconds: leading ? seconds(first.end!) : null,
     cueOutSeconds: trailing ? seconds(last.start) : null,
   };
+}
+
+/**
+ * The tail threshold, in whole dB, for a song: where the song is quieter than TAIL_AIR_FLOOR_DB once Palazzo's
+ * loudness gain is applied. A loud master is played lower, so its file level for the same on-air level is higher;
+ * a quiet master that is amplified gets the lowest threshold, which is rule 1's.
+ */
+export function tailThresholdDb(loudness: {
+  integratedLufs: number;
+  truePeakDbtp: number;
+}): number {
+  const gainDb = Math.min(
+    PLAYOUT_TARGET_LUFS - loudness.integratedLufs,
+    PLAYOUT_TRUE_PEAK_CEILING_DBTP - loudness.truePeakDbtp,
+  );
+  return Math.max(
+    TAIL_THRESHOLD_MIN_DB,
+    Math.min(TAIL_THRESHOLD_MAX_DB, Math.round(TAIL_AIR_FLOOR_DB - gainDb)),
+  );
+}
+
+/**
+ * Cue rule 2 (gaulatti/alcantara#235): rule 1's cue points (the `base` detector) are the reference; the head uses
+ * the shorter leading run, the tail the loudness-relative threshold. An edge that would move more than
+ * MAX_EXTRA_TRIM_SECONDS beyond rule 1's keeps rule 1's, and so does a tail that would reach the cue-in.
+ */
+export function ruleCuePoints(
+  stderr: string,
+  durationSeconds: number,
+  loudness: { integratedLufs: number; truePeakDbtp: number },
+): {
+  cueInSeconds: number | null;
+  cueOutSeconds: number | null;
+  cueRule: CueRuleOutcome;
+} {
+  const base = cuePoints(parseSilence(stderr, 'base'), durationSeconds);
+
+  const heads = parseSilence(stderr, 'head');
+  const firstHead = heads[0];
+  const headEnd =
+    firstHead !== undefined &&
+    firstHead.start <= EDGE_TOLERANCE_SECONDS &&
+    firstHead.end !== null
+      ? seconds(firstHead.end)
+      : null;
+  let cueInSeconds = base.cueInSeconds;
+  let head: EdgeOutcome = 'unchanged';
+  if (headEnd !== null && headEnd !== base.cueInSeconds) {
+    if (headEnd - (base.cueInSeconds ?? 0) > MAX_EXTRA_TRIM_SECONDS) {
+      head = 'bounded';
+    } else {
+      cueInSeconds = headEnd;
+      head = 'applied';
+    }
+  }
+
+  const tails = parseSilence(stderr, tailFilterName(tailThresholdDb(loudness)));
+  const lastTail = tails[tails.length - 1];
+  const tailStart =
+    lastTail !== undefined &&
+    (lastTail.end === null ||
+      lastTail.end >= durationSeconds - EDGE_TOLERANCE_SECONDS)
+      ? seconds(lastTail.start)
+      : null;
+  let cueOutSeconds = base.cueOutSeconds;
+  let tail: EdgeOutcome = 'unchanged';
+  if (tailStart !== null && tailStart !== base.cueOutSeconds) {
+    if (
+      (base.cueOutSeconds ?? durationSeconds) - tailStart >
+        MAX_EXTRA_TRIM_SECONDS ||
+      tailStart <= (cueInSeconds ?? 0)
+    ) {
+      tail = 'bounded';
+    } else {
+      cueOutSeconds = tailStart;
+      tail = 'applied';
+    }
+  }
+  return { cueInSeconds, cueOutSeconds, cueRule: { head, tail } };
 }
 
 /**
@@ -393,11 +535,13 @@ export class FfmpegAudioAnalyzer {
       'decode-failed',
     );
     const durationSeconds = parseDecodedDuration(measure.stdout);
+    const loudness = parseLoudness(measure.stderr);
     const analysis: AudioAnalysis = {
       durationSeconds,
-      ...cuePoints(parseSilence(measure.stderr), durationSeconds),
-      ...parseLoudness(measure.stderr),
+      ...ruleCuePoints(measure.stderr, durationSeconds, loudness),
+      ...loudness,
       ...identifiers,
+      ruleVersion: CUE_RULE_VERSION,
     };
     assertPlayable(analysis);
     return analysis;

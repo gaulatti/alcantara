@@ -38,6 +38,13 @@ export class SongsController {
     });
   }
 
+  /** gaulatti/alcantara#235: queues songs for a new analysis (at most 25), keeping their cues until it finishes. */
+  @Post('reanalysis')
+  @RequirePermission(ALCANTARA_PERMISSIONS.song.manage)
+  async requestReanalysis(@Body() body: { songIds?: unknown }) {
+    return this.songsService.requestReanalysis(body?.songIds);
+  }
+
   @Get(':id')
   async findOne(
     @Param('id') id: string,

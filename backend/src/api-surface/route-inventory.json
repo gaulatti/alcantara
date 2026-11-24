@@ -1248,6 +1248,12 @@
     "permission": "alcantara:song:manage"
   },
   {
+    "method": "POST",
+    "path": "/songs/reanalysis",
+    "public": false,
+    "permission": "alcantara:song:manage"
+  },
+  {
     "method": "GET",
     "path": "/stingers",
     "public": false,
