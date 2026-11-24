@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProgramSongPlaybackState, SongCatalogItem } from "../../models/broadcast";
 import type { ProgramSongSequence } from "../../utils/programSequence";
-import { findPlayableSongs, nextUp, onAirLeaf, type SongLeaf } from "./songs";
+import { findPlayableSongs, nextUp, onAirLeaf, rotationLeaves, type SongLeaf } from "./songs";
 
 // gaulatti/alcantara#404 (radio desk songs, from the full-run table): rotation items that come without a
 // length or an audio address, and a playback report that names neither. These are the rows a rotation can
@@ -17,14 +17,14 @@ describe("radio desk songs with missing length or address", () => {
   it("reports a rotation song with no length as having none, in the next-up and the search", () => {
     const seq = sequence([bare("s1", { durationMs: undefined })]);
     expect(nextUp({ sequence: seq, queue: [], playback: null })).toMatchObject({ itemId: "s1", durationMs: null, via: "rotation" });
-    const found = findPlayableSongs(seq.items, [], "title");
+    const found = findPlayableSongs(rotationLeaves(seq.items), [], "title");
     expect(found).toEqual([expect.objectContaining({ key: "rotation:s1", durationMs: null, source: "rotation" })]);
   });
 
   it("keeps a rotation song's length when it has one", () => {
     const seq = sequence([bare("s2", { durationMs: 95_000 })]);
     expect(nextUp({ sequence: seq, queue: [], playback: null })).toMatchObject({ durationMs: 95_000 });
-    expect(findPlayableSongs(seq.items, [], "title")[0]).toMatchObject({ durationMs: 95_000 });
+    expect(findPlayableSongs(rotationLeaves(seq.items), [], "title")[0]).toMatchObject({ durationMs: 95_000 });
   });
 
   it("finds nothing on air for a playing report with no token and no address", () => {
