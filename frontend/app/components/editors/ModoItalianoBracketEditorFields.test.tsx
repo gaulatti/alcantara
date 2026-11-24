@@ -318,6 +318,9 @@ it("logs a draw the scene refused or could not receive", async () => {
     ),
   );
   expect(transport).toHaveBeenCalledTimes(1);
+  // The draw's own timer (drawDurationSeconds) is still pending after a refusal: wait for it to finish here,
+  // so no timer fires after the test environment is torn down.
+  await waitFor(() => expect(screen.getByRole("button", { name: "Draw Pool" })).toBeEnabled(), { timeout: 3000 });
 });
 
 it("does not draw without a saved scene, and asks for pool songs when none are unused", () => {
