@@ -21,6 +21,8 @@ const lk = vi.hoisted(() => {
       disconnected: boolean;
     }[],
     tracks: [] as { stopped: boolean }[],
+    // Set by a test to make the next connect fail with this value.
+    failConnectWith: null as unknown,
   };
   class Room {
     connectedTo: string[] = [];
@@ -35,6 +37,11 @@ const lk = vi.hoisted(() => {
       state.rooms.push(this);
     }
     async connect(url: string, token: string) {
+      if (state.failConnectWith !== null) {
+        const failure = state.failConnectWith;
+        state.failConnectWith = null;
+        throw failure;
+      }
       this.connectedTo = [url, token];
     }
     disconnect() {
@@ -719,4 +726,61 @@ it("refreshes on demand", async () => {
       calls.filter((call) => call.url.endsWith("/webrtc/config")).length,
     ).toBe(before + 1),
   );
+});
+
+it("reports a refused operator token by its raw text when the body is JSON without a message", async () => {
+  serve({
+    "POST /webrtc/operator-token": () => new Response(JSON.stringify({ error: "busy" }), { status: 403 }),
+  });
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.pointerDown(button(/Hold · talk/));
+  expect(await screen.findByText('{"error":"busy"}')).toBeVisible();
+  expect(button(/Hold · talk/)).toHaveAttribute("aria-pressed", "false");
+});
+
+it("ignores a second talk press while the first is still being set up", async () => {
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.pointerDown(button(/Hold · talk/));
+  fireEvent.pointerDown(button(/Talking… release to stop/));
+  await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
+  expect(lk.state.rooms).toHaveLength(1);
+});
+
+it("reports a talkback that fails with something other than an error as a plain failure", async () => {
+  lk.state.failConnectWith = "room unreachable";
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.pointerDown(button(/Hold · talk/));
+  expect(await screen.findByText("Talkback failed.")).toBeVisible();
+  expect(button(/Hold · talk/)).toHaveAttribute("aria-pressed", "false");
+});
+
+it("shows an invited slot whose guest has not joined yet", async () => {
+  invitations = [invitation()];
+  participants = [participant({ invitationId: "unknown", identity: "ghost", name: "Ghost" })];
+  serve();
+  render(<CallsRoute />);
+  expect(await screen.findByText("Ada · not joined")).toBeVisible();
+  expect(screen.getByText("1/6 slots assigned")).toBeVisible();
+});
+
+it("does not start a second guest's talkback while the first is being set up", async () => {
+  invitations = [invitation(), invitation({ id: "inv-2", displayName: "Bo", slotNumber: 2 })];
+  participants = [
+    participant(),
+    participant({ invitationId: "inv-2", identity: "guest-bo", name: "Bo", slotNumber: 2 }),
+  ];
+  serve();
+  render(<CallsRoute />);
+  await screen.findByText("Ada", { selector: "h3" });
+  fireEvent.pointerDown(button(/Hold · talk/));
+  const bo = screen.getByRole("article", { name: /: Bo$/ });
+  fireEvent.pointerDown(within(bo).getByRole("button", { name: /Hold · talk/ }));
+  await waitFor(() => expect(lk.state.rooms[0]?.published).toEqual(["talkback:inv-1"]));
+  expect(lk.state.rooms).toHaveLength(1);
+  expect(lk.state.rooms[0].published).toEqual(["talkback:inv-1"]);
 });
