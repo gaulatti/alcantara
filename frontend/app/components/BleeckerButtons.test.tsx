@@ -87,3 +87,44 @@ it("keeps disabled controls inert while passing their explanation and allowing p
   fireEvent.click(button);
   expect(onClick).not.toHaveBeenCalled();
 });
+
+it("labels a button from nested text and ignores non-text children", () => {
+  const { rerender } = render(
+    <TooltipButton>
+      <span>
+        <b>Start</b> <i>now</i>
+      </span>
+      {null}
+      {false}
+    </TooltipButton>,
+  );
+  expect(help()).toBe("Start now");
+  expect(screen.getByRole("button", { name: "Start now" })).toBeInTheDocument();
+  rerender(
+    <Button>
+      <span>
+        <b>Start</b> <i>now</i>
+      </span>
+    </Button>,
+  );
+  expect(help()).toBe("Start now");
+});
+
+it("adds no help when a control has no name, title or label of its own", () => {
+  vi.mocked(Tooltip).mockClear();
+  const { container } = render(
+    <>
+      <Button>
+        <svg aria-hidden="true" />
+      </Button>
+      <IconButton>
+        <svg aria-hidden="true" />
+      </IconButton>
+      <TooltipButton>
+        <svg aria-hidden="true" />
+      </TooltipButton>
+    </>,
+  );
+  expect(Tooltip).not.toHaveBeenCalled();
+  expect(container.querySelectorAll("button")).toHaveLength(3);
+});
