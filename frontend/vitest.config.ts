@@ -26,8 +26,10 @@ export default defineConfig({
     server: { deps: { inline: [/@gaulatti\/bleecker/] } },
     // Coverage (gaulatti/alcantara#181), on with `pnpm run test:coverage`: native V8 counts over every
     // runtime source under app/, including files no test imports, reported as Istanbul JSON at
-    // coverage/coverage-final.json plus a text summary. Only tests and declarations are left out. There
-    // is no threshold yet; #83 adds the gate.
+    // coverage/coverage-final.json plus a text summary. Only tests and declarations are left out.
+    // Ratchet (gaulatti/alcantara#404 follow-up): thresholds sit just under the measured values on main,
+    // rounded down, so a change that drops coverage fails `test:coverage`. They are enforced only when
+    // coverage runs; the frontend CI job runs plain `npm test`, so it does not enforce them yet.
     // Forks are capped at 4 (gaulatti/alcantara#83): with coverage on, the default one-fork-per-core
     // saturates the machine, the workers' task updates starve the main process and vitest ends the run
     // with `Timeout calling "onTaskUpdate"` (an unhandled error, exit 1). Measured on 172 files / 1,570
@@ -41,6 +43,12 @@ export default defineConfig({
       exclude: ['app/**/*.test.{ts,tsx}', 'app/**/*.d.ts'],
       reporter: ['json', 'text-summary'],
       reportsDirectory: 'coverage',
+      thresholds: {
+        statements: 99.9,
+        lines: 99.9,
+        branches: 99.0,
+        functions: 96.2,
+      },
     },
   },
 });
