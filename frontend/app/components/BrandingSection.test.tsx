@@ -68,3 +68,81 @@ describe('BrandingSection', () => {
     expect(logoError('ftp://media.example.test/a.png')).toBe('The logo must be an https address.');
   });
 });
+
+describe('BrandingSection failures and cleared marks', () => {
+  let puts: string[];
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('says so when the stored branding cannot be loaded, and still offers the empty form', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 500 })));
+    render(<BrandingSection programId='fictional-main' />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('The branding could not be loaded.');
+    expect(screen.getByRole('button', { name: 'Save branding' })).toBeEnabled();
+  });
+
+  it('reads a program with no stored branding as empty marks', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('null', { status: 200 })));
+    render(<BrandingSection programId='fictional-main' />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save branding' })).toBeEnabled());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByLabelText('Callsign')).toHaveValue('');
+  });
+
+  it('says so when the save is refused, and leaves the marks as typed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') return new Response('refused', { status: 500 });
+        return new Response(JSON.stringify({ displayName: 'Fictional station' }), { status: 200 });
+      }),
+    );
+    render(<BrandingSection programId='fictional-main' />);
+    fireEvent.change(await screen.findByLabelText('Callsign'), { target: { value: 'FS-9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The branding could not be saved.');
+    expect(screen.getByLabelText('Callsign')).toHaveValue('FS-9');
+    expect(screen.getByRole('button', { name: 'Save branding' })).toBeEnabled();
+  });
+
+  it('sends a cleared mark as null, including a cleared logo, and saves a program with no logo', async () => {
+    puts = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') {
+          puts.push(init.body as string);
+          return new Response(JSON.stringify({}), { status: 200 });
+        }
+        return new Response(JSON.stringify({ displayName: 'Fictional station', callsign: 'FS-1', logoUrl: null }), { status: 200 });
+      }),
+    );
+    render(<BrandingSection programId='fictional-main' />);
+    fireEvent.change(await screen.findByLabelText('Callsign'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(JSON.parse(puts[0])).toMatchObject({ callsign: null, logoUrl: null });
+  });
+
+  it('clears a stored logo to null when its address is emptied', async () => {
+    puts = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') {
+          puts.push(init.body as string);
+          return new Response(JSON.stringify({}), { status: 200 });
+        }
+        return new Response(JSON.stringify({ logoUrl: 'https://media.example.test/logo.png' }), { status: 200 });
+      }),
+    );
+    render(<BrandingSection programId='fictional-main' />);
+    fireEvent.change(await screen.findByDisplayValue('https://media.example.test/logo.png'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save branding' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(JSON.parse(puts[0])).toMatchObject({ logoUrl: null });
+  });
+});
