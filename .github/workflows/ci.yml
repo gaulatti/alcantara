@@ -175,12 +175,21 @@ jobs:
         if: *verify-code
         run: pnpm --dir backend run build
       - name: Typecheck the frontend and run its tests with the coverage ratchet
+        id: frontend-coverage
         # gaulatti/alcantara#404 follow-up: the thresholds in frontend/vitest.config.ts fail this
         # step when a change drops frontend coverage, and the typecheck catches what vitest does not.
         if: *verify-code
         run: |
           pnpm --dir frontend run typecheck
           pnpm --dir frontend run test:coverage
+      - name: Retain frontend coverage evidence
+        # Lets a local run on the same commit be diffed per file against CI's measurement.
+        if: always() && steps.frontend-coverage.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: frontend/coverage/coverage-final.json
+          if-no-files-found: warn
       - name: Test and build infrastructure
         if: *verify-code
         run: |
